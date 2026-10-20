@@ -37,6 +37,7 @@ import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/Selectio
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
 import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
+import { Card } from "../../ui/index.js";
 import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
@@ -134,9 +135,9 @@ export function DescriptionView({ reviewId, editor }: Props) {
 
   if (!description) {
     return (
-      <div className="desc">
+      <Card variant="plain" className="desc">
         <p className="hint">No description.</p>
-      </div>
+      </Card>
     );
   }
 
@@ -372,7 +373,8 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   };
 
   return (
-    <div
+    <Card
+      variant="plain"
       className="desc"
       ref={setRefs}
       onClick={(e) => {
@@ -488,6 +490,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             ))}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 });

@@ -3,7 +3,7 @@ import { Button as BaseButton } from "@base-ui/react/button";
 import { Checkbox as BaseCheckbox } from "@base-ui/react/checkbox";
 import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import "./ui.css";
 
 export function Button({ variant = "secondary", size = "md", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }): React.JSX.Element {
@@ -12,12 +12,29 @@ export function Button({ variant = "secondary", size = "md", ...p }: ButtonHTMLA
 export function Field({ label, htmlFor, help, status, children }: { label: string; htmlFor?: string; help?: ReactNode; status?: ReactNode; children: ReactNode }): React.JSX.Element {
   return <div className="ui-field"><label htmlFor={htmlFor}>{label}</label><div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>{children}{help ? <span className="ui-help">{help}</span> : null}{status}</div></div>;
 }
-export function Section({ title, description, children, ariaLabel }: { title?: string; description?: ReactNode; children: ReactNode; ariaLabel?: string }): React.JSX.Element {
-  return <section className="ui-section" aria-label={ariaLabel ?? title}>{title ? <h2>{title}</h2> : null}{description ? <p className="ui-section-desc">{description}</p> : null}{children}</section>;
+export type CardVariant = "plain" | "raised" | "inset" | "interactive";
+export type CardProps = {
+  variant?: CardVariant;
+  as?: "div" | "section" | "article" | "nav" | "li";
+  header?: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  children?: ReactNode;
+} & HTMLAttributes<HTMLElement> & Record<`data-${string}`, unknown>;
+export const Card = forwardRef<HTMLElement, CardProps>(function Card({ variant = "plain", as: Tag = "div", header, footer, className, children, ...rest }, ref): React.JSX.Element {
+  const cls = `ui-card${className ? ` ${className}` : ""}`;
+  const El = Tag as "div";
+  return <El ref={ref as never} data-variant={variant} className={cls} {...rest}>{header ? <div className="ui-card-header">{header}</div> : null}{children}{footer ? <div className="ui-card-footer">{footer}</div> : null}</El>;
+});
+export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function CardHeader({ className, children, ...rest }, ref): React.JSX.Element {
+  return <div ref={ref} className={`ui-card-header${className ? ` ${className}` : ""}`} {...rest}>{children}</div>;
+});
+export function CardBody({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return <div className={`ui-card-body${className ? ` ${className}` : ""}`} {...rest}>{children}</div>;
 }
-export function Card({ children, style, ...rest }: { children: ReactNode; style?: React.CSSProperties; [k: string]: unknown }): React.JSX.Element {
-  return <div className="ui-card" style={style} {...rest}>{children}</div>;
-}
+export const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function CardFooter({ className, children, ...rest }, ref): React.JSX.Element {
+  return <div ref={ref} className={`ui-card-footer${className ? ` ${className}` : ""}`} {...rest}>{children}</div>;
+});
 export function ListRow({ primary, meta, trailing, ...rest }: { primary: ReactNode; meta?: ReactNode; trailing?: ReactNode; [k: string]: unknown }): React.JSX.Element {
   return <div className="ui-row" {...rest}><div style={{ minWidth: 0 }}><div className="ui-row-primary">{primary}</div>{meta ? <div className="ui-row-meta">{meta}</div> : null}</div><div style={{ display: "flex", gap: 6, alignItems: "center" }}>{trailing}</div></div>;
 }

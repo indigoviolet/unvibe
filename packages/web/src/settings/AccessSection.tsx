@@ -9,6 +9,7 @@ import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
 import { FULL_ACCESS_WARNING } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Card } from "../ui/index.js";
 
 export function AccessSection({
   settings,
@@ -70,7 +71,7 @@ export function AccessSection({
               Turn on full access…
             </button>
           ) : (
-            <div className="card" data-testid="access-warning" style={{ padding: "4px 14px" }}>
+            <Card variant="inset" data-testid="access-warning" style={{ padding: "4px 14px" }}>
               <p>{FULL_ACCESS_WARNING}</p>
               <div className="frow" style={{ gap: 8 }}>
                 <span className="sp" />
@@ -88,7 +89,7 @@ export function AccessSection({
                   I understand, turn on full access
                 </button>
               </div>
-            </div>
+            </Card>
           )}
         </>
       )}

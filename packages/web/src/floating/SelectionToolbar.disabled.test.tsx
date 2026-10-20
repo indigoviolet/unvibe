@@ -18,8 +18,8 @@ describe("resolveSelectionHost (#78)", () => {
   test("guide blocks are addressed as card#block, expansions by their own id", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-problem"><p data-top="b2"><span id="in-card">x</span></p>` +
-      `<section class="card child" id="B-ann_1"><p data-top="b2"><span id="in-exp">y</span></p></section>` +
+      `<section class="ui-card" id="C-problem"><p data-top="b2"><span id="in-card">x</span></p>` +
+      `<section class="ui-card child" id="B-ann_1"><p data-top="b2"><span id="in-exp">y</span></p></section>` +
       `</section></div>`;
     const host = (id: string) => resolveSelectionHost(document.getElementById(id)!);
     expect(host("in-card")).toEqual({ anchor: { where: "block", blockId: "problem#b2" } });
@@ -31,9 +31,9 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
   test("a selection inside a nested expansion addresses the inner expansion", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1"><p data-top="b1"><span>card</span></p>` +
-      `<section class="card child" id="B-ann_parent"><p data-top="b1"><span>parent</span></p>` +
-      `<section class="card child" id="B-ann_child"><p data-top="b1"><span id="in-nested">nested</span></p></section>` +
+      `<section class="ui-card" id="C-c1"><p data-top="b1"><span>card</span></p>` +
+      `<section class="ui-card child" id="B-ann_parent"><p data-top="b1"><span>parent</span></p>` +
+      `<section class="ui-card child" id="B-ann_child"><p data-top="b1"><span id="in-nested">nested</span></p></section>` +
       `</section></section></div>`;
     expect(resolveSelectionHost(document.getElementById("in-nested")!)).toEqual({
       anchor: { where: "block", blockId: "ann_child#b1" },
@@ -43,7 +43,7 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
   test("no toolbar inside a second-opinion block (not an anchor host)", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1">` +
+      `<section class="ui-card" id="C-c1">` +
       `<section class="so" data-so="so-c1-blind-p-m"><div class="so-b">` +
       `<div class="blk" id="B-b9"><p class="prose sel" data-top="b9"><span id="in-so">reasoning</span></p></div>` +
       `</div></section></section></div>`;
@@ -53,7 +53,7 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
   test("no toolbar inside a thread reply (threads are not hosts)", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1">` +
+      `<section class="ui-card" id="C-c1">` +
       `<div class="blk" id="B-b1"><p class="prose sel" data-top="b1"><span>card</span></p></div>` +
       `<div class="ithread" id="ann_t"><div class="msg"><div><p id="in-reply">reply</p></div></div></div>` +
       `</section></div>`;
@@ -63,7 +63,7 @@ describe("resolveSelectionHost inside other hosts (#116)", () => {
   test("a selection inside an aside addresses the aside block", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1">` +
+      `<section class="ui-card" id="C-c1">` +
       `<div class="blk gen-aside fresh" id="B-b2"><div class="tag">Example</div>` +
       `<p class="prose sel" data-top="b2"><span id="in-aside">inner</span></p></div>` +
       `</section></div>`;
@@ -78,7 +78,7 @@ describe("selections inside a floating card (#186)", () => {
     // The diff floating layer: at the hunk level, outside the table.
     document.body.innerHTML =
       `<div id="right"><div class="dhunk"><div class="dhunk-float"><div class="exp-float">` +
-      `<section class="card child floating" id="B-ann_p"><div data-answer="ans_1">` +
+      `<section class="ui-card child floating" id="B-ann_p"><div data-answer="ans_1">` +
       `<p class="prose sel" data-top="b9"><span id="in-float">answer text</span></p>` +
       `</div></section></div></div></div></div>`;
     const el = document.getElementById("in-float")!;
@@ -88,8 +88,8 @@ describe("selections inside a floating card (#186)", () => {
 
   test("a floating card in the guide is in scope", () => {
     document.body.innerHTML =
-      `<div id="page"><section class="card" id="C-c1">` +
-      `<div class="exp-float"><section class="card child floating" id="B-ann_g"><div data-answer="ans_2">` +
+      `<div id="page"><section class="ui-card" id="C-c1">` +
+      `<div class="exp-float"><section class="ui-card child floating" id="B-ann_g"><div data-answer="ans_2">` +
       `<p class="prose sel" data-top="b3"><span id="in-guide-float">text</span></p>` +
       `</div></section></div></section></div>`;
     const el = document.getElementById("in-guide-float")!;
@@ -107,7 +107,7 @@ describe("selectionScopeElement (issue #166)", () => {
   test("guide blocks scope to their [data-top] element", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1"><p class="prose sel" data-top="b1">the <span id="in">fast path</span> wins</p>` +
+      `<section class="ui-card" id="C-c1"><p class="prose sel" data-top="b1">the <span id="in">fast path</span> wins</p>` +
       `</section></div>`;
     const scope = selectionScopeElement(document.getElementById("in")!);
     expect(scope?.getAttribute("data-top")).toBe("b1");
@@ -116,8 +116,8 @@ describe("selectionScopeElement (issue #166)", () => {
   test("answer blocks scope to their own [data-top], not the card", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1"><p data-top="b1">card</p>` +
-      `<section class="card child" id="B-ann_1"><div data-answer="ans_1">` +
+      `<section class="ui-card" id="C-c1"><p data-top="b1">card</p>` +
+      `<section class="ui-card child" id="B-ann_1"><div data-answer="ans_1">` +
       `<p class="prose sel" data-top="b9"><span id="in-ans">answer text</span></p>` +
       `</div></section></section></div>`;
     const scope = selectionScopeElement(document.getElementById("in-ans")!);
@@ -156,7 +156,7 @@ describe("selectionScopeElement (issue #166)", () => {
   test("no scope inside second-opinion reasoning", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card" id="C-c1">` +
+      `<section class="ui-card" id="C-c1">` +
       `<section class="so" data-so="x"><span id="in-so">reasoning</span></section>` +
       `</section></div>`;
     expect(selectionScopeElement(document.getElementById("in-so")!)).toBeNull();
@@ -265,7 +265,7 @@ describe("selection inside a conversation answer (issue #136)", () => {
   test("the owning answer comes from the answer wrapper, not the card section", () => {
     document.body.innerHTML =
       `<div id="page">` +
-      `<section class="card child" id="B-ann_1">` +
+      `<section class="ui-card child" id="B-ann_1">` +
       `<div class="ans" data-answer="ans_9"><p data-top="b1"><span id="in-answer">x</span></p></div>` +
       `</section></div>`;
     expect(resolveSelectionHost(document.getElementById("in-answer")!)).toEqual({
@@ -449,7 +449,7 @@ describe("resolveSelectionHost on idle hunk summaries (issue #138)", () => {
   test("a selection inside an activated hunk card still addresses its answer blocks", () => {
     document.body.innerHTML =
       `<div id="right"><div class="dhunk"><div class="fwrap"><div class="fcard">` +
-      `<section class="card child" data-expansion="ann_h"><div class="ans" data-answer="ans_1">` +
+      `<section class="ui-card child" data-expansion="ann_h"><div class="ans" data-answer="ans_1">` +
       `<div class="exp-b"><p class="prose sel" data-top="b1"><span id="in-ans">Unfolds folds</span></p></div>` +
       `</div></section></div></div></div></div>`;
     expect(resolveSelectionHost(document.getElementById("in-ans")!)).toEqual({

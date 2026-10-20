@@ -37,7 +37,7 @@ test.describe("J15 multi-turn conversation", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" }).first();
+    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" }).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
@@ -52,7 +52,7 @@ test.describe("J15 multi-turn conversation", () => {
         .toBeGreaterThan(answersBefore);
       await expect(card.locator(".exp-b").last()).not.toBeEmpty({ timeout: 60_000 });
       // Still the same single card for this conversation.
-      await expect(page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" })).toHaveCount(1);
+      await expect(page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" })).toHaveCount(1);
     };
 
     // Turn 2: follow-up in the same session/card.

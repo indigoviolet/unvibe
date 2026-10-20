@@ -27,14 +27,14 @@ for (const mode of ["unified", "split"] as const) {
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator(".dhunk .card.child.floating").first();
+    const card = page.locator(".dhunk .ui-card.child.floating").first();
     await expect(card).toBeVisible({ timeout: 8000 });
 
     // The card's top sits at the anchored row's bottom (within a few px),
     // not at the top of the hunk. Both rects move together on scroll, so
     // viewport coordinates compare directly without scrolling the card.
     const gap = await page.evaluate(() => {
-      const cardEl = document.querySelector(".dhunk .card.child.floating");
+      const cardEl = document.querySelector(".dhunk .ui-card.child.floating");
       if (!cardEl) return { ok: false, why: "no floating card" };
       let row: Element | null = null;
       for (const tr of document.querySelectorAll('tr[id^="L-test-with_dummyserver-test_socketlevel.py-"]')) {
@@ -58,17 +58,17 @@ test("selecting inside a floating card in the diff opens a floating child above 
   await gotoDiff(page);
   await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
   await page.locator('#selbar [data-act="explain"]').click();
-  const parent = page.locator(".dhunk .card.child.floating").first();
+  const parent = page.locator(".dhunk .ui-card.child.floating").first();
   await expect(parent).toBeVisible({ timeout: 8000 });
   // Select the card's answer text: the toolbar appears inside the card,
   // and Comment works from it as it does from a pinned card.
-  await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+  await selectText(page, ".dhunk .ui-card.child.floating [data-answer]", "Mock explanation");
   await page.locator('#selbar [data-act="note"]').click();
   const note = page.locator(".dhunk .ithread[data-pending-thread]").first();
   await expect(note).toBeVisible();
   await note.getByRole("button", { name: "Discard" }).click();
   await expect(page.locator(".dhunk .ithread[data-pending-thread]")).toHaveCount(0);
-  await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+  await selectText(page, ".dhunk .ui-card.child.floating [data-answer]", "Mock explanation");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator(".dhunk .ithread[data-pending-thread]");
   await expect(composer).toBeVisible();
@@ -125,7 +125,7 @@ async function expectCardOnTop(page: Page, card: import("@playwright/test").Loca
 async function openExplainCard(page: Page): Promise<void> {
   await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
   await page.locator('#selbar [data-act="explain"]').click();
-  await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 8000 });
+  await expect(page.locator(".dhunk .ui-card.child.floating").first()).toBeVisible({ timeout: 8000 });
 }
 
 for (const mode of ["unified", "split"] as const) {
@@ -133,14 +133,14 @@ for (const mode of ["unified", "split"] as const) {
     await gotoDiff(page);
     if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
     await openExplainCard(page);
-    await expectCardOnTop(page, page.locator(".dhunk .card.child.floating").first(), `${mode} top-level`);
+    await expectCardOnTop(page, page.locator(".dhunk .ui-card.child.floating").first(), `${mode} top-level`);
   });
 
   test(`no gutter or row paints over a card opened inside a floating card (${mode}, nested)`, async ({ page }) => {
     await gotoDiff(page);
     if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
     await openExplainCard(page);
-    await selectText(page, ".dhunk .card.child.floating [data-answer]", "Mock explanation");
+    await selectText(page, ".dhunk .ui-card.child.floating [data-answer]", "Mock explanation");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator(".dhunk .ithread[data-pending-thread]");
     await composer.locator("textarea").fill("Why is this here?");
@@ -158,7 +158,7 @@ test("no gutter or row paints over a deep-anchored card (split, narrow)", async 
   const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
   await selectText(page, scope, 'msg["fold-mixed-repeated"]');
   await page.locator('#selbar [data-act="explain"]').click();
-  const card = page.locator(".dhunk .card.child.floating").first();
+  const card = page.locator(".dhunk .ui-card.child.floating").first();
   await expect(card).toBeVisible({ timeout: 8000 });
   await expectCardOnTop(page, card, "deep split narrow");
 });

@@ -11,6 +11,7 @@ import { UI_THEMES, type Settings, type UiThemeId } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { applyUiTheme, currentUiTheme } from "../theme/theme.js";
 import { putErrors } from "./LimitsSection.js";
+import { Card } from "../ui/index.js";
 
 export function AppearanceSection({
   settings,
@@ -45,7 +46,7 @@ export function AppearanceSection({
 
   return (
     <section aria-label="Appearance">
-      <div className="ui-card">
+      <Card variant="raised">
         <div className="setgrid">
           <label htmlFor="ui-theme">Theme</label>
           <div className="fld">
@@ -74,7 +75,7 @@ export function AppearanceSection({
             {savedNote ? <span className="hint">{savedNote}</span> : null}
           </div>
         </div>
-      </div>
+      </Card>
     </section>
   );
 }

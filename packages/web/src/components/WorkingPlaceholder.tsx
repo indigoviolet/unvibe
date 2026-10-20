@@ -3,9 +3,11 @@
  * card with a plain dots + fixed-label indicator. Replaced by the real
  * content when it arrives through a patch. Never streamed text.
  */
+import { Card } from "../ui/index.js";
+
 export function WorkingPlaceholder({ label }: { label: string }) {
   return (
-    <section className="card child placeholder" aria-busy="true">
+    <Card as="section" variant="plain" className="child placeholder" aria-busy="true">
       <div className="working" role="status">
         <span className="dots" aria-hidden="true">
           <i />
@@ -14,6 +16,6 @@ export function WorkingPlaceholder({ label }: { label: string }) {
         </span>
         <span>{label}</span>
       </div>
-    </section>
+    </Card>
   );
 }

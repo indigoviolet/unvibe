@@ -42,7 +42,7 @@ export function Tooltip(): React.JSX.Element {
         const middleware = [offset(6), flip({ padding: 4 }), shift({ padding: 4 })];
         let pos = await computePosition(anchorEl, tip, { placement: "top", middleware });
         if (anchorEl.isConnected && !tip.hidden) {
-          const header = anchorEl.closest(".card")?.querySelector(":scope > .exp-h");
+          const header = anchorEl.closest(".ui-card")?.querySelector(":scope > .exp-h");
           if (header && pos.placement === "top") {
             const h = header.getBoundingClientRect();
             const overlaps = pos.y < h.bottom && pos.y + tip.offsetHeight > h.top && pos.x < h.right && pos.x + tip.offsetWidth > h.left;

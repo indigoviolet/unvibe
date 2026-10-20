@@ -7,7 +7,7 @@
 import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { Button } from "../ui/index.js";
+import { Button, Card } from "../ui/index.js";
 
 export interface Field {
   key: keyof Settings;
@@ -78,7 +78,7 @@ export function LimitsSection({
 
   return (
     <section aria-label="Limits">
-      <div className="ui-card setgrid-form">
+      <Card variant="raised" className="setgrid-form">
         {FIELDS.map((f) => (
           <div className="setgrid" key={f.key}>
             <label htmlFor={`limit-${f.key}`}>{f.label}</label>
@@ -114,7 +114,7 @@ export function LimitsSection({
           </Button>
           {savedAt ? <span className="hint">{savedAt}</span> : null}
         </div>
-      </div>
+      </Card>
     </section>
   );
 }

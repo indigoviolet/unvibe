@@ -70,7 +70,7 @@
 }
 
 @media (max-width: 560px) {
-  .card {
+  .ui-card {
     padding: 10px 14px;
   }
 

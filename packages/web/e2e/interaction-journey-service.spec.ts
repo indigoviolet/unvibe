@@ -227,7 +227,7 @@ test.describe("reader journey over the real service (replay)", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" });
+    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".ans-q").first()).toContainText("What is line folding?", { timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
@@ -241,7 +241,7 @@ test.describe("reader journey over the real service (replay)", () => {
 
     // Go deeper: generate when a placeholder is still pending, else assert
     // the filled card; then use a follow-up suggestion.
-    const pendings = page.locator("#page .card.pend");
+    const pendings = page.locator("#page .ui-card.pend");
     if ((await pendings.count()) > 0) {
       await pendings.first().getByRole("button", { name: "Generate" }).click();
       await expect(pendings.first().locator(".working").first()).toBeVisible({ timeout: 15_000 });

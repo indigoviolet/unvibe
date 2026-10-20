@@ -29,8 +29,8 @@ async function armObserver(page: Page): Promise<void> {
     const note = (): void => {
       const root = document.querySelector("#page");
       if (!root) return;
-      if (root.querySelector(".card.child.placeholder")) seen.placeholder = true;
-      if (root.querySelector(".card.rewriting")) seen.rewriting = true;
+      if (root.querySelector(".ui-card.child.placeholder")) seen.placeholder = true;
+      if (root.querySelector(".ui-card.rewriting")) seen.rewriting = true;
       if (root.querySelector('[aria-busy="true"]')) seen.busy = true;
       if (root.querySelector(".working") && !root.querySelector(".working .stream")) {
         seen.plainWorking = true;

@@ -22,6 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
+import { Card } from "../ui/index.js";
 import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
@@ -245,7 +246,7 @@ export function VersionSection({
           Show channels and allow switching
         </label>
       </div>
-      <div className="ui-card">
+      <Card variant="raised">
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
@@ -324,7 +325,7 @@ export function VersionSection({
             ) : null}
           </p>
         ) : null}
-      </div>
+      </Card>
     </section>
   );
 }

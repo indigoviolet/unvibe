@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModelInfo, ModelPick, ReadinessCheck, Settings, ThinkingResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Card } from "../ui/index.js";
 
 /** Display label the same way everywhere (#21): name beside the id. */
 export function modelLabel(m: ModelInfo): string {
@@ -212,7 +213,7 @@ function ModelPicker({
   };
 
   return (
-    <div className="ui-card" data-testid={`model-${role}`}>
+    <Card variant="raised" data-testid={`model-${role}`}>
       <div className="frow" style={{ gap: 8 }}>
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
@@ -374,6 +375,6 @@ function ModelPicker({
           ) : null}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -155,7 +155,7 @@ async function checkMenus(page: Page, step: string): Promise<void> {
 
 /** Generic check: open cards fully inside horizontally + topmost grid. */
 async function checkCards(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".card.child.floating:visible");
+  const cards = page.locator(".ui-card.child.floating:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const r = cardEl.getBoundingClientRect();
@@ -196,7 +196,7 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // its ancestor (a child above its parent). An ancestor — or
           // any part of it, such as its sticky reply footer — covering
           // a descendant, or an unrelated card covering this one, fails.
-          const hitCard = hit.closest(".card.child.floating");
+          const hitCard = hit.closest(".ui-card.child.floating");
           if (hitCard && cardEl.contains(hitCard)) continue;
           // A header may cover a card only while it is actually stuck
           // in its pinned slot at the top of the pane (its top equals
@@ -242,10 +242,10 @@ async function checkCards(page: Page, step: string): Promise<void> {
  * its parent is the one allowed cover, as in the grid check).
  */
 async function checkReplyBoxes(page: Page, step: string): Promise<void> {
-  const boxes = page.locator(".card.child.floating textarea:visible");
+  const boxes = page.locator(".ui-card.child.floating textarea:visible");
   for (let i = 0; i < (await boxes.count()); i++) {
     const bad = await boxes.nth(i).evaluate((ta: Element) => {
-      const card = ta.closest(".card.child.floating");
+      const card = ta.closest(".ui-card.child.floating");
       if (!card) return "reply input not inside a floating card";
       const r = ta.getBoundingClientRect();
       const c = card.getBoundingClientRect();
@@ -256,7 +256,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
       // The footer must sit flush at the card's bottom: sample the
       // strip below the composer (if any) — answer content visible
       // there means scrolled text shows past the sticky footer.
-      const composer = ta.closest(".composer");
+      const composer = ta.closest(".ui-card-footer") ?? ta.closest(".composer");
       if (composer) {
         const f = composer.getBoundingClientRect();
         for (let y = f.bottom + 2; y < c.bottom - 1; y += 4) {
@@ -266,7 +266,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
             if (composer.contains(hit) || hit === card) continue;
             // A descendant card over the strip is allowed; this
             // card's own answer content showing there is the bug.
-            const hitCard: Element | null = hit.closest(".card.child.floating");
+            const hitCard: Element | null = hit.closest(".ui-card.child.floating");
             if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
             return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
           }
@@ -286,7 +286,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
         // Only a descendant card may cover this card's reply input;
         // an ancestor's footer (or anything else) over it fails.
-        const hitCard = hit.closest(".card.child.floating");
+        const hitCard = hit.closest(".ui-card.child.floating");
         if (hitCard && card.contains(hitCard)) continue;
         return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
       }
@@ -303,7 +303,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
  * allowed cover is a descendant card, as in the grid check.
  */
 async function checkCardHeaders(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".card.child.floating:visible");
+  const cards = page.locator(".ui-card.child.floating:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const header = cardEl.querySelector(":scope > .exp-h");
@@ -360,7 +360,7 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         const hit = document.elementFromPoint(x, y);
         if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
         if (cardEl.contains(hit)) {
-          const hitCard = hit.closest(".card.child.floating");
+          const hitCard = hit.closest(".ui-card.child.floating");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
         // The pinned top stack (tab strip, actions bar, band, and any
@@ -372,7 +372,7 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
           const stuckHdr = hit.closest(".dfile-h.stuck, .dhunk-h.stuck");
           if (stuckHdr) continue;
         }
-        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".card.child.floating")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".ui-card.child.floating")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
     });
@@ -465,7 +465,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".card.child.floating")) {
+        if (hit && hit.closest(".ui-card.child.floating")) {
           return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
         }
       }
@@ -479,7 +479,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
-    const cards = [...pane.querySelectorAll(".card.child.floating")].map((c) => c.getBoundingClientRect());
+    const cards = [...pane.querySelectorAll(".ui-card.child.floating")].map((c) => c.getBoundingClientRect());
     let coveredTo = bandTop;
     for (const r of cover) {
       if (r.top > coveredTo + 0.2) {
@@ -507,7 +507,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       const y = (layers[i].bottom + layers[i + 1].top) / 2;
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".card.child.floating")) {
+        if (hit && hit.closest(".ui-card.child.floating")) {
           return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
         }
       }
@@ -562,7 +562,7 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       if (y < pv.top || y > pv.bottom) continue;
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
-      if (hit.closest(".card.child.floating")) continue;
+      if (hit.closest(".ui-card.child.floating")) continue;
       if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
@@ -700,7 +700,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   let last = "";
   for (let i = 0; i < 10; i++) {
     const now = await page.evaluate(() =>
-      [...document.querySelectorAll(".card.child.floating")].map((c) => {
+      [...document.querySelectorAll(".ui-card.child.floating")].map((c) => {
         const r = c.getBoundingClientRect();
         return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
       }).join("|"),
@@ -750,14 +750,14 @@ for (const combo of [
     // and Explain it.
     await selectText(page, "#C-problem", "used to let a server continue");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedCard: Locator = page.locator("#page .card.child.floating").first();
+    const seedCard: Locator = page.locator("#page .ui-card.child.floating").first();
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await stepChecks(page, "guide-floating");
     await shot(page, "guide-floating", suffix, "HTTP/1.1 originally");
 
     // A card opened from inside the floating card (guide).
-    await selectText(page, "#page .card.child.floating [data-answer]", "fold");
+    await selectText(page, "#page .ui-card.child.floating [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#page .ithread[data-pending-thread]");
     await expect(composer).toBeVisible();
@@ -780,8 +780,8 @@ for (const combo of [
     // Floating card + nested card in the diff.
     await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
-    await selectText(page, ".dhunk .card.child.floating [data-answer]", "fold");
+    await expect(page.locator(".dhunk .ui-card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, ".dhunk .ui-card.child.floating [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
     const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
     await expect(dComposer).toBeVisible();
@@ -792,10 +792,10 @@ for (const combo of [
     await stepChecks(page, "diff-nested");
     await shot(page, "diff-nested", suffix, "Why is this here?");
     await closeFloating(page, diffChild);
-    await closeFloating(page, page.locator(".dhunk .card.child.floating").first());
+    await closeFloating(page, page.locator(".dhunk .ui-card.child.floating").first());
     // No floating diff card may survive into the next step: the long
     // card below is read through `.first()`, by DOM order.
-    await expect(page.locator(".dhunk .card.child.floating")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator(".dhunk .ui-card.child.floating")).toHaveCount(0, { timeout: 15_000 });
 
     // Top-level diff card with a LONG answer (the dedicated replay
     // recording), scrolled to its middle and then its bottom inside
@@ -803,7 +803,7 @@ for (const combo of [
     // may show below its sticky reply footer.
     await selectText(page, "#right table.diff", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const longCard = page.locator(".dhunk .card.child.floating").first();
+    const longCard = page.locator(".dhunk .ui-card.child.floating").first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(longCard).toContainText("The tests around the helper mirror that split");
@@ -823,7 +823,7 @@ for (const combo of [
     await page.getByRole("button", { name: "Split" }).click();
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const splitCard = page.locator(".dhunk .card.child.floating").first();
+    const splitCard = page.locator(".dhunk .ui-card.child.floating").first();
     await expect(splitCard).toBeVisible({ timeout: 15_000 });
     await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -841,7 +841,7 @@ for (const combo of [
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
     await selectText(page, "#right", "_normalize_header_values(http");
     await page.locator('#selbar [data-act="explain"]').click();
-    const fileCard = page.locator(".dhunk .card.child.floating").first();
+    const fileCard = page.locator(".dhunk .ui-card.child.floating").first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(fileCard).toContainText("The tests around the helper mirror that split");
@@ -868,7 +868,7 @@ for (const combo of [
     await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
     await page.locator('#selbar [data-act="explain"]').click();
-    const mlCard = page.locator(".dhunk .card.child.floating").first();
+    const mlCard = page.locator(".dhunk .ui-card.child.floating").first();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click();
@@ -906,10 +906,10 @@ for (const combo of [
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .card.child.floating").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk .ui-card.child.floating").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
     await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
-    await closeFloating(page, page.locator(".dhunk .card.child.floating").first());
+    await closeFloating(page, page.locator(".dhunk .ui-card.child.floating").first());
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();

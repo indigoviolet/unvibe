@@ -24,6 +24,7 @@ import {
   reduceJobs,
   stepDurationMs,
 } from "../versions/versionUtils.js";
+import { Card } from "../ui/index.js";
 
 export function JobsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -91,7 +92,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
       ) : jobs.length === 0 ? (
         <p className="hint">No jobs for this review.</p>
       ) : (
-        <div className="card" style={{ padding: "4px 14px" }}>
+        <Card variant="plain" style={{ padding: "4px 14px" }}>
           {snapshot?.refreshTimings ? (
             <div style={{ padding: "8px 0" }} data-testid="refresh-steps">
               <div className="frow" style={{ gap: 8 }}>
@@ -130,7 +131,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
               Refresh
             </button>
           </div>
-        </div>
+        </Card>
       )}
     </section>
   );

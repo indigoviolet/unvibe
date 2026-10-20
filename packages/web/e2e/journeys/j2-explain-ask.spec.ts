@@ -62,7 +62,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" });
+    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(card.locator(".lk[data-refs]").first()).toBeVisible({ timeout: 30_000 });

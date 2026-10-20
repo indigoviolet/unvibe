@@ -39,6 +39,7 @@ import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } fro
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
 import { useProvisionalBlocks } from "./streamedAnswer.js";
+import { Card, CardFooter, CardHeader } from "../../ui/index.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -373,7 +374,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   useLayoutEffect(() => {
     if (!floating) return;
     const el = floatWrapRef.current;
-    if (!el || !el.parentElement?.closest(".card.child.floating")) return;
+    if (!el || !el.parentElement?.closest(".ui-card.child.floating")) return;
     // Measuring synchronously in this effect (it runs after every
     // render) can cascade: a changed measure re-renders, which
     // measures again. While an answer streams, the placeholder's rect
@@ -395,7 +396,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       // left would overshoot the parent's right edge — and the
       // viewport's. Cap the right edge at the parent's (and 8px
       // inside the viewport).
-      const parent = el.closest(".card.child.floating")?.getBoundingClientRect();
+      const parent = el.closest(".ui-card.child.floating")?.getBoundingClientRect();
       const rightLimit = Math.min(parent ? parent.right : window.innerWidth, window.innerWidth - 8);
       // Whole px: sub-pixel float jitter must not read as movement.
       const width = Math.round(Math.max(160, Math.min(r.width, rightLimit - r.left)));
@@ -562,15 +563,17 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   if (expansion.collapsed) {
     const section = (
-      <section
+      <Card
+        as="section"
+        variant="plain"
         ref={sectionElRef}
-        className={`card child collapsed${floating ? " floating" : ""}`}
+        className={`child collapsed${floating ? " floating" : ""}`}
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
         style={floating ? nestedPos : undefined}
         {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
       >
-        <div className="exp-h" ref={headerElRef}>
+        <CardHeader className="exp-h" ref={headerElRef}>
           <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
@@ -579,8 +582,8 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
           <ControlButton icon="x" label="Close" onClick={onClose} />
-        </div>
-      </section>
+        </CardHeader>
+      </Card>
     );
     // A floating card takes no space in the flow: the zero-height
     // placeholder keeps its DOM position (reading + Tab order, anchor
@@ -597,16 +600,18 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   const below = [...(ancestorIds ?? []), expansion.id];
   const section = (
-    <section
+    <Card
+      as="section"
+      variant="plain"
       ref={sectionElRef}
-      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
+      className={`child${cardBusy?.rewriting ? " rewriting" : ""}${floating ? " floating" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
       style={floating ? nestedPos : undefined}
       aria-busy={cardBusy ? true : undefined}
       {...(floating ? { onKeyDown: onSectionKeyDown } : {})}
     >
-      <div className="exp-h" ref={headerElRef}>
+      <CardHeader className="exp-h" ref={headerElRef}>
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
         {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
@@ -614,7 +619,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         <ControlButton icon="open" label="Open as page" onClick={onPromote} />
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />
         <ControlButton icon="x" label="Close" onClick={onClose} />
-      </div>
+      </CardHeader>
       {turns.map((turn, i) => (
         <AnswerView
           key={turn.id}
@@ -630,6 +635,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           ancestorIds={below}
         />
       ))}
+      <CardFooter>
       <ReplyBox
         reviewId={reviewId}
         annotationId={expansion.id}
@@ -643,7 +649,8 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         }
         onDiscard={() => api.updateComment(reviewId, expansion.id, { reply: null })}
       />
-    </section>
+      </CardFooter>
+    </Card>
   );
   return floating ? (
     <div className="exp-float" data-float={expansion.id} ref={floatWrapRef}>

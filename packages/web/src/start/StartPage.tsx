@@ -60,7 +60,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button } from "../ui/index.js";
+import { Button, Card } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
@@ -1041,7 +1041,7 @@ export function StartPage(): React.JSX.Element {
                   </button>
                 </p>
               ) : (
-                <section className="prblock" aria-label="PRs and branches" data-testid="pr-block">
+                <Card as="section" variant="plain" className="prblock" aria-label="PRs and branches" data-testid="pr-block">
                   <div className="prblock-head">
                     <h2 className="prblock-title">PRs and branches</h2>
                     <div className="prblock-tools">
@@ -1206,7 +1206,7 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
-                </section>
+                </Card>
               )}
             </>
           )}

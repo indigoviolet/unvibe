@@ -299,9 +299,9 @@ export function highlightAnchorInRoot(
   } catch {
     return false;
   }
-  const strict = root instanceof Element && root.closest("section.card[id], [data-answer]") === root;
+  const strict = root instanceof Element && root.closest("section.ui-card[id], [data-answer]") === root;
   for (const host of hosts) {
-    if (strict && host.closest("section.card[id], [data-answer]") !== root) continue;
+    if (strict && host.closest("section.ui-card[id], [data-answer]") !== root) continue;
     if (placeAnchorSpot(host, spot, make) > 0) return true;
   }
   return false;

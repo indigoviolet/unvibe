@@ -76,3 +76,46 @@ Not done: #203 (hiding toolbar/reply while streaming) — filed separately, not 
 - **gh row:** the harness stub was wrong, not the app — the service calls `gh api user --jq .login` and expects plain text; the stub now answers `--jq` calls with `demo-user`, so the row reads "gh logged in as demo-user".
 - **Limits alignment:** the form is one grid and each row a subgrid (`.setgrid-form > .setgrid`), sharing a single label column, so all controls start at the same x; Models (one grid per card) and Access were checked in all themes.
 - **Environment actions:** "Doctor page" now uses the same secondary Button variant as Re-check and Reload environment.
+
+## Surface layer (owner-approved addendum): Card variants, Section fate, full card migration
+
+Screenshots: `spikes/201/before-surfaces/` (= commit `32253f1`, captured before this round) and `spikes/201/after-surfaces/` (42 each: guide, guide-pinned, finding, diff, diff-pinned, Debug, Doctor × Default/Studio/Console × light/dark), from `packages/web/e2e/spike-201-surfaces.spec.ts` on the demo review only (stubbed `gh`/`d2` at a neutral `/tmp` path; Doctor text redacted to `/tmp/demo-service` in-page for the shot only, then every image inspected — no home directory, username or hostname in any). Settings/start sets were re-shot into `spikes/201/after/` because Settings cards changed component.
+
+### Variant set
+
+`Card` in `packages/web/src/ui/index.tsx` (`variant`, `as`, `className`, plus `header`/`footer` props and `CardHeader`/`CardBody`/`CardFooter` slots — used where they remove a wrapper, namely the pinned card's sticky header and reply footer). All variants read theme variables (`--card-plain-*`, `--card-raised-*`, `--card-inset-*`, `--card-interactive-*`) defined in each theme's scale block in `prototype.css`; dark fills them through the themes' existing dark `--surface`/`--sunk`/`--line`/`--shadow-raised` overrides, so Default, Studio and Console are all filled in light and dark:
+
+- `plain` — flat, bordered, no shadow (Doctor/Debug cards, Environment rows, pinned Explain/Ask cards, start PR block).
+- `raised` — bordered with the theme's raised shadow (guide and finding cards, Settings panels). Studio uses its tinted `--shadow-raised`; Default/Console get a neutral soft shadow.
+- `inset` — recessed `--sunk` background with an inner shadow (Contents, Plotlines, Access warning, reload result, reviewed hunk summaries).
+- `interactive` — plain at rest, hover/focus-within background and accent-tinted border (the idle hunk-summary box, whose text click opens its card).
+
+Pinned child cards stay `plain` with the `child` modifier: surface, header, reply and input all read the one `--card-*-surface` set from the previous round, and a nested `ui-card` never takes a shadow, so there are no double borders or shadows on nested cards (checked in Studio and Console dark). Behaviour is unchanged — this round only restyles and restructures; the #204/#203/#205/#206 card-behaviour work reconciles later.
+
+### Section: dropped
+
+`Section` had no call sites. Settings already navigates by its tab strip and each settings component owns its headings; the start page has its own divider/PR-block titles. Wrapping them in `Section` would have duplicated headings and added nested `<h2>`s for no gain, so the component and its `.ui-section` CSS are deleted. If a future screen needs a titled group, it can be re-added then.
+
+### What moved to `Card`
+
+Guide `CardView` (pending, collapsed and normal cards), the guide error fallback, Contents (`nav`) and Plotlines in `PageView`, the pinned `ExpansionCard` (header on `CardHeader`, reply on `CardFooter`), `WorkingPlaceholder`, the hunk-summary `.fcard` in `FileSection`, the description prose surface in `DescriptionView`, all five Doctor cards, Debug's Jobs and Expanded-prompts cards, the Access full-access warning, the start page PR block, and every Settings `div.ui-card` (Appearance, Version, Limits, Models, Prompts, Environment checks and reload result). Ids, `data-*` hooks, roles and `aria-*` are preserved; the only selector change is `.card` → `.ui-card`, updated in the app (`anchor.ts`, `SelectionToolbar`, `Tooltip`, expansion highlighting/floating) and in every affected unit/e2e spec rather than dropping coverage.
+
+Left out, deliberately: `.ithread`, `.suggest`, `.findref` and `.clink` are tone callouts (note/warning backgrounds with their own accent), not cards; the description's editing shell keeps its outline treatment. They keep their existing CSS.
+
+### Legacy CSS left over
+
+None under the old name: the legacy `.card` rules in both `prototype.css` and `ui.css` are deleted, and `guide-m2.css` follows the rename. What remains is the renamed `.ui-card.*` modifier layer in `prototype.css` (child/floating/pending/collapsed/rewriting states, finding rail, sticky header/footer positioning) — that is the pinned-card behaviour layer the other branch also touches, kept in one place — plus the `--card-surface`/`--card-child-surface` variable aliases the child surface still reads.
+
+### Bundle delta
+
+Main chunk: 932.75 kB / 280.41 kB gzip, i.e. +0.87/+0.41 kB over the previous spike build (931.88/280.00) and +23.33/+9.44 kB over main-rc (909.42/270.97). The surface layer itself is essentially CSS plus the small `Card` wrapper.
+
+### Verified (targeted, no full gate)
+
+- `mise run typecheck`, `mise run lint` — pass.
+- Targeted vitest (CardView, CardViewPromoted, PageView, ExpansionNesting, anchor, GuideThreadMarks, doubleIndicator, ModelsSection, limitsUnits, Tooltip) — 73 passed.
+- `settings.spec.ts` + `start.spec.ts` — 40 passed, 2 skipped (pre-existing skips).
+- Journeys J1/J2/J4/J9/J15 — 8 passed.
+- `mise run visual-tour` — 8 passed (one check updated for the reply-footer slot).
+- Spike specs: `spike-201-surfaces` 6 passed (42 before + 42 after images), `spike-201` 6 passed (60 after images re-shot), `spike-201-card` 6 passed (now reuses the pinned card across themes, as Explain on the same anchor reopens the stored pinned card).
+- Inspected after images in every theme, light and dark — Studio/Console dark checked for contrast, nesting and double borders/shadows. Full gate not run (spike).

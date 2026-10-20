@@ -158,6 +158,10 @@
   --weight-normal: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
   --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
   --focus-ring: var(--accent);
+  --card-plain-bg: var(--surface); --card-plain-border: var(--line);
+  --card-raised-bg: var(--surface); --card-raised-border: var(--line); --card-raised-shadow: 0 1px 2px rgb(0 0 0 / .07), 0 12px 32px -16px rgb(0 0 0 / .22);
+  --card-inset-bg: var(--sunk); --card-inset-border: var(--line); --card-inset-shadow: inset 0 1px 3px rgb(0 0 0 / .07);
+  --card-interactive-bg: var(--surface); --card-interactive-hover-bg: color-mix(in srgb, var(--sunk) 55%, var(--surface)); --card-interactive-hover-border: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 :root[data-ui-theme="studio"] {
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 18px; --space-5: 26px; --space-6: 36px; --space-7: 52px; --space-8: 72px;
@@ -167,6 +171,10 @@
   --weight-normal: 400; --weight-medium: 600; --weight-semibold: 700; --weight-bold: 800;
   --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
   --focus-ring: var(--accent);
+  --card-plain-bg: var(--surface); --card-plain-border: var(--line);
+  --card-raised-bg: var(--surface); --card-raised-border: var(--line); --card-raised-shadow: var(--shadow-raised);
+  --card-inset-bg: var(--sunk); --card-inset-border: var(--line); --card-inset-shadow: inset 0 1px 3px rgb(0 0 0 / .07);
+  --card-interactive-bg: var(--surface); --card-interactive-hover-bg: color-mix(in srgb, var(--sunk) 55%, var(--surface)); --card-interactive-hover-border: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 :root[data-ui-theme="console"] {
   --space-1: 3px; --space-2: 6px; --space-3: 10px; --space-4: 14px; --space-5: 20px; --space-6: 28px; --space-7: 40px; --space-8: 56px;
@@ -176,6 +184,10 @@
   --weight-normal: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
   --text-primary: var(--ink); --text-secondary: var(--muted); --text-muted: color-mix(in srgb, var(--ink) 55%, var(--bg)); --text-disabled: color-mix(in srgb, var(--ink) 35%, var(--bg));
   --focus-ring: var(--accent);
+  --card-plain-bg: var(--surface); --card-plain-border: var(--line);
+  --card-raised-bg: var(--surface); --card-raised-border: var(--line); --card-raised-shadow: 0 1px 3px rgb(0 0 0 / .2), 0 12px 32px -14px rgb(0 0 0 / .4);
+  --card-inset-bg: var(--sunk); --card-inset-border: var(--line); --card-inset-shadow: inset 0 1px 3px rgb(0 0 0 / .12);
+  --card-interactive-bg: var(--surface); --card-interactive-hover-bg: color-mix(in srgb, var(--sunk) 55%, var(--surface)); --card-interactive-hover-border: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 :focus-visible { outline: var(--focus-width,2px) solid var(--focus-ring); outline-offset: var(--focus-offset,2px); }
 /* #201 card surfaces: one variable set for a card and all its parts. */
@@ -322,7 +334,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .av.ai { background: var(--accent-soft); color: var(--accent); }
 .hl { background: var(--note-mark) !important; }
 .composer { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.card.child .composer textarea { background: var(--card-input-surface); }
+.ui-card.child .composer textarea { background: var(--card-input-surface); }
 textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320px; }
 .composer textarea { min-width: 120px; max-width: 100%; min-height: 44px; max-height: 240px; resize: vertical; border: var(--border-width) solid var(--line); border-radius: var(--radius-6); padding: 6px 8px; font: 13px/1.4 var(--sans); background: var(--surface); color: var(--ink); }
 .composer .row { display: flex; gap: 6px; justify-content: flex-end; }
@@ -550,8 +562,9 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .hh .hl2 b { color: var(--ink); font-weight: 500; }
 .hh.rev .hl2 { opacity: .6; }
 .fwrap { padding: 6px 10px; background: var(--bg); }
-.fcard { border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-8); box-shadow: var(--shadow-raised); padding: 6px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
-.fcard.rev { background: var(--sunk); border-color: transparent; opacity: .65; }
+.fcard { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.ui-card.fcard { padding: 6px 10px; }
+.fcard.rev { opacity: .65; }
 .fsum { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
 .fsum p { margin: 0; }
 /* Idle hunk summaries (issue #161) are text only: the paragraph activates
@@ -592,7 +605,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prov::before { content: "agent · "; color: var(--accent); }
 .know { border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-button); padding: 1px 9px; font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--ink); }
 .know[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
-.toc { margin: 14px 0 4px; border: var(--border-width) solid var(--line); border-radius: var(--radius-10); padding: 8px 14px; font-size: 13px; background: var(--surface); }
+.toc { margin: 14px 0 4px; font-size: 13px; }
+.ui-card.toc { padding: 8px 14px; }
 .toc-h { display: flex; align-items: center; gap: 6px; font-family: var(--label-font); font-size: var(--text-label); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: var(--weight-label); margin-left: -6px; }
 .toc-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; margin-top: 4px; }
 .toc h3 { font-size: 11px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; }
@@ -605,7 +619,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 /* Plotlines box on the guide root (issue #169): the reader's named
    threads sit between Contents and the cards, each jumping to its first
    hunk in the diff. Small by design: name, one-line description, count. */
-.plotlines { margin: 14px 0 4px; border: var(--border-width) solid var(--line); border-radius: var(--radius-10); padding: 8px 14px; font-size: 13px; background: var(--surface); }
+.plotlines { margin: 14px 0 4px; font-size: 13px; }
+.ui-card.plotlines { padding: 8px 14px; }
 .plotlines h2 { font-size: 11px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; letter-spacing: .08em; text-transform: uppercase; }
 .plotlines ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plotlines li button { border: 0; background: none; padding: 2px 0; text-align: left; width: 100%; font-size: 13px; }
@@ -625,7 +640,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    heading row. The heading row is fixed-height with a fixed-size icon
    button, and the spin is a transform on the icon only, so nothing in the
    block shifts while fetching. */
-.prblock { border: var(--border-width) solid var(--line); border-radius: var(--radius-10); background: var(--surface); padding: 2px 14px 12px; margin-top: 18px; }
+.prblock { margin-top: 18px; }
+.ui-card.prblock { padding: 2px 14px 12px; }
 .prblock .divider { margin-top: 14px; }
 .prblock-head { display: flex; align-items: center; gap: 8px; min-height: 30px; margin-top: 6px; }
 .prblock-title { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -637,31 +653,32 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    still names the state). The working-dots / job-pill rule below is owned
    by #144 and untouched. */
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
-.card { background: var(--card-surface); border: var(--border-width) solid var(--line); border-radius: var(--radius-10); padding: var(--pad-card); box-shadow: var(--shadow-raised); margin: 14px 0; position: relative; }
+#page .ui-card { margin: 14px 0; position: relative; padding: var(--pad-card); }
+#page .ui-card.child { padding: 8px 14px; }
 .chead { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
 .chead h2.ct { font-family: var(--serif); font-size: var(--text-card-title); font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }
-.card.collapsed { padding-block: 8px; }
-.card.collapsed h2.ct { font-size: 18px; }
+.ui-card.collapsed { padding-block: 8px; }
+.ui-card.collapsed h2.ct { font-size: 18px; }
 .cprev { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A finding's own page carries the same warning accent as its card in the guide. */
-.doc.finding > .card { border-left: var(--rail-accent-width) solid var(--warn); background: var(--bg-finding-card); }
-.card.child { margin: 8px 0 14px 10px; border-left: var(--rail-accent-width) solid var(--accent); background: var(--card-child-surface); padding: 8px 14px; }
+.doc.finding > .ui-card { border-left: var(--rail-accent-width) solid var(--warn); background: var(--bg-finding-card); }
+.ui-card.child { margin: 8px 0 14px 10px; border-left: var(--rail-accent-width) solid var(--accent); background: var(--card-child-surface); padding: 8px 14px; }
 /* One answer inside a conversation card: later answers keep a divider so
    turns stay scannable, and their question reads as a muted heading. */
-.card.child .ans + .ans { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; }
-.card.child .ans-q { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; }
+.ui-card.child .ans + .ans { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; }
+.ui-card.child .ans-q { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; }
 /* Earlier answers keep their controls out of the way until hovered or
    focused (no layout shift: the row keeps its space). */
-.card.child .ans-older > .ctl { visibility: hidden; }
-.card.child .ans-older:hover > .ctl, .card.child .ans-older:focus-within > .ctl { visibility: visible; }
+.ui-card.child .ans-older > .ctl { visibility: hidden; }
+.ui-card.child .ans-older:hover > .ctl, .ui-card.child .ans-older:focus-within > .ctl { visibility: visible; }
 /* Provisional streamed paragraphs (issue #126, experiment): citation
    chips read as pending (dimmed) until the stored turn lands and
    validation has run; the caption marks the answer as still being
    written. One place to retune. */
 .exp-b.streaming .lk { opacity: .55; }
 .stream-live { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
-.card.child.collapsed .exp-b, .card.child.collapsed .ctl { display: none; }
-.card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+.ui-card.child.collapsed .exp-b, .ui-card.child.collapsed .ctl { display: none; }
+.ui-card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
 /* Floating conversation cards (issue #167): the default clicked state.
    `.exp-float` is a zero-height placeholder at the card's anchor site, so
    the page never reflows; the card overlays the content below it and
@@ -679,15 +696,15 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    scrolls — sticky within the card's own scroller, opaque so answer
    text slides underneath it, above the scrolled content but below a
    nested child card (z-index 3). */
-.card.child.floating > .exp-h {
+.ui-card.child.floating > .ui-card-header {
   position: sticky;
   /* The card's top padding (8px): stick flush under the top border,
      not at the content-box top, so no scrolled text shows above it. */
   top: -8px;
   z-index: 2;
-  background: var(--surface);
+  background: var(--card-header-surface);
 }
-.card.child.floating {
+.ui-card.child.floating {
   position: absolute;
   top: 0;
   left: 0;
@@ -706,7 +723,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    over it while scrolling instead of being covered by it. The card
    itself sits above the code rows and the line-number gutter (1), so a
    card overlapping the gutter paints over the numbers, not under them. */
-.dhunk .card.child.floating { z-index: 5; }
+.dhunk .ui-card.child.floating { z-index: 5; }
 /* The pinned band's opaque backing: a sticky strip exactly the file
    slot + hunk slot tall, sitting above floating cards (5) and below
    the marked headers (7/8). During a file hand-off there are scroll
@@ -729,11 +746,11 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    this its reply box can end up cut in half at the bottom edge. Keep
    the composer stuck to the card's bottom (opaque, above the scrolled
    answers) so it is always fully visible and usable. */
-.card.child.floating .composer {
+.ui-card.child.floating > .ui-card-footer {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  background: var(--surface);
+  background: var(--card-reply-surface);
   padding-bottom: 10px;
 }
 /* With the card's own bottom padding in place, the sticky footer
@@ -741,20 +758,20 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    in the padding strip below it. Drop that padding on floating
    cards with a composer; the composer's own padding (above) takes
    its place, flush with the card's bottom border. */
-.card.child.floating:has(> .composer) { padding-bottom: 0; }
+.ui-card.child.floating:has(> .ui-card-footer) { padding-bottom: 0; }
 /* A nested child card floats fully above its parent — including the
    parent's sticky reply footer above, which would otherwise paint
    across the child's body and header (same z-index, later in DOM).
    The child is position:fixed inside the parent's stacking context,
    so a higher z-index here orders it over every part of the parent. */
-.card.child.floating .card.child.floating { z-index: 3; }
-.card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
-.card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
-.card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
-.card.pend .go { grid-row: 1 / span 2; grid-column: 2; border: 1px solid var(--accent); color: var(--accent); background: var(--surface); border-radius: var(--radius-6); padding: 5px 12px; font-weight: 500; }
-.card.pend .go:hover { background: var(--accent-soft); }
+.ui-card.child.floating .ui-card.child.floating { z-index: 3; }
+.ui-card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
+.ui-card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.ui-card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
+.ui-card.pend .go { grid-row: 1 / span 2; grid-column: 2; border: 1px solid var(--accent); color: var(--accent); background: var(--surface); border-radius: var(--radius-6); padding: 5px 12px; font-weight: 500; }
+.ui-card.pend .go:hover { background: var(--accent-soft); }
 .ctl { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 4px 0 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
-.card.child .ctl { border: 0; padding-bottom: 0; }
+.ui-card.child .ctl { border: 0; padding-bottom: 0; }
 .depth { display: inline-flex; align-items: center; border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); overflow: hidden; margin-right: 4px; height: 24px; }
 .depth button { border: 0; background: none; width: 24px; height: 22px; font-size: 14px; line-height: 1; color: var(--muted); }
 .depth button:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
@@ -763,13 +780,13 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .blk { position: relative; }
 .prose, .lst li { font-family: var(--prose-font); font-size: var(--text-prose); line-height: var(--leading-prose); }
 .prose { margin: 10px 0; }
-.card.child .prose { font-size: var(--text-prose-child); }
+.ui-card.child .prose { font-size: var(--text-prose-child); }
 .lst { padding-left: 22px; margin: 8px 0; }
 .lst li { margin: 6px 0; }
 .md { overflow-x: auto; }
 .md td, .md th { font-size: 14px; line-height: 1.45; }
-.card code { background: var(--sunk); padding: 1px 4px; border-radius: var(--radius-3); }
-.card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 2px; }
+.ui-card code { background: var(--sunk); padding: 1px 4px; border-radius: var(--radius-3); }
+.ui-card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 2px; }
 a.cx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.cx:hover { color: var(--accent); }
 a.cx.pg { text-decoration-style: solid; color: var(--accent); }
@@ -832,7 +849,7 @@ mark.anc.range { background: var(--accent-soft); color: var(--accent); border-ra
 mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
 .ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: var(--radius-10); padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
 .dann { margin-top: 6px; }
-.dann .card.child, .dann .ithread { margin-left: 0; }
+.dann .ui-card.child, .dann .ithread { margin-left: 0; }
 .thd { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .thd .kind { color: var(--note); font-weight: var(--weight-label); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; flex: none; }
 .ib.pr[aria-pressed="true"] { color: var(--note); }
@@ -891,7 +908,7 @@ mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
 .follow button { border: 1px dashed var(--accent); background: none; color: var(--accent); border-radius: var(--radius-pill); padding: 2px 10px; font-size: 12.5px; }
 .follow button:hover { background: var(--accent-soft); }
 .working { margin: 6px 0; padding: 10px 12px; border-radius: var(--radius-8); background: var(--sunk); font-size: 13px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
-.card.pend .working { grid-column: 1 / -1; margin: 0; }
+.ui-card.pend .working { grid-column: 1 / -1; margin: 0; }
 /* Working-indicator dots (issue #98): a sequential bounce-plus-pulse that
    reads at a glance at 5px — each dot rises and flashes in turn, staggered
    down the row. Every working state shares this one class (cards,
@@ -907,15 +924,15 @@ mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
    pulses gently. Expansions already carry the accent border at rest, so
    the wash (and a wider border) is what sets their rewriting state apart
    without relying on animation. */
-.card.rewriting {
+.ui-card.rewriting {
   border-left: 3px solid var(--accent);
   background: var(--accent-soft);
   animation: rewrite-pulse 1.6s ease-in-out infinite;
 }
-.card.child.rewriting { border-left-width: 5px; }
+.ui-card.child.rewriting { border-left-width: 5px; }
 @keyframes rewrite-pulse { 0%, 100% { border-left-color: var(--accent); } 50% { border-left-color: var(--line); } }
 /* Placeholder where agent-started content will land: dashed like a pending card. */
-.card.child.placeholder { border-style: dashed; background: none; }
+.ui-card.child.placeholder { border-style: dashed; background: none; }
 @keyframes dot-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 @keyframes jcount-fade { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 /* Reduced motion (issues #144, #191): no animation at all. Working
@@ -926,7 +943,7 @@ mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
   .fresh { animation: none; }
   .dots i { animation: none; transform: none; }
   .jcount.live::before { animation: none; }
-  .card.rewriting { animation: none; }
+  .ui-card.rewriting { animation: none; }
 }
 .dg { margin: 12px 0 4px; }
 /* D2 diagrams (service-rendered SVG, inlined): the svg fills the block

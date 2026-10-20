@@ -34,6 +34,7 @@ import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
+import { Card as UiCard, CardHeader } from "../ui/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -148,12 +149,12 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // Issue #84: the title and the one-line description stay visible while
     // generating — only the Generate button gives way to the indicator,
     // which sits where the prototype puts a pending card's working state
-    // (`.card.pend .working`, full width under the text). Issue #49: the
+    // (`.ui-card.pend .working`, full width under the text). Issue #49: the
     // same display title as Contents (stored title, else the pending
     // label through the shared helper, never a new rule).
     const title = displayCardTitle(card.title || card.pending.label, card.blocks);
     return (
-      <section className="card pend" id={`C-${card.id}`} aria-busy={busy ? true : undefined}>
+      <UiCard as="section" variant="plain" className="pend" id={`C-${card.id}`} aria-busy={busy ? true : undefined}>
         <div className="pl">{title}</div>
         <div className="why">{card.pending.why}</div>
         {busy ? (
@@ -168,7 +169,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             Generate
           </button>
         )}
-      </section>
+      </UiCard>
     );
   }
 
@@ -218,7 +219,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // body-prefix preview.
     const title = displayCardTitle(card.title, card.blocks);
     return (
-      <section className="card collapsed" id={`C-${card.id}`}>
+      <UiCard as="section" variant="raised" className="collapsed" id={`C-${card.id}`}>
         <div className="chead">
           <ControlButton
             icon="right"
@@ -229,7 +230,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           />
           {title ? <h2 className="ct">{title}</h2> : null}
         </div>
-      </section>
+      </UiCard>
     );
   }
 
@@ -244,12 +245,14 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const title = displayCardTitle(card.title, card.blocks);
 
   return (
-    <section
-      className={`card${busy?.rewriting ? " rewriting" : ""}`}
+    <UiCard
+      as="section"
+      variant="raised"
+      className={busy?.rewriting ? "rewriting" : undefined}
       id={`C-${card.id}`}
       aria-busy={busy ? true : undefined}
     >
-      <div className="chead">
+      <CardHeader className="chead">
         <ControlButton
           icon="down"
           label="Collapse"
@@ -258,7 +261,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           }
         />
         {title ? <h2 className="ct">{title}</h2> : null}
-      </div>
+      </CardHeader>
       {card.stale ? (
         <div className="stale" role="status">
           <span>
@@ -349,6 +352,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
         />
       ))}
-    </section>
+    </UiCard>
   );
 }

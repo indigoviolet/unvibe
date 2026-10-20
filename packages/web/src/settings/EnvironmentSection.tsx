@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReadinessResponse, ReloadResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
-import { Badge } from "../ui/index.js";
+import { Badge, Card } from "../ui/index.js";
 
 export function EnvironmentSection(): React.JSX.Element {
   const [report, setReport] = useState<ReadinessResponse | null>(null);
@@ -69,14 +69,14 @@ export function EnvironmentSection(): React.JSX.Element {
       {report ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {report.checks.map((c) => (
-            <div key={c.id} className="ui-card" data-testid={`env-${c.id}`}>
+            <Card key={c.id} variant="plain" data-testid={`env-${c.id}`}>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(120px,180px) 72px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
                 <b>{c.label}</b>
                 <span data-testid={`env-${c.id}-status`} data-status={c.status}><Badge tone={c.status === "ok" ? "ok" : c.status === "warning" ? "warn" : "error"}>{c.status === "ok" ? "OK" : c.status}</Badge></span>
                 <span className="ui-row-meta" title={c.summary}>{c.summary}</span>
               </div>
               {c.fix ? <div className="hint">{c.fix}</div> : null}
-            </div>
+            </Card>
           ))}
           <div className="frow" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button className="ui-btn" data-variant="secondary" type="button" onClick={() => void load(true)} disabled={checking}>
@@ -102,7 +102,7 @@ export function EnvironmentSection(): React.JSX.Element {
             </p>
           ) : null}
           {reloadResult ? (
-            <div className="ui-card" data-testid="reload-result">
+            <Card variant="inset" data-testid="reload-result">
               <b>Reloaded</b>
               <div style={{ fontSize: 13 }}>Changed: {reloadResult.changed.join("; ")}</div>
               {reloadResult.detail.map((d, i) => (
@@ -110,7 +110,7 @@ export function EnvironmentSection(): React.JSX.Element {
                   {d}
                 </div>
               ))}
-            </div>
+            </Card>
           ) : null}
         </div>
       ) : null}
