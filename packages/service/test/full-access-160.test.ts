@@ -387,6 +387,7 @@ describe("ACP sessions per posture (fake transport)", () => {
       type: "tool",
       name: "Bash",
       status: "start",
+      id: "t1",
       detail: '{"command":"git log --oneline -5"}',
     });
     await runner.dispose();

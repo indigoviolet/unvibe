@@ -13,7 +13,7 @@ import type { TransportFactory } from "../src/agent/acp/connection.js";
 export interface FakeChunk {
   text?: string;
   toolStart?: { id: string; title: string; name?: string; input?: unknown };
-  toolEnd?: { id: string; title: string };
+  toolEnd?: { id: string; title: string; result?: string };
 }
 
 export interface FakeTurn {
@@ -326,6 +326,9 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
               toolCallId: c.toolEnd.id,
               title: c.toolEnd.title,
               status: "completed",
+              ...(c.toolEnd.result !== undefined
+                ? { content: [{ type: "content", content: { type: "text", text: c.toolEnd.result } }] }
+                : {}),
             },
           });
         }
