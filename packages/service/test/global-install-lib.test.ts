@@ -6,7 +6,7 @@
  * heuristic fallback. Pure `scripts/global-install-lib.mjs` units.
  */
 import { describe, expect, it } from "vitest";
-import { isParserOutline, platformBinaryPackages } from "../../../scripts/global-install-lib.mjs";
+import { findRepoByPath, isParserOutline, platformBinaryPackages } from "../../../scripts/global-install-lib.mjs";
 
 describe("platformBinaryPackages (issue #157)", () => {
   it("names the macOS packages on darwin, not the Linux ones", () => {
@@ -33,6 +33,27 @@ describe("platformBinaryPackages (issue #157)", () => {
 
   it("defaults to the running platform", () => {
     expect(platformBinaryPackages()).toEqual(platformBinaryPackages(process.platform, process.arch));
+  });
+});
+
+describe("findRepoByPath (issue #157)", () => {
+  it("finds the added repo by path, not by position", () => {
+    // The shape that failed in CI: the demo review above the outline
+    // check leaves a `demo` repos row after the just-added sample repo,
+    // so the last entry is not the added one.
+    const repos = [
+      { id: "demo", localPath: "" },
+      { id: "rp_sample", localPath: "/tmp/outline-repo-tarball-npm11" },
+      { id: "demo", localPath: "/installed/fixtures/urllib3-5020" },
+    ];
+    expect(findRepoByPath(repos, "/tmp/outline-repo-tarball-npm11")?.id).toBe("rp_sample");
+    expect(findRepoByPath(repos, "/tmp/not-added")).toBeNull();
+  });
+
+  it("rejects malformed input instead of guessing", () => {
+    expect(findRepoByPath(null, "/tmp/x")).toBeNull();
+    expect(findRepoByPath([], "")).toBeNull();
+    expect(findRepoByPath([null, { id: "rp_x" }], "/tmp/x")).toBeNull();
   });
 });
 

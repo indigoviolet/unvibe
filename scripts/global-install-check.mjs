@@ -31,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
-import { isParserOutline, platformBinaryPackages } from "./global-install-lib.mjs";
+import { findRepoByPath, isParserOutline, platformBinaryPackages } from "./global-install-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -300,7 +300,11 @@ async function checkInstalledOutline({ port, token, label, env }) {
   let repoId = null;
   try {
     const repos = JSON.parse(added.body)?.repos ?? [];
-    repoId = repos[repos.length - 1]?.id ?? null;
+    // The response is the full repo list, not the added row, and the
+    // added repo is not last in it (remembered repos are most-recent
+    // first; the demo row created by the demo review above follows it).
+    // Find it by the path just added, as the web UI finds its clone.
+    repoId = findRepoByPath(repos, path.resolve(repoDir))?.id ?? null;
   } catch {
     repoId = null;
   }
@@ -346,7 +350,7 @@ async function checkInstalledOutline({ port, token, label, env }) {
   }
   assert(
     outline.code === 200 && isParserOutline(body),
-    `${label}: installed service loads a grammar (outline answers how=parser, got ${body?.how ?? outline.code}; a heuristic answer would mean the packaged .wasm did not load)`,
+    `${label}: installed service loads a grammar (outline answers how=parser, got ${body?.how ?? body?.error ?? outline.code}; a heuristic answer would mean the packaged .wasm did not load)`,
   );
   if (body && isParserOutline(body)) {
     assert(body.language === "python", `${label}: outline reports the python grammar`);
