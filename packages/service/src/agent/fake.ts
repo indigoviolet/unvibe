@@ -86,7 +86,8 @@ export class FakeAgentRunner implements AgentRunner {
     return s;
   }
 
-  async *prompt(session: Session, text: string): AsyncIterable<AgentEvent> {
+  async *prompt(session: Session, text: string, _signal?: AbortSignal): AsyncIterable<AgentEvent> {
+    void _signal;
     this.prompts.push({ sessionId: session.id, text });
     const script = this.scripts.find((s) => text.includes(s.match));
     const events = script?.events ?? [{ type: "done", stopReason: "end_turn" } satisfies AgentEvent];
