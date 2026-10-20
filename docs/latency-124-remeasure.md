@@ -46,6 +46,57 @@ Reading:
 
 Service-level reference (demo open `codex-2`, before the budget abort): the reader job itself cache-read 57,600 of 71,929 input tokens (80 %) across its tool-call turns on `gpt-5.6-terra` — the reader's own session re-reads its context from cache between tool calls; it is forks that intermittently miss.
 
+## 1b. Cache-key follow-up: why forks miss, and the ephemeral-fork test
+
+Added 2026-10-20 on this branch (owner-approved check of the routing-key hypothesis). Sources are the public upstreams at the exact installed versions: Codex `rust-v0.162.1` (commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`, matching `codex-cli 0.162.1` on this machine) and `@agentclientprotocol/codex-acp` v2.2.2 (commit `202e66e63343ec4f5a5e35ab590251d813d129ca`, the adapter our service launches via `CODEX_PATH` → `codex app-server`).
+
+### How `prompt_cache_key` is derived (hypothesis confirmed, with one refinement)
+
+- Every Responses request sets `prompt_cache_key = Some(self.prompt_cache_key(responses_metadata))` ([client.rs:978](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/client.rs#L978)). The derivation, in priority order ([client.rs:581-592](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/client.rs#L581-L592)):
+  1. an explicit `prompt_cache_key_override` on the `ModelClient`, if set;
+  2. for internal sub-agents (`SessionSource::Internal`) with a parent thread, `"{source}:{parent_thread_id}"`;
+  3. otherwise `responses_metadata.session_id`.
+- For a root thread, `session_id` **is** the thread ID: `SessionId::from(thread_id)` ([session.rs:932-938](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/session/session.rs#L932-L938)). So the owner's phrasing ("from the conversation/thread ID") is effectively right at this version; the code names it session ID. The same value also goes out as the Responses session-id header for root sessions ([client.rs:597-604](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/client.rs#L597-L604)), so header- and body-based affinity agree.
+- A fork mints a **new** thread ID ([session.rs:875-885](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/session/session.rs#L875-L885): `InitialHistory::Forked` with no reserved ID calls `generate_thread_id()`), hence a new session ID and a new routing key. That is the whole mechanism: identical prefix bytes, different `prompt_cache_key`, likely a different cache machine. Codex's generic ~11k prefix is shared by every Codex user, so it is warm on every machine — which fits it hitting on all 12 baseline turns while the pack hit only 2/10.
+
+### The one exception: ephemeral forks keep the parent's key
+
+- `ModelClient.prompt_cache_key_override` is written in exactly one place, `Session::new` via `with_session_context` ([session.rs:1793-1800](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/session/session.rs#L1793-L1800)), from two sources: Guardian review sessions (`guardian:{parent_thread_id}`, [review_session.rs:286-297](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/guardian/review_session.rs#L286-L297) — Guardian-only), or `fork_cache_key`.
+- `fork_cache_key` is the parent rollout's stored `session_id`, and it is computed **only** when the forked session's config is ephemeral ([session.rs:901-915](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/session/session.rs#L901-L915), comment: "Ephemeral forks reuse cache routing, without sharing storage or lifecycle identity"). Ephemerality arrives per-thread through the app-server API: `ThreadForkParams.ephemeral` ([thread.rs:610](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/v2/thread.rs#L610); `ThreadStartParams.ephemeral` at [thread.rs:115](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/v2/thread.rs#L115)), applied as `typesafe_overrides.ephemeral = ephemeral.then_some(true)` ([thread_processor.rs:5031](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/src/request_processors/thread_processor.rs#L5031)). So "one key per review" needs no key management at all: ephemeral forks of one base automatically share the base's key, and different reviews (different bases) get different keys.
+
+### No other override exists at these versions
+
+- **No `CODEX_PROMPT_CACHE_KEY`.** Zero occurrences in `codex-rs` core/config/app-server/protocol or in the codex-acp source (the adapter reads only `CODEX_API_KEY`, `CODEX_CONFIG`, `CODEX_HOME`, `CODEX_PATH` and its own crash-limit vars); the installed binary's strings contain the Responses field name `prompt_cache_key` only, no such env var. The third-party guide's claim does not hold for 0.162.1.
+- **No config.toml key.** `Config`/`ConfigToml` have no prompt-cache field (config schema has no cache-key entry), and nothing outside the Guardian/ephemeral paths above ever sets the override. The per-thread `config` override map on `thread/fork` cannot reach it either — there is no config field to set.
+- **No ACP/session parameter.** codex-acp v2.2.2's fork calls `threadFork({ excludeTurns: true, config, cwd, modelProvider, threadId })` with **no `ephemeral`** ([SessionFork.ts:39-46](https://github.com/agentclientprotocol/codex-acp/blob/v2.2.2/src/SessionFork.ts#L39-L46)), and its new-session calls `threadStart` likewise ([CodexAcpClient.ts:797-802](https://github.com/agentclientprotocol/codex-acp/blob/v2.2.2/src/CodexAcpClient.ts#L797-L802)). ACP `session/fork` has no ephemeral field and the adapter drops unknown `_meta` (it reads only the AIR custom-instructions and fork-point keys, both of which our runner already sends). So as shipped, our stack **cannot** reach the ephemeral path: it needs an adapter change, not a client change. Upstream knows the general gap — [openai/codex#21796](https://github.com/openai/codex/issues/21796) asks for stable prompt-cache keys across app-server sessions.
+
+### Step 2: direct fork test with forks sharing the base's key
+
+To test the override anyway, the spike locally patched the installed adapter bundle (node_modules only, never committed; patch + rationale in [adapter-ephemeral-fork.patch.md](/home/venky/.paseo/worktrees/20ucjyap/spike-124-cache-key/spikes/124-remeasure/adapter-ephemeral-fork.patch.md)) to send `ephemeral: true` on `thread/fork` when `UNVIBE_CODEX_FORK_EPHEMERAL=1`, then re-ran the same direct test (`mise run test:live:124-fork-cache`, `gpt-5.6-terra`, 2 runs × base + 5 forks, sequential, well under the ~15 requests/min per key+prefix guidance):
+
+| Run | Turn | Uncached in | Cache read | Out |
+|---|---|---|---|---|
+| eph-1 | base | 9,005 | 11,008 | 5 |
+| eph-1 | fork 1 | 853 | 19,200 | 16 |
+| eph-1 | fork 2 | 848 | 19,200 | 15 |
+| eph-1 | fork 3 | 848 | 19,200 | 46 |
+| eph-1 | fork 4 | 847 | 19,200 | 8 |
+| eph-1 | fork 5 | 9,042 | 11,008 | 15 |
+| eph-2 | base | 8,997 | 11,008 | 5 |
+| eph-2 | fork 1 | 845 | 19,200 | 8 |
+| eph-2 | fork 2 | 840 | 19,200 | 41 |
+| eph-2 | fork 3 | 840 | 19,200 | 45 |
+| eph-2 | fork 4 | 839 | 19,200 | 8 |
+| eph-2 | fork 5 | 842 | 19,200 | 15 |
+
+- **9 of 10 forks hit** (uncached 839–853, cache read 19,200), against **2 of 10** for the identical non-ephemeral test above. The single miss (eph-1 fork 5, 9,042 uncached) shows the shared key is not a guarantee — provider placement/eviction still has the last word — but the rate flips from intermittent to usual.
+- Cost of step 2: upper bound (cached priced as uncached) $0.242 + $0.242 = **$0.48**, inside the $0.50 hard cap; cached-discounted (reads at 0.1×) $0.064 + $0.049 = **$0.11**. Counted per turn from the test's usage lines as the runs went; no full-pipeline opens, no background critics.
+- Saving per fork turn when it hits: ~8.2k fewer uncached tokens on this small pack (~$0.016 list, ~$0.015 discounted); on a real ~20k pack the baseline miss was ~21k, so ~$0.04 list per fork turn. Latency again did not separate (hits 2.5–3.8 s, the one miss 2.9 s): the saving is tokens, not seconds.
+
+### What production would need
+
+Not a Unvibe-side key to invent: make Codex forks **ephemeral** so Codex itself reuses the base's key (one key per review falls out of the base's thread ID). That means codex-acp must forward an ephemeral option on `thread/fork` (upstream adapter change, or a vendored patch — our ACP runner cannot add it from the client side; `_meta` is ignored for this). Before adopting, check the trade-off: ephemeral threads are not persisted on disk, so a forked session cannot be resumed after the adapter restarts; Unvibe forks are short-lived Explain/Ask turns, but `load`-after-close of a fork would need to fall back to a fresh session. Until the adapter supports it, the recommendation below stands.
+
 ## 2. Reader repair turn
 
 Two successful opens of the demo fixture (reader job, `#194` turn timings):
@@ -73,7 +124,7 @@ The lesson for the next measurement: run `--reader-only` and the direct fork tes
 
 Cache half:
 
-- **Do not build more on our side; close the cache half of #124 as provider-side, with monitoring.** The request-side causes are fixed (same system prompt/MCP/settings on fork; #174 mount). What remains is intermittent provider cache placement: 8/10 forks re-send ~9–10k uncached on a small pack, which on a real base (~20k pack in the old spike) is the old ~21k symptom at the same rate. Expected saving if Codex makes fork cache placement reliable: ~9–21k uncached tokens per fork turn (~$0.02–0.04 at list, less at cached-discount rates), with no measured latency change at this size. The app already surfaces per-job cache-hit rate, so a future provider fix is visible without new work. Revisit only if Codex documents fork/cache affinity or the hit rate is seen at 0/10 across a bigger sample.
+- **Do not build more on our side today; close the cache half of #124 as provider-side, with monitoring** — refined by §1b: the miss mechanism is now confirmed in Codex source (new `prompt_cache_key` per fork), and the one fix (ephemeral forks sharing the base's key, 9/10 hits in the spike) is blocked on codex-acp forwarding `ephemeral`, which our ACP client cannot supply. Revisit when the adapter exposes it (or Codex answers [openai/codex#21796](https://github.com/openai/codex/issues/21796)); the production change then is "forks are ephemeral" in the adapter/runner, with one key per review falling out of the base thread ID, worth ~8–21k uncached tokens (~$0.02–0.04 list) per fork turn. The request-side causes are fixed (same system prompt/MCP/settings on fork; #174 mount). What remains is intermittent provider cache placement: 8/10 forks re-send ~9–10k uncached on a small pack, which on a real base (~20k pack in the old spike) is the old ~21k symptom at the same rate. Expected saving if Codex makes fork cache placement reliable: ~9–21k uncached tokens per fork turn (~$0.02–0.04 at list, less at cached-discount rates), with no measured latency change at this size. The app already surfaces per-job cache-hit rate, so a future provider fix is visible without new work. Revisit only if Codex documents fork/cache affinity or the hit rate is seen at 0/10 across a bigger sample.
 
 Repair half:
 
