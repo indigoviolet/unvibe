@@ -25,6 +25,7 @@ import type {
   FileSliceResponse,
   HealthResponse,
   Job,
+  JobOutputResponse,
   JobPromptResponse,
   JobReplyResponse,
   JobResponse,
@@ -446,6 +447,8 @@ const realApi = {
     get(`/api/jobs/${encodeURIComponent(id)}/prompt`),
   jobReply: (id: string): Promise<JobReplyResponse> =>
     get(`/api/jobs/${encodeURIComponent(id)}/reply`),
+  jobOutput: (id: string): Promise<JobOutputResponse> =>
+    get(`/api/jobs/${encodeURIComponent(id)}/output`),
   cancelJob: (id: string): Promise<{ job: Job }> => post(`/api/jobs/${encodeURIComponent(id)}/cancel`),
   setJobPriority: (id: string, priority: number): Promise<{ job: Job }> =>
     request(`/api/jobs/${encodeURIComponent(id)}`, {
