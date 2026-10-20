@@ -1,6 +1,7 @@
 # Opening Unvibe at `http://unvibe.localhost:4517` (issue #108)
 
-Install once (`unvibe setup`), then open the bookmark. No `unvibe open`,
+Install once (`npm install -g …#release`, whose postinstall runs
+`unvibe setup`; issue #42), then open the bookmark. No `unvibe open`,
 no installed web app, no link-handler app needed day to day. The installed
 app and the `unvibe://` handler stay as an option; nothing was removed.
 

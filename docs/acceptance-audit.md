@@ -1398,10 +1398,13 @@ needed (that deviation is closed, not added).
   jobs — ran). Superseded by issue #108: the service now starts at login
   (launchd/systemd, `UNVIBE_IDLE_MS=0` there so it never idle-exits);
   manual starts keep the idle exit. See "Starts at login" above.
-- Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
+- Install `npm install -g github:<org>/unvibe#release` (one step since
+  issue #42: the release `postinstall` runs setup — token, handler,
+  login unit — guarded and never failing the install; `unvibe setup`
+  stays the manual/repair path) +
   same command updates — **met**: the `#release` ref serves a
-  self-contained tree (built service + web, no build step, no lifecycle
-  scripts, no devDependencies), installed with **no flags** on npm 11 and
+  self-contained tree (built service + web, no build step, only the
+  postinstall lifecycle script, no devDependencies), installed with **no flags** on npm 11 and
   npm 10 — ran both, tarball AND git-ref phases fully green (adapter
   bundles present, demo completes from the installed copy, readiness
   reports the user's executables, 3.3 MB tarball / ~66 MB installed on

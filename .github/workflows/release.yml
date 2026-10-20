@@ -8,7 +8,7 @@
 # from. The generated package.json version and the tarball name both come
 # from the tag, so they always agree.
 #
-# Users install with NO flags (no prepare/postinstall, no devDependencies):
+# Users install with NO flags (postinstall runs setup, no devDependencies):
 #   npm install -g github:indigoviolet/unvibe#release
 # The repo is public: the git ref installs with no credentials, and the
 # tarball downloads from its plain releases/download URL (no login needed).
