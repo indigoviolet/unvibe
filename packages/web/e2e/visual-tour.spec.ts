@@ -928,6 +928,15 @@ for (const combo of [
     await checkNoPageOverflow(page, "debug");
     await shot(page, "debug", suffix, "Queued");
 
+    // Debug Output (#207): the first job expanded, turn by turn, with
+    // its prompt, reply, a tool call and the raw usage payload.
+    await page.getByRole("button", { name: "Output" }).first().click();
+    await expect(page.locator('[data-testid="job-output"]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read", { timeout: 15_000 });
+    await page.locator('[data-testid="job-output"]').first().scrollIntoViewIfNeeded();
+    await checkNoPageOverflow(page, "debug-output");
+    await shot(page, "debug-output", suffix, "Raw usage");
+
     // Settings → Version.
     await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
