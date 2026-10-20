@@ -45,12 +45,20 @@ export type AgentEvent =
       type: "tool";
       name: string;
       status: "start" | "end";
+      /** Adapter's tool-call id, when it sends one (correlates start/end). */
+      id?: string;
       /**
        * Issue #160: best-effort detail captured from the tool-call update
        * (e.g. the shell command or URL, when the adapter sends it),
        * truncated by the runner. Absent when the adapter sends none.
        */
       detail?: string;
+      /**
+       * Issue #207: on `end`, the tool's result text as the adapter
+       * reported it (untruncated here; the job record truncates it).
+       * Absent when the adapter sends no result content.
+       */
+      result?: string;
     }
   | {
       type: "usage";
@@ -58,6 +66,13 @@ export type AgentEvent =
       cachedReadTokens: number;
       cachedWriteTokens: number;
       outputTokens: number;
+      /**
+       * Issue #207: the raw usage payload exactly as the runner reported
+       * it (for ACP, `{ usage, _meta }` from the prompt response), stored
+       * verbatim on the job's turn record next to the derived counts
+       * above. Never reinterpreted. Absent when the runner has none.
+       */
+      raw?: unknown;
     }
   | { type: "done"; stopReason: string }
   | { type: "error"; message: string; retryable: boolean };
