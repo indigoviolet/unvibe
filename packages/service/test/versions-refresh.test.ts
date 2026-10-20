@@ -352,7 +352,12 @@ describe("refresh integration", () => {
         fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
         await git(dir, "add", ".");
         await git(dir, "commit", "-m", "base");
-        const { id } = await openReview(app, dir, "main");
+        // #179: opening "main" itself is now an empty diff, so open a
+        // branch with a change and mark that review as the demo.
+        await git(dir, "checkout", "-b", "feature");
+        fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+        await git(dir, "commit", "-am", "change");
+        const { id } = await openReview(app, dir, "feature");
         // Demo reviews carry DB rows (for jobs joins) but no remote: mark
         // this one demo and refresh must short-circuit before git.
         await ctx.reviews.mutate(id, (draft) => {

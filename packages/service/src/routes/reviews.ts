@@ -34,6 +34,7 @@ import type {
 import { ingestStatusOf, isReadySnapshot, summarizeComparison } from "@unvibe/shared";
 import { ingestRefusal } from "../reviews/index.js";
 import {
+  EmptyDiffError,
   ingestReview,
   newReviewId,
   readReviewRow,
@@ -338,7 +339,11 @@ async function runIngestBackground(
   } catch (err) {
     try {
       await ctx.reviews.mutate(reviewId, (draft) => {
-        draft.ingest = { status: "failed", error: (err as Error).message.slice(0, 500) };
+        // #179: empty diff is its own outcome, not a failure to open.
+        draft.ingest =
+          err instanceof EmptyDiffError
+            ? { status: "empty", error: err.message.slice(0, 500) }
+            : { status: "failed", error: (err as Error).message.slice(0, 500) };
       });
     } catch {
       // Deleted or unreadable: nothing to mark.
@@ -900,13 +905,18 @@ export async function registerReviews(
 
   app.post("/api/reviews/:id/update", async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!deps.jobs || !deps.baseRunner) {
-      return reply.code(501).send({ error: "not available in this build" });
-    }
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     const refusedUpdate = ingestRefusal(snapshot);
     if (refusedUpdate) return reply.code(409).send({ error: refusedUpdate });
+    // #179: never spend agent time on an empty diff (e.g. after a refresh
+    // emptied it).
+    if ((snapshot.files ?? []).every((f) => f.hunks.length === 0 && !f.isBinary)) {
+      return reply.code(409).send({ error: "No changes to review: the diff is empty, so there is nothing to update." });
+    }
+    if (!deps.jobs || !deps.baseRunner) {
+      return reply.code(501).send({ error: "not available in this build" });
+    }
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
