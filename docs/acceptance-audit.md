@@ -2460,6 +2460,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/submit-m6.test.ts` (stubbed `gh` only),
   `test/versions-anchors.test.ts`, web `citations.test.ts` /
   `openFile.test.ts`, journey `e2e/journeys/j81-code-citations.spec.ts`
-  (hover, tab, past-the-end clamp, selection comment). The visual
-  tour cannot show the file tab: its demo review has no file content
-  to read, so the journey is the screen's coverage.
+  (hover, tab, past-the-end clamp, selection comment), visual tour
+  `file-hover` / `file-tab` / `file-tabs` / `file-submit` frames in
+  light and dark at 1440 and 960 (the tour's demo commits resolve in
+  no checkout, so those frames use a scratch repo on an agent-less
+  service, seeded the way J81 seeds).
