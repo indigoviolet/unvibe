@@ -914,11 +914,11 @@ export class Pipeline {
         // Issue #169: the plotline assign step is not a stage; resume it
         // like the demo fill below (no-op unless the reader named
         // plotlines on a degraded rung with hunks still unassigned).
-        jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
         // Auto go-deeper (#217) is part of enqueueAfterReader, not a stage:
         // a restart after the base finished would otherwise leave pending
         // placeholders unfilled when the setting is on. No-op otherwise.
         jobIds.push(...(await this.enqueueAutoGoDeeper(reviewId)).map((j) => j.id));
+        jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -2054,13 +2054,15 @@ export class Pipeline {
     if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
       out.push(...(await this.enqueueHunkPass(reviewId)));
     }
+    // #217 owner order: auto go-deeper runs after the hunk summaries
+    // (enqueued at start) and the critic, before any other background
+    // job. The queue is FIFO within the background band, so enqueue
+    // order is the run order: critic, go-deeper, then plotline assign.
+    out.push(...(await this.enqueueAutoGoDeeper(reviewId)));
     // Issue #169: on degraded reader rungs the follow-up assign step
     // places the hunks the reader never saw; otherwise left-outs stay
     // "other".
     out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
-    // #217: with the setting on, every go-deeper placeholder is written
-    // in the background once the guide lands (demo included).
-    out.push(...(await this.enqueueAutoGoDeeper(reviewId)));
     return out;
   }
 
@@ -2071,7 +2073,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
-    // #215: one critic job per review; its reply carries 1-3 findings.
+    // #215: one critic job per review; its reply carries its findings (usually 1-3, all kept).
     const replay = isReplayRunner(this.opts.runner);
     const prompt = replay ? withReplayMark(basePrompt, { kind: "critic" }) : basePrompt;
     const job = this.opts.jobs.enqueue({

@@ -38,7 +38,7 @@ It was broken.
 Now it works.
 
 \`\`\`json
-{"cardIds": ["problem", "central"], "pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "follow it"}, {"id": "g-other", "label": "Other direction", "why": "check it"}]}
+{"cardIds": ["problem", "central"], "pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "follow it"}, {"id": "g-other", "label": "Other direction", "why": "check it"}, {"id": "g-third", "label": "Third direction", "why": "check it too"}], "plotlines": [{"id": "main-thread", "name": "Main thread", "description": "d", "hunks": []}]}
 \`\`\`
 `;
 
@@ -71,9 +71,9 @@ function makeSnapshot(id: string): ReviewSnapshot {
   };
 }
 
-async function setup(agents: FakeAgentRunner, auto: boolean) {
+async function setup(agents: FakeAgentRunner, auto: boolean, extra: Record<string, unknown> = {}) {
   const { app, ctx } = await createApp("tok", { agents: agents as unknown as never, autoPipeline: false });
-  ctx.settings.update({ autoGoDeeper: auto });
+  ctx.settings.update({ autoGoDeeper: auto, ...extra });
   const id = `rv_gd${Math.random().toString(36).slice(2, 8)}`;
   ctx.db.prepare("INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING").run("demo", "demo", "urllib3-5020", "/tmp", Date.now());
   ctx.db.prepare("INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING").run(id, "demo", "main", null, 1, Date.now(), JSON.stringify({}));
@@ -88,6 +88,8 @@ function baseAgents(extra: { match: string; events: AgentEvent[] }[] = []): Fake
     ...extra,
     { match: "Data flow", events: textEvents(FILL) },
     { match: "Other direction", events: textEvents(FILL) },
+    { match: "Third direction", events: textEvents(FILL) },
+    { match: "Changed direction", events: textEvents(FILL) },
     { match: "Reader", events: textEvents(READER) },
   ]);
 }
@@ -101,10 +103,11 @@ describe("auto go-deeper (#217)", () => {
         const root = ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root");
         return !!root && root.cards.length >= 4 && root.cards.every((c) => !c.pending);
       });
+      // Every placeholder (the reader writes 3-5 directions; here 3).
       const jobs = ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper");
-      expect(jobs).toHaveLength(2);
+      expect(jobs).toHaveLength(3);
       expect(jobs.every((j) => j.priority === JOB_PRIORITY.background)).toBe(true);
-      expect(jobs.map((j) => j.cardId).sort()).toEqual(["g-flow", "g-other"]);
+      expect(jobs.map((j) => j.cardId).sort()).toEqual(["g-flow", "g-other", "g-third"]);
     } finally {
       await app.close();
     }
@@ -119,7 +122,7 @@ describe("auto go-deeper (#217)", () => {
       await new Promise((r) => setTimeout(r, 300));
       expect(ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper")).toHaveLength(0);
       const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
-      expect(root.cards.filter((c) => c.pending).map((c) => c.id).sort()).toEqual(["g-flow", "g-other"]);
+      expect(root.cards.filter((c) => c.pending).map((c) => c.id).sort()).toEqual(["g-flow", "g-other", "g-third"]);
     } finally {
       await app.close();
     }
@@ -166,4 +169,114 @@ describe("auto go-deeper (#217)", () => {
       await app.close();
     }
   });
+
+  it("runs after the hunk summaries and the critic (#217 order)", { timeout: 90000 }, async () => {
+    const agents = baseAgents();
+    const { app, ctx, id } = await setup(agents, true, { sessionsPerProvider: 1 });
+    try {
+      await ctx.pipeline.startReview(id);
+      await waitFor(() => ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper").every((j: Job) => j.state === "done")
+        && ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper").length === 3);
+      const kinds = agents.prompts.map((pr) =>
+        pr.text.includes("# Hunk pass") ? "hunk"
+        : pr.text.includes("# Critic task") ? "critic"
+        : pr.text.includes("# Go deeper") ? "go-deeper"
+        : "other",
+      ).filter((k) => k !== "other");
+      expect(kinds.indexOf("critic")).toBeGreaterThan(kinds.indexOf("hunk"));
+      expect(kinds.indexOf("go-deeper")).toBeGreaterThan(kinds.indexOf("critic"));
+      // Enqueue order in the background band is hunk < critic < go-deeper.
+      const listed = ctx.jobs.listByReview(id).map((j: Job) => j.kind);
+      expect(listed.indexOf("critic")).toBeGreaterThan(listed.indexOf("hunk-pass"));
+      expect(listed.indexOf("go-deeper")).toBeGreaterThan(listed.indexOf("critic"));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("on resume, go-deeper is enqueued before other background work (plotline assign)", { timeout: 90000 }, async () => {
+    const agents = new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "Seeded direction", events: textEvents(FILL) },
+      { match: "# Plotline assign", events: textEvents("{\"assignments\": {}}\n") },
+    ]);
+    const { app, ctx, id } = await setup(agents, true, { sessionsPerProvider: 1 });
+    try {
+      // Seed a finished guide with one pending placeholder, named
+      // plotlines, and a diff too large for the reader to have seen its
+      // hunks (so plotline assign is the other background job in play).
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pipeline = { stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" } };
+        draft.plotlines = [{ id: "main-thread", name: "Main thread", description: "d", hunks: [] }];
+        const root = draft.pages.find((pg) => pg.id === "root")!;
+        root.cards = [{
+          id: "g-seeded", pageId: "root", title: "Seeded direction", level: "standard", collapsed: false,
+          revision: 1, blocks: [], undoStack: [], pending: { label: "Seeded direction", why: "seeded" },
+        } as typeof root.cards[number]];
+        const hunk = draft.files[0].hunks[0];
+        // A header this large pushes even the hunk-summary rows past the
+        // prompt cap, so the reader never saw this hunk (assign territory).
+        hunk.header = "x".repeat(400_000);
+      });
+      await ctx.pipeline.resumeReview(id);
+      await waitFor(() => {
+        const list = ctx.jobs.listByReview(id);
+        return list.some((j: Job) => j.kind === "plotline-assign" && j.state === "done")
+          && list.some((j: Job) => j.kind === "go-deeper" && j.state === "done");
+      });
+      const listed = ctx.jobs.listByReview(id).map((j: Job) => j.kind);
+      expect(listed.indexOf("go-deeper")).toBeGreaterThanOrEqual(0);
+      expect(listed.indexOf("go-deeper")).toBeLessThan(listed.indexOf("plotline-assign"));
+      const kinds = agents.prompts.map((pr) =>
+        pr.text.includes("# Go deeper") ? "go-deeper" : pr.text.includes("# Plotline assign") ? "plotline" : "other",
+      ).filter((k) => k !== "other");
+      expect(kinds.indexOf("go-deeper")).toBeLessThan(kinds.indexOf("plotline"));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("after a refresh, only the replaced placeholder is generated; the kept written card is reused", { timeout: 90000 }, async () => {
+    const agents = baseAgents();
+    const { app, ctx, id } = await setup(agents, true);
+    try {
+      await ctx.pipeline.startReview(id);
+      await waitFor(() => {
+        const root = ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root");
+        return !!root && root.cards.length >= 5 && root.cards.every((c) => !c.pending);
+      });
+      const before = ctx.reviews.getSnapshot(id)!;
+      const keptBefore = before.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!;
+      const keptBlocks = JSON.stringify(keptBefore.blocks);
+      const keptRevision = keptBefore.revision;
+      const flowFillsBefore = agents.prompts.filter((pr) => pr.text.includes("# Go deeper") && pr.text.includes("Data flow")).length;
+      // Refresh to a new version: g-flow's written card is kept; g-other is
+      // replaced by a new pending placeholder (new direction).
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.version = { ...draft.version, n: 2 };
+        draft.review.currentVersion = 2;
+        const root = draft.pages.find((p) => p.id === "root")!;
+        const changed = root.cards.find((c) => c.id === "g-other")!;
+        changed.pending = { label: "Changed direction", why: "new why" };
+        changed.blocks = [];
+      });
+      await ctx.pipeline.resumeReview(id);
+      await waitFor(() => {
+        const root = ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root");
+        const changed = root?.cards.find((c) => c.id === "g-other");
+        return !!changed && !changed.pending && changed.blocks.length > 0;
+      });
+      const after = ctx.reviews.getSnapshot(id)!;
+      const keptAfter = after.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!;
+      expect(keptAfter.revision).toBe(keptRevision);
+      expect(JSON.stringify(keptAfter.blocks)).toBe(keptBlocks);
+      expect(agents.prompts.filter((pr) => pr.text.includes("# Go deeper") && pr.text.includes("Data flow")).length).toBe(flowFillsBefore);
+      const gdJobs = ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper");
+      expect(gdJobs.filter((j: Job) => j.cardId === "g-flow")).toHaveLength(1);
+      expect(gdJobs.filter((j: Job) => j.cardId === "g-other")).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
 });
+
