@@ -1098,7 +1098,8 @@
       ],
       "d-p2": [
         "b2",
-        "b1"
+        "b1",
+        "b4"
       ]
     }
   },
@@ -1198,7 +1199,7 @@
               "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "The rule behind it: a parsed header value must never contain a line break. The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it <a class=\"cx\" data-link=\"concept:regex-performance\">linear-time</a> on long values, and a fast path skips any value without CRLF, which is almost all of them. ",
+                "standard": "The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it <a class=\"cx\" data-link=\"concept:regex-performance\">linear-time</a> on long values, and a fast path skips any value without CRLF, which is almost all of them. ",
                 "simple": "No header value should contain a line break after parsing. The code also stays fast, even for very long or unusual values.",
                 "deep": "Two properties are enforced together: a semantic one (no CR or LF in values) and a performance one (cost linear in input). The second matters because response headers are attacker-controlled input; a pattern that backtracks quadratically would turn a cleanup step into a <a class=\"cx\" data-link=\"concept:regex-performance\">denial-of-service</a> vector."
               },
@@ -1242,7 +1243,7 @@
         {
           "id": "decisions",
           "pageId": "root",
-          "title": "Decisions and alternatives",
+          "title": "Decisions and questions",
           "level": "standard",
           "collapsed": false,
           "revision": 1,
@@ -1251,13 +1252,43 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
+                "standard": "No new public interface is added. The existing header views keep their shape: urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> hold the same names, order and duplicates, with folded values unfolded in both.  "
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                },
+                {
+                  "target": "desc:d-p2"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": {
+                "standard": "The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests.  "
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:91-110"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
                 "standard": "Three choices carry the change:"
               },
               "citations": []
             },
             {
               "type": "list",
-              "id": "b2",
+              "id": "b4",
               "ordered": false,
               "items": [
                 {
@@ -1298,12 +1329,29 @@
             },
             {
               "type": "paragraph",
-              "id": "b3",
+              "id": "b5",
               "text": {
-                "standard": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
+                "standard": "What it adds and removes, as facts: two private helpers and one private pattern in the connection module, and no new concept, flag, setting, dependency or second header path; what it removes is the raw line break from parsed values. "
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b6",
+              "text": {
+                "standard": "Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. ",
+                "simple": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
                 "deep": "Each choice trades a local simplicity for a global property: one normalization point (both views equal by construction), standards-mandated tolerance (unfold, never reject), and a cost bound on untrusted input (linear time, with a fast path for the common case)."
               },
-              "citations": []
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                }
+              ]
             }
           ],
           "undoStack": []
@@ -2220,7 +2268,7 @@
         "version": 1
       },
       "open": true,
-      "pinned": false,
+      "pinned": true,
       "messages": [],
       "post": false,
       "turns": [

@@ -77,6 +77,24 @@ describe("contents model (PRD §4.3)", () => {
     expect(links.map((l) => l.id)).toEqual(["c-obs-fold", "f-lf"]);
   });
 
+  it("lists the renamed decisions card and the Names card in order (#212)", () => {
+    const root = mkPage("root", [
+      mkCard("problem", "root", { title: "The problem" }),
+      mkCard("central", "root", { title: "The central change" }),
+      mkCard("buildup", "root", { title: "How it's built up" }),
+      mkCard("decisions", "root", { title: "Decisions and questions" }),
+      mkCard("names", "root", { title: "Names" }),
+    ], "root");
+    const { cards } = contentsModel(root, () => undefined);
+    expect(cards.map((c) => [c.id, c.title])).toEqual([
+      ["problem", "The problem"],
+      ["central", "The central change"],
+      ["buildup", "How it's built up"],
+      ["decisions", "Decisions and questions"],
+      ["names", "Names"],
+    ]);
+  });
+
   it("untitled cards fall back to their first sentence, never cut mid-word (#49)", () => {
     const page = mkPage("p", [mkCard("u", "p", { title: null })]);
     const { cards } = contentsModel(page, () => undefined);

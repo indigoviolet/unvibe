@@ -86,7 +86,7 @@ describe("prompt variants", () => {
       "You may run read-only `git` commands",
       "You may run `gh` to read",
       "You may fetch pages from the web and search the web.",
-      "when a review tool\n  fails or cannot reach something, read the file directly instead.",
+      "when a review tool\n  fails or cannot reach something, say so in the trailing `degraded`\n  field",
     ]) {
       expect(full).toContain(line);
     }

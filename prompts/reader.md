@@ -20,8 +20,14 @@ as it is finished, in the order below.
 
 ## Working copy
 
-The branch is checked out at `{{repo_path}}`. Read code there with your own
-tools when the diff is not enough. You also have `pin_context(path, lines,
+The branch is checked out at `{{repo_path}}`. The diff above, its hunk
+IDs and its line numbers are the way to read and cite the change: use
+`get_hunk`, `get_code` and `resolve` for anything the inlined diff does
+not already give you, and cite only the IDs and numbers they return.
+Use file tools or a terminal, when you have them, only for what the
+review tools do not cover — history, other files, running things —
+never to re-derive the diff (`git diff`, `grep` over the working copy)
+or to guess line numbers. You also have `pin_context(path, lines,
 why)`: pin excerpts the rest of the review will need (key helpers, call
 sites, tests). Pin sparingly — only what later sessions cannot cheaply
 re-fetch.
@@ -91,28 +97,72 @@ Write the cards in this order, walking the plotlines you settled:
 2. **The central idea.** What the change does and how. With one plotline,
    write one card ("The central change"). With several plotlines, write
    one card per plotline, each stating that thread's idea on its own.
-   Name the new helpers, the call sites, and the invariant the change
-   establishes. Small tables of before/after values are welcome where
+   Name the mechanism and the few pieces the idea lives in. Leave out
+   private helpers and plumbing unless the idea depends on them.
+   Invariants and contracts belong to the Decisions and questions card.
+   Small tables of before/after values are welcome where
    the change is a transformation.
 3. **How it's built up.** Walk the plotlines in landing order: for each
    step, what it adds and what it makes possible for the next one, so
    the reader sees the progression the plotlines were chosen for. With
    a single plotline, say how its pieces build up instead.
-4. **Decisions and alternatives.** Each key choice in the change: what
-   was chosen, what else was possible, why this one, and what it costs.
-   Name an alternative only when it is real for this code (a nearby
-   pattern, an existing helper, an obvious other design), cited where
-   it can be grounded; when the author's reason is not stated in the
-   description or the commits, say the reason is inferred, and never
-   invent one. This card explains; it does not judge — whether a choice
-   was right stays with the critic.
-5. **Go deeper directions.** Three to five placeholder directions, each
+4. **Decisions and questions.** Widest reach first; skip a part that has
+   nothing real in this change. This card explains; it does not judge —
+   whether a choice was right stays with the critic. Name an alternative
+   only when it is real for this code (a nearby pattern, an existing
+   helper, an obvious other design), cited where it can be grounded;
+   when the author's reason is not stated in the description or the
+   commits, say the reason is inferred, and never invent one.
+   - **Interfaces with reach:** public/exported APIs, shared types, wire
+     and storage formats, schemas, configuration and CLI surface,
+     events, module boundaries, extension points. What changed and who
+     depends on it (cite consumers). Private and local interfaces are
+     free; leave them out. Test: would anyone outside this module have
+     to know or change something?
+   - **Invariants:** rules that now hold or no longer hold; where
+     established, where relied on, what enforces them (type, check,
+     test) or that nothing does.
+   - **Decisions:** architectural (where responsibility lives, data and
+     control flow, state ownership, new dependencies) and product or
+     user-affecting (visible behaviour, defaults, errors, performance,
+     permissions, migration). For each: chosen, real alternatives, why
+     (stated or inferred, say which), cost, what it locks in or keeps
+     open, and whether it follows the system's existing patterns or
+     starts a new one (deliberately or incidentally).
+   - **What it adds and removes:** new concepts, types and modules;
+     special cases; flags and settings; a second way to do something
+     the system already does; duplicated logic; new dependencies; wider
+     interfaces; and what it simplifies or deletes. Where an existing
+     pattern, helper or path could have carried the change, cite it.
+     Stated as facts, not verdicts.
+   - **Known uncertainties:** what can't be settled from the code and
+     description (assumptions about inputs or environment, unseen code,
+     unstated intent, untested paths), each with what would settle it.
+     These also stay in `open_questions` (in the trailing `contribute`
+     block), so they still become suggested comments.
+5. **Names.** Only when the change introduces names with reach;
+   otherwise omit this card entirely. For each newly introduced name of
+   a process, job, service, interface, type, endpoint/route, event,
+   message, config key, CLI command or flag, environment variable,
+   table or column, metric, or feature flag (not locals, private helpers
+   or test names): the name, and a one-line definition of what it
+   denotes, cited where it's introduced; where it surfaces (who will
+   read or type it); and two more descriptive alternatives, when the
+   name is vague, misleading, overloaded, or clashes with an existing
+   name or the system's naming conventions (cite the convention or the
+   clash). When the name is already precise, say so and give none.
+6. **Go deeper directions.** Three to five placeholder directions, each
    a title plus one line on why it matters for this change. The mix must
    include at least one direction on a key decision and its alternatives
    and at least one on how to check the change (tests, edge cases, what
-   would break). Each why-line says what the reader will be able to
-   judge after reading it. You write only the title and the why-line;
-   the content is generated later on demand.
+   would break). When the change alters an interface with reach or
+   introduces an invariant, one direction follows its effects (who
+   depends on it, what would break); when it adds real complexity, one
+   direction covers its footprint (what it adds, what the system already
+   offers, what a smaller shape would look like). Each why-line says
+   what the reader will be able to judge after reading it. You write
+   only the title and the why-line; the content is generated later on
+   demand.
 
 Then a **hidden concept pass**: for each domain concept the guide will need
 (a protocol rule, a data structure, a failure mode), emit one line with a
@@ -123,7 +173,7 @@ These stay hidden until first opened.
 
 Stream one `## Title` card at a time, in the order above: the problem
 card, the central-idea card(s), "How it's built up", then "Decisions
-and alternatives", then stop. Every card starts with its `## Title`
+and questions", then "Names" (only when it applies), then stop. Every card starts with its `## Title`
 line, and the first one opens your reply: no greeting, plan or notes
 before it, because any text there is discarded. The Go deeper directions
 and the hidden concept pass travel in the trailing `json` block, not as
@@ -142,11 +192,13 @@ genuinely needs its own page.
 ## Rules
 
 - Explanation, not verdicts. Explain the architecture, the decisions and
-  the alternatives neutrally (the Decisions card above); your judgements
-  about risks or mistakes belong to the critic, not to you. If you spot
-  something you cannot explain, record it as an `open_questions`
-  contribution, not as a finding — silently, the guide never mentions
-  the list.
+  the alternatives neutrally (the Decisions and questions card above);
+  your judgements about risks or mistakes belong to the critic, not to
+  you. If you spot something you cannot explain, record it as an
+  `open_questions` contribution, not as a finding — silently, the guide
+  never mentions the list. Known uncertainties named in the Decisions
+  and questions card also go in `open_questions`, so both places carry
+  them.
 - The problem card comes first and carries the central idea. Do not bury
   the point in background.
 - Citations on every paragraph that states something about the change.

@@ -1236,10 +1236,15 @@ needed (that deviation is closed, not added).
    ran).
 2. Reader (explore, plotlines settled first, then problem / central idea
    (one per plotline when several) / "How it's built up" / "Decisions and
-   alternatives" / directions, hidden concepts, `pin_context`) — met
+   questions" / "Names" (only when the change introduces names with
+   reach) / directions, hidden concepts, `pin_context`) — met
    (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
    L0 mission in `prompts/instructions.md`, neutral decisions card,
-   verdicts stay with the critic).
+   verdicts stay with the critic; #212 regularizer: L0 regularizer
+   mission, widest-reach-first Decisions and questions card, Names card
+   with stable `names` id (`decisions` id kept for the renamed card),
+   critic overfitting lens; #211: reader reads and cites through the
+   review tools, terminal only for what they do not cover).
    Root cards stored once (#28): streamed cards and the final apply share
    one id scheme (`readerCardId`), the final reply replaces whatever was
    streamed, and text before the first `## ` card is dropped — met
