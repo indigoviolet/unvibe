@@ -25,6 +25,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
+import { Card } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
@@ -433,7 +434,7 @@ function HunkCard({
           />
         </>
       ) : (
-        <div className={`fcard${reviewed ? " rev" : ""}`}>
+        <Card variant={reviewed ? "inset" : "interactive"} className={`fcard${reviewed ? " rev" : ""}`}>
           {summary ? (
             <>
               {/* Issue #161: idle summaries are text only — no icons, no
@@ -464,7 +465,7 @@ function HunkCard({
               </button>
             </div>
           ) : null}
-        </div>
+        </Card>
       )}
     </>
   );

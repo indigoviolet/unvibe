@@ -175,7 +175,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   }
   // Issue #136: inside a conversation answer the owning unit is the
   // answer, found from the answer wrapper's attribute — not from
-  // `section.card[id]`, which names the whole card.
+  // `section.ui-card[id]`, which names the whole card.
   const answer = el.closest("[data-answer]");
   if (answer) {
     const answerId = (answer as HTMLElement).dataset.answer ?? "";
@@ -198,7 +198,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     // the owning card, or conversation card, so the anchor addresses one
     // block. (Selections inside an answer return earlier, qualified with
     // the answer id.)
-    const owner = top.closest("section.card[id]")?.id ?? "";
+    const owner = top.closest("section.ui-card[id]")?.id ?? "";
     const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
     return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
   }

@@ -20,6 +20,7 @@ import { revealSource } from "../source/reveal.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
+import { Card as UiCard } from "../ui/index.js";
 import { inflightLabel } from "./inflight.js";
 
 interface Props {
@@ -119,7 +120,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
       : []),
   ];
   return (
-    <section className="plotlines" aria-label="Plotlines">
+    <UiCard as="section" variant="inset" className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
       <ul>
         {rows.map((r) => (
@@ -170,7 +171,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
           </li>
         ))}
       </ul>
-    </section>
+    </UiCard>
   );
 }
 
@@ -225,7 +226,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   ).length;
 
   const renderCard = (card: Card, index: number) => (
-    // Fragment (not a div): `.doc.finding > .card` and other child
+    // Fragment (not a div): `.doc.finding > .ui-card` and other child
     // selectors in prototype.css depend on the section being a direct child.
     // The boundary itself renders no element, and its fallback keeps the
     // card shape, so the selectors hold in both states.
@@ -235,9 +236,9 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         name="guide-card"
         resetKey={`${reviewId}:${card.id}:${card.revision ?? 0}`}
         fallback={({ reset }) => (
-          <section className="card">
+          <UiCard as="section" variant="raised">
             <InlineFallback message="Couldn't show this card: something went wrong" onRetry={reset} />
-          </section>
+          </UiCard>
         )}
       >
         <CardView
@@ -304,7 +305,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           <Link to={`/review/${encodeURIComponent(reviewId)}/debug?tab=context`}>Debug → Shared context</Link>
         </p>
       ) : null}
-      <nav className="toc" aria-label="Contents">
+      <UiCard as="nav" variant="inset" className="toc" aria-label="Contents">
         <div className="toc-h">
           <button
             className="ib"
@@ -352,7 +353,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
             ) : null}
           </div>
         ) : null}
-      </nav>
+      </UiCard>
       {page.kind === "root" ? <Plotlines reviewId={reviewId} /> : null}
       {page.cards.map(renderCard)}
     </div>

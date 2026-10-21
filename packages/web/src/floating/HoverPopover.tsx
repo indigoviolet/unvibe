@@ -236,8 +236,38 @@ export function HoverPopover() {
       window.clearTimeout(closeTimer.current);
     };
 
+    // Last known cursor position, and whether the pointer genuinely moved
+    // after the current scroll began (see the settle check in dismissOnScroll).
+    const lastMouse = { x: -1, y: -1, movedAt: 0 };
+    let scrollBeganAt = 0;
+    let lastScrollAt = 0;
+    let settleTimer: number | undefined;
+
+    const scheduleOpen = (anchor: Element): void => {
+      overAnchor.current = anchor;
+      const pending = anchor;
+      openTimer.current = window.setTimeout(() => {
+        if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
+        openForRef.current(pending);
+      }, OPEN_DELAY_MS);
+    };
+
     const onPointerMove = (e: PointerEvent): void => {
-      if (e.movementX || e.movementY) scrollQuiet.current = false;
+      lastMouse.x = e.clientX;
+      lastMouse.y = e.clientY;
+      if (!(e.movementX || e.movementY)) return;
+      lastMouse.movedAt = Date.now();
+      const wasQuiet = scrollQuiet.current;
+      scrollQuiet.current = false;
+      // A scroll can land an anchor under a stationary cursor: its
+      // mouseover fired (and was ignored) during the scroll, and moving
+      // within the anchor never refires it. On the first real movement
+      // after the scroll, treat the anchor under the cursor as hovered.
+      if (wasQuiet && !anchorRef.current) {
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const anchor = target?.closest?.(ANCHOR_SELECTOR);
+        if (anchor) scheduleOpen(anchor);
+      }
     };
 
     const onMouseOver = (e: MouseEvent): void => {
@@ -252,13 +282,7 @@ export function HoverPopover() {
       clear();
       overAnchor.current = anchor;
       if (anchor) {
-        if (anchor !== anchorRef.current) {
-          const pending = anchor;
-          openTimer.current = window.setTimeout(() => {
-            if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
-            openForRef.current(pending);
-          }, OPEN_DELAY_MS);
-        }
+        if (anchor !== anchorRef.current) scheduleOpen(anchor);
       } else if (anchorRef.current) {
         closeTimer.current = window.setTimeout(() => hideRef.current(), CLOSE_DELAY_MS);
       }
@@ -266,8 +290,28 @@ export function HoverPopover() {
 
     const dismissOnScroll = (e: Event): void => {
       if ((e.target as Element | null)?.closest?.("#pop")) return;
+      // Trailing scroll events of one sequence (separated by the pointer
+      // move that ends it) still belong to that sequence: only a scroll
+      // after a quiet gap starts a new sequence.
+      const now = Date.now();
+      if (now - lastScrollAt > 600) scrollBeganAt = now;
+      lastScrollAt = now;
       scrollQuiet.current = true;
       hideRef.current();
+      // A trailing scroll event can land after the pointer has already
+      // moved onto an anchor (its mouseover was ignored above, and the
+      // scheduled open is cancelled by the hide). Once scrolling settles,
+      // re-check the anchor under the cursor — but only when the pointer
+      // genuinely moved after this scroll began, so content sliding under
+      // a stationary cursor still never opens.
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        scrollQuiet.current = false;
+        if (anchorRef.current || lastMouse.movedAt < scrollBeganAt) return;
+        const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
+        const anchor = target?.closest?.(ANCHOR_SELECTOR);
+        if (anchor) scheduleOpen(anchor);
+      }, 350);
     };
 
     const onPointerDown = (e: PointerEvent): void => {
@@ -301,6 +345,7 @@ export function HoverPopover() {
       document.documentElement.removeEventListener("mouseleave", onMouseLeave);
       window.removeEventListener("blur", hideRef.current);
       window.removeEventListener("resize", hideRef.current);
+      window.clearTimeout(settleTimer);
       clear();
     };
   }, []);

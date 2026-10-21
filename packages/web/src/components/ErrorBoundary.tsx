@@ -3,7 +3,7 @@
  * or commit unmounted the whole tree and left a white page.
  *
  * - `ErrorBoundary` renders its children directly (no wrapper element), so
- *   prototype.css child selectors (`.doc > .card`, `.doc.finding > .card`)
+ *   prototype.css child selectors (`.doc > .ui-card`, `.doc.finding > .ui-card`)
  *   keep matching. Each placement passes its own fallback shaped like the
  *   thing it replaces (a card-sized section, a file-shaped div, …).
  * - `name` identifies the placement in the report; `resetKey` identifies

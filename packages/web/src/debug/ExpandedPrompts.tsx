@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import type { PromptExpanded, PromptTemplate, PromptsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { formatTokens, splitLayers } from "../versions/versionUtils.js";
+import { Card } from "../ui/index.js";
 
 export function ExpandedPrompts({ reviewId }: { reviewId: string }): React.JSX.Element {
   const [data, setData] = useState<PromptsResponse | null>(null);
@@ -84,7 +85,7 @@ function PromptCard({
   onToggle: () => void;
 }): React.JSX.Element {
   return (
-    <div className="card" style={{ padding: "8px 14px" }} data-testid={`prompt-${template.name}`}>
+    <Card variant="plain" style={{ padding: "8px 14px" }} data-testid={`prompt-${template.name}`}>
       <div className="frow" style={{ gap: 8 }}>
         <button
           className="ib"
@@ -107,7 +108,7 @@ function PromptCard({
           <p className="hint">No expanded text for this review.</p>
         )
       ) : null}
-    </div>
+    </Card>
   );
 }
 
