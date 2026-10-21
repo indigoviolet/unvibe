@@ -657,6 +657,41 @@ export interface Contribution {
   status: ContributionStatus;
 }
 
+/** #224: normalised PR state for badges. Draft is a state of its own. */
+export type PrState = "open" | "draft" | "merged" | "closed";
+
+/** #224: normalised GitHub review decision for badges. */
+export type PrReviewDecision = "approved" | "changes_requested" | "review_required";
+
+/** Map gh's `state` + `isDraft` onto {@link PrState}; undefined when unknown. */
+export function prStateFromGh(state: unknown, isDraft: unknown): PrState | undefined {
+  if (isDraft === true) return "draft";
+  switch (typeof state === "string" ? state.toUpperCase() : "") {
+    case "OPEN":
+      return "open";
+    case "MERGED":
+      return "merged";
+    case "CLOSED":
+      return "closed";
+    default:
+      return undefined;
+  }
+}
+
+/** Map gh's `reviewDecision` onto {@link PrReviewDecision}; undefined when none. */
+export function prReviewDecisionFromGh(value: unknown): PrReviewDecision | undefined {
+  switch (typeof value === "string" ? value.toUpperCase() : "") {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes_requested";
+    case "REVIEW_REQUIRED":
+      return "review_required";
+    default:
+      return undefined;
+  }
+}
+
 /** PR description (or branch commit messages) as rendered HTML (M1 addition). */
 export interface ReviewDescription {
   /** HTML with stable paragraph ids; `desc:<id>@<rev>` tokens resolve here. */
@@ -671,6 +706,10 @@ export interface ReviewDescription {
   author?: string;
   /** gh PR state (OPEN/CLOSED/MERGED) for the author line. Absent on branches. */
   state?: string;
+  /** #224: gh `isDraft` at ingest/refresh time. Absent on branches. */
+  isDraft?: boolean;
+  /** #224: normalised gh review decision at ingest/refresh time. Absent on branches. */
+  reviewDecision?: PrReviewDecision;
   /**
    * "Restated →" mapping (PRD §4.11): description paragraph id → ids of
    * the guide blocks whose citations restate it. Derived from guide

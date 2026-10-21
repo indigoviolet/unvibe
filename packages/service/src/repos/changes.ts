@@ -16,6 +16,7 @@
  * offline or logged-out `gh` still yields branches + previous reviews.
  */
 import type { ChangesFilter, Repo, RepoChange } from "@unvibe/shared";
+import { prReviewDecisionFromGh, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -45,6 +46,9 @@ interface GhPr {
   deletions?: number;
   changedFiles?: number;
   url?: string;
+  state?: string;
+  isDraft?: boolean;
+  reviewDecision?: string;
   reviewRequests?: GhReviewRequest[];
 }
 
@@ -53,7 +57,7 @@ interface GhPr {
  * Fields `gh` cannot return in one call are simply absent (the row omits
  * that part) — never one call per PR.
  */
-const PR_FIELDS = "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,reviewRequests";
+const PR_FIELDS = "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,state,isDraft,reviewDecision,reviewRequests";
 
 /** One `gh pr list` call; null on any failure (best-effort listing). */
 async function listPrs(
@@ -107,6 +111,8 @@ function toChange(pr: GhPr): RepoChange {
   const deletions = toCount(pr.deletions);
   const changedFiles = toCount(pr.changedFiles);
   const teams = requestedTeams(pr);
+  const prState = prStateFromGh(pr.state, pr.isDraft);
+  const reviewDecision = prReviewDecisionFromGh(pr.reviewDecision);
   return {
     kind: "pr" as const,
     title: pr.title || `PR #${pr.number}`,
@@ -121,6 +127,9 @@ function toChange(pr: GhPr): RepoChange {
     ...(additions !== undefined ? { additions } : {}),
     ...(deletions !== undefined ? { deletions } : {}),
     ...(changedFiles !== undefined ? { changedFiles } : {}),
+    // #224: PR state + review decision badges.
+    ...(prState !== undefined ? { prState } : {}),
+    ...(reviewDecision !== undefined ? { reviewDecision } : {}),
     ...(teams.length > 0 ? { requestedTeams: teams } : {}),
   };
 }
