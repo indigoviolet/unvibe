@@ -94,10 +94,9 @@ function cliDeps(withToken: boolean): CliDeps {
 /**
  * First-run setup (issue #42): the release package declares no install
  * scripts, so setup runs here — when it has not been done for this
- * version, run it now, quietly, and never blocking the start. The
- * foreground child skips this: it IS the service (often started by the
- * login unit setup just installed), and setup's login enable would
- * start a second generation.
+ * version, run it now, quietly, and never blocking the start. It runs
+ * after the start (see `cmdStart`) and only writes the login unit —
+ * enabling it through the manager would start a second generation.
  */
 async function ensureStartSetup(): Promise<void> {
   try {
@@ -121,8 +120,15 @@ async function ensureStartSetup(): Promise<void> {
 }
 
 async function cmdStart(args: string[]): Promise<number> {
+  // Start first, setup second: on first start no login unit exists yet,
+  // so this launches one direct generation with the caller's
+  // environment. Setup afterwards only writes the login unit (deferred:
+  // it must not bootstrap a second, manager-owned generation beside
+  // the one just started). The foreground child never reaches the
+  // setup call — it serves for the life of the process.
+  const code = await cliStart(cliDeps(true), args);
   if (!args.includes("--foreground")) await ensureStartSetup();
-  return cliStart(cliDeps(true), args);
+  return code;
 }
 
 async function cmdStop(): Promise<number> {
@@ -166,7 +172,7 @@ async function cmdSetup(args: string[]): Promise<number> {
   // while a fresh terminal says `unvibe: command not found`. Detection
   // only: print the exact fix, never edit PATH or create symlinks.
   try {
-    const { assessBinReachability, binReachabilityAdvice } = await import("./setup/bin-reachability.js");
+    const { assessBinReachability, binReachabilityAdvice, canonicalizeRealpath } = await import("./setup/bin-reachability.js");
     const { resolveInteractivePath } = await import("../diagnostics/path-probe.js");
     const probed = await resolveInteractivePath();
     const dirs = (probed?.probedPath ?? process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
@@ -175,6 +181,7 @@ async function cmdSetup(args: string[]): Promise<number> {
       homeDir: os.homedir(),
       interactivePathDirs: dirs,
       exists: (p) => fs.existsSync(p),
+      canonicalize: canonicalizeRealpath,
     });
     for (const line of binReachabilityAdvice(reach)) console.log(line);
   } catch {
@@ -184,8 +191,8 @@ async function cmdSetup(args: string[]): Promise<number> {
 }
 
 async function cmdOpen(): Promise<number> {
-  await ensureStartSetup();
   const { port, token } = await cliEnsureRunning(cliDeps(true));
+  await ensureStartSetup();
   const url = serviceUrl(port, token);
   await openBrowser(url);
   console.log(url);

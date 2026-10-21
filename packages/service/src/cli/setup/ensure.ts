@@ -66,7 +66,16 @@ export async function ensureSetupForVersion(deps: EnsureSetupDeps): Promise<bool
   try {
     deps.ensureToken(deps.dataDir);
     const install = deps.install ?? installSetup;
-    await install(deps.paths, deps.runner, deps.platform, { port: deps.port, dataDir: deps.dataDir });
+    // Defer the login start: the caller (`unvibe start`/`open`) launches
+    // the service itself in this invocation. Enabling via the manager
+    // here would start a second generation (launchd RunAtLoad /
+    // systemd --now) racing it for the port and lock, without the
+    // caller's environment.
+    await install(deps.paths, deps.runner, deps.platform, {
+      port: deps.port,
+      dataDir: deps.dataDir,
+      deferLoginStart: true,
+    });
     writeSetupVersion(deps.dataDir, deps.version);
     return true;
   } catch {

@@ -103,6 +103,16 @@ export interface InstallSetupOpts {
   dataDir?: string;
   /** Skip the start-at-login unit (handler only). */
   noLogin?: boolean;
+  /**
+   * Write the start-at-login unit but do not enable/start it now.
+   * Setup-on-first-start uses this: the `start` in the same invocation
+   * launches the service itself, so a manager start here (launchd
+   * `RunAtLoad`, systemd `--now`) would spawn a second generation that
+   * fights the first for the port and the data-dir lock — and, on
+   * macOS, runs without the caller's environment. The unit still
+   * takes effect at the next login.
+   */
+  deferLoginStart?: boolean;
 }
 
 /** Install the `unvibe://` handler for this platform. Returns log lines. */
@@ -187,6 +197,12 @@ async function installLoginUnit(
     const plist = launchdPlistPath(paths.homeDir);
     fs.mkdirSync(path.dirname(plist), { recursive: true });
     fs.writeFileSync(plist, launchdPlistContent(unit));
+    if (opts.deferLoginStart) {
+      // No bootout/bootstrap: launchd loads LaunchAgents at login, so
+      // the file alone enables login start. Loading it now would start
+      // a second generation beside the service the caller is starting.
+      return [`service starts at login (launchd agent at ${plist}; never idle-exits there)`];
+    }
     // Idempotent refresh of the login instance: unload whatever is there
     // (ignored when absent), then load. Never touches a manually started
     // service, which lives outside the login domain.
@@ -204,6 +220,15 @@ async function installLoginUnit(
   fs.mkdirSync(path.dirname(unitFile), { recursive: true });
   fs.writeFileSync(unitFile, systemdUnitContent(unit));
   await runner.run("systemctl", ["--user", "daemon-reload"]);
+  if (opts.deferLoginStart) {
+    // Enable for login without starting a second generation now.
+    const enabled = await runner.run("systemctl", ["--user", "enable", SYSTEMD_UNIT_NAME]);
+    return [
+      enabled.code === 0
+        ? `service starts at login (systemd user unit at ${unitFile}; never idle-exits there)`
+        : `warning: login start not enabled (systemctl: ${enabled.stderr.trim() || enabled.stdout.trim() || "no user session?"}). Run: systemctl --user enable ${SYSTEMD_UNIT_NAME}`,
+    ];
+  }
   const enabled = await runner.run("systemctl", ["--user", "enable", "--now", SYSTEMD_UNIT_NAME]);
   return [
     enabled.code === 0
