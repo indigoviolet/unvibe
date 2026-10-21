@@ -38,7 +38,12 @@ test.describe("J10 suggested comments and questions", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    // Suggested question: a follow-up chip in the guide. Clicking asks it.
+    // Suggested question: a follow-up chip in the auto-written go-deeper
+    // flow card, which stays collapsed until opened (#217). Clicking asks it.
+    const flow = page.locator("#C-g-flow");
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+    await flow.getByRole("button", { name: "Expand" }).click();
     const follow = page.locator("#page .follow button").first();
     await expect(follow).toBeVisible({ timeout: 30_000 });
     const label = (await follow.innerText()).trim();
