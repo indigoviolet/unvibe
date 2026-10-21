@@ -1,23 +1,33 @@
 /**
- * Comments menu (comments owner; PRD §4.8).
+ * Comments menu (comments owner; PRD §4.8; issue #226).
  *
- * Prototype behaviour + classes (`.cmenu`, `.ci`, `.cj`, `.cw`, `.cx2`,
- * `.prtag`), not code:
- * - lists every comment from the guide, the description and the diff with
- *   its location; clicking one jumps to it (opening the thread, switching
+ * Prototype behaviour + classes (`.cmenu`, `.cx2`), not code:
+ * - one scrolling list with three sections — This review, Outbox,
+ *   On GitHub — each heading with its count (owner decision A: disjoint,
+ *   each thread appears once; posted threads return to This review);
+ * - hierarchy: section heading (strong) → group heading such as a file
+ *   (secondary; file name, path shortened from the left) → entry meta
+ *   (tertiary, small) → entry text (body size, clamped to two lines);
+ *   entries under a file group show only their line, not the file again;
+ * - kinds at a glance: an AI-suggested tag, and the author on GitHub
+ *   entries; shared ListRow + Badge components (#201/#218);
+ * - clicking an entry jumps to it (opening the thread, switching
  *   page/tab, unfolding/unhiding as needed);
- * - the Outbox filter shows the comments in the Outbox, each with an
+ * - the Outbox section shows each marked, unposted comment with an
  *   editable draft of the text to post (saved through `PATCH …/comments`,
  *   debounced, never lost on re-render), plus the export Markdown box
  *   with a Copy button (hidden when the Outbox is empty, #223);
  * - counts on the button; it never posts.
  * - Existing PR comments already on GitHub (`existingComments`) render
- *   read-only under a separate heading.
+ *   read-only under On GitHub, which keeps the #183 fold and show/hide
+ *   behaviour under its strong section heading.
+ * - Issue #222: a document review has no GitHub side at all, so the
+ *   On GitHub section (and the Submit-drafts line) is hidden there.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
-import { isDocumentReview, parseId } from "@unvibe/shared";
+import { isAiSuggested, isDocumentReview, parseId } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
@@ -29,7 +39,7 @@ import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
-import { Badge, Button } from "../ui/index.js";
+import { Badge, Button, ListRow } from "../ui/index.js";
 import { threadPostText } from "./threads.js";
 import { groupGithubComments, isOutdatedComment, requestGithubThread, type GithubThread } from "./GithubThreads.js";
 
@@ -86,6 +96,102 @@ export function prLocationLabel(snapshot: ReviewSnapshot, thread: Annotation): s
     return "General PR comment";
   }
   return "General PR comment";
+}
+
+/** Shorten a path from the left, keeping the file name visible (#226). */
+export function shortenLeft(path: string, max = 42): string {
+  if (path.length <= max) return path;
+  return `…${path.slice(-(max - 1))}`;
+}
+
+/** The guide card holding a block anchor, if any. */
+function guideCardOf(
+  snapshot: ReviewSnapshot,
+  blockId: string,
+): { pageTitle: string; cardTitle: string | null; cardId: string } | null {
+  const hash = blockId.indexOf("#");
+  const cardPart = hash >= 0 ? blockId.slice(0, hash) : null;
+  const bare = hash >= 0 ? blockId.slice(hash + 1) : blockId;
+  for (const page of snapshot.pages) {
+    for (const card of page.cards) {
+      if (cardPart !== null && card.id === cardPart) return { pageTitle: page.title, cardTitle: card.title, cardId: card.id };
+      if (card.blocks.some((b) => (b as { id?: string }).id === bare)) {
+        return { pageTitle: page.title, cardTitle: card.title, cardId: card.id };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Group heading for a local thread (#226): file paths shortened from the
+ * left (file name stays visible); guide threads read like the location
+ * elsewhere — "Guide › <card title>"; never the review title.
+ */
+export function groupLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
+    return shortenLeft(file?.path ?? host.fileKey);
+  }
+  if (host.kind === "code") return shortenLeft(host.path);
+  if (host.kind === "description") return descriptionPaneName(snapshot);
+  if (host.kind === "block") {
+    if (snapshot.document) return snapshot.document.title;
+    const card = guideCardOf(snapshot, host.blockId);
+    if (card) return card.cardTitle ? `Guide › ${card.cardTitle}` : "Guide";
+  }
+  return whereLabel(snapshot, thread);
+}
+
+/** Full-length group heading for the tooltip: file paths unshortened. */
+export function groupTitle(snapshot: ReviewSnapshot, thread: Annotation): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
+    return file?.path ?? host.fileKey;
+  }
+  if (host.kind === "code") return host.path;
+  return groupLabel(snapshot, thread);
+}
+
+/** Group key: diff threads share their file; document threads their title. */
+function groupKey(snapshot: ReviewSnapshot, thread: Annotation): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
+    return `diff:${file?.path ?? host.fileKey}`;
+  }
+  if (host.kind === "code") return `code:${host.path}`;
+  if (host.kind === "description") return "desc";
+  if (host.kind === "block" && snapshot.document) return `doc:${snapshot.document.title}`;
+  return `where:${whereLabel(snapshot, thread)}`;
+}
+
+function truncate(s: string, max: number): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+/** Entry meta (tertiary, small): the line under a file group, the quote elsewhere. */
+export function entryMeta(snapshot: ReviewSnapshot, thread: Annotation): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    return host.endLine !== undefined && host.endLine !== host.line ? `:${host.line}-${host.endLine}` : `:${host.line}`;
+  }
+  if (host.kind === "code") {
+    return host.endLine !== undefined && host.endLine !== host.line ? `:${host.line}-${host.endLine}` : `:${host.line}`;
+  }
+  if (host.kind === "block" && snapshot.document) {
+    const bare = host.blockId.includes("#") ? host.blockId.slice(host.blockId.indexOf("#") + 1) : host.blockId;
+    return `› ${bare}`;
+  }
+  if (host.kind === "description") {
+    const quote = thread.anchor.quotedText?.trim() ?? "";
+    return quote !== "" ? `“${truncate(quote, 48)}”` : `¶ ${host.paragraphId}`;
+  }
+  const quote = thread.anchor.quotedText?.trim() ?? "";
+  return quote !== "" ? `“${truncate(quote, 48)}”` : "Guide comment";
 }
 
 /** "From …" origin for menu rows. */
@@ -186,7 +292,6 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const isDocument = snapshot ? isDocumentReview(snapshot) : false;
   const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<"all" | "outbox">("all");
   const [exportMd, setExportMd] = useState<string | null>(null);
   const [fetchedExisting, setFetchedExisting] = useState<ExistingReviewComment[] | null>(null);
   const navigate = useNavigate();
@@ -202,12 +307,56 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       ) as Annotation[]),
     [snapshot],
   );
+  // Owner decision A (#226): disjoint sections — This review holds the
+  // unmarked threads (posted ones return here), the Outbox the marked,
+  // unposted ones. Each thread appears once.
+  const thisReview = useMemo(() => threads.filter((t) => !t.post || t.postedAt), [threads]);
   const outbox = useMemo(() => threads.filter((t) => t.post && !t.postedAt), [threads]);
 
+  interface MenuGroup {
+    label: string;
+    title: string;
+    threads: Annotation[];
+  }
+
+  const thisGroups: MenuGroup[] = useMemo(() => {
+    if (!snapshot) return [];
+    const order: MenuGroup[] = [];
+    const at = new Map<string, MenuGroup>();
+    for (const t of thisReview) {
+      const key = groupKey(snapshot, t);
+      let g = at.get(key);
+      if (!g) {
+        g = { label: groupLabel(snapshot, t), title: groupTitle(snapshot, t), threads: [] };
+        at.set(key, g);
+        order.push(g);
+      }
+      g.threads.push(t);
+    }
+    return order;
+  }, [snapshot, thisReview]);
+
+  const outboxGroups: MenuGroup[] = useMemo(() => {
+    if (!snapshot) return [];
+    const order: MenuGroup[] = [];
+    const at = new Map<string, MenuGroup>();
+    for (const t of outbox) {
+      const key = groupKey(snapshot, t);
+      let g = at.get(key);
+      if (!g) {
+        g = { label: groupLabel(snapshot, t), title: groupTitle(snapshot, t), threads: [] };
+        at.set(key, g);
+        order.push(g);
+      }
+      g.threads.push(t);
+    }
+    return order;
+  }, [snapshot, outbox]);
+
   // #223: export Markdown from the service (shared builder), shown in a
-  // box with Copy in the Outbox view. Hidden (and unfetched) when empty.
+  // box with Copy in the Outbox section. Hidden (and unfetched) when empty.
   useEffect(() => {
-    if (!open || filter !== "outbox" || outbox.length === 0) return;
+    if (!open || outbox.length === 0) return;
     let cancelled = false;
     api
       .outbox(reviewId)
@@ -220,7 +369,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [open, filter, outbox.length, reviewId, snapshot?.rev]);
+  }, [open, outbox.length, reviewId, snapshot?.rev]);
 
   const copyExport = (): void => {
     if (exportMd === null) return;
@@ -229,7 +378,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       .then(() => toast("Copied the Outbox Markdown"))
       .catch(() => toast("Couldn't copy — select the text in the box instead"));
   };
-  const existing = snapshot?.existingComments ?? fetchedExisting ?? null;
+  // Branch reviews have no PR number and therefore no GitHub side:
+  // treat them as an empty list instead of loading forever.
+  const existing = snapshot?.existingComments ?? fetchedExisting ?? (snapshot && !snapshot.review.prNumber ? [] : null);
 
   // Fetch read-only GitHub comments once per menu opening when the
   // snapshot doesn't carry them yet.
@@ -328,29 +479,34 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     go();
   };
 
-  const list = filter === "outbox" ? outbox : threads;
-
   // Existing GitHub threads grouped by file, in fetch order (issue #168).
+  // Left-shortening is for file paths only (#226); "General" stays whole.
   const githubGroups = useMemo(() => {
     if (!snapshot || !existing) return [];
-    const groups = new Map<string, { label: string; threads: GithubThread[] }>();
+    const groups = new Map<string, { label: string; title: string; threads: GithubThread[] }>();
     for (const t of groupGithubComments(existing)) {
-      const label = t.root.path ?? "General";
-      const g = groups.get(label) ?? { label, threads: [] };
+      const full = t.root.path ?? "General";
+      const g = groups.get(full) ?? {
+        label: t.root.path === undefined ? "General" : shortenLeft(full),
+        title: full,
+        threads: [],
+      };
       g.threads.push(t);
-      groups.set(label, g);
+      groups.set(full, g);
     }
     return [...groups.values()];
   }, [snapshot, existing]);
+  // #226: the On GitHub count is the threads shown, not the comments.
+  const ghThreadCount = useMemo(() => githubGroups.reduce((n, g) => n + g.threads.length, 0), [githubGroups]);
 
   // Issue #183 addition: the section follows the diff's show/hide setting
   // (`showExistingComments`). Hidden collapses it to its heading with a
   // count, and clicking the heading shows them again (here and in the
   // diff). While shown, the heading's chevron folds the section alone,
-  // remembered in `existingCommentsCollapsed`.
+  // remembered in `existingCommentsCollapsed`. #226 keeps this behaviour
+  // under the strong "On GitHub" section heading.
   const ghShown = snapshot?.viewPrefs.showExistingComments ?? true;
   const ghCollapsed = snapshot?.viewPrefs.existingCommentsCollapsed ?? false;
-  const ghCount = existing?.length ?? 0;
   const ghOpen = ghShown && !ghCollapsed;
   const onGhHead = (): void => {
     const body = !ghShown
@@ -376,6 +532,40 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     requestGithubThread(thread.root.id);
   };
 
+  // #226: rows are ListRows; the div acts as the jump button.
+  const rowKeys = (onJump: () => void): { role: string; tabIndex: number; onKeyDown: (e: ReactKeyboardEvent) => void } => ({
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: (e: ReactKeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onJump();
+      }
+    },
+  });
+
+  const localRow = (thread: Annotation, withDraft: boolean): React.JSX.Element => {
+    const meta = entryMeta(snapshot as ReviewSnapshot, thread);
+    const go = (): void => jump(thread);
+    const row = (
+      <ListRow
+        data-cjump={thread.id}
+        onClick={go}
+        {...rowKeys(go)}
+        primary={excerpt(thread)}
+        meta={meta.startsWith(":") ? <span className="mono">{meta}</span> : meta}
+        trailing={isAiSuggested(thread) ? <Badge tone="neutral">AI-suggested</Badge> : null}
+      />
+    );
+    if (!withDraft) return <span key={thread.id}>{row}</span>;
+    return (
+      <span className="cm-entry" key={thread.id}>
+        {row}
+        <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} />
+      </span>
+    );
+  };
+
   return (
     <span ref={rootRef} style={{ position: "relative" }}>
       <Button
@@ -393,69 +583,72 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       {open && snapshot ? (
         <div className="cmenu" role="dialog" aria-label="Comments">
           <div className="frow">
-            <span className="seg">
-              <button type="button" data-cmf="all" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
-                All {threads.length}
-              </button>
-              <button type="button" data-cmf="outbox" aria-pressed={filter === "outbox"} onClick={() => setFilter("outbox")}>
-                Outbox {outbox.length}
-              </button>
-            </span>
             <span className="sp" />
             <button className="ib" type="button" data-tip="Close" aria-label="Close" data-cmclose="" onClick={() => setOpen(false)}>
               <Icon name="x" />
             </button>
           </div>
-          {list.map((thread) => {
-            const where = whereLabel(snapshot, thread);
-            return (
-              <div className="ci" key={thread.id}>
-                <button className="cj" type="button" data-cjump={thread.id} onClick={() => jump(thread)}>
-                  <span className="cw">
-                    {filter === "outbox" && !isDocument
-                      ? `${prLocationLabel(snapshot, thread)} · from ${where}`
-                      : where}
-                  </span>
-                  <span className="cx2">{excerpt(thread)}</span>
-                </button>
-                {thread.post ? <Badge tone="warn">Outbox</Badge> : null}
-                {filter === "outbox" ? <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} /> : null}
-              </div>
-            );
-          })}
-          {list.length === 0 ? (
-            <p className="hint" style={{ margin: 4 }}>
-              {filter === "outbox"
-                ? "Nothing in the Outbox yet. Use “Add to Outbox” on any comment."
-                : "No comments yet. Select text and choose Ask or Comment."}
-            </p>
-          ) : null}
-          {filter === "outbox" && outbox.length > 0 && !isDocument ? (
-            <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
-          ) : null}
-          {filter === "outbox" && outbox.length > 0 ? (
-            <div className="obbox">
-              <div className="frow">
-                <span className="hint">Export</span>
-                <span className="sp" />
-                <Button variant="secondary" size="sm" type="button" data-copy-outbox="" disabled={exportMd === null} onClick={copyExport}>
-                  Copy
-                </Button>
-              </div>
-              <pre className="obmd" data-outbox-md="">{exportMd ?? "Loading…"}</pre>
+          <section data-cmsec="review" aria-label={`This review, ${thisReview.length} comments`}>
+            <div className="cmsec-head">
+              <strong>This review</strong> <Badge tone="neutral">{thisReview.length}</Badge>
             </div>
-          ) : null}
+            {thisGroups.map((g) => (
+              <div key={g.label}>
+                <span className="cmgroup" title={g.title}>{g.label}</span>
+                {g.threads.map((t) => localRow(t, false))}
+              </div>
+            ))}
+            {thisReview.length === 0 ? (
+              <p className="hint" style={{ margin: 4 }}>
+                {threads.length === 0
+                  ? "No comments yet. Select text and choose Ask or Comment."
+                  : "Everything is marked for the Outbox below."}
+              </p>
+            ) : null}
+          </section>
+          <section data-cmsec="outbox" aria-label={`Outbox, ${outbox.length} comments`}>
+            <div className="cmsec-head">
+              <strong>Outbox</strong> <Badge tone="warn">{outbox.length}</Badge>
+            </div>
+            {outboxGroups.map((g) => (
+              <div key={g.label}>
+                <span className="cmgroup" title={g.title}>{g.label}</span>
+                {g.threads.map((t) => localRow(t, true))}
+              </div>
+            ))}
+            {outbox.length === 0 ? (
+              <p className="hint" style={{ margin: 4 }}>
+                Nothing in the Outbox yet. Use “Add to Outbox” on any comment.
+              </p>
+            ) : null}
+            {outbox.length > 0 && !isDocument ? (
+              <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
+            ) : null}
+            {outbox.length > 0 ? (
+              <div className="obbox">
+                <div className="frow">
+                  <span className="hint">Export</span>
+                  <span className="sp" />
+                  <Button variant="secondary" size="sm" type="button" data-copy-outbox="" disabled={exportMd === null} onClick={copyExport}>
+                    Copy
+                  </Button>
+                </div>
+                <pre className="obmd" data-outbox-md="">{exportMd ?? "Loading…"}</pre>
+              </div>
+            ) : null}
+          </section>
           {isDocument ? null : (
-          <div>
+          <section data-cmsec="github" aria-label={`On GitHub, ${ghThreadCount} threads`}>
             <button
-              className="ghhead"
+              className="cmsec-head ghhead"
               type="button"
               data-ghhead=""
               aria-expanded={ghOpen}
               onClick={onGhHead}
             >
               <Icon name={ghOpen ? "down" : "right"} />
-              <span>{ghShown ? "Already on GitHub" : `Already on GitHub · ${ghCount} hidden`}</span>
+              <strong>On GitHub</strong> <Badge tone="neutral">{ghThreadCount}</Badge>
+              {ghShown ? null : <span className="hint">hidden</span>}
             </button>
             {!ghOpen ? null : existing === null ? (
               <p className="hint" style={{ margin: 4 }}>
@@ -468,49 +661,49 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             ) : (
               githubGroups.map((g) => (
                 <div key={g.label}>
-                  <span className="ghgroup">{g.label}</span>
+                  <span className="cmgroup" title={g.title}>{g.label}</span>
                   {g.threads.map((t) => {
                     const snap = snapshot;
                     const outdated = snap ? isOutdatedComment(snap.files, t.root) : false;
                     const count = 1 + t.replies.length;
-                    const where =
-                      t.root.path && t.root.line !== undefined
-                        ? `${t.root.path.split("/").pop()}:${t.root.line}`
-                        : "General";
+                    // Entries under a file group show only their line (#226).
+                    const meta =
+                      g.label === "General"
+                        ? `${t.root.author ?? "GitHub"} · ${count} ${count === 1 ? "comment" : "comments"}${outdated ? " · outdated" : ""}`
+                        : t.root.line !== undefined
+                          ? `:${t.root.line} · ${t.root.author ?? "GitHub"} · ${count} ${count === 1 ? "comment" : "comments"}${outdated ? " · outdated" : ""}`
+                          : `${t.root.author ?? "GitHub"} · ${count} ${count === 1 ? "comment" : "comments"}${outdated ? " · outdated" : ""}`;
+                    const go = (): void => jumpExisting(t);
                     return (
-                      <div className="ci" key={`existing-${t.root.id}`}>
-                        <button
-                          className="cj"
-                          type="button"
-                          data-ghjump={t.root.id}
-                          onClick={() => jumpExisting(t)}
-                        >
-                          <span className="cw">
-                            {where} · {t.root.author ?? "GitHub"} · {count}{" "}
-                            {count === 1 ? "comment" : "comments"}
-                            {outdated ? " · outdated" : ""}
-                          </span>
-                          <span className="cx2 ghmenu" dangerouslySetInnerHTML={{ __html: t.root.bodyHtml }} />
-                        </button>
-                        {t.root.htmlUrl ? (
-                          <a
-                            className="ib"
-                            href={t.root.htmlUrl}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            data-tip="Open on GitHub"
-                            aria-label="Open on GitHub"
-                          >
-                            <Icon name="open" />
-                          </a>
-                        ) : null}
-                      </div>
+                      <ListRow
+                        key={`existing-${t.root.id}`}
+                        data-ghjump={t.root.id}
+                        onClick={go}
+                        {...rowKeys(go)}
+                        primary={<span className="ghmenu" dangerouslySetInnerHTML={{ __html: t.root.bodyHtml }} />}
+                        meta={meta}
+                        trailing={
+                          t.root.htmlUrl ? (
+                            <a
+                              className="ib"
+                              href={t.root.htmlUrl}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              data-tip="Open on GitHub"
+                              aria-label="Open on GitHub"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Icon name="open" />
+                            </a>
+                          ) : null
+                        }
+                      />
                     );
                   })}
                 </div>
               ))
             )}
-          </div>
+          </section>
           )}
         </div>
       ) : null}

@@ -180,15 +180,14 @@ test.describe("J222 document review", () => {
     await expect(page.locator(".codefile")).not.toContainText("hello from the feature branch");
     await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
 
-    // The earlier document comment is in the Outbox (#223), exported
-    // under its document block with a Copy-able Markdown box.
+    // The earlier document comment is in the Outbox (#223, #226),
+    // exported under its document block with a Copy-able Markdown box.
     await page.getByRole("button", { name: /Comments/ }).first().click();
-    await page.locator('[data-cmf="outbox"]').click();
-    await expect(page.locator(".cmenu")).toContainText("Please expand this part.");
-    await expect(page.locator(".cmenu")).toContainText("Design note › p3");
-    // A document has no GitHub side: no "Already on GitHub" section, no
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Please expand this part.");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Design note");
+    // A document has no GitHub side: no "On GitHub" section, no
     // Submit-drafts line, and a short entry meta (the guide pattern).
-    await expect(page.locator(".cmenu")).not.toContainText("Already on GitHub");
+    await expect(page.locator(".cmenu")).not.toContainText("On GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("Nothing reaches GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("stays in the Outbox");
     await expect(page.locator("[data-outbox-md]")).toContainText("# Comments on Design note", { timeout: 15_000 });
