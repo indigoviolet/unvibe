@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 import type { RepoChange } from "@unvibe/shared";
-import { changeHead, diffSizeParts } from "./StartPage.js";
+import { AUTHOR_ALL, authorCounts, changeHead, diffSizeParts, matchesAuthor } from "./StartPage.js";
 
 describe("changeHead (#91)", () => {
   test("PR row with a branch shows number and branch", () => {
@@ -49,5 +49,36 @@ describe("diffSizeParts (#100)", () => {
 
   test("no size data is null (the row omits the size)", () => {
     expect(diffSizeParts({})).toBeNull();
+  });
+});
+
+describe("author filter (#228)", () => {
+  test("All passes everything, including rows with no known author", () => {
+    expect(matchesAuthor("alice", AUTHOR_ALL)).toBe(true);
+    expect(matchesAuthor(undefined, AUTHOR_ALL)).toBe(true);
+  });
+
+  test("a specific author passes matching rows and author-less rows", () => {
+    expect(matchesAuthor("alice", "alice")).toBe(true);
+    expect(matchesAuthor("bob", "alice")).toBe(false);
+    // Branch rows/reviews carry no author (no commit-author fetch):
+    // they stay visible until the owner decides otherwise (see #228).
+    expect(matchesAuthor(undefined, "alice")).toBe(true);
+    expect(matchesAuthor("", "alice")).toBe(true);
+  });
+
+  test("counts cover sessions + PR rows, skipping author-less rows", () => {
+    const counts = authorCounts(
+      [{ author: "alice" }, {}, { author: "bob" }],
+      [
+        { kind: "pr", title: "a", author: "alice" },
+        { kind: "pr", title: "b", author: "alice" },
+        { kind: "branch", title: "c", branch: "c" },
+      ] as RepoChange[],
+    );
+    expect(counts.get("alice")).toBe(3);
+    expect(counts.get("bob")).toBe(1);
+    expect(counts.has("")).toBe(false);
+    expect(counts.size).toBe(2);
   });
 });
