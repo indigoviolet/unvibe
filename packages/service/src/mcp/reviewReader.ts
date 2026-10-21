@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { documentBlockText, isReadySnapshot, renderMarkdown } from "@unvibe/shared";
+import { documentBlockText, isDocumentReview, isReadySnapshot, renderMarkdown } from "@unvibe/shared";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import type { McpReviewData, ReviewReader } from "./read.js";
@@ -103,8 +103,8 @@ export class StoreReviewReader implements ReviewReader {
   getWorktreePath(reviewId: string): string | null {
     // Issue #222: document reviews read code from their first context repo.
     const snap = this.opts.reviews.getSnapshot(reviewId);
-    if (snap?.review.kind === "document") {
-      return snap.contextRepos?.[0]?.repoPath ?? null;
+    if (snap && isDocumentReview(snap)) {
+      return snap.contextRepos[0]?.repoPath ?? null;
     }
     const wt = path.join(this.opts.dataDir, "worktrees", reviewId);
     try {

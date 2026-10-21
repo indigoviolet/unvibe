@@ -10,6 +10,7 @@
  */
 import type { FastifyReply } from "fastify";
 import type { ActionResponse, ReviewAction } from "@unvibe/shared";
+import { isDocumentReview } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
@@ -100,7 +101,7 @@ export async function dispatchAction(
   {
     const snap = deps.reviews?.getSnapshot(deps.reviewId);
     if (
-      snap?.review.kind === "document" &&
+      !!snap && isDocumentReview(snap) &&
       (action.kind === "depth" ||
         action.kind === "examples" ||
         action.kind === "diagram" ||

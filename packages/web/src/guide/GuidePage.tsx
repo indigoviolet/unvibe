@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { isDocumentReview } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
@@ -197,7 +198,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   }
 
   // Issue #222: a document review's left pane is the document itself.
-  if (snapshot.review.kind === "document") {
+  if (isDocumentReview(snapshot)) {
     return <DocumentView reviewId={reviewId} onOpenPage={onOpenPage} />;
   }
 

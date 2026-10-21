@@ -2074,7 +2074,7 @@ export const mockApi = {
     const id = `mock-doc-${now.toString(36)}`;
     const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
     return {
-      review: { id, repoId: first?.repoId ?? "demo", branch: "document", kind: "document", versions: [version], currentVersion: 1, createdAt: now },
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
       document,
       contextRepos: body.contextRepos.map((pick) => {
         const r = getRepos().find((x) => x.id === pick.repoId);

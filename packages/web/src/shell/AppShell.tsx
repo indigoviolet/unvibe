@@ -15,6 +15,7 @@
  * restores it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isDocumentReview } from "@unvibe/shared";
 import { GuidePage } from "../guide/GuidePage.js";
 import { useReview } from "../state/store.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
@@ -44,7 +45,7 @@ function defaultWidth(): number {
 export function AppShell({ reviewId }: { reviewId: string }) {
   // Issue #222: document reviews have no source pane in phase 1 (the code
   // browser is phase 2) — the document fills the window.
-  const isDocument = useReview((s) => s.snapshot?.review.kind === "document");
+  const isDocument = useReview((s) => (s.snapshot ? isDocumentReview(s.snapshot) : false));
   const [guideOpen, setGuideOpen] = useState(true);
   const [sourceOpen, setSourceOpen] = useState<boolean | null>(null); // null = follow width
   const [paneWidth, setPaneWidth] = useState<number>(() => defaultWidth());

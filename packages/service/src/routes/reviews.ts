@@ -32,7 +32,7 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { ingestStatusOf, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { ingestStatusOf, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -694,7 +694,6 @@ export async function registerReviews(
           id: reviewId,
           repoId: contextRepos[0].repoId,
           branch: "document",
-          kind: "document",
           versions: [version],
           currentVersion: 1,
           createdAt: now,
@@ -717,7 +716,7 @@ export async function registerReviews(
       transaction(ctx.db, () => {
         ctx.db
           .prepare("INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .run(reviewId, contextRepos[0].repoId, "document", null, 1, now, JSON.stringify({ title: document.title, kind: "document" }));
+          .run(reviewId, contextRepos[0].repoId, "document", null, 1, now, JSON.stringify({ title: document.title }));
         ctx.db
           .prepare("INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING")
           .run(reviewId, 1, docSha, docSha, "document", now, "{}");
@@ -844,7 +843,7 @@ export async function registerReviews(
     if (snap.review.repoId === "demo") {
       return reply.code(409).send({ error: "the demo guide can't be re-done" });
     }
-    if (snap.review.kind === "document") {
+    if (isDocumentReview(snap)) {
       return reply.code(409).send({ error: "a document review can't be re-done — paste a new document to start another" });
     }
     const refusedRedo = ingestRefusal(snap);
@@ -936,7 +935,7 @@ export async function registerReviews(
     if (refused) return reply.code(409).send({ error: refused });
     // Issue #222: document reviews have a single version — refresh is a
     // no-op (the web checks for new commits on every review open).
-    if (first.review.kind === "document") {
+    if (isDocumentReview(first)) {
       const response: RefreshResponse = { review: first.review, newVersion: false };
       return response;
     }
@@ -1055,7 +1054,7 @@ export async function registerReviews(
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     const refusedResume = ingestRefusal(snapshot);
     if (refusedResume) return reply.code(409).send({ error: refusedResume });
-    if (snapshot.review.kind === "document") {
+    if (isDocumentReview(snapshot)) {
       return reply.code(409).send({ error: "document reviews generate nothing up front — there is nothing to resume" });
     }
     void req;

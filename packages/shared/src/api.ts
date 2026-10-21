@@ -281,12 +281,8 @@ export function assertReadySnapshot(snap: ReviewSnapshot): void {
   throw new Error("the review is still opening");
 }
 
-export interface ReviewSnapshot {
+interface ReviewSnapshotBase {
   review: Review;
-  /** Issue #222: the pasted document (document reviews only). */
-  document?: DocumentContent;
-  /** Issue #222: resolved context repos (document reviews only). */
-  contextRepos?: ContextRepoRef[];
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
    * no real version yet. Present once the ingest lands. Callers must check
@@ -364,6 +360,37 @@ export interface ReviewSnapshot {
    * the Debug page; absent until a refresh moves the head.
    */
   refreshTimings?: { at: number; steps: import("./entities.js").TimedStep[] };
+}
+
+/** Issue #222: a change (PR/branch) review — no document content. */
+export interface ChangeReviewSnapshot extends ReviewSnapshotBase {
+  document?: undefined;
+  contextRepos?: undefined;
+}
+
+/** Issue #222: a document review — the pasted document and its context repos. */
+export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
+  document: DocumentContent;
+  contextRepos: ContextRepoRef[];
+}
+
+/**
+ * Issue #222: a review snapshot, discriminated by shape. The kind is
+ * derived, never stored: a snapshot carrying the pasted document is a
+ * document review; every other snapshot is a change review.
+ */
+export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot;
+
+/** Issue #222: true when the snapshot is a document review's. */
+export function isDocumentReview(
+  snap: Pick<ReviewSnapshot, "document">,
+): snap is DocumentReviewSnapshot {
+  return snap.document !== undefined;
+}
+
+/** Issue #222: the derived review kind of a snapshot. */
+export function reviewKindOf(snap: Pick<ReviewSnapshot, "document">): ReviewKind {
+  return isDocumentReview(snap) ? "document" : "change";
 }
 
 export type ReviewResponse = ReviewSnapshot;

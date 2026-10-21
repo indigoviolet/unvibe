@@ -32,8 +32,13 @@ export interface Repo {
   managed?: boolean;
 }
 
-/** Issue #222: what a review reviews. Absent means `"change"` (stored
- * change reviews predate the field; document reviews always set it). */
+/**
+ * Issue #222: what a review reviews. Never stored: the kind is derived
+ * from the snapshot's shape (`isDocumentReview` in `api.ts`) — a review
+ * whose snapshot carries the pasted document is a document review, and
+ * every other review is a change review. There is no stored `kind`
+ * field and no fallback read.
+ */
 export type ReviewKind = "change" | "document";
 
 /** Issue #222: where a document review's context repo is read from. */
@@ -87,16 +92,9 @@ export interface Review {
   branch: string;
   /** PR number, absent for branch-only reviews. */
   prNumber?: number;
-  /** Issue #222: `"document"` for a document review; absent/`"change"` otherwise. */
-  kind?: ReviewKind;
   versions: Version[];
   currentVersion: number;
   createdAt: number;
-}
-
-/** Issue #222: the review kind of a review (absent means `"change"`). */
-export function reviewKindOf(review: Pick<Review, "kind">): ReviewKind {
-  return review.kind === "document" ? "document" : "change";
 }
 
 /** One fetched state of the branch. */

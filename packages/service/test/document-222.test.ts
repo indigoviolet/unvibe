@@ -73,13 +73,15 @@ describe("document reviews (#222)", () => {
     });
     if (res.statusCode !== 201) throw new Error(`create failed: ${res.statusCode} ${res.body}`);
     const snap = res.json() as {
-      review: { kind?: string; branch: string };
+      review: { branch: string };
       document: { title: string; blocks: { id: string }[] };
       contextRepos: { source: string; label: string }[];
       pages: unknown[];
       jobs: unknown[];
     };
-    expect(snap.review.kind).toBe("document");
+    // The kind is derived from the shape: no stored `kind`, document present.
+    expect((snap.review as { kind?: string }).kind).toBeUndefined();
+    expect(snap.review.branch).toBe("document");
     expect(snap.document.title).toBe("Spec");
     expect(snap.document.blocks.map((b) => b.id)).toEqual(["p1", "p2", "p3"]);
     expect(snap.contextRepos.map((c) => c.source)).toEqual(["local", "worktree"]);

@@ -28,7 +28,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, isDocumentReview, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
@@ -1168,8 +1168,8 @@ export class Pipeline {
    */
   private sessionCwd(reviewId: string): string {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (snapshot?.review.kind === "document") {
-      const first = snapshot.contextRepos?.[0];
+    if (snapshot && isDocumentReview(snapshot)) {
+      const first = snapshot.contextRepos[0];
       if (first && fs.existsSync(first.path)) return first.path;
     }
     return this.worktreeOf(reviewId);
@@ -1181,7 +1181,7 @@ export class Pipeline {
     instructions: string,
     settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
   ): Promise<string> {
-    if (snapshot.review.kind === "document") {
+    if (isDocumentReview(snapshot)) {
       const text = await buildDocumentBaseText(this.opts.commands, snapshot);
       return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
     }
@@ -1466,7 +1466,7 @@ export class Pipeline {
     const instructions = renderSystemPrompt(lib, postureFor(settings));
     // Document reviews build their pack from the document + repo maps
     // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
-    const isDocument = snapshot.review.kind === "document";
+    const isDocument = isDocumentReview(snapshot);
     const pack = isDocument
       ? null
       : buildBasePack(toPromptSnapshot(snapshot, { model: settings.main.model }), instructions, {

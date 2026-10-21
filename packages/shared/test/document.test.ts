@@ -3,8 +3,10 @@ import {
   documentAnchorBlockId,
   documentBlockText,
   formatId,
+  isDocumentReview,
   parseDocumentMarkdown,
   parseId,
+  reviewKindOf,
   tokenizeLinks,
 } from "../src/index.js";
 
@@ -30,6 +32,16 @@ describe("parseDocumentMarkdown (#222)", () => {
     expect(parseDocumentMarkdown("Just a paragraph.").title).toBe("Just a paragraph.");
     expect(parseDocumentMarkdown("").title).toBe("Untitled document");
     expect(parseDocumentMarkdown("").blocks).toEqual([]);
+  });
+});
+
+describe("derived review kind (#222)", () => {
+  it("derives the kind from the snapshot shape, with no stored field", () => {
+    const doc = parseDocumentMarkdown("# T\n\nBody.\n");
+    expect(isDocumentReview({ document: doc })).toBe(true);
+    expect(reviewKindOf({ document: doc })).toBe("document");
+    expect(isDocumentReview({ document: undefined })).toBe(false);
+    expect(reviewKindOf({ document: undefined })).toBe("change");
   });
 });
 
