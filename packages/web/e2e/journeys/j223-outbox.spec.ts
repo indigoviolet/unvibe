@@ -42,7 +42,7 @@ test.describe("J223 outbox export (branch review)", () => {
     const thread = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "Branch-only thought" });
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Marking works with no PR: new comments are in the Outbox by default.
-    await expect(thread.getByRole("button", { name: "In the Outbox · click to remove" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
     const exported = await apiJson(svc, "GET", `/api/reviews/${reviewId}/outbox`);
     expect(exported.status).toBe(200);
@@ -78,7 +78,7 @@ test.describe("J223 outbox export (branch review)", () => {
     // Removing from the Outbox returns the thread to This review and hides
     // the export box; the three counts still add up to the one thread.
     await page.locator(".cmenu [data-cmclose]").click();
-    await thread.getByRole("button", { name: "In the Outbox · click to remove" }).click();
+    await thread.getByRole("button", { name: "Remove from the Outbox" }).click();
     await expect(thread.getByRole("button", { name: "Add to Outbox" })).toBeVisible({ timeout: 10_000 });
     await page.locator('#reviewbar [data-cm=""]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toHaveCount(0);

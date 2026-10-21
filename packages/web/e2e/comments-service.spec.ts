@@ -210,7 +210,7 @@ test.describe("comments over the real service", () => {
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Comments start no agent job and are for the PR by default.
     await expect(thread.locator(".working")).toHaveCount(0);
-    await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
     await expect(
@@ -227,7 +227,7 @@ test.describe("comments over the real service", () => {
     });
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Already marked for the PR by default (comments are for the PR).
-    await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
     // Edit the Outbox draft in the Comments menu and let it save.
     await page.locator('#reviewbar [data-cm=""]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();

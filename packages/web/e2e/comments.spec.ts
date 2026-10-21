@@ -132,7 +132,7 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await expect(thread).toBeVisible({ timeout: 5000 });
   // A comment is for the PR by default: no agent reply, already marked.
   await expect(thread.locator(".working")).toHaveCount(0);
-  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -221,7 +221,7 @@ test("Outbox drafts live in the Comments menu and persist", async ({ page }) => 
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
   // Comments are for the PR by default — no explicit mark needed.
-  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
   // The Comments menu lists it in its Outbox section; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();

@@ -2609,16 +2609,15 @@ hunk coverage) is reported for a separate issue, not fixed here.
   draft, merged, approved, changes-requested states for #224's future
   badges) plus a scratch repo with a fake `acme/widgets` remote, in
   all four variants. No real `gh`, no network.
-- **Violations on this branch (all part A's screens, unfixed here):**
-  Settings → Limits fails everywhere (number inputs overflow the
-  card, 8 violations); Settings → Repos fails everywhere (both add
-  rows short of the row edge, ending at different edges: 974 vs 908
-  of 1100 at 1440); start page fails everywhere, with and without PR
-  lists (Open-PR trailing control ends 875 of 1100 at 1440 — the only
-  violation in the PR-list scene; Your PRs, the empty Requested-of-you
-  sub-group, the team rows and Reviews are clean). Models,
-  Environment, Version, Appearance and every review-page scene are
-  clean. The tour aborts at the first failing scene (settings-limits),
-  so later scenes are verified via the collected violations above;
-  the combined tree with part A must pass the full tour before the
-  gate.
+- **Combined tree (main-rc + part A merged here):** every scene
+  passes with the check active — full visual tour 14/14, 218 tour
+  12/12, J225, the start-PR-list journey (all 4 variants), J225a and
+  J11. Part A fixed every flagged screen (Limits fields fit, Repos
+  rows share the edge, Open-PR row fills, PR list clean); Models,
+  Environment, Version, Appearance and every review-page scene stay
+  clean. Tour-merge notes: the #222 document scenes now run
+  `checkLayout` instead of the old page-overflow-only check; the tour's
+  Outbox toggle expectation follows the action-only rename ("Remove
+  from the Outbox"); same rename applied to the affected e2e/unit
+  expectations. Left for the gate: the full `mise run gate` on this
+  tree.

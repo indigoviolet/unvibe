@@ -132,7 +132,7 @@ describe("ThreadView reply box", () => {
     const commenting = thread({ messages: [{ who: "you", text: "Nit" }], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
-    expect(screen.getByRole("button", { name: /In the Outbox/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible();
   });
 });
 

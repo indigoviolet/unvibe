@@ -943,7 +943,7 @@ for (const combo of [
     // this step starts. Wait (bounded, with a clear message) for a
     // toggle in either state, and only click when nothing is marked.
     const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
-    const inOutbox = page.getByRole("button", { name: /In the Outbox/ }).first();
+    const inOutbox = page.getByRole("button", { name: "Remove from the Outbox" }).first();
     await expect
       .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
         timeout: 15_000,
