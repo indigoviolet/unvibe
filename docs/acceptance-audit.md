@@ -295,7 +295,8 @@ needed (that deviation is closed, not added).
    address the reader about how to read the guide or whether to keep
    reading (#175): no "if you only need…", "in short…" or "TL;DR"
    framings (prompt rule in `instructions.md`; the problem card's first
-   paragraph states the problem and the central idea). Agent process
+   paragraph states the problem only, and the central idea has its own
+   card after it). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). The service
@@ -1241,14 +1242,19 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, plotlines settled first, then problem / central idea
-   (one per plotline when several) / "How it's built up" / "Decisions and
-   questions" / "Names" (only when the change introduces names with
+2. Reader (explore, plotlines settled first, then problem (the problem
+   only) / one central-idea card (always, even with several plotlines;
+   per-plotline cards follow it when several) / "How it's built up" /
+   "Decisions and questions" (parts in the order Decisions, Invariants,
+   Known uncertainties, Interfaces; no "What it adds and removes" part;
+   a decision that introduces a second way of doing something the
+   system already does, or departs from an existing pattern, is stated
+   in Decisions) / "Names" (only when the change introduces names with
    reach) / directions, `pin_context`) — met
    (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
    L0 mission in `prompts/instructions.md`, neutral decisions card,
    verdicts stay with the critic; #212 regularizer: L0 regularizer
-   mission, widest-reach-first Decisions and questions card, Names card
+   mission, Decisions and questions card, Names card
    with stable `names` id (`decisions` id kept for the renamed card),
    critic overfitting lens; #211: reader reads and cites through the
    review tools, terminal only for what they do not cover).
@@ -1289,7 +1295,7 @@ needed (that deviation is closed, not added).
    reason, and summary-less rows render the reason copy with no spinner
    (`DiffView.test.tsx` "folds on the deterministic hidden reason").
    Deviation from PRD §11 step 5 noted below.
-6. On demand (depth/go-deeper — automatic in the background by default (#217), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
