@@ -68,6 +68,9 @@ function findBlockCitations(snapshot: ReviewSnapshot, blockId: string): string[]
 /** Where GitHub will show the thread (client approximation; Submit shows the backend preview). */
 export function prLocationLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
   const host = thread.anchor.host;
+  // Issue #222: document comments never go to GitHub — the Outbox is
+  // their only destination, exported as Markdown.
+  if (snapshot.document) return "Document — stays in the Outbox";
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
     const name = file?.path.split("/").pop() ?? host.fileKey;
@@ -96,6 +99,15 @@ export function whereLabel(snapshot: ReviewSnapshot, thread: Annotation): string
     return file?.path ?? host.fileKey;
   }
   if (host.kind === "description") return descriptionPaneName(snapshot);
+  // Issue #222: a document block names the document and its paragraph ID.
+  if (host.kind === "block" && snapshot.document) {
+    const bare = host.blockId.includes("#") ? host.blockId.slice(host.blockId.indexOf("#") + 1) : host.blockId;
+    if (snapshot.document.blocks.some((b) => b.id === bare)) {
+      const title = snapshot.document.title;
+      return `${title.length > 34 ? `${title.slice(0, 33)}…` : title} › ${bare}`;
+    }
+  }
+  if (host.kind === "code") return `${host.path}:${host.line}`;
   for (const page of snapshot.pages) {
     for (const card of page.cards) {
       for (const block of card.blocks) {
@@ -259,6 +271,19 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
         if (el) ensureDiffVisible(el);
       }, 300);
       return;
+    }
+    // Issue #222: a document thread jumps to its block in the document.
+    if (host.kind === "block" && snap.document) {
+      const bare = host.blockId.includes("#") ? host.blockId.slice(host.blockId.indexOf("#") + 1) : host.blockId;
+      if (snap.document.blocks.some((b) => b.id === bare)) {
+        showGuidePane();
+        navigate(`/review/${reviewId}`);
+        revealSource(`doc:${bare}`);
+        window.setTimeout(() => {
+          document.getElementById(thread.id)?.scrollIntoView({ block: "center" });
+        }, 300);
+        return;
+      }
     }
     if (host.kind === "description") {
       window.dispatchEvent(

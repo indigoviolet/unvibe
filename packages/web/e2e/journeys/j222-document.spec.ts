@@ -179,5 +179,16 @@ test.describe("J222 document review", () => {
     await expect(page.locator(".codefile")).toContainText("hello from the second repo");
     await expect(page.locator(".codefile")).not.toContainText("hello from the feature branch");
     await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
+
+    // The earlier document comment is in the Outbox (#223), exported
+    // under its document block with a Copy-able Markdown box.
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('[data-cmf="outbox"]').click();
+    await expect(page.locator(".cmenu")).toContainText("Please expand this part.");
+    await expect(page.locator(".cmenu")).toContainText("Design note › p3");
+    await expect(page.locator("[data-outbox-md]")).toContainText("# Comments on Design note", { timeout: 15_000 });
+    await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p3");
+    await expect(page.locator("[data-outbox-md]")).toContainText("Please expand this part.");
+    await page.keyboard.press("Escape");
   });
 });

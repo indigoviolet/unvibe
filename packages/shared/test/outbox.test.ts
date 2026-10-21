@@ -104,6 +104,50 @@ describe("outbox", () => {
     expect(md).not.toContain("a reply that must not export");
   });
 
+  test("document comments name their block and order as the guide slot (#222)", () => {
+    const snap = snapshot([]);
+    const docSnap = {
+      ...snap,
+      document: {
+        title: "Design note",
+        markdown: "# Design note\n\nFirst.\n\nSecond.\n",
+        blocks: [
+          { id: "p1", kind: "heading", level: 1, block: { type: "paragraph", id: "p1" } },
+          { id: "p2", kind: "content", block: { type: "paragraph", id: "p2" } },
+          { id: "p3", kind: "content", block: { type: "paragraph", id: "p3" } },
+        ],
+      },
+      contextRepos: [],
+      pages: [],
+    } as unknown as ReviewSnapshot;
+    const withThreads = {
+      ...docSnap,
+      annotations: [
+        thread({
+          id: "later",
+          anchor: { host: { kind: "block", blockId: "document#p3" }, quotedText: "Second.", prefix: "", suffix: "", position: 0, version: 1 },
+          messages: [{ who: "you", text: "later note" }],
+        }),
+        thread({
+          id: "filetab",
+          anchor: { host: { kind: "code", path: "src/app.ts", commit: "abc1234", line: 2 }, quotedText: "return 1", prefix: "", suffix: "", position: 0, version: 1 },
+          messages: [{ who: "you", text: "file note" }],
+        }),
+        thread({
+          id: "earlier",
+          anchor: { host: { kind: "block", blockId: "document#p2" }, quotedText: "First.", prefix: "", suffix: "", position: 0, version: 1 },
+          messages: [{ who: "you", text: "earlier note" }],
+        }),
+      ],
+    } as unknown as ReviewSnapshot;
+    // Document blocks in document order (the guide slot), file-tab last.
+    expect(orderedOutboxThreads(withThreads).map((t) => t.id)).toEqual(["earlier", "later", "filetab"]);
+    const md = buildOutboxExportMarkdown(withThreads, { title: "Design note" });
+    expect(md).toContain("## Design note › p2");
+    expect(md).toContain("## Design note › p3");
+    expect(md).toContain("## src/app.ts:2");
+  });
+
   test("empty outbox exports just the heading", () => {
     expect(buildOutboxExportMarkdown(snapshot([]), { title: "T" })).toBe("# Comments on T\n");
   });

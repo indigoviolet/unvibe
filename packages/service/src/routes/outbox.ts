@@ -5,7 +5,7 @@
  * (#222) — exports identically. Read-only: no agent calls, no GitHub.
  */
 import type { FastifyInstance } from "fastify";
-import { buildOutboxExportMarkdown, isDefaultGuideTitle, outboxThreads } from "@unvibe/shared";
+import { buildOutboxExportMarkdown, isDefaultGuideTitle, isDocumentReview, outboxThreads } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import { ingestRefusal } from "../reviews/index.js";
 
@@ -23,8 +23,12 @@ export async function registerOutbox(app: FastifyInstance, ctx?: ServiceContext)
     const refused = ingestRefusal(snapshot);
     if (refused) return reply.code(409).send({ error: refused });
     const rootTitle = snapshot.pages.find((p) => p.kind === "root")?.title;
-    const title =
-      rootTitle && !isDefaultGuideTitle(rootTitle) ? rootTitle : snapshot.review.branch || id;
+    // Issue #222: a document review's export names the document.
+    const title = isDocumentReview(snapshot)
+      ? snapshot.document.title
+      : rootTitle && !isDefaultGuideTitle(rootTitle)
+        ? rootTitle
+        : snapshot.review.branch || id;
     return {
       markdown: buildOutboxExportMarkdown(snapshot, { title }),
       count: outboxThreads(snapshot).length,

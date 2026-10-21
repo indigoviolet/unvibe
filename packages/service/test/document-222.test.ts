@@ -155,6 +155,15 @@ describe("document reviews (#222)", () => {
     expect(snap.annotations[0].type).toBe("comment");
     expect(snap.annotations[0].post).toBe(true);
     expect(snap.annotations[0].anchor.host).toEqual({ kind: "block", blockId: "document#p2" });
+
+    // The comment is in the Outbox, exported under its document block (#223).
+    const outbox = await app.inject({ method: "GET", url: `/api/reviews/${id}/outbox`, headers: AUTH });
+    expect(outbox.statusCode).toBe(200);
+    const body = outbox.json() as { markdown: string; count: number };
+    expect(body.count).toBe(1);
+    expect(body.markdown).toContain("# Comments on T");
+    expect(body.markdown).toContain("## T › p2");
+    expect(body.markdown).toContain("> Hello world.");
   });
 
   it("resolves a cited sha to the context repo that contains it (two repos, #81)", async () => {

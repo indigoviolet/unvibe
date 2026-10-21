@@ -9,6 +9,7 @@
  */
 import type { Annotation } from "./entities.js";
 import type { ReviewSnapshot as Snapshot } from "./api.js";
+import { DOCUMENT_CARD_ID } from "./document.js";
 
 /** True when a thread is in the Outbox: a marked comment not yet posted. */
 export function isInOutbox(thread: Annotation): boolean {
@@ -39,6 +40,13 @@ export function isAiSuggested(thread: Annotation): boolean {
 function guideAnchorTitle(snapshot: Snapshot, blockId: string): string {
   const cardId = blockId.includes("#") ? blockId.slice(0, blockId.indexOf("#")) : null;
   const bare = blockId.includes("#") ? blockId.slice(blockId.indexOf("#") + 1) : blockId;
+  // Issue #222: a document block names the document and its paragraph ID.
+  if (
+    snapshot.document &&
+    (cardId === DOCUMENT_CARD_ID || snapshot.document.blocks.some((b) => b.id === bare))
+  ) {
+    return `${snapshot.document.title} › ${bare}`;
+  }
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
       const hit =
@@ -66,6 +74,11 @@ export function outboxAnchorTitle(snapshot: Snapshot, thread: Annotation): strin
     return snapshot.review.prNumber != null ? "PR description" : "Commits";
   }
   if (host.kind === "block") return guideAnchorTitle(snapshot, host.blockId);
+  if (host.kind === "code") {
+    return host.endLine !== undefined && host.endLine !== host.line
+      ? `${host.path}:${host.line}-${host.endLine}`
+      : `${host.path}:${host.line}`;
+  }
   return "Comment";
 }
 
@@ -81,6 +94,11 @@ function guideOrder(snapshot: Snapshot, thread: Annotation): number {
   if (thread.anchor.host.kind !== "block") return Number.MAX_SAFE_INTEGER;
   const blockId = thread.anchor.host.blockId;
   const bare = blockId.includes("#") ? blockId.slice(blockId.indexOf("#") + 1) : blockId;
+  // Issue #222: document blocks order by their place in the document.
+  if (snapshot.document) {
+    const at = snapshot.document.blocks.findIndex((b) => b.id === bare);
+    if (at >= 0) return at;
+  }
   let order = 0;
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
@@ -91,7 +109,12 @@ function guideOrder(snapshot: Snapshot, thread: Annotation): number {
   return Number.MAX_SAFE_INTEGER;
 }
 
-/** Outbox threads in export order: diff, then description, then guide. */
+/**
+ * Outbox threads in export order: diff, then description, then guide.
+ * Document blocks (#222) sit in the guide slot, in document order —
+ * the document is the left-pane reading text — and file-tab (`code:`)
+ * comments follow, since they point outside the reading text.
+ */
 export function orderedOutboxThreads(snapshot: Snapshot): Annotation[] {
   const fileOrder = new Map((snapshot.files ?? []).map((f, i) => [f.fileKey, i]));
   return outboxThreads(snapshot)

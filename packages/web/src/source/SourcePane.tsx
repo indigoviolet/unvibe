@@ -142,6 +142,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
 
   return (
     <>
+      {/* A document with no file tab open has no tab strip either: an
+          empty strip above the hint read as a stray band. */}
+      {isDocument && openFiles.length === 0 ? null : (
       <div className="rstick">
         <div className="tabs" role="tablist">
           {isDocument ? null : (
@@ -201,6 +204,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
           })}
         </div>
       </div>
+      )}
       <ErrorBoundary
         name="source-pane"
         resetKey={`${reviewId}:${activeFile ?? tab}`}
@@ -220,12 +224,12 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
             onFollowUp={onFollowUp}
           />
         ) : isDocument ? (
-          <div className="doc">
-            <p className="hint">
-              Files cited in answers open here. Context:{" "}
-              {(snapshot && isDocumentReview(snapshot) ? snapshot.contextRepos : []).map((c) => c.label).join(" · ")}
-            </p>
-          </div>
+          // The diff pane's empty state (`.hint` at 16px padding) — the
+          // prototype's empty-state shape, flush with no band above it.
+          <p className="hint" style={{ padding: 16 }}>
+            Files cited in answers open here. Context:{" "}
+            {(snapshot && isDocumentReview(snapshot) ? snapshot.contextRepos : []).map((c) => c.label).join(" · ")}
+          </p>
         ) : tab === "desc" ? (
           <DescriptionView reviewId={reviewId} />
         ) : (

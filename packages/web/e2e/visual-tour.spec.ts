@@ -1248,6 +1248,14 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(page.locator(".codefile")).toContainText("second repo");
     await checkNoPageOverflow(page, "document-citation");
     await shot(page, "document-citation", "1440-light", "second repo");
+
+    // The document comment in the Outbox (#223), with its export box.
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('[data-cmf="outbox"]').click();
+    await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
+    await stepChecks(page, "document-outbox");
+    await shot(page, "document-outbox", "1440-light", "Please expand this part.");
+    await page.keyboard.press("Escape");
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
     rmSync(repo2Dir, { recursive: true, force: true });

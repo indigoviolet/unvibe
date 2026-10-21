@@ -2439,9 +2439,15 @@ hunk coverage) is reported for a separate issue, not fixed here.
   plus a tree/README map of each repo), forked per Explain/Ask, no
   captive session. Nothing is generated up front; the review has a
   single version (refresh is a no-op; redo/resume refuse). Comments use
-  the shared comment model (`post: true`), so they land in the comments
-  menu today and the Outbox when #223 merges; Submit stays disabled
-  (no PR). The review kind is derived from the snapshot's shape (a
+  the shared comment model (`post: true`), so they land in the Outbox;
+  Submit stays disabled for them
+  (no PR). With #223 merged, document comments show in the Outbox and
+  its export: their heading names the document and paragraph
+  (`<title> › pN`, from what the comment already knows), document
+  blocks sit in the export's guide slot in document order (the
+  document is the left-pane reading text), and file-tab (`code:`)
+  comments follow under `path:line` headings. The review kind is
+  derived from the snapshot's shape (a
   discriminated union in shared types), never stored — no fallback read,
   no reset needed. With #81 merged, `code:` citations in document
   answers open through `openFileForCitation` into source-pane file
