@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Annotation, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import { isDocumentReview, parseId } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
@@ -68,9 +68,6 @@ function findBlockCitations(snapshot: ReviewSnapshot, blockId: string): string[]
 /** Where GitHub will show the thread (client approximation; Submit shows the backend preview). */
 export function prLocationLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
   const host = thread.anchor.host;
-  // Issue #222: document comments never go to GitHub — the Outbox is
-  // their only destination, exported as Markdown.
-  if (snapshot.document) return "Document — stays in the Outbox";
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
     const name = file?.path.split("/").pop() ?? host.fileKey;
@@ -182,6 +179,11 @@ function DraftArea({
 
 export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const snapshot = useReview((s) => s.snapshot);
+  // Issue #222: a document review has no PR and no GitHub side at all.
+  // One flag hides the GitHub parts of this menu (the "Already on
+  // GitHub" section and the Submit-drafts line); #226's menu rework
+  // honours the same flag.
+  const isDocument = snapshot ? isDocumentReview(snapshot) : false;
   const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "outbox">("all");
@@ -233,6 +235,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   // snapshot doesn't carry them yet.
   useEffect(() => {
     if (!open || !snapshot || snapshot.existingComments) return;
+    if (isDocumentReview(snapshot)) return;
     if (!snapshot.review.prNumber) return;
     api
       .prComments(reviewId)
@@ -409,7 +412,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               <div className="ci" key={thread.id}>
                 <button className="cj" type="button" data-cjump={thread.id} onClick={() => jump(thread)}>
                   <span className="cw">
-                    {filter === "outbox" ? `${prLocationLabel(snapshot, thread)} · from ${where}` : where}
+                    {filter === "outbox" && !isDocument
+                      ? `${prLocationLabel(snapshot, thread)} · from ${where}`
+                      : where}
                   </span>
                   <span className="cx2">{excerpt(thread)}</span>
                 </button>
@@ -425,7 +430,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                 : "No comments yet. Select text and choose Ask or Comment."}
             </p>
           ) : null}
-          {filter === "outbox" && outbox.length > 0 ? (
+          {filter === "outbox" && outbox.length > 0 && !isDocument ? (
             <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
           ) : null}
           {filter === "outbox" && outbox.length > 0 ? (
@@ -440,6 +445,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               <pre className="obmd" data-outbox-md="">{exportMd ?? "Loading…"}</pre>
             </div>
           ) : null}
+          {isDocument ? null : (
           <div>
             <button
               className="ghhead"
@@ -505,6 +511,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               ))
             )}
           </div>
+          )}
         </div>
       ) : null}
     </span>

@@ -164,6 +164,13 @@ describe("document reviews (#222)", () => {
     expect(body.markdown).toContain("# Comments on T");
     expect(body.markdown).toContain("## T › p2");
     expect(body.markdown).toContain("> Hello world.");
+
+    // No GitHub fetch for a document: the existing-comments route
+    // answers empty (200) without calling `gh` (it 400s for branch
+    // reviews with no PR; a document is a 200 empty).
+    const prComments = await app.inject({ method: "GET", url: `/api/reviews/${id}/pr-comments`, headers: AUTH });
+    expect(prComments.statusCode).toBe(200);
+    expect(prComments.json()).toEqual({ comments: [] });
   });
 
   it("resolves a cited sha to the context repo that contains it (two repos, #81)", async () => {

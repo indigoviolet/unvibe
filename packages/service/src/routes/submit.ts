@@ -11,6 +11,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { SubmitReviewRequest } from "@unvibe/shared";
+import { isDocumentReview } from "@unvibe/shared";
 import { readReviewRow } from "../ingest/index.js";
 import { buildPreview, fetchExistingComments, runSubmit } from "../submit/index.js";
 import type { ServiceContext } from "./context.js";
@@ -68,6 +69,9 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     if (refusedComments) return reply.code(409).send({ error: refusedComments });
     // Demo reviews have no git source: no GitHub comments exist.
     if (snapshot.review.repoId === "demo") return { comments: [] };
+    // Issue #222: document reviews have no PR — no GitHub comments exist
+    // and `gh` is never called for them.
+    if (isDocumentReview(snapshot)) return { comments: [] };
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
     if (prNumber === null || prNumber === undefined) {

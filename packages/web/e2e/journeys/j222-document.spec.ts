@@ -186,6 +186,11 @@ test.describe("J222 document review", () => {
     await page.locator('[data-cmf="outbox"]').click();
     await expect(page.locator(".cmenu")).toContainText("Please expand this part.");
     await expect(page.locator(".cmenu")).toContainText("Design note › p3");
+    // A document has no GitHub side: no "Already on GitHub" section, no
+    // Submit-drafts line, and a short entry meta (the guide pattern).
+    await expect(page.locator(".cmenu")).not.toContainText("Already on GitHub");
+    await expect(page.locator(".cmenu")).not.toContainText("Nothing reaches GitHub");
+    await expect(page.locator(".cmenu")).not.toContainText("stays in the Outbox");
     await expect(page.locator("[data-outbox-md]")).toContainText("# Comments on Design note", { timeout: 15_000 });
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p3");
     await expect(page.locator("[data-outbox-md]")).toContainText("Please expand this part.");
