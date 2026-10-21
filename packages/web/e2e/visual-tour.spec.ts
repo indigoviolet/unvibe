@@ -928,11 +928,16 @@ for (const combo of [
     await checkNoPageOverflow(page, "debug");
     await shot(page, "debug", suffix, "Queued");
 
-    // Debug Output (#207): the first job expanded, turn by turn, with
-    // its prompt, reply, a tool call and the raw usage payload.
+    // Debug Output (#207): one view per job (no Prompt button); the
+    // first job expanded, turn by turn, with its prompt, reply, tool
+    // calls as one expandable line each in a bounded list, and the raw
+    // usage payload. The row's Tools count expands the same way.
+    await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
     await page.getByRole("button", { name: "Output" }).first().click();
     await expect(page.locator('[data-testid="job-output"]').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read", { timeout: 15_000 });
+    await page.locator('[data-testid="job-turn-tool"]').first().locator("summary").click();
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Arguments", { timeout: 15_000 });
     // Frame the whole job row, header (kind/state) above Turn 1.
     await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
     await checkNoPageOverflow(page, "debug-output");

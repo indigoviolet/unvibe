@@ -481,7 +481,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 ## Conventions
 
 - ACP lives only in `packages/service/src/agent/acp/` (enforced by `eslint.config.mjs` `no-restricted-imports` plus `test/acp-isolation.test.ts`). Everything else uses the `AgentRunner` interface from `@unvibe/shared`.
-- API types live in `packages/shared`. Service and web both import them; change the contract there first. `GET /api/jobs` and snapshot job lists omit `promptSnapshot` (fetch per job at `/api/jobs/:id/prompt`) to keep snapshots small.
+- API types live in `packages/shared`. Service and web both import them; change the contract there first. `GET /api/jobs` and snapshot job lists omit `promptSnapshot` and `turnRecords` (fetch per job at `/api/jobs/:id/output`) to keep snapshots small.
 - Work is tracked in GitHub issues at `indigoviolet/unvibe`. Each piece of work has an issue; name it in your report and in the merge commit (`Closes #N`); tick its checklist as items land; open a new issue for anything found but not fixed. Keep the issue's state current (branch comment and `waiting-for-user-testing` once implemented, sub-issues for what remains, closed only when merged to `main`): the steps are in `CLAUDE.md`. Commit in small logical commits on your branch; do not push or merge.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict plus the open list; update it when behaviour changes.
 
@@ -489,7 +489,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 
 - Data: look in the data dir (`unvibe.db`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
 - Logs: the service logs to stderr (`Unvibe listening on …`, job errors, permission decisions with `UNVIBE_ACP_DEBUG=1`).
-- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs section on the review's debug page links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
+- A job's exact prompt, output, tool calls and usage, turn by turn: `GET /api/jobs/:id/output` (the Jobs section on the review's debug page opens it via its Output button), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
 - Environment: `unvibe doctor` locally, `GET /api/readiness` in the app; both share `src/readiness/checks.ts`.
 - Reproduce without tokens: `UNVIBE_AGENT=replay` for agent behaviour, `UNVIBE_AGENT=none` for everything else.
 - Restart behaviour: `node scripts/restart-resilience.mjs` exercises SIGKILL mid-stage against the built service.

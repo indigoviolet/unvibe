@@ -84,8 +84,10 @@ test.describe("J15 multi-turn conversation", () => {
     const askJobs = ((jobsRes.json as { jobs?: { id: string; kind: string }[] }).jobs ?? []).filter((j) => j.kind === "ask");
     expect(askJobs.length).toBeGreaterThanOrEqual(3);
     const lastAsk = askJobs[askJobs.length - 1]!;
-    const promptRes = await apiJson(svc, "GET", `/api/jobs/${lastAsk.id}/prompt`);
-    const promptText = (promptRes.json as { promptSnapshot?: string }).promptSnapshot ?? "";
+    // #207: the old /api/jobs/:id/prompt endpoint is gone; GET
+    // /api/jobs/:id keeps the full job, prompt snapshot included.
+    const promptRes = await apiJson(svc, "GET", `/api/jobs/${lastAsk.id}`);
+    const promptText = (promptRes.json as { job?: { promptSnapshot?: string } }).job?.promptSnapshot ?? "";
     // Rebuilt-or-loaded, the post-restart turn's context includes the
     // earlier turns of this card (never a fresh, context-less start).
     expect(promptText).toContain("What is line folding?");

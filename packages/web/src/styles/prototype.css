@@ -963,6 +963,34 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 [data-testid="job-output"] .hint {
   overflow-wrap: anywhere;
 }
+/* Issue #207: tool calls are one line each in a bounded scrolling list;
+   expanding a line shows its full arguments and result. */
+.toollist {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toolcall > summary {
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  padding: 2px 0;
+  font-size: 12.5px;
+}
+.toolcall .toolargs {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolcall-body { padding: 2px 0 6px 14px; }
+.toolcall-body pre.code { max-height: 200px; }
 .st {
   font-size: 11px;
   letter-spacing: 0.04em;

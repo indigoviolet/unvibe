@@ -1151,12 +1151,6 @@ export interface JobResponse {
   job: Job;
 }
 
-/** GET /api/jobs/:id/prompt — the exact prompt the job sent. */
-export interface JobPromptResponse {
-  jobId: string;
-  promptSnapshot: string;
-}
-
 /** GET /api/jobs/:id/reply — the agent's reply for a failed job (#180). */
 export interface JobReplyResponse {
   jobId: string;

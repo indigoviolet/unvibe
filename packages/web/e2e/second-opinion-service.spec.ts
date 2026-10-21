@@ -142,10 +142,12 @@ test.describe("second opinion over real service (replay)", () => {
     }
     expect(job?.state).toBe("done");
 
-    // Prompt snapshot contains no guide text.
-    const promptRes = await apiFetch(origin, token, "GET", `/api/jobs/${jobId}/prompt`);
+    // Prompt snapshot contains no guide text (#207: the old
+    // /api/jobs/:id/prompt endpoint is gone; GET /api/jobs/:id keeps
+    // the full job, prompt snapshot included).
+    const promptRes = await apiFetch(origin, token, "GET", `/api/jobs/${jobId}`);
     expect(promptRes.status).toBe(200);
-    const prompt = (promptRes.json as { promptSnapshot: string }).promptSnapshot;
+    const prompt = (promptRes.json as { job: { promptSnapshot: string } }).job.promptSnapshot;
     expect(prompt).toContain("Second opinion");
     expect(prompt).not.toContain("are not unfolded");
     expect(prompt).not.toContain("The central change");

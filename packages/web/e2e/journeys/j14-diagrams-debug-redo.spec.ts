@@ -50,6 +50,25 @@ test.describe("J14 diagrams, debug, redo", () => {
     await expect(page.locator('[data-testid^="prompt-"]').first()).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Jobs" }).click();
     await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 15_000 });
+    // #207: one view per job — there is no separate Prompt button; the
+    // Output view already shows each turn's prompt.
+    await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Hide prompt" })).toHaveCount(0);
+    // #207: the job row shows a tool count, not an unbounded list.
+    // Expanding it shows one line per call; a line expands to the full
+    // arguments and result.
+    const toolsButton = page.getByRole("button", { name: /^Tools: \d+$/ }).first();
+    await expect(toolsButton).toBeVisible({ timeout: 30_000 });
+    await toolsButton.click();
+    const jobTools = page.locator('[data-testid="job-tools"]').first();
+    await expect(jobTools).toBeVisible({ timeout: 15_000 });
+    const jobToolLines = jobTools.locator('[data-testid="job-tool"]');
+    await expect(jobToolLines.first()).toContainText("Read", { timeout: 15_000 });
+    await expect(jobToolLines.first()).toContainText("recording");
+    await jobToolLines.first().locator("summary").click();
+    await expect(jobToolLines.first()).toContainText("Arguments");
+    await expect(jobToolLines.first()).toContainText("recording");
+    await expect(jobToolLines.first()).toContainText("Returned the");
     // #207: a successful job's Output shows, per turn, its prompt, its
     // reply, a tool call with its result, and the raw usage payload.
     await page.getByRole("button", { name: "Output" }).first().click();
@@ -58,8 +77,16 @@ test.describe("J14 diagrams, debug, redo", () => {
     await expect(output).toContainText("Turn 1");
     await expect(output).toContainText("Prompt");
     await expect(output).toContainText("Output");
-    await expect(output.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read");
-    await expect(output).toContainText("Returned the");
+    // Inside the view, tool calls are one line each in a bounded list;
+    // a line expands to the full arguments and result.
+    const turnTools = output.locator('[data-testid="job-turn-tools"]').first();
+    await expect(turnTools).toBeVisible({ timeout: 15_000 });
+    const turnToolLines = turnTools.locator('[data-testid="job-turn-tool"]');
+    await expect(turnToolLines.first()).toContainText("Read");
+    await expect(turnToolLines.first()).toContainText("recording");
+    await turnToolLines.first().locator("summary").click();
+    await expect(turnToolLines.first()).toContainText("Arguments");
+    await expect(turnToolLines.first()).toContainText("Returned the");
     await expect(output).toContainText("Raw usage");
     await expect(output).toContainText("quota");
     await expect(output).toContainText("model_usage");
