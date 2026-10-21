@@ -45,7 +45,7 @@ describe("critic reply split (#215)", () => {
     expect(criticApplyAll([], null, "f-critic")).toEqual([]);
   });
 
-  it("keeps at most three findings", () => {
+  it("keeps every finding the critic returns (owner: no cap)", () => {
     const many = cards(
       ["Evidence", "e1"], ["Assessment", "a1"],
       ["Evidence", "e2"], ["Assessment", "a2"],
@@ -53,7 +53,7 @@ describe("critic reply split (#215)", () => {
       ["Evidence", "e4"], ["Assessment", "a4"],
     );
     const out = criticApplyAll(many, { findings: [{ title: "1" }, { title: "2" }, { title: "3" }, { title: "4" }] }, "f-critic");
-    expect(out.map((f) => f.title)).toEqual(["1", "2", "3"]);
+    expect(out.map((f) => f.title)).toEqual(["1", "2", "3", "4"]);
   });
 
   it("a single legacy finding trailer is one finding", () => {

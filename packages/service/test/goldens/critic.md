@@ -41,7 +41,7 @@ cannot tie to cited evidence.
 
 ## Output shape
 
-One reply carries one to three findings. For each finding, in order:
+One reply usually carries one to three findings. For each finding, in order:
 a `## Evidence` card, then a `## Assessment` card. End the reply with
 one trailing `json` block whose `findings` array carries one entry per
 finding, in the same order:
@@ -51,7 +51,6 @@ finding, in the same order:
 ```
 
 Zero findings is a valid reply: no cards and `{"findings": []}`.
-Never more than three findings.
 
 ## Rules
 

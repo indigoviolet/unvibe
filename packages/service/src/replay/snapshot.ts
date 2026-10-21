@@ -205,7 +205,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     const findings = (parsed.data?.findings as { id?: string; title?: string; confidence?: string; summary?: string; cardIds?: string[] }[] | undefined) ?? null;
     if (findings) {
       let cursor = 0;
-      for (const f of findings.slice(0, 3)) {
+      for (const f of findings) {
         const pageId = f.id ?? entry.key ?? "f-critic";
         const cardIds = f.cardIds ?? [];
         const take = cardIds.length > 0 ? cardIds.length : 2;

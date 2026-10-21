@@ -189,7 +189,7 @@ the item, and the block carries the union.
 Evidence and assessment prose live in the Markdown body.
 Metadata goes in the trailing JSON block:
 
-Critic replies (#215) carry one to three findings in one reply: for
+Critic replies (#215) usually carry one to three findings in one reply: for
 each finding an Evidence card then an Assessment card in the Markdown,
 in order, and one `findings` entry per finding in the trailing block:
 
@@ -210,9 +210,10 @@ in order, and one `findings` entry per finding in the trailing block:
 }
 ```
 
-Zero findings (`{"findings": []}`, no cards) is a valid silent reply;
-more than three entries keep the first three. Each finding is validated
-on its own: a finding with no usable cards is dropped, the rest stand.
+Zero findings (`{"findings": []}`, no cards) is a valid silent reply.
+Every finding returned becomes a page (no cap in the parser). Each
+finding is validated on its own: a finding with no usable cards is
+dropped, the rest stand.
 
 ```json
 {

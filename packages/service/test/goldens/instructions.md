@@ -192,8 +192,8 @@ State the content itself instead.
   - `finding`: `confidence` (`low`, `medium` or `high`), a one-line
     `summary`, and `suggestedComment` with the draft `text` and its
     `diff:` anchor. The comment is a draft; it is never marked for the PR.
-  - `findings` (critic replies, #215): one to three entries in card
-    order, each with `title`, `confidence`, `summary`, `suggestedComment`
+  - `findings` (critic replies, #215): usually one to three entries in
+    card order, each with `title`, `confidence`, `summary`, `suggestedComment`
     and `cardIds`; zero entries is a valid silent reply.
   - `secondOpinion`: `verdict` (`agrees`, `partly` or `disagrees`),
     `reasoning`, and `missed` (anything the card missed).

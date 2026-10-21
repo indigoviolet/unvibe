@@ -38,7 +38,7 @@ export interface ReplyData {
     suggestedComment?: { text?: string; diff?: string };
   };
   /**
-   * One critic reply carrying one to three findings (#215): each entry's
+   * One critic reply carrying its findings (#215, usually one to three): each entry's
    * Evidence/Assessment cards in the Markdown, in the same order.
    */
   findings?: {

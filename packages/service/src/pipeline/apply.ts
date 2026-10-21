@@ -169,10 +169,11 @@ function groupFindingCards(
 }
 
 /**
- * One critic reply → one to three finding pages (#215). The trailing
- * `findings` array carries each finding's metadata in card order; a lone
- * `finding`/`title` trailer is one finding. Zero findings is valid (no
- * cards, no entries). More than three entries keep the first three.
+ * One critic reply → one finding page per finding (#215, owner: keep
+ * all findings — no cap in the parser; the prompt asks for usually one
+ * to three). The trailing `findings` array carries each finding's
+ * metadata in card order; a lone `finding`/`title` trailer is one
+ * finding. Zero findings is valid (no cards, no entries).
  * A finding with no blocks is dropped on its own (validated per finding).
  */
 export function criticApplyAll(
@@ -183,7 +184,7 @@ export function criticApplyAll(
   const rawFindings = data?.["findings"] as FindingMeta[] | undefined;
   let metas: FindingMeta[];
   if (Array.isArray(rawFindings)) {
-    metas = rawFindings.slice(0, 3);
+    metas = rawFindings;
   } else if (data?.["finding"] || data?.["title"] || parsedCards.length > 0) {
     const finding = (data?.["finding"] as FindingMeta | undefined) ?? {};
     metas = [{
