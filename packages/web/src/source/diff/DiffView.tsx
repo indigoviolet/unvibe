@@ -771,21 +771,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
-  // Fold-all summarises per hunk only under the fan-out limit (issue
-  // #107): past it the button folds without requesting summaries.
-  const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
-  // Fold-all wording (issue #162): only visible hunks still lacking a
-  // summary are summarized, so the tooltip promises just that — and stays
-  // quiet about summarizing when every visible hunk already has one.
-  const foldMissing = snapshot.files.reduce(
-    (n, f) => n + f.hunks.filter((h) => !isHidden(h) && states.get(h.contentHash)?.summary === undefined).length,
-    0,
-  );
-  const foldTip = overFanoutLimit
-    ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
-    : foldMissing > 0
-      ? "Fold the code; hunks still missing a summary are summarized with the agent"
-      : "Fold the code (every hunk already has a summary)";
+  // Tooltip is the action only (#225); `foldAll` still computes the
+  // fan-out/summary state itself for its behaviour and toast.
+  const foldTip = "Fold the code";
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -843,12 +831,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         </Button>
         <FilterMenuButton
           label="Review filters"
-          tip={
-            prefs.hideReviewed || !snapshot.viewPrefs.showExistingComments
-              ? `Hiding: ${[prefs.hideReviewed ? "Reviewed" : null, !snapshot.viewPrefs.showExistingComments ? "GitHub comments" : null].filter(Boolean).join(", ")}`
-              : "Reviewed and GitHub comment filters"
-          }
-          icon="check"
+          tip="Reviewed and GitHub comment filters"
+          icon="filter"
           rows={[
             {
               key: "__reviewed",
@@ -890,7 +874,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           className="x"
           type="button"
           aria-pressed={prefs.hideUninteresting}
-          data-tip="Collapse generated, import-only, docs and config hunks to one line"
+          data-tip="Hide uninteresting"
           aria-label="Hide uninteresting"
           onClick={() =>
             setPrefs((p) => {
@@ -899,7 +883,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             })
           }
         >
-          <Icon name="hide" />
+          <Icon name="eyeOff" />
         </button>
         <button
           className="x"
@@ -908,21 +892,21 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
-          <Icon name="spark" />
+          <Icon name="fold" />
         </button>
         <button
           className="x"
           type="button"
-          data-tip="Show code for every folded hunk; summaries stay"
+          data-tip="Unfold the code"
           aria-label="Unfold all"
           onClick={() => void unfoldAll()}
         >
-          <Icon name="downDown" />
+          <Icon name="unfold" />
         </button>
         <button
           className="x"
           type="button"
-          data-tip="Check the branch for new commits. Doesn't use the agent."
+          data-tip="Check the branch for new commits"
           aria-label="Refresh"
           disabled={refreshing || readOnly}
           onClick={() => void doRefresh()}
@@ -962,11 +946,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             />
             <FilterMenuButton
               label="File filters"
-              tip={
-                CATS.some((c) => !cats.has(c.k))
-                  ? `Hiding: ${CATS.filter((c) => !cats.has(c.k)).map((c) => c.l).join(", ")}`
-                  : "Filter files by type"
-              }
+              tip="Filter files by type"
               icon="filter"
               rows={CATS.map((c) => ({
                 key: c.k,
@@ -1113,9 +1093,9 @@ function FilterMenuButton({
   rows,
 }: {
   label: string;
-  /** Tooltip naming what is hidden when active (owner: no badge). */
+  /** Action-only tooltip (#225); the active state is the dot + accent. */
   tip: string;
-  icon: "filter" | "check";
+  icon: "filter";
   rows: FilterRow[];
 }): ReactNode {
   const [open, setOpen] = useState(false);
@@ -1252,6 +1232,7 @@ function FilterMenuButton({
         }}
       >
         <Icon name={icon} />
+        {active ? <span className="fdot" data-filter-active="" aria-hidden="true" /> : null}
       </Button>
       {menu ? createPortal(menu, document.body) : null}
     </span>

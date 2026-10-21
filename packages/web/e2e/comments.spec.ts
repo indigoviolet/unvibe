@@ -181,8 +181,8 @@ test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #16
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
   await expect(sug.locator("textarea")).toHaveCount(0);
-  // "Ask the agent about this", as on user comments.
-  await sug.getByRole("button", { name: "Ask the agent about this" }).click();
+  // "Ask about this", as on user comments.
+  await sug.getByRole("button", { name: "Ask about this" }).click();
   const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
   await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   await card.getByRole("button", { name: "Close" }).click();

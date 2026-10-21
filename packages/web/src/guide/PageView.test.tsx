@@ -153,7 +153,7 @@ describe("page header bookmark (#118)", () => {
 
   test("a saved page keeps the pressed bookmark state and label", () => {
     show({ id: "c-x", kind: "concept", title: "A concept", saved: false, cards: [] } as Page);
-    const save = screen.getByRole("button", { name: "Saved to this repo · click to unsave" });
+    const save = screen.getByRole("button", { name: "Unsave from this repo" });
     expect(save).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelector(".title-row")?.contains(save)).toBe(true);
   });
