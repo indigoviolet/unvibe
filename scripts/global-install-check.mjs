@@ -194,7 +194,15 @@ function checkSetupPlaced({ installedPkg, home, dataDir, label }) {
     assert(read(plist).includes("<string>unvibe</string>"), `${label}: helper app registers unvibe://`);
     const unit = path.join(home, "Library", "LaunchAgents", "com.unvibe.service.plist");
     assert(fs.existsSync(unit), `${label}: first start placed the launchd login unit`);
-    assert(read(unit).includes(cliPath), `${label}: launchd unit bakes the installed CLI path`);
+    // The unit bakes the realpath'd CLI path (/private/var/... on macOS
+    // where the temp dir is spelled /var/...), so accept either spelling.
+    let realCliPath = cliPath;
+    try {
+      realCliPath = fs.realpathSync(cliPath);
+    } catch {
+      // keep the unresolved spelling
+    }
+    assert(read(unit).includes(cliPath) || read(unit).includes(realCliPath), `${label}: launchd unit bakes the installed CLI path`);
   } else {
     const desktop = path.join(home, ".local", "share", "applications", "unvibe-open.desktop");
     assert(fs.existsSync(desktop), `${label}: first start placed the Linux link handler`);
@@ -881,8 +889,18 @@ async function phaseMise(tarballPath, port) {
   };
   const prefixRes = spawnSync("npm", ["prefix", "-g"], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 120_000 });
   const gotPrefix = (prefixRes.stdout ?? "").trim();
-  assert(gotPrefix === versionDir, `${label}: npm global prefix is the mise version prefix (got ${gotPrefix || prefixRes.stderr?.trim() || "?"})`);
-  if (gotPrefix !== versionDir) return; // never install into a real prefix
+  // macOS spells the temp dir /var/... and /private/var/... — compare
+  // canonical paths, not raw strings.
+  const realpathOrSelf = (p) => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  const prefixMatches = gotPrefix !== "" && realpathOrSelf(gotPrefix) === realpathOrSelf(versionDir);
+  assert(prefixMatches, `${label}: npm global prefix is the mise version prefix (got ${gotPrefix || prefixRes.stderr?.trim() || "?"})`);
+  if (!prefixMatches) return; // never install into a real prefix
   const inst = spawnSync("npm", ["install", "-g", tarballPath], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 600_000 });
   if (inst.status !== 0) console.error(((inst.stdout ?? "") + (inst.stderr ?? "")).slice(-3000));
   assert(inst.status === 0, `${label}: npm install -g <tarball> under mise-managed node exits 0 (exit ${inst.status})`);
@@ -903,7 +921,10 @@ async function phaseMise(tarballPath, port) {
   });
   const doctorOut = (doctor.stdout ?? "") + (doctor.stderr ?? "");
   assert(doctorOut.includes("unvibe on PATH"), `${label}: doctor reports the bin-reachability check`);
-  assert(doctorOut.includes(vbin), `${label}: doctor prints the exact fix (names ${vbin})`);
+  assert(
+    doctorOut.includes(vbin) || doctorOut.includes(realpathOrSelf(vbin)),
+    `${label}: doctor prints the exact fix (names ${vbin})`,
+  );
   const reshim = spawnSync(miseBin, ["reshim"], { cwd: os.tmpdir(), env: ENV, encoding: "utf8", timeout: 60_000 });
   assert(reshim.status === 0, `${label}: mise reshim (stand-in) exits 0`);
   const after = byName();

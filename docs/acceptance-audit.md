@@ -1423,7 +1423,10 @@ needed (that deviation is closed, not added).
   issue #42: the release package declares no lifecycle scripts — a
   script made npm dangle the git-installed bin on the owner's Mac —
   and the first `unvibe start` runs setup: token, handler, login unit,
-  once per version; `unvibe setup` stays the manual/repair path) +
+  once per version — after the start itself, with the login unit
+  written but not manager-started, so no second generation races the
+  started service (the v0.0.8 macOS release-check failure);
+  `unvibe setup` stays the manual/repair path) +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
   scripts, no devDependencies), installed with **no flags** on npm 11 and
