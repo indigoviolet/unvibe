@@ -108,12 +108,15 @@ export function resolveCitation(
     };
   }
   if (parsed.kind === "code") {
-    const file = resolveFile(snapshot, parsed.path, aliases);
+    // The path and range come from the ID itself, so the label reads
+    // the same whether or not the file is in the diff (#81). The
+    // snippet comes from hunk rows when the file is in the diff; the
+    // hover fetches the cited lines at the commit otherwise.
     const snippet =
       hunkRangeText(snapshot, parsed.path, parsed.start, parsed.end, aliases) ?? "";
     return {
       target,
-      label: file ? shortLabel(file.path, parsed.start, parsed.end) : target,
+      label: shortLabel(parsed.path, parsed.start, parsed.end),
       snippet,
       unverified: citation.unverified,
     };

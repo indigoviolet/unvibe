@@ -152,9 +152,41 @@ export function selectionScopeElement(el: HTMLElement): Element | null {
 export function inSelectionScope(el: Element): boolean {
   return (
     el.closest(
-      "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
+      "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile, #right .codefile",
     ) !== null
   );
+}
+
+/** Lines a selection touches in a file tab (#81), or null outside one. */
+export function codeRangeForSelection(sel: Selection): { path: string; commit: string; start: number; end: number } | null {
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  const rows = document.querySelectorAll("#right .codefile [data-code-line]");
+  let path = "";
+  let commit = "";
+  const lines: number[] = [];
+  for (const row of rows) {
+    let intersects = false;
+    try {
+      intersects = range.intersectsNode(row);
+    } catch {
+      continue;
+    }
+    if (!intersects) continue;
+    const file = (row as HTMLElement).closest("[data-code-file]") as HTMLElement | null;
+    const p = file?.dataset.path ?? "";
+    const c = file?.dataset.commit ?? "";
+    if (!p || !c) continue;
+    if (!path) {
+      path = p;
+      commit = c;
+    }
+    if (p !== path || c !== commit) return null;
+    const n = Number((row as HTMLElement).dataset.codeLine);
+    if (Number.isSafeInteger(n) && n >= 1) lines.push(n);
+  }
+  if (!path || lines.length === 0) return null;
+  return { path, commit, start: Math.min(...lines), end: Math.max(...lines) };
 }
 
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
@@ -162,6 +194,20 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // #81: a selection in a file tab anchors to the cited file at its
+  // commit. The line comes from the row the selection starts in; the
+  // caller widens it to the touched range.
+  const codeLineEl = el.closest("[data-code-line]");
+  if (codeLineEl) {
+    const file = el.closest("[data-code-file]") as HTMLElement | null;
+    const filePath = file?.dataset.path ?? "";
+    const fileCommit = file?.dataset.commit ?? "";
+    const line = Number((codeLineEl as HTMLElement).dataset.codeLine);
+    if (filePath && fileCommit && Number.isSafeInteger(line) && line >= 1) {
+      return { anchor: { where: "code", path: filePath, commit: fileCommit, line } };
+    }
+    return null;
+  }
   // Issue #214: a selection inside any comment card anchors to that
   // comment (suggested question, AI review comment, or a person's
   // comment), in the guide and the diff pane alike.
@@ -436,6 +482,7 @@ export function underlyingCommentAnchor(commentId: string): ActionAnchor | null 
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
   if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  if (host.kind === "code") return { where: "code", path: host.path, commit: host.commit, line: host.line, ...(host.endLine !== undefined ? { endLine: host.endLine } : {}) };
   if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
   if (host.kind === "hunk") {
     return hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ?? null;
@@ -457,6 +504,7 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
   if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
+  if (host.kind === "code") return { where: "code", path: host.path, commit: host.commit, line: host.line, ...(host.endLine !== undefined ? { endLine: host.endLine } : {}) };
   if (host.kind === "hunk") {
     return (
       hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ??
@@ -597,12 +645,16 @@ export function SelectionToolbar() {
           host.anchor.where === "diff-line" && diffRange && diffRange.newLines.length > 0
             ? Math.max(...diffRange.newLines)
             : undefined;
+        // #81: same widening for file-tab selections.
+        const codeRange = host.anchor.where === "code" ? codeRangeForSelection(sel) : null;
         setPending({
           quote,
           anchor:
             endLine !== undefined && host.anchor.where === "diff-line" && endLine > host.anchor.line
               ? { ...host.anchor, endLine }
-              : host.anchor,
+              : codeRange && host.anchor.where === "code" && codeRange.end > host.anchor.line
+                ? { ...host.anchor, endLine: codeRange.end }
+                : host.anchor,
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),

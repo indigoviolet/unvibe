@@ -99,6 +99,12 @@ describe("resolveCitation", () => {
     expect(r.snippet).toBe("Intro text here.");
   });
 
+  it("labels a code citation outside the diff by its own path (#81)", () => {
+    const r = resolveCitation(snapshot(), { target: "code:src/other/helper.py:10-12@abc1234" });
+    expect(r.label).toBe("helper.py:10–12");
+    expect(r.snippet).toBe("");
+  });
+
   it("keeps the unverified flag", () => {
     const r = resolveCitation(snapshot(), { target: "diff:nope:1", unverified: true });
     expect(r.unverified).toBe(true);

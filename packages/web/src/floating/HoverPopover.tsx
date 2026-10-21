@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
+import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
 import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
@@ -51,12 +52,16 @@ function renderMsgs(msgs: Annotation["messages"]): string {
     .join("");
 }
 
-/** `diff:` target for an anchor successor (outdated "new code" link). */
+/** Source target for an anchor successor (outdated "new code" link). */
 function successorTarget(successor: Anchor): string | null {
   const host = successor.host;
   if (host.kind === "diff-line") {
     const range = host.endLine && host.endLine !== host.line ? `${host.line}-${host.endLine}` : `${host.line}`;
     return `diff:${host.fileKey}:${range}`;
+  }
+  if (host.kind === "code") {
+    const range = host.endLine && host.endLine !== host.line ? `${host.line}-${host.endLine}` : `${host.line}`;
+    return `code:${host.path}:${range}@${host.commit}`;
   }
   if (host.kind === "description") return `desc:${host.paragraphId}`;
   return null;
@@ -159,12 +164,49 @@ export function HoverPopover() {
         snap,
         targets.map((target) => ({ target })),
       );
-      content = resolved
-        .map(
-          (c) =>
-            `<button class="cite" data-src="${esc(c.target)}"><span class="loc">${esc(c.label)}${c.unverified ? " · unverified" : ""}</span><span class="snip">${esc(c.snippet)}</span></button>`,
-        )
-        .join("");
+      const renderCites = (list: typeof resolved): string =>
+        list
+          .map(
+            (c) =>
+              `<button class="cite" data-src="${esc(c.target)}"><span class="loc">${esc(c.label)}${c.unverified ? " · unverified" : ""}</span><span class="snip">${esc(c.snippet)}</span></button>`,
+          )
+          .join("");
+      content = renderCites(resolved);
+      // #81: cited lines of a file outside the diff have no hunk rows —
+      // fetch them at the cited commit and fill the preview in place.
+      const missing = resolved.filter((c) => c.snippet === "" && c.target.startsWith("code:"));
+      if (missing.length > 0 && reviewId) {
+        const anchorEl = anchor;
+        void Promise.all(
+          missing.map(async (c) => {
+            const parsed = parseId(c.target);
+            if (!parsed || parsed.kind !== "code") return null;
+            try {
+              const slice = await api.fileSlice(reviewId, {
+                path: parsed.path,
+                commit: parsed.sha ?? snap.version.headSha,
+                start: parsed.start,
+                end: Math.min(parsed.end, parsed.start + 3),
+              });
+              return { target: c.target, snippet: slice.lines.join("\n") };
+            } catch {
+              return null;
+            }
+          }),
+        ).then((fills) => {
+          if (anchorRef.current !== anchorEl) return;
+          const byTarget = new Map(fills.filter((f) => f !== null).map((f) => [f.target, f.snippet]));
+          if (byTarget.size === 0) return;
+          setHtml(
+            renderCites(
+              resolved.map((c) => {
+                const snippet = byTarget.get(c.target);
+                return snippet !== undefined ? { ...c, snippet } : c;
+              }),
+            ),
+          );
+        });
+      }
     } else if (ds.threads) {
       const ids = ds.threads.split("|");
       content =
