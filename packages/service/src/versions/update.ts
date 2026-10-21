@@ -40,8 +40,10 @@ import type { ReviewStore } from "../state/store.js";
 export interface UpdateRunHooks {
   setSessionId(id: string): void;
   reportText(delta: string): void;
-  reportTool(name: string, detail?: string): void;
+  reportTool: import("../pipeline/runner.js").ToolCallback;
   reportUsage(usage: TokenUsage): void;
+  setTurnPrompt?: (text: string) => void;
+  reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
 }
 
 export interface UpdateBaseRunner {
@@ -385,8 +387,10 @@ export function enqueueUpdatePass(
           hooks: {
             setSessionId: (id) => ctx.setSessionId(id),
             reportText: (d) => ctx.reportText(d),
-            reportTool: (n, d) => ctx.reportTool(n, d),
+            reportTool: (n, d, extra) => ctx.reportTool(n, d, extra),
             reportUsage: (u) => ctx.reportUsage(u),
+            setTurnPrompt: (text) => ctx.setTurnPrompt(text),
+            reportTurnUsage: (u, raw) => ctx.reportTurnUsage(u, raw),
           },
         });
       } finally {

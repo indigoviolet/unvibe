@@ -80,8 +80,17 @@ describe("ReplayAgentRunner", () => {
     const r = runner();
     const events = await collect(r, "replay-kind: hunk\nreplay-key: log:0");
     const kinds = events.map((e) => e.type);
-    expect(kinds[0]).toBe("text");
+    // #207: replay emits one tool call (arguments + result) before the
+    // text, like a real runner, so Debug Output views work on the demo.
+    expect(kinds.slice(0, 2)).toEqual(["tool", "tool"]);
+    expect(events[0]).toMatchObject({ type: "tool", name: "Read", status: "start" });
+    expect(events[1]).toMatchObject({ type: "tool", name: "Read", status: "end" });
+    expect((events[1] as { result?: string }).result).toContain("hunk recording");
+    expect(kinds[2]).toBe("text");
     expect(kinds.slice(-2)).toEqual(["usage", "done"]);
+    // #207: usage carries the raw payload in the ACP shape, verbatim.
+    const usage = events.find((e) => e.type === "usage") as { raw?: { _meta?: { quota?: { model_usage?: unknown[] } } } } | undefined;
+    expect(usage?.raw?._meta?.quota?.model_usage).toHaveLength(1);
     const text = events
       .filter((e) => e.type === "text")
       .map((e) => (e.type === "text" ? e.delta : ""))

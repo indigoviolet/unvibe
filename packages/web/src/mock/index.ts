@@ -704,6 +704,33 @@ function seedJobs(): Job[] {
       state: "done",
       sessionId: "sess-reader-1",
       promptSnapshot: "You are the reader: explore the repo and write the guided review.",
+      turnRecords: [
+        {
+          label: "first",
+          prompt: "You are the reader: explore the repo and write the guided review.",
+          promptOriginalLength: 66,
+          output: "## The problem\n\nFolded headers are unfolded lazily.\n\n```json\n{\"cardIds\": [\"problem\", \"central\"]}\n```\n",
+          outputOriginalLength: 104,
+          tools: [
+            {
+              name: "Read",
+              id: "mock-tool-1",
+              detail: "{\"path\": \"src/urllib3/response.py\"}",
+              result: "Returned the response module (212 lines).",
+              resultOriginalLength: 41,
+              startedAt: 1700000000000,
+              finishedAt: 1700000001000,
+            },
+          ],
+          usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300 },
+          rawUsage: {
+            usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300, totalTokens: 54500 },
+            _meta: { quota: { token_count: { inputTokens: 48200, cachedInputTokens: 0, cachedWriteTokens: 0, outputTokens: 6300, totalTokens: 54500 } } },
+          },
+          startedAt: 1700000000000,
+          finishedAt: 1700000005000,
+        },
+      ],
       usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300 },
       cacheHitRate: 0,
       progress: "Finished: 6 cards",
@@ -3382,6 +3409,15 @@ export const mockApi = {
       throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"no prompt snapshot for job"}`);
     }
     return { jobId: job.id, promptSnapshot: job.promptSnapshot };
+  },
+
+  jobOutput: async (id: string) => {
+    const job = mockJobs.find((j) => j.id === id);
+    if (!job) throw new Error(`GET /api/jobs/${id}/output: 404 {"error":"unknown job"}`);
+    if (job.turnRecords === undefined) {
+      throw new Error(`GET /api/jobs/${id}/output: 404 {"error":"no output recorded for job"}`);
+    }
+    return { jobId: job.id, turnRecords: job.turnRecords };
   },
 
   jobReply: async (id: string) => {

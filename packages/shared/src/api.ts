@@ -1155,6 +1155,12 @@ export interface JobReplyResponse {
   replySnapshot: string;
 }
 
+/** GET /api/jobs/:id/output — per-turn output records for any job (#207). */
+export interface JobOutputResponse {
+  jobId: string;
+  turnRecords: import("./entities.js").JobTurnRecord[];
+}
+
 // --- contributions -------------------------------------------------------
 /**
  * M8 settings (PRD §4.14 "Shared context", §9.5): every automatic agent

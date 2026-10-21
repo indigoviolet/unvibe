@@ -92,17 +92,41 @@ export function roleFields(pick: { provider: string; model: string; effort: stri
   return { provider: pick.provider, model: pick.model, effort: pick.effort };
 }
 
+/** Issue #207: extra data on a tool callback (start detail, end result). */
+export type ToolCallExtra = { id?: string; result?: string; status?: "start" | "end" };
+export type ToolCallback = (name: string, detail?: string, extra?: ToolCallExtra) => void;
+
+/** Issue #207: per-turn record hooks, wired to the job context by callers. */
+export interface TurnHooks {
+  onPrompt?: (prompt: string) => void;
+  onUsage?: (usage: TokenUsage, raw?: unknown) => void;
+}
+
+/** Build turn hooks from a job-like context (absent methods are skipped). */
+export function turnHooks(ctx?: {
+  setTurnPrompt?: (text: string) => void;
+  reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
+} | null): TurnHooks | undefined {
+  if (!ctx) return undefined;
+  return {
+    onPrompt: (p) => ctx.setTurnPrompt?.(p),
+    onUsage: (u, raw) => ctx.reportTurnUsage?.(u, raw),
+  };
+}
+
 async function collectStreaming(
   runner: AgentRunner,
   session: Session,
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+  turn?.onPrompt?.(prompt);
   try {
     for await (const ev of runner.prompt(session, prompt, signal)) {
       if (ev.type === "text") {
@@ -115,13 +139,19 @@ async function collectStreaming(
       } else if (ev.type === "tool") {
         if (ev.status === "start") {
           afterTool = true;
-          onTool?.(ev.name, ev.detail);
+          onTool?.(ev.name, ev.detail, { status: "start", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
+        } else {
+          onTool?.(ev.name, ev.detail, { status: "end", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
         }
       } else if (ev.type === "usage") {
         usage.inputTokens += ev.inputTokens;
         usage.cachedReadTokens += ev.cachedReadTokens;
         usage.cachedWriteTokens += ev.cachedWriteTokens;
         usage.outputTokens += ev.outputTokens;
+        turn?.onUsage?.(
+          { inputTokens: ev.inputTokens, cachedReadTokens: ev.cachedReadTokens, cachedWriteTokens: ev.cachedWriteTokens, outputTokens: ev.outputTokens },
+          ev.raw,
+        );
       } else if (ev.type === "error") {
         if (ev.retryable) throw new RetryableError(ev.message);
         throw new Error(ev.message);
@@ -149,11 +179,12 @@ async function collectTracked(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   sessions.beginSessionUse(session.id);
   try {
-    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool, turn);
   } finally {
     sessions.endSessionUse(session.id);
   }
@@ -191,10 +222,10 @@ async function timedTurn<T>(
 
 /** Optional tool-call relay for contexts that may not report tools. */
 function reportToolFrom(ctx?: {
-  reportTool?: (name: string, detail?: string) => void;
-}): ((name: string, detail?: string) => void) | undefined {
+  reportTool?: ToolCallback;
+}): ToolCallback | undefined {
   const fn = ctx?.reportTool;
-  return fn ? (name, detail) => fn(name, detail) : undefined;
+  return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
 }
 
 /**
@@ -519,8 +550,8 @@ export class Pipeline {
                   }
                 }
               },
-              (name, detail) => ctx.reportTool(name, detail),
-              ),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+              turnHooks(ctx)),
             );
             const first = await this.parseAndValidateWithCode(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
@@ -566,8 +597,8 @@ export class Pipeline {
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -728,8 +759,8 @@ export class Pipeline {
               const { text, usage } = await timedTurn(ctx, "first", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               const first = await this.parseAndValidateWithCode(o.reviewId, text);
               let finalText = text;
@@ -750,8 +781,8 @@ export class Pipeline {
                 const repair = await timedTurn(ctx, "repair", () =>
                   collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                     ctx.reportText(d),
-                    (name, detail) => ctx.reportTool(name, detail),
-                  ),
+                    (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                  turnHooks(ctx)),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
                 usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -936,8 +967,8 @@ export class Pipeline {
         ctx.setSessionId(forked.session.id);
         const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
           ctx.reportText(d),
-          (name, detail) => ctx.reportTool(name, detail),
-        );
+          (name, detail, extra) => ctx.reportTool(name, detail, extra),
+        turnHooks(ctx));
         ctx.reportUsage(usage);
         await this.recordUsage(reviewId, usage);
         // Issue #50: match the page title (an echo of the concept name).
@@ -961,7 +992,8 @@ export class Pipeline {
           "standard",
           blocks,
           (u) => ctx.reportUsage(u),
-          (name, detail) => ctx.reportTool(name, detail),
+          (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx),
         );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
@@ -1033,8 +1065,8 @@ export class Pipeline {
         try {
           const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
-          );
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
@@ -1273,11 +1305,12 @@ export class Pipeline {
     level: string,
     blocks: Block[],
     onUsage?: (u: TokenUsage) => void,
-    onTool?: (name: string, detail?: string) => void,
+    onTool?: ToolCallback,
+    turn?: TurnHooks,
   ): Promise<Block[]> {
     const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
     if (!first.needsRepair) return first.blocks;
-    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool);
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool, turn);
   }
 
   /**
@@ -1298,7 +1331,8 @@ export class Pipeline {
     level: string,
     first: { blocks: Block[]; messages: string[] },
     onUsage?: (u: TokenUsage) => void,
-    onTool?: (name: string, detail?: string) => void,
+    onTool?: ToolCallback,
+    turn?: TurnHooks,
   ): Promise<Block[]> {
     const actx = this.actionContextFor(reviewId);
     try {
@@ -1309,6 +1343,7 @@ export class Pipeline {
         signal,
         () => {},
         onTool,
+        turn,
       );
       onUsage?.(usage);
       await this.recordUsage(reviewId, usage);
@@ -1669,13 +1704,13 @@ export class Pipeline {
                   // ignore mid-stream
                 }
               },
-              (name, detail) => {
+              (name, detail, extra) => {
                 // Text written before a tool call and before any card heading
                 // is the agent narrating its exploration, not card content.
-                ctx.reportTool(name, detail);
-                if (!/^## /m.test(buffer)) buffer = "";
+                ctx.reportTool(name, detail, extra);
+                if (extra?.status !== "end" && !/^## /m.test(buffer)) buffer = "";
               },
-              ),
+              turnHooks(ctx)),
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
@@ -1719,8 +1754,8 @@ export class Pipeline {
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -1759,7 +1794,8 @@ export class Pipeline {
               "standard",
               flat,
               (u) => ctx.reportUsage(u),
-              (name, detail) => ctx.reportTool(name, detail),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+              turnHooks(ctx),
             );
             const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
             await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
@@ -2043,8 +2079,8 @@ export class Pipeline {
           try {
             const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
               ctx.reportText(d),
-              (name, detail) => ctx.reportTool(name, detail),
-            );
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+            turnHooks(ctx));
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
             // Issue #50: finding cards match their own `##` titles.
@@ -2174,8 +2210,8 @@ export class Pipeline {
         try {
           const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
-          );
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
@@ -2299,8 +2335,8 @@ export class Pipeline {
         try {
           const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
             ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
-          );
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           const { data } = this.parseAndValidate(reviewId, text);
@@ -2434,8 +2470,7 @@ export class Pipeline {
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-          );
+            ctx.reportText(d), undefined, turnHooks(ctx));
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           // Malformed trailing JSON fails the job (visible on Debug);
@@ -2529,7 +2564,9 @@ export class Pipeline {
       setPromptSnapshot: (s: string) => void;
       setSessionId: (s: string) => void;
       reportUsage: (u: TokenUsage) => void;
-      reportTool?: (name: string, detail?: string) => void;
+      reportTool?: ToolCallback;
+      setTurnPrompt?: (text: string) => void;
+      reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
     },
   ): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
@@ -2547,9 +2584,9 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     ctx?.setSessionId(forked.session.id);
-    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
-      ctx?.reportTool?.(name, detail),
-    );
+    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, signal, onText, (name, detail, extra) =>
+      ctx?.reportTool?.(name, detail, extra),
+    turnHooks(ctx));
     ctx?.reportUsage(usage);
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the placeholder label (the card's future title).
@@ -2570,6 +2607,7 @@ export class Pipeline {
       blocks,
       (u) => ctx?.reportUsage(u),
       reportToolFrom(ctx),
+      turnHooks(ctx),
     );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
@@ -2992,8 +3030,10 @@ export class Pipeline {
         hooks?: {
           setSessionId(id: string): void;
           reportText(delta: string): void;
-          reportTool(name: string, detail?: string): void;
+          reportTool: ToolCallback;
           reportUsage(usage: TokenUsage): void;
+          setTurnPrompt?: (text: string) => void;
+          reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
         };
       },
     ) => Promise<string>;
@@ -3016,8 +3056,8 @@ export class Pipeline {
               prompt,
               opts.signal,
               (d) => opts.hooks?.reportText(d),
-              (name, detail) => opts.hooks?.reportTool(name, detail),
-            );
+              (name, detail, extra) => opts.hooks?.reportTool(name, detail, extra),
+            turnHooks(opts.hooks));
             opts.hooks?.reportUsage(usage);
             await this.recordUsage(opts.reviewId, usage);
             return text;

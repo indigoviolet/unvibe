@@ -34,7 +34,7 @@ import {
 import { assertLiveAgentAllowed } from "../live-guard.js";
 import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
-import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
+import { addTurnUsage, aggregateTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
 import {
   normalizeProvider,
@@ -127,9 +127,6 @@ export class AcpAgentRunner implements AgentRunner {
   private known = new Map<string, AcpSessionRecord>();
   /** Canonical policies per transport, reapplied after restarts. */
   private policies = new Map<string, Map<string, SessionPolicy>>();
-  /** Last reported cumulative usage per session (Claude counters grow across
-   *  turns; per-turn usage is the delta — see usage.ts). */
-  private usageBaseline = new Map<string, TurnUsage>();
   /** Usage of the shared first turn, folded into the session's first
    *  real prompt so per-job reporting stays complete (see start()). */
   private firstTurnUsage = new Map<string, TurnUsage>();
@@ -326,7 +323,6 @@ export class AcpAgentRunner implements AgentRunner {
           prompt: [{ type: "text", text: SHARED_CACHE_FIRST_TURN }],
         });
         const tu = aggregateTurnUsage(warm as { usage?: unknown; _meta?: unknown });
-        this.usageBaseline.set(rec.acpSessionId, tu);
         this.firstTurnUsage.set(rec.acpSessionId, tu);
       } catch {
         // ignore: caching optimisation only
@@ -633,17 +629,40 @@ export class AcpAgentRunner implements AgentRunner {
           // (shell command, URL, …) when the adapter sends arguments with
           // the call. Adapters that send none record the name only.
           const detail = formatToolDetail(u.rawInput ?? u.input);
-          if (detail !== undefined) yield { type: "tool", name, status: "start", detail };
-          else yield { type: "tool", name, status: "start" };
+          const result = formatToolResult((u as { content?: unknown }).content);
+          yield {
+            type: "tool",
+            name,
+            status: "start",
+            ...(u.toolCallId ? { id: u.toolCallId } : {}),
+            ...(detail !== undefined ? { detail } : {}),
+            ...(result !== undefined ? { result } : {}),
+          };
         } else if (kind === "tool_call_update") {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
+          const result = formatToolResult((u as { content?: unknown }).content);
+          const detail = formatToolDetail(u.rawInput ?? u.input);
           if (status === "completed" || status === "failed") {
-            yield { type: "tool", name, status: "end" };
+            yield {
+              type: "tool",
+              name,
+              status: "end",
+              ...(u.toolCallId ? { id: u.toolCallId } : {}),
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
             if (u.toolCallId) seenTools.delete(u.toolCallId);
           } else if (u.toolCallId && !seenTools.has(u.toolCallId)) {
             seenTools.add(u.toolCallId);
-            yield { type: "tool", name, status: "start" };
+            yield {
+              type: "tool",
+              name,
+              status: "start",
+              id: u.toolCallId,
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
           }
         } else {
           // usage_update, plan, notices, etc.: not streamed; the final
@@ -756,25 +775,17 @@ export class AcpAgentRunner implements AgentRunner {
       return;
     }
     const tu = aggregateTurnUsage({ usage: r?.usage, _meta: r?._meta });
-    // Claude reports session-cumulative counters; Codex reports per-turn.
-    // Consumers sum per-turn usage, so delta-ize Claude against the session
-    // baseline (see usage.ts for the evidence).
+    // Both adapters report per-turn figures (#209; see usage.ts), so the
+    // aggregate IS this turn's usage — for Claude and Codex alike. Never
+    // diff it against an earlier turn of the session.
     let report = tu;
     if (rec.provider === "claude") {
-      report = deltaTurnUsage(this.usageBaseline.get(rec.acpSessionId) ?? null, tu);
-      this.usageBaseline.set(rec.acpSessionId, tu);
-      // Fold in the shared first turn (start()) once, so the job's
-      // reported usage covers both turns.
+      // Fold in the shared first turn (start()) once, summed, so the job's
+      // reported usage covers both of its own turns.
       const first = this.firstTurnUsage.get(rec.acpSessionId);
       if (first) {
         this.firstTurnUsage.delete(rec.acpSessionId);
-        report = {
-          ...report,
-          inputTokens: report.inputTokens + first.inputTokens,
-          cachedReadTokens: report.cachedReadTokens + first.cachedReadTokens,
-          cachedWriteTokens: report.cachedWriteTokens + first.cachedWriteTokens,
-          outputTokens: report.outputTokens + first.outputTokens,
-        };
+        report = addTurnUsage(first, report);
       }
     }
     yield {
@@ -783,6 +794,10 @@ export class AcpAgentRunner implements AgentRunner {
       cachedReadTokens: report.cachedReadTokens,
       cachedWriteTokens: report.cachedWriteTokens,
       outputTokens: report.outputTokens,
+      // Issue #207: the adapter's payload verbatim (`usage` + `_meta`,
+      // quota figures included), for the Debug page's raw view. The
+      // derived counts above may be delta-ized/aggregated; this is not.
+      raw: { usage: r?.usage ?? null, _meta: r?._meta ?? null },
     };
     yield { type: "done", stopReason };
   }
@@ -923,7 +938,7 @@ export class AcpAgentRunner implements AgentRunner {
     // dispose is terminal; clear everything.
     this.known.clear();
     this.policies.clear();
-    this.usageBaseline.clear();
+    this.firstTurnUsage.clear();
   }
 }
 
@@ -932,6 +947,38 @@ export class AcpAgentRunner implements AgentRunner {
  * pass through; objects stringify; anything else records nothing.
  * Truncated: the job record names the tool, it is not a transcript.
  */
+/**
+ * Issue #207: a tool call's result text from its `content` collection.
+ * Text blocks pass through; diffs contribute their new text; anything
+ * else contributes a short marker. Untruncated here — the job record
+ * truncates with the original length.
+ */
+export function formatToolResult(content: unknown): string | undefined {
+  if (!Array.isArray(content)) {
+    const single = content as { type?: string; text?: string } | null;
+    if (single?.type === "text" && typeof single.text === "string") return single.text;
+    return undefined;
+  }
+  const parts: string[] = [];
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (item.type === "content") {
+      const inner = item.content as { type?: string; text?: string } | undefined;
+      if (inner?.type === "text" && typeof inner.text === "string") parts.push(inner.text);
+      else if (inner) parts.push(`[${inner.type ?? "content"}]`);
+    } else if (item.type === "diff") {
+      const path = typeof item.path === "string" ? item.path : "file";
+      const newText = typeof item.newText === "string" ? item.newText : "";
+      parts.push(newText ? `diff ${path}:\n${newText}` : `diff ${path}`);
+    } else if (item.type === "terminal") {
+      parts.push(`[terminal ${typeof item.terminalId === "string" ? item.terminalId : ""}]`);
+    } else if (typeof item.type === "string") {
+      parts.push(`[${item.type}]`);
+    }
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join("\n");
+}
+
 export function formatToolDetail(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   const text = typeof input === "string" ? input : safeJson(input);

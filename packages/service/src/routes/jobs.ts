@@ -6,6 +6,7 @@
  * - `GET /api/jobs/:id` — one job.
  * - `GET /api/jobs/:id/prompt` — the exact prompt snapshot the job sent.
  * - `GET /api/jobs/:id/reply` — the agent's reply for a failed job (#180).
+ * - `GET /api/jobs/:id/output` — per-turn output records for any job (#207).
  * - `POST /api/jobs/:id/cancel` — cancel (AbortSignal, also while queued).
  * - `PATCH /api/jobs/:id` `{ priority }` — re-prioritise while queued.
  *
@@ -43,6 +44,17 @@ export async function registerJobs(app: FastifyInstance, deps: RouteDeps = {}): 
       return reply.code(404).send({ error: "no prompt snapshot for job" });
     }
     return { jobId: job.id, promptSnapshot: job.promptSnapshot };
+  });
+
+  app.get("/api/jobs/:id/output", async (req, reply) => {
+    if (!deps.jobs) return reply.code(501).send(TODO);
+    const { id } = req.params as Record<string, string>;
+    const job = deps.jobs.get(id ?? "");
+    if (!job) return reply.code(404).send({ error: "unknown job" });
+    if (job.turnRecords === undefined) {
+      return reply.code(404).send({ error: "no output recorded for job" });
+    }
+    return { jobId: job.id, turnRecords: job.turnRecords };
   });
 
   app.get("/api/jobs/:id/reply", async (req, reply) => {
