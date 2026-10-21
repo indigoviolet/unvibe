@@ -308,12 +308,24 @@ export function HoverPopover() {
     let scrollBeganAt = 0;
     let lastScrollAt = 0;
     let settleTimer: number | undefined;
+    // Anchor a real mouseover claimed before a scroll ate its open.
+    let scrollWanted: Element | null = null;
 
     const scheduleOpen = (anchor: Element): void => {
       overAnchor.current = anchor;
       const pending = anchor;
       openTimer.current = window.setTimeout(() => {
-        if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
+        if (!pending.isConnected) {
+          // The anchor re-rendered under a stationary pointer while
+          // the open was pending (a snapshot patch replaced the node):
+          // re-resolve the anchor under the cursor and try once more,
+          // or the hover is lost until the pointer moves again.
+          const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
+          const again = target?.closest?.(ANCHOR_SELECTOR);
+          if (again && again !== pending) scheduleOpen(again);
+          return;
+        }
+        if (scrollQuiet.current || overAnchor.current !== pending) return;
         openForRef.current(pending);
       }, OPEN_DELAY_MS);
     };
@@ -363,6 +375,7 @@ export function HoverPopover() {
       if (now - lastScrollAt > 600) scrollBeganAt = now;
       lastScrollAt = now;
       scrollQuiet.current = true;
+      if (overAnchor.current) scrollWanted = overAnchor.current;
       hideRef.current();
       // A trailing scroll event can land after the pointer has already
       // moved onto an anchor (its mouseover was ignored above, and the
@@ -373,7 +386,15 @@ export function HoverPopover() {
       window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         scrollQuiet.current = false;
-        if (anchorRef.current || lastMouse.movedAt < scrollBeganAt) return;
+        if (anchorRef.current) return;
+        // A pointer that genuinely moved after the scroll began, or
+        // one a real (non-scroll) mouseover already claimed as
+        // hovering an anchor whose scheduled open this scroll ate:
+        // either proves a deliberate hover, so re-arm it. Content
+        // sliding under a stationary cursor sets neither.
+        const wanted = scrollWanted;
+        scrollWanted = null;
+        if (lastMouse.movedAt < scrollBeganAt && !wanted?.isConnected) return;
         const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
         const anchor = target?.closest?.(ANCHOR_SELECTOR);
         if (anchor) scheduleOpen(anchor);
