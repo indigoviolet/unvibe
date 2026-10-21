@@ -69,11 +69,19 @@ export function useDiffExpansionBindings(
     const map = new Map<string, Annotation[]>();
     for (const a of annotations ?? []) {
       if (a.type !== "conversation" && a.type !== "link") continue;
-      if (a.anchor.host.kind !== "diff-line") continue;
+      // Issue #214: a card on a comment renders under that comment's line.
+      let host = a.anchor.host;
+      if (host.kind === "comment") {
+        const commentId = host.commentId;
+        const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+        if (!comment || comment.anchor.host.kind !== "diff-line") continue;
+        host = comment.anchor.host;
+      }
+      if (host.kind !== "diff-line") continue;
       // Promoted links join the map so the anchor keeps its page-link
       // mark (issue #152); they render no slot (the card moved away).
       if (a.type === "link" && !a.promotedToPage) continue;
-      const key = slotKey(a.anchor.host.fileKey, a.anchor.host.line);
+      const key = slotKey(host.fileKey, host.line);
       const list = map.get(key) ?? [];
       list.push(a);
       map.set(key, list);
@@ -181,6 +189,17 @@ export function useDiffExpansionBindings(
                   }
                   continue;
                 }
+                if (a.anchor.host.kind === "comment") {
+                  // Issue #214: mark inside the comment, not the code cell.
+                  const msgs = document.querySelectorAll(`#right [data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
+                  for (const msg of msgs) {
+                    if (placeAnchorSpot(msg, spot, () => makeExpMark(a.id, !a.open)) > 0) {
+                      pending.delete(a.id);
+                      break;
+                    }
+                  }
+                  continue;
+                }
                 if (placeAnchorSpot(cell, spot, () => makeExpMark(a.id, !a.open)) > 0) {
                   pending.delete(a.id);
                 }
@@ -190,6 +209,9 @@ export function useDiffExpansionBindings(
             }
           }
         }
+        // Diff click reopen checks the host kind; comment-hosted cards are
+        // handled by the guide/description click paths and by closing via
+        // their card controls. Their marks above are visual only here.
       });
       if (pending.size === 0) recordUnplacedAnchors("Diff expansions", []);
       else retry.schedule();
@@ -255,7 +277,7 @@ export function useDiffExpansionBindings(
       const id = (mark as HTMLElement).dataset.jump ?? "";
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
-      if (!found || found.anchor.host.kind !== "diff-line") return;
+      if (!found || (found.anchor.host.kind !== "diff-line" && found.anchor.host.kind !== "comment")) return;
       if (found.type === "conversation" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);

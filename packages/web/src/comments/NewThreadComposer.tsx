@@ -167,6 +167,9 @@ function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean 
   if (anchor.where === "hunk" && host.kind === "hunk") {
     return anchor.fileKey === host.fileKey && anchor.contentHash === host.contentHash;
   }
+  if (anchor.where === "comment" && host.kind === "comment") {
+    return anchor.commentId === host.commentId;
+  }
   return false;
 }
 
