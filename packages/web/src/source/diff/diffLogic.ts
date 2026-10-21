@@ -65,6 +65,22 @@ export function buildFileTree(files: ReviewFile[]): TreeRow[] {
   return rows;
 }
 
+/**
+ * Split a `/`-joined label into a truncatable head and a kept tail
+ * (issue #227): the head ellipsises, the last `tailSegments` segments
+ * always stay readable, so a long directory chain shortens from the
+ * middle instead of losing its end. A trailing slash is kept on the tail.
+ */
+export function tailPathParts(text: string, tailSegments = 2): { pre: string; end: string } {
+  const trailing = text.endsWith("/") ? "/" : "";
+  const segs = text.replace(/\/+$/, "").split("/").filter((s) => s.length > 0);
+  if (segs.length <= tailSegments) return { pre: "", end: text };
+  return {
+    pre: `${segs.slice(0, segs.length - tailSegments).join("/")}/`,
+    end: `${segs.slice(segs.length - tailSegments).join("/")}${trailing}`,
+  };
+}
+
 // --- hidden-run grouping ---------------------------------------------------
 
 export type HunkGroup = { type: "show"; index: number } | { type: "hidden"; indices: number[] };
