@@ -9,11 +9,15 @@
 import type {
   Annotation,
   Card,
+  ContextRepoRef,
+  ContextRepoSource,
   Contribution,
   DepthLevel,
+  DocumentContent,
   ExistingReviewComment,
   FileState,
   HunkState,
+  ReviewKind,
   ReviewViewPrefs,
   Job,
   LogEntry,
@@ -184,6 +188,41 @@ export interface RepoChangesResponse {
 
 // --- reviews -------------------------------------------------------------
 
+/**
+ * Issue #222: `POST /api/reviews` with `kind: "document"` — a pasted
+ * Markdown document plus 1–2 context repos. Each context repo names its
+ * registered repo and where to read it: a particular worktree
+ * (`source: "worktree"` with `worktreePath`), `origin/main`, or the
+ * local copy. Answered synchronously with the ready snapshot (201);
+ * nothing is generated up front.
+ */
+export interface CreateDocumentRequest {
+  kind: "document";
+  /** Pasted Markdown (required, non-empty). */
+  markdown: string;
+  /** Display title; defaults to the document's first heading. */
+  title?: string;
+  contextRepos: { repoId: string; source: ContextRepoSource; worktreePath?: string }[];
+}
+
+/** Issue #222: one worktree of a repo, for the context-repo picker. */
+export interface RepoWorktree {
+  path: string;
+  /** Branch checked out there, when any. */
+  branch?: string;
+  /** HEAD commit there. */
+  head?: string;
+}
+
+/** `GET /api/repos/:id/worktrees` (issue #222). */
+export interface RepoWorktreesResponse {
+  worktrees: RepoWorktree[];
+  /** `origin/main` commit, when the ref exists. */
+  originMainSha?: string;
+  /** The local copy's HEAD commit. */
+  localSha?: string;
+}
+
 export interface CreateReviewRequest {
   repoId: string;
   pr?: number;
@@ -244,6 +283,10 @@ export function assertReadySnapshot(snap: ReviewSnapshot): void {
 
 export interface ReviewSnapshot {
   review: Review;
+  /** Issue #222: the pasted document (document reviews only). */
+  document?: DocumentContent;
+  /** Issue #222: resolved context repos (document reviews only). */
+  contextRepos?: ContextRepoRef[];
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
    * no real version yet. Present once the ingest lands. Callers must check
@@ -340,6 +383,8 @@ export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
  */
 export interface ReviewSummary {
   id: string;
+  /** Issue #222: `"document"` for a document review. */
+  kind?: ReviewKind;
   repoId: string;
   repoOwner: string;
   repoName: string;

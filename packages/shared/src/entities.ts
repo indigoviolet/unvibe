@@ -32,6 +32,54 @@ export interface Repo {
   managed?: boolean;
 }
 
+/** Issue #222: what a review reviews. Absent means `"change"` (stored
+ * change reviews predate the field; document reviews always set it). */
+export type ReviewKind = "change" | "document";
+
+/** Issue #222: where a document review's context repo is read from. */
+export type ContextRepoSource = "worktree" | "origin-main" | "local";
+
+/**
+ * Issue #222: one context repo of a document review, resolved at creation.
+ * `repoPath` is the registered checkout (where git runs); `path` is the
+ * effective reading location (the chosen worktree, or `repoPath` for
+ * `origin-main`/`local`); `sha` is the commit read for `origin-main`
+ * (absent for worktree/local, whose HEAD is read live).
+ */
+export interface ContextRepoRef {
+  repoId: string;
+  owner: string;
+  name: string;
+  source: ContextRepoSource;
+  repoPath: string;
+  path: string;
+  /** Chosen worktree path (`source: "worktree"` only). */
+  worktreePath?: string;
+  /** Resolved commit at creation (`origin-main`, else the reading HEAD). */
+  sha?: string;
+  /** Human label shown in the UI and the agent context. */
+  label: string;
+}
+
+/** One block of a pasted document (issue #222). Headings carry a level;
+ * content blocks wrap the shared `Block` whose id is this block's id. */
+export interface DocumentBlock {
+  /** Paragraph block ID: `p1`, `p2`, … in document order (cited as `doc:pN`). */
+  id: string;
+  kind: "heading" | "content";
+  /** Heading level 1–6 (`kind: "heading"` only). */
+  level?: number;
+  block: Block;
+}
+
+/** Issue #222: a pasted Markdown document (single version, no refresh). */
+export interface DocumentContent {
+  title: string;
+  /** Pasted Markdown, verbatim. */
+  markdown: string;
+  blocks: DocumentBlock[];
+}
+
 /** One review of a branch or PR. */
 export interface Review {
   id: string;
@@ -39,9 +87,16 @@ export interface Review {
   branch: string;
   /** PR number, absent for branch-only reviews. */
   prNumber?: number;
+  /** Issue #222: `"document"` for a document review; absent/`"change"` otherwise. */
+  kind?: ReviewKind;
   versions: Version[];
   currentVersion: number;
   createdAt: number;
+}
+
+/** Issue #222: the review kind of a review (absent means `"change"`). */
+export function reviewKindOf(review: Pick<Review, "kind">): ReviewKind {
+  return review.kind === "document" ? "document" : "change";
 }
 
 /** One fetched state of the branch. */
