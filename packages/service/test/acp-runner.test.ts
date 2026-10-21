@@ -288,22 +288,27 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
-  it("cache probe (#177): the shared first turn's usage folds into the first real prompt", async () => {
+  it("cache probe (#177): the shared first turn's usage is consumable once, separately from the first real prompt (#209)", async () => {
     const state = createFakeState([
-      { match: "The task for this session arrives", chunks: [{ text: "ready" }], usage: { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 900, outputTokens: 10 } },
-      { match: "hunk A", chunks: [{ text: "ans A" }], usage: { inputTokens: 10, cachedReadTokens: 250, cachedWriteTokens: 950, outputTokens: 30 } },
+      { match: "The task for this session arrives", chunks: [{ text: "ready" }], usage: { inputTokens: 1196, cachedReadTokens: 0, cachedWriteTokens: 57500, outputTokens: 20 } },
+      { match: "hunk A", chunks: [{ text: "ans A" }], usage: { inputTokens: 2, cachedReadTokens: 57500, cachedWriteTokens: 1861, outputTokens: 3 } },
     ]);
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    // The warm-up usage is attributed to the session-start turn, not folded
+    // into the first real prompt: exact adapter-reported figures, consumed once.
+    expect(runner.takeSessionStartUsage(s.id)).toEqual(
+      expect.objectContaining({ inputTokens: 1196, cachedReadTokens: 0, cachedWriteTokens: 57500, outputTokens: 20 }),
+    );
+    expect(runner.takeSessionStartUsage(s.id)).toBeUndefined();
     const events = await collect(runner, s, "hunk A please");
-    // #209: adapter payloads are per-turn, so the job's figure is the SUM
-    // of its own two turns: warmup (5/100/900/10) + real (10/250/950/30).
+    // The first real prompt's usage event is that turn alone.
     expect(events.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
       type: "usage",
-      inputTokens: 15,
-      cachedReadTokens: 350,
-      cachedWriteTokens: 1850,
-      outputTokens: 40,
+      inputTokens: 2,
+      cachedReadTokens: 57500,
+      cachedWriteTokens: 1861,
+      outputTokens: 3,
     }));
     // The warmup's "ready" text must not leak into the job's reply.
     expect(events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("")).toBe("ans A");

@@ -133,6 +133,7 @@ test("jobs show state, tokens, cache rate, tool count and cancel", async ({ page
   await expect(running).toContainText("running");
   await expect(running).toContainText("42.5k in");
   await expect(running).toContainText("47.8% hit");
+  await expect(running).toContainText("38.9k read");
   await expect(running).toContainText("0 written");
 
   const backing = page.locator('[data-testid="job-job-critic-1"]');

@@ -27,6 +27,21 @@ export interface AgentRunner {
   }): Promise<Session>;
   /** Optional capability: fork a session (ACP `session/fork`, unstable). */
   fork?(session: Session, opts?: { atMessage?: string }): Promise<Session>;
+  /**
+   * Issue #209: consume a session's session-start (warm-up) usage, if the
+   * runner tracks any. The pipeline attributes it to the job's
+   * "session start" turn record so the first real turn's usage is that
+   * turn alone; without this the warm cost lands folded into the first
+   * turn. Returns undefined when the runner reports none (fakes, Codex,
+   * non-empty system prompts). Consuming: a second call for the same
+   * session returns undefined.
+   */
+  takeSessionStartUsage?(sessionId: string): {
+    inputTokens: number;
+    cachedReadTokens: number;
+    cachedWriteTokens: number;
+    outputTokens: number;
+  } | undefined;
   /** Reopen a session after an idle close. */
   load(sessionId: string): Promise<Session>;
   prompt(session: Session, text: string, signal?: AbortSignal): AsyncIterable<AgentEvent>;

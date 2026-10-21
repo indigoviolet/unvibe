@@ -34,7 +34,7 @@ import {
 import { assertLiveAgentAllowed } from "../live-guard.js";
 import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
-import { addTurnUsage, aggregateTurnUsage, type TurnUsage } from "./usage.js";
+import { aggregateTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
 import {
   normalizeProvider,
@@ -127,8 +127,9 @@ export class AcpAgentRunner implements AgentRunner {
   private known = new Map<string, AcpSessionRecord>();
   /** Canonical policies per transport, reapplied after restarts. */
   private policies = new Map<string, Map<string, SessionPolicy>>();
-  /** Usage of the shared first turn, folded into the session's first
-   *  real prompt so per-job reporting stays complete (see start()). */
+  /** Usage of the shared first (warm-up) turn, consumed once via
+   *  takeSessionStartUsage so the pipeline attributes it to the job's
+   *  "session start" turn (see start()). */
   private firstTurnUsage = new Map<string, TurnUsage>();
   private modelCache = new Map<ProviderId, { at: number; models: ModelInfo[]; defaultId?: string | null }>();
   private opts: AcpRunnerOptions;
@@ -314,8 +315,10 @@ export class AcpAgentRunner implements AgentRunner {
     // per-job prompt lands after every cache-shared block (see
     // SHARED_CACHE_FIRST_TURN). Best-effort: a failed first turn must
     // not fail the job — the real prompt surfaces any real error. Its
-    // usage is folded into the first real prompt's usage event, and
-    // its notifications are drained by prompt() before that turn.
+    // usage is recorded here and consumed once via takeSessionStartUsage,
+    // so the pipeline can attribute it to the job's "session start" turn
+    // instead of the first real prompt; its notifications are drained by
+    // prompt() before that turn.
     if (provider === "claude" && opts.systemPrompt === "") {
       try {
         const warm = await caller.request("session/prompt", {
@@ -793,17 +796,11 @@ export class AcpAgentRunner implements AgentRunner {
     const tu = aggregateTurnUsage({ usage: r?.usage, _meta: r?._meta });
     // Both adapters report per-turn figures (#209; see usage.ts), so the
     // aggregate IS this turn's usage — for Claude and Codex alike. Never
-    // diff it against an earlier turn of the session.
-    let report = tu;
-    if (rec.provider === "claude") {
-      // Fold in the shared first turn (start()) once, summed, so the job's
-      // reported usage covers both of its own turns.
-      const first = this.firstTurnUsage.get(rec.acpSessionId);
-      if (first) {
-        this.firstTurnUsage.delete(rec.acpSessionId);
-        report = addTurnUsage(first, report);
-      }
-    }
+    // diff it against an earlier turn of the session. The shared first
+    // (warm-up) turn's usage is NOT folded in here: the caller attributes
+    // it to the job's "session start" turn via takeSessionStartUsage, so
+    // the first real turn's usage is that turn alone.
+    const report = tu;
     yield {
       type: "usage",
       inputTokens: report.inputTokens,
@@ -812,10 +809,26 @@ export class AcpAgentRunner implements AgentRunner {
       outputTokens: report.outputTokens,
       // Issue #207: the adapter's payload verbatim (`usage` + `_meta`,
       // quota figures included), for the Debug page's raw view. The
-      // derived counts above may be delta-ized/aggregated; this is not.
+      // derived counts above may be aggregated; this is not.
       raw: { usage: r?.usage ?? null, _meta: r?._meta ?? null },
     };
     yield { type: "done", stopReason };
+  }
+
+  /**
+   * Issue #209: consume the shared first (warm-up) turn's usage for a
+   * session started with an empty system prompt, if one was recorded.
+   * The pipeline reports it on the job's "session start" turn record
+   * (which also carries the 28 s-class start wall time), separately from
+   * the first real turn. Exact adapter-reported figures, not computed.
+   */
+  takeSessionStartUsage(sessionId: string): TurnUsage | undefined {
+    const rec = this.known.get(sessionId);
+    if (!rec) return undefined;
+    const first = this.firstTurnUsage.get(rec.acpSessionId);
+    if (!first) return undefined;
+    this.firstTurnUsage.delete(rec.acpSessionId);
+    return first;
   }
 
   /** Models the adapter offers (from session/new configOptions). */
