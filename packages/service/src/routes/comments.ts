@@ -43,6 +43,15 @@ function validAnchor(a: unknown): a is ActionAnchor {
     const f = a as { fileKey?: unknown; contentHash?: unknown };
     return typeof f.fileKey === "string" && typeof f.contentHash === "string";
   }
+  if (w === "code") {
+    const f = a as { path?: unknown; commit?: unknown; line?: unknown; endLine?: unknown };
+    return (
+      typeof f.path === "string" &&
+      typeof f.commit === "string" &&
+      Number.isSafeInteger(f.line) &&
+      (f.endLine === undefined || Number.isSafeInteger(f.endLine))
+    );
+  }
   return false;
 }
 
