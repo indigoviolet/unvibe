@@ -27,10 +27,11 @@ the reader would expect, rely on, or push back on.
 
 ## What good output looks like
 
-- Explanation comes first. Before detail, the reader should know how the
-  system worked before, what idea the change is built around, which
-  choices it makes and what else was possible. Say what was wrong before
-  the change, then what the change does about it.
+- Explanation comes first. Say what was wrong before the change and how
+  the system worked before it — the problem card states the problem
+  only — then, in its own card, the idea the change is built around.
+  Before detail, the reader should know which choices the change makes
+  and what else was possible.
 - Decisions are explained neutrally: what was chosen, what else was
   possible, why this one, and what it costs. Judging whether a choice was
   right is a verdict, and verdicts stay with the critic: never mix a

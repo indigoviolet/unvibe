@@ -1959,7 +1959,7 @@ export class Pipeline {
     const lookup = this.lookupWithAliases(snapshot);
     const validation = validateReply(blocks, lookup);
     const fixed = this.withValidation(reviewId, blocks, validation);
-    const provisionalId = readerCardId(index);
+    const provisionalId = readerCardId(index, [], title);
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
@@ -2573,7 +2573,7 @@ export class Pipeline {
         dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
         cardId: card.id,
         run: async (ctx) => {
-          await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
+          await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx, { collapseWhenFilled: true });
         },
       }),
     );
@@ -2592,6 +2592,7 @@ export class Pipeline {
       setTurnPrompt?: (text: string) => void;
       reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
     },
+    opts?: { collapseWhenFilled?: boolean },
   ): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
@@ -2640,6 +2641,14 @@ export class Pipeline {
       if (!c) return;
       c.title = title;
       c.blocks = stored;
+      // #217: a card written automatically (not by a Generate click)
+      // stays collapsed — title and why-line, as the placeholder
+      // looked — until the reader opens it; opening is the ordinary
+      // expand, so the written content shows with no new job.
+      if (opts?.collapseWhenFilled) {
+        c.collapsed = true;
+        if (c.pending?.why) c.why = c.pending.why;
+      }
       delete c.pending;
       c.revision += 1;
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;

@@ -230,6 +230,9 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           />
           {title ? <h2 className="ct">{title}</h2> : null}
         </div>
+        {/* #217: an auto-written go-deeper card keeps its why-line
+            while collapsed, the way its placeholder looked. */}
+        {card.why ? <div className="why">{card.why}</div> : null}
       </UiCard>
     );
   }

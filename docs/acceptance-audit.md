@@ -295,7 +295,8 @@ needed (that deviation is closed, not added).
    address the reader about how to read the guide or whether to keep
    reading (#175): no "if you only need…", "in short…" or "TL;DR"
    framings (prompt rule in `instructions.md`; the problem card's first
-   paragraph states the problem and the central idea). Agent process
+   paragraph states the problem only, and the central idea has its own
+   card after it). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). The service
@@ -612,18 +613,25 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (all comments, jump, Outbox filter with editable drafts + export Markdown box with Copy (#223, hidden when the Outbox is empty),
-  never posts; lives in the review bar next to Submit since round 2, so it
-  opens with the source pane closed) — met (`comments-service.spec.ts`
-  “mark Outbox, edit the draft, submit posts exactly one review”; branch-review export covered by `journeys/j223-outbox.spec.ts`;
-  `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
+- Comments menu (one scrolling list with three counted, disjoint sections —
+  This review, Outbox, On GitHub (#226; posted threads return to This
+  review), jump, Outbox drafts + export Markdown box with Copy (#223,
+  hidden when the Outbox is empty), never posts; lives in the review bar
+  next to Submit since round 2, so it opens with the source pane closed) —
+  met (`comments/CommentsMenu.test.tsx` sections/counts/fold cases,
+  `comments-service.spec.ts` “mark Outbox, edit the draft, submit posts
+  exactly one review”; branch-review sections covered by
+  `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments menu
+  opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
   (author + count, Open on GitHub, Markdown rendered with the shared
   untrusted renderer), outdated ones at their file and removed-file ones
-  at the diff's end; the menu groups them by file and thread with
-  rendered bodies and jumps to them; selecting their text offers
+  at the diff's end;   the menu groups them by file and thread with
+  line-only entry metas, rendered bodies and jumps to them; the On GitHub
+  count is the threads shown and the section keeps its fold and show/hide
+  behaviour under its strong heading (#226); selecting their text offers
   Explain/Ask/Comment (quoting into the reviewer's own comment); one
   filter-menu control hides them in the diff (remembered with the
   review) without removing them from the agents' context, where they
@@ -1241,14 +1249,19 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, plotlines settled first, then problem / central idea
-   (one per plotline when several) / "How it's built up" / "Decisions and
-   questions" / "Names" (only when the change introduces names with
+2. Reader (explore, plotlines settled first, then problem (the problem
+   only) / one central-idea card (always, even with several plotlines;
+   per-plotline cards follow it when several) / "How it's built up" /
+   "Decisions and questions" (parts in the order Decisions, Invariants,
+   Known uncertainties, Interfaces; no "What it adds and removes" part;
+   a decision that introduces a second way of doing something the
+   system already does, or departs from an existing pattern, is stated
+   in Decisions) / "Names" (only when the change introduces names with
    reach) / directions, `pin_context`) — met
    (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
    L0 mission in `prompts/instructions.md`, neutral decisions card,
    verdicts stay with the critic; #212 regularizer: L0 regularizer
-   mission, widest-reach-first Decisions and questions card, Names card
+   mission, Decisions and questions card, Names card
    with stable `names` id (`decisions` id kept for the renamed card),
    critic overfitting lens; #211: reader reads and cites through the
    review tools, terminal only for what they do not cover).
@@ -1289,7 +1302,7 @@ needed (that deviation is closed, not added).
    reason, and summary-less rows render the reason copy with no spinner
    (`DiffView.test.tsx` "folds on the deterministic hidden reason").
    Deviation from PRD §11 step 5 noted below.
-6. On demand (depth/go-deeper — automatic in the background by default (#217), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
@@ -2426,6 +2439,28 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #227 (branch `fix/227-file-tree`)
+
+- **File tree (§4.13):** the tree panel never scrolls sideways. Rows are
+  border-box and the list is `overflow-x: hidden`; file names truncate
+  with an ellipsis, directory chains shorten from the middle (the head
+  ellipsises, the last segments stay readable, full path on hover via
+  `title`), and the `+N −M` / reviewed-count indicators sit in fixed
+  right-hand tracks outside the name button (shared subgrid columns, so
+  they align across rows and depths). The diff's file headers get the
+  same treatment: middle-shortened directory, truncating file name, and
+  the counts/reviewed/checkbox fixed at the right edge inside the pane.
+  Root cause of the original scrollbar: rows were `width: 100%` in
+  content-box sizing, so padding pushed every row past the panel and
+  the indicators with it. Evidence: `tailPathParts` cases in
+  `diffLogic.test.ts`, journey `e2e/journeys/j227-file-tree.spec.ts`
+  (scratch repo with a long path against the real service: no horizontal
+  scroll, indicators inside and aligned, hover titles, header fits the
+  pane), and the `file-tree` frames in `e2e/visual-tour.spec.ts`.
+  The owner declined the optional indicator treatments (dropping zero
+  sides, a proportional add/remove bar, a "done" look); `+N −M` stays.
+
 ## Addendum: #222 phase 1 (branch `feat/222-document-review`)
 
 - **Document review kind (#222):** `POST /api/reviews` with

@@ -68,7 +68,7 @@ test("comments menu opens with the source pane closed", async ({ page }) => {
   await expect(page.locator("#right")).toHaveClass(/hide/);
   await page.locator('#reviewbar [data-cm=""]').click();
   await expect(page.locator("#reviewbar .cmenu")).toBeVisible();
-  await expect(page.locator("#reviewbar .cmenu")).toContainText("Already on GitHub");
+  await expect(page.locator("#reviewbar .cmenu")).toContainText("On GitHub");
 });
 
 test("review bar does not overflow at 800px", async ({ page }) => {

@@ -8,7 +8,7 @@ When two representations of the same data exist, normalize the source and derive
 
 ```json
 {
-  "title": "The central change",
+  "title": "The central idea",
   "depth": {"level": "deep", "cardId": "central"}
 }
 ```

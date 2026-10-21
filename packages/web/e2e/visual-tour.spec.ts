@@ -916,14 +916,33 @@ for (const combo of [
     await shot(page, "menu-review-filter", suffix, "GitHub comments");
     await page.keyboard.press("Escape");
 
-    // Comments menu.
+    // File tree (#227): no horizontal overflow in the panel, and every
+    // row's change indicators sit inside its right edge.
+    const treeBad = await page.locator(".flist").evaluate((el) => {
+      if (el.scrollWidth > el.clientWidth + 1) return `tree scrolls sideways ${el.scrollWidth}>${el.clientWidth}`;
+      const box = el.getBoundingClientRect();
+      for (const ind of el.querySelectorAll(".fr.file .st, .fr.file .rv")) {
+        const r = ind.getBoundingClientRect();
+        if (r.left < box.left - 1 || r.right > box.right + 1) return "tree indicator outside the panel";
+      }
+      return null;
+    });
+    expect(treeBad, `file-tree: ${treeBad ?? ""}`).toBeNull();
+    await stepChecks(page, "file-tree");
+    await shot(page, "file-tree", suffix, "connection.py");
+
+    // Comments menu: one list with This review, Outbox, On GitHub (#226).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Outbox");
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toContainText("On GitHub");
     await stepChecks(page, "menu-comments");
-    await shot(page, "menu-comments", suffix, "Already on GitHub");
+    await shot(page, "menu-comments", suffix, "On GitHub");
     await page.keyboard.press("Escape");
 
-    // Outbox view with the Markdown export box (#223): mark one visible
-    // suggested comment, then show the Outbox filter with its Copy box.
+    // Outbox section with the Markdown export box (#223): mark one
+    // visible suggested comment, then open the menu — This review,
+    // Outbox (with drafts + Copy box) and On GitHub all populated.
     // The four variants share one review, so an earlier variant may
     // already have marked every rendered comment (no "Add to Outbox"
     // left), and at 960 the diff threads can still be mounting when
@@ -942,8 +961,8 @@ for (const combo of [
       await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
     }
     await page.getByRole("button", { name: /Comments/ }).first().click();
-    await page.locator('.cmenu [data-cmf="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).not.toContainText("Nothing in the Outbox yet.");
     await stepChecks(page, "menu-outbox");
     await shot(page, "menu-outbox", suffix, "Copy");
     await page.keyboard.press("Escape");
@@ -1249,9 +1268,10 @@ test("visual tour document review (#222)", async ({ page }) => {
     await checkNoPageOverflow(page, "document-citation");
     await shot(page, "document-citation", "1440-light", "second repo");
 
-    // The document comment in the Outbox (#223), with its export box.
+    // The document comment in the Outbox section (#223, #226), with its
+    // export box — and no GitHub side on a document.
     await page.getByRole("button", { name: /Comments/ }).first().click();
-    await page.locator('[data-cmf="outbox"]').click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
     await stepChecks(page, "document-outbox");
     await shot(page, "document-outbox", "1440-light", "Please expand this part.");

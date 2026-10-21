@@ -28,7 +28,12 @@ test.describe("J14 diagrams, debug, redo", () => {
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-    // The go-deeper flow card carries the fixture diagram (pipeline fills it).
+    // The go-deeper flow card carries the fixture diagram (pipeline fills it);
+    // auto-written cards stay collapsed until opened (#217), so open it first.
+    const flow = page.locator("#C-g-flow");
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+    await flow.getByRole("button", { name: "Expand" }).click();
     const svg = page.locator(".dg-svg svg").first();
     const fallback = page.locator(".dg-fallback").first();
     await expect(svg.or(fallback)).toBeVisible({ timeout: 90_000 });

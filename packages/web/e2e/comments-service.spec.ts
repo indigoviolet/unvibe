@@ -230,7 +230,6 @@ test.describe("comments over the real service", () => {
     await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
     // Edit the Outbox draft in the Comments menu and let it save.
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await draft.fill("Why 2 and not 3? Please explain.");
     // The draft autosaves through PATCH (debounced): wait for the save

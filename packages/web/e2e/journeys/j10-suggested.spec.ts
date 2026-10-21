@@ -38,7 +38,12 @@ test.describe("J10 suggested comments and questions", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    // Suggested question: a follow-up chip in the guide. Clicking asks it.
+    // Suggested question: a follow-up chip in the auto-written go-deeper
+    // flow card, which stays collapsed until opened (#217). Clicking asks it.
+    const flow = page.locator("#C-g-flow");
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+    await flow.getByRole("button", { name: "Expand" }).click();
     const follow = page.locator("#page .follow button").first();
     await expect(follow).toBeVisible({ timeout: 30_000 });
     const label = (await follow.innerText()).trim();
@@ -61,9 +66,8 @@ test.describe("J10 suggested comments and questions", () => {
       await expect(thread.getByRole("button", { name: /In the Outbox/ })).toBeVisible({ timeout: 10_000 });
     }
 
-    // Edit its draft in the Comments menu.
+    // Edit its draft in the Comments menu's Outbox section.
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     if ((await draft.count()) > 0) {
       await draft.fill("Edited suggestion for the PR.");
