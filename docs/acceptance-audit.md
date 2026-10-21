@@ -2444,5 +2444,10 @@ hunk coverage) is reported for a separate issue, not fixed here.
   page horizontal scroll, equal ListRow heights, shared right edges
   for sibling form rows and add rows vs. the list below. No screenshot
   baselines. Evidence: `e2e/journeys/j225-review-polish.spec.ts`,
-  `mise run visual-tour`. On `main-rc` the check flags only
-  Settings → Limits (part A's screens); the review page is clean.
+  `mise run visual-tour` (1440-light + 218 default-light-1440 combos
+  pass). Every toured scene is clean: guide, diff, menus, debug,
+  Settings → Version and Settings → Appearance. Settings →
+  Limits/Repos/Models/Environment and the start page are not tour
+  scenes, so the check gives no verdict on them — they are part A's
+  screens, being fixed in parallel; the combined tree re-runs the
+  check before the gate.
