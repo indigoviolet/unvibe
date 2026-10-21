@@ -613,18 +613,25 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (all comments, jump, Outbox filter with editable drafts + export Markdown box with Copy (#223, hidden when the Outbox is empty),
-  never posts; lives in the review bar next to Submit since round 2, so it
-  opens with the source pane closed) — met (`comments-service.spec.ts`
-  “mark Outbox, edit the draft, submit posts exactly one review”; branch-review export covered by `journeys/j223-outbox.spec.ts`;
-  `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
+- Comments menu (one scrolling list with three counted, disjoint sections —
+  This review, Outbox, On GitHub (#226; posted threads return to This
+  review), jump, Outbox drafts + export Markdown box with Copy (#223,
+  hidden when the Outbox is empty), never posts; lives in the review bar
+  next to Submit since round 2, so it opens with the source pane closed) —
+  met (`comments/CommentsMenu.test.tsx` sections/counts/fold cases,
+  `comments-service.spec.ts` “mark Outbox, edit the draft, submit posts
+  exactly one review”; branch-review sections covered by
+  `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments menu
+  opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
   (author + count, Open on GitHub, Markdown rendered with the shared
   untrusted renderer), outdated ones at their file and removed-file ones
-  at the diff's end; the menu groups them by file and thread with
-  rendered bodies and jumps to them; selecting their text offers
+  at the diff's end;   the menu groups them by file and thread with
+  line-only entry metas, rendered bodies and jumps to them; the On GitHub
+  count is the threads shown and the section keeps its fold and show/hide
+  behaviour under its strong heading (#226); selecting their text offers
   Explain/Ask/Comment (quoting into the reviewer's own comment); one
   filter-menu control hides them in the diff (remembered with the
   review) without removing them from the agents' context, where they

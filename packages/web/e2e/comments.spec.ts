@@ -222,19 +222,17 @@ test("Outbox drafts live in the Comments menu and persist", async ({ page }) => 
   // Comments are for the PR by default — no explicit mark needed.
   await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
 
-  // The Comments menu lists it with an Outbox count; the draft is editable.
+  // The Comments menu lists it in its Outbox section; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="outbox"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="outbox"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
-  await page.locator(".cmenu .cj").first().click();
+  await page.locator(".cmenu [data-cjump]").first().click();
   await expect(page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last()).toBeVisible();
 });
 
@@ -284,8 +282,9 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
-  await expect(page.locator(".cmenu")).toContainText("Already on GitHub");
-  await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
+  await expect(page.locator(".cmenu")).toContainText("On GitHub");
+  await expect(page.locator(".cmenu")).toContainText("teammate · 2 comments");
+  await expect(page.locator(".cmenu")).toContainText("consider covering bare LF here too.");
 });
 
 test("GitHub thread in the diff expands at its line; the menu item jumps to it", async ({ page }) => {
@@ -316,11 +315,12 @@ test("outdated threads sit at their file; removed-file threads at the end; hidin
   await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
   await expect(page.locator("#gh-thread-101")).toHaveCount(0);
   await page.locator('#reviewbar [data-cm=""]').click();
-  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/On GitHub/);
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText("hidden");
   await expect(page.locator('.cmenu [data-ghjump="101"]')).toHaveCount(0);
 });
 
-test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
+test("comments dropdown is wide enough for sections, paths and previews", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
@@ -328,12 +328,11 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   // Sensible min-width so content doesn't collapse to the button width.
   const width = await panel.evaluate((el) => el.getBoundingClientRect().width);
   expect(width).toBeGreaterThanOrEqual(340);
-  // The All / Outbox segmented control fits on one line.
-  const all = await page.locator('.cmenu [data-cmf="all"]').boundingBox();
-  const pr = await page.locator('.cmenu [data-cmf="outbox"]').boundingBox();
-  expect(all).not.toBeNull();
-  expect(pr).not.toBeNull();
-  expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
+  // One scrolling list with three counted sections (#226), no tabs.
+  await expect(panel.locator('[data-cmsec="review"]')).toContainText("This review");
+  await expect(panel.locator('[data-cmsec="outbox"]')).toContainText("Outbox");
+  await expect(panel.locator('[data-cmsec="github"]')).toContainText("On GitHub");
+  await expect(panel.locator("[data-cmf]")).toHaveCount(0);
 });
 
 test("hide in the filter menu collapses the menu section to its count; its heading shows both again (#183)", async ({
@@ -349,7 +348,8 @@ test("hide in the filter menu collapses the menu section to its count; its headi
   // The comments menu's section collapses to its heading with a count.
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
-  await expect(panel.locator("[data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(panel.locator("[data-ghhead]")).toContainText(/On GitHub/);
+  await expect(panel.locator("[data-ghhead]")).toContainText("hidden");
   await expect(panel.locator("[data-ghjump]")).toHaveCount(0);
   // Clicking the heading shows them again, in the menu and in the diff.
   await panel.locator("[data-ghhead]").click();
@@ -372,7 +372,7 @@ test("existing GitHub list: no sideways overflow and clamped rows at minimum wid
   const overflow = await panel.evaluate((el) => el.scrollWidth <= el.clientWidth);
   expect(overflow).toBe(true);
   // Rows are clamped: the long made-up body shows at most a few lines.
-  const body = panel.locator('[data-ghjump="105"] .ghmenu');
+  const body = panel.locator('[data-ghjump="105"] .ui-row-primary');
   const lines = await body.evaluate((el) => {
     const h = el.getBoundingClientRect().height;
     const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 18;
