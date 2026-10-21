@@ -38,7 +38,7 @@ import { readCodeSlice } from "./read.js";
 import { READER_TOOL, toolsForRole } from "./tools.js";
 
 export const MCP_SERVICE_NAME = "unvibe";
-export const MCP_SERVICE_VERSION = "0.0.7";
+export const MCP_SERVICE_VERSION = "0.0.8";
 
 /**
  * MCP session roles (PRD §10, §12).
