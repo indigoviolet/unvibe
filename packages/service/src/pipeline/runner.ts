@@ -747,7 +747,7 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(snapshotText);
-            const session = await this.opts.runner.start({
+            const session = await this.startSessionForJob(ctx, o.reviewId, {
               provider,
               model,
               effort,
@@ -1057,16 +1057,15 @@ export class Pipeline {
         // Issue #210 (#194): time the fresh-session start separately from
         // the summary turn, so the Debug page can split setup from model
         // time. For Claude the start includes the shared-cache warm-up
-        // turn, which runs inside `runner.start`.
-        const session = await timedTurn(ctx, "session start", () =>
-          this.opts.runner.start({
-            ...roleFields(settings.small),
-            cwd: this.worktreeOf(reviewId),
-            systemPrompt: "",
-            readOnly: postureFor(settings, "summarize") !== "full",
-            mcpServers: [],
-          }),
-        );
+        // turn, which runs inside `runner.start`; its usage lands on this
+        // turn (see startSessionForJob), not on the summary turn.
+        const session = await this.startSessionForJob(ctx, reviewId, {
+          ...roleFields(settings.small),
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          readOnly: postureFor(settings, "summarize") !== "full",
+          mcpServers: [],
+        });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await timedTurn(ctx, "first", () =>
@@ -2249,6 +2248,47 @@ export class Pipeline {
     return [job];
   }
 
+  /**
+   * Issue #209: start a session inside the job's "session start" turn and
+   * attribute the runner's session-start (warm-up) usage to that turn —
+   * separately from the first real turn. The figures are exact
+   * adapter-reported counts, not computed. Job and review totals still sum
+   * both turns, so per-job figures are unchanged; only which turn shows
+   * them. Runners that report no session-start usage (fakes, Codex,
+   * non-empty system prompts) leave the turn without token counts, as
+   * before.
+   */
+  private async startSessionForJob(
+    ctx: {
+      beginTurn(label: string): void;
+      endTurn(): void;
+      reportUsage(usage: TokenUsage): void;
+      reportTurnUsage(usage: TokenUsage): void;
+    },
+    reviewId: string,
+    opts: Parameters<AgentRunner["start"]>[0],
+  ): Promise<Session> {
+    ctx.beginTurn("session start");
+    try {
+      const session = await this.opts.runner.start(opts);
+      const warm = this.opts.runner.takeSessionStartUsage?.(session.id);
+      if (warm !== undefined) {
+        const usage: TokenUsage = {
+          inputTokens: warm.inputTokens,
+          cachedReadTokens: warm.cachedReadTokens,
+          cachedWriteTokens: warm.cachedWriteTokens,
+          outputTokens: warm.outputTokens,
+        };
+        ctx.reportTurnUsage(usage);
+        ctx.reportUsage(usage);
+        await this.recordUsage(reviewId, usage);
+      }
+      return session;
+    } finally {
+      ctx.endTurn();
+    }
+  }
+
   private async enqueueHunkPass(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
@@ -2309,16 +2349,15 @@ export class Pipeline {
         // Issue #210 (#194): time the fresh-session start separately from
         // the summary turn, so the Debug page can split setup from model
         // time. For Claude the start includes the shared-cache warm-up
-        // turn, which runs inside `runner.start`.
-        const session = await timedTurn(ctx, "session start", () =>
-          this.opts.runner.start({
-            ...roleFields(small),
-            cwd: this.worktreeOf(reviewId),
-            systemPrompt: "",
-            readOnly: access !== "full",
-            mcpServers: [],
-          }),
-        );
+        // turn, which runs inside `runner.start`; its usage lands on this
+        // turn (see startSessionForJob), not on the summary turn.
+        const session = await this.startSessionForJob(ctx, reviewId, {
+          ...roleFields(small),
+          cwd: this.worktreeOf(reviewId),
+          systemPrompt: "",
+          readOnly: access !== "full",
+          mcpServers: [],
+        });
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await timedTurn(ctx, "first", () =>

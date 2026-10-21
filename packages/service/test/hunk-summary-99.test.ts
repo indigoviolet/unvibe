@@ -252,6 +252,42 @@ describe("hunk job turn timings (#210, #194)", () => {
       await app.close();
     }
   });
+
+  it("session-start usage lands on the session-start turn, never folded into the first turn (#209)", async () => {
+    // The fake runner reports no session-start usage, so the session-start
+    // turn stays without token counts while the first turn carries exactly
+    // the one reported usage event — no double counting anywhere. (With a
+    // real Claude runner the session-start turn carries the warm-up usage
+    // instead; see the acp-runner session-start test.)
+    const event = { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 900, outputTokens: 10 };
+    const agents = new FakeAgentRunner([{
+      match: "Hunk pass",
+      events: [
+        { type: "text", delta: bareJson(SUMMARY, null) },
+        { type: "usage", ...event },
+        { type: "done", stopReason: "end_turn" },
+      ],
+    }]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeReview(ctx);
+      const res = await ctx.pipeline.summarizeHunk(id, "h222");
+      expect("reused" in res).toBe(false);
+      await ctx.jobs.drain(5000);
+      const job = ctx.jobs.listByReview(id).find((j) => j.kind === "summarize");
+      expect(job).toBeDefined();
+      expect(job!.state).toBe("done");
+      const full = ctx.jobs.get(job!.id);
+      const records = full?.turnRecords ?? [];
+      expect(records.map((t) => t.label)).toEqual(["session start", "first"]);
+      expect(records[0]!.usage).toBeUndefined();
+      expect(records[1]!.usage).toEqual(event);
+      expect(job!.usage).toEqual(event);
+      expect(job!.cacheHitRate).toBeCloseTo(100 / 1005);
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("hunk-pass background stage (#99)", () => {
