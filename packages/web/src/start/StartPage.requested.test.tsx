@@ -15,6 +15,19 @@ import { api } from "../api/client.js";
 import { RECENCY_KEY, StartPage, inRecencyWindow, reviewScopeOf } from "./StartPage.js";
 import { __resetKeptForTests } from "./keptChanges.js";
 
+// #225: shared Select is Base UI — pick by clicking the popup option with a
+// full pointer sequence (a bare click does not commit in jsdom).
+async function pickOption(trigger: HTMLElement, label: string): Promise<void> {
+  fireEvent.click(trigger);
+  const option = await screen.findByRole("option", { name: label });
+  fireEvent.pointerDown(option, { pointerType: "mouse" });
+  fireEvent.mouseDown(option);
+  fireEvent.pointerUp(option, { pointerType: "mouse" });
+  fireEvent.mouseUp(option);
+  fireEvent.click(option);
+}
+
+
 const REPO_KEY = "unvibe.start.repoId";
 const REPO: Repo = { id: "r1", owner: "acme", name: "app", localPath: "/tmp/app", lastOpened: 0 };
 const NOW = Date.now();
@@ -130,20 +143,19 @@ describe("StartPage requested split and filter (#95)", () => {
     renderPage();
     await screen.findByText("Old team ask");
 
-    const select = screen.getByLabelText("Updated within") as HTMLSelectElement;
-    expect(select.value).toBe("all");
-    fireEvent.change(select, { target: { value: "1d" } });
+    expect(screen.getByLabelText("Updated within")).toHaveTextContent("All");
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(localStorage.getItem(RECENCY_KEY)).toBe("1d");
     // Both groups hide rows older than a day; the team group is filtered out.
     expect(screen.queryByText("Asked of your team")).not.toBeInTheDocument();
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last day.");
     expect(screen.getByText("Asked of you and your team")).toBeInTheDocument();
 
-    fireEvent.change(select, { target: { value: "3d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last 3 days");
     expect(screen.getByText("Asked of your team")).toBeInTheDocument();
     expect(screen.queryByText("Old team ask")).not.toBeInTheDocument();
 
-    fireEvent.change(select, { target: { value: "all" } });
+    await pickOption(screen.getByLabelText("Updated within"), "All");
     expect(screen.getByText("Old team ask")).toBeInTheDocument();
   });
 
@@ -153,7 +165,7 @@ describe("StartPage requested split and filter (#95)", () => {
     mockLists([DIRECT_NEW, TEAM_OLD]);
     renderPage();
     await screen.findByText("Asked of you and your team");
-    expect((screen.getByLabelText("Updated within") as HTMLSelectElement).value).toBe("1w");
+    expect(screen.getByLabelText("Updated within")).toHaveTextContent("Last week");
     expect(screen.queryByText("Old team ask")).not.toBeInTheDocument();
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last week.");
   });
@@ -274,7 +286,7 @@ describe("StartPage authoring filter (#131)", () => {
 
     // One control for the whole page.
     expect(screen.getAllByLabelText("Updated within")).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     // The old authored PR and the 2-day-old team ask hide; recent rows stay.
     expect(screen.queryByText("My old PR")).not.toBeInTheDocument();
     expect(screen.getByText("My fresh PR")).toBeInTheDocument();
@@ -286,7 +298,7 @@ describe("StartPage authoring filter (#131)", () => {
     fireEvent.click(showAll as HTMLButtonElement);
     expect(screen.getByText("My old PR")).toBeInTheDocument();
     expect(screen.getByText("Asked of your team")).toBeInTheDocument();
-    expect((screen.getByLabelText("Updated within") as HTMLSelectElement).value).toBe("all");
+    expect(screen.getByLabelText("Updated within")).toHaveTextContent("All");
   });
 
   it("a filtered-out Your PRs list names its window and offers All", async () => {
@@ -294,7 +306,7 @@ describe("StartPage authoring filter (#131)", () => {
     mockLists([], [AUTHORED_OLD]);
     renderPage();
     await screen.findByText("My old PR");
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(screen.queryByText("My old PR")).not.toBeInTheDocument();
     const empty = screen.getByTestId("authoring-empty");
     expect(empty).toHaveTextContent("No PRs updated in the last day.");
@@ -307,7 +319,7 @@ describe("StartPage authoring filter (#131)", () => {
     mockLists([DIRECT_NEW, TEAM_MID], []);
     renderPage();
     await screen.findByText("Asked of your team");
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(screen.queryByText("Asked of your team")).not.toBeInTheDocument();
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last day.");
     expect(screen.getByTestId("requested-team-empty").querySelector("button")).toHaveTextContent("Show all");
@@ -343,7 +355,7 @@ describe("StartPage branches filter (#131)", () => {
 
     // Still one control for the whole page.
     expect(screen.getAllByLabelText("Updated within")).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(screen.queryByText("old-experiment")).not.toBeInTheDocument();
     expect(screen.getByText("fresh-work")).toBeInTheDocument();
     // Reviews above stay unfiltered: the control sits below them.
@@ -357,13 +369,13 @@ describe("StartPage branches filter (#131)", () => {
     mockLists([], [], [STALE]);
     renderPage();
     await screen.findByText("old-experiment");
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(screen.queryByText("old-experiment")).not.toBeInTheDocument();
     const empty = screen.getByTestId("branches-empty");
     expect(empty).toHaveTextContent("No branches updated in the last day.");
     fireEvent.click(empty.querySelector("button") as HTMLButtonElement);
     expect(screen.getByText("old-experiment")).toBeInTheDocument();
-    expect((screen.getByLabelText("Updated within") as HTMLSelectElement).value).toBe("all");
+    expect(screen.getByLabelText("Updated within")).toHaveTextContent("All");
   });
 
   it("Reviews ignores the window, ordered by recent activity", async () => {
@@ -393,7 +405,7 @@ describe("StartPage branches filter (#131)", () => {
     renderPage();
     await screen.findByText("Old review");
     // A three-week-old last activity still lists under the 1-day window.
-    fireEvent.change(screen.getByLabelText("Updated within"), { target: { value: "1d" } });
+    await pickOption(screen.getByLabelText("Updated within"), "Last day");
     expect(screen.getByText("Old review")).toBeInTheDocument();
     expect(screen.queryByTestId("sessions-empty")).not.toBeInTheDocument();
   });

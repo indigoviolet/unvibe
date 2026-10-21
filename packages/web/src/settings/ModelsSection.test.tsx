@@ -64,16 +64,29 @@ function mockThinking(byProvider: ThinkingMap = THINKING_BOTH): void {
   );
 }
 
-function provSelect(role: string): HTMLSelectElement {
-  return document.getElementById(`prov-${role}`) as HTMLSelectElement;
+// #225: the shared Select is Base UI — the trigger (role=combobox, carrying
+// the field id) shows the picked label; picking clicks the popup option.
+function provSelect(role: string): HTMLElement {
+  return document.getElementById(`prov-${role}`) as HTMLElement;
 }
 
-function modelSelect(role: string): HTMLSelectElement {
-  return document.getElementById(`model-${role}`) as HTMLSelectElement;
+function modelSelect(role: string): HTMLElement {
+  return document.getElementById(`model-${role}`) as HTMLElement;
 }
 
-function effortSelect(role: string): HTMLSelectElement {
-  return document.getElementById(`effort-${role}`) as HTMLSelectElement;
+function effortSelect(role: string): HTMLElement {
+  return document.getElementById(`effort-${role}`) as HTMLElement;
+}
+
+async function choose(trigger: HTMLElement, label: string): Promise<void> {
+  fireEvent.click(trigger);
+  const option = await screen.findByRole("option", { name: label });
+  // Base UI commits an item on a full pointer sequence, not a bare click.
+  fireEvent.pointerDown(option, { pointerType: "mouse" });
+  fireEvent.mouseDown(option);
+  fireEvent.pointerUp(option, { pointerType: "mouse" });
+  fireEvent.mouseUp(option);
+  fireEvent.click(option);
 }
 
 describe("ModelsSection provider switch", () => {
@@ -87,18 +100,18 @@ describe("ModelsSection provider switch", () => {
     render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
     const provider = provSelect("small");
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    fireEvent.change(provider, { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provider, "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
     expect(saveSettings).not.toHaveBeenCalled();
     expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
 
-    fireEvent.change(modelSelect("small"), { target: { value: "gpt-6-luna" } });
+    await choose(modelSelect("small"), "gpt-6-luna");
     await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "codex", model: "gpt-6-luna", effort: "" } }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
   });
 
-  it("shows a disabled placeholder with no stale description while browsing; switching back restores the saved model", async () => {
+  it("shows the placeholder in the trigger while browsing, with nothing under the picker; switching back restores the saved model", async () => {
     mockReadiness();
     mockThinking();
     mockModels({
@@ -112,21 +125,20 @@ describe("ModelsSection provider switch", () => {
     const onSaved = vi.fn();
     render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    expect(screen.getByTestId("model-small-desc")).toHaveTextContent("Haiku description");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    // #225: no description (or status/path line) under the model picker.
+    expect(screen.queryByTestId("model-small-desc")).not.toBeInTheDocument();
 
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    const placeholder = await screen.findByText("Pick a codex model…");
-    expect(placeholder.tagName).toBe("OPTION");
-    expect(placeholder).toBeDisabled();
-    expect(modelSelect("small")).toHaveValue("");
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
+    expect(modelSelect("small")).toHaveTextContent("Pick a codex model…");
     expect(screen.queryByTestId("model-small-desc")).not.toBeInTheDocument();
     expect(saveSettings).not.toHaveBeenCalled();
 
     // Back to the saved provider without choosing: the saved model returns.
-    fireEvent.change(provSelect("small"), { target: { value: "claude" } });
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    await waitFor(() => expect(screen.getByTestId("model-small-desc")).toHaveTextContent("Haiku description"));
+    await choose(provSelect("small"), "claude");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    expect(screen.queryByTestId("model-small-desc")).not.toBeInTheDocument();
     expect(saveSettings).not.toHaveBeenCalled();
     expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
   });
@@ -144,11 +156,11 @@ describe("ModelsSection provider switch", () => {
     // The saved provider's own list lacks the pick: warn.
     await waitFor(() => expect(screen.getByTestId("model-small-missing")).toBeInTheDocument());
 
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
     expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
 
-    fireEvent.change(provSelect("small"), { target: { value: "claude" } });
+    await choose(provSelect("small"), "claude");
     await waitFor(() => expect(screen.getByTestId("model-small-missing")).toBeInTheDocument());
   });
 
@@ -164,10 +176,10 @@ describe("ModelsSection provider switch", () => {
     const onSaved = vi.fn();
     render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
-    fireEvent.change(modelSelect("small"), { target: { value: "gpt-6-luna" } });
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
+    await choose(modelSelect("small"), "gpt-6-luna");
 
     const card = await waitFor(() => {
       const alert = within(screen.getByTestId("model-small")).getByRole("alert");
@@ -179,12 +191,12 @@ describe("ModelsSection provider switch", () => {
     expect(alert.textContent).not.toContain("{");
     expect(onSaved).not.toHaveBeenCalled();
     // Both selects return to the saved pick.
-    await waitFor(() => expect(provSelect("small")).toHaveValue("claude"));
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
+    await waitFor(() => expect(provSelect("small")).toHaveTextContent("claude"));
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
 
     // The error clears on the next provider change.
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
     expect(within(screen.getByTestId("model-small")).queryByRole("alert")).not.toBeInTheDocument();
     expect(saveSettings).toHaveBeenCalledTimes(1);
   });
@@ -196,34 +208,34 @@ describe("ModelsSection provider switch", () => {
     const onSaved = vi.fn();
     const { rerender } = render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
 
     // A refetch returning the same saved pick (new object) mid-browse:
     // the browse stays put.
     rerender(<ModelsSection settings={{ ...SETTINGS }} onSaved={onSaved} />);
-    expect(provSelect("small")).toHaveValue("codex");
-    expect(screen.getByText("Pick a codex model…")).toBeInTheDocument();
+    expect(provSelect("small")).toHaveTextContent("codex");
+    expect(modelSelect("small")).toHaveTextContent("Pick a codex model…");
 
     // A saved-model change for the saved provider also leaves the browse.
     rerender(
       <ModelsSection settings={{ ...SETTINGS, small: { provider: "claude", model: "opus", effort: "" } }} onSaved={onSaved} />,
     );
-    expect(provSelect("small")).toHaveValue("codex");
-    expect(screen.getByText("Pick a codex model…")).toBeInTheDocument();
+    expect(provSelect("small")).toHaveTextContent("codex");
+    expect(modelSelect("small")).toHaveTextContent("Pick a codex model…");
 
     // Not browsing: an external change to the saved provider is adopted.
-    fireEvent.change(provSelect("small"), { target: { value: "claude" } });
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("opus"));
+    await choose(provSelect("small"), "claude");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("opus"));
     rerender(
       <ModelsSection
         settings={{ ...SETTINGS, small: { provider: "codex", model: "gpt-6-luna", effort: "" } }}
         onSaved={onSaved}
       />,
     );
-    await waitFor(() => expect(provSelect("small")).toHaveValue("codex"));
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("gpt-6-luna"));
+    await waitFor(() => expect(provSelect("small")).toHaveTextContent("codex"));
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("gpt-6-luna"));
   });
 
   it("follows the browsed provider through loading and error states", async () => {
@@ -241,13 +253,13 @@ describe("ModelsSection provider switch", () => {
     });
     render(<ModelsSection settings={SETTINGS} onSaved={vi.fn()} />);
 
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provSelect("small"), "codex");
     await waitFor(() =>
       expect(within(screen.getByTestId("model-small")).getByText("Loading models…")).toBeInTheDocument(),
     );
     resolveCodex({ provider: "codex", models: [{ id: "gpt-6-luna" }] } as ModelsResult);
-    await screen.findByText("Pick a codex model…");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
   });
 
   it("shows the browsed provider's list error without a false missing alert", async () => {
@@ -265,8 +277,8 @@ describe("ModelsSection provider switch", () => {
     });
     render(<ModelsSection settings={SETTINGS} onSaved={vi.fn()} />);
 
-    await waitFor(() => expect(modelSelect("small")).toHaveValue("haiku"));
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provSelect("small"), "codex");
     await waitFor(() =>
       expect(
         within(screen.getByTestId("model-small")).getByText(/adapter not installed or not logged in/),
@@ -291,27 +303,27 @@ describe("ModelsSection provider switch", () => {
     const onSaved = vi.fn();
     render(<ModelsSection settings={unset} onSaved={onSaved} />);
 
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveValue(""));
+    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Not set"));
     // Unset copy names the enforced rule (finding 19): a different model
     // from main, not a second provider.
     expect(screen.getByTestId("model-secondOpinion-unset")).toHaveTextContent(
       "need a different model from main",
     );
 
-    fireEvent.change(provSelect("secondOpinion"), { target: { value: "claude" } });
-    await screen.findByText("Pick a claude model…");
+    await choose(provSelect("secondOpinion"), "claude");
+    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Pick a claude model…"));
     expect(screen.getByTestId("model-secondOpinion-unset")).toBeInTheDocument();
     expect(saveSettings).not.toHaveBeenCalled();
 
     // Back without choosing: still Not set.
-    fireEvent.change(provSelect("secondOpinion"), { target: { value: "codex" } });
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveValue(""));
+    await choose(provSelect("secondOpinion"), "codex");
+    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Not set"));
     expect(screen.getByTestId("model-secondOpinion-unset")).toBeInTheDocument();
 
     // Choosing from the browsed provider saves that provider with the model.
-    fireEvent.change(provSelect("secondOpinion"), { target: { value: "claude" } });
-    await screen.findByText("Pick a claude model…");
-    fireEvent.change(modelSelect("secondOpinion"), { target: { value: "opus" } });
+    await choose(provSelect("secondOpinion"), "claude");
+    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Pick a claude model…"));
+    await choose(modelSelect("secondOpinion"), "opus");
     await waitFor(() =>
       expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus", effort: "" } }),
     );
@@ -329,11 +341,17 @@ describe("ModelsSection effort per role (#172)", () => {
     const onSaved = vi.fn();
     render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
-    await waitFor(() => expect(effortSelect("small")).toHaveValue(""));
-    const options = Array.from(effortSelect("small").querySelectorAll("option")).map((o) => o.value);
-    expect(options).toEqual(["", "low", "high"]);
-
-    fireEvent.change(effortSelect("small"), { target: { value: "high" } });
+    await waitFor(() => expect(effortSelect("small")).toHaveTextContent("Default"));
+    fireEvent.click(effortSelect("small"));
+    const optionEls = await screen.findAllByRole("option");
+    const options = optionEls.map((o) => o.textContent?.replace("✓", "").trim());
+    expect(options).toEqual(["Default", "Low", "High"]);
+    const high = optionEls.find((o) => o.textContent?.includes("High")) as HTMLElement;
+    fireEvent.pointerDown(high, { pointerType: "mouse" });
+    fireEvent.mouseDown(high);
+    fireEvent.pointerUp(high, { pointerType: "mouse" });
+    fireEvent.mouseUp(high);
+    fireEvent.click(high);
     await waitFor(() =>
       expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "claude", model: "haiku", effort: "high" } }),
     );
@@ -356,10 +374,10 @@ describe("ModelsSection effort per role (#172)", () => {
     const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
     render(<ModelsSection settings={saved} onSaved={vi.fn()} />);
 
-    await waitFor(() => expect(effortSelect("small")).toHaveValue("high"));
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
-    fireEvent.change(modelSelect("small"), { target: { value: "gpt-6-luna" } });
+    await waitFor(() => expect(effortSelect("small")).toHaveTextContent("High"));
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
+    await choose(modelSelect("small"), "gpt-6-luna");
     await waitFor(() =>
       expect(saveSettings).toHaveBeenCalledWith({
         small: { provider: "codex", model: "gpt-6-luna", effort: "" },
@@ -379,8 +397,8 @@ describe("ModelsSection effort per role (#172)", () => {
 
     await waitFor(() => expect(screen.getByTestId("model-small-effort-missing")).toBeInTheDocument());
 
-    fireEvent.change(provSelect("small"), { target: { value: "codex" } });
-    await screen.findByText("Pick a codex model…");
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
     expect(screen.queryByTestId("model-small-effort-missing")).not.toBeInTheDocument();
     // The effort control waits for a model pick while browsing.
     expect(effortSelect("small")).toBeDisabled();
