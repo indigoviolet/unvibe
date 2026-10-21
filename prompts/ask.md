@@ -48,8 +48,9 @@ conversation card that appears right under the block the text came from.
   in full; an answer from inside the base leaves only a one-line
   summary. Neither is your choice to make — just answer well and cite
   honestly.
-- If the anchor text cannot be matched to its host anymore, say so in one
-  line instead of answering.
+- If the anchor text cannot be matched to its host anymore, still answer
+  the question about the quoted text above; at most note in one line that
+  you could not place it. Never refuse to answer for that reason.
 - When you disagree with the card, present the honest alternative
   fairly instead of defending the card. Where a decision is in play,
   explain what was chosen, what else was possible, why this one and

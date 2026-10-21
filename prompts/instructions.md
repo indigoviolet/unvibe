@@ -128,6 +128,9 @@ the body, and never repeat a diagram's caption in its walkthrough.
 Never address the reader about how to read the guide or whether to
 keep reading: no "if you only need…", "in short…" or "TL;DR" framings.
 State the content itself instead.
+Never show internal IDs (contribution, card, block, annotation or
+similar app IDs) in text the reader sees; refer to the thing in plain
+words instead. IDs belong only in link tokens and the trailing JSON.
 
 <!-- REPLY-FORMAT-BEGIN: normative reply conventions. Source of truth is -->
 <!-- docs/reply-format.md (content layer, packages/shared/src/content/): -->

@@ -675,7 +675,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
   secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
-  sessionsPerProvider: 4,
+  sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000,
@@ -2623,7 +2623,9 @@ export const mockApi = {
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
             : anchor.where === "description"
               ? { kind: "description", paragraphId: anchor.paragraphId }
-              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+              : anchor.where === "comment"
+                ? { kind: "comment", commentId: anchor.commentId }
+                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const turnId = newTurnId();
         const askJobId = `mock-ask-${id}`;
@@ -2747,7 +2749,9 @@ export const mockApi = {
           ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
           : anchor.where === "description"
             ? { kind: "description", paragraphId: anchor.paragraphId }
-            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+            : anchor.where === "comment"
+              ? { kind: "comment", commentId: anchor.commentId }
+              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
@@ -3188,7 +3192,9 @@ export const mockApi = {
         ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
         : anchor.where === "description"
           ? { kind: "description", paragraphId: anchor.paragraphId }
-          : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+          : anchor.where === "comment"
+            ? { kind: "comment", commentId: anchor.commentId }
+            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
     const thread: import("@unvibe/shared").Annotation = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
       type: "comment",

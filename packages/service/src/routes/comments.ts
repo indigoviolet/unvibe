@@ -38,6 +38,11 @@ function validAnchor(a: unknown): a is ActionAnchor {
     const f = a as { fileKey?: unknown; line?: unknown };
     return typeof f.fileKey === "string" && Number.isSafeInteger(f.line);
   }
+  if (w === "comment") return typeof (a as { commentId?: unknown }).commentId === "string";
+  if (w === "hunk") {
+    const f = a as { fileKey?: unknown; contentHash?: unknown };
+    return typeof f.fileKey === "string" && typeof f.contentHash === "string";
+  }
   return false;
 }
 

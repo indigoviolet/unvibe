@@ -281,6 +281,17 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      if (req.anchor.where === "comment") {
+        // Issue #214: Ask on a comment shows its composer under the
+        // comment's guide block (the card itself anchors to the comment).
+        const commentId = req.anchor.commentId;
+        const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+        if (!comment || comment.anchor.host.kind !== "block") return;
+        if (!anchorMatchesBlock(comment.anchor.host.blockId, cardId, blockId)) return;
+        if (isReadOnlyVersionNow()) return;
+        setPending(req);
+        return;
+      }
       if (req.anchor.where !== "block") return;
       if (!anchorMatchesBlock(req.anchor.blockId, cardId, blockId)) return;
       if (isReadOnlyVersionNow()) return;

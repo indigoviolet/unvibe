@@ -20,10 +20,13 @@
  * - Posted comments show their posted state and are never pending.
  */
 import type { ActionAnchor, Annotation } from "@unvibe/shared";
+import { useRef } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
+import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
+import { inflightLabel } from "../guide/inflight.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { ReplyBox } from "./ReplyBox.js";
@@ -60,6 +63,7 @@ function commentActionAnchor(thread: Annotation): ActionAnchor {
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
   if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  if (host.kind === "comment") return { where: "comment", commentId: host.commentId };
   // Comments never anchor hunks (the service rejects them).
   throw new Error("a comment cannot lead from a hunk anchor");
 }
@@ -73,6 +77,19 @@ interface Props {
 
 export function ThreadView({ reviewId, thread, readOnly }: Props) {
   const snapshot = useReview((s) => s.snapshot);
+  const inflight = useReview((s) => s.inflight);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Issue #214: conversations anchored on this comment. Their cards render
+  // with the comment's host (guide block / diff line / description) right
+  // after the thread; here we only show the in-flight placeholder under it.
+  // Their quote marks are placed by the guide/diff/description passes.
+  const commentCards = (snapshot?.annotations ?? []).filter(
+    (a) => a.type === "conversation" && a.anchor.host.kind === "comment" && a.anchor.host.commentId === thread.id,
+  );
+  const pendingExplain = Object.entries(inflight).find(
+    ([k, v]) => (k === `explain:comment:${thread.id}` || k === `ask:comment:${thread.id}`) && (v.kind === "explain" || v.kind === "ask"),
+  );
+  const hasOpenCard = commentCards.some((a) => a.open);
   const host = thread.anchor.host;
   const file =
     host.kind === "diff-line"
@@ -128,7 +145,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
 
   const footnoted = !!thread.anchorStale;
   return (
-    <div className="ithread" id={thread.id} data-thread={thread.id}>
+    <div className="ithread" id={thread.id} data-thread={thread.id} ref={rootRef}>
       <div className="thd">
         <span className="mq">{headerLabel(file, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
@@ -207,8 +224,9 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
         <div
           className="msg"
           key={i}
-          // Issue #163: selections in the suggestion summon the toolbar,
+          // Issue #163/#214: selections in any comment summon the toolbar,
           // anchored to this comment.
+          data-comment={thread.id}
           data-ai-comment={m.who === "ai" && m.suggested === true ? thread.id : undefined}
         >
           <span
@@ -258,6 +276,9 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           }
         />
       )}
+      {pendingExplain && !hasOpenCard && !readOnly ? (
+        <WorkingPlaceholder label={inflightLabel(pendingExplain[1].kind)} />
+      ) : null}
     </div>
   );
 }
