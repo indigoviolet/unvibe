@@ -1022,18 +1022,26 @@ export class Pipeline {
       accessMode: postureFor(settings, "summarize"),
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const session = await this.opts.runner.start({
-          ...roleFields(settings.small),
-          cwd: this.worktreeOf(reviewId),
-          systemPrompt: "",
-          readOnly: postureFor(settings, "summarize") !== "full",
-          mcpServers: [],
-        });
+        // Issue #210 (#194): time the fresh-session start separately from
+        // the summary turn, so the Debug page can split setup from model
+        // time. For Claude the start includes the shared-cache warm-up
+        // turn, which runs inside `runner.start`.
+        const session = await timedTurn(ctx, "session start", () =>
+          this.opts.runner.start({
+            ...roleFields(settings.small),
+            cwd: this.worktreeOf(reviewId),
+            systemPrompt: "",
+            readOnly: postureFor(settings, "summarize") !== "full",
+            mcpServers: [],
+          }),
+        );
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
+          const { text, usage } = await timedTurn(ctx, "first", () =>
+            collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
+              ctx.reportText(d),
+              (name, detail) => ctx.reportTool(name, detail),
+            ),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -2288,18 +2296,26 @@ export class Pipeline {
       accessMode: access,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const session = await this.opts.runner.start({
-          ...roleFields(small),
-          cwd: this.worktreeOf(reviewId),
-          systemPrompt: "",
-          readOnly: access !== "full",
-          mcpServers: [],
-        });
+        // Issue #210 (#194): time the fresh-session start separately from
+        // the summary turn, so the Debug page can split setup from model
+        // time. For Claude the start includes the shared-cache warm-up
+        // turn, which runs inside `runner.start`.
+        const session = await timedTurn(ctx, "session start", () =>
+          this.opts.runner.start({
+            ...roleFields(small),
+            cwd: this.worktreeOf(reviewId),
+            systemPrompt: "",
+            readOnly: access !== "full",
+            mcpServers: [],
+          }),
+        );
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
+          const { text, usage } = await timedTurn(ctx, "first", () =>
+            collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
+              ctx.reportText(d),
+              (name, detail) => ctx.reportTool(name, detail),
+            ),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
