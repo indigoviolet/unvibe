@@ -60,9 +60,11 @@ test.describe("J223 outbox export (branch review)", () => {
     await expect(menu.locator('[data-cmsec="review"]')).toContainText("Everything is marked for the Outbox below.");
     await expect(menu.locator('[data-cmsec="outbox"]')).toHaveAttribute("aria-label", "Outbox, 1 comments");
     await expect(menu.locator('[data-cmsec="outbox"]')).toContainText("Branch-only thought");
-    // Entries under a file group show only their line, not the file again.
-    await expect(menu.locator('[data-cmsec="outbox"]')).toContainText(":2");
-    await expect(menu.locator('[data-cmsec="outbox"]')).not.toContainText("src/app.py:2");
+    // Entries under a file group show only their line, not the file again
+    // (the export box below keeps the full anchor by design, #223).
+    await expect(menu.locator('[data-cmsec="outbox"] .cmgroup')).toHaveText("src/app.py");
+    await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).toContainText(":2");
+    await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).not.toContainText("src/app.py:2");
     await expect(menu.locator('[data-cmsec="github"]')).toHaveAttribute("aria-label", "On GitHub, 0 threads");
     await expect(menu.locator('[data-cmsec="github"]')).toContainText("No review comments on GitHub yet.");
     const box = menu.locator("[data-outbox-md]");
