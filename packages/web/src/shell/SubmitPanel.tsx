@@ -1,9 +1,9 @@
 /**
  * Submit review button + panel (comments owner; PRD §4.12).
  *
- * - The top-bar button shows the count of pending changes (For-PR threads
+ * - The top-bar button shows the count of pending changes (Outbox threads
  *   plus the description edit).
- * - The panel lists every comment marked for the PR (location as the
+ * - The panel lists every comment in the Outbox (location as the
  *   backend's preview computes it + draft text) and the description
  *   change, with Cancel and Submit. It shows the backend's preview
  *   (`dryRun`) so what the user sees is what is posted, including
@@ -351,7 +351,7 @@ function PreviewBody({
           ) : null}
         </ul>
       ) : (
-        <span className="hint">Nothing to submit. Mark comments for the PR or edit the description first.</span>
+        <span className="hint">Nothing to submit. Add comments to the Outbox or edit the description first.</span>
       )}
       <div className="frow" style={{ justifyContent: "flex-end" }}>
         <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={onCancel}>

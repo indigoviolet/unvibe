@@ -820,7 +820,7 @@ export interface ReplyCommentRequest {
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
-  /** M6: agent-drafted suggested comment (first message, not for PR). */
+  /** M6: agent-drafted suggested comment (first message, not in the Outbox). */
   suggested?: boolean;
 }
 

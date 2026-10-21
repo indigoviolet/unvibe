@@ -369,7 +369,7 @@ export function setOpenInDraft(
   findThread(draft, commentId).open = open;
 }
 
-/** Draft helper: mark for PR. */
+/** Draft helper: mark Outbox membership (stored `post`). */
 export function setPostInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   commentId: string,

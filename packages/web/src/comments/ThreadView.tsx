@@ -4,7 +4,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`, `msg`, `av`, `who`,
  * `composer`) so `styles/prototype.css` applies unchanged.
  *
- * - Header: quoted text (or `file:line` in the diff), Mark for PR (send
+ * - Header: quoted text (or `file:line` in the diff), Outbox (send
  *   icon, filled when on), "Ask the agent about this" (opens the usual
  *   Ask card on the comment's anchor, quoting the comment — the only way
  *   a comment leads to an agent reply), Delete, Close.
@@ -127,7 +127,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
 
   const togglePost = (): void => {
     api.updateComment(reviewId, thread.id, { post: !thread.post }).catch((err: unknown) => {
-      toast(`Couldn't mark the comment: ${friendlyError(err)}`);
+      toast(`Couldn't update the Outbox: ${friendlyError(err)}`);
     });
   };
 
@@ -158,10 +158,10 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
               readOnly
                 ? "Viewing an older version · read-only"
                 : thread.post
-                  ? "Marked for the PR · click to unmark"
-                  : "Mark for the PR"
+                  ? "In the Outbox · click to remove"
+                  : "Add to Outbox"
             }
-            aria-label={thread.post ? "Marked for the PR · click to unmark" : "Mark for the PR"}
+            aria-label={thread.post ? "In the Outbox · click to remove" : "Add to Outbox"}
             aria-pressed={thread.post}
             data-post={thread.id}
             disabled={readOnly}

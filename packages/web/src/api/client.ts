@@ -21,6 +21,7 @@ import type {
   DiagramTheme,
   DismissContributionResponse,
   ExistingCommentsResponse,
+  OutboxResponse,
   FileOutlineResponse,
   FileSliceResponse,
   HealthResponse,
@@ -399,6 +400,8 @@ const realApi = {
     get(`/api/reviews/${encodeURIComponent(id)}/submit/preview`),
   prComments: (id: string): Promise<ExistingCommentsResponse> =>
     get(`/api/reviews/${encodeURIComponent(id)}/pr-comments`),
+  outbox: (id: string): Promise<OutboxResponse> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/outbox`),
 
   viewer: (): Promise<ViewerResponse> => get("/api/viewer"),
   settings: (): Promise<Settings> => get("/api/settings"),
