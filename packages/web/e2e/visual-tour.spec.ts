@@ -4,7 +4,8 @@
  * and dark): the guide with a pinned card, a card opened from inside
  * a pinned card in the guide and in the diff, the diff in unified
  * and split, a deep-anchored card, every toolbar/file-tree menu, the
- * comments menu, and Settings → Version. Screenshots land in the
+ * comments menu, every Settings tab, and the start page (Open-a-PR
+ * row, PR list, Reviews list). Screenshots land in the
  * git-ignored `visual-tour/` folder for the owner to look at.
  *
  * At every step, generic checks (no per-feature asserts), including
@@ -936,11 +937,36 @@ for (const combo of [
     await checkLayout(page, "debug-output");
     await shot(page, "debug-output", suffix, "Raw usage");
 
-    // Settings → Version.
-    await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
-    await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
-    await checkLayout(page, "settings-version");
-    await shot(page, "settings-version", suffix, "Installed:");
+    // Settings → every tab (#225): fields must fit the card at
+    // every width. One scene per tab so the failure names the tab.
+    for (const tab of [
+      { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
+      { id: "repositories", name: "Repos", marker: "Add by path" },
+      { id: "models", name: "Models", marker: "Writes the guide" },
+      { id: "environment", name: "Environment", marker: "Re-check" },
+      { id: "version", name: "Version", marker: "Installed:" },
+      { id: "appearance", name: "Appearance", marker: "Theme" },
+    ] as const) {
+      await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
+      await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
+      await checkLayout(page, `settings-${tab.id}`);
+      await shot(page, `settings-${tab.id}`, suffix, tab.marker);
+    }
+
+    // Start page (#225): the "Open a PR" row, the PR list with its
+    // empty sub-groups, and the Reviews list share one width.
+    await page.goto(`${svc!.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start");
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await expect(page.getByTestId("requested-direct-empty")).toContainText("No PRs requested of you.");
+    await page.getByTestId("requested-direct-empty").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-prs");
+    await shot(page, "start-prs", suffix, "No PRs requested of you.");
+    await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-reviews");
+    await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");
   });
 }
 
