@@ -274,7 +274,7 @@ test("7. reader state: scroll restore, contents lists opened pages, trail", asyn
   await link.click();
   await expect(page).toHaveURL(new RegExp(`page/${pageId}`));
   await page.goBack();
-  expect(await page.locator("#page").evaluate((el) => el.scrollTop)).toBeGreaterThan(150);
+  await expect.poll(() => page.locator("#page").evaluate((el) => el.scrollTop), { timeout: 5000 }).toBeGreaterThan(150);
 });
 
 test("8. header conventions and narrow widths", async ({ page }) => {
