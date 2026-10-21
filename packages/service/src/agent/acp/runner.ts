@@ -34,7 +34,7 @@ import {
 import { assertLiveAgentAllowed } from "../live-guard.js";
 import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
-import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
+import { addTurnUsage, aggregateTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
 import {
   normalizeProvider,
@@ -127,9 +127,6 @@ export class AcpAgentRunner implements AgentRunner {
   private known = new Map<string, AcpSessionRecord>();
   /** Canonical policies per transport, reapplied after restarts. */
   private policies = new Map<string, Map<string, SessionPolicy>>();
-  /** Last reported cumulative usage per session (Claude counters grow across
-   *  turns; per-turn usage is the delta — see usage.ts). */
-  private usageBaseline = new Map<string, TurnUsage>();
   /** Usage of the shared first turn, folded into the session's first
    *  real prompt so per-job reporting stays complete (see start()). */
   private firstTurnUsage = new Map<string, TurnUsage>();
@@ -326,7 +323,6 @@ export class AcpAgentRunner implements AgentRunner {
           prompt: [{ type: "text", text: SHARED_CACHE_FIRST_TURN }],
         });
         const tu = aggregateTurnUsage(warm as { usage?: unknown; _meta?: unknown });
-        this.usageBaseline.set(rec.acpSessionId, tu);
         this.firstTurnUsage.set(rec.acpSessionId, tu);
       } catch {
         // ignore: caching optimisation only
@@ -779,25 +775,17 @@ export class AcpAgentRunner implements AgentRunner {
       return;
     }
     const tu = aggregateTurnUsage({ usage: r?.usage, _meta: r?._meta });
-    // Claude reports session-cumulative counters; Codex reports per-turn.
-    // Consumers sum per-turn usage, so delta-ize Claude against the session
-    // baseline (see usage.ts for the evidence).
+    // Both adapters report per-turn figures (#209; see usage.ts), so the
+    // aggregate IS this turn's usage — for Claude and Codex alike. Never
+    // diff it against an earlier turn of the session.
     let report = tu;
     if (rec.provider === "claude") {
-      report = deltaTurnUsage(this.usageBaseline.get(rec.acpSessionId) ?? null, tu);
-      this.usageBaseline.set(rec.acpSessionId, tu);
-      // Fold in the shared first turn (start()) once, so the job's
-      // reported usage covers both turns.
+      // Fold in the shared first turn (start()) once, summed, so the job's
+      // reported usage covers both of its own turns.
       const first = this.firstTurnUsage.get(rec.acpSessionId);
       if (first) {
         this.firstTurnUsage.delete(rec.acpSessionId);
-        report = {
-          ...report,
-          inputTokens: report.inputTokens + first.inputTokens,
-          cachedReadTokens: report.cachedReadTokens + first.cachedReadTokens,
-          cachedWriteTokens: report.cachedWriteTokens + first.cachedWriteTokens,
-          outputTokens: report.outputTokens + first.outputTokens,
-        };
+        report = addTurnUsage(first, report);
       }
     }
     yield {
@@ -950,7 +938,7 @@ export class AcpAgentRunner implements AgentRunner {
     // dispose is terminal; clear everything.
     this.known.clear();
     this.policies.clear();
-    this.usageBaseline.clear();
+    this.firstTurnUsage.clear();
   }
 }
 

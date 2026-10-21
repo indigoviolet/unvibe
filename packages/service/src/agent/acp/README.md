@@ -11,7 +11,7 @@ Contents:
 
 - `runner.ts` — `AcpAgentRunner`: start/fork (`atMessage` via AIR fork meta,
   Claude fork+resume quirk)/load/close/prompt streaming/cancel, model +
-  thinking + mode setters, usage delta-ization, crash restart, dispose.
+  thinking + mode setters, per-turn usage, crash restart, dispose.
 - `connection.ts` — one lazy stdio subprocess per provider (login-shell
   PATH, `NO_BROWSER=1`), update demux per session, permission answering,
   fs/terminal denial, toolCallId→title correlation, `connectClient()` shared
@@ -19,8 +19,8 @@ Contents:
 - `permissions.ts` — deny-by-default policy (our MCP tools + file readers
   allowed once; everything else rejected).
 - `usage.ts` — `aggregateTurnUsage` over `usage` + `_meta.quota.model_usage`
-  (background sub-calls included), `deltaTurnUsage` for Claude's cumulative
-  counters, `cacheReadShare`.
+  (background sub-calls included; both adapters already report per-turn,
+  #209), `cacheReadShare`.
 - `errors.ts` — retryable vs terminal error classification.
 - `mcp.ts` — shared `McpServerConfig` → ACP wire shape (HTTP; stdio).
 - `types.ts` — provider ids, session records, model/thinking info.
