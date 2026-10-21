@@ -184,7 +184,7 @@ State the content itself instead.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
-  `finding`, `contribute`, `depth`, `hunk`, `plotlines`,
+  `finding`, `findings`, `contribute`, `depth`, `hunk`, `plotlines`,
   `secondOpinion`, `concepts`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
@@ -195,6 +195,9 @@ State the content itself instead.
   - `finding`: `confidence` (`low`, `medium` or `high`), a one-line
     `summary`, and `suggestedComment` with the draft `text` and its
     `diff:` anchor. The comment is a draft; it is never marked for the PR.
+  - `findings` (critic replies, #215): one to three entries in card
+    order, each with `title`, `confidence`, `summary`, `suggestedComment`
+    and `cardIds`; zero entries is a valid silent reply.
   - `secondOpinion`: `verdict` (`agrees`, `partly` or `disagrees`),
     `reasoning`, and `missed` (anything the card missed).
   - `depth`: the `level` written (`simple`, `standard` or `deep`) and the

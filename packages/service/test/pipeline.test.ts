@@ -94,8 +94,8 @@ describe("pipeline demo e2e (replay)", () => {
         if (ev.type === "patch") patches.push({ ops: ev.ops, headRev: ev.headRev });
       });
 
-      // Wait for the full demo (reader + critic×2 + stubs + 8 hunks +
-      // 4 go-deeper fills + 7 concept fills).
+      // Wait for the full demo (reader + one critic job (#215) + stubs +
+      // 8 hunks + 4 go-deeper fills + 7 concept fills).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
         if (!s) return false;
@@ -200,6 +200,9 @@ describe("pipeline demo e2e (replay)", () => {
       const jobs = await app.inject({ method: "GET", url: `/api/jobs?review=${id}`, headers: authed });
       expect(jobs.statusCode).toBe(200);
       expect((jobs.json() as { jobs: Job[] }).jobs.length).toBeGreaterThan(10);
+      // #215: exactly one critic job per review (its reply made 2 findings).
+      expect((jobs.json() as { jobs: Job[] }).jobs.filter((j) => j.kind === "critic")).toHaveLength(1);
+      expect(snap.pages.filter((p) => p.kind === "finding")).toHaveLength(2);
     } finally {
       await app.close();
     }

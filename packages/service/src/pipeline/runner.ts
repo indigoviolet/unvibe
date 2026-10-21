@@ -50,7 +50,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
+import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -2058,41 +2058,38 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
-    // Replay keys select the f-lf/f-perf recordings; live runs get neutral
-    // ids (page titles carry the meaning; ids are opaque).
+    // #215: one critic job per review; its reply carries 1-3 findings.
     const replay = isReplayRunner(this.opts.runner);
-    const keys = replay ? ["f-lf", "f-perf"] : ["f-critic-0", "f-critic-1"];
-    return keys.map((key) => {
-      const prompt = replay ? withReplayMark(basePrompt, { kind: "critic", key }) : basePrompt;
-      return this.opts.jobs.enqueue({
-        reviewId,
-        kind: "critic",
-        ...roleFields(settings.main),
-        priority: JOB_PRIORITY.background,
-        dedupe: { anchor: `finding:${key}`, requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
-        run: async (ctx) => {
-          ctx.setPromptSnapshot(prompt);
-          const base = await this.ensureBase(reviewId);
-          void base;
-          const forked = await this.forkFor(reviewId);
-          ctx.setSessionId(forked.session.id);
-          try {
-            const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-              ctx.reportText(d),
-              (name, detail, extra) => ctx.reportTool(name, detail, extra),
-            turnHooks(ctx));
-            ctx.reportUsage(usage);
-            await this.recordUsage(reviewId, usage);
-            // Issue #50: finding cards match their own `##` titles.
-            const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
-            const applied = criticApply(
-              cards.map((c) => ({ title: c.title, blocks: c.blocks })),
-              (data ?? null) as Record<string, unknown> | null,
-              key,
-            );
-            const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
-            await this.opts.reviews.mutate(reviewId, (draft) => {
-              if (draft.pages.some((p) => p.id === applied.pageId)) return;
+    const prompt = replay ? withReplayMark(basePrompt, { kind: "critic" }) : basePrompt;
+    const job = this.opts.jobs.enqueue({
+      reviewId,
+      kind: "critic",
+      ...roleFields(settings.main),
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: "finding:critic", requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const base = await this.ensureBase(reviewId);
+        void base;
+        const forked = await this.forkFor(reviewId);
+        ctx.setSessionId(forked.session.id);
+        try {
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
+          const appliedList = criticApplyAll(
+            cards.map((c) => ({ title: c.title, blocks: c.blocks })),
+            (data ?? null) as Record<string, unknown> | null,
+            "f-critic",
+          );
+          await this.opts.reviews.mutate(reviewId, (draft) => {
+            for (const applied of appliedList) {
+              if (draft.pages.some((p) => p.id === applied.pageId)) continue;
+              const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
               draft.pages.push({
                 id: applied.pageId,
                 kind: "finding",
@@ -2113,8 +2110,6 @@ export class Pipeline {
                 })),
               });
               if (applied.suggestedComment) {
-                // Suggested comments go through comments/threads.ts (M6):
-                // buildAnchor derives prefix/suffix/position from the diff.
                 const parsed = parseId(applied.suggestedComment.diff);
                 if (parsed?.kind === "diff") {
                   const before = this.opts.reviews.getSnapshot(reviewId);
@@ -2142,9 +2137,6 @@ export class Pipeline {
                         suggestionText: applied.suggestedComment.text,
                       },
                     );
-                    // Tie the thread back to the finding (PRD §4.9): a
-                    // comment-link block on the Assessment (last) card.
-                    // Hover previews the thread, click jumps to the diff.
                     const page = draft.pages.find((p) => p.id === applied.pageId);
                     const last = page?.cards[page.cards.length - 1];
                     if (last) {
@@ -2171,21 +2163,20 @@ export class Pipeline {
                 payload: { summary: `${applied.title}\n\n${applied.summary}`, unverified: validation.unverified },
                 scope: { scope: "global" },
               });
-            });
-            await this.updateRestatedMapping(reviewId);
-            // #122: the finding is applied above; bookkeeping joins the chain.
-            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
-            // #122: findings changed the guide — rebuild the base ahead.
-            this.warmBase(reviewId);
-            this.maybeMarkStageDone(reviewId, "critic", 2);
-          } catch (err) {
-            await this.reportPartialUsage(ctx, reviewId, err);
-            this.setStage(reviewId, "critic", "error", (err as Error).message);
-            throw err;
-          }
-        },
-      });
+            }
+          });
+          await this.updateRestatedMapping(reviewId);
+          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
+          this.warmBase(reviewId);
+          this.maybeMarkStageDone(reviewId, "critic", 1);
+        } catch (err) {
+          await this.reportPartialUsage(ctx, reviewId, err);
+          this.setStage(reviewId, "critic", "error", (err as Error).message);
+          throw err;
+        }
+      },
     });
+    return [job];
   }
 
   private async enqueueConcepts(reviewId: string): Promise<Job[]> {

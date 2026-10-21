@@ -332,7 +332,8 @@ function extractKey(kind: string, prompt: string): string | null {
       return m ? m[1] : null;
     }
     case "critic":
-      return /perf|linear/.test(lower) ? "f-perf" : /lf|bare/.test(lower) ? "f-lf" : null;
+      // #215: one critic recording carries all findings; no per-finding key.
+      return null;
     case "second-opinion": {
       // Keys are `<card-or-finding-id>:<mode>` (e.g. `f-lf:blind`,
       // `central:check`). Match the most specific one present.

@@ -189,6 +189,31 @@ the item, and the block carries the union.
 Evidence, assessment prose, and concept stubs live in the Markdown body.
 Metadata goes in the trailing JSON block:
 
+Critic replies (#215) carry one to three findings in one reply: for
+each finding an Evidence card then an Assessment card in the Markdown,
+in order, and one `findings` entry per finding in the trailing block:
+
+```json
+{
+  "findings": [
+    {
+      "title": "Folds that end in a bare LF are not unfolded",
+      "confidence": "medium",
+      "summary": "http.client accepts LF-only line ends, but the new code looks for CRLF.",
+      "suggestedComment": {
+        "text": "Would `\\r?\\n` here, plus a test, make sense?",
+        "diff": "diff:conn:82"
+      },
+      "cardIds": ["flf-ev", "flf-as"]
+    }
+  ]
+}
+```
+
+Zero findings (`{"findings": []}`, no cards) is a valid silent reply;
+more than three entries keep the first three. Each finding is validated
+on its own: a finding with no usable cards is dropped, the rest stand.
+
 ```json
 {
   "title": "Folds that end in a bare LF are not unfolded",

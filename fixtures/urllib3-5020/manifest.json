@@ -6,13 +6,7 @@
     },
     {
       "kind": "critic",
-      "key": "f-lf",
-      "file": "critic-f-lf.md"
-    },
-    {
-      "kind": "critic",
-      "key": "f-perf",
-      "file": "critic-f-perf.md"
+      "file": "critic.md"
     },
     {
       "kind": "concept-stubs",

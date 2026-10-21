@@ -37,6 +37,18 @@ export interface ReplyData {
     summary?: string;
     suggestedComment?: { text?: string; diff?: string };
   };
+  /**
+   * One critic reply carrying one to three findings (#215): each entry's
+   * Evidence/Assessment cards in the Markdown, in the same order.
+   */
+  findings?: {
+    id?: string;
+    title?: string;
+    confidence?: FindingConfidence | string;
+    summary?: string;
+    suggestedComment?: { text?: string; diff?: string };
+    cardIds?: string[];
+  }[];
   /** Automatic contribution items (PRD §9.5). At most 1–3 items. */
   contribute?: {
     facts?: { text?: string; citations?: string[] }[];

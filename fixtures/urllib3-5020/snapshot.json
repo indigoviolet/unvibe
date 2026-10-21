@@ -2473,15 +2473,7 @@
       "state": "done"
     },
     {
-      "id": "job-critic-lf",
-      "kind": "critic",
-      "model": "fixture",
-      "effort": "",
-      "priority": 2,
-      "state": "done"
-    },
-    {
-      "id": "job-critic-perf",
+      "id": "job-critic",
       "kind": "critic",
       "model": "fixture",
       "effort": "",
