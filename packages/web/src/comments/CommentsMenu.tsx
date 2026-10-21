@@ -104,19 +104,55 @@ export function shortenLeft(path: string, max = 42): string {
   return `…${path.slice(-(max - 1))}`;
 }
 
-/** Group heading for a local thread: file path, guide location, doc title, etc. */
+/** The guide card holding a block anchor, if any. */
+function guideCardOf(
+  snapshot: ReviewSnapshot,
+  blockId: string,
+): { pageTitle: string; cardTitle: string | null; cardId: string } | null {
+  const hash = blockId.indexOf("#");
+  const cardPart = hash >= 0 ? blockId.slice(0, hash) : null;
+  const bare = hash >= 0 ? blockId.slice(hash + 1) : blockId;
+  for (const page of snapshot.pages) {
+    for (const card of page.cards) {
+      if (cardPart !== null && card.id === cardPart) return { pageTitle: page.title, cardTitle: card.title, cardId: card.id };
+      if (card.blocks.some((b) => (b as { id?: string }).id === bare)) {
+        return { pageTitle: page.title, cardTitle: card.title, cardId: card.id };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Group heading for a local thread (#226): file paths shortened from the
+ * left (file name stays visible); guide threads read like the location
+ * elsewhere — "Guide › <card title>"; never the review title.
+ */
 export function groupLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
+    return shortenLeft(file?.path ?? host.fileKey);
+  }
+  if (host.kind === "code") return shortenLeft(host.path);
+  if (host.kind === "description") return descriptionPaneName(snapshot);
+  if (host.kind === "block") {
+    if (snapshot.document) return snapshot.document.title;
+    const card = guideCardOf(snapshot, host.blockId);
+    if (card) return card.cardTitle ? `Guide › ${card.cardTitle}` : "Guide";
+  }
+  return whereLabel(snapshot, thread);
+}
+
+/** Full-length group heading for the tooltip: file paths unshortened. */
+export function groupTitle(snapshot: ReviewSnapshot, thread: Annotation): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
     return file?.path ?? host.fileKey;
   }
   if (host.kind === "code") return host.path;
-  if (host.kind === "description") return descriptionPaneName(snapshot);
-  if (host.kind === "block" && snapshot.document) {
-    return snapshot.document.title;
-  }
-  return whereLabel(snapshot, thread);
+  return groupLabel(snapshot, thread);
 }
 
 /** Group key: diff threads share their file; document threads their title. */
@@ -277,15 +313,21 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const thisReview = useMemo(() => threads.filter((t) => !t.post || t.postedAt), [threads]);
   const outbox = useMemo(() => threads.filter((t) => t.post && !t.postedAt), [threads]);
 
-  const thisGroups = useMemo(() => {
+  interface MenuGroup {
+    label: string;
+    title: string;
+    threads: Annotation[];
+  }
+
+  const thisGroups: MenuGroup[] = useMemo(() => {
     if (!snapshot) return [];
-    const order: { label: string; threads: Annotation[] }[] = [];
-    const at = new Map<string, { label: string; threads: Annotation[] }>();
+    const order: MenuGroup[] = [];
+    const at = new Map<string, MenuGroup>();
     for (const t of thisReview) {
       const key = groupKey(snapshot, t);
       let g = at.get(key);
       if (!g) {
-        g = { label: groupLabel(snapshot, t), threads: [] };
+        g = { label: groupLabel(snapshot, t), title: groupTitle(snapshot, t), threads: [] };
         at.set(key, g);
         order.push(g);
       }
@@ -294,15 +336,15 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     return order;
   }, [snapshot, thisReview]);
 
-  const outboxGroups = useMemo(() => {
+  const outboxGroups: MenuGroup[] = useMemo(() => {
     if (!snapshot) return [];
-    const order: { label: string; threads: Annotation[] }[] = [];
-    const at = new Map<string, { label: string; threads: Annotation[] }>();
+    const order: MenuGroup[] = [];
+    const at = new Map<string, MenuGroup>();
     for (const t of outbox) {
       const key = groupKey(snapshot, t);
       let g = at.get(key);
       if (!g) {
-        g = { label: groupLabel(snapshot, t), threads: [] };
+        g = { label: groupLabel(snapshot, t), title: groupTitle(snapshot, t), threads: [] };
         at.set(key, g);
         order.push(g);
       }
@@ -438,14 +480,19 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   };
 
   // Existing GitHub threads grouped by file, in fetch order (issue #168).
+  // Left-shortening is for file paths only (#226); "General" stays whole.
   const githubGroups = useMemo(() => {
     if (!snapshot || !existing) return [];
-    const groups = new Map<string, { label: string; threads: GithubThread[] }>();
+    const groups = new Map<string, { label: string; title: string; threads: GithubThread[] }>();
     for (const t of groupGithubComments(existing)) {
-      const label = t.root.path ?? "General";
-      const g = groups.get(label) ?? { label, threads: [] };
+      const full = t.root.path ?? "General";
+      const g = groups.get(full) ?? {
+        label: t.root.path === undefined ? "General" : shortenLeft(full),
+        title: full,
+        threads: [],
+      };
       g.threads.push(t);
-      groups.set(label, g);
+      groups.set(full, g);
     }
     return [...groups.values()];
   }, [snapshot, existing]);
@@ -547,7 +594,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             </div>
             {thisGroups.map((g) => (
               <div key={g.label}>
-                <span className="cmgroup" title={g.label}>{shortenLeft(g.label)}</span>
+                <span className="cmgroup" title={g.title}>{g.label}</span>
                 {g.threads.map((t) => localRow(t, false))}
               </div>
             ))}
@@ -565,7 +612,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             </div>
             {outboxGroups.map((g) => (
               <div key={g.label}>
-                <span className="cmgroup" title={g.label}>{shortenLeft(g.label)}</span>
+                <span className="cmgroup" title={g.title}>{g.label}</span>
                 {g.threads.map((t) => localRow(t, true))}
               </div>
             ))}
@@ -614,7 +661,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             ) : (
               githubGroups.map((g) => (
                 <div key={g.label}>
-                  <span className="cmgroup" title={g.label}>{shortenLeft(g.label)}</span>
+                  <span className="cmgroup" title={g.title}>{g.label}</span>
                   {g.threads.map((t) => {
                     const snap = snapshot;
                     const outdated = snap ? isOutdatedComment(snap.files, t.root) : false;

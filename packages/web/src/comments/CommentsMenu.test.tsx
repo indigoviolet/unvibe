@@ -48,6 +48,12 @@ function thread(id: string, text: string, extra: Partial<Annotation> = {}): Anno
   } as Annotation;
 }
 
+function guideThread(id: string, text: string): Annotation {
+  return thread(id, text, {
+    anchor: { host: { kind: "block", blockId: "problem#b1" }, quotedText: "folded values" } as Annotation["anchor"],
+  });
+}
+
 function snapshot(
   prefs: ReviewSnapshot["viewPrefs"],
   annotations: Annotation[] = [],
@@ -55,7 +61,13 @@ function snapshot(
 ): ReviewSnapshot {
   return {
     review: { id: "demo" },
-    pages: [],
+    pages: [
+      {
+        id: "root",
+        title: "Unfold obsolete folded response headers",
+        cards: [{ id: "problem", title: "The problem", blocks: [{ id: "b1" }] }],
+      },
+    ],
     files: FILES,
     annotations,
     jobs: [],
@@ -126,6 +138,13 @@ describe("three disjoint sections", () => {
   it("AI-suggested threads carry their tag at a glance", () => {
     renderMenu(snapshot(prefs, annotations));
     expect(screen.getByText("AI-suggested")).toBeVisible();
+  });
+
+  it("guide threads group under Guide and the card, never the review title", () => {
+    renderMenu(snapshot(prefs, [guideThread("t-guide", "Guide thought")]));
+    const review = screen.getByLabelText(/This review, 1 comments/);
+    expect(review).toHaveTextContent("Guide › The problem");
+    expect(review).not.toHaveTextContent("Unfold obsolete folded response headers");
   });
 
   it("the Outbox section shows drafts and the export box with Copy", async () => {
