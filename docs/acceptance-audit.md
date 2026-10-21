@@ -155,8 +155,8 @@ UI); nothing below was edited by this pass.
 ### §4.2 Start page — all met
 
 - Repo selector centred above Reviews with remembered + detected checkouts —
-  met (`StartPage.tsx` native `<select>`: remembered
-  under "Repos", detected under "Detected checkouts" with the local path
+  met (Base UI `Select` in `StartPage.tsx`: remembered
+  under "Repos", detected under "Found on this machine" with the local path
   as the title; selection persisted in `unvibe.start.repoId`, demo never
   selectable; `e2e/start.spec.ts` "repo selector lists remembered and
   detected repos, persisted" + "sits centered above Reviews"; quiet
@@ -896,8 +896,10 @@ needed (that deviation is closed, not added).
   provider does not offer the saved effort resets to Default with a notice
   (`ModelsSection.test.tsx` "effort per role").
 - Model display names (#21) — met: `GET /api/models` carries `name` +
-  `description` from the adapters; pickers show display name beside the id
-  with description as secondary text (Claude + Codex); readiness, Doctor,
+  `description` from the adapters; pickers show the display name beside
+  the id as the trigger label (#225: no description or status/path line
+  under the picker; a role that isn't ready shows only a link to
+  Settings → Environment); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
 - Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
@@ -2402,6 +2404,38 @@ hunk coverage) is reported for a separate issue, not fixed here.
   with 409 so no agent time is spent. Evidence:
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
+
+## Addendum: #225 part A + #224 (branch `fix/225a-settings-start-select-224`)
+
+- **#225 settings/start (part A; §4.14, §4.2, §4.1):** Settings →
+  Limits fields fit the card (numeric inputs sized for their values,
+  go-deeper toggle as the shared Field checkbox); Version channel rows
+  are equal-height shared ListRows with the trailing control (small
+  secondary Switch/Update/Confirm or badge) in one slot and the enable
+  toggle inside the card as a Field; Appearance shows theme names only
+  plus one line that light/dark follows the system; Repos list and both
+  add rows share one card and one right edge ("Browse…" is a shared
+  secondary button); Environment is one card with one ListRow per check
+  (problems first, short detail, full text on hover, actions in the
+  footer); the start-page PR opener row ends at the lists card's right
+  edge, empty sub-groups sit where a row would with consistent
+  sub-headings, and Reviews rows show the app's working indicator only
+  while work runs (nothing when idle, error mark stays); the shared
+  Select is Base UI's everywhere it is used (repo picker, recency,
+  Models, Version picker, Appearance). Evidence: journey
+  `e2e/journeys/j225a-settings-badges.spec.ts` (real service: one-card
+  screens, row heights/right edges, no page scroll, Base UI selects in
+  `e2e/start*.spec.ts`, `settings.spec.ts`, journeys J5/J11/J12/J18).
+- **#224 (PR state + review decision; §4.2, §4.1):** open/draft/merged/
+  closed and approved/changes-requested/review-required ride the shared
+  Badge with theme colours on the review bar (next to the PR title), the
+  start-page PR rows and the reviews list (merged/closed reviews also
+  faded). Data is the stored `gh` state (`state`/`isDraft`/
+  `reviewDecision` from the same `pr view`/`pr list` calls, refreshed on
+  list load/refresh — no new polling); branch reviews show nothing.
+  Evidence: journey `e2e/journeys/j225a-settings-badges.spec.ts`
+  (OPEN + APPROVED fake `gh`: badges in the session row and review bar,
+  none on branch rows, summary API carries the stored state).
 
 ## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
 
