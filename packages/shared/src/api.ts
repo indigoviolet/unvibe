@@ -356,7 +356,7 @@ export interface ReviewSummary {
   stale: boolean;
   totalHunks: number;
   reviewedHunks: number;
-  /** Threads marked For PR and not yet posted. */
+  /** Threads in the Outbox and not yet posted. */
   pendingComments: number;
   /** Guide generation state (reader/base/critic pipeline). */
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
@@ -800,7 +800,7 @@ export interface CreateCommentRequest {
   text?: string;
   /**
    * Create an agent-suggested comment: first message is the agent's
-   * suggestion (`suggested: true`), never marked for the PR initially.
+   * suggestion (`suggested: true`), never in the Outbox initially.
    * Only valid on diff-line anchors.
    */
   suggested?: boolean;
@@ -824,6 +824,12 @@ export interface ThreadMessage {
   suggested?: boolean;
 }
 
+/** GET /api/reviews/:id/outbox — Outbox export Markdown (#223). No download/filename: Copy only. */
+export interface OutboxResponse {
+  markdown: string;
+  count: number;
+}
+
 /** GET /api/reviews/:id/pr-comments — read-only existing PR comments (M6). */
 export interface ExistingCommentsResponse {
   comments: ExistingReviewComment[];
@@ -843,7 +849,7 @@ export interface SubmitReviewRequest {
   dryRun?: boolean;
 }
 
-/** M6: where one For-PR thread lands on GitHub (PRD §4.8, §4.12). */
+/** M6: where one Outbox thread lands on GitHub (PRD §4.8, §4.12). */
 export type SubmitCommentLocation =
   | {
       kind: "inline";
@@ -867,7 +873,7 @@ export interface SubmitPreviewComment {
 
 /** M6: exactly what Submit will post (preview + dryRun response). */
 export interface SubmitPreview {
-  /** Threads marked For PR that are not yet posted. */
+  /** Threads in the Outbox that are not yet posted. */
   comments: SubmitPreviewComment[];
   /** Threads already posted (skipped on retry). */
   alreadyPosted: string[];

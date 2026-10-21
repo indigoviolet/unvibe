@@ -8,15 +8,15 @@
  *
  * - `createThreadInDraft` / `createThread`: a reviewer comment anchored
  *   on a guide block, a description paragraph, or a diff line, with
- *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are for the PR
- *   by default.
+ *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are in the
+ *   Outbox by default.
  * - `createSuggestedCommentInDraft` / `createSuggestedComment`: agent
  *   findings' suggested comments — a comment on a diff line whose first
- *   message is flagged `suggested` and is NOT marked for the PR (PRD §4.9).
+ *   message is flagged `suggested` and is NOT in the Outbox (PRD §4.9).
  * - `replyInDraft` / `replyToThread`: user reply.
  * - `setOpenInDraft` / `setThreadOpen`, `setPostInDraft` / `setThreadPost`,
  *   `setDraftInDraft` / `updateThreadDraft`, `deleteInDraft` /
- *   `deleteAnnotation`: open/close, mark for PR, edit For-PR draft, delete.
+ *   `deleteAnnotation`: open/close, mark Outbox, edit the Outbox draft, delete.
  *
  * The `POST /api/reviews/:id/actions` union (`note`, `close`, `delete`)
  * overlaps this module. The actions route (another agent) should call
@@ -293,7 +293,7 @@ export function createThreadInDraft(
   }
   // Guide comments start closed; diff + description comments start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
-  // A Comment is for the PR by default (issue #135).
+  // A Comment is in the Outbox by default (issue #135).
   const open = anchor.host.kind === "block" ? false : true;
   const thread: Annotation = {
     id: newAnnotationId(),
@@ -380,7 +380,7 @@ export function setPostInDraft(
   if (post) thread.open = true;
 }
 
-/** Draft helper: edit the For-PR draft text (null clears it). */
+/** Draft helper: edit the Outbox draft text (null clears it). */
 export function setDraftInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   commentId: string,
@@ -435,7 +435,7 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: s
 }
 
 /**
- * Exact text that will be posted for a thread: the For-PR draft when set,
+ * Exact text that will be posted for a thread: the Outbox draft when set,
  * else the first user message, else the suggested message (prototype
  * `Comments menu` draft fallback).
  */
@@ -543,7 +543,7 @@ export async function closeAnnotation(
   return setThreadOpen(store, reviewId, annotationId, false);
 }
 
-/** Mark/unmark a thread For PR. */
+/** Mark/unmark a thread's Outbox membership. */
 export async function setThreadPost(
   store: ReviewStore,
   reviewId: string,
@@ -555,7 +555,7 @@ export async function setThreadPost(
   });
 }
 
-/** Edit the For-PR draft text (null clears it). */
+/** Edit the Outbox draft text (null clears it). */
 export async function updateThreadDraft(
   store: ReviewStore,
   reviewId: string,

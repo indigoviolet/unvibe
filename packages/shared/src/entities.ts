@@ -422,13 +422,13 @@ export type AnnotationType = "conversation" | "comment" | "link";
 /**
  * Issue #136 slice 2: one comment message. Comments never carry agent
  * replies (those live on conversation turns as blocks); `ai` appears
- * only for agent-drafted suggested comments not yet marked for the PR.
+ * only for agent-drafted suggested comments not yet in the Outbox.
  */
 export interface ChatMessage {
   who: "you" | "ai";
   /** Plain text. */
   text?: string;
-  /** Agent-drafted suggested comment not yet marked for the PR. */
+  /** Agent-drafted suggested comment not yet in the Outbox. */
   suggested?: boolean;
   /**
    * Issue #181: this suggested message is an agent's open question,
@@ -477,9 +477,9 @@ export interface Annotation {
   pinned: boolean;
   /** Comments only: messages so far. */
   messages: ChatMessage[];
-  /** Comments only: include in the Submit review payload. */
+  /** Comments only: include in the Outbox (Submit review payload on PR reviews). */
   post: boolean;
-  /** Comments only: editable draft of the text to post (For PR view). */
+  /** Comments only: editable draft of the text to post (Outbox view). */
   draft?: string;
   /** Unsent reply-box content (survives re-renders; comments and conversations). */
   reply?: string;

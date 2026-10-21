@@ -180,7 +180,7 @@ export async function runSubmit(
     return {
       status: 400,
       body: {
-        error: `a comment marked for the PR is empty — write its text under Comments → For PR, then submit`,
+        error: `a comment in the Outbox is empty — write its text under Comments → Outbox, then submit`,
       },
     };
   }
@@ -196,7 +196,7 @@ export async function runSubmit(
         commentCount: 0,
         descriptionUpdated: false,
         alreadyPosted: already,
-        reason: already.length > 0 ? "Everything here is already on GitHub." : "Nothing is marked for the PR.",
+        reason: already.length > 0 ? "Everything here is already on GitHub." : "Nothing is in the Outbox.",
       },
     };
   }

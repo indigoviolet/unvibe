@@ -5,10 +5,10 @@
  * - `POST /api/reviews/:id/comments` — create a comment with the user's
  *   first message (guide block, description paragraph, or diff line),
  *   or an agent-suggested comment (`suggested` on a diff line, never marked
- *   For PR initially).
+ *   the Outbox initially).
  * - `POST …/comments/:commentId/replies` — user reply.
  * - `PATCH …/comments/:commentId` — `{ post?, draft?, open?, reply? }`:
- *   mark For PR, edit the For-PR draft, open/close, reply-box content.
+ *   mark Outbox, edit the Outbox draft, open/close, reply-box content.
  * - `DELETE …/comments/:commentId` — delete the comment.
  *
  * Everything goes through `ReviewStore.mutate`. The `POST …/actions`
