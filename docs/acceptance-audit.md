@@ -539,7 +539,7 @@ needed (that deviation is closed, not added).
   text) — met (`actions/followup.ts` conversation branch,
   `ConversationCard.test.tsx` suggestion case). On guide cards a click
   still consumes the item and opens a new conversation card.
-- The card is never submitted to GitHub and carries no For-PR control —
+- The card is never submitted to GitHub and carries no Outbox control —
   met (no `post` on conversations; submit posts threads only).
 - Explanations nest (#116, #136): an Explain on text inside an answer
   anchors to the answer's block and renders under it, to any depth;
@@ -582,7 +582,7 @@ needed (that deviation is closed, not added).
   into `actions/conversation.ts`, `NewThreadComposer.tsx`,
   `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
   diff line opens a Comment. Only comments are submitted — conversation
-  cards carry no For-PR control and the submit path skips them (issue
+  cards carry no Outbox control and the submit path skips them (issue
   #135). A Comment from an agent answer quotes the selection as a
   Markdown blockquote. A comment offers “Ask the agent about this”: the
   usual Ask card on the comment's anchor, quoting the comment — the only
@@ -593,7 +593,7 @@ needed (that deviation is closed, not added).
   with suggestions, they render as chips on that answer, and clicking one
   sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
   `ConversationCard.test.tsx` suggestion case).
-- Thread header (quote/`file:line`, Mark for PR filled when on,
+- Thread header (quote/`file:line`, Outbox toggle filled when on,
   Delete, Close) — met (`comments/threads.test.ts`,
   `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
   comment” threads with Reply/Discard).
@@ -613,10 +613,10 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (all comments, jump, For PR filter with editable drafts,
+- Comments menu (all comments, jump, Outbox filter with editable drafts + export Markdown box with Copy (#223, hidden when the Outbox is empty),
   never posts; lives in the review bar next to Submit since round 2, so it
   opens with the source pane closed) — met (`comments-service.spec.ts`
-  “mark for PR, edit the draft, submit posts exactly one review”;
+  “mark Outbox, edit the draft, submit posts exactly one review”; branch-review export covered by `journeys/j223-outbox.spec.ts`;
   `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
@@ -641,7 +641,7 @@ needed (that deviation is closed, not added).
 - Finding page label + rust-border Evidence/Assessment cards — met
   (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
   ran).
-- Suggested comments (“Agent · suggested comment”, not for PR, linked
+- Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
   Issue #163: no reply box on suggestions; the selection toolbar works
@@ -1634,7 +1634,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
   change lists + contributions + per-review shared-context debug page,
   issue #32).
-- M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
+- M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
@@ -2432,3 +2432,106 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #227 (branch `fix/227-file-tree`)
+
+- **File tree (§4.13):** the tree panel never scrolls sideways. Rows are
+  border-box and the list is `overflow-x: hidden`; file names truncate
+  with an ellipsis, directory chains shorten from the middle (the head
+  ellipsises, the last segments stay readable, full path on hover via
+  `title`), and the `+N −M` / reviewed-count indicators sit in fixed
+  right-hand tracks outside the name button (shared subgrid columns, so
+  they align across rows and depths). The diff's file headers get the
+  same treatment: middle-shortened directory, truncating file name, and
+  the counts/reviewed/checkbox fixed at the right edge inside the pane.
+  Root cause of the original scrollbar: rows were `width: 100%` in
+  content-box sizing, so padding pushed every row past the panel and
+  the indicators with it. Evidence: `tailPathParts` cases in
+  `diffLogic.test.ts`, journey `e2e/journeys/j227-file-tree.spec.ts`
+  (scratch repo with a long path against the real service: no horizontal
+  scroll, indicators inside and aligned, hover titles, header fits the
+  pane), and the `file-tree` frames in `e2e/visual-tour.spec.ts`.
+  The owner declined the optional indicator treatments (dropping zero
+  sides, a proportional add/remove bar, a "done" look); `+N −M` stays.
+
+## Addendum: #222 phase 1 (branch `feat/222-document-review`)
+
+- **Document review kind (#222):** `POST /api/reviews` with
+  `kind: "document"` creates a review from pasted Markdown plus 1–2
+  context repos, each read from a particular worktree, `origin/main`,
+  or the local copy (`GET /api/repos/:id/worktrees` feeds the picker;
+  picks resolve at creation). The document renders in the left pane
+  with paragraph block IDs (`p1`, `p2`, …; cited as `doc:pN`, anchored
+  as `document#pN`), and Explain / Ask / Comment work on it with the
+  context repos as context: one base session per document (the document
+  plus a tree/README map of each repo), forked per Explain/Ask, no
+  captive session. Nothing is generated up front; the review has a
+  single version (refresh is a no-op; redo/resume refuse). Comments use
+  the shared comment model (`post: true`), so they land in the Outbox;
+  Submit stays disabled for them
+  (no PR). With #223 merged, document comments show in the Outbox and
+  its export: their heading names the document and paragraph
+  (`<title> › pN`, from what the comment already knows), document
+  blocks sit in the export's guide slot in document order (the
+  document is the left-pane reading text), and file-tab (`code:`)
+  comments follow under `path:line` headings. The review kind is
+  derived from the snapshot's shape (a
+  discriminated union in shared types), never stored — no fallback read,
+  no reset needed. With #81 merged, `code:` citations in document
+  answers open through `openFileForCitation` into source-pane file
+  tabs, and the Guide/Source toggle is meaningful on documents. With
+  two context repos, the repo is resolved from the cited sha — the
+  first context repo (in pick order) whose object store contains that
+  commit — for citation validation (existence keyed by the exact
+  `path@sha`, #81's existence-only rule), for `get_code`, and for the
+  file route; a sha in neither repo leaves the citation unverified and
+  reads fail rather than reading the same path in the wrong repo. No
+  grammar change and no new `get_code` input, so the golden tool
+  surface stays frozen. There is no code browser (phase 2, #82) and no
+  "code" review kind.
+  Evidence: `packages/shared/test/document.test.ts`,
+  `packages/service/test/document-222.test.ts` (two-repo sha
+  resolution, validation, and the file route),
+  `packages/service/test/validate.test.ts` (doc: targets),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (create with two
+  repos → read → Explain → Ask → Comment → cited file tab against the
+  real service, replay agent), and the visual tour's document frames.
+
+## Addendum: #81 (branch `fix/81-code-citations`)
+
+- **Validation (§10, supersedes the #178 range check):** no length
+  check. A `code:` citation is valid when the file exists at the cited
+  commit and unverified only when it does not (missing or binary);
+  `validateCode` checks existence only, and the pipeline resolves
+  existence through the same `git show` source. A range past the end
+  validates and highlights whatever part of it exists.
+- **Opening (§7/§9):** hovering a `code:` chip previews the cited lines
+  at the cited commit (fetched through the file route when no hunk
+  rows cover them); clicking opens the file in its own source-pane
+  tab at that commit — one tab per opened file, each with a close
+  button — scrolled to the cited lines. The reusable entry point is
+  `openFileAtCommit` in `packages/web/src/source/file/openFile.ts`
+  (path + commit + optional range; no PR-diff assumption), which #222
+  calls for context-repo citations. Scope stays files reached from a
+  citation or pin; there is no file tree.
+- **File tab (§7/§8):** text selects like diff lines — Explain, Ask
+  and Comment anchor to the new `code:` host and render under the
+  cited lines. On a new version, `code:` citations (in the diff or
+  outside it) and file-tab anchors are re-anchored by content like
+  pins: found again means moved to the new lines and commit, not
+  found means outdated with the original snippet kept.
+- **Submitting (§7, owner decision A):** GitHub takes inline comments
+  only on diff lines, so a marked file-tab comment goes in the review
+  body on Submit as a permalink to the cited lines at the cited
+  commit, plus the quoted text, plus the comment; the Submit preview
+  shows the same text. This rides the existing single-review submit
+  path and its in-flight lease — only the located text changes.
+  Evidence: `test/validate.test.ts`, `test/location-m6.test.ts`,
+  `test/submit-m6.test.ts` (stubbed `gh` only),
+  `test/versions-anchors.test.ts`, web `citations.test.ts` /
+  `openFile.test.ts`, journey `e2e/journeys/j81-code-citations.spec.ts`
+  (hover, tab, past-the-end clamp, selection comment), visual tour
+  `file-hover` / `file-tab` / `file-tabs` / `file-submit` frames in
+  light and dark at 1440 and 960 (the tour's demo commits resolve in
+  no checkout, so those frames use a scratch repo on an agent-less
+  service, seeded the way J81 seeds).

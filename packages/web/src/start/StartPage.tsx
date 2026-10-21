@@ -52,10 +52,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
+  ContextRepoSource,
   CreateReviewRequest,
   ReadinessCheck,
   Repo,
   RepoChange,
+  RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
@@ -273,6 +275,166 @@ function parsePrInput(
   return { error: "Enter a PR number or a GitHub PR URL." };
 }
 
+interface DocRepoPick {
+  repoId: string;
+  source: ContextRepoSource;
+  worktreePath: string;
+  worktrees: RepoWorktree[];
+}
+
+/**
+ * New document review (issue #222): paste Markdown, pick 1–2 context
+ * repos, each read from a particular worktree, `origin/main`, or the
+ * local copy. Creates the review and navigates to it; nothing is
+ * generated up front.
+ */
+export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (id: string) => void }): React.JSX.Element {
+  const realRepos = repos.filter((r) => r.id !== "demo");
+  const [markdown, setMarkdown] = useState("");
+  const [picks, setPicks] = useState<DocRepoPick[]>([
+    { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadWorktrees = useCallback(async (index: number, repoId: string) => {
+    try {
+      const res = await api.repoWorktrees(repoId);
+      setPicks((prev) =>
+        prev.map((p, i) =>
+          i === index ? { ...p, worktrees: res.worktrees, worktreePath: res.worktrees[0]?.path ?? "" } : p,
+        ),
+      );
+    } catch {
+      // The create call surfaces the same failure with words.
+    }
+  }, []);
+
+  const setPick = (index: number, patch: Partial<DocRepoPick>): void => {
+    setPicks((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    if (patch.repoId) void loadWorktrees(index, patch.repoId);
+  };
+
+  const create = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const snap = await api.createDocument({
+        kind: "document",
+        markdown,
+        contextRepos: picks.map((p) => ({
+          repoId: p.repoId,
+          source: p.source,
+          ...(p.source === "worktree" ? { worktreePath: p.worktreePath } : {}),
+        })),
+      });
+      onCreated(snap.review.id);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="document-form" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <label className="hint" htmlFor="doc-markdown">
+        Paste the document&apos;s Markdown
+      </label>
+      <textarea
+        id="doc-markdown"
+        data-testid="doc-markdown"
+        rows={10}
+        value={markdown}
+        onChange={(e) => setMarkdown(e.target.value)}
+        placeholder={"# Title\n\nPaste Markdown here…"}
+        style={{ width: "100%", fontFamily: "monospace" }}
+      />
+      {picks.map((pick, i) => (
+        <div key={i} className="frow" style={{ gap: 6, flexWrap: "wrap" }} data-testid={`doc-repo-${i}`}>
+          <select
+            aria-label={`Context repo ${i + 1}`}
+            data-testid={`doc-repo-select-${i}`}
+            value={pick.repoId}
+            onChange={(e) => setPick(i, { repoId: e.target.value, worktreePath: "", worktrees: [] })}
+          >
+            <option value="">Pick a repo…</option>
+            {realRepos.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.owner}/{r.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={`Read repo ${i + 1} from`}
+            data-testid={`doc-repo-source-${i}`}
+            value={pick.source}
+            onChange={(e) => {
+              const source = e.target.value as ContextRepoSource;
+              setPick(i, { source });
+              if (source === "worktree" && pick.repoId) void loadWorktrees(i, pick.repoId);
+            }}
+          >
+            <option value="local">Local copy</option>
+            <option value="origin-main">origin/main</option>
+            <option value="worktree">A worktree</option>
+          </select>
+          {pick.source === "worktree" ? (
+            <select
+              aria-label={`Worktree ${i + 1}`}
+              data-testid={`doc-repo-worktree-${i}`}
+              value={pick.worktreePath}
+              onChange={(e) => setPick(i, { worktreePath: e.target.value })}
+            >
+              {pick.worktrees.length === 0 ? <option value="">No worktrees found</option> : null}
+              {pick.worktrees.map((w) => (
+                <option key={w.path} value={w.path}>
+                  {w.branch ? `${w.branch} · ` : ""}
+                  {w.path}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {picks.length > 1 ? (
+            <Button variant="quiet" size="sm" type="button" onClick={() => setPicks((p) => p.filter((_, j) => j !== i))}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {picks.length < 2 ? (
+        <div>
+          <Button
+            variant="quiet"
+            size="sm"
+            type="button"
+            onClick={() =>
+              setPicks((p) => [...p, { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] }])
+            }
+          >
+            Add another context repo
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="hint" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div>
+        <Button
+          variant="primary"
+          type="button"
+          disabled={busy || markdown.trim() === "" || picks.some((p) => !p.repoId)}
+          onClick={() => void create()}
+        >
+          {busy ? "Creating…" : "Create document review"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function StartPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -317,6 +479,7 @@ export function StartPage(): React.JSX.Element {
   // Prior sessions (front-screen list, filtered to the selected repo below).
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [docOpen, setDocOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -991,6 +1154,19 @@ export function StartPage(): React.JSX.Element {
             </div>
           )}
 
+          {/* New document review (issue #222). */}
+          <h1 className="divider">Document</h1>
+          {docOpen ? (
+            <DocumentForm repos={repos} onCreated={(id) => navigate(`/review/${id}`)} />
+          ) : (
+            <p className="hint">
+              Review a pasted Markdown document with 1–2 repos as context.{" "}
+              <Button variant="quiet" size="sm" type="button" onClick={() => setDocOpen(true)}>
+                New document review
+              </Button>
+            </p>
+          )}
+
           {/* PRs and branches for the selected repo. The PR input never
               waits on the lists; the lists track loading / loaded / failed
               per selection below it. */}
@@ -1289,7 +1465,7 @@ export function SessionRow({
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {" · "}
               {guideLabel(s)}
             </>

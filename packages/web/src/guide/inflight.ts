@@ -210,6 +210,7 @@ function anchorSuffix(anchor: ActionAnchor): string {
   if (anchor.where === "description") return `desc:${anchor.paragraphId}`;
   if (anchor.where === "comment") return `comment:${anchor.commentId}`;
   if (anchor.where === "hunk") return `hunk:${anchor.fileKey}:${anchor.contentHash}`;
+  if (anchor.where === "code") return `code:${anchor.path}:${anchor.line}@${anchor.commit}`;
   return `diff:${anchor.fileKey}:${anchor.line}`;
 }
 

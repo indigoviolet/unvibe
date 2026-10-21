@@ -134,6 +134,78 @@ describe("submit", () => {
     }
   });
 
+  it("posts a file-tab comment in the review body with a permalink (#81)", async () => {
+    const codeThread: Annotation = {
+      id: "ann_code",
+      type: "comment",
+      anchor: {
+        host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2, endLine: 3 },
+        quotedText: "beta = 2\ngamma = 3",
+        prefix: "",
+        suffix: "",
+        position: 2,
+        version: 1,
+      },
+      open: true,
+      pinned: false,
+      messages: [{ who: "you", text: "Is beta still the right default?" }],
+      post: true,
+    };
+    const runner = new FakeCommandRunner();
+    const { app, ctx, reviewId } = await setupReview(runner, { annotations: [codeThread] });
+    const expectedBody = `https://github.com/${OWNER}/${REPO_NAME}/blob/${HEAD_SHA}/helper.py#L2-L3\n\n> beta = 2\n> gamma = 3\n\nIs beta still the right default?`;
+    try {
+      const dry = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: { dryRun: true },
+      });
+      expect(dry.statusCode).toBe(200);
+      const preview = (dry.json() as { preview: { comments: Array<{ location: { kind: string }; text: string; quote?: string }>; reviewBody: string } }).preview;
+      expect(preview.comments).toHaveLength(1);
+      expect(preview.comments[0].location.kind).toBe("general");
+      expect(preview.comments[0].text).toBe(expectedBody);
+      expect(preview.comments[0].quote).toBe("beta = 2\ngamma = 3");
+      expect(preview.reviewBody).toBe(expectedBody);
+      expect(runner.calls).toHaveLength(0);
+
+      runner.enqueue({
+        cmd: "gh",
+        args: ["pr", "view", String(PR_NUMBER), "--json", "headRefOid,state"],
+        stdout: JSON.stringify({ headRefOid: HEAD_SHA, state: "OPEN" }),
+        stderr: "",
+        code: 0,
+      });
+      runner.enqueue({
+        cmd: "gh",
+        args: ["api", `repos/${OWNER}/${REPO_NAME}/pulls/${PR_NUMBER}/reviews`, "-X", "POST", "--input", "-"],
+        stdout: JSON.stringify({ html_url: REVIEW_URL, id: 1 }),
+        stderr: "",
+        code: 0,
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${reviewId}/submit`,
+        headers: authed,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ posted: true, commentCount: 1 });
+      const apiCall = runner.calls.find((c) => c.opts.args.includes("--input"));
+      const payload = JSON.parse((apiCall?.opts.stdin ?? "{}") as string) as {
+        body: string;
+        comments: unknown[];
+      };
+      expect(payload.body).toBe(expectedBody);
+      expect(payload.comments).toEqual([]);
+      const snap = ctx.reviews.getSnapshot(reviewId);
+      expect(snap?.annotations[0].postedAt).toBeTypeOf("number");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("refuses when the head moved; disabled for branches", async () => {
     const runner = new FakeCommandRunner();
     const { app, reviewId } = await setupReview(runner, { annotations: [threadOnDiffLine("a-py", 2, "x")] });

@@ -3,7 +3,7 @@
  *
  * What enters the log:
  * - never: UI state — read, collapse, depth (the stepper position), open /
- *   close, mark-for-PR. These change nothing the next turn needs.
+ *   close, Outbox marking. These change nothing the next turn needs.
  * - card-local only: examples, diagrams, depth rewrites. They are logged
  *   with a card scope and only shown to sessions anchored on that card.
  *   (Note: the *rewrite* is logged as a one-line label — the rewritten

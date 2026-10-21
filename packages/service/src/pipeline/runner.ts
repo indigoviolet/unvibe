@@ -28,7 +28,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, isDocumentReview, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
@@ -48,8 +48,10 @@ import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
-import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
+import { lookupForSnapshot, resolveCodeFileExistence } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
+import { buildDocumentBaseText } from "../document/map.js";
+import { resolveDocumentCodeExistence } from "../document/resolve.js";
 import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
@@ -1160,11 +1162,41 @@ export class Pipeline {
     return path.join(this.opts.dataDir, "worktrees", reviewId);
   }
 
+  /**
+   * Issue #222: a document review's session cwd — the first context
+   * repo's reading location (no managed worktree exists for it). Falls
+   * back to the change-review worktree path when unknown.
+   */
+  private sessionCwd(reviewId: string): string {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (snapshot && isDocumentReview(snapshot)) {
+      const first = snapshot.contextRepos[0];
+      if (first && fs.existsSync(first.path)) return first.path;
+    }
+    return this.worktreeOf(reviewId);
+  }
+
+  /** Issue #222: the base pack text — the document pack for document reviews. */
+  private async basePackTextFor(
+    snapshot: ReviewSnapshot,
+    instructions: string,
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+  ): Promise<string> {
+    if (isDocumentReview(snapshot)) {
+      const text = await buildDocumentBaseText(this.opts.commands, snapshot);
+      return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
+    }
+    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+  }
+
   private parseAndValidate(
     reviewId: string,
     text: string,
     echoCandidates?: string[],
-    codeLengths?: Record<string, number>,
+    existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
@@ -1180,7 +1212,7 @@ export class Pipeline {
       echoCandidates === undefined ? parseCards(body) : parseCards(body, { echoCandidates });
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const lookup = this.lookupWithAliases(snapshot, codeLengths);
+    const lookup = this.lookupWithAliases(snapshot, existingFiles, existingCodeTargets);
     const blocks = cards.flatMap((c) => c.blocks);
     const anchor =
       split.ok && typeof split.data === "object" && split.data !== null
@@ -1193,12 +1225,12 @@ export class Pipeline {
   }
 
   /**
-   * `parseAndValidate` with `code:` ranges checked against the real file
-   * at the cited commit (#178, PRD §10). The snapshot lookup alone only
-   * knows hunk-covered lines, so every `code:` citation to a file outside
-   * the diff used to come back unverified and burn a repair turn. Lengths
-   * are resolved through `git show` (the `get_code` source) first; files
-   * that cannot be read stay unverified, exactly as before.
+   * `parseAndValidate` with `code:` files checked for existence at the
+   * cited commit (#81, PRD §10: no length check). The snapshot lookup
+   * alone only knows diff files, so every `code:` citation to a file
+   * outside the diff used to come back unverified and burn a repair turn.
+   * Existence is resolved through `git show` (the `get_code` source)
+   * first; missing and binary files stay unverified.
    */
   private async parseAndValidateWithCode(
     reviewId: string,
@@ -1207,7 +1239,8 @@ export class Pipeline {
   ): Promise<ReturnType<typeof this.parseAndValidate>> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    let codeLengths: Record<string, number> | undefined;
+    let existingFiles: ReadonlySet<string> | undefined;
+    let existingCodeTargets: ReadonlySet<string> | undefined;
     try {
       const split = splitReply(text);
       const cards =
@@ -1215,17 +1248,25 @@ export class Pipeline {
       const collected = collectTargets(cards.flatMap((c) => c.blocks));
       const targets = [...collected.citations, ...collected.links];
       if (targets.some((t) => t.startsWith("code:"))) {
-        codeLengths = await resolveCodeFileLengths(
-          this.opts.commands,
-          this.worktreeOf(reviewId),
-          snapshot.version.headSha,
-          targets,
-        );
+        // Issue #222: document answers cite context-repo files; the repo
+        // is resolved from the cited sha (first repo containing it), and
+        // existence is keyed by the exact `path@sha`.
+        if (isDocumentReview(snapshot)) {
+          existingCodeTargets = await resolveDocumentCodeExistence(this.opts.commands, snapshot.contextRepos, targets);
+        } else {
+          existingFiles = await resolveCodeFileExistence(
+            this.opts.commands,
+            this.worktreeOf(reviewId),
+            snapshot.version.headSha,
+            targets,
+          );
+        }
       }
     } catch {
-      codeLengths = undefined;
+      existingFiles = undefined;
+      existingCodeTargets = undefined;
     }
-    return this.parseAndValidate(reviewId, text, echoCandidates, codeLengths);
+    return this.parseAndValidate(reviewId, text, echoCandidates, existingFiles, existingCodeTargets);
   }
 
   /** Alias-aware lookup for diagram cite validation (demo fixture keys). */
@@ -1365,11 +1406,14 @@ export class Pipeline {
 
   private lookupWithAliases(
     snapshot: ReviewSnapshot,
-    codeLengths?: Record<string, number>,
+    existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): ReturnType<typeof lookupForSnapshot> {
     const aliases = aliasesForReview(snapshot, this.opts.fixturesDir);
-    if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { fileLengths: codeLengths });
-    const base = lookupForSnapshot(snapshot, { fileLengths: codeLengths });
+    if (Object.keys(aliases).length === 0) {
+      return lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
+    }
+    const base = lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
     const inner = base.resolveFileKey.bind(base);
     return {
       ...base,
@@ -1432,14 +1476,19 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    // The base pack instructs the agent to answer "ready" (SessionManager
-    // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
-    // instruction so fakes and real models alike acknowledge.
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    // Document reviews build their pack from the document + repo maps
+    // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
+    const isDocument = isDocumentReview(snapshot);
+    const pack = isDocument
+      ? null
+      : buildBasePack(toPromptSnapshot(snapshot, { model: settings.main.model }), instructions, {
+          inlineBudgetTokens: settings.inlineBudgetTokens,
+        });
+    const packText = isDocument
+      ? await this.basePackTextFor(snapshot, instructions, settings)
+      : `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack!.user}`;
     const key = {
       reviewId,
       reviewVersion: `v${snapshot.version.n}`,
@@ -1453,7 +1502,7 @@ export class Pipeline {
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
     const handle = await this.opts.sessions.getBase({
       key,
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers,
@@ -1467,7 +1516,7 @@ export class Pipeline {
     }
     if (handle.fresh) {
       try {
-        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
+        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack?.tokens ?? 0);
       } catch {
         // observability is best-effort
       }
@@ -1573,11 +1622,9 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    const packText = await this.basePackTextFor(snapshot, instructions, settings);
     const base = await this.opts.sessions.getBase({
       key: {
         reviewId,
@@ -1588,7 +1635,7 @@ export class Pipeline {
         access: postureFor(settings),
         effort: settings.main.effort,
       },
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
@@ -1619,7 +1666,7 @@ export class Pipeline {
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
       ...roleFields(settings.main),
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],

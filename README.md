@@ -52,7 +52,7 @@ Other commands:
 
 The front screen lists prior reviews, your repos and PRs, and recent branches. Open a PR or branch and the guide fills in beside the diff.
 
-Select any text to explain it, ask about it, or leave a note. Cards have a depth stepper and undo; a second-opinion action asks a different model about a card or finding. Citations are marked `<>`: hover previews the cited lines, click jumps to them in the diff. The diff pane filters files, hides uninteresting hunks, folds and summarizes, and tracks what you marked reviewed. Comments can be marked For PR; Submit posts them as one GitHub review. If it is your PR, you can also edit the description, and the edit goes with the same submit.
+Select any text to explain it, ask about it, or leave a note. Cards have a depth stepper and undo; a second-opinion action asks a different model about a card or finding. Citations are marked `<>`: hover previews the cited lines, click jumps to them in the diff. The diff pane filters files, hides uninteresting hunks, folds and summarizes, and tracks what you marked reviewed. Comments sit in the Outbox; Submit posts them as one GitHub review on PR reviews, and the Comments menu exports them as Markdown (Copy) on any review. If it is your PR, you can also edit the description, and the edit goes with the same submit.
 
 When new commits arrive, a banner offers Update, which carries your comments and read state over to the new version. A branch with no PR works the same except Submit, which stays disabled. Nothing reaches GitHub until you submit.
 

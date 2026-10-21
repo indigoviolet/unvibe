@@ -10,6 +10,7 @@
  */
 import type { FastifyReply } from "fastify";
 import type { ActionResponse, ReviewAction } from "@unvibe/shared";
+import { isDocumentReview } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
@@ -94,6 +95,23 @@ export async function dispatchAction(
     ...(deps.fixturesDir ? { fixturesDir: deps.fixturesDir } : {}),
     ...(deps.promptsDir ? { promptsDir: deps.promptsDir } : {}),
   } as ActionContext;
+
+  // Issue #222: guide-rewriting actions have no meaning on a pasted
+  // document (its text is the reader's own, never rewritten).
+  {
+    const snap = deps.reviews?.getSnapshot(deps.reviewId);
+    if (
+      !!snap && isDocumentReview(snap) &&
+      (action.kind === "depth" ||
+        action.kind === "examples" ||
+        action.kind === "diagram" ||
+        action.kind === "generate" ||
+        action.kind === "second_opinion" ||
+        action.kind === "concept")
+    ) {
+      return bad(reply, "that doesn't apply to a document — Explain, Ask and Comment work on its text instead");
+    }
+  }
 
   try {
     switch (action.kind) {

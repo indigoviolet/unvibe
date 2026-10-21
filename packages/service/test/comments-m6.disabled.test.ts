@@ -1,7 +1,7 @@
 // DISABLED(#188): covered by J3/J9 (comment lifecycle and Submit)
 /**
  * M6 comments: create (reviewer / suggested), reply, open/close, mark
- * For PR, edit draft, delete — all through `ReviewStore.mutate` — plus
+ * Outbox, edit draft, delete — all through `ReviewStore.mutate` — plus
  * the actions-route seams. Agent replies live on conversation cards,
  * never in threads (#136 slice 2).
  */
@@ -233,7 +233,7 @@ describe("comment threads", () => {
     }
   });
 
-  it("creates agent-suggested comments (diff line only, not for PR)", async () => {
+  it("creates agent-suggested comments (diff line only, not in the Outbox)", async () => {
     const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);
     try {

@@ -40,6 +40,7 @@ import {
   filterFiles,
   hunkOverlaps,
   shouldHideHunk,
+  tailPathParts,
   type TreeRow,
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
@@ -995,7 +996,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                   >
                     <Icon name={dirOpen[row.path] ?? true ? "down" : "right"} />
                     <span className="nm" title={row.path}>
-                      {row.label}
+                      <PathTail text={row.label} />
                     </span>
                   </button>
                 ) : (
@@ -1258,6 +1259,17 @@ function FilterMenuButton({
   );
 }
 
+/** Middle-shortened path label (#227): head ellipsises, tail stays. */
+function PathTail({ text }: { text: string }): ReactNode {
+  const parts = tailPathParts(text);
+  return (
+    <>
+      {parts.pre ? <span className="nm-pre">{parts.pre}</span> : null}
+      <span className="nm-end">{parts.end}</span>
+    </>
+  );
+}
+
 function FileTreeRow({
   file,
   depth,
@@ -1273,15 +1285,20 @@ function FileTreeRow({
   const added = file.hunks.reduce((s, h) => s + h.added, 0);
   const removed = file.hunks.reduce((s, h) => s + h.removed, 0);
   return (
-    <div className="fr" style={{ paddingLeft: 10 + depth * 14 + 20 }} title={file.path}>
-      <button className="fr-main" type="button" onClick={() => onJump(file.fileKey)}>
+    <div className="fr file" title={file.path}>
+      <button
+        className="fr-main"
+        type="button"
+        style={{ paddingLeft: depth * 14 + 20 }}
+        onClick={() => onJump(file.fileKey)}
+      >
         <span className="nm">{file.path.split("/").pop()}</span>
         {file.category === "generated" ? <span className="gtag">gen</span> : null}
-        <span className="st">
-          <span className="a">+{added}</span> <span className="d">−{removed}</span>
-        </span>
-        <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
       </button>
+      <span className="st">
+        <span className="a">+{added}</span> <span className="d">−{removed}</span>
+      </span>
+      <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
     </div>
   );
 

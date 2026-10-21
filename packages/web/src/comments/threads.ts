@@ -1,11 +1,11 @@
 /**
  * Thread helpers (comments owner).
  *
- * - `threadPostText`: exact text posted for a thread (For-PR draft, else
+ * - `threadPostText`: exact text posted for a thread (Outbox draft, else
  *   first user message, else suggested message) — mirrors the service's
  *   `threadPostText` so the Comments menu and Submit panel show what will
  *   be posted without importing service code.
- * - `pendingThreads` / `forPrThreads` / `pendingCount`: Submit counts
+ * - `pendingThreads` / `outboxThreads` / `pendingCount`: Submit counts
  *   (posted threads are never pending).
  * - `threadLocationLabel`: short human location for menus (`file:line`,
  *   guide excerpt, or "General PR comment").
@@ -27,18 +27,18 @@ export function isPosted(thread: Annotation): boolean {
   return thread.postedAt !== undefined;
 }
 
-/** Comment threads marked For PR that are not yet posted. */
-export function forPrThreads(snapshot: ReviewSnapshot | null): Annotation[] {
+/** Comment threads in the Outbox that are not yet posted. */
+export function outboxThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
     (a) => a.type === "comment" && a.post && !isPosted(a as Annotation),
   ) as Annotation[];
 }
 
-/** Submit count: For-PR threads + pending description edit. */
+/** Submit count: Outbox threads + pending description edit. */
 export function pendingCount(snapshot: ReviewSnapshot | null): number {
   if (!snapshot) return 0;
-  const comments = forPrThreads(snapshot).length;
+  const comments = outboxThreads(snapshot).length;
   const desc = snapshot.description?.pendingHtml !== undefined ? 1 : 0;
   return comments + desc;
 }

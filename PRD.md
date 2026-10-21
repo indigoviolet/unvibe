@@ -59,7 +59,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 2. **Understand.** Read the guide. Hover links and citations, open concept pages, change the depth, and explain or ask about selected text.
 3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
-5. **Comment and submit.** Mark comments "For PR", edit the drafts, then submit one GitHub review. If it's your PR, the description edit goes in the same submit.
+5. **Comment and submit.** Mark comments in the Outbox, edit the drafts, then submit one GitHub review (PR reviews) or copy the Outbox Markdown export (any review). If it's your PR, the description edit goes in the same submit.
 6. **Come back after new commits.** See what changed, click Update, and continue.
 
 ---
@@ -166,15 +166,15 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
-- The card is never submitted to GitHub; it carries no For-PR control.
+- The card is never submitted to GitHub; it carries no Outbox control.
 - **Answers stream paragraph by paragraph (experiment, #126):** while an answer is being written, each completed paragraph appears when the model finishes it — never half sentences. The answer is marked as still being written until the turn ends (the fixed working label stays); citations show as pending and resolve when the turn ends and validation has run. A repair turn replaces the shown text. Applies to conversation answers only; `localStorage unvibe:no-stream-paragraphs = "1"` restores all-at-once answers.
 
 ### 4.8 Comments
 - **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
-- A **Comment** is for the PR by default and can be switched off to keep it local. A conversation card is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- A **Comment** is in the Outbox by default and can be switched off to keep it local. A conversation card is never in the Outbox and carries no Outbox control. Only comments are submitted to GitHub.
 - Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
 - A comment offers **Ask the agent about this**: the usual Ask card on the comment's anchor, quoting the comment. The answer is never submitted; it is the only way a comment leads to an agent reply.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Outbox** (a send icon, filled when on), **Delete** and **Close**.
 - **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent).
   - Typed text survives anything else on the page re-rendering.
   - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
@@ -184,7 +184,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
   - **Description:** threads sit under their paragraph. Closing one leaves the highlight, or a marker.
 - **Comments menu:**
   - lists every comment, from the guide, the description and the diff, and clicking one jumps to it;
-  - the **For PR** filter shows the comments marked for the PR, each with an editable draft of the text to post;
+  - the **Outbox** filter shows the comments in the Outbox, each with an editable draft of the text to post, plus the export Markdown box with a Copy button (hidden when the Outbox is empty);
   - it never posts.
 - **Already on GitHub:** review comments already posted on the PR show as read-only threads on their diff lines (collapsed, author + count), marked as from GitHub; outdated ones list at their file, and ones on removed files at the diff's end. Each thread carries an Open on GitHub link. Selecting their text offers Explain, Ask… and Comment (which quotes the selection into the reviewer's own comment). The comments menu groups them by file and thread with rendered bodies, and each item jumps to its place in the diff. One show/hide control in the diff's filter menu hides them in the diff (remembered with the review; each thread also collapses on its own) without removing them from what the agents see. They load with the review and reload on refresh; nothing here ever posts.
 
@@ -192,8 +192,8 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
 - **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
-- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
-- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment for the PR (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
+- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* in the Outbox. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
+- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment in the Outbox (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
 
 ### 4.10 Second opinion
 - A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
@@ -210,7 +210,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 
 ### 4.12 Submit review
 - **Nothing reaches GitHub until Submit review**, whether comments or a description edit. Only comments are submitted; Ask threads and explanations are never posted.
-- The top-bar button shows how many changes are pending. Its panel lists every comment marked for the PR (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
+- The top-bar button shows how many changes are pending. Its panel lists every comment in the Outbox (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
 - Submitting creates **one GitHub review** containing all the comments, and updates the description.
 - For a branch without a PR, Submit is disabled and says why.
 
@@ -450,7 +450,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** collapse, depth, open/close and "mark for PR" state;
+  - **never:** collapse, depth, open/close and Outbox state;
   - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
@@ -672,7 +672,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept pages are written when a link is opened. Hunk pass summaries, and Hide uninteresting with reasons. |
 | M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
-| M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
+| M4 | Comments and submit | Threads in all three places, the Comments menu with Outbox drafts and Markdown export, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |
 

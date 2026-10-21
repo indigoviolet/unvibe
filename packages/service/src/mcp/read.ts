@@ -56,6 +56,11 @@ export interface ReviewReader {
   getReview(reviewId: string): Promise<McpReviewData | null>;
   /** Absolute worktree path for `get_code`, or null when unavailable. */
   getWorktreePath(reviewId: string): string | null | Promise<string | null>;
+  /**
+   * Issue #222: a document review's context repos, for resolving a cited
+   * sha to the repo that contains it. Null for change reviews.
+   */
+  getContextRepos?(reviewId: string): import("@unvibe/shared").ContextRepoRef[] | null | Promise<import("@unvibe/shared").ContextRepoRef[] | null>;
 }
 
 export interface PinRecord {
