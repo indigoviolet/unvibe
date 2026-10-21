@@ -14,5 +14,8 @@ export function anchorSameHost(a: Annotation["anchor"], b: Annotation["anchor"])
     return a.host.fileKey === b.host.fileKey && a.host.contentHash === b.host.contentHash;
   }
   if (a.host.kind === "comment" && b.host.kind === "comment") return a.host.commentId === b.host.commentId;
+  if (a.host.kind === "code" && b.host.kind === "code") {
+    return a.host.path === b.host.path && a.host.commit === b.host.commit && a.host.line === b.host.line;
+  }
   return false;
 }

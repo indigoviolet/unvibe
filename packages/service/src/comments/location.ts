@@ -239,6 +239,13 @@ function locateDiffLineThread(snapshot: ReviewSnapshot, thread: Annotation): Sub
  */
 export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): SubmitCommentLocation {
   const host = thread.anchor.host;
+  if (host.kind === "code") {
+    // #81: GitHub takes inline comments only on diff lines. Where a
+    // file-tab comment goes on Submit (review body with a permalink vs
+    // local only) is an open owner decision — until it settles, these
+    // post as general review comments like other non-diff threads.
+    return { kind: "general", reason: `${host.path}:${host.line} is outside the diff, so it posts as a general PR comment.` };
+  }
   if (host.kind !== "diff-line") {
     if (host.kind === "block") {
       const citations = findBlockCitations(snapshot, host.blockId);
