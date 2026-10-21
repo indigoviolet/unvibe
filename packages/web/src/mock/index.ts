@@ -20,6 +20,7 @@ import type {
   AddRepoResponse,
   ChangesFilter,
   Contribution,
+  CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   DiffFilter,
@@ -61,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { freshBlockId, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -2058,6 +2059,48 @@ export const mockApi = {
       const note = changesFetchError();
       return note ? { ...res, fetchError: note } : res;
     }
+  },
+
+  repoWorktrees: async (id: string) => {
+    const repo = getRepos().find((r) => r.id === id);
+    return { worktrees: repo ? [{ path: repo.localPath, branch: "main" }] : [] };
+  },
+
+  createDocument: async (body: CreateDocumentRequest): Promise<ReviewSnapshot> => {
+    const document = parseDocumentMarkdown(body.markdown);
+    if (typeof body.title === "string" && body.title.trim() !== "") document.title = body.title.trim();
+    const first = body.contextRepos[0];
+    const now = Date.now();
+    const id = `mock-doc-${now.toString(36)}`;
+    const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
+    return {
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", kind: "document", versions: [version], currentVersion: 1, createdAt: now },
+      document,
+      contextRepos: body.contextRepos.map((pick) => {
+        const r = getRepos().find((x) => x.id === pick.repoId);
+        return {
+          repoId: pick.repoId,
+          owner: r?.owner ?? "local",
+          name: r?.name ?? pick.repoId,
+          source: pick.source,
+          repoPath: r?.localPath ?? "",
+          path: pick.worktreePath ?? r?.localPath ?? "",
+          label: `${r?.owner ?? "local"}/${r?.name ?? pick.repoId}`,
+        };
+      }),
+      version,
+      files: [],
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    };
   },
 
   createReview: async (body: CreateReviewRequest): Promise<CreateReviewResponse> => {

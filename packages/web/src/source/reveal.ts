@@ -37,6 +37,11 @@ function flashParagraph(paragraphId: string): void {
 export function revealSource(target: string, opts?: { keepFilters?: boolean }): void {
   const snapshot = useReview.getState().snapshot;
   const canonical = snapshot ? canonicalRevealTarget(snapshot, target) : target;
+  // Issue #222: a document citation scrolls to its block in the left pane.
+  if (target.startsWith("doc:")) {
+    flashParagraph(`B-${target.slice("doc:".length)}`);
+    return;
+  }
   if (target.startsWith("desc:")) {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
     flashParagraph(target.slice("desc:".length).split("@")[0]);

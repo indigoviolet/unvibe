@@ -13,6 +13,7 @@ import type {
   ContributionsResponse,
   CreateCommentRequest,
   CreateCommentResponse,
+  CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   DeleteContributionResponse,
@@ -41,6 +42,7 @@ import type {
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
+  RepoWorktreesResponse,
   ReviewAction,
   ReviewSnapshot,
   ReviewsListResponse,
@@ -301,6 +303,12 @@ const realApi = {
 
   createReview: (body: CreateReviewRequest): Promise<CreateReviewResponse> =>
     post("/api/reviews", body),
+  /** Issue #222: create a document review (answered with its ready snapshot). */
+  createDocument: (body: CreateDocumentRequest): Promise<ReviewSnapshot> =>
+    post("/api/reviews", body),
+  /** Issue #222: reading locations of a repo for the context-repo picker. */
+  repoWorktrees: (id: string): Promise<RepoWorktreesResponse> =>
+    get(`/api/repos/${encodeURIComponent(id)}/worktrees`),
   /** #92: re-run a failed ingest (409 when ready/loading, 202 with loading when retried). */
   retryReview: (id: string): Promise<ReviewSnapshot> =>
     post(`/api/reviews/${encodeURIComponent(id)}/retry`),

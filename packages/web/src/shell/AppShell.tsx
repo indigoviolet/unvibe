@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
+import { useReview } from "../state/store.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
@@ -41,13 +42,16 @@ function defaultWidth(): number {
 }
 
 export function AppShell({ reviewId }: { reviewId: string }) {
+  // Issue #222: document reviews have no source pane in phase 1 (the code
+  // browser is phase 2) — the document fills the window.
+  const isDocument = useReview((s) => s.snapshot?.review.kind === "document");
   const [guideOpen, setGuideOpen] = useState(true);
   const [sourceOpen, setSourceOpen] = useState<boolean | null>(null); // null = follow width
   const [paneWidth, setPaneWidth] = useState<number>(() => defaultWidth());
   const [tab, setTab] = useState<"desc" | "diff">("diff");
   const drag = useRef<{ x0: number; w0: number } | null>(null);
 
-  const sourceVisible = sourceOpen ?? window.innerWidth >= DOCK_WIDTH;
+  const sourceVisible = !isDocument && (sourceOpen ?? window.innerWidth >= DOCK_WIDTH);
   const docked = window.innerWidth >= DOCK_WIDTH && guideOpen && sourceVisible;
 
   // Pane toggles (issue #83): each segment toggles its pane, and turning

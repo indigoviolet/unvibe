@@ -20,6 +20,7 @@ import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
 import { ingestStepLabel, stageLabel } from "./stageLabels.js";
+import { DocumentView } from "./DocumentView.js";
 import { PageView } from "./PageView.js";
 import { Button } from "../ui/index.js";
 import "./guide-m2.css";
@@ -193,6 +194,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     const error = snapshot.ingest?.error ?? "No changes to review: the diff is empty.";
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return <EmptyOpen reviewId={reviewId} prLabel={pr} error={error} />;
+  }
+
+  // Issue #222: a document review's left pane is the document itself.
+  if (snapshot.review.kind === "document") {
+    return <DocumentView reviewId={reviewId} onOpenPage={onOpenPage} />;
   }
 
   // #179: a version whose diff is empty (e.g. a refresh emptied it) says
