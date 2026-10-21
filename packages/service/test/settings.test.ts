@@ -190,7 +190,7 @@ describe("settings + jobs routes", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       expect(get.statusCode).toBe(200);
-      expect(get.json().sessionsPerProvider).toBe(8);
+      expect(get.json().sessionsPerProvider).toBe(16);
       expect(get.json().cacheLifetimeMs).toBe(DEFAULT_SETTINGS.cacheLifetimeMs);
 
       const put = await app.inject({

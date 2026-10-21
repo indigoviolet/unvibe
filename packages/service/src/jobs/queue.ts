@@ -1,7 +1,7 @@
 /**
  * Priority job queue (PRD §12).
  *
- * - Per-provider concurrency cap (default 8, injectable so it can follow
+ * - Per-provider concurrency cap (default 16, injectable so it can follow
  *   the `sessionsPerProvider` setting).
  * - Priority order: user-requested > visible > background
  *   (`JOB_PRIORITY` in `@unvibe/shared`); raisable while queued.
@@ -33,7 +33,7 @@ import { isAbortError, partialUsageOf, RetryableError, type PartialUsageCarrier 
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
 
-export const DEFAULT_CONCURRENCY_CAP = 8;
+export const DEFAULT_CONCURRENCY_CAP = 16;
 export const DEFAULT_MAX_ATTEMPTS = 8;
 export const DEFAULT_BACKOFF_BASE_MS = 1000;
 export const DEFAULT_BACKOFF_MAX_MS = 60_000;
