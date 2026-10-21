@@ -273,8 +273,8 @@ code { font-family: var(--mono); font-size: .86em; }
    never shrinks (the title gives way first); an older shown version flags
    it with the warning border. */
 .rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; align-self: center; min-width: 0; }
-.rbar .rid .vs select.ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
-.rbar .rid .vs[data-ro] select.ui-select { border-color: var(--warn); }
+.rbar .rid .vs .ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
+.rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
 /* Live job count (issue #98): two numbers (running · queued) in the review
@@ -642,6 +642,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .divider { font-family: var(--label-font); font-size: var(--text-label); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: var(--weight-label); margin: 30px 0 4px; }
 /* Start page (#95): quiet label for the review-request sub-groups under a divider. */
 .subhead { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }
+/* #225: an empty sub-group's line sits where a row would (same indent, padding and top divider as .ci rows). */
+.subempty { padding: var(--space-3); border-top: var(--border-width) solid var(--line); margin: 0; }
 /* Start page (#148): the PR + branch lists the recency filter governs are
    one delineated block, with the filter and the refresh icon in its
    heading row. The heading row is fixed-height with a fixed-size icon
