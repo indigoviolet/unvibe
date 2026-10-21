@@ -183,7 +183,7 @@ describe("hunk summary activation (issue #138)", () => {
     // Nothing mounted per hunk beyond the text: no card, no controls —
     // and (issue #161) no icons or buttons of any kind.
     expect(wrap.querySelector("[data-expansion]")).toBeNull();
-    expect(wrap.querySelector(".card")).toBeNull();
+    expect(wrap.querySelector(".ui-card")).toBeNull();
     expect(wrap.querySelector(".ctl")).toBeNull();
     expect(wrap.querySelector("textarea")).toBeNull();
     expect(wrap.querySelector("button")).toBeNull();

@@ -25,6 +25,7 @@ import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { BrowseFolderButton } from "./BrowseFolderButton.js";
+import { Button } from "../ui/index.js";
 
 export function RepositoriesSection(): React.JSX.Element {
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -168,7 +169,7 @@ export function RepositoriesSection(): React.JSX.Element {
                         </span>
                       ) : null}
                       <button
-                        className="btn"
+                        className="ui-btn" data-variant="primary"
                         type="button"
                         disabled={removing === r.id}
                         onClick={() => void remove(r)}
@@ -176,7 +177,7 @@ export function RepositoriesSection(): React.JSX.Element {
                         {removing === r.id ? "Removing…" : "Remove"}
                       </button>
                       <button
-                        className="btn ghost"
+                        className="ui-btn" data-variant="secondary"
                         type="button"
                         disabled={removing === r.id}
                         onClick={() => {
@@ -189,7 +190,7 @@ export function RepositoriesSection(): React.JSX.Element {
                     </>
                   ) : (
                     <button
-                      className="mini"
+                      className="ui-btn" data-variant="quiet" data-size="sm"
                       type="button"
                       aria-label={`Remove ${r.owner}/${r.name}`}
                       disabled={removing !== null}
@@ -225,11 +226,12 @@ export function RepositoriesSection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void add();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
-        <button className="btn" type="button" onClick={() => void add()} disabled={adding}>
+        <Button variant="primary" type="button" onClick={() => void add()} disabled={adding}>
           {adding ? "Adding…" : "Add by path"}
-        </button>
+        </Button>
         <BrowseFolderButton
           onPick={(picked) => {
             setPath(picked);
@@ -257,11 +259,12 @@ export function RepositoriesSection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void addByUrl();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
-        <button className="btn" type="button" onClick={() => void addByUrl()} disabled={addingUrl}>
+        <Button variant="primary" type="button" onClick={() => void addByUrl()} disabled={addingUrl}>
           {addingUrl ? `Cloning ${cloningName ?? "repo"}…` : "Clone and add"}
-        </button>
+        </Button>
       </div>
       {urlHint ? (
         <p className="hint" role="status">

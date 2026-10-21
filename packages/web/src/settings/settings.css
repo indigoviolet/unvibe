@@ -1,33 +1,4 @@
-/* Settings page (M8): plain and dense, prototype variables + class names. */
-.setgrid {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-  gap: 6px 12px;
-  align-items: center;
-  margin: 8px 0;
-}
-.setgrid label {
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.setgrid input[type="number"],
-.setgrid input[type="text"],
-.setgrid select {
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-6);
-  padding: 3px 8px;
-  font: 13px var(--sans);
-  background: var(--surface);
-  color: var(--ink);
-  min-width: 0;
-  max-width: 340px;
-}
-.setgrid .fld {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
+/* Settings page (M8): plain and dense, prototype variables + shared Field (#201). */
 .err {
   font-size: 12px;
   color: var(--del-ink);
@@ -49,14 +20,14 @@ mark.tm {
    top right; versions are one grid row each. */
 .ver-head {
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: 8px;
   margin-bottom: 6px;
 }
 .ver-toggle {
   margin-left: auto;
   display: inline-flex;
-  align-items: center;
+  align-items: start;
   gap: 6px;
   font-size: 12.5px;
   color: var(--muted);
@@ -79,7 +50,7 @@ mark.tm {
 }
 .ver-listhead {
   display: flex;
-  align-items: center;
+  align-items: start;
   justify-content: space-between;
   gap: 8px;
   margin: 6px 0 2px;
@@ -90,7 +61,7 @@ mark.tm {
      grid, so an auto column would shift sha/built between rows. */
   grid-template-columns: minmax(0, 1fr) 5em 10em 150px;
   gap: 2px 12px;
-  align-items: center;
+  align-items: start;
   padding: 5px 0;
   border-top: var(--border-width) solid var(--line);
 }
@@ -118,7 +89,7 @@ mark.tm {
 .ver-action {
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: start;
   justify-self: end;
   white-space: nowrap;
 }
@@ -137,3 +108,4 @@ mark.tm {
 .ver-logpath {
   overflow-wrap: anywhere;
 }
+

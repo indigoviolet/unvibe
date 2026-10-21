@@ -82,7 +82,7 @@ function mountPage(): void {
   const page = document.createElement("div");
   page.id = "page";
   page.innerHTML =
-    `<section class="card" id="C-central">` +
+    `<section class="ui-card" id="C-central">` +
     `<p class="prose sel" data-top="b1">The fast path skips values.</p>` +
     `</section>`;
   document.body.appendChild(page);
@@ -122,7 +122,7 @@ describe("GuideThreadHooks marks across navigation", () => {
     // DOM (marks wiped) while the hooks stay mounted and the snapshot is
     // unchanged — the route trigger redraws the mark.
     document.getElementById("page")!.innerHTML =
-      `<section class="card" id="C-central">` +
+      `<section class="ui-card" id="C-central">` +
       `<p class="prose sel" data-top="b1">The fast path skips values.</p>` +
       `</section>`;
     expect(document.querySelector('#page mark.anc[data-thr="thr_1"]')).toBeNull();

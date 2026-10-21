@@ -38,6 +38,7 @@ import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } fro
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
 import { useProvisionalBlocks } from "./streamedAnswer.js";
+import { Card, CardFooter, CardHeader } from "../../ui/index.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -408,12 +409,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   if (expansion.collapsed) {
     return (
-      <section
-        className="card child collapsed"
+      <Card
+        as="section"
+        variant="plain"
+        className="child collapsed"
         id={`B-${expansion.id}`}
         data-expansion={expansion.id}
       >
-        <div className="exp-h">
+        <CardHeader className="exp-h">
           <ControlButton icon="right" label="Expand" onClick={() => void performAction(reviewId, { kind: "collapse", cardId: expansion.id, collapsed: false }).catch(() => {})} />
           {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
           {stale ? <span className="hint">from an earlier wording</span> : null}
@@ -421,8 +424,8 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           <ControlButton icon="open" label="Open as page" onClick={onPromote} />
           <ControlButton icon="trash" label="Delete" onClick={onDelete} />
           <ControlButton icon="x" label="Close" onClick={onClose} />
-        </div>
-      </section>
+        </CardHeader>
+      </Card>
     );
   }
 
@@ -438,20 +441,22 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
       !!expansion.error ||
       (latest.blocks.length === 0 && (!!expansion.working || !!cardBusy)));
   return (
-    <section
-      className={`card child${cardBusy?.rewriting ? " rewriting" : ""}`}
+    <Card
+      as="section"
+      variant="plain"
+      className={`child${cardBusy?.rewriting ? " rewriting" : ""}`}
       id={`B-${expansion.id}`}
       data-expansion={expansion.id}
       aria-busy={cardBusy ? true : undefined}
     >
-      <div className="exp-h">
+      <CardHeader className="exp-h">
         {expansion.anchor.quotedText ? <q>{expansion.anchor.quotedText}</q> : null}
         {stale ? <span className="hint">from an earlier wording</span> : null}
         <span className="sp" />
         <ControlButton icon="open" label="Open as page" onClick={onPromote} />
         <ControlButton icon="trash" label="Delete" onClick={onDelete} />
         <ControlButton icon="x" label="Close" onClick={onClose} />
-      </div>
+      </CardHeader>
       {turns.map((turn, i) => (
         <AnswerView
           key={turn.id}
@@ -468,6 +473,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         />
       ))}
       {latestAwaiting ? null : (
+        <CardFooter>
         <ReplyBox
           reviewId={reviewId}
           annotationId={expansion.id}
@@ -481,8 +487,9 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           }
           onDiscard={() => api.updateComment(reviewId, expansion.id, { reply: null })}
         />
+        </CardFooter>
       )}
-    </section>
+    </Card>
   );
 }
 

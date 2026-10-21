@@ -211,9 +211,9 @@ describe("own-host scoping (issue #166)", () => {
   function nestedRoot(): { root: HTMLDivElement; scope: Element } {
     const root = document.createElement("div");
     root.innerHTML =
-      `<section class="card" id="C-outer">` +
+      `<section class="ui-card" id="C-outer">` +
       `<p class="prose sel" data-top="b1">alpha beta gamma</p>` +
-      `<section class="card child" id="B-inner" data-expansion="inner">` +
+      `<section class="ui-card child" id="B-inner" data-expansion="inner">` +
       `<p class="prose sel" data-top="b1">alpha beta gamma</p>` +
       `</section></section>`;
     return { root, scope: root.querySelector("#C-outer")! };

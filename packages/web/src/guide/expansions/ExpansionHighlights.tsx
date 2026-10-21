@@ -275,14 +275,14 @@ export function ExpansionHighlights() {
       // Clear only the outlines this handler adds (marks + expansion
       // cards). A bare `#page .on` would also strip the depth stepper
       // pips (`.pips i.on`, issue #111), which React owns.
-      document.querySelectorAll("#page mark.on, #page .card.child.on").forEach((x) => x.classList.remove("on"));
+      document.querySelectorAll("#page mark.on, #page .ui-card.child.on").forEach((x) => x.classList.remove("on"));
       if (mark) {
         const id = (mark as HTMLElement).dataset.jump ?? "";
         mark.classList.add("on");
         document.getElementById(`B-${id}`)?.classList.add("on");
         return;
       }
-      const card = target.closest("#page .card.child");
+      const card = target.closest("#page .ui-card.child");
       if (card?.id) {
         card.classList.add("on");
         const id = card.id.replace(/^B-/, "");

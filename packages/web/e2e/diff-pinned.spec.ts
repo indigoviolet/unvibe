@@ -25,7 +25,7 @@ for (const mode of ["unified", "split"] as const) {
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator(".dhunk .card.child[data-expansion]").first();
+    const card = page.locator(".dhunk .ui-card.child[data-expansion]").first();
     await expect(card).toBeVisible({ timeout: 8000 });
     await expect(card).not.toHaveClass(/floating/);
     await expect(page.locator(".dhunk .exp-float, .dhunk .dhunk-float")).toHaveCount(0);
@@ -34,7 +34,7 @@ for (const mode of ["unified", "split"] as const) {
     // The card sits in the flow under its anchored row (not over it):
     // the row below the card starts at or after the card's bottom.
     const layout = await page.evaluate(() => {
-      const cardEl = document.querySelector(".dhunk .card.child[data-expansion]");
+      const cardEl = document.querySelector(".dhunk .ui-card.child[data-expansion]");
       if (!cardEl) return { ok: false, why: "no pinned card" };
       let row: Element | null = null;
       for (const tr of document.querySelectorAll('tr[id^="L-test-with_dummyserver-test_socketlevel.py-"]')) {
@@ -56,18 +56,18 @@ test("selecting inside a pinned card in the diff opens a pinned child inside it 
   await gotoDiff(page);
   await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
   await page.locator('#selbar [data-act="explain"]').click();
-  const parent = page.locator(".dhunk .card.child[data-expansion]").first();
+  const parent = page.locator(".dhunk .ui-card.child[data-expansion]").first();
   await expect(parent).toBeVisible({ timeout: 8000 });
   await expect(parent).not.toHaveClass(/floating/);
   // Select the card's answer text: the toolbar appears inside the card,
   // and Comment works from it as it does anywhere.
-  await selectText(page, ".dhunk .card.child[data-expansion] [data-answer]", "Mock explanation");
+  await selectText(page, ".dhunk .ui-card.child[data-expansion] [data-answer]", "Mock explanation");
   await page.locator('#selbar [data-act="note"]').click();
   const note = page.locator(".dhunk .ithread[data-pending-thread]").first();
   await expect(note).toBeVisible();
   await note.getByRole("button", { name: "Discard" }).click();
   await expect(page.locator(".dhunk .ithread[data-pending-thread]")).toHaveCount(0);
-  await selectText(page, ".dhunk .card.child[data-expansion] [data-answer]", "Mock explanation");
+  await selectText(page, ".dhunk .ui-card.child[data-expansion] [data-answer]", "Mock explanation");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator(".dhunk .ithread[data-pending-thread]");
   await expect(composer).toBeVisible();

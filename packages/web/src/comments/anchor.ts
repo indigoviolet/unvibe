@@ -310,9 +310,9 @@ function anchorHosts(root: ParentNode, top: string): Element[] {
   } catch {
     return [];
   }
-  const strict = root instanceof Element && root.closest("section.card[id], [data-answer]") === root;
+  const strict = root instanceof Element && root.closest("section.ui-card[id], [data-answer]") === root;
   return [...hosts].filter(
-    (host) => !strict || host.closest("section.card[id], [data-answer]") === root,
+    (host) => !strict || host.closest("section.ui-card[id], [data-answer]") === root,
   );
 }
 
