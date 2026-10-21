@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
+import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations } from "../guide/citations.js";
@@ -60,8 +61,17 @@ function successorTarget(successor: Anchor): string | null {
   return null;
 }
 
-function previewThread(thread: Annotation | undefined): string {
+function previewThread(thread: Annotation | undefined, openable = false): string {
   if (!thread) return "";
+  const inner = previewThreadInner(thread);
+  // Issue #205: each item of a comment marker's preview opens just its
+  // own comment (the marker itself opens them all).
+  return openable
+    ? `<button class="pv-item" type="button" data-open-thread="${esc(thread.id)}">${inner}</button>`
+    : inner;
+}
+
+function previewThreadInner(thread: Annotation): string {
   const outdated = thread.outdated
     ? `<div class="pv outdated"><div class="q">Outdated · the code changed</div>` +
       (thread.originalSnippet
@@ -158,8 +168,8 @@ export function HoverPopover() {
       const ids = ds.threads.split("|");
       content =
         ids
-          .map((id) => previewThread(snap.annotations.find((a) => a.id === id)))
-          .join("") + `<span class="hint">Click to open</span>`;
+          .map((id) => previewThread(snap.annotations.find((a) => a.id === id), true))
+          .join("") + `<span class="hint">Click an item to open it, or the marker to open all</span>`;
     } else if (ds.cprev || ds.cjump) {
       const id = ds.cprev ?? ds.cjump ?? "";
       content =
@@ -175,7 +185,12 @@ export function HoverPopover() {
             ? `${pagePreview(page)}<span class="hint">Click to open</span>`
             : `<b>${esc(found.anchor.quotedText)}</b><span class="hint">Click to open</span>`;
         } else {
-          content = previewExpansion(found) + `<span class="hint">Click to open here</span>`;
+          // Issue #204: the peek is floating only; clicking it (or the
+          // mark) pins the card in place.
+          content =
+            `<button class="pv-item" type="button" data-open-expansion="${esc(found.id)}">` +
+            previewExpansion(found) +
+            `<span class="hint">Click to pin here</span></button>`;
         }
       }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {
@@ -221,8 +236,38 @@ export function HoverPopover() {
       window.clearTimeout(closeTimer.current);
     };
 
+    // Last known cursor position, and whether the pointer genuinely moved
+    // after the current scroll began (see the settle check in dismissOnScroll).
+    const lastMouse = { x: -1, y: -1, movedAt: 0 };
+    let scrollBeganAt = 0;
+    let lastScrollAt = 0;
+    let settleTimer: number | undefined;
+
+    const scheduleOpen = (anchor: Element): void => {
+      overAnchor.current = anchor;
+      const pending = anchor;
+      openTimer.current = window.setTimeout(() => {
+        if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
+        openForRef.current(pending);
+      }, OPEN_DELAY_MS);
+    };
+
     const onPointerMove = (e: PointerEvent): void => {
-      if (e.movementX || e.movementY) scrollQuiet.current = false;
+      lastMouse.x = e.clientX;
+      lastMouse.y = e.clientY;
+      if (!(e.movementX || e.movementY)) return;
+      lastMouse.movedAt = Date.now();
+      const wasQuiet = scrollQuiet.current;
+      scrollQuiet.current = false;
+      // A scroll can land an anchor under a stationary cursor: its
+      // mouseover fired (and was ignored) during the scroll, and moving
+      // within the anchor never refires it. On the first real movement
+      // after the scroll, treat the anchor under the cursor as hovered.
+      if (wasQuiet && !anchorRef.current) {
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const anchor = target?.closest?.(ANCHOR_SELECTOR);
+        if (anchor) scheduleOpen(anchor);
+      }
     };
 
     const onMouseOver = (e: MouseEvent): void => {
@@ -237,13 +282,7 @@ export function HoverPopover() {
       clear();
       overAnchor.current = anchor;
       if (anchor) {
-        if (anchor !== anchorRef.current) {
-          const pending = anchor;
-          openTimer.current = window.setTimeout(() => {
-            if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
-            openForRef.current(pending);
-          }, OPEN_DELAY_MS);
-        }
+        if (anchor !== anchorRef.current) scheduleOpen(anchor);
       } else if (anchorRef.current) {
         closeTimer.current = window.setTimeout(() => hideRef.current(), CLOSE_DELAY_MS);
       }
@@ -251,8 +290,28 @@ export function HoverPopover() {
 
     const dismissOnScroll = (e: Event): void => {
       if ((e.target as Element | null)?.closest?.("#pop")) return;
+      // Trailing scroll events of one sequence (separated by the pointer
+      // move that ends it) still belong to that sequence: only a scroll
+      // after a quiet gap starts a new sequence.
+      const now = Date.now();
+      if (now - lastScrollAt > 600) scrollBeganAt = now;
+      lastScrollAt = now;
       scrollQuiet.current = true;
       hideRef.current();
+      // A trailing scroll event can land after the pointer has already
+      // moved onto an anchor (its mouseover was ignored above, and the
+      // scheduled open is cancelled by the hide). Once scrolling settles,
+      // re-check the anchor under the cursor — but only when the pointer
+      // genuinely moved after this scroll began, so content sliding under
+      // a stationary cursor still never opens.
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        scrollQuiet.current = false;
+        if (anchorRef.current || lastMouse.movedAt < scrollBeganAt) return;
+        const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
+        const anchor = target?.closest?.(ANCHOR_SELECTOR);
+        if (anchor) scheduleOpen(anchor);
+      }, 350);
     };
 
     const onPointerDown = (e: PointerEvent): void => {
@@ -286,6 +345,7 @@ export function HoverPopover() {
       document.documentElement.removeEventListener("mouseleave", onMouseLeave);
       window.removeEventListener("blur", hideRef.current);
       window.removeEventListener("resize", hideRef.current);
+      window.clearTimeout(settleTimer);
       clear();
     };
   }, []);
@@ -297,6 +357,32 @@ export function HoverPopover() {
       hidden={html === null}
       onClick={(e) => {
         const target = e.target as Element;
+        // Issue #205: a preview item opens just its own comment.
+        const openThread = target.closest?.("[data-open-thread]");
+        if (openThread && reviewId) {
+          const id = (openThread as HTMLElement).dataset.openThread ?? "";
+          if (id) {
+            api.updateComment(reviewId, id, { open: true }).catch(() => {});
+            hideRef.current();
+            window.setTimeout(() => {
+              document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+            }, 120);
+          }
+          return;
+        }
+        // Issue #204: clicking the peek pins the card in place.
+        const openExp = target.closest?.("[data-open-expansion]");
+        if (openExp && reviewId) {
+          const id = (openExp as HTMLElement).dataset.openExpansion ?? "";
+          if (id) {
+            api.updateComment(reviewId, id, { open: true, pinned: true }).catch(() => {});
+            hideRef.current();
+            window.setTimeout(() => {
+              document.getElementById(`B-${id}`)?.scrollIntoView({ block: "nearest" });
+            }, 120);
+          }
+          return;
+        }
         const src = target.closest?.("[data-src]");
         if (src) {
           revealSource(src.getAttribute("data-src") ?? "");

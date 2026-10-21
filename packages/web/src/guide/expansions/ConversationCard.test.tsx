@@ -194,6 +194,55 @@ describe("conversation card", () => {
     });
   });
 
+  test("while the first answer is being written: header + writing state only, no toolbar or reply box (#203)", () => {
+    const c = card({
+      working: "Writing explanation…",
+      turns: [turn("ans_1", { blocks: [], working: "Writing explanation…" })],
+    });
+    seedSnapshot([c]);
+    show(c);
+    const answer = document.querySelector('[data-answer="ans_1"]')!;
+    // Header (quote + close) and the writing state stay.
+    expect(document.getElementById("B-ann_conv")).toHaveTextContent("Some text.");
+    expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
+    expect(answer.querySelector(".working")).not.toBeNull();
+    // No per-answer toolbar and no reply box until the answer arrives.
+    expect(answer.querySelector(".ctl")).toBeNull();
+    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
+  });
+
+  test("a follow-up turn being written keeps the earlier toolbar but hides its own and the reply box (#203)", () => {
+    const c = card({
+      working: "Writing answer…",
+      turns: [
+        turn("ans_1"),
+        turn("ans_2", { question: "And then?", blocks: [], working: "Writing answer…" }),
+      ],
+    });
+    seedSnapshot([c]);
+    show(c);
+    const first = document.querySelector('[data-answer="ans_1"]')!;
+    const second = document.querySelector('[data-answer="ans_2"]')!;
+    expect(first.querySelector(".ctl")).not.toBeNull();
+    expect(second.querySelector(".ctl")).toBeNull();
+    expect(second.querySelector(".working")).not.toBeNull();
+    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
+  });
+
+  test("a failed turn shows Retry, not the toolbar or the reply box (#203)", () => {
+    const c = card({
+      error: "rate limited",
+      turns: [turn("ans_1", { blocks: [], error: "rate limited" })],
+    });
+    seedSnapshot([c]);
+    show(c);
+    const answer = document.querySelector('[data-answer="ans_1"]')!;
+    expect(answer.querySelector("button[data-retry='ans_1']")).not.toBeNull();
+    expect(answer.querySelector(".ctl")).toBeNull();
+    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
+  });
+
   test("a suggestion click reports the answer id to onFollowUp", () => {
     const withSuggestion = card({
       turns: [

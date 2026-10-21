@@ -29,7 +29,7 @@ test.describe("J6 restart mid-answer", () => {
   });
 
   test("killed mid-answer, restart reopens review with a recoverable card", async ({ page }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(420_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
@@ -38,6 +38,15 @@ test.describe("J6 restart mid-answer", () => {
     await page.locator('#selbar [data-act="explain"]').click();
     const exp = page.locator("#C-central [data-expansion]").first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
+
+    // #203 + #204: while the answer is being written the pinned card
+    // shows only its header and the writing state — no answer toolbar,
+    // no reply box — and it is not floating.
+    await expect(exp).not.toHaveClass(/floating/);
+    await expect(exp.locator(".working")).toBeVisible({ timeout: 10_000 });
+    await expect(exp.locator(".ctl")).toHaveCount(0);
+    await expect(exp.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
+    await expect(exp.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
 
     // Hard kill mid-stream, then restart on the same data dir.
     svc.killHard();
@@ -63,10 +72,45 @@ test.describe("J6 restart mid-answer", () => {
         )
         .toBe(true);
     }
+    // #204/#203 after the restart: the card is still pinned inline, and
+    // while its turn is being written again it shows no toolbar or
+    // reply box.
+    if ((await expAfter.count()) > 0) {
+      await expect(expAfter).not.toHaveClass(/floating/, { timeout: 30_000 });
+      if ((await expAfter.locator(".working").count()) > 0) {
+        await expect(expAfter.locator(".ctl")).toHaveCount(0);
+        await expect(expAfter.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
+      }
+    }
+
     // Second restart is a no-op: review still opens, nothing duplicated.
+    // (Fast replay this time, so the recovered turn can settle.)
     await svc.stop();
     svc = await startService(dataDir, { agent: "replay" });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+    const settled = page.locator("#C-central [data-expansion]").first();
+    await expect(settled).not.toHaveClass(/floating/, { timeout: 30_000 });
+    // The recovered turn either completes (toolbar + reply box back,
+    // #203) or fails with Retry (and still no toolbar/reply box).
+    let outcome = "waiting";
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline && outcome === "waiting") {
+      if ((await settled.getByRole("button", { name: "Retry" }).count()) > 0) outcome = "retry";
+      else if ((await settled.locator(".ctl").count()) > 0) outcome = "ready";
+      else await page.waitForTimeout(500);
+    }
+    expect(outcome, "recovered card neither completed nor showed Retry").not.toBe("waiting");
+    if (outcome === "retry") {
+      await expect(settled.locator(".ctl")).toHaveCount(0);
+      await expect(settled.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
+      // Retry is the way forward: it refills the turn, and then the
+      // toolbar and reply box appear.
+      await settled.getByRole("button", { name: "Retry" }).click();
+      await expect(settled.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
+      await expect(settled.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    } else {
+      await expect(settled.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    }
   });
 });

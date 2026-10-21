@@ -65,6 +65,10 @@ test.describe("J15 multi-turn conversation", () => {
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 30_000 });
+    // #204: the card survives the restart pinned inline, with no
+    // pin/unpin control.
+    await expect(card).not.toHaveClass(/floating/);
+    await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
     // Both earlier turns are still in the one card after the restart.
     await expect(card.locator(".exp-b")).toHaveCount(2, { timeout: 30_000 });
     await expect(card).toContainText("What is line folding?");

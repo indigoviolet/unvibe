@@ -467,10 +467,12 @@ export interface Annotation {
   /** Open in place vs closed back to its marker/link. */
   open: boolean;
   /**
-   * Issue #167: a pinned conversation card stays inline in the flow of
-   * the content instead of floating above it. Stored on the annotation
-   * (default false) so the pin survives a reload; set through the
-   * comment PATCH. Required: no backward compatibility.
+   * Issue #204 (revising #167): conversation cards open pinned inline
+   * in the flow of the content; floating is only the hover peek on a
+   * closed card's mark. Stored on the annotation so the pin survives a
+   * reload; set at creation and when a mark reopens the card, through
+   * the comment PATCH. There is no unpin. Required: no backward
+   * compatibility.
    */
   pinned: boolean;
   /** Comments only: messages so far. */

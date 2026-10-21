@@ -93,7 +93,7 @@ test.describe("guide over real service", () => {
   }
 
   /**
-   * Issue #167: the seed carries an open floating card under C-problem
+   * Issue #167: the seed carries an open pinned card under C-problem
    * that overlays the controls below it — close it first, as a reader
    * would.
    */

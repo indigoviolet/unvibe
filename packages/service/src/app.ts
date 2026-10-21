@@ -43,7 +43,7 @@ import { EventBus } from "./events.js";
 import type { CommandRunner } from "./exec/index.js";
 import { RealCommandRunner, TestCommandGuard } from "./exec/runner.js";
 import { ShimResolvingCommandRunner } from "./exec/shim-resolve.js";
-import { JobQueue, JobStore } from "./jobs/index.js";
+import { INTERRUPTED_MESSAGE, JobQueue, JobStore } from "./jobs/index.js";
 import { McpRegistry } from "./mcp/index.js";
 import { StoreReviewReader } from "./mcp/reviewReader.js";
 import { RepoStore } from "./repos/store.js";
@@ -311,7 +311,40 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     // Issue #117: hydrate every stored job, not just the open ones, so
     // finished jobs stay on the Debug page's jobs list after a restart.
     const saved = jobStore.listAll();
-    if (saved.length > 0) jobs.recover(saved);
+    if (saved.length > 0) {
+      const { interrupted } = jobs.recover(saved);
+      // Issue #203: an interrupted conversation job is a failed turn.
+      // Its job is terminal, so settle the turn it was filling —
+      // working cleared, error set — or the card would show "Writing…"
+      // forever with no Retry. Fire-and-forget like the ingest resume;
+      // the mutation lands before any reader can act on the card.
+      for (const job of interrupted) {
+        if (!job.reviewId || !job.annotationId) continue;
+        const reviewId = job.reviewId;
+        const annotationId = job.annotationId;
+        void reviews
+          .mutate(reviewId, (draft) => {
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+              (a) => a.id === annotationId,
+            );
+            if (!ann) return;
+            const annMatches = ann.jobId === job.id || (ann.working ?? null) !== null;
+            if (annMatches) {
+              ann.working = null;
+              ann.error = INTERRUPTED_MESSAGE;
+              ann.jobId = undefined;
+            }
+            for (const turn of ann.turns ?? []) {
+              if (turn.jobId === job.id || (annMatches && (turn.working ?? null) !== null)) {
+                turn.working = null;
+                turn.error = INTERRUPTED_MESSAGE;
+                turn.jobId = undefined;
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    }
   }
 
   const promptsDir = opts.promptsDir ?? resolvePromptsDirForBundle();

@@ -19,9 +19,11 @@
 // later the in-app picker) can show it without a second mechanism.
 //
 // The release package needs no build step on the user's machine: no
-// `prepare`, no devDependencies, no workspaces. Its one lifecycle script
-// is `postinstall` (issue #42), which runs setup after a global install
-// and never fails the install. `npm install -g
+// `prepare`, no devDependencies, no workspaces, and no lifecycle
+// scripts at all (issue #42: a lifecycle script makes npm link a git
+// install to its temporary preparation clone and then delete the
+// clone, leaving a dangling bin). Setup runs from the CLI itself on
+// first start instead. `npm install -g
 // github:<org>/unvibe#release` installs it with no flags. Nothing is
 // pushed (CI pushes on tag).
 import { spawnSync } from "node:child_process";
@@ -149,7 +151,6 @@ console.log(`release: unvibe ${version} (source package.json ${srcPkg.version}, 
 // 1. Required build output must exist (`mise run release` builds first).
 const needed = [
   "packages/service/dist/index.js",
-  "packages/service/dist/postinstall.js",
   "packages/service/dist/adapters/claude.js",
   "packages/service/dist/adapters/codex.js",
   "packages/web/dist/index.html",
@@ -206,8 +207,6 @@ copy("packages/service/dist/adapters/codex.js", "packages/service/dist/adapters/
 // (issue #36): the service copies it to the data dir and spawns the copy,
 // so the global npm swap cannot pull it out from under the helper.
 copy("packages/service/dist/update-helper.js", "packages/service/dist/update-helper.js");
-// npm `postinstall` entry (issue #42): runs setup after a global install.
-copy("packages/service/dist/postinstall.js", "packages/service/dist/postinstall.js");
 // Tree-sitter grammars (issue #133): plain `.wasm` files the service
 // loads from beside its bundle — shipped verbatim, no install step.
 copy("packages/service/dist/grammars", "packages/service/dist/grammars");
@@ -260,11 +259,9 @@ const releasePkg = {
   license: "MIT",
   type: "module",
   bin: { unvibe: "./packages/service/dist/index.js" },
-  // Issue #42: the one lifecycle script. It runs setup (token, unvibe://
-  // handler, start-at-login unit) after a global install, is guarded
-  // (non-global/CI/root/running service/pending switch all skip), and
-  // always exits 0 — see `src/cli/setup/postinstall.ts`.
-  scripts: { postinstall: "node packages/service/dist/postinstall.js" },
+  // No lifecycle scripts (issue #42): see the header. Setup (token,
+  // unvibe:// handler, start-at-login unit) runs from the CLI on first
+  // start / after an update instead — `src/cli/setup/ensure.ts`.
   dependencies: deps,
   engines: { node: ">=24" },
   // Provenance for `unvibe update --list` (and the later in-app picker):
@@ -366,7 +363,7 @@ function commitTree() {
     (sourceBranch
       ? `unvibe preview ${version} from ${sourceBranch} (source ${short} ${day})\n`
       : `unvibe release ${version} (source ${short} ${day})\n`) +
-    `\nSelf-contained install tree: postinstall runs setup (issue #42), no prepare, no devDependencies. ` +
+    `\nSelf-contained install tree: no lifecycle scripts (issue #42; setup runs on first start), no prepare, no devDependencies. ` +
     `Install with \`npm install -g github:<org>/unvibe#${releaseBranch}\`.`;
   const commit = spawnSync("git", [...releaseIdentityArgs(), "commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {
     cwd: ROOT,

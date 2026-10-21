@@ -313,7 +313,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
         version: 1,
       },
       open: true,
-      pinned: false,
+      pinned: true,
       messages: [],
       post: false,
       turns: [

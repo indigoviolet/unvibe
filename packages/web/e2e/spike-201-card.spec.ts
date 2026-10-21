@@ -46,17 +46,16 @@ for (const theme of ["default", "studio", "console"] as const) {
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
       await expect(page.locator("#page .doc h1.title")).toBeVisible({ timeout: 30000 });
       await page.locator("#C-problem").scrollIntoViewIfNeeded();
-      // Create + pin once; later themes reuse the same pinned card (Explain on the
-      // same anchor reopens the stored, now-pinned card instead of a new floating one).
-      if ((await page.locator("#page .ui-card.child:not(.floating)").count()) === 0) {
+      // Cards open pinned by default (#204); create once, later themes reuse
+      // the same pinned card (Explain on the same anchor reopens it).
+      if ((await page.locator("#page .ui-card.child").count()) === 0) {
         await selectText(page, "#C-problem", "used to let a server continue");
         await page.locator('#selbar [data-act="explain"]').click();
-        const floating = page.locator("#page .ui-card.child.floating").first();
-        await expect(floating).toBeVisible({ timeout: 15000 });
-        await expect(floating.locator(".working")).toHaveCount(0, { timeout: 15000 });
-        await floating.getByRole("button", { name: "Pin into the page" }).click();
+        const created = page.locator("#page .ui-card.child").first();
+        await expect(created).toBeVisible({ timeout: 15000 });
+        await expect(created.locator(".working")).toHaveCount(0, { timeout: 15000 });
       }
-      const card = page.locator("#page .ui-card.child:not(.floating)").first();
+      const card = page.locator("#page .ui-card.child").first();
       await expect(card).toBeVisible({ timeout: 15000 });
       await card.screenshot({ path: path.join(OUT, `${theme}-${dark ? "dark" : "light"}-card.png`) });
       const bulb = card.getByRole("button", { name: "Use examples" });

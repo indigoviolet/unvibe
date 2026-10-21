@@ -5,7 +5,10 @@ import {
   locateQuoteSegments,
   markTextInElement,
   placeAnchorSpot,
+  probeAnchorInRoot,
+  probeAnchorSpot,
   repassUntilSettled,
+  retryUntilSettled,
   selectionOffsetsIn,
   splitOnQuote,
 } from "./anchor.js";
@@ -275,6 +278,65 @@ describe("repass until settled (issue #166)", () => {
       repassUntilSettled(() => false, repass2, 2, 250);
       vi.advanceTimersByTime(1000);
       expect(repass2).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("probe + bounded retry (issue #206)", () => {
+  test("probeAnchorSpot reports placeability without touching the DOM", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `<div data-top="b1"><p>the <code>fast</code> path wins</p></div>`;
+    const host = root.querySelector("[data-top]") as HTMLElement;
+    const before = root.innerHTML;
+    expect(probeAnchorSpot(host, { quote: "fast path" })).toBe(true);
+    expect(probeAnchorSpot(host, { quote: "not there" })).toBe(false);
+    expect(probeAnchorInRoot(root, "b1", { quote: "fast path" })).toBe(true);
+    expect(probeAnchorInRoot(root, "missing", { quote: "fast path" })).toBe(false);
+    expect(root.innerHTML).toBe(before);
+  });
+
+  test("a repass that re-arms on every pass is still bounded overall, then gives up once", () => {
+    vi.useFakeTimers();
+    try {
+      let repasses = 0;
+      let gaveUp = 0;
+      const handle = retryUntilSettled({
+        isSettled: () => false,
+        // Simulates runPass re-asking for another retry at its end.
+        repass: () => {
+          repasses++;
+          handle.schedule();
+        },
+        attempts: 3,
+        delayMs: 250,
+        onGiveUp: () => gaveUp++,
+      });
+      handle.schedule();
+      vi.advanceTimersByTime(10_000);
+      expect(repasses).toBe(3);
+      expect(gaveUp).toBe(1);
+      // Further asks change nothing.
+      handle.schedule();
+      vi.advanceTimersByTime(10_000);
+      expect(repasses).toBe(3);
+      expect(gaveUp).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a settled retry never repasses and never gives up", () => {
+    vi.useFakeTimers();
+    try {
+      const repass = vi.fn();
+      const onGiveUp = vi.fn();
+      const handle = retryUntilSettled({ isSettled: () => true, repass, attempts: 3, delayMs: 250, onGiveUp });
+      handle.schedule();
+      vi.advanceTimersByTime(5_000);
+      expect(repass).not.toHaveBeenCalled();
+      expect(onGiveUp).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

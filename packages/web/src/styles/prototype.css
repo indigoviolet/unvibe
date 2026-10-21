@@ -679,61 +679,16 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .stream-live { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .ui-card.child.collapsed .exp-b, .ui-card.child.collapsed .ctl { display: none; }
 .ui-card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
-/* Floating conversation cards (issue #167): the default clicked state.
-   `.exp-float` is a zero-height placeholder at the card's anchor site, so
-   the page never reflows; the card overlays the content below it and
-   scrolls with the page next to its anchor. Pinned cards render exactly
-   as today (no placeholder, no `floating` class). Stacking is retuned in
-   the two rules below. One place to retune how floating feels. */
-.exp-float { position: relative; height: 0; }
-/* Issue #185: in the diff, the floating layer sits at the hunk level
-   (outside the sideways scroller); this zero-height wrapper is shifted
-   to the card's anchored row, so the card floats just below that line
-   instead of at the top of the hunk. */
-.dhunk-float { position: relative; height: 0; }
-/* Issue #192: the header row (anchor quote, pin, open as page, delete,
-   close) stays at the top of a floating card while its content
-   scrolls — sticky within the card's own scroller, opaque so answer
-   text slides underneath it, above the scrolled content but below a
-   nested child card (z-index 3). */
-.ui-card.child.floating > .ui-card-header {
-  position: sticky;
-  /* The card's top padding (8px): stick flush under the top border,
-     not at the content-box top, so no scrolled text shows above it. */
-  top: -8px;
-  z-index: 2;
-  background: var(--card-header-surface);
-}
-.ui-card.child.floating {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* Above later page content (guide cards are positioned, so DOM order
-     alone would paint them over the card); below floating chrome (the
-     selection toolbar, popovers, toasts, the comments menu). */
-  z-index: 1;
-  margin: 0;
-  max-height: min(56vh, 520px);
-  overflow: auto;
-  box-shadow: var(--shadow-card);
-}
-/* In the diff the pinned rows (#140: hunk header 3, file header 4,
-   actions bar 5, tab strip 6) stay above a floating card, so they slide
-   over it while scrolling instead of being covered by it. The card
-   itself sits above the code rows and the line-number gutter (1), so a
-   card overlapping the gutter paints over the numbers, not under them. */
-.dhunk .ui-card.child.floating { z-index: 5; }
 /* The pinned band's opaque backing: a sticky strip exactly the file
-   slot + hunk slot tall, sitting above floating cards (5) and below
-   the marked headers (7/8). During a file hand-off there are scroll
-   offsets where no header physically covers a strip of the band;
-   without this, card text shows through those strips. It takes no
-   flow space (negative margins). The whole top stack is gapless:
-   each sticky layer's `top` sits 2px above its slot, so its box
-   overlaps the layer above it (which has the higher z-index and
-   paints over the overlap), and no seam between tab strip, actions
-   bar and band can show card text at any scroll offset. */
+   slot + hunk slot tall, sitting below the marked headers (7/8).
+   During a file hand-off there are scroll offsets where no header
+   physically covers a strip of the band; without this, content shows
+   through those strips. It takes no flow space (negative margins).
+   The whole top stack is gapless: each sticky layer's `top` sits 2px
+   above its slot, so its box overlaps the layer above it (which has
+   the higher z-index and paints over the overlap), and no seam
+   between tab strip, actions bar and band can show at any scroll
+   offset. */
 .dband {
   position: sticky;
   top: calc(var(--dfile-top, 83px) - 6px);
@@ -742,29 +697,6 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
   z-index: 6;
   background: var(--surface);
 }
-/* A floating card is capped in height and scrolls inside, so without
-   this its reply box can end up cut in half at the bottom edge. Keep
-   the composer stuck to the card's bottom (opaque, above the scrolled
-   answers) so it is always fully visible and usable. */
-.ui-card.child.floating > .ui-card-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  background: var(--card-reply-surface);
-  padding-bottom: 10px;
-}
-/* With the card's own bottom padding in place, the sticky footer
-   sticks to the content-box bottom and scrolled answer text shows
-   in the padding strip below it. Drop that padding on floating
-   cards with a composer; the composer's own padding (above) takes
-   its place, flush with the card's bottom border. */
-.ui-card.child.floating:has(> .ui-card-footer) { padding-bottom: 0; }
-/* A nested child card floats fully above its parent — including the
-   parent's sticky reply footer above, which would otherwise paint
-   across the child's body and header (same z-index, later in DOM).
-   The child is position:fixed inside the parent's stacking context,
-   so a higher z-index here orders it over every part of the parent. */
-.ui-card.child.floating .ui-card.child.floating { z-index: 3; }
 .ui-card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }
 .ui-card.pend .pl { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .ui-card.pend .why { font-size: 13px; color: var(--muted); grid-column: 1; }
@@ -1117,6 +1049,9 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .cite:hover { background: var(--sunk); }
 .cite .loc { font: 11px var(--mono); color: var(--accent); }
 .cite .snip { font: 11px/1.4 var(--mono); color: var(--muted); white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+/* One clickable preview item in the hover peek (#205/#204). */
+#pop .pv-item { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 4px; border-radius: var(--radius-4); font: inherit; color: inherit; cursor: pointer; }
+#pop .pv-item:hover { background: var(--sunk); }
 .pv { border-left: 2px solid var(--note); padding-left: 8px; }
 .pv .q { color: var(--note); font-style: italic; font-size: 11.5px; }
 #pop ul { margin: 0; padding-left: 16px; }

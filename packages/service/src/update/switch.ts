@@ -29,7 +29,8 @@ import {
   shortCommit,
   type InstalledBuild,
 } from "./channels.js";
-import { installPrefixForPackage, installRef, installSpec } from "./install.js";
+import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "./install.js";
+import { findMiseBinStatic } from "./mise-find.js";
 
 export interface SwitchCoreRequest {
   runner: CommandRunner;
@@ -83,6 +84,50 @@ function wrapperHookCause(output: string): boolean {
 }
 
 /**
+ * Reshim-only failure (issue #170, reopened): npm itself succeeded —
+ * its own summary line (`added N packages` / `changed N packages`) is
+ * in the output — and the only failure is mise's npm-wrapper reshim
+ * step afterwards (`npm: line 76: mise: command not found`, exit 127
+ * on the owner's Mac). The earlier check also required the installed
+ * build to verify in place before continuing; the owner's switch still
+ * rolled back, so the success line is now authoritative for "npm
+ * finished" and the landing is left to the normal channel/commit
+ * verification that follows. Real npm failures never print that line.
+ */
+export function isReshimOnlyFailure(inst: RunResult): boolean {
+  if (inst.code === 0) return false;
+  const output = `${inst.stdout}\n${inst.stderr}`;
+  if (!/(?:changed|added)\s+\d+\s+packages?/.test(output)) return false;
+  return /mise/i.test(output) && (/reshim/i.test(output) || /not found/i.test(output));
+}
+
+/**
+ * After a reshim-only failure, run `mise reshim` ourselves when mise
+ * can be found without a shell; otherwise say how to fix the shims.
+ * Best-effort: returns a log line, never throws.
+ */
+async function attemptOwnReshim(req: SwitchCoreRequest): Promise<string> {
+  try {
+    const mise = findMiseBinStatic({
+      env: { ...process.env, ...(req.env ?? {}) },
+      inheritedPath: req.env?.PATH ?? process.env.PATH ?? "",
+    });
+    if (!mise) {
+      return (
+        "note: mise was not found, so its shims were not refreshed; " +
+        "if a terminal still runs the old build, run `mise reshim` there."
+      );
+    }
+    const res = await req.runner.run(mise, { args: ["reshim"], cwd: stableNpmCwd(), env: req.env });
+    return res.code === 0
+      ? "note: ran `mise reshim` so mise's shims point at the new build."
+      : `note: \`mise reshim\` exited ${res.code}; if a terminal still runs the old build, run \`mise reshim\` there.`;
+  } catch {
+    return "note: could not run `mise reshim`; if a terminal still runs the old build, run `mise reshim` there.";
+  }
+}
+
+/**
  * True when the target build is verifiably in place despite npm's nonzero
  * exit: across channels the channel itself changing is proof; on a
  * same-channel reinstall only a known published commit now reported counts
@@ -100,9 +145,11 @@ function installLanded(
 }
 
 /** What looking past npm's exit code found (issue #170). */
-type InstallCheck =
-  | { landed: true; after: InstalledBuild; hookFailed: boolean }
-  | { landed: false; hookFailed: boolean };
+interface InstallCheck {
+  landed: boolean;
+  after: InstalledBuild;
+  hookFailed: boolean;
+}
 
 function checkInstallResult(
   serviceScriptPath: string | undefined,
@@ -114,10 +161,7 @@ function checkInstallResult(
   const output = `${inst.stdout}\n${inst.stderr}`;
   const hookFailed = wrapperHookCause(output);
   const after = readInstalledBuild(serviceScriptPath, before.version);
-  if (installLanded(after, before, channel, remoteCommit)) {
-    return { landed: true, after, hookFailed };
-  }
-  return { landed: false, hookFailed };
+  return { landed: installLanded(after, before, channel, remoteCommit), after, hookFailed };
 }
 
 /** Install a channel: backup, npm install (verified), keep the live DB. Never runs live. */
@@ -174,7 +218,8 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     const output = `${inst.stdout}\n${inst.stderr}`;
     const tail = output.trim().split("\n").slice(-10).join("\n");
     const checked = checkInstallResult(req.serviceScriptPath, before, req.channel, remote.commit, inst);
-    if (!checked.landed) {
+    const reshimOnly = isReshimOnlyFailure(inst);
+    if (!checked.landed && !reshimOnly) {
       log(`npm install failed (exit ${inst.code}):`);
       if (tail) log(tail);
       if (checked.hookFailed) {
@@ -193,16 +238,21 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
       );
       return done(1, before);
     }
-    // The install step completed and only the wrapper's post-install hook
-    // failed: the new build verified in place, so continue instead of
-    // rolling back into the same failure.
+    // npm finished and only its wrapper's reshim step failed (or the
+    // build verified in place despite the exit): continue instead of
+    // rolling back into the same failure. The channel/commit check
+    // below still verifies the landing.
     after = checked.after;
-    afterNote = checked.hookFailed
-      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
-        `but the new build is in place and verified, so the switch continues. ` +
-        `If some terminals still run the old build, run \`mise reshim\` in them.`
-      : `note: npm exited ${inst.code} after the install finished, but the new build is in place and verified, ` +
-        `so the switch continues. npm said:\n${tail}`;
+    afterNote = reshimOnly
+      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper's reshim step failed — ` +
+        `but npm reported the install done, so the switch continues. ` +
+        (await attemptOwnReshim(req))
+      : checked.hookFailed
+        ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
+          `but the new build is in place and verified, so the switch continues. ` +
+          `If some terminals still run the old build, run \`mise reshim\` in them.`
+        : `note: npm exited ${inst.code} after the install finished, but the new build is in place and verified, ` +
+          `so the switch continues. npm said:\n${tail}`;
   } else {
     after = readInstalledBuild(req.serviceScriptPath, before.version);
   }
@@ -281,7 +331,8 @@ async function runSameChannelReinstall(
     const output = `${inst.stdout}\n${inst.stderr}`;
     const tail = output.trim().split("\n").slice(-10).join("\n");
     const checked = checkInstallResult(req.serviceScriptPath, before, req.channel, remoteCommit, inst);
-    if (!checked.landed) {
+    const reshimOnly = isReshimOnlyFailure(inst);
+    if (!checked.landed && !reshimOnly) {
       log(`npm install failed (exit ${inst.code}):`);
       if (tail) log(tail);
       if (checked.hookFailed) {
@@ -296,16 +347,20 @@ async function runSameChannelReinstall(
       log("your data is untouched");
       return done(1, before);
     }
-    // The install step completed and only the wrapper's post-install hook
-    // failed: the reinstall verified against the published commit, so
-    // continue instead of rolling back into the same failure.
+    // npm finished and only its wrapper's reshim step failed (or the
+    // reinstall verified in place despite the exit): continue instead
+    // of rolling back. The channel/commit check below still verifies.
     after = checked.after;
-    afterNote = checked.hookFailed
-      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
-        `but the reinstall is in place and verified, so the switch continues. ` +
-        `If some terminals still run the old build, run \`mise reshim\` in them.`
-      : `note: npm exited ${inst.code} after the install finished, but the reinstall is in place and verified, ` +
-        `so the switch continues. npm said:\n${tail}`;
+    afterNote = reshimOnly
+      ? `note: npm exited ${inst.code} after the install finished — its mise wrapper's reshim step failed — ` +
+        `but npm reported the install done, so the switch continues. ` +
+        (await attemptOwnReshim(req))
+      : checked.hookFailed
+        ? `note: npm exited ${inst.code} after the install finished — its mise wrapper could not find the mise command — ` +
+          `but the reinstall is in place and verified, so the switch continues. ` +
+          `If some terminals still run the old build, run \`mise reshim\` in them.`
+        : `note: npm exited ${inst.code} after the install finished, but the reinstall is in place and verified, ` +
+          `so the switch continues. npm said:\n${tail}`;
   } else {
     after = readInstalledBuild(req.serviceScriptPath, before.version);
   }
@@ -340,7 +395,7 @@ async function runSameChannelReinstall(
 /** `npm prefix -g` for mismatch messages; never throws. */
 async function npmGlobalPrefix(runner: CommandRunner, env?: Record<string, string | undefined>): Promise<string> {
   try {
-    const res = await runner.run("npm", { args: ["prefix", "-g"], env });
+    const res = await runner.run("npm", { args: ["prefix", "-g"], cwd: stableNpmCwd(), env });
     const out = res.stdout.trim();
     return out || "(empty)";
   } catch {

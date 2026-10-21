@@ -19,7 +19,7 @@ npm install -g github:indigoviolet/unvibe#release
 unvibe open
 ```
 
-The install itself runs setup (a `postinstall` step): it creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). It never fails the install: when setup cannot run (root/`sudo`, CI, no home, scripts ignored), install still succeeds and `unvibe setup` finishes it by hand. `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
+Setup happens on first start: the first `unvibe start` (or `unvibe open`) creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). It runs once per installed version, quietly, and never blocks the start; `unvibe setup` runs it by hand at any time. (The package deliberately declares no npm install scripts.) `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
 
 ```sh
 http://unvibe.localhost:4517

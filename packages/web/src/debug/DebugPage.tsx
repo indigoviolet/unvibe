@@ -25,6 +25,7 @@ import { JobsSection } from "./JobsSection.js";
 import { FullAccessMarker } from "../shell/FullAccessMarker.js";
 import { RedoGuideSection } from "./RedoGuideSection.js";
 import { SharedContext } from "./SharedContext.js";
+import { UnplacedAnchorsSection } from "./UnplacedAnchorsSection.js";
 
 const DEBUG_TABS = [
   { id: "jobs", label: "Jobs" },
@@ -101,6 +102,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
             {!doc && !error ? <p className="hint">Loading shared context…</p> : null}
             {doc ? <SharedContext doc={doc} items={items} onDelete={(id) => void remove(id)} /> : null}
           </TabPanel>
+          <UnplacedAnchorsSection />
           <RedoGuideSection reviewId={reviewId} />
         </div>
       </main>

@@ -17,7 +17,7 @@ async function gotoReview(page: Page): Promise<void> {
 }
 
 /**
- * Issue #167: the demo seeds an open floating card under C-problem that
+ * Issue #167: the demo seeds an open pinned card under C-problem that
  * overlays the controls below it — close it first, as a reader would.
  */
 async function closeSeedCard(page: Page): Promise<void> {

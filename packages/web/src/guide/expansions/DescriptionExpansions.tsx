@@ -11,11 +11,12 @@
 import { useEffect, useState } from "react";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
-import { clearMarks, placeAnchorSpot, repassUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
+import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionCard } from "./ExpansionCard.js";
 import { isAnchorStale } from "./expansionUtils.js";
+import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import type { Page } from "@unvibe/shared";
 
 function makeExpMark(id: string, closed: boolean): HTMLElement {
@@ -58,7 +59,21 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
     if (!root || exps.length === 0) return;
     // Issue #166: retry boundedly when the paragraph body isn't there yet.
     let pending = new Set<string>(exps.map((a) => a.id));
-    let retryCleanup: (() => void) | null = null;
+    const retry = retryUntilSettled({ isSettled: () => pending.size === 0, repass: () => runPass(), attempts: 3, delayMs: 250, onGiveUp: () => recordGaveUp() });
+    function recordGaveUp(): void {
+      let body: Element | null = null;
+      try {
+        body = root!.querySelector(`[data-top="${CSS.escape(paragraphId)}"] .dseg-body`);
+      } catch {
+        body = null;
+      }
+      recordUnplacedAnchors(
+        "Description expansions",
+        exps
+          .filter((a) => pending.has(a.id))
+          .map((a) => ({ id: a.id, kind: a.type, host: hostLabel(a.anchor), reason: body ? ("quote-not-found" as const) : ("host-missing" as const) })),
+      );
+    }
     const runPass = (): void => {
       pending = new Set<string>(exps.map((a) => a.id));
       // Idempotent re-mark (issue #15): clear our own stale marks first,
@@ -99,16 +114,13 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
         }
         if (changed) setTick((t) => t + 1);
       });
-      retryCleanup?.();
-      retryCleanup = null;
-      if (pending.size > 0) {
-        retryCleanup = repassUntilSettled(() => pending.size === 0, runPass);
-      }
+      if (pending.size === 0) recordUnplacedAnchors("Description expansions", []);
+      else retry.schedule();
     };
     const timer = window.setTimeout(runPass, 0);
     return () => {
       window.clearTimeout(timer);
-      retryCleanup?.();
+      retry.cancel();
     };
   }, [annotations, paragraphId, exps]);
 
@@ -121,7 +133,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found) return;
       if (found.type === "conversation" && !found.open) {
-        api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
+        api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
         window.setTimeout(() => {

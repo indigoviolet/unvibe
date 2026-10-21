@@ -74,10 +74,19 @@ export function resolveSetupPaths(homeDir: string = os.homedir()): SetupPaths {
   const fallbackCli = here.includes(`${path.sep}src${path.sep}`)
     ? fileURLToPath(new URL("../../index.js", import.meta.url))
     : here;
+  // Invoked through the global bin, argv[1] is the bin symlink
+  // (<prefix>/bin/unvibe); resolve it so the handler and login unit
+  // always bake the real bundle path, however the CLI was invoked.
+  let cliPath = process.argv[1] ?? fallbackCli;
+  try {
+    cliPath = fs.realpathSync(cliPath);
+  } catch {
+    // Keep the unresolved path; setup writes it as-is.
+  }
   return {
     homeDir,
     nodePath: process.execPath,
-    cliPath: process.argv[1] ?? fallbackCli,
+    cliPath,
   };
 }
 

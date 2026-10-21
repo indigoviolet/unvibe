@@ -140,16 +140,15 @@ export function selectionScopeElement(el: HTMLElement): Element | null {
  * reuse (Explain cards resolve the same hosts).
  */
 /**
- * Issue #186: whether a selection target sits in a selectable host.
- * Floating cards render in a floating layer — in the diff that layer
- * sits at the hunk level, outside the diff table — so `.exp-float`
- * (and the whole `.dhunk`) counts, or selections inside a floating
- * card never show the toolbar even though they resolve fine.
+ * Whether a selection target sits in a selectable host. Conversation
+ * cards render inline (in the guide, or in a diff hunk's slot row), so
+ * the whole `.dhunk` counts, or selections inside a diff card would
+ * never show the toolbar even though they resolve fine.
  */
 export function inSelectionScope(el: Element): boolean {
   return (
     el.closest(
-      "#page, .exp-float, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
+      "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
     ) !== null
   );
 }

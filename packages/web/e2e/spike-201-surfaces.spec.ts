@@ -60,11 +60,9 @@ for (const theme of ["default", "studio", "console"] as const) {
         await page.locator("#C-problem").scrollIntoViewIfNeeded();
         await selectText(page, "#C-problem", "used to let a server continue");
         await page.locator('#selbar [data-act="explain"]').click();
-        const floating = page.locator("#page section[data-expansion]").first();
-        await expect(floating).toBeVisible({ timeout: 15000 });
-        await expect(floating.locator(".working")).toHaveCount(0, { timeout: 30000 });
-        const pin = floating.getByRole("button", { name: "Pin into the page" });
-        if ((await pin.count()) > 0) await pin.click();
+        const created = page.locator("#page section[data-expansion]").first();
+        await expect(created).toBeVisible({ timeout: 15000 });
+        await expect(created.locator(".working")).toHaveCount(0, { timeout: 30000 });
         pinned = page.locator("#C-problem section[data-expansion]").first();
       }
       await expect(pinned).toBeVisible({ timeout: 15000 });
