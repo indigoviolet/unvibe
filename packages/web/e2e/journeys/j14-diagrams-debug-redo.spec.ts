@@ -50,6 +50,19 @@ test.describe("J14 diagrams, debug, redo", () => {
     await expect(page.locator('[data-testid^="prompt-"]').first()).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Jobs" }).click();
     await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 15_000 });
+    // #207: a successful job's Output shows, per turn, its prompt, its
+    // reply, a tool call with its result, and the raw usage payload.
+    await page.getByRole("button", { name: "Output" }).first().click();
+    const output = page.locator('[data-testid="job-output"]').first();
+    await expect(output).toBeVisible({ timeout: 30_000 });
+    await expect(output).toContainText("Turn 1");
+    await expect(output).toContainText("Prompt");
+    await expect(output).toContainText("Output");
+    await expect(output.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read");
+    await expect(output).toContainText("Returned the");
+    await expect(output).toContainText("Raw usage");
+    await expect(output).toContainText("quota");
+    await expect(output).toContainText("model_usage");
     // Back to the review itself.
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });

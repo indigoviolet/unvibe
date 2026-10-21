@@ -200,6 +200,8 @@ export class ReplayAgentRunner extends FakeAgentRunner {
     );
   }
 
+  private replayToolSeq = 0;
+
   override async *prompt(
     session: Session,
     text: string,
@@ -210,6 +212,27 @@ export class ReplayAgentRunner extends FakeAgentRunner {
     // Base pack: answer "ready" (SessionManager.getBase waits for it).
     const reply =
       resolved.kind === "base" ? "ready" : resolved.file ? this.texts.get(resolved.file)! : this.placeholderText(resolved, text);
+    // Issue #207: replay emits the same event shapes as a real runner —
+    // one tool call with arguments and a result, then the text, then
+    // usage with its raw payload — so the Debug page's Output view (and
+    // the journeys through it) work against the demo recordings.
+    if (resolved.kind !== "base") {
+      const toolId = `replay-tool-${++this.replayToolSeq}`;
+      yield {
+        type: "tool",
+        name: "Read",
+        status: "start",
+        id: toolId,
+        detail: JSON.stringify({ recording: resolved.file ?? resolved.kind }),
+      };
+      yield {
+        type: "tool",
+        name: "Read",
+        status: "end",
+        id: toolId,
+        result: `Returned the ${resolved.kind} recording (${reply.length} chars).`,
+      };
+    }
     const chunks = chunkText(reply, this.chunkChars);
     for (const chunk of chunks) {
       if (signal?.aborted) {
@@ -239,7 +262,45 @@ export class ReplayAgentRunner extends FakeAgentRunner {
       yield { type: "error", message: "aborted", retryable: true };
       return;
     }
-    yield { type: "usage", ...usageFor(text.length, reply.length) };
+    const usage = usageFor(text.length, reply.length);
+    yield {
+      type: "usage",
+      ...usage,
+      // Same raw shape the ACP runner reports (`usage` + `_meta.quota`),
+      // derived deterministically from the same counts.
+      raw: {
+        usage: {
+          inputTokens: usage.inputTokens,
+          cachedReadTokens: usage.cachedReadTokens,
+          cachedWriteTokens: usage.cachedWriteTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.inputTokens + usage.cachedReadTokens + usage.cachedWriteTokens + usage.outputTokens,
+        },
+        _meta: {
+          quota: {
+            token_count: {
+              inputTokens: usage.inputTokens,
+              cachedInputTokens: usage.cachedReadTokens,
+              cachedWriteTokens: usage.cachedWriteTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.inputTokens + usage.cachedReadTokens + usage.cachedWriteTokens + usage.outputTokens,
+            },
+            model_usage: [
+              {
+                model: "replay",
+                token_count: {
+                  inputTokens: usage.inputTokens,
+                  cachedInputTokens: usage.cachedReadTokens,
+                  cachedWriteTokens: usage.cachedWriteTokens,
+                  outputTokens: usage.outputTokens,
+                  totalTokens: usage.inputTokens + usage.cachedReadTokens + usage.cachedWriteTokens + usage.outputTokens,
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
     yield { type: "done", stopReason: "end_turn" };
   }
 }

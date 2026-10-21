@@ -58,7 +58,7 @@ import type { SessionManager } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
 import { resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog } from "../settings/index.js";
-import type { Pipeline } from "../pipeline/runner.js";
+import { turnHooks, type Pipeline, type ToolCallback, type TurnHooks } from "../pipeline/runner.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { buildExcerptMap, readCodeExcerpts } from "./excerpts.js";
@@ -269,22 +269,32 @@ async function collectStreaming(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+  turn?.onPrompt?.(prompt);
   try {
     for await (const ev of runner.prompt(session, prompt, signal)) {
       if (ev.type === "text") {
         text += ev.delta;
         onDelta(ev.delta);
       } else if (ev.type === "tool") {
-        if (ev.status === "start") onTool?.(ev.name, ev.detail);
+        if (ev.status === "start") {
+          onTool?.(ev.name, ev.detail, { status: "start", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
+        } else {
+          onTool?.(ev.name, ev.detail, { status: "end", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
+        }
       } else if (ev.type === "usage") {
         usage.inputTokens += ev.inputTokens;
         usage.cachedReadTokens += ev.cachedReadTokens;
         usage.cachedWriteTokens += ev.cachedWriteTokens;
         usage.outputTokens += ev.outputTokens;
+        turn?.onUsage?.(
+          { inputTokens: ev.inputTokens, cachedReadTokens: ev.cachedReadTokens, cachedWriteTokens: ev.cachedWriteTokens, outputTokens: ev.outputTokens },
+          ev.raw,
+        );
       } else if (ev.type === "error") {
         if (ev.retryable) throw new RetryableError(ev.message);
         throw new Error(ev.message);
@@ -305,11 +315,12 @@ async function collectTracked(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   sessions.beginSessionUse(session.id);
   try {
-    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool, turn);
   } finally {
     sessions.endSessionUse(session.id);
   }
@@ -579,7 +590,8 @@ export async function requestSecondOpinion(
           turn,
           req.signal ?? ctx.signal,
           (d) => ctx.reportText(d),
-          (name, detail) => ctx.reportTool(name, detail),
+          (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx),
         );
         const split = splitReply(text);
         if (!split.ok && (split.error.kind === "malformed" || split.error.kind === "not-object")) {
@@ -616,7 +628,8 @@ export async function requestSecondOpinion(
           ctx.setPromptSnapshot(`${turn}\n\n--- repair turn ---\n${repairPrompt}`);
           const repair = await collectTracked(deps.sessions, deps.runner, forked.session, repairPrompt, req.signal ?? ctx.signal, (d) =>
             ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+            turnHooks(ctx),
           );
           usage.inputTokens += repair.usage.inputTokens;
           usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -659,7 +672,8 @@ export async function requestSecondOpinion(
               "standard",
               finalBlocks,
               (u) => ctx.reportUsage(u),
-              (name, detail) => ctx.reportTool(name, detail),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+              turnHooks(ctx),
             )
           : finalBlocks;
         // One reasoning body may flatten several reply cards (#116):

@@ -14,9 +14,8 @@
  * in `server.ts`).
  *
  * Runner notes (see `docs/acp-runner.md`):
- * - Usage accounting: the ACP runner already normalises (Claude reports
- *   session-cumulative counters, Codex per-turn) into per-turn `usage`
- *   events, so the pipeline just sums them.
+ * - Usage accounting: both ACP adapters already report per-turn `usage`
+ *   events (#209), so the pipeline just sums them.
  * - Read-only posture: ACP sessions start `readOnly` by default (file
  *   reads + our MCP tools only; edits/shell/network denied). Codex uses
  *   `workspace-write` mode (not `read-only`, which refuses MCP calls, and

@@ -8,7 +8,7 @@
  * Markdown-only rule covers the shared-context parts, not this table.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Block, Job, ReviewSnapshot } from "@unvibe/shared";
+import type { Block, Job, JobTurnRecord, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
@@ -152,9 +152,9 @@ function JobRow({
   const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
   const [promptError, setPromptError] = useState<string | null>(null);
-  const [showReply, setShowReply] = useState(false);
-  const [replyText, setReplyText] = useState<string | null>(job.replySnapshot ?? null);
-  const [replyError, setReplyError] = useState<string | null>(null);
+  const [showOutput, setShowOutput] = useState(false);
+  const [outputTurns, setOutputTurns] = useState<JobTurnRecord[] | null>(job.turnRecords ?? null);
+  const [outputError, setOutputError] = useState<string | null>(null);
   const [modelName, setModelName] = useState<string | null>(null);
 
   // Same display as the pickers (#21): name beside the id when known.
@@ -189,21 +189,22 @@ function JobRow({
     }
   };
 
-  const toggleReply = async (): Promise<void> => {
-    const next = !showReply;
-    setShowReply(next);
-    if (next && replyText === null) {
-      setReplyError(null);
+  const toggleOutput = async (): Promise<void> => {
+    const next = !showOutput;
+    setShowOutput(next);
+    if (next && outputTurns === null) {
+      setOutputError(null);
       try {
-        setReplyText((await api.jobReply(job.id)).replySnapshot);
-      } catch (err) {
-        setReplyError(friendlyError(err));
+        setOutputTurns((await api.jobOutput(job.id)).turnRecords);
+      } catch {
+        // Old jobs (and jobs that have not run a turn yet) have no
+        // records: say so in place instead of an error.
+        setOutputError("No output recorded for this job yet.");
       }
     }
   };
 
   const active = job.state === "queued" || job.state === "running" || job.state === "backing-off";
-  const failed = job.state === "error" || job.state === "cancelled";
 
   return (
     <div className="jobrow" data-testid={`job-${job.id}`}>
@@ -268,11 +269,9 @@ function JobRow({
         <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>
           {showPrompt ? "Hide prompt" : "Prompt"}
         </button>
-        {failed ? (
-          <button className="x" type="button" aria-expanded={showReply} onClick={() => void toggleReply()}>
-            {showReply ? "Hide reply" : "Reply"}
-          </button>
-        ) : null}
+        <button className="x" type="button" aria-expanded={showOutput} onClick={() => void toggleOutput()}>
+          {showOutput ? "Hide output" : "Output"}
+        </button>
         {active ? (
           <button className="x" type="button" onClick={onCancel}>
             Cancel
@@ -308,16 +307,84 @@ function JobRow({
           <p className="hint">Loading prompt…</p>
         )
       ) : null}
-      {showReply ? (
-        replyError ? (
-          <p className="err">{replyError}</p>
-        ) : replyText !== null ? (
-          <pre className="code">{replyText}</pre>
+      {showOutput ? (
+        outputError ? (
+          <p className="hint">{outputError}</p>
+        ) : outputTurns !== null ? (
+          <div data-testid="job-output">
+            {outputTurns.length === 0 ? (
+              <p className="hint">No output recorded for this job yet.</p>
+            ) : (
+              outputTurns.map((turn, i) => <TurnRecord key={i} turn={turn} index={i} now={now} />)
+            )}
+          </div>
         ) : (
-          <p className="hint">Loading reply…</p>
+          <p className="hint">Loading output…</p>
         )
       ) : null}
     </div>
+  );
+}
+
+/** Issue #207: one turn of a job's Output view — prompt, streamed output, tool calls, usage. */
+function TurnRecord({ turn, index, now }: { turn: JobTurnRecord; index: number; now: number }): React.JSX.Element {
+  return (
+    <details className="lay" open={index === 0} data-testid="job-turn">
+      <summary>
+        <span className="kind">
+          Turn {index + 1} · {turn.label}
+        </span>
+        <span className="hint">
+          started {formatLocalTime(turn.startedAt)} · {formatDurationMs(stepDurationMs(turn, now))}
+          {turn.finishedAt === undefined ? " · running" : ""}
+        </span>
+        {turn.usage ? (
+          <span className="hint">
+            {formatTokens(turn.usage.inputTokens)} in · {formatTokens(turn.usage.outputTokens)} out
+          </span>
+        ) : null}
+      </summary>
+      <div className="laypad">
+        <p className="hint">Prompt</p>
+        {turn.prompt ? <pre className="code">{turn.prompt}</pre> : <p className="hint">No prompt recorded for this turn.</p>}
+        <p className="hint">Output</p>
+        {turn.output ? <pre className="code">{turn.output}</pre> : <p className="hint">No output yet.</p>}
+        <p className="hint">Tools</p>
+        {turn.tools.length === 0 ? (
+          <p className="hint">No tool calls in this turn.</p>
+        ) : (
+          turn.tools.map((tool, i) => (
+            <div key={i} data-testid="job-turn-tool">
+              <div className="frow" style={{ gap: 8 }}>
+                <span className="kind">{tool.name}</span>
+                {tool.detail ? <span className="hint">{tool.detail}</span> : null}
+                {tool.startedAt !== undefined ? (
+                  <span className="hint">
+                    {formatLocalTime(tool.startedAt)} → {formatLocalTime(tool.finishedAt)}
+                  </span>
+                ) : null}
+              </div>
+              {tool.result ? <pre className="code">{tool.result}</pre> : null}
+            </div>
+          ))
+        )}
+        <p className="hint">Usage</p>
+        {turn.usage ? (
+          <p className="hint">
+            {formatTokens(turn.usage.inputTokens)} in · {formatTokens(turn.usage.cachedReadTokens)} cached read ·{" "}
+            {formatTokens(turn.usage.cachedWriteTokens)} cached write · {formatTokens(turn.usage.outputTokens)} out
+          </p>
+        ) : (
+          <p className="hint">No token counts for this turn.</p>
+        )}
+        {turn.rawUsage !== undefined ? (
+          <>
+            <p className="hint">Raw usage</p>
+            <pre className="code">{JSON.stringify(turn.rawUsage, null, 2)}</pre>
+          </>
+        ) : null}
+      </div>
+    </details>
   );
 }
 

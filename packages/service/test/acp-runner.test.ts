@@ -26,9 +26,9 @@ describe("AcpAgentRunner over fake ACP agent", () => {
         match: "hello",
         chunks: [
           { text: "hi " },
-          { toolStart: { id: "t1", title: "mcp__test__get_hunk" } },
+          { toolStart: { id: "t1", title: "mcp__test__get_hunk", input: { hunk: "h:demo:1" } } },
           { text: "there" },
-          { toolEnd: { id: "t1", title: "mcp__test__get_hunk" } },
+          { toolEnd: { id: "t1", title: "mcp__test__get_hunk", result: "the hunk text" } },
         ],
         usage: { inputTokens: 4, cachedReadTokens: 100, cachedWriteTokens: 10, outputTokens: 8 },
         stopReason: "end_turn",
@@ -40,11 +40,29 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "sys", mcpServers: [] });
     const events = await collect(runner, s, "say hello");
     expect(events[0]).toEqual({ type: "text", delta: "hi " });
-    expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "start" });
+    // #207: tool calls carry their id, arguments and (on end) result.
+    expect(events).toContainEqual({
+      type: "tool",
+      name: "mcp__test__get_hunk",
+      status: "start",
+      id: "t1",
+      detail: "{\"hunk\":\"h:demo:1\"}",
+    });
     expect(events).toContainEqual({ type: "text", delta: "there" });
-    expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end" });
+    expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end", id: "t1", result: "the hunk text" });
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 4, cachedReadTokens: 100, cachedWriteTokens: 10, outputTokens: 8 });
+    // #207: derived counts plus the adapter's raw payload, verbatim.
+    expect(usage).toEqual({
+      type: "usage",
+      inputTokens: 4,
+      cachedReadTokens: 100,
+      cachedWriteTokens: 10,
+      outputTokens: 8,
+      raw: {
+        usage: { inputTokens: 4, outputTokens: 8, totalTokens: 122, cachedReadTokens: 100, cachedWriteTokens: 10 },
+        _meta: null,
+      },
+    });
     expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
     await runner.dispose();
   });
@@ -65,7 +83,9 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
     const events = await collect(runner, s, "bg please");
     const usage = events.find((e) => e.type === "usage");
-    expect(usage).toEqual({ type: "usage", inputTokens: 61604, cachedReadTokens: 100, cachedWriteTokens: 0, outputTokens: 27 });
+    expect(usage).toEqual(expect.objectContaining({ type: "usage", inputTokens: 61604, cachedReadTokens: 100, cachedWriteTokens: 0, outputTokens: 27 }));
+    // #207: the raw payload keeps the per-model quota breakdown verbatim.
+    expect((usage as { raw?: unknown }).raw).toMatchObject({ _meta: { quota: { model_usage: [{ model: "main-model" }, { model: "titling-model" }] } } });
     await runner.dispose();
   });
 
@@ -215,7 +235,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     // with the last cache breakpoint at its end — so with the per-job
     // prompt first, that block was re-written on every job (~7k tokens,
     // warm). start() therefore sends SHARED_CACHE_FIRST_TURN first; the
-    // fake Claude counters below are cumulative, as live (usage.ts).
+    // fake Claude counters below are per-turn, as live (#209, usage.ts).
     const state = createFakeState([
       { match: "The task for this session arrives", chunks: [{ text: "ready" }], usage: { inputTokens: 5, cachedReadTokens: 100, cachedWriteTokens: 900, outputTokens: 10 } },
       { match: "hunk A", chunks: [{ text: "ans A" }], usage: { inputTokens: 10, cachedReadTokens: 250, cachedWriteTokens: 950, outputTokens: 30 } },
@@ -249,14 +269,15 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
     const events = await collect(runner, s, "hunk A please");
-    // Warmup (5/100/900/10) + real-turn delta (5/150/50/20), not just either.
-    expect(events.find((e) => e.type === "usage")).toEqual({
+    // #209: adapter payloads are per-turn, so the job's figure is the SUM
+    // of its own two turns: warmup (5/100/900/10) + real (10/250/950/30).
+    expect(events.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
       type: "usage",
-      inputTokens: 10,
-      cachedReadTokens: 250,
-      cachedWriteTokens: 950,
-      outputTokens: 30,
-    });
+      inputTokens: 15,
+      cachedReadTokens: 350,
+      cachedWriteTokens: 1850,
+      outputTokens: 40,
+    }));
     // The warmup's "ready" text must not leak into the job's reply.
     expect(events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("")).toBe("ans A");
     await runner.dispose();
@@ -600,38 +621,89 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
-  it("delta-izes session-cumulative Claude counters across turns", async () => {
+  it("#209: per-turn Claude payloads pass through on a fresh session, a second turn, and a fork", async () => {
+    // Fixture payloads in the pinned adapter's shape (`usage` = main loop
+    // only, `_meta.quota.model_usage` = that turn's per-model tally incl.
+    // background calls, diffed by the adapter from the SDK's cumulative
+    // `result.modelUsage`). Numbers mirror a live capture (haiku, 2026-10):
+    // turn 1's model tally carries a 1173-in/10-out background titling call
+    // on top of the main loop; later turns' tallies equal their main loop.
     const state = createFakeState([
       {
         match: "turn-one",
         chunks: [{ text: "one" }],
-        usage: { inputTokens: 2, cachedReadTokens: 10000, cachedWriteTokens: 8000, outputTokens: 4 },
+        usage: { inputTokens: 2, cachedReadTokens: 0, cachedWriteTokens: 8000, outputTokens: 3 },
+        modelUsage: [
+          { model: "main-model", inputTokens: 2, cachedInputTokens: 0, cachedWriteTokens: 8000, outputTokens: 3 },
+          { model: "titling-model", inputTokens: 1173, cachedInputTokens: 0, cachedWriteTokens: 0, outputTokens: 10 },
+        ],
       },
       {
         match: "turn-two",
         chunks: [{ text: "two" }],
-        usage: { inputTokens: 2, cachedReadTokens: 10633, cachedWriteTokens: 9352, outputTokens: 14 },
+        usage: { inputTokens: 2, cachedReadTokens: 6611, cachedWriteTokens: 1846, outputTokens: 3 },
+        modelUsage: [
+          { model: "main-model", inputTokens: 2, cachedInputTokens: 6611, cachedWriteTokens: 1846, outputTokens: 3 },
+        ],
+      },
+      {
+        match: "fork-one",
+        chunks: [{ text: "f1" }],
+        usage: { inputTokens: 2, cachedReadTokens: 8432, cachedWriteTokens: 355, outputTokens: 4 },
+        modelUsage: [
+          { model: "main-model", inputTokens: 2, cachedInputTokens: 8432, cachedWriteTokens: 355, outputTokens: 4 },
+        ],
+      },
+      {
+        match: "fork-two",
+        chunks: [{ text: "f2" }],
+        usage: { inputTokens: 2, cachedReadTokens: 8762, cachedWriteTokens: 67, outputTokens: 6 },
+        modelUsage: [
+          { model: "main-model", inputTokens: 2, cachedInputTokens: 8762, cachedWriteTokens: 67, outputTokens: 6 },
+        ],
       },
     ]);
     const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state) } });
     const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "s", mcpServers: [] });
+    // Fresh session: derived = this turn's model tally (background included).
     const first = await collect(runner, s, "turn-one please");
-    expect(first.find((e) => e.type === "usage")).toEqual({
+    expect(first.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
+      type: "usage",
+      inputTokens: 1175,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 8000,
+      outputTokens: 13,
+    }));
+    // Second turn on the same session: derived = this turn's tally alone,
+    // not a delta against turn 1 (a delta would clamp in/out/write to 0).
+    const second = await collect(runner, s, "turn-two please");
+    expect(second.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
       type: "usage",
       inputTokens: 2,
-      cachedReadTokens: 10000,
-      cachedWriteTokens: 8000,
-      outputTokens: 4,
-    });
-    const second = await collect(runner, s, "turn-two please");
-    // Per-turn delta, not the cumulative counter.
-    expect(second.find((e) => e.type === "usage")).toEqual({
+      cachedReadTokens: 6611,
+      cachedWriteTokens: 1846,
+      outputTokens: 3,
+    }));
+    // #207: raw stays the payload as reported, verbatim.
+    expect((second.find((e) => e.type === "usage") as { raw?: { usage?: { cachedReadTokens?: number } } }).raw?.usage?.cachedReadTokens).toBe(6611);
+    // Fork: each fork turn reports its own tally, first and second alike.
+    const fork = await runner.fork(s);
+    const f1 = await collect(runner, fork, "fork-one please");
+    expect(f1.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
       type: "usage",
-      inputTokens: 0,
-      cachedReadTokens: 633,
-      cachedWriteTokens: 1352,
-      outputTokens: 10,
-    });
+      inputTokens: 2,
+      cachedReadTokens: 8432,
+      cachedWriteTokens: 355,
+      outputTokens: 4,
+    }));
+    const f2 = await collect(runner, fork, "fork-two please");
+    expect(f2.find((e) => e.type === "usage")).toEqual(expect.objectContaining({
+      type: "usage",
+      inputTokens: 2,
+      cachedReadTokens: 8762,
+      cachedWriteTokens: 67,
+      outputTokens: 6,
+    }));
     await runner.dispose();
   });
 

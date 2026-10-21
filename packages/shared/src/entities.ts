@@ -743,13 +743,56 @@ export type JobState = "queued" | "running" | "backing-off" | "done" | "error" |
 export interface JobToolCall {
   /** Tool name as reported by the adapter (e.g. "Bash", "Read", "WebFetch"). */
   name: string;
+  /** Adapter tool-call id, when it sent one (correlates start and end, #207). */
+  id?: string;
   /**
    * Best-effort argument detail (e.g. the shell command or URL), when the
-   * adapter sent it with the call. Truncated by the service.
+   * adapter sent it with the call. Truncated by the service (with a
+   * truncation marker naming the original length, #207).
    */
   detail?: string;
+  /**
+   * Issue #207: the tool's result text, truncated by the service with a
+   * marker naming the original length. Absent when the adapter sent no
+   * result (or the call has not ended yet).
+   */
+  result?: string;
+  /** Issue #207: full length of the tool result before truncation. */
+  resultOriginalLength?: number;
   /** Issue #194: epoch ms when the call started (Debug page timings). */
   startedAt?: number;
+  /** Issue #207: epoch ms when the call ended, when an end was seen. */
+  finishedAt?: number;
+}
+
+/**
+ * Issue #207: one agent turn of a job, as sent and as answered — the
+ * Debug page's Output view. Turns are in order (first, repair, retry,
+ * follow-up, …) and match the segments of the job's `promptSnapshot`.
+ * Text fields are capped by the service: a truncated value ends with a
+ * marker naming the original length, also kept in the matching
+ * `*OriginalLength` field. `rawUsage` is the adapter's usage payload
+ * stored verbatim, next to the derived `usage` counts.
+ */
+export interface JobTurnRecord {
+  /** Turn label from the pipeline ("first", "repair", …). */
+  label: string;
+  /** The exact prompt sent for this turn (capped; see above). */
+  prompt?: string;
+  /** Full length of this turn's prompt before truncation. */
+  promptOriginalLength?: number;
+  /** The reply text as streamed, before parsing (trailing JSON included). */
+  output: string;
+  /** Full length of the reply before truncation. */
+  outputOriginalLength: number;
+  /** Tool calls that ran during this turn, in the order they started. */
+  tools: JobToolCall[];
+  /** Derived per-turn token counts, when the runner reported usage. */
+  usage?: TokenUsage;
+  /** Raw usage payload exactly as the runner reported it (verbatim). */
+  rawUsage?: unknown;
+  startedAt: number;
+  finishedAt?: number;
 }
 
 /**
@@ -836,6 +879,13 @@ export interface Job {
    * can be answered by reading it. Absent for successful jobs.
    */
   replySnapshot?: string;
+  /**
+   * Issue #207: per-turn records (prompt, streamed output, tool calls
+   * with truncated results, derived + raw usage) for every job, in every
+   * state — not only failures. Omitted from job lists; fetched per job
+   * at `GET /api/jobs/:id/output`. Absent on jobs from before #207.
+   */
+  turnRecords?: JobTurnRecord[];
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**
