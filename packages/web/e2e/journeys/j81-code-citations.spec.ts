@@ -55,9 +55,32 @@ test.describe("J81 code citations outside the diff", () => {
   test("hover previews, click opens a closable file tab, selection comments on the code host", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
-    const before = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    const head = (before.json as unknown as { version: { headSha: string } }).version.headSha;
-    expect((before.json as unknown as { files: { path: string }[] }).files.some((f) => f.path === "helper.py")).toBe(false);
+    // Wait for the ingest to really land (head SHA present, ingest
+    // ready, no active jobs) before seeding: stopping over a snapshot
+    // that still says "loading" lets boot recovery re-ingest on the
+    // restart and replace the seeded guide with an empty one.
+    type SnapProbe = {
+      version: { headSha: string };
+      files: { path: string }[];
+      ingest?: { status: string };
+      jobs?: { state: string }[];
+      pages: { id: string; cards: { id: string }[] }[];
+    };
+    let before: SnapProbe | null = null;
+    const settleDeadline = Date.now() + 90_000;
+    for (;;) {
+      const res = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+      const snap = res.json as unknown as SnapProbe;
+      const active = (snap.jobs ?? []).some((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+      if (snap.version.headSha !== "" && snap.ingest?.status === "ready" && !active) {
+        before = snap;
+        break;
+      }
+      if (Date.now() > settleDeadline) throw new Error("scratch ingest did not settle");
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const head = before.version.headSha;
+    expect(before.files.some((f) => f.path === "helper.py")).toBe(false);
 
     // Seed guide cards: a verified outside-diff citation, a past-the-end
     // one (valid under #81: no length check), and a missing file.
@@ -71,6 +94,13 @@ test.describe("J81 code citations outside the diff", () => {
       if (!row) throw new Error("no snapshot row to seed");
       const snap = JSON.parse(row.snapshot) as {
         pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+        pipeline?: { stages: Record<string, string> };
+        ingest?: { status: string };
+      };
+      // Keep boot recovery from re-ingesting over the seed.
+      snap.ingest = { status: "ready" };
+      snap.pipeline = {
+        stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" },
       };
       let root = snap.pages.find((p) => p.id === "root");
       if (!root) {
@@ -108,6 +138,19 @@ test.describe("J81 code citations outside the diff", () => {
       db.close();
     }
     svc = await start();
+
+    // The restarted service must actually serve the seeded guide
+    // before the browser opens it (poll the served state, not a timer).
+    await expect
+      .poll(
+        async () => {
+          const res = await apiJson(svc as RunningService, "GET", `/api/reviews/${reviewId}`);
+          const snap = res.json as unknown as SnapProbe;
+          return snap.pages.some((p) => p.cards.some((c) => c.id === "c-beta"));
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true);
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
