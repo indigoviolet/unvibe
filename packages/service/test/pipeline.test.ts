@@ -122,7 +122,7 @@ describe("pipeline demo e2e (replay)", () => {
         expect(got.confidence).toBe(want.confidence);
         expect(got.summary).toBe(want.summary);
       }
-      // Suggested comments (agent drafts, NOT marked for PR).
+      // Suggested comments (agent drafts, NOT in the Outbox).
       const sug = snap.annotations.filter((a) => a.messages.some((m) => m.suggested));
       expect(sug.length).toBeGreaterThanOrEqual(2);
       for (const a of sug) {

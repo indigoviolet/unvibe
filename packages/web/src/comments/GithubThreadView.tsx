@@ -4,7 +4,7 @@
  * Reuses the user-thread classes (`ithread`, `thd`, `msg`, `av`) so the
  * read-only threads look like the threads they sit beside, without
  * changing `ThreadView`'s behaviour for user comments: no composer, no
- * Mark-for-PR, no Delete — only collapse, the rendered bodies and an
+ * No Outbox toggle, no Delete — only collapse, the rendered bodies and an
  * "Open on GitHub" link per message. Bodies render the `bodyHtml` the
  * service produced with the shared untrusted-Markdown renderer, never raw
  * HTML from GitHub.

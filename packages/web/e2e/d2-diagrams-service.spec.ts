@@ -425,6 +425,12 @@ for (const mode of [
     test("fresh demo review renders its diagram in the guide", async ({ page }) => {
       test.setTimeout(240_000);
       await openReview(page, demoReviewId);
+      // The diagram lives in the auto-written go-deeper card, which stays
+      // collapsed until opened (#217); open it, then the SVG renders.
+      const flow = page.locator("#C-g-flow");
+      await flow.scrollIntoViewIfNeeded();
+      await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+      await flow.getByRole("button", { name: "Expand" }).click();
       await expect(page.locator("#C-g-flow .dg-svg > svg")).toBeVisible({ timeout: 120_000 });
     });
   });

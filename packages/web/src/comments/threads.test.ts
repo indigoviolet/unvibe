@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import {
-  forPrThreads,
+  outboxThreads,
   pendingCount,
   threadLocationLabel,
   threadPostText,
@@ -22,7 +22,7 @@ function thread(over: Partial<Annotation> = {}): Annotation {
 }
 
 describe("threadPostText", () => {
-  test("prefers the For-PR draft", () => {
+  test("prefers the Outbox draft", () => {
     const t = thread({ draft: "draft", messages: [{ who: "you", text: "orig" }] });
     expect(threadPostText(t)).toBe("draft");
   });
@@ -43,7 +43,7 @@ describe("pending counts", () => {
         thread({ id: "b", post: true, postedAt: 1, messages: [{ who: "you", text: "y" }] }),
       ],
     } as unknown as ReviewSnapshot;
-    expect(forPrThreads(snap).map((t) => t.id)).toEqual(["a"]);
+    expect(outboxThreads(snap).map((t) => t.id)).toEqual(["a"]);
     expect(pendingCount(snap)).toBe(1);
   });
 

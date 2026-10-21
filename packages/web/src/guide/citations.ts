@@ -7,7 +7,7 @@
  * map is needed.
  */
 import type { Citation, HunkLine, ReviewSnapshot } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import { documentBlockText, parseId } from "@unvibe/shared";
 import { descriptionPaneName } from "../source/description/paneName.js";
 
 export interface ResolvedCitation {
@@ -88,6 +88,15 @@ export function resolveCitation(
   const parsed = parseId(target);
   if (!parsed) return { target, label: target, snippet: "", unverified: citation.unverified };
 
+  if (parsed.kind === "doc") {
+    const block = snapshot.document?.blocks.find((b) => b.id === parsed.blockId);
+    return {
+      target,
+      label: `Document · ${parsed.blockId}`,
+      snippet: block ? documentBlockText(block).slice(0, 200) : "",
+      unverified: citation.unverified ?? (block ? undefined : true),
+    };
+  }
   if (parsed.kind === "desc") {
     return {
       target,
@@ -108,12 +117,15 @@ export function resolveCitation(
     };
   }
   if (parsed.kind === "code") {
-    const file = resolveFile(snapshot, parsed.path, aliases);
+    // The path and range come from the ID itself, so the label reads
+    // the same whether or not the file is in the diff (#81). The
+    // snippet comes from hunk rows when the file is in the diff; the
+    // hover fetches the cited lines at the commit otherwise.
     const snippet =
       hunkRangeText(snapshot, parsed.path, parsed.start, parsed.end, aliases) ?? "";
     return {
       target,
-      label: file ? shortLabel(file.path, parsed.start, parsed.end) : target,
+      label: shortLabel(parsed.path, parsed.start, parsed.end),
       snippet,
       unverified: citation.unverified,
     };

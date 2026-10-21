@@ -15,7 +15,7 @@ r.headers.getlist("set-cookie") # ['foo=1', 'bar=1'] (kept apart)
 
 ```json
 {
-  "title": "The central change",
+  "title": "The central idea",
   "depth": {"level": "standard", "cardId": "central"}
 }
 ```

@@ -36,6 +36,7 @@ import type { CommandRunner } from "../exec/runner.js";
 import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
 import { readCodeSlice } from "./read.js";
 import { READER_TOOL, toolsForRole } from "./tools.js";
+import { repoContainingSha } from "../document/resolve.js";
 
 export const MCP_SERVICE_NAME = "unvibe";
 export const MCP_SERVICE_VERSION = "0.0.8";
@@ -460,6 +461,27 @@ export class McpRegistry {
 
   private async getCode(state: SessionState, relPath: string, lines: string, sha?: string): Promise<string> {
     const review = await this.loadReview(state);
+    // Issue #222: on a document review, the repo is resolved from the
+    // cited sha — the first context repo containing that commit. A sha
+    // in neither repo fails here instead of reading the wrong repo.
+    const contextRepos = this.opts.reader.getContextRepos
+      ? await this.opts.reader.getContextRepos(state.reviewId)
+      : null;
+    if (contextRepos && contextRepos.length > 0) {
+      const rev = sha ?? contextRepos[0].sha ?? "HEAD";
+      const ref = rev === "HEAD" ? contextRepos[0] : await repoContainingSha(this.opts.commands, contextRepos, rev);
+      if (!ref) throw new Error(`no context repo contains ${rev}`);
+      McpRegistry.checkPathInRepo(ref.repoPath, relPath);
+      const { start, end } = this.parseLines(lines);
+      const slice = await readCodeSlice(this.opts.commands, ref.repoPath, rev, relPath, start, end);
+      if ("error" in slice) {
+        if (slice.error === "out-of-range") throw new Error(`lines ${lines} outside file ${relPath}@${rev}`);
+        if (slice.error === "binary") throw new Error(`binary file ${relPath}@${rev} is not shown`);
+        throw new Error(`git show failed for ${rev}:${relPath}`);
+      }
+      const id = `code:${relPath}:${start === end ? `${start}` : `${start}-${end}`}@${rev}`;
+      return [id, ...slice.text.split("\n").map((line, i) => `${start + i}: ${line}`)].join("\n");
+    }
     const worktree = await this.opts.reader.getWorktreePath(state.reviewId);
     if (!worktree) throw new Error(`no worktree for review: ${state.reviewId}`);
     McpRegistry.checkPathInRepo(worktree, relPath);

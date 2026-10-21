@@ -171,6 +171,9 @@ function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean 
   if (anchor.where === "comment" && host.kind === "comment") {
     return anchor.commentId === host.commentId;
   }
+  if (anchor.where === "code" && host.kind === "code") {
+    return anchor.path === host.path && anchor.commit === host.commit && anchor.line === host.line;
+  }
   return false;
 }
 

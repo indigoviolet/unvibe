@@ -20,6 +20,7 @@ import type {
   AddRepoResponse,
   ChangesFilter,
   Contribution,
+  CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   DiffFilter,
@@ -61,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -1487,10 +1488,21 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
       location = file
         ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
         : { kind: "general", reason: `unknown file ${host.fileKey}` };
+    } else if (host.kind === "code") {
+      // #81: review body with a permalink on the real service; the mock
+      // has no real repo to link to, so it shows the same slot plainly.
+      location = { kind: "general", reason: `${host.path}:${host.line} is outside the diff, so it goes in the review body with a link to the lines.` };
     } else {
       location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
-    return { threadId: thread.id, location, text: mockPostText(thread) };
+    return {
+      threadId: thread.id,
+      location,
+      text: mockPostText(thread),
+      ...(host.kind === "code" && thread.anchor.quotedText !== ""
+        ? { quote: thread.anchor.quotedText }
+        : {}),
+    };
   });
   const general = comments.filter((c) => c.location.kind !== "inline").map((c) => c.text);
   return {
@@ -2058,6 +2070,48 @@ export const mockApi = {
       const note = changesFetchError();
       return note ? { ...res, fetchError: note } : res;
     }
+  },
+
+  repoWorktrees: async (id: string) => {
+    const repo = getRepos().find((r) => r.id === id);
+    return { worktrees: repo ? [{ path: repo.localPath, branch: "main" }] : [] };
+  },
+
+  createDocument: async (body: CreateDocumentRequest): Promise<ReviewSnapshot> => {
+    const document = parseDocumentMarkdown(body.markdown);
+    if (typeof body.title === "string" && body.title.trim() !== "") document.title = body.title.trim();
+    const first = body.contextRepos[0];
+    const now = Date.now();
+    const id = `mock-doc-${now.toString(36)}`;
+    const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
+    return {
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
+      document,
+      contextRepos: body.contextRepos.map((pick) => {
+        const r = getRepos().find((x) => x.id === pick.repoId);
+        return {
+          repoId: pick.repoId,
+          owner: r?.owner ?? "local",
+          name: r?.name ?? pick.repoId,
+          source: pick.source,
+          repoPath: r?.localPath ?? "",
+          path: pick.worktreePath ?? r?.localPath ?? "",
+          label: `${r?.owner ?? "local"}/${r?.name ?? pick.repoId}`,
+        };
+      }),
+      version,
+      files: [],
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    };
   },
 
   createReview: async (body: CreateReviewRequest): Promise<CreateReviewResponse> => {
@@ -2636,7 +2690,9 @@ export const mockApi = {
               ? { kind: "description", paragraphId: anchor.paragraphId }
               : anchor.where === "comment"
                 ? { kind: "comment", commentId: anchor.commentId }
-                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+                : anchor.where === "code"
+                  ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                  : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const turnId = newTurnId();
         const askJobId = `mock-ask-${id}`;
@@ -2762,7 +2818,9 @@ export const mockApi = {
             ? { kind: "description", paragraphId: anchor.paragraphId }
             : anchor.where === "comment"
               ? { kind: "comment", commentId: anchor.commentId }
-              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+              : anchor.where === "code"
+                ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
@@ -3215,7 +3273,9 @@ export const mockApi = {
           ? { kind: "description", paragraphId: anchor.paragraphId }
           : anchor.where === "comment"
             ? { kind: "comment", commentId: anchor.commentId }
-            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+            : anchor.where === "code"
+              ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
     const thread: import("@unvibe/shared").Annotation = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
       type: "comment",
@@ -3357,6 +3417,14 @@ export const mockApi = {
   prComments: async () => {
     emitExisting();
     return { comments: existingComments };
+  },
+
+  outbox: async (id: string) => {
+    const snap = currentSnapshot(id);
+    return {
+      markdown: buildOutboxExportMarkdown(snap, { title: snap.review.branch || id }),
+      count: outboxThreads(snap).length,
+    };
   },
 
   viewer: async () => ({ login: "you" }),

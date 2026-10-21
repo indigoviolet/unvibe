@@ -297,7 +297,7 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
               Suggested review comment on <b>{label}</b>
             </span>
             <span className="sp" />
-            {thread?.post ? <span className="prtag">For PR</span> : null}→
+            {thread?.post ? <span className="prtag">Outbox</span> : null}→
           </button>
         </div>
       );

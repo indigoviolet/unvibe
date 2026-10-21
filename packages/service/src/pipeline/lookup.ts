@@ -3,12 +3,11 @@
  *
  * Description paragraphs come from the stored description HTML through the
  * single source (`parseDescriptionParagraphs`, issue #96): the `id="..."`
- * attributes ingest wrote. File lengths for `code:` ranges are
- * derived from hunk coverage (unknown files return null, so `code:` tokens
- * to outside files validate as unverified rather than crashing). Concepts
- * are the union of reader-declared slugs and existing concept pages. Host
- * texts for anchor checks come from the snapshot (card blocks,
- * description, diff lines).
+ * attributes ingest wrote. Whether a `code:` file exists at its cited
+ * commit comes from `resolveCodeFileExistence` (unknown files validate as
+ * unverified rather than crashing). Concepts are the union of
+ * reader-declared slugs and existing concept pages. Host texts for anchor
+ * checks come from the snapshot (card blocks, description, diff lines).
  */
 import type { ReviewSnapshot } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
@@ -23,7 +22,7 @@ function descTextsOf(html: string): Record<string, string> {
 
 export function lookupForSnapshot(
   snapshot: ReviewSnapshot,
-  extra: { fileLengths?: Record<string, number> } = {},
+  extra: { existingFiles?: ReadonlySet<string>; existingCodeTargets?: ReadonlySet<string> } = {},
 ): ReturnType<typeof createSnapshotLookup> {
   const descTexts = descTextsOf(currentDescriptionHtml(snapshot.description));
   const concepts = new Set<string>();
@@ -39,36 +38,38 @@ export function lookupForSnapshot(
   return createSnapshotLookup(snapshot, {
     descTexts,
     concepts: [...concepts],
-    ...(extra.fileLengths ? { fileLengths: extra.fileLengths } : {}),
+    ...(extra.existingFiles ? { existingFiles: extra.existingFiles } : {}),
+    ...(extra.existingCodeTargets ? { existingCodeTargets: extra.existingCodeTargets } : {}),
   });
 }
 
 /**
- * Resolve file lengths for every distinct `code:` target in `targets`
- * against the file at its cited commit (PRD §10: a `code:` range must lie
- * inside the file at that commit, not inside a hunk). Reads go through
- * `readCodeSlice` (`git show <rev>:<path>`), the same source `get_code`
- * serves, so a citation the tool issued — or any citation to a real file
- * at the review's commit — validates. Unreadable, binary or missing files
- * get no entry, so their citations stay unverified. Never throws.
+ * Resolve which distinct `code:` targets in `targets` name a file that
+ * exists at its cited commit (#81: existence only, no length check).
+ * Reads go through `readCodeSlice` (`git show <rev>:<path>`), the same
+ * source `get_code` serves, so a citation the tool issued — or any
+ * citation to a real file at the review's commit — validates. A slice
+ * that comes back with a line count (a hit, or past-the-end on a real
+ * file) proves existence; missing and binary files get no entry, so
+ * their citations stay unverified. Never throws.
  */
-export async function resolveCodeFileLengths(
+export async function resolveCodeFileExistence(
   commands: CommandRunner,
   cwd: string,
   headSha: string,
   targets: Iterable<string>,
-): Promise<Record<string, number>> {
+): Promise<Set<string>> {
   const seen = new Map<string, string>();
   for (const target of targets) {
     const parsed = parseId(target);
     if (parsed?.kind !== "code") continue;
     if (!seen.has(parsed.path)) seen.set(parsed.path, parsed.sha ?? headSha);
   }
-  const out: Record<string, number> = {};
+  const out = new Set<string>();
   for (const [filePath, rev] of seen) {
     if (!filePath || filePath.includes("\0") || filePath.startsWith("/") || filePath.split(/[\\/]/).includes("..")) continue;
     const slice = await readCodeSlice(commands, cwd, rev, filePath, 1, 1);
-    if ("totalLines" in slice && slice.totalLines !== undefined) out[filePath] = slice.totalLines;
+    if ("totalLines" in slice && slice.totalLines !== undefined) out.add(filePath);
   }
   return out;
 }

@@ -58,7 +58,7 @@ import { stripEchoFromCards } from "./titles.js";
 import { extractD2Links, canonicalizeD2Source, diagramHash, D2_MIN_VERSION } from "./d2.js";
 import MarkdownIt from "markdown-it";
 
-const CITATION_KINDS = new Set(["diff", "code", "desc", "h"]);
+const CITATION_KINDS = new Set(["diff", "code", "desc", "h", "doc"]);
 
 function escapeHtml(s: string): string {
   return s

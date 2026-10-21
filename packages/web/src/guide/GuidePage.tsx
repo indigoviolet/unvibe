@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { isDocumentReview } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
@@ -20,6 +21,7 @@ import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
 import { ingestStepLabel, stageLabel } from "./stageLabels.js";
+import { DocumentView } from "./DocumentView.js";
 import { PageView } from "./PageView.js";
 import { Button } from "../ui/index.js";
 import "./guide-m2.css";
@@ -75,10 +77,16 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // page never scrolls on its own while the user reads (no scroll on
   // patches — only here, on navigation).
   const scrollPos = useRef(new Map<string, number>());
+  // The page being rendered now. Leaving a page swaps its content before the
+  // old listener is removed, and the browser's clamp to the new content can
+  // fire one last scroll event; it must not overwrite the old page's position.
+  const currentPageKey = useRef(pageKey);
+  currentPageKey.current = pageKey;
   useEffect(() => {
     const el = document.getElementById("page");
     if (!el) return;
     const onScroll = (): void => {
+      if (currentPageKey.current !== pageKey) return;
       scrollPos.current.set(pageKey, el.scrollTop);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -193,6 +201,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     const error = snapshot.ingest?.error ?? "No changes to review: the diff is empty.";
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return <EmptyOpen reviewId={reviewId} prLabel={pr} error={error} />;
+  }
+
+  // Issue #222: a document review's left pane is the document itself.
+  if (isDocumentReview(snapshot)) {
+    return <DocumentView reviewId={reviewId} onOpenPage={onOpenPage} />;
   }
 
   // #179: a version whose diff is empty (e.g. a refresh emptied it) says

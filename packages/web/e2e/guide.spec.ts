@@ -141,7 +141,7 @@ test("root page renders cards, contents and generated go-deeper cards", async ({
   await gotoReview(page);
   await expect(page.locator("#page h1.title")).toBeVisible();
   await expect(page.locator("#C-problem h2")).toContainText("The problem");
-  await expect(page.locator("#C-central h2")).toContainText("The central change");
+  await expect(page.locator("#C-central h2")).toContainText("The central idea");
   await expect(page.locator('nav.toc [data-tocard="problem"]')).toBeVisible();
   // The fixture's go-deeper cards are already generated (no pendings).
   await expect(page.locator("#C-g-flow")).toContainText("getresponse");

@@ -147,6 +147,14 @@ export interface RemapInput {
   newContents: Map<string, string[]> | Record<string, string[]>;
   /** Version number to stamp on moved anchors. */
   newVersion: number;
+  /**
+   * #81: new file lines for `code:` anchors, keyed by repo-relative path
+   * (the anchor's own path, rename-resolved by the caller). Absent key =
+   * no content to decide by.
+   */
+  codeContents?: Map<string, string[] | null>;
+  /** #81: head SHA `code:` anchors move to when re-found. */
+  newHeadSha?: string;
 }
 
 function getLines(input: RemapInput, fileKey: string): string[] | undefined {
@@ -168,6 +176,37 @@ export interface RemapOutcome {
  * returned as moved unchanged.
  */
 export function remapAnchor(anchor: Anchor, input: RemapInput): RemapOutcome {
+  if (anchor.host.kind === "code") {
+    // #81 (PRD §8): find the quoted text again in the file at the new
+    // commit; move the anchor when found, mark it outdated with the
+    // original snippet when not — the same rule as diff code.
+    const host = anchor.host;
+    const lines = input.codeContents?.get(host.path);
+    if (!lines) {
+      return { remap: { status: "outdated", reason: "file removed" } };
+    }
+    const hit = searchQuote(anchor.quotedText, anchor.prefix, anchor.suffix, lines, host.line);
+    if (!hit) {
+      return { remap: { status: "outdated", reason: "quote not found" } };
+    }
+    const quoteLines = Math.max(1, anchor.quotedText.split("\n").length);
+    const newAnchor: Anchor = {
+      ...anchor,
+      host: {
+        kind: "code",
+        path: host.path,
+        commit: input.newHeadSha ?? host.commit,
+        line: hit.startLine,
+        ...(host.endLine !== undefined ? { endLine: hit.startLine + quoteLines - 1 } : {}),
+      },
+      position: hit.startLine,
+      version: input.newVersion,
+    };
+    return {
+      remap: { status: "moved", newLine: hit.startLine, lineShift: hit.startLine - host.line },
+      newAnchor,
+    };
+  }
   if (anchor.host.kind !== "diff-line") {
     return { remap: { status: "moved", newLine: anchor.position, lineShift: 0 } };
   }
