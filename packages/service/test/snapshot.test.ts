@@ -18,28 +18,19 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    // 51 base recordings + 3 second-opinion recordings (blind ×2, check ×1)
-    // + 1 expansion-depth recording (audit #10 principle E2E).
-    expect(counts).toHaveLength(56);
+    // 49 base recordings (one combined critic recording, #215; no
+    // concept-stubs recording, #216) + 3 second-opinion recordings
+    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10).
+    expect(counts).toHaveLength(54);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
       ["test-with_dummyserver-test_socketlevel.py", 2],
       ["changelog-1362.bugfix.rst", 1],
     ]);
+    // #216: no concept pages are seeded; they are written on open.
     expect(snapshot.pages.map((p) => p.id).sort()).toEqual(
-      [
-        "root",
-        "c-obs-fold",
-        "c-http-headers",
-        "c-header-injection",
-        "c-regex-performance",
-        "c-ows-rws",
-        "c-set-cookie",
-        "c-requests-cookies",
-        "f-lf",
-        "f-perf",
-      ].sort(),
+      ["root", "f-lf", "f-perf"].sort(),
     );
     const root = snapshot.pages.find((p) => p.id === "root")!;
     expect(root.cards.map((c) => c.id)).toEqual([
@@ -119,8 +110,8 @@ describe("snapshot build", () => {
         templates: { name: string }[];
         expanded: { name: string; expanded: string }[];
       };
-      expect(body.templates).toHaveLength(18);
-      expect(body.expanded).toHaveLength(18);
+      expect(body.templates).toHaveLength(17);
+      expect(body.expanded).toHaveLength(17);
       const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
       expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
       const reader = body.expanded.find((e) => e.name === "reader")!;

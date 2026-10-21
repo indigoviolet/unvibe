@@ -37,6 +37,18 @@ export interface ReplyData {
     summary?: string;
     suggestedComment?: { text?: string; diff?: string };
   };
+  /**
+   * One critic reply carrying its findings (#215, usually one to three): each entry's
+   * Evidence/Assessment cards in the Markdown, in the same order.
+   */
+  findings?: {
+    id?: string;
+    title?: string;
+    confidence?: FindingConfidence | string;
+    summary?: string;
+    suggestedComment?: { text?: string; diff?: string };
+    cardIds?: string[];
+  }[];
   /** Automatic contribution items (PRD §9.5). At most 1–3 items. */
   contribute?: {
     facts?: { text?: string; citations?: string[] }[];
@@ -49,8 +61,6 @@ export interface ReplyData {
   depth?: { level?: string; cardId?: string };
   /** Follow-up suggestions (also writable inline; JSON wins on conflict). */
   followUps?: { label?: string; ask?: string }[];
-  /** Hidden concept pass entries (reader replies). */
-  concepts?: { slug?: string; title?: string; summary?: string }[];
   /** Hunk-pass result for one hunk (issue #169 adds the score level). */
   hunk?: { summary?: string; hiddenReason?: string | null; score?: string };
   /** Reader plotlines (issue #169): named threads with hunk IDs each. */

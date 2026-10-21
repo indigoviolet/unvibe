@@ -204,7 +204,7 @@ test("3. follow-up answers and disappears; concept links open their pages", asyn
   // covered against the real service, where unwritten slugs occur).
   await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
   await expect(page).toHaveURL(/page\/c-obs-fold/, { timeout: 5000 });
-  await expect(page.locator("#page h1.title")).toContainText("Obsolete", { timeout: 5000 });
+  await expect(page.locator("#page h1.title")).toContainText("Obsolete", { timeout: 15_000 });
 });
 
 test("4. corrections show with accept/dismiss; shared-context indicator links to debug", async ({

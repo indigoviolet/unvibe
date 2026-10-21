@@ -567,7 +567,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     push(name, [...baseSpans(true), l3span(true), { layer: "L4", label: name, text: render(name, l4values), cached: false }]);
 
   forked("critic", {});
-  forked("concept_stub", { concept: conceptText, mentions: PH.mentions });
   forked("concept_page", { concept: conceptText, mentions: PH.mentions });
   forked("ask", {
     anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },

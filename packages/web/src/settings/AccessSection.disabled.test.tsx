@@ -31,7 +31,8 @@ function settingsWith(fullAccess: boolean): Settings {
     uiTheme: "default",
   versionPickerEnabled: false,
     fullAccess,
-    fullAccessAcknowledgedAt: fullAccess ? 123 : null,
+    autoGoDeeper: true,
+  fullAccessAcknowledgedAt: fullAccess ? 123 : null,
   };
 }
 

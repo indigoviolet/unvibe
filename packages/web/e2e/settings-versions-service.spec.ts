@@ -158,8 +158,11 @@ test.describe("settings + versions on the real service", () => {
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Prompts" }).click();
-    // All 18 PRD §13 templates (17 + plotline_assign, #169), from the real prompts dir.
-    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
+    // All 17 PRD §13 templates (16 + plotline_assign, #169; concept_stub
+    // was removed with the stub job, #216), from the real prompts dir.
+    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(17);
+    await expect(page.locator('[data-testid="prompt-concept_stub"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="prompt-concept_page"]')).toHaveCount(1);
     const reader = page.locator('[data-testid="prompt-reader"]');
     await reader.getByRole("button", { name: "Expand reader" }).click();
     await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");

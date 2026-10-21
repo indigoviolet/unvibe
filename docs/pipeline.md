@@ -61,9 +61,11 @@ GET /api/repos/demo/changes        → [{ kind: "demo", title: "Demo: urllib3#50
 POST /api/reviews { repoId: "demo" } → 201 + pipeline starts
 ```
 
-In demo, the pipeline also auto-fills go-deeper placeholders and concept
-stubs to full pages (background jobs, same `runInFork` path) so the demo
-snapshot ends up complete without clicks.
+With `autoGoDeeper` on (the default, #217), the pipeline fills every
+go-deeper placeholder in the background once the guide lands (background
+jobs, same fill path; demo included). With it off, a placeholder is
+written only on Generate. Concept pages are written only when a reader
+opens a concept link (#216).
 
 ## Stages (all jobs on the queue)
 
@@ -71,8 +73,8 @@ snapshot ends up complete without clicks.
    `instructions`, MCP role `reader` with `pin_context`). Prompt from
    `reader` template with L1 (`source` + `diff_inline`). Finished cards
    stream via `parseCardsPartial` → `ReviewStore.mutate` (problem, central,
-   Go deeper placeholders from `pendingCards`, hidden concept candidates
-   from `concepts`): a card appears once the next `## ` heading closes it
+   Go deeper placeholders from `pendingCards`): a card appears once the
+   next `## ` heading closes it
    (or all cards once the trailing JSON block lands) — nothing renders
    card content while it is being written. `text` events stream while a
    card is in flight; pins arrive via MCP `onPin` and land in
@@ -82,12 +84,14 @@ snapshot ends up complete without clicks.
    `guideRevision` covers the guide content plus the current description
    HTML (pending edit included — #110), so a description edit keys a new
    base; the L1 source lists description paragraphs with their `desc:` IDs.
-3. **Parallel forks** (`fanOut`): **critic** ×2 (findings as separate pages
-   with Evidence/Assessment/confidence + drafted suggested comment as a
-   thread on a diff line via `comments/threads.ts`, `suggested: true`,
+3. **Parallel forks** (`fanOut`): **critic** ×1 (#215: one job whose reply
+   carries one to three findings as separate pages with
+   Evidence/Assessment/confidence + drafted suggested comment as a thread
+   on a diff line via `comments/threads.ts`, `suggested: true`,
    `post: false`; finding-link block in the guide plus a `comment-link`
-   block on the finding page tying it to the thread) and **concept stubs**
-   ×1 (hidden candidates; full pages via `ensureConceptPage`).
+   block on the finding page tying it to the thread). Concept pages are
+   written on demand only, when a reader opens a `[[concept:…]]` link
+   (`ensureConceptPage`, #216) — no stub job, no hidden pages.
 
 Stored citation targets are canonical (real file keys): alias-form tokens
 (`diff:conn:…`) resolve through the lookup at parse/validate time, so the
@@ -140,7 +144,7 @@ const small = await pipeline.runSmall({
   priority: JOB_PRIORITY.background,
 });
 
-// Full concept page on demand (stub → full)
+// Full concept page on demand (written when the link is opened)
 await pipeline.ensureConceptPage(reviewId, "obs-fold");
 
 // One-hunk summarize on demand (user priority)

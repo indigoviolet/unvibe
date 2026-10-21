@@ -164,11 +164,6 @@ Write the cards in this order, walking the plotlines you settled:
    only the title and the why-line; the content is generated later on
    demand.
 
-Then a **hidden concept pass**: for each domain concept the guide will need
-(a protocol rule, a data structure, a failure mode), emit one line with a
-`concept:` slug, a title, one line of meaning, and where it is mentioned.
-These stay hidden until first opened.
-
 ## Output shape
 
 Stream one `## Title` card at a time, in the order above: the problem
@@ -176,18 +171,16 @@ card, the central-idea card(s), "How it's built up", then "Decisions
 and questions", then "Names" (only when it applies), then stop. Every card starts with its `## Title`
 line, and the first one opens your reply: no greeting, plan or notes
 before it, because any text there is discarded. The Go deeper directions
-and the hidden concept pass travel in the trailing `json` block, not as
-cards:
+travel in the trailing `json` block, not as cards:
 
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
- "concepts": [{"slug": "obs-fold", "title": "...", "summary": "..."}],
  "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}]}
 ```
 
-Concept slugs are short kebab-case (`obs-fold`). Linking an unknown slug
-later creates its hidden candidate page, so name a concept only when it
-genuinely needs its own page.
+Concept slugs are short kebab-case (`obs-fold`). Link a concept with
+`[[concept:<slug>|label]]` only when it genuinely needs its own page;
+the page is written when the reader opens the link.
 
 ## Rules
 

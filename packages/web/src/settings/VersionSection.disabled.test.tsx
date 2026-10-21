@@ -31,6 +31,7 @@ const SETTINGS: Settings = {
   uiTheme: "default",
   versionPickerEnabled: true,
   fullAccess: false,
+  autoGoDeeper: true,
   fullAccessAcknowledgedAt: null,
 };
 

@@ -8,8 +8,8 @@
  *   an older version);
  * - `unverified` — with a `reason` for the job's debug data.
  *
- * Unknown `concept:` slugs are `valid` with `candidate: true`: they become
- * hidden concept candidates. When several citations in one reply fail,
+ * Unknown `concept:` slugs are `valid` with `candidate: true`: the concept
+ * page is written when the reader opens the link. When several citations in one reply fail,
  * `needsRepairTurn` is set so the caller can send one repair turn.
  */
 import { parseId } from "@unvibe/shared";
@@ -26,7 +26,7 @@ export interface TokenReport {
   repairedTo?: string;
   /** Repair explanation or unverified cause (job debug data). */
   reason?: string;
-  /** Unknown concept slug → hidden concept candidate. */
+  /** Unknown concept slug → page written on open. */
   candidate?: boolean;
 }
 
@@ -39,7 +39,7 @@ export interface AnchorCheck {
 
 export interface ValidationReport {
   tokens: TokenReport[];
-  /** Unknown concept slugs encountered (hidden candidates). */
+  /** Unknown concept slugs encountered (pages not yet written). */
   candidates: string[];
   unverified: number;
   repaired: number;
@@ -191,7 +191,7 @@ function validateConcept(target: string, lookup: ReviewLookup): TokenReport {
     target,
     status: "valid",
     candidate: true,
-    reason: `unknown slug becomes a hidden concept candidate: ${parsed.slug}`,
+    reason: `unknown slug: concept page written when opened: ${parsed.slug}`,
   };
 }
 

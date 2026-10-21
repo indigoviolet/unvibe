@@ -1,5 +1,5 @@
 /**
- * M3 pipeline (PRD §11): reader → base → critic/concepts → hunk pass.
+ * M3 pipeline (PRD §11): reader → base → critic → hunk pass.
  *
  * Every agent call is a job on the queue (kind, model, priority, prompt
  * snapshot, usage with cached tokens, cardId/progress). Streaming reader
@@ -50,7 +50,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
+import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -880,7 +880,6 @@ export class Pipeline {
     this.setStage(reviewId, "reader", "pending");
     this.setStage(reviewId, "base", "pending");
     this.setStage(reviewId, "critic", "pending");
-    this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
     await this.enqueueReader(reviewId);
     // #123: the hunk pass needs only the diff, so it starts at ingest
@@ -911,16 +910,15 @@ export class Pipeline {
       if (stages.base !== "done") jobIds.push(...(await this.enqueueAfterReader(reviewId)).map((j) => j.id));
       else {
         if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
-        if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
         // Issue #169: the plotline assign step is not a stage; resume it
         // like the demo fill below (no-op unless the reader named
         // plotlines on a degraded rung with hunks still unassigned).
+        // Auto go-deeper (#217) is part of enqueueAfterReader, not a stage:
+        // a restart after the base finished would otherwise leave pending
+        // placeholders unfilled when the setting is on. No-op otherwise.
+        jobIds.push(...(await this.enqueueAutoGoDeeper(reviewId)).map((j) => j.id));
         jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
-        // Demo auto-fill is part of enqueueAfterReader, not a stage: a
-        // restart after the base finished would otherwise leave pending
-        // placeholders unfilled. No-op when nothing is pending.
-        jobIds.push(...(await this.enqueueDemoFill(reviewId)).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -1722,8 +1720,20 @@ export class Pipeline {
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
-            // Issue #50: reader cards match their own `##` titles.
-            const { cards, data, validation } = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            // Issue #213: a malformed / non-object trailing data block never
+            // discards the guide. Keep the cards parsed from the body and
+            // run one data-block repair turn below (same session).
+            let brokenDataError: string | undefined;
+            let firstParsed: Awaited<ReturnType<typeof this.parseAndValidateWithCode>>;
+            try {
+              firstParsed = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            } catch (err) {
+              const msg = (err as Error).message;
+              if (!msg.includes("was not in the expected format (malformed") && !msg.includes("was not in the expected format (not-object")) throw err;
+              brokenDataError = msg;
+              firstParsed = await this.parseAndValidateWithCode(reviewId, splitReply(buffer).body, []);
+            }
+            const { cards, data, validation } = firstParsed;
             let finalCards = cards;
             let finalData = data;
             let finalValidation = validation;
@@ -1742,7 +1752,33 @@ export class Pipeline {
             if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
             if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
-            if (validation.needsRepairTurn && degradedReason === undefined) {
+            if (brokenDataError !== undefined) {
+              // #213: one repair turn, same session, just the data block.
+              const repairPrompt =
+                `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
+                `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
+                `(cardIds, pendingCards, plotlines and any contribute block), with no cards and no prose.`;
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
+              );
+              usage.inputTokens += repair.usage.inputTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.outputTokens += repair.usage.outputTokens;
+              ctx.reportUsage(repair.usage);
+              await this.recordUsage(reviewId, repair.usage);
+              const repaired = splitReply(repair.text);
+              if (repaired.ok) {
+                finalData = repaired.data as ReplyData;
+              } else {
+                degradedReason =
+                  "The reader's trailing data block did not parse and the repair reply did not parse either, so the guide has no plotlines or go-deeper directions.";
+              }
+            } else if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
@@ -1983,28 +2019,6 @@ export class Pipeline {
           pending: { label: p.label, why: p.why },
         });
       }
-      for (const c of applied.concepts) {
-        if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-        draft.pages.push({
-          id: `c-${c.slug}`,
-          kind: "concept",
-          title: c.title,
-          saved: true,
-          parent: "root",
-          cards: [
-            {
-              id: `cc-${c.slug}`,
-              pageId: `c-${c.slug}`,
-              title: null,
-              level: "standard",
-              collapsed: false,
-              revision: 1,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary }, citations: [] }],
-              undoStack: [],
-            },
-          ],
-        });
-      }
       // Issue #169: store the validated plotlines; per-hunk assignment
       // rides `HunkState.plotline` (content-hash keyed, like summaries).
       draft.plotlines = plotlines.plotlines;
@@ -2036,7 +2050,6 @@ export class Pipeline {
     const out: Job[] = [];
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
-    out.push(...(await this.enqueueConcepts(reviewId)));
     // #123: the hunk pass starts in startReview now (at ingest), not here.
     // Hunks hidden before the guide existed are unhidden when cited.
     await this.unhideCitedHunks(reviewId);
@@ -2049,13 +2062,15 @@ export class Pipeline {
     if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
       out.push(...(await this.enqueueHunkPass(reviewId)));
     }
+    // #217 owner order: auto go-deeper runs after the hunk summaries
+    // (enqueued at start) and the critic, before any other background
+    // job. The queue is FIFO within the background band, so enqueue
+    // order is the run order: critic, go-deeper, then plotline assign.
+    out.push(...(await this.enqueueAutoGoDeeper(reviewId)));
     // Issue #169: on degraded reader rungs the follow-up assign step
     // places the hunks the reader never saw; otherwise left-outs stay
     // "other".
     out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
-    if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-      out.push(...(await this.enqueueDemoFill(reviewId)));
-    }
     return out;
   }
 
@@ -2066,41 +2081,38 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
-    // Replay keys select the f-lf/f-perf recordings; live runs get neutral
-    // ids (page titles carry the meaning; ids are opaque).
+    // #215: one critic job per review; its reply carries its findings (usually 1-3, all kept).
     const replay = isReplayRunner(this.opts.runner);
-    const keys = replay ? ["f-lf", "f-perf"] : ["f-critic-0", "f-critic-1"];
-    return keys.map((key) => {
-      const prompt = replay ? withReplayMark(basePrompt, { kind: "critic", key }) : basePrompt;
-      return this.opts.jobs.enqueue({
-        reviewId,
-        kind: "critic",
-        ...roleFields(settings.main),
-        priority: JOB_PRIORITY.background,
-        dedupe: { anchor: `finding:${key}`, requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
-        run: async (ctx) => {
-          ctx.setPromptSnapshot(prompt);
-          const base = await this.ensureBase(reviewId);
-          void base;
-          const forked = await this.forkFor(reviewId);
-          ctx.setSessionId(forked.session.id);
-          try {
-            const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-              ctx.reportText(d),
-              (name, detail, extra) => ctx.reportTool(name, detail, extra),
-            turnHooks(ctx));
-            ctx.reportUsage(usage);
-            await this.recordUsage(reviewId, usage);
-            // Issue #50: finding cards match their own `##` titles.
-            const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
-            const applied = criticApply(
-              cards.map((c) => ({ title: c.title, blocks: c.blocks })),
-              (data ?? null) as Record<string, unknown> | null,
-              key,
-            );
-            const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
-            await this.opts.reviews.mutate(reviewId, (draft) => {
-              if (draft.pages.some((p) => p.id === applied.pageId)) return;
+    const prompt = replay ? withReplayMark(basePrompt, { kind: "critic" }) : basePrompt;
+    const job = this.opts.jobs.enqueue({
+      reviewId,
+      kind: "critic",
+      ...roleFields(settings.main),
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: "finding:critic", requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const base = await this.ensureBase(reviewId);
+        void base;
+        const forked = await this.forkFor(reviewId);
+        ctx.setSessionId(forked.session.id);
+        try {
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
+          const appliedList = criticApplyAll(
+            cards.map((c) => ({ title: c.title, blocks: c.blocks })),
+            (data ?? null) as Record<string, unknown> | null,
+            "f-critic",
+          );
+          await this.opts.reviews.mutate(reviewId, (draft) => {
+            for (const applied of appliedList) {
+              if (draft.pages.some((p) => p.id === applied.pageId)) continue;
+              const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
               draft.pages.push({
                 id: applied.pageId,
                 kind: "finding",
@@ -2121,8 +2133,6 @@ export class Pipeline {
                 })),
               });
               if (applied.suggestedComment) {
-                // Suggested comments go through comments/threads.ts (M6):
-                // buildAnchor derives prefix/suffix/position from the diff.
                 const parsed = parseId(applied.suggestedComment.diff);
                 if (parsed?.kind === "diff") {
                   const before = this.opts.reviews.getSnapshot(reviewId);
@@ -2150,9 +2160,6 @@ export class Pipeline {
                         suggestionText: applied.suggestedComment.text,
                       },
                     );
-                    // Tie the thread back to the finding (PRD §4.9): a
-                    // comment-link block on the Assessment (last) card.
-                    // Hover previews the thread, click jumps to the diff.
                     const page = draft.pages.find((p) => p.id === applied.pageId);
                     const last = page?.cards[page.cards.length - 1];
                     if (last) {
@@ -2179,95 +2186,15 @@ export class Pipeline {
                 payload: { summary: `${applied.title}\n\n${applied.summary}`, unverified: validation.unverified },
                 scope: { scope: "global" },
               });
-            });
-            await this.updateRestatedMapping(reviewId);
-            // #122: the finding is applied above; bookkeeping joins the chain.
-            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
-            // #122: findings changed the guide — rebuild the base ahead.
-            this.warmBase(reviewId);
-            this.maybeMarkStageDone(reviewId, "critic", 2);
-          } catch (err) {
-            await this.reportPartialUsage(ctx, reviewId, err);
-            this.setStage(reviewId, "critic", "error", (err as Error).message);
-            throw err;
-          }
-        },
-      });
-    });
-  }
-
-  private async enqueueConcepts(reviewId: string): Promise<Job[]> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return [];
-    this.setStage(reviewId, "concepts", "running");
-    const settings = await this.effectiveSettings();
-    const promptBase = `Write concept stubs for this review. For each hidden concept candidate the reader named, emit one line with its concept: slug, title, one line of meaning, and where mentioned. End with a trailing JSON block carrying the concepts array (slug, title, summary).`;
-    const prompt = isReplayRunner(this.opts.runner) ? withReplayMark(promptBase, { kind: "concept-stubs" }) : promptBase;
-    const job = this.opts.jobs.enqueue({
-      reviewId,
-      kind: "concept",
-      ...roleFields(settings.main),
-      priority: JOB_PRIORITY.background,
-      dedupe: { anchor: "concepts", requestKind: "concept-stubs", baseVersion: `v${snapshot.version.n}` },
-      run: async (ctx) => {
-        ctx.setPromptSnapshot(prompt);
-        const base = await this.ensureBase(reviewId);
-        void base;
-        const forked = await this.forkFor(reviewId);
-        ctx.setSessionId(forked.session.id);
-        try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail, extra) => ctx.reportTool(name, detail, extra),
-          turnHooks(ctx));
-          ctx.reportUsage(usage);
-          await this.recordUsage(reviewId, usage);
-          const { data } = this.parseAndValidate(reviewId, text);
-          const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).filter(
-            (c) => c.slug,
-          );
-          await this.opts.reviews.mutate(reviewId, (draft) => {
-            for (const c of concepts) {
-              if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-              draft.pages.push({
-                id: `c-${c.slug}`,
-                kind: "concept",
-                title: c.title ?? c.slug!,
-                saved: true,
-                parent: "root",
-                cards: [
-                  {
-                    id: `cc-${c.slug}`,
-                    pageId: `c-${c.slug}`,
-                    title: null,
-                    level: "standard",
-                    collapsed: false,
-                    revision: 1,
-                    blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary ?? "" }, citations: [] }],
-                    undoStack: [],
-                  },
-                ],
-              });
             }
           });
-          this.setStage(reviewId, "concepts", "done");
-          // Demo auto-fill: expand every stub to its full page (same path as
-          // on-demand `ensureConceptPage`, background priority).
-          if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-            for (const c of concepts) {
-              if (!c.slug) continue;
-              try {
-                await this.ensureConceptPageInner(reviewId, c.slug);
-              } catch {
-                // best-effort; resume will retry
-              }
-            }
-          }
-          // #122: stubs changed the guide — rebuild the base ahead.
+          await this.updateRestatedMapping(reviewId);
+          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
           this.warmBase(reviewId);
+          this.maybeMarkStageDone(reviewId, "critic", 1);
         } catch (err) {
           await this.reportPartialUsage(ctx, reviewId, err);
-          this.setStage(reviewId, "concepts", "error", (err as Error).message);
+          this.setStage(reviewId, "critic", "error", (err as Error).message);
           throw err;
         }
       },
@@ -2544,31 +2471,26 @@ export class Pipeline {
     return [job];
   }
 
-  private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
+  private async enqueueAutoGoDeeper(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
-    const out: Job[] = [];
     const effective = await this.effectiveSettings();
+    if (!effective.autoGoDeeper) return [];
     const root = snapshot.pages.find((p) => p.id === "root");
-    // Pending cards may not exist yet (reader still running when this is
-    // called from enqueueAfterReader). Demo fill runs AFTER reader, so root
-    // should have placeholders; if not, skip (resume will pick them up).
     const pending = root?.cards.filter((c) => c.pending) ?? [];
-    for (const card of pending) {
-      out.push(
-        this.opts.jobs.enqueue({
-          reviewId,
-          kind: "go-deeper",
-          ...roleFields(effective.main),
-          priority: JOB_PRIORITY.background,
-          dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
-          run: async (ctx) => {
-            await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
-          },
-        }),
-      );
-    }
-    return out;
+    return pending.map((card) =>
+      this.opts.jobs.enqueue({
+        reviewId,
+        kind: "go-deeper",
+        ...roleFields(effective.main),
+        priority: JOB_PRIORITY.background,
+        dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
+        cardId: card.id,
+        run: async (ctx) => {
+          await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
+        },
+      }),
+    );
   }
 
   async fillGoDeeper(
@@ -2647,7 +2569,7 @@ export class Pipeline {
       if (r && !r.cards.some((x) => x.pending)) {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
@@ -2658,62 +2580,6 @@ export class Pipeline {
     await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
     this.warmBase(reviewId);
-  }
-
-  private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return;
-    const existing = snapshot.pages.find((p) => p.id === `c-${slug}`);
-    const prompt = withReplayMark(
-      this.render("concept_page", { concept: `${slug} — ${existing?.title ?? slug}`, mentions: this.mentionsOf(snapshot, slug) }),
-      isReplayRunner(this.opts.runner) ? { kind: "concept-page", key: slug } : undefined,
-    );
-    const base = await this.ensureBase(reviewId);
-    void base;
-    const forked = await this.forkFor(reviewId);
-    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, undefined, () => {});
-    await this.recordUsage(reviewId, usage);
-    // Issue #50: match the page title (an echo of the concept name).
-    const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
-      ...(existing?.title ? [existing.title] : []),
-      slug,
-    ]);
-    const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
-    const blocks = this.withValidation(
-      reviewId,
-      cards.flatMap((c) => c.blocks),
-      validation,
-    );
-    // Inline diagrams go through finalize + one repair turn on the fill's
-    // own session (#130), so stored blocks carry a real status.
-    const stored = await this.finalizeInlineBlocks(
-      reviewId,
-      forked.session,
-      undefined,
-      `Concept page: ${slug}`,
-      "standard",
-      blocks,
-    );
-    await this.opts.reviews.mutate(reviewId, (draft) => {
-      let page = draft.pages.find((p) => p.id === `c-${slug}`);
-      if (!page) {
-        page = { id: `c-${slug}`, kind: "concept", title, saved: true, parent: "root", cards: [] };
-        draft.pages.push(page);
-      }
-      page.title = title;
-      page.cards = [
-        {
-          id: `cc-${slug}`,
-          pageId: `c-${slug}`,
-          title: null,
-          level: "standard",
-          collapsed: false,
-          revision: (page.cards[0]?.revision ?? 0) + 1,
-          blocks: stored,
-          undoStack: [],
-        },
-      ];
-    });
   }
 
   // -- helpers --------------------------------------------------------
@@ -2982,7 +2848,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
       })
@@ -2996,7 +2862,6 @@ export class Pipeline {
       reader: stages.reader ?? "pending",
       base: stages.base ?? "pending",
       critic: stages.critic ?? "pending",
-      concepts: stages.concepts ?? "pending",
       "hunk-pass": stages["hunk-pass"] ?? "pending",
       "go-deeper": stages["go-deeper"] ?? "pending",
     };
@@ -3007,7 +2872,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)[stage] = state;

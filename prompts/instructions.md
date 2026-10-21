@@ -66,8 +66,8 @@ the reader would expect, rely on, or push back on.
 - An ID you use must come from your context or from an MCP tool result.
   Never guess a line number, hash, or card ID.
 - New `concept:` slugs are the one exception: linking a concept that has no
-  page yet creates a hidden candidate page. Only do this deliberately, when
-  the concept genuinely needs its own page.
+  page yet is fine — its page is written when the reader opens the link.
+  Only do this deliberately, when the concept genuinely needs its own page.
 - Keep ranges tight: cite the lines that show the claim, not the whole file.
 
 ## MCP tools
@@ -187,8 +187,8 @@ words instead. IDs belong only in link tokens and the trailing JSON.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
-  `finding`, `contribute`, `depth`, `hunk`, `plotlines`,
-  `secondOpinion`, `concepts`, `pendingCards`, `anchor`, `degraded`):
+  `finding`, `findings`, `contribute`, `depth`, `hunk`, `plotlines`,
+  `secondOpinion`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
     the reply is weaker for. A usable answer is still shown, with a note
@@ -198,6 +198,9 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   - `finding`: `confidence` (`low`, `medium` or `high`), a one-line
     `summary`, and `suggestedComment` with the draft `text` and its
     `diff:` anchor. The comment is a draft; it is never marked for the PR.
+  - `findings` (critic replies, #215): usually one to three entries in
+    card order, each with `title`, `confidence`, `summary`, `suggestedComment`
+    and `cardIds`; zero entries is a valid silent reply.
   - `secondOpinion`: `verdict` (`agrees`, `partly` or `disagrees`),
     `reasoning`, and `missed` (anything the card missed).
   - `depth`: the `level` written (`simple`, `standard` or `deep`) and the

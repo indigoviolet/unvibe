@@ -89,15 +89,6 @@ Each choice trades a local simplicity for a global property: one normalization p
 
 ```json
 {
-  "concepts": [
-    {"slug": "obs-fold", "title": "Obsolete line folding (obs-fold)", "summary": "Servers must not fold; recipients replace each fold with spaces."},
-    {"slug": "http-headers", "title": "HTTPHeaderDict and HTTPMessage", "summary": "Two copies of the headers; both are normalized."},
-    {"slug": "header-injection", "title": "Header injection through raw line breaks", "summary": "A raw CRLF re-sent downstream can split one header into two."},
-    {"slug": "regex-performance", "title": "Regex backtracking and linear-time patterns", "summary": "The lookbehind keeps the fold pattern linear-time."},
-    {"slug": "ows-rws", "title": "OWS and RWS: whitespace in HTTP", "summary": "A fold is OWS CRLF RWS."},
-    {"slug": "set-cookie", "title": "Why Set-Cookie lines stay separate", "summary": "Cookies contain commas, so lines are never joined."},
-    {"slug": "requests-cookies", "title": "Requests reads the original HTTPMessage", "summary": "Requests builds its cookie jar from http.client's message."}
-  ],
   "pendingCards": [
     {"id": "g-flow", "label": "Data flow: from the socket to HTTPHeaderDict", "why": "Follows a folded header from http.client through the new helpers to both header views, so you can judge where a folded value could still slip through."},
     {"id": "g-design", "label": "Design: why the original HTTPMessage is rewritten too", "why": "Two copies of the headers, who reads which, and how identity and order are kept, so you can judge whether rewriting a message urllib3 does not own is the right call."},

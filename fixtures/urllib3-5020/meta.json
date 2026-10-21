@@ -17,14 +17,12 @@
     "tsock": "test-with_dummyserver-test_socketlevel.py",
     "log": "changelog-1362.bugfix.rst"
   },
-  "descParagraphs": ["d-p1", "d-p2", "d-p3", "d-p4", "d-p5"],
-  "concepts": [
-    "obs-fold",
-    "http-headers",
-    "header-injection",
-    "regex-performance",
-    "ows-rws",
-    "set-cookie",
-    "requests-cookies"
-  ]
+  "descParagraphs": [
+    "d-p1",
+    "d-p2",
+    "d-p3",
+    "d-p4",
+    "d-p5"
+  ],
+  "concepts": []
 }

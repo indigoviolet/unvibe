@@ -43,6 +43,8 @@ export const DEFAULT_SETTINGS: Settings = {
    */
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
+  /** Issue #217: go-deeper cards write themselves after the guide. On by default. */
+  autoGoDeeper: true,
 };
 
 function isModelPick(v: unknown): v is ModelPick {
@@ -99,6 +101,10 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   // service refuses to enable without it (not only the web): enabling
   // requires the acknowledgement timestamp in the SAME update, and turning
   // the setting off clears the stored acknowledgement (see `update`).
+  const autoGoDeeper = patch["autoGoDeeper"];
+  if (autoGoDeeper !== undefined && typeof autoGoDeeper !== "boolean") {
+    errors.push("autoGoDeeper must be a boolean");
+  }
   const fullAccess = patch["fullAccess"];
   if (fullAccess !== undefined && typeof fullAccess !== "boolean") {
     errors.push("fullAccess must be a boolean");

@@ -79,7 +79,7 @@ describe("validateTarget", () => {
     expect(validateTarget("card:central#b9", lookup).status).toBe("unverified");
   });
 
-  it("turns unknown concepts into hidden candidates, not failures", () => {
+  it("turns unknown concepts into open-on-click links, not failures", () => {
     expect(validateTarget("concept:obs-fold", lookup)).toMatchObject({ status: "valid" });
     const r = validateTarget("concept:brand-new", lookup);
     expect(r).toMatchObject({ status: "valid", candidate: true });
@@ -122,7 +122,7 @@ describe("validateReply", () => {
     expect(report.needsRepairTurn).toBe(true);
   });
 
-  it("lists unknown concept slugs as candidates", () => {
+  it("lists unknown concept slugs as not-yet-written pages", () => {
     const blocks = parseBlocks("New [[concept:fresh|Fresh]].\n");
     const report = validateReply(blocks, lookup);
     expect(report.candidates).toEqual(["concept:fresh"]);

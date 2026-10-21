@@ -56,7 +56,6 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
-  { re: /concept[-_ ]stubs?|hidden concept/i, kind: "concept-stubs" },
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },
   { re: /\bhunk\b|summariz/i, kind: "hunk" },
   { re: /go[-_ ]deeper|placeholder card|\bgenerate\b/i, kind: "go-deeper" },
@@ -332,7 +331,8 @@ function extractKey(kind: string, prompt: string): string | null {
       return m ? m[1] : null;
     }
     case "critic":
-      return /perf|linear/.test(lower) ? "f-perf" : /lf|bare/.test(lower) ? "f-lf" : null;
+      // #215: one critic recording carries all findings; no per-finding key.
+      return null;
     case "second-opinion": {
       // Keys are `<card-or-finding-id>:<mode>` (e.g. `f-lf:blind`,
       // `central:check`). Match the most specific one present.

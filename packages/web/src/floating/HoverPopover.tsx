@@ -205,7 +205,7 @@ export function HoverPopover() {
       if (page) {
         content = `${pagePreview(page)}<span class="hint">Click to open</span>`;
       } else {
-        const preview = previewLinkTarget(target, snap.pages);
+        const preview = previewLinkTarget(target, snap.pages, anchor.textContent ?? undefined);
         content = preview ?? "";
       }
     }

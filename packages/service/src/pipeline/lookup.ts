@@ -32,12 +32,10 @@ export function lookupForSnapshot(
       concepts.add(page.id.slice(2));
     }
   }
-  // Reader-declared concepts may not have pages yet; they are still known
-  // so their tokens validate (they become hidden candidates only when
-  // truly unknown). We collect them from the snapshot's concept index via
-  // page titles? For validation, unknown slugs are valid candidates, so
-  // we do NOT need to pre-register them: `conceptKnown` false → candidate.
-  // Keep the set as existing pages only.
+  // Concepts with no page yet are still valid links: their page is
+  // written when the reader opens the link (#216), so we do NOT need to
+  // pre-register them: `conceptKnown` false → candidate.
+  // Keep the set as existing (opened) pages only.
   return createSnapshotLookup(snapshot, {
     descTexts,
     concepts: [...concepts],

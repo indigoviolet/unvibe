@@ -61,10 +61,6 @@ function goldenValues(): Record<string, RenderValues> {
       hunks: "- h:conn:h111 src/conn.py: Adds a fast path that skips values without CRLF.",
       commits: "- `aaa1114` Unfold obsolete folded header values — hunks: h:conn:h111, h:conn:h222",
     },
-    concept_stub: {
-      concept: "obs-fold — Obsolete line folding: a header value continued on the next line.",
-      mentions: "- problem card [[card:c-problem]]\n- diff [[diff:conn:650-651]]",
-    },
     concept_page: {
       concept: "obs-fold — Obsolete line folding: a header value continued on the next line.",
       mentions: "- problem card [[card:c-problem]]\n- diff [[diff:conn:650-651]]",

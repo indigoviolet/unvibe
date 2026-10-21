@@ -35,6 +35,7 @@ export function LimitsSection({
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
 
   const value = (f: Field): string =>
     draft[f.key] ?? String(settings[f.key] as number);
@@ -67,9 +68,40 @@ export function LimitsSection({
     }
   };
 
+  const toggleAutoGoDeeper = async (): Promise<void> => {
+    setToggling(true);
+    setErrors([]);
+    try {
+      const next = await api.saveSettings({ autoGoDeeper: !settings.autoGoDeeper });
+      onSaved(next);
+    } catch (err) {
+      setErrors(putErrors(err));
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
     <section aria-label="Limits">
       <div className="card" style={{ padding: "8px 14px" }}>
+        <div className="setgrid">
+          <label htmlFor="auto-go-deeper-toggle">Write go-deeper cards automatically</label>
+          <div className="fld">
+            <input
+              id="auto-go-deeper-toggle"
+              data-testid="auto-go-deeper-toggle"
+              style={{ alignSelf: "flex-start" }}
+              type="checkbox"
+              checked={settings.autoGoDeeper === true}
+              disabled={toggling}
+              onChange={() => void toggleAutoGoDeeper()}
+            />
+            <span className="hint">
+              When on, each go-deeper card is written in the background once the guide is ready. When off, a card is
+              written only when you click Generate.
+            </span>
+          </div>
+        </div>
         {FIELDS.map((f) => (
           <div className="setgrid" key={f.key}>
             <label htmlFor={`limit-${f.key}`}>{f.label}</label>
