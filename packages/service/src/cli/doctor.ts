@@ -26,7 +26,7 @@ import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { checkLoginUnit } from "../update/service-manager.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assessBinReachability, binReachabilityAdvice } from "./setup/bin-reachability.js";
+import { assessBinReachability, binReachabilityAdvice, canonicalizeRealpath } from "./setup/bin-reachability.js";
 
 export interface DoctorCheck {
   name: string;
@@ -256,6 +256,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     homeDir: os.homedir(),
     interactivePathDirs: diag ? diag.path.effectivePath.split(":").filter(Boolean) : (process.env.PATH ?? "").split(":").filter(Boolean),
     exists: (p) => fs.existsSync(p),
+    canonicalize: canonicalizeRealpath,
   });
   if (reach.installedLayout) {
     checks.push({

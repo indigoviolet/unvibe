@@ -1438,8 +1438,9 @@ needed (that deviation is closed, not added).
 - Install `npm install -g github:<org>/unvibe#release` (one step since
   issue #42: the release package declares no lifecycle scripts — a
   script made npm dangle the git-installed bin on the owner's Mac —
-  and the first `unvibe start` runs setup: token, handler, login unit,
-  once per version; `unvibe setup` stays the manual/repair path) +
+  and `unvibe setup` is the one manual step after install — token,
+  handler, login unit (issue #220: no automatic setup on first start
+  or after update/switch; starting without setup prints the hint)) +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
   scripts, no devDependencies), installed with **no flags** on npm 11 and

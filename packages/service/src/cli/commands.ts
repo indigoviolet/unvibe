@@ -18,8 +18,7 @@ import { loadOrCreateToken } from "../auth.js";
 import { loadConfig } from "../config.js";
 import { isHealthOk, readLock, removeLock, removeOwnLock, waitForHealth, isPidAlive } from "./lock.js";
 import { cliEnsureRunning, cliStart, cliStatus, cliStop, spawnDetachedService, type CliDeps } from "./managed-cli.js";
-import { installSetup, realSetupRunner, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
-import { ensureSetupForVersion, writeSetupVersion } from "./setup/ensure.js";
+import { installSetup, isSetupInstalled, realSetupRunner, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
 import { currentUid } from "../update/service-manager.js";
 import { bookmarkUrl, serviceUrl } from "./urls.js";
 
@@ -92,37 +91,25 @@ function cliDeps(withToken: boolean): CliDeps {
 }
 
 /**
- * First-run setup (issue #42): the release package declares no install
- * scripts, so setup runs here — when it has not been done for this
- * version, run it now, quietly, and never blocking the start. The
- * foreground child skips this: it IS the service (often started by the
- * login unit setup just installed), and setup's login enable would
- * start a second generation.
+ * Setup is one manual step after install (issue #220): `start` never
+ * runs it. When the handler/login unit are not in place it prints one
+ * hint line; the service still starts either way.
  */
-async function ensureStartSetup(): Promise<void> {
+function printSetupHintIfMissing(): void {
   try {
-    const config = loadConfig();
-    const { SERVICE_VERSION } = await import("../server.js");
-    await ensureSetupForVersion({
-      version: SERVICE_VERSION,
-      dataDir: config.dataDir,
-      port: config.port,
-      homeDir: os.homedir() || null,
-      platform: process.platform,
-      paths: resolveSetupPaths(),
-      runner: realSetupRunner(),
-      ensureToken: (dataDir) => void loadOrCreateToken(dataDir),
-      log: (line) => console.log(line),
-    });
+    const home = os.homedir();
+    if (home && !isSetupInstalled(home, process.platform)) {
+      console.log("run `unvibe setup` to install the link handler and start-at-login service.");
+    }
   } catch {
-    // ensureSetupForVersion never throws; a wedged dynamic import must
-    // not stop `unvibe start` either.
+    // The hint never blocks the start.
   }
 }
 
 async function cmdStart(args: string[]): Promise<number> {
-  if (!args.includes("--foreground")) await ensureStartSetup();
-  return cliStart(cliDeps(true), args);
+  const code = await cliStart(cliDeps(true), args);
+  if (code === 0 && !args.includes("--foreground")) printSetupHintIfMissing();
+  return code;
 }
 
 async function cmdStop(): Promise<number> {
@@ -150,8 +137,6 @@ async function cmdSetup(args: string[]): Promise<number> {
     dataDir: config.dataDir,
     ...(noLogin ? { noLogin: true } : {}),
   });
-  const { SERVICE_VERSION } = await import("../server.js");
-  writeSetupVersion(config.dataDir, SERVICE_VERSION);
   for (const s of steps) console.log(s);
   console.log(`token ready in ${config.dataDir}/token`);
   // The link with the token, printed once (issue #108): opening it stores
@@ -166,7 +151,7 @@ async function cmdSetup(args: string[]): Promise<number> {
   // while a fresh terminal says `unvibe: command not found`. Detection
   // only: print the exact fix, never edit PATH or create symlinks.
   try {
-    const { assessBinReachability, binReachabilityAdvice } = await import("./setup/bin-reachability.js");
+    const { assessBinReachability, binReachabilityAdvice, canonicalizeRealpath } = await import("./setup/bin-reachability.js");
     const { resolveInteractivePath } = await import("../diagnostics/path-probe.js");
     const probed = await resolveInteractivePath();
     const dirs = (probed?.probedPath ?? process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
@@ -175,6 +160,7 @@ async function cmdSetup(args: string[]): Promise<number> {
       homeDir: os.homedir(),
       interactivePathDirs: dirs,
       exists: (p) => fs.existsSync(p),
+      canonicalize: canonicalizeRealpath,
     });
     for (const line of binReachabilityAdvice(reach)) console.log(line);
   } catch {
@@ -184,7 +170,6 @@ async function cmdSetup(args: string[]): Promise<number> {
 }
 
 async function cmdOpen(): Promise<number> {
-  await ensureStartSetup();
   const { port, token } = await cliEnsureRunning(cliDeps(true));
   const url = serviceUrl(port, token);
   await openBrowser(url);

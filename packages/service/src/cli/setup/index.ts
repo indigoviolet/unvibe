@@ -25,6 +25,22 @@ import {
   patchInfoPlist,
 } from "./macos.js";
 import { desktopFileContent, desktopFilePath, DESKTOP_FILENAME, URL_MIME } from "./linux.js";
+import { isLoginManaged } from "../../update/service-manager.js";
+
+/**
+ * Whether `unvibe setup` has placed the link handler and the
+ * start-at-login unit under this home. Pure file checks — no side
+ * effects — so `unvibe start` can print the one-line setup hint
+ * without ever running setup itself (issue #220).
+ */
+export function isSetupInstalled(homeDir: string, platform: SetupPlatform = process.platform): boolean {
+  const handler = platform === "darwin" ? helperAppPath(homeDir) : desktopFilePath(homeDir);
+  try {
+    return fs.existsSync(handler) && isLoginManaged(homeDir, platform);
+  } catch {
+    return false;
+  }
+}
 
 export interface RunResult {
   code: number;

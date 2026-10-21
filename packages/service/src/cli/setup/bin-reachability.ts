@@ -11,7 +11,17 @@
  * setup/doctor print the exact fix, they do not edit PATH or create
  * symlinks on their own — that choice stays with the owner.
  */
+import fs from "node:fs";
 import path from "node:path";
+
+/** `fs.realpathSync` that keeps the input when it cannot resolve. */
+export function canonicalizeRealpath(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
 
 export interface BinReachability {
   /** CLI sits under `<prefix>/lib/node_modules/unvibe/...`. */
@@ -46,19 +56,33 @@ export function assessBinReachability(input: {
   /** Directories on the probed interactive-shell PATH, in order. */
   interactivePathDirs: readonly string[];
   exists: (p: string) => boolean;
+  /**
+   * Canonicalize a path before comparison (e.g. `fs.realpathSync`).
+   * macOS spells the same directory `/var/...` and `/private/var/...`;
+   * comparing raw strings there reports a reachable bin as missing.
+   */
+  canonicalize?: (p: string) => string;
 }): BinReachability {
+  const canon = (p: string): string => {
+    const stripped = p.replace(/\/+$/, "") || p;
+    try {
+      return input.canonicalize ? input.canonicalize(stripped) : stripped;
+    } catch {
+      return stripped;
+    }
+  };
   const shimsDir = path.join(input.homeDir, ".local", "share", "mise", "shims");
   const binDir = prefixBinDirForCli(input.cliPath);
   if (binDir === null) {
     return { installedLayout: false, binDir: "", unvibeBin: "", reachable: true, via: null, shimsDir };
   }
   const unvibeBin = path.join(binDir, "unvibe");
-  const dirs = input.interactivePathDirs.map((d) => d.replace(/\/+$/, "") || d);
-  const normBin = binDir.replace(/\/+$/, "");
+  const dirs = input.interactivePathDirs.map(canon);
+  const normBin = canon(binDir);
   let via: BinReachability["via"] = null;
   if (dirs.includes(normBin)) {
     via = "prefix-bin";
-  } else if (dirs.includes(shimsDir.replace(/\/+$/, "")) && input.exists(path.join(shimsDir, "unvibe"))) {
+  } else if (dirs.includes(canon(shimsDir)) && input.exists(path.join(shimsDir, "unvibe"))) {
     via = "mise-shims";
   } else if (dirs.some((d) => input.exists(path.join(d, "unvibe")))) {
     via = "path";

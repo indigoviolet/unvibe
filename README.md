@@ -16,10 +16,11 @@ Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; loca
 
 ```sh
 npm install -g github:indigoviolet/unvibe#release
-unvibe open
+unvibe setup
+unvibe start
 ```
 
-Setup happens on first start: the first `unvibe start` (or `unvibe open`) creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). It runs once per installed version, quietly, and never blocks the start; `unvibe setup` runs it by hand at any time. (The package deliberately declares no npm install scripts.) `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
+`unvibe setup` is the one manual step after install: it creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). (The package deliberately declares no npm install scripts, and nothing runs setup automatically.) Starting without setup still works — `unvibe start` prints a one-line reminder to run it. `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
 
 ```sh
 http://unvibe.localhost:4517
@@ -36,7 +37,7 @@ node packages/service/dist/index.js setup
 node packages/service/dist/index.js open
 ```
 
-`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. The global install already ran it; run it again any time to repair or move the install (it is idempotent), or after an install with `--ignore-scripts`. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. While the login unit is installed, `stop`/`start` go through the service manager (`status` says `starts at login`); updates refresh the unit with the new paths. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only) — run it before `npm uninstall -g unvibe`, since npm has no uninstall hook and the handler would otherwise be left behind. Details in `docs/unvibe-localhost.md`.
+`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. Run it once after install, and again any time to repair or move the install (it is idempotent), or after an install with `--ignore-scripts`. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. While the login unit is installed, `stop`/`start` go through the service manager (`status` says `starts at login`); updates refresh the unit with the new paths. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only) — run it before `npm uninstall -g unvibe`, since npm has no uninstall hook and the handler would otherwise be left behind. Details in `docs/unvibe-localhost.md`.
 
 Other commands:
 
