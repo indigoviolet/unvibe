@@ -353,6 +353,8 @@ export interface ReviewSummary {
   title: string;
   branch: string;
   prNumber?: number;
+  /** #228: PR author login from the snapshot description; absent on branch reviews. */
+  author?: string;
   createdAt: number;
   /** Epoch ms the review was last opened (snapshot updated_at). */
   lastOpened: number;

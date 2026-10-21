@@ -149,6 +149,9 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     // ingest/refresh time (no gh call here, per this module's contract).
     const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
     const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
+    // #228: PR author for the start-page author filter (no gh call here;
+    // branch reviews carry no author in the snapshot).
+    const summaryAuthor = row.pr_number !== null ? snapshot?.description?.author : undefined;
     const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
     // #92: ingest state rides the summary so Previous reviews marks loading/failed rows.
@@ -171,6 +174,7 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       pendingComments,
       ...(prState !== undefined ? { prState } : {}),
       ...(reviewDecision !== undefined ? { reviewDecision } : {}),
+      ...(typeof summaryAuthor === "string" && summaryAuthor !== "" ? { author: summaryAuthor } : {}),
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
       ingestStatus,
