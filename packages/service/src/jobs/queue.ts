@@ -283,9 +283,12 @@ export class JobQueue {
       ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       seq: this.seq++,
     };
+    // #221: persist before registering in memory. If the store throws,
+    // the error surfaces to the caller and no orphan entry (queued,
+    // 0 attempts, never runnable) is left in entries/dedupe.
+    this.save(entry);
     this.entries.set(job.id, entry);
     if (dedupeKey) this.dedupe.set(dedupeKey, job.id);
-    this.save(entry);
     this.emit(entry);
     this.pump();
     return copy(job);
