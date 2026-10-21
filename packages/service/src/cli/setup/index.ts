@@ -25,6 +25,22 @@ import {
   patchInfoPlist,
 } from "./macos.js";
 import { desktopFileContent, desktopFilePath, DESKTOP_FILENAME, URL_MIME } from "./linux.js";
+import { isLoginManaged } from "../../update/service-manager.js";
+
+/**
+ * Whether `unvibe setup` has placed the link handler and the
+ * start-at-login unit under this home. Pure file checks — no side
+ * effects — so `unvibe start` can print the one-line setup hint
+ * without ever running setup itself (issue #220).
+ */
+export function isSetupInstalled(homeDir: string, platform: SetupPlatform = process.platform): boolean {
+  const handler = platform === "darwin" ? helperAppPath(homeDir) : desktopFilePath(homeDir);
+  try {
+    return fs.existsSync(handler) && isLoginManaged(homeDir, platform);
+  } catch {
+    return false;
+  }
+}
 
 export interface RunResult {
   code: number;
@@ -103,16 +119,6 @@ export interface InstallSetupOpts {
   dataDir?: string;
   /** Skip the start-at-login unit (handler only). */
   noLogin?: boolean;
-  /**
-   * Write the start-at-login unit but do not enable/start it now.
-   * Setup-on-first-start uses this: the `start` in the same invocation
-   * launches the service itself, so a manager start here (launchd
-   * `RunAtLoad`, systemd `--now`) would spawn a second generation that
-   * fights the first for the port and the data-dir lock — and, on
-   * macOS, runs without the caller's environment. The unit still
-   * takes effect at the next login.
-   */
-  deferLoginStart?: boolean;
 }
 
 /** Install the `unvibe://` handler for this platform. Returns log lines. */
@@ -197,12 +203,6 @@ async function installLoginUnit(
     const plist = launchdPlistPath(paths.homeDir);
     fs.mkdirSync(path.dirname(plist), { recursive: true });
     fs.writeFileSync(plist, launchdPlistContent(unit));
-    if (opts.deferLoginStart) {
-      // No bootout/bootstrap: launchd loads LaunchAgents at login, so
-      // the file alone enables login start. Loading it now would start
-      // a second generation beside the service the caller is starting.
-      return [`service starts at login (launchd agent at ${plist}; never idle-exits there)`];
-    }
     // Idempotent refresh of the login instance: unload whatever is there
     // (ignored when absent), then load. Never touches a manually started
     // service, which lives outside the login domain.
@@ -220,15 +220,6 @@ async function installLoginUnit(
   fs.mkdirSync(path.dirname(unitFile), { recursive: true });
   fs.writeFileSync(unitFile, systemdUnitContent(unit));
   await runner.run("systemctl", ["--user", "daemon-reload"]);
-  if (opts.deferLoginStart) {
-    // Enable for login without starting a second generation now.
-    const enabled = await runner.run("systemctl", ["--user", "enable", SYSTEMD_UNIT_NAME]);
-    return [
-      enabled.code === 0
-        ? `service starts at login (systemd user unit at ${unitFile}; never idle-exits there)`
-        : `warning: login start not enabled (systemctl: ${enabled.stderr.trim() || enabled.stdout.trim() || "no user session?"}). Run: systemctl --user enable ${SYSTEMD_UNIT_NAME}`,
-    ];
-  }
   const enabled = await runner.run("systemctl", ["--user", "enable", "--now", SYSTEMD_UNIT_NAME]);
   return [
     enabled.code === 0
