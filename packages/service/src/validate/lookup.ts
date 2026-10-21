@@ -19,10 +19,21 @@ export interface ReviewLookup {
   hunkAtLine(fileKey: string, line: number): HunkLocation | null;
   /** New-side range of a hunk by content hash, if it exists. */
   hunkRange(fileKey: string, hash: string): { start: number; end: number } | null;
-  /** File length at a commit for `code:` ranges; null when unknown. */
-  fileLineCount(keyOrPath: string): number | null;
+  /**
+   * Whether the file exists at the cited commit (#81: no length check —
+   * a `code:` citation is valid when the file exists, whatever the range).
+   */
+  fileExists(path: string): boolean;
+  /**
+   * Issue #222: file existence at an exact commit (`path@sha`), when the
+   * lookup is sha-aware (document reviews resolve the repo from the sha).
+   * Absent means the lookup only knows paths (`fileExists`).
+   */
+  fileExistsAtCommit?(path: string, sha: string): boolean;
   /** Description paragraph text by id; null when unknown. */
   descParagraph(id: string): string | null;
+  /** Document block text by id (`doc:pN`, issue #222); null when unknown. */
+  docBlock(id: string): string | null;
   pageExists(id: string): boolean;
   cardExists(id: string): boolean;
   blockExists(cardId: string, blockId: string): boolean;

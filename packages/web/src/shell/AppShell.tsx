@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
+import { OPEN_FILE_EVENT } from "../source/file/openFile.js";
 import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
 import { SHOW_GUIDE_EVENT } from "./panes.js";
@@ -86,7 +87,11 @@ export function AppShell({ reviewId }: { reviewId: string }) {
       setSourceOpen(true);
     };
     window.addEventListener(REVEAL_EVENT, onReveal);
-    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
+    window.addEventListener(OPEN_FILE_EVENT, onReveal);
+    return () => {
+      window.removeEventListener(REVEAL_EVENT, onReveal);
+      window.removeEventListener(OPEN_FILE_EVENT, onReveal);
+    };
   }, []);
 
   // Navigation to guide content from the source pane ("Open as page",

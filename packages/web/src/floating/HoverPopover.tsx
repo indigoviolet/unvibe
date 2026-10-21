@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
+import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
 import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
@@ -51,12 +52,16 @@ function renderMsgs(msgs: Annotation["messages"]): string {
     .join("");
 }
 
-/** `diff:` target for an anchor successor (outdated "new code" link). */
+/** Source target for an anchor successor (outdated "new code" link). */
 function successorTarget(successor: Anchor): string | null {
   const host = successor.host;
   if (host.kind === "diff-line") {
     const range = host.endLine && host.endLine !== host.line ? `${host.line}-${host.endLine}` : `${host.line}`;
     return `diff:${host.fileKey}:${range}`;
+  }
+  if (host.kind === "code") {
+    const range = host.endLine && host.endLine !== host.line ? `${host.line}-${host.endLine}` : `${host.line}`;
+    return `code:${host.path}:${range}@${host.commit}`;
   }
   if (host.kind === "description") return `desc:${host.paragraphId}`;
   return null;
@@ -159,12 +164,64 @@ export function HoverPopover() {
         snap,
         targets.map((target) => ({ target })),
       );
-      content = resolved
-        .map(
-          (c) =>
-            `<button class="cite" data-src="${esc(c.target)}"><span class="loc">${esc(c.label)}${c.unverified ? " · unverified" : ""}</span><span class="snip">${esc(c.snippet)}</span></button>`,
-        )
-        .join("");
+      const renderCites = (list: typeof resolved): string =>
+        list
+          .map(
+            (c) =>
+              `<button class="cite" data-src="${esc(c.target)}"><span class="loc">${esc(c.label)}${c.unverified ? " · unverified" : ""}</span><span class="snip">${esc(c.snippet)}</span></button>`,
+          )
+          .join("");
+      content = renderCites(resolved);
+      // #81: cited lines of a file outside the diff have no hunk rows —
+      // fetch them at the cited commit and fill the preview in place.
+      const missing = resolved.filter((c) => c.snippet === "" && c.target.startsWith("code:"));
+      if (missing.length > 0 && reviewId) {
+        const anchorEl = anchor;
+        void Promise.all(
+          missing.map(async (c) => {
+            const parsed = parseId(c.target);
+            if (!parsed || parsed.kind !== "code") return null;
+            try {
+              const slice = await api.fileSlice(reviewId, {
+                path: parsed.path,
+                commit: parsed.sha ?? snap.version.headSha,
+                start: parsed.start,
+                end: Math.min(parsed.end, parsed.start + 3),
+              });
+              return { target: c.target, snippet: slice.lines.join("\n") };
+            } catch (err) {
+              // Past-the-end range: the 400 carries the file end — retry
+              // clamped to whatever part of the range exists (#81).
+              const m = err instanceof Error ? err.message.match(/"totalLines":\s*(\d+)/) : null;
+              const total = m ? Number(m[1]) : 0;
+              if (total <= 0 || parsed.start > total) return null;
+              try {
+                const slice = await api.fileSlice(reviewId, {
+                  path: parsed.path,
+                  commit: parsed.sha ?? snap.version.headSha,
+                  start: parsed.start,
+                  end: total,
+                });
+                return { target: c.target, snippet: slice.lines.join("\n") };
+              } catch {
+                return null;
+              }
+            }
+          }),
+        ).then((fills) => {
+          if (anchorRef.current !== anchorEl) return;
+          const byTarget = new Map(fills.filter((f) => f !== null).map((f) => [f.target, f.snippet]));
+          if (byTarget.size === 0) return;
+          setHtml(
+            renderCites(
+              resolved.map((c) => {
+                const snippet = byTarget.get(c.target);
+                return snippet !== undefined ? { ...c, snippet } : c;
+              }),
+            ),
+          );
+        });
+      }
     } else if (ds.threads) {
       const ids = ds.threads.split("|");
       content =
@@ -251,12 +308,24 @@ export function HoverPopover() {
     let scrollBeganAt = 0;
     let lastScrollAt = 0;
     let settleTimer: number | undefined;
+    // Anchor a real mouseover claimed before a scroll ate its open.
+    let scrollWanted: Element | null = null;
 
     const scheduleOpen = (anchor: Element): void => {
       overAnchor.current = anchor;
       const pending = anchor;
       openTimer.current = window.setTimeout(() => {
-        if (scrollQuiet.current || !pending.isConnected || overAnchor.current !== pending) return;
+        if (!pending.isConnected) {
+          // The anchor re-rendered under a stationary pointer while
+          // the open was pending (a snapshot patch replaced the node):
+          // re-resolve the anchor under the cursor and try once more,
+          // or the hover is lost until the pointer moves again.
+          const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
+          const again = target?.closest?.(ANCHOR_SELECTOR);
+          if (again && again !== pending) scheduleOpen(again);
+          return;
+        }
+        if (scrollQuiet.current || overAnchor.current !== pending) return;
         openForRef.current(pending);
       }, OPEN_DELAY_MS);
     };
@@ -306,6 +375,7 @@ export function HoverPopover() {
       if (now - lastScrollAt > 600) scrollBeganAt = now;
       lastScrollAt = now;
       scrollQuiet.current = true;
+      if (overAnchor.current) scrollWanted = overAnchor.current;
       hideRef.current();
       // A trailing scroll event can land after the pointer has already
       // moved onto an anchor (its mouseover was ignored above, and the
@@ -316,7 +386,15 @@ export function HoverPopover() {
       window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         scrollQuiet.current = false;
-        if (anchorRef.current || lastMouse.movedAt < scrollBeganAt) return;
+        if (anchorRef.current) return;
+        // A pointer that genuinely moved after the scroll began, or
+        // one a real (non-scroll) mouseover already claimed as
+        // hovering an anchor whose scheduled open this scroll ate:
+        // either proves a deliberate hover, so re-arm it. Content
+        // sliding under a stationary cursor sets neither.
+        const wanted = scrollWanted;
+        scrollWanted = null;
+        if (lastMouse.movedAt < scrollBeganAt && !wanted?.isConnected) return;
         const target = document.elementFromPoint(lastMouse.x, lastMouse.y);
         const anchor = target?.closest?.(ANCHOR_SELECTOR);
         if (anchor) scheduleOpen(anchor);

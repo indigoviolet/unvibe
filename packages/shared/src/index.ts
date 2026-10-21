@@ -1,4 +1,5 @@
 export * from "./entities.js";
+export * from "./document.js";
 export * from "./budgets.js";
 export * from "./guide.js";
 export * from "./ids.js";
@@ -12,3 +13,4 @@ export * from "./prompts.js";
 export * from "./versions.js";
 export * from "./diff.js";
 export * from "./scores.js";
+export * from "./outbox.js";

@@ -32,6 +32,59 @@ export interface Repo {
   managed?: boolean;
 }
 
+/**
+ * Issue #222: what a review reviews. Never stored: the kind is derived
+ * from the snapshot's shape (`isDocumentReview` in `api.ts`) — a review
+ * whose snapshot carries the pasted document is a document review, and
+ * every other review is a change review. There is no stored `kind`
+ * field and no fallback read.
+ */
+export type ReviewKind = "change" | "document";
+
+/** Issue #222: where a document review's context repo is read from. */
+export type ContextRepoSource = "worktree" | "origin-main" | "local";
+
+/**
+ * Issue #222: one context repo of a document review, resolved at creation.
+ * `repoPath` is the registered checkout (where git runs); `path` is the
+ * effective reading location (the chosen worktree, or `repoPath` for
+ * `origin-main`/`local`); `sha` is the commit read for `origin-main`
+ * (absent for worktree/local, whose HEAD is read live).
+ */
+export interface ContextRepoRef {
+  repoId: string;
+  owner: string;
+  name: string;
+  source: ContextRepoSource;
+  repoPath: string;
+  path: string;
+  /** Chosen worktree path (`source: "worktree"` only). */
+  worktreePath?: string;
+  /** Resolved commit at creation (`origin-main`, else the reading HEAD). */
+  sha?: string;
+  /** Human label shown in the UI and the agent context. */
+  label: string;
+}
+
+/** One block of a pasted document (issue #222). Headings carry a level;
+ * content blocks wrap the shared `Block` whose id is this block's id. */
+export interface DocumentBlock {
+  /** Paragraph block ID: `p1`, `p2`, … in document order (cited as `doc:pN`). */
+  id: string;
+  kind: "heading" | "content";
+  /** Heading level 1–6 (`kind: "heading"` only). */
+  level?: number;
+  block: Block;
+}
+
+/** Issue #222: a pasted Markdown document (single version, no refresh). */
+export interface DocumentContent {
+  title: string;
+  /** Pasted Markdown, verbatim. */
+  markdown: string;
+  blocks: DocumentBlock[];
+}
+
 /** One review of a branch or PR. */
 export interface Review {
   id: string;
@@ -422,13 +475,13 @@ export type AnnotationType = "conversation" | "comment" | "link";
 /**
  * Issue #136 slice 2: one comment message. Comments never carry agent
  * replies (those live on conversation turns as blocks); `ai` appears
- * only for agent-drafted suggested comments not yet marked for the PR.
+ * only for agent-drafted suggested comments not yet in the Outbox.
  */
 export interface ChatMessage {
   who: "you" | "ai";
   /** Plain text. */
   text?: string;
-  /** Agent-drafted suggested comment not yet marked for the PR. */
+  /** Agent-drafted suggested comment not yet in the Outbox. */
   suggested?: boolean;
   /**
    * Issue #181: this suggested message is an agent's open question,
@@ -477,9 +530,9 @@ export interface Annotation {
   pinned: boolean;
   /** Comments only: messages so far. */
   messages: ChatMessage[];
-  /** Comments only: include in the Submit review payload. */
+  /** Comments only: include in the Outbox (Submit review payload on PR reviews). */
   post: boolean;
-  /** Comments only: editable draft of the text to post (For PR view). */
+  /** Comments only: editable draft of the text to post (Outbox view). */
   draft?: string;
   /** Unsent reply-box content (survives re-renders; comments and conversations). */
   reply?: string;
@@ -582,7 +635,14 @@ export interface Annotation {
    * across versions while the hunk's content is). Hosts the conversation
    * card an idle hunk summary activates into.
    */
-  | { kind: "hunk"; fileKey: string; contentHash: string };
+  | { kind: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit, addressed `code:<path>:<lines>@<sha>`
+   * (the file tab). `line` is the first cited line; `endLine` the last
+   * when the selection spans lines. Remapped by content on a new version
+   * like every other code anchor (PRD §8).
+   */
+  | { kind: "code"; path: string; commit: string; line: number; endLine?: number };
 
 /**
  * Issue #166: a live text selection as character offsets within its host's

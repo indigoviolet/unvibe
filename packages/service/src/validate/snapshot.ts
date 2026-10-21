@@ -4,14 +4,16 @@
  * concept slugs, file-key aliases, verbatim host texts).
  */
 import type { Block, ReviewSnapshot } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import { documentBlockText, parseId } from "@unvibe/shared";
 import type { ReviewLookup } from "./lookup.js";
 
 export interface SnapshotLookupExtra {
   /** alias → fileKey (e.g. prototype `conn` when the scheme differs). */
   aliases?: Record<string, string>;
-  /** New-side file lengths by fileKey or path (for `code:` ranges). */
-  fileLengths?: Record<string, number>;
+  /** Paths known to exist at their cited commit (#81: existence only). */
+  existingFiles?: ReadonlySet<string>;
+  /** `path@sha` keys known to exist at that exact commit (#222). */
+  existingCodeTargets?: ReadonlySet<string>;
   /** Description paragraph id → text. */
   descTexts?: Record<string, string>;
   /** Known concept slugs. */
@@ -49,7 +51,7 @@ export function createSnapshotLookup(
   extra: SnapshotLookupExtra = {},
 ): ReviewLookup {
   const aliases = extra.aliases ?? {};
-  const fileLengths = extra.fileLengths ?? {};
+  const existingFiles = extra.existingFiles ?? new Set<string>();
   const descTexts = extra.descTexts ?? {};
   const concepts = new Set(extra.concepts ?? []);
   const hostTexts = extra.hostTexts ?? {};
@@ -66,6 +68,10 @@ export function createSnapshotLookup(
   };
 
   const findCard = (cardId: string): Block[] | null => {
+    // Issue #222: the document is a card holding its blocks.
+    if (cardId === "document" && snapshot.document) {
+      return snapshot.document.blocks.map((b) => b.block);
+    }
     for (const page of snapshot.pages) {
       for (const card of page.cards) {
         if (card.id === cardId) return card.blocks;
@@ -91,7 +97,7 @@ export function createSnapshotLookup(
     return null;
   };
 
-  return {
+  const lookup: ReviewLookup = {
     resolveFileKey,
 
     hunkAtLine(fileKey, line) {
@@ -113,17 +119,23 @@ export function createSnapshotLookup(
       return h ? { start: h.newStart, end: h.newEnd } : null;
     },
 
-    fileLineCount(keyOrPath) {
-      if (fileLengths[keyOrPath] !== undefined) return fileLengths[keyOrPath];
-      const key = resolveFileKey(keyOrPath);
-      if (key !== null && fileLengths[key] !== undefined) return fileLengths[key];
-      const byPath = filesByPath.get(keyOrPath);
-      if (byPath && fileLengths[byPath.fileKey] !== undefined) return fileLengths[byPath.fileKey];
-      return null;
+    fileExists(filePath) {
+      if (existingFiles.has(filePath)) return true;
+      // A file in the diff exists at the head by construction.
+      return filesByPath.has(filePath);
     },
+
+    // `fileExistsAtCommit` is attached below only when the caller
+    // resolved `path@sha` existence (#222); otherwise sha citations use
+    // the path-only `fileExists` above (#81).
 
     descParagraph(id) {
       return descTexts[id] ?? null;
+    },
+
+    docBlock(id) {
+      const found = (snapshot.document?.blocks ?? []).find((b) => b.id === id);
+      return found ? documentBlockText(found) : null;
     },
 
     pageExists(id) {
@@ -160,6 +172,10 @@ export function createSnapshotLookup(
       if (parsed?.kind === "desc") {
         return descTexts[parsed.paragraph] ?? null;
       }
+      if (parsed?.kind === "doc") {
+        const found = (snapshot.document?.blocks ?? []).find((b) => b.id === parsed.blockId);
+        return found ? documentBlockText(found) : null;
+      }
       if (parsed?.kind === "ann") {
         // Issue #214: an `ann:` host is a comment; its text is the host block.
         const ann = snapshot.annotations.find((a) => a.id === parsed.id && a.type === "comment");
@@ -192,4 +208,9 @@ export function createSnapshotLookup(
       return snapshot.version.idMapping[id] ?? null;
     },
   };
+  if (extra.existingCodeTargets) {
+    const targets = extra.existingCodeTargets;
+    lookup.fileExistsAtCommit = (filePath, sha) => targets.has(`${filePath}@${sha}`);
+  }
+  return lookup;
 }
