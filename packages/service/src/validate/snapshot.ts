@@ -4,7 +4,7 @@
  * concept slugs, file-key aliases, verbatim host texts).
  */
 import type { Block, ReviewSnapshot } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import { documentBlockText, parseId } from "@unvibe/shared";
 import type { ReviewLookup } from "./lookup.js";
 
 export interface SnapshotLookupExtra {
@@ -66,6 +66,10 @@ export function createSnapshotLookup(
   };
 
   const findCard = (cardId: string): Block[] | null => {
+    // Issue #222: the document is a card holding its blocks.
+    if (cardId === "document" && snapshot.document) {
+      return snapshot.document.blocks.map((b) => b.block);
+    }
     for (const page of snapshot.pages) {
       for (const card of page.cards) {
         if (card.id === cardId) return card.blocks;
@@ -126,6 +130,11 @@ export function createSnapshotLookup(
       return descTexts[id] ?? null;
     },
 
+    docBlock(id) {
+      const found = (snapshot.document?.blocks ?? []).find((b) => b.id === id);
+      return found ? documentBlockText(found) : null;
+    },
+
     pageExists(id) {
       return snapshot.pages.some((p) => p.id === id);
     },
@@ -159,6 +168,10 @@ export function createSnapshotLookup(
       }
       if (parsed?.kind === "desc") {
         return descTexts[parsed.paragraph] ?? null;
+      }
+      if (parsed?.kind === "doc") {
+        const found = (snapshot.document?.blocks ?? []).find((b) => b.id === parsed.blockId);
+        return found ? documentBlockText(found) : null;
       }
       if (parsed?.kind === "ann") {
         // Issue #214: an `ann:` host is a comment; its text is the host block.

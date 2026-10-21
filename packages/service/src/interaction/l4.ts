@@ -103,6 +103,14 @@ function findBlockIn(
   onlyCard: string | null,
 ): { cardId: string; pageId: string; cardTitle: string | null; block: Block } | null {
   const short = shortBlockId(blockId);
+  // Issue #222: the document is a card (`document#pN`) holding its blocks.
+  if (snapshot.document && (onlyCard === null || onlyCard === "document")) {
+    const found = snapshot.document.blocks.find((b) => b.id === short || b.id === blockId);
+    if (found) {
+      return { cardId: "document", pageId: "root", cardTitle: snapshot.document.title, block: found.block };
+    }
+    if (onlyCard === "document") return null;
+  }
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
       if (onlyCard !== null && card.id !== onlyCard) continue;
@@ -226,6 +234,11 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
   if (anchor.host.kind === "block") {
     const found = findBlock(snapshot, anchor.host.blockId);
     if (!found) return "(none)";
+    // Issue #222: a document anchor's card is the document section around it.
+    if (found.cardId === "document" && snapshot.document) {
+      const body = snapshot.document.blocks.map((b) => blockPlainText(b.block)).join("\n\n");
+      return `### ${snapshot.document.title} [[doc:${found.block.id}]]\n\n${body}`;
+    }
     // Render the whole host card so the agent sees structure, not just one block.
     for (const page of snapshot.pages ?? []) {
       for (const card of page.cards ?? []) {

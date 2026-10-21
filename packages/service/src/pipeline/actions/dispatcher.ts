@@ -95,6 +95,23 @@ export async function dispatchAction(
     ...(deps.promptsDir ? { promptsDir: deps.promptsDir } : {}),
   } as ActionContext;
 
+  // Issue #222: guide-rewriting actions have no meaning on a pasted
+  // document (its text is the reader's own, never rewritten).
+  {
+    const snap = deps.reviews?.getSnapshot(deps.reviewId);
+    if (
+      snap?.review.kind === "document" &&
+      (action.kind === "depth" ||
+        action.kind === "examples" ||
+        action.kind === "diagram" ||
+        action.kind === "generate" ||
+        action.kind === "second_opinion" ||
+        action.kind === "concept")
+    ) {
+      return bad(reply, "that doesn't apply to a document — Explain, Ask and Comment work on its text instead");
+    }
+  }
+
   try {
     switch (action.kind) {
       case "generate": {

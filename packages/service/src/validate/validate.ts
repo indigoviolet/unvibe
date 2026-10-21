@@ -150,6 +150,13 @@ function validateDesc(target: string, lookup: ReviewLookup): TokenReport {
   return unverified(target, `unknown description paragraph: ${parsed.paragraph}`);
 }
 
+function validateDoc(target: string, lookup: ReviewLookup): TokenReport {
+  const parsed = parseId(target);
+  if (parsed?.kind !== "doc") return unverified(target, `not a doc ID: ${target}`);
+  if (lookup.docBlock(parsed.blockId) !== null) return { target, status: "valid" };
+  return unverified(target, `unknown document block: ${parsed.blockId}`);
+}
+
 function validateCard(target: string, lookup: ReviewLookup): TokenReport {
   const parsed = parseId(target);
   if (parsed?.kind !== "card") return unverified(target, `not a card ID: ${target}`);
@@ -251,6 +258,8 @@ export function validateTarget(target: string, lookup: ReviewLookup): TokenRepor
       return validateAnn(target, lookup);
     case "h":
       return validateHunk(target, lookup);
+    case "doc":
+      return validateDoc(target, lookup);
   }
 }
 

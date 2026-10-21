@@ -145,12 +145,17 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       (a) => a.type === "comment" && (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt,
     ).length;
     const stale = snapshot?.versionStatus?.stale ?? false;
-    const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
+    // Issue #222: document reviews have no guide pipeline; the document is ready.
+    const guide =
+      snapshot?.review.kind === "document"
+        ? { status: "ready" as const, detail: undefined as string | undefined }
+        : guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
     // #92: ingest state rides the summary so Previous reviews marks loading/failed rows.
     const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
+      ...(snapshot?.review.kind === "document" ? { kind: "document" as const } : {}),
       repoId: row.repo_id,
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,

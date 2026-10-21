@@ -50,6 +50,7 @@ import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
+import { buildDocumentBaseText } from "../document/map.js";
 import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
@@ -1160,6 +1161,35 @@ export class Pipeline {
     return path.join(this.opts.dataDir, "worktrees", reviewId);
   }
 
+  /**
+   * Issue #222: a document review's session cwd — the first context
+   * repo's reading location (no managed worktree exists for it). Falls
+   * back to the change-review worktree path when unknown.
+   */
+  private sessionCwd(reviewId: string): string {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (snapshot?.review.kind === "document") {
+      const first = snapshot.contextRepos?.[0];
+      if (first && fs.existsSync(first.path)) return first.path;
+    }
+    return this.worktreeOf(reviewId);
+  }
+
+  /** Issue #222: the base pack text — the document pack for document reviews. */
+  private async basePackTextFor(
+    snapshot: ReviewSnapshot,
+    instructions: string,
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+  ): Promise<string> {
+    if (snapshot.review.kind === "document") {
+      const text = await buildDocumentBaseText(this.opts.commands, snapshot);
+      return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
+    }
+    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+  }
+
   private parseAndValidate(
     reviewId: string,
     text: string,
@@ -1432,14 +1462,19 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    // The base pack instructs the agent to answer "ready" (SessionManager
-    // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
-    // instruction so fakes and real models alike acknowledge.
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    // Document reviews build their pack from the document + repo maps
+    // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
+    const isDocument = snapshot.review.kind === "document";
+    const pack = isDocument
+      ? null
+      : buildBasePack(toPromptSnapshot(snapshot, { model: settings.main.model }), instructions, {
+          inlineBudgetTokens: settings.inlineBudgetTokens,
+        });
+    const packText = isDocument
+      ? await this.basePackTextFor(snapshot, instructions, settings)
+      : `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack!.user}`;
     const key = {
       reviewId,
       reviewVersion: `v${snapshot.version.n}`,
@@ -1453,7 +1488,7 @@ export class Pipeline {
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
     const handle = await this.opts.sessions.getBase({
       key,
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers,
@@ -1467,7 +1502,7 @@ export class Pipeline {
     }
     if (handle.fresh) {
       try {
-        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
+        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack?.tokens ?? 0);
       } catch {
         // observability is best-effort
       }
@@ -1573,11 +1608,9 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    const packText = await this.basePackTextFor(snapshot, instructions, settings);
     const base = await this.opts.sessions.getBase({
       key: {
         reviewId,
@@ -1588,7 +1621,7 @@ export class Pipeline {
         access: postureFor(settings),
         effort: settings.main.effort,
       },
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
@@ -1619,7 +1652,7 @@ export class Pipeline {
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
       ...roleFields(settings.main),
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],

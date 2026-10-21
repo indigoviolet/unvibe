@@ -22,6 +22,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import type {
+  CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   RefreshResponse,
@@ -31,7 +32,7 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { ingestStatusOf, isReadySnapshot, summarizeComparison } from "@unvibe/shared";
+import { ingestStatusOf, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -53,7 +54,7 @@ import {
   type UpdateReplyParser,
 } from "../versions/update.js";
 import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
-import { refreshManagedCheckout } from "../repos/index.js";
+import { refreshManagedCheckout, resolveContextRepo } from "../repos/index.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
 import type { Pipeline } from "../pipeline/index.js";
 import {
@@ -647,7 +648,89 @@ export async function registerReviews(
   });
 
   app.post("/api/reviews", async (req, reply) => {
-    const body = (req.body ?? {}) as CreateReviewRequest;
+    const raw = (req.body ?? {}) as CreateReviewRequest & Partial<CreateDocumentRequest>;
+    // Issue #222: document reviews are created synchronously from the
+    // pasted Markdown (no ingest, no pipeline — nothing generated up front).
+    if ((raw as { kind?: string }).kind === "document") {
+      const docBody = raw as CreateDocumentRequest;
+      const markdown = typeof docBody.markdown === "string" ? docBody.markdown : "";
+      if (markdown.trim() === "") return reply.code(400).send({ error: "paste the document's Markdown first" });
+      if (markdown.length > 200_000) return reply.code(400).send({ error: "that document is too large (200,000 characters at most)" });
+      const picks = Array.isArray(docBody.contextRepos) ? docBody.contextRepos : [];
+      if (picks.length < 1 || picks.length > 2) {
+        return reply.code(400).send({ error: "pick 1 or 2 context repos" });
+      }
+      const document = parseDocumentMarkdown(markdown);
+      if (document.blocks.length === 0) return reply.code(400).send({ error: "that document has no readable content" });
+      if (typeof docBody.title === "string" && docBody.title.trim() !== "") document.title = docBody.title.trim().slice(0, 200);
+      const contextRepos: import("@unvibe/shared").ContextRepoRef[] = [];
+      for (const pick of picks) {
+        if (!pick || typeof pick.repoId !== "string") return reply.code(400).send({ error: "each context repo needs a repo" });
+        if (pick.source !== "worktree" && pick.source !== "origin-main" && pick.source !== "local") {
+          return reply.code(400).send({ error: "each context repo needs a reading location: a worktree, origin/main, or the local copy" });
+        }
+        let repo = ctx.repos.get(pick.repoId);
+        if (!repo) {
+          const found = (await listAllRepos(ctx)).find((r) => r.id === pick.repoId);
+          if (found) {
+            ctx.repos.upsert(found);
+            repo = ctx.repos.get(found.id);
+          }
+        }
+        if (!repo) return reply.code(404).send({ error: "unknown repo" });
+        try {
+          contextRepos.push(await resolveContextRepo(ctx.runner, repo, pick.source, pick.worktreePath));
+        } catch (err) {
+          return reply.code(400).send({ error: (err as Error).message });
+        }
+      }
+      const { createHash } = await import("node:crypto");
+      const reviewId = newReviewId();
+      const now = Date.now();
+      const docSha = createHash("sha256").update(markdown, "utf8").digest("hex");
+      const version: Version = { n: 1, headSha: docSha, mergeBaseSha: docSha, baseRef: "document", fetchedAt: now, idMapping: {} };
+      const snapshot: ReviewSnapshot = {
+        review: {
+          id: reviewId,
+          repoId: contextRepos[0].repoId,
+          branch: "document",
+          kind: "document",
+          versions: [version],
+          currentVersion: 1,
+          createdAt: now,
+        },
+        document,
+        contextRepos,
+        version,
+        files: [],
+        pages: [],
+        annotations: [],
+        hunkStates: [],
+        fileStates: [],
+        viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+        jobs: [],
+        contributions: [],
+        logTail: [],
+        rev: 1,
+        ingest: { status: "ready" },
+      };
+      transaction(ctx.db, () => {
+        ctx.db
+          .prepare("INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(reviewId, contextRepos[0].repoId, "document", null, 1, now, JSON.stringify({ title: document.title, kind: "document" }));
+        ctx.db
+          .prepare("INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING")
+          .run(reviewId, 1, docSha, docSha, "document", now, "{}");
+        ctx.reviews.putSnapshot(reviewId, snapshot);
+      });
+      try {
+        ctx.repos.touch(contextRepos[0].repoId);
+      } catch {
+        // Ignore.
+      }
+      return reply.code(201).send(snapshot);
+    }
+    const body = raw as CreateReviewRequest;
     if (!body.repoId) return reply.code(400).send({ error: "repoId is required" });
 
     // Demo mode: repo-less fixture review running the same pipeline path.
@@ -761,6 +844,9 @@ export async function registerReviews(
     if (snap.review.repoId === "demo") {
       return reply.code(409).send({ error: "the demo guide can't be re-done" });
     }
+    if (snap.review.kind === "document") {
+      return reply.code(409).send({ error: "a document review can't be re-done — paste a new document to start another" });
+    }
     const refusedRedo = ingestRefusal(snap);
     if (refusedRedo) return reply.code(409).send({ error: refusedRedo });
     if (readSubmitLease(ctx.db, id)) {
@@ -848,6 +934,10 @@ export async function registerReviews(
     if (!first) return reply.code(404).send({ error: "unknown review" });
     const refused = ingestRefusal(first);
     if (refused) return reply.code(409).send({ error: refused });
+    // Issue #222: document reviews have a single version — nothing to refresh.
+    if (first.review.kind === "document") {
+      return reply.code(409).send({ error: "document reviews have a single version — there is nothing to refresh" });
+    }
     if (first.review.repoId === "demo") {
       const response: RefreshResponse = { review: first.review, newVersion: false };
       return response;
@@ -963,6 +1053,9 @@ export async function registerReviews(
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     const refusedResume = ingestRefusal(snapshot);
     if (refusedResume) return reply.code(409).send({ error: refusedResume });
+    if (snapshot.review.kind === "document") {
+      return reply.code(409).send({ error: "document reviews generate nothing up front — there is nothing to resume" });
+    }
     void req;
     try {
       const { jobIds, pendingStages } = await pipeline.resumeReview(id);

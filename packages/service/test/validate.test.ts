@@ -18,6 +18,7 @@ function stubLookup(overrides: Partial<ReviewLookup> = {}): ReviewLookup {
     },
     fileLineCount: (p) => (p === "src/a.py" ? 50 : null),
     descParagraph: (id) => (id === "d-intro" ? "intro text" : null),
+    docBlock: (id) => (id === "p1" ? "document text" : null),
     pageExists: (id) => id === "f-lf",
     cardExists: (id) => id === "central",
     blockExists: (cardId, blockId) => cardId === "central" && blockId === "b1",
@@ -31,6 +32,11 @@ function stubLookup(overrides: Partial<ReviewLookup> = {}): ReviewLookup {
 
 describe("validateTarget", () => {
   const lookup = stubLookup();
+
+  it("accepts a known document block and rejects an unknown one (#222)", () => {
+    expect(validateTarget("doc:p1", lookup).status).toBe("valid");
+    expect(validateTarget("doc:p99", lookup).status).toBe("unverified");
+  });
 
   it("accepts a diff range inside one hunk", () => {
     expect(validateTarget("diff:conn:80-82", lookup).status).toBe("valid");

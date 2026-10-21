@@ -23,6 +23,8 @@ export interface ReviewLookup {
   fileLineCount(keyOrPath: string): number | null;
   /** Description paragraph text by id; null when unknown. */
   descParagraph(id: string): string | null;
+  /** Document block text by id (`doc:pN`, issue #222); null when unknown. */
+  docBlock(id: string): string | null;
   pageExists(id: string): boolean;
   cardExists(id: string): boolean;
   blockExists(cardId: string, blockId: string): boolean;

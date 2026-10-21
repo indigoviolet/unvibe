@@ -27,6 +27,7 @@ import {
   type Repo,
   type ReposResponse,
   type RepoChangesResponse,
+  type RepoWorktreesResponse,
 } from "@unvibe/shared";
 import {
   addManagedRepo,
@@ -34,6 +35,7 @@ import {
   detectCheckouts,
   CloneError,
   isGitCheckout,
+  listWorktrees,
   newRepoId,
   pickFolder,
   refreshManagedCheckout,
@@ -165,6 +167,30 @@ export async function registerRepos(
     } finally {
       pickInFlight = false;
     }
+  });
+
+  // Issue #222: reading locations for the document context-repo picker.
+  app.get("/api/repos/:id/worktrees", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return { worktrees: [] } satisfies RepoWorktreesResponse;
+    let repo = ctx.repos.get(id);
+    if (!repo) repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
+    if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    const worktrees = await listWorktrees(ctx.runner, repo.localPath);
+    const rev = async (ref: string): Promise<string | undefined> => {
+      try {
+        const res = await ctx.runner.run("git", { args: ["rev-parse", ref], cwd: repo.localPath });
+        return res.code === 0 ? res.stdout.trim() : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const [originMainSha, localSha] = await Promise.all([rev("origin/main"), rev("HEAD")]);
+    return {
+      worktrees,
+      ...(originMainSha ? { originMainSha } : {}),
+      ...(localSha ? { localSha } : {}),
+    } satisfies RepoWorktreesResponse;
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
