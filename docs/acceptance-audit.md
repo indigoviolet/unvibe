@@ -2426,3 +2426,26 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #227 (branch `fix/227-file-tree`)
+
+- **File tree (§4.13):** the tree panel never scrolls sideways. Rows are
+  border-box and the list is `overflow-x: hidden`; file names truncate
+  with an ellipsis, directory chains shorten from the middle (the head
+  ellipsises, the last segments stay readable, full path on hover via
+  `title`), and the `+N −M` / reviewed-count indicators sit in fixed
+  right-hand tracks outside the name button (shared subgrid columns, so
+  they align across rows and depths). The diff's file headers get the
+  same treatment: middle-shortened directory, truncating file name, and
+  the counts/reviewed/checkbox fixed at the right edge inside the pane.
+  Root cause of the original scrollbar: rows were `width: 100%` in
+  content-box sizing, so padding pushed every row past the panel and
+  the indicators with it. Evidence: `tailPathParts` cases in
+  `diffLogic.test.ts`, journey `e2e/journeys/j227-file-tree.spec.ts`
+  (scratch repo with a long path against the real service: no horizontal
+  scroll, indicators inside and aligned, hover titles, header fits the
+  pane), and the `file-tree` frames in `e2e/visual-tour.spec.ts`.
+  Open: three optional indicator treatments are with the owner on #227
+  (`waiting-for-user-response`) and are not built — dropping zero sides
+  (`+16` alone), a small proportional add/remove bar, and a stronger
+  "done" look for fully reviewed files.
