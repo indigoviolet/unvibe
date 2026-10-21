@@ -12,6 +12,7 @@ import {
   pairSplitRows,
   parseDiffRef,
   shouldHideHunk,
+  tailPathParts,
 } from "./diffLogic.js";
 
 let seq = 0;
@@ -59,6 +60,23 @@ describe("buildFileTree", () => {
   it("keeps a lone file at the root without a directory row", () => {
     const rows = buildFileTree([file("README.md", [], "docs")]);
     expect(rows).toEqual([{ type: "file", file: expect.objectContaining({ path: "README.md" }), depth: 0 }]);
+  });
+});
+
+describe("tailPathParts (#227)", () => {
+  it("keeps short labels whole", () => {
+    expect(tailPathParts("src/app")).toEqual({ pre: "", end: "src/app" });
+    expect(tailPathParts("src/")).toEqual({ pre: "", end: "src/" });
+    expect(tailPathParts("")).toEqual({ pre: "", end: "" });
+  });
+
+  it("splits a long chain so the last segments stay readable", () => {
+    expect(tailPathParts("a/b/c/d/e")).toEqual({ pre: "a/b/c/", end: "d/e" });
+    expect(tailPathParts("a/b/c/d/e", 1)).toEqual({ pre: "a/b/c/d/", end: "e" });
+  });
+
+  it("keeps a trailing slash on the tail (diff-header dirs)", () => {
+    expect(tailPathParts("a/b/c/d/")).toEqual({ pre: "a/b/", end: "c/d/" });
   });
 });
 
