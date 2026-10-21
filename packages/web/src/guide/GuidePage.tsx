@@ -77,10 +77,16 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // page never scrolls on its own while the user reads (no scroll on
   // patches — only here, on navigation).
   const scrollPos = useRef(new Map<string, number>());
+  // The page being rendered now. Leaving a page swaps its content before the
+  // old listener is removed, and the browser's clamp to the new content can
+  // fire one last scroll event; it must not overwrite the old page's position.
+  const currentPageKey = useRef(pageKey);
+  currentPageKey.current = pageKey;
   useEffect(() => {
     const el = document.getElementById("page");
     if (!el) return;
     const onScroll = (): void => {
+      if (currentPageKey.current !== pageKey) return;
       scrollPos.current.set(pageKey, el.scrollTop);
     };
     el.addEventListener("scroll", onScroll, { passive: true });

@@ -270,7 +270,11 @@ test("7. reader state: scroll restore, contents lists opened pages, trail", asyn
   const link = page.locator(`nav.toc [data-node="${pageId}"]`);
   await expect(link).toBeVisible({ timeout: 5000 });
   // Scroll restore: scroll, navigate away and back, position returns.
-  await page.locator("#page").evaluate((el) => el.scrollTo(0, 300));
+  // Let the scroll event fire (a frame later) before navigating, as a reader's would.
+  await page.locator("#page").evaluate(async (el) => {
+    el.scrollTo(0, 300);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
   await link.click();
   await expect(page).toHaveURL(new RegExp(`page/${pageId}`));
   await page.goBack();
