@@ -401,6 +401,10 @@ describe("formatToolDetail", () => {
     expect(formatToolDetail("")).toBeUndefined();
     expect(formatToolDetail("git log")).toBe("git log");
     expect(formatToolDetail({ command: "git log" })).toBe('{"command":"git log"}');
+    // Streamed placeholder arguments carry no information yet.
+    expect(formatToolDetail({})).toBeUndefined();
+    expect(formatToolDetail([])).toBeUndefined();
+    expect(formatToolDetail("{}")).toBeUndefined();
     const long = "x".repeat(500);
     expect(formatToolDetail(long)).toBe(`${"x".repeat(300)}…`);
   });

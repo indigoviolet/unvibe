@@ -49,7 +49,7 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       detail: "{\"hunk\":\"h:demo:1\"}",
     });
     expect(events).toContainEqual({ type: "text", delta: "there" });
-    expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end", id: "t1", result: "the hunk text" });
+    expect(events).toContainEqual({ type: "tool", name: "mcp__test__get_hunk", status: "end", id: "t1", detail: "{\"hunk\":\"h:demo:1\"}", result: "the hunk text" });
     const usage = events.find((e) => e.type === "usage");
     // #207: derived counts plus the adapter's raw payload, verbatim.
     expect(usage).toEqual({
@@ -64,6 +64,33 @@ describe("AcpAgentRunner over fake ACP agent", () => {
       },
     });
     expect(events[events.length - 1]).toEqual({ type: "done", stopReason: "end_turn" });
+    await runner.dispose();
+  });
+
+  it("keeps streamed tool arguments that arrive after an empty opening call", async () => {
+    const state = createFakeState([
+      {
+        match: "streamed",
+        chunks: [
+          { toolStart: { id: "t9", title: "Terminal", input: {} } },
+          { toolArgs: { id: "t9", input: { command: "wc -l some_file.py" } } },
+          { toolEnd: { id: "t9", title: "Terminal", result: "654 some_file.py" } },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+        stopReason: "end_turn",
+      },
+    ]);
+    const runner = new AcpAgentRunner({ settleMs: 0,
+      factories: { claude: fakeTransportFactory(state), codex: fakeTransportFactory(state) },
+    });
+    const s = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "sys", mcpServers: [] });
+    const events = await collect(runner, s, "streamed args please");
+    const tools = events.filter((e) => e.type === "tool");
+    // The opening `{}` is no detail; the end event carries the real command.
+    expect(tools).toEqual([
+      { type: "tool", name: "Terminal", status: "start", id: "t9" },
+      { type: "tool", name: "Terminal", status: "end", id: "t9", detail: "{\"command\":\"wc -l some_file.py\"}", result: "654 some_file.py" },
+    ]);
     await runner.dispose();
   });
 

@@ -1587,7 +1587,10 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   the runner's extra Claude delta, which turned per-turn payloads
   into a per-component maximum and charged the shared warm turn's
   cache write to every fresh small job, is gone; raw payloads stay
-  verbatim).
+  verbatim). Streamed tool arguments land on the record too: adapters
+  send `{}` first and the real arguments on intermediate updates, so
+  the runner keeps the latest per call and the job backfills from the
+  end event (found in the #211 investigation).
 
 ## §17 Milestones — all met
 
