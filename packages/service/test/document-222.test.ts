@@ -100,7 +100,7 @@ describe("document reviews (#222)", () => {
 
   it("refuses bad creates and refresh on a document", async () => {
     const { app, repoId } = await setup();
-    const bad = async (payload: unknown): Promise<number> =>
+    const bad = async (payload: Record<string, unknown>): Promise<number> =>
       (await app.inject({ method: "POST", url: "/api/reviews", headers: AUTH, payload })).statusCode;
     expect(await bad({ kind: "document", markdown: "", contextRepos: [{ repoId, source: "local" }] })).toBe(400);
     expect(await bad({ kind: "document", markdown: "# T\n\nx", contextRepos: [] })).toBe(400);
