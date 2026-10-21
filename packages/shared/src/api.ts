@@ -869,6 +869,12 @@ export interface SubmitPreviewComment {
   location: SubmitCommentLocation;
   /** Exact text that will be posted (draft + fallback note). */
   text: string;
+  /**
+   * #81: quoted lines when the posted text carries them (a file-tab
+   * comment's review-body entry: permalink, quote, comment). Present
+   * so the preview can show the whole entry, not a truncated slice.
+   */
+  quote?: string;
 }
 
 /** M6: exactly what Submit will post (preview + dryRun response). */

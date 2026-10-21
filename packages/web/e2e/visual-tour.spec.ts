@@ -26,6 +26,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { writeFakeGh } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1111,12 +1112,24 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
 test.describe("visual tour file tab (#81)", () => {
   let ftRepo = "";
   let ftData = "";
+  let ftBin = "";
+  let ftLog = "";
   let ftSvc: RunningService | null = null;
   let ftReview = "";
   let ftHead = "";
 
   async function ftGit(...args: string[]): Promise<void> {
     await exec("git", args, { cwd: ftRepo });
+  }
+
+  // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub): the
+  // fake answers `api user` as "author" and records every call.
+  async function ftStart(): Promise<RunningService> {
+    const fakeShell = path.join(ftBin, "fakeshell");
+    return startService(ftData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${ftBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
   }
 
   test.beforeAll(async () => {
@@ -1135,8 +1148,17 @@ test.describe("visual tour file tab (#81)", () => {
     writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 2\n");
     await ftGit("add", ".");
     await ftGit("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: ftRepo });
+    ftBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-bin-"));
+    ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
+    writeFakeGh(ftBin, ftLog, headOut.trim());
+    writeFileSync(
+      path.join(ftBin, "fakeshell"),
+      `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${ftBin}:$PATH"\n`,
+      { mode: 0o755 },
+    );
     ftData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-data-"));
-    ftSvc = await startService(ftData, { agent: "none" });
+    ftSvc = await ftStart();
     const repos = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/repos", { path: ftRepo })) as {
       repos: { id: string; localPath: string }[];
     };
@@ -1241,13 +1263,15 @@ test.describe("visual tour file tab (#81)", () => {
     } finally {
       db.close();
     }
-    ftSvc = await startService(ftData, { agent: "none" });
+    ftSvc = await ftStart();
   });
 
   test.afterAll(async () => {
     await ftSvc?.stop().catch(() => {});
     rmSync(ftRepo, { recursive: true, force: true });
     rmSync(ftData, { recursive: true, force: true });
+    rmSync(ftBin, { recursive: true, force: true });
+    rmSync(ftLog, { recursive: true, force: true });
   });
 
   for (const combo of [
@@ -1295,6 +1319,9 @@ test.describe("visual tour file tab (#81)", () => {
       await expect(panel).toBeVisible({ timeout: 30_000 });
       await expect(panel).toContainText("goes in the review body", { timeout: 30_000 });
       await expect(panel).toContainText("github.com/local/", { timeout: 30_000 });
+      await expect(panel).toContainText("beta = 2", { timeout: 30_000 });
+      await expect(panel).toContainText("Is beta still the right default?", { timeout: 30_000 });
+      await expect(panel).toContainText("Submit as author", { timeout: 30_000 });
       await stepChecks(page, "file-submit");
       await shot(page, "file-submit", suffix, "review body");
     });

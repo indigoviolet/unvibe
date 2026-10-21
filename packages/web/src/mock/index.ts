@@ -1494,7 +1494,14 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
     } else {
       location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
-    return { threadId: thread.id, location, text: mockPostText(thread) };
+    return {
+      threadId: thread.id,
+      location,
+      text: mockPostText(thread),
+      ...(host.kind === "code" && thread.anchor.quotedText !== ""
+        ? { quote: thread.anchor.quotedText }
+        : {}),
+    };
   });
   const general = comments.filter((c) => c.location.kind !== "inline").map((c) => c.text);
   return {

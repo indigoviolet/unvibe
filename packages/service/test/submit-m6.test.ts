@@ -162,10 +162,11 @@ describe("submit", () => {
         payload: { dryRun: true },
       });
       expect(dry.statusCode).toBe(200);
-      const preview = (dry.json() as { preview: { comments: Array<{ location: { kind: string }; text: string }>; reviewBody: string } }).preview;
+      const preview = (dry.json() as { preview: { comments: Array<{ location: { kind: string }; text: string; quote?: string }>; reviewBody: string } }).preview;
       expect(preview.comments).toHaveLength(1);
       expect(preview.comments[0].location.kind).toBe("general");
       expect(preview.comments[0].text).toBe(expectedBody);
+      expect(preview.comments[0].quote).toBe("beta = 2\ngamma = 3");
       expect(preview.reviewBody).toBe(expectedBody);
       expect(runner.calls).toHaveLength(0);
 
