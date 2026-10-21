@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createScratchReview, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -25,7 +25,8 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
 EOF
   exit 0
 fi
-if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"author"}'; exit 0; fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'author'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as author"; exit 0; fi
 echo "fake gh: unexpected call: $*" >&2; exit 1
 `;
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
@@ -54,6 +55,7 @@ test.describe("J225a settings, start page and PR badges", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225a-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225a-bin-"));
     writeFakeGhDecision(fakeBin, logDir, repo.headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, {
@@ -128,6 +130,18 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(envCard.getByRole("button", { name: "Re-check" })).toBeVisible();
     await expect(envCard.getByRole("button", { name: "Reload environment" })).toBeVisible();
     await expect(envCard.getByRole("link", { name: "Doctor page" })).toBeVisible();
+    // #225: rows show versions, never paths or command lines. The d2
+    // row reads "d2 0.9.0" (whatever the binary path is); the full
+    // detail rides the row's hover title instead.
+    const d2Row = envCard.locator('[data-testid="env-d2"]');
+    await expect(d2Row).toBeVisible();
+    await expect(d2Row.locator(".ui-row-meta")).toHaveText(/^d2 \d+\.\d+(\.\d+)?$/);
+    await expect(d2Row).toHaveAttribute("title", /d2 .* at \//);
+    const rowTexts = await envRows.evaluateAll((els) => els.map((el) => el.textContent ?? ""));
+    expect(rowTexts.length).toBeGreaterThan(3);
+    for (const text of rowTexts) {
+      expect(text, `env row leaks a path: ${text}`).not.toMatch(/(\s|^)~?\/(?=\S)|^[A-Za-z]:[\\/]/);
+    }
     await noPageScroll(page);
 
     // Repos: the list and both add rows share one card and one right edge.

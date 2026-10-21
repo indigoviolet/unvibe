@@ -2621,3 +2621,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   from the Outbox"); same rename applied to the affected e2e/unit
   expectations. Left for the gate: the full `mise run gate` on this
   tree.
+- **#225 follow-up (owner review): hermetic tour + path-free rows.**
+  `shortDetail` now strips "at <path>" tails and path-like tokens
+  from every environment row (d2 reads "d2 0.9.0"; full detail stays
+  on hover and the Doctor page); J225a asserts the d2 row and that no
+  row contains a path. The tour's main service (and the #222 restart,
+  J225a, the start-PR-list journey) runs with a fake `gh` on PATH
+  (`auth status` ok, `api user` → fake login, empty `pr list`) and a
+  `writeFakeGitOffline` git wrapper that fails only the fetch probe's
+  `ls-remote` instantly — no real `gh`, no real network; the
+  GitHub-fetch row shows a deterministic offline warning instead.
+  (Two fake-`gh` bugs found on the way: match `ls-remote` anywhere in
+  argv, since the service passes `-c` flags first; and answer
+  `api user` with the bare login, as `--jq .login` would.) A DOM-text
+  grep over every Settings tab and the start page finds no real login
+  and no home-directory paths.

@@ -10,7 +10,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { checkLayout } from "../layout-check.js";
-import { apiJson, git, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 test.use({ channel: "chromium" });
@@ -80,7 +80,8 @@ EOF
       exit 0 ;;
   esac
 fi
-if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"reviewer"}'; exit 0; fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'reviewer'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as reviewer"; exit 0; fi
 echo "fake gh: unexpected call: $*" >&2; exit 1
 `;
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
@@ -102,6 +103,7 @@ test.describe("J225 start-page PR list", () => {
     await makeScratchRepo(repoDir);
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
     writeFakeGhPrLists(fakeBin, logDir);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, {

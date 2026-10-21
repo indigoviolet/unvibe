@@ -1,5 +1,5 @@
 /** Shared helpers for the #188 journeys (real built service only). */
-import { execFile } from "node:child_process";
+import { execFile, execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -84,6 +84,48 @@ if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then
   for arg in "$@"; do if [ "$prev" = "--body-file" ]; then cp "$arg" "$LOG/body.md"; fi; prev="$arg"; done
   echo '{}'; exit 0
 fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`;
+  writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
+}
+
+/** Absolute path of the real `git` (resolved in-process, before any fake bin dir shadows PATH). */
+export function realGitPath(): string {
+  return execSync("command -v git", { encoding: "utf8" }).trim();
+}
+
+/**
+ * Fake `git` for hermetic e2e services (AGENTS.md: never hit real
+ * GitHub): `ls-remote` — the only network call the service makes, via
+ * the GitHub-fetch readiness probe — fails instantly offline, so the
+ * probe reports a deterministic warning. Everything else delegates to
+ * the real binary (ingest reads local checkouts through it).
+ */
+export function writeFakeGitOffline(binDir: string, realGit: string): void {
+  const script = `#!/bin/sh
+case "$*" in
+  *ls-remote*github/gitignore*)
+    echo "git ls-remote stubbed offline (e2e): tests never hit real GitHub" >&2
+    exit 1
+    ;;
+esac
+exec "${realGit}" "$@"
+`;
+  writeFileSync(path.join(binDir, "git"), script, { mode: 0o755 });
+}
+
+/** Fake `gh` for the visual tour: authenticated as a fake login, empty PR lists. No real `gh`, no network. */
+export function writeFakeGhTour(binDir: string, logDir: string): void {
+  const script = `#!/bin/sh
+LOG="${logDir}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo "tour-host: Logged in to github.com account tour-reviewer (e2e stub)"
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
 echo "fake gh: unexpected call: $*" >&2; exit 1
 `;
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });

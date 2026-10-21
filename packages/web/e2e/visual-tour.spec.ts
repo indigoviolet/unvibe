@@ -29,7 +29,7 @@ import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { writeFakeGh } from "./journeys/journey-helpers.js";
+import { realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -52,6 +52,9 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
 }
 
 let dataDir = "";
+let tourBin = "";
+let tourLog = "";
+let tourShellPath = "";
 let svc: RunningService | null = null;
 let reviewId = "";
 
@@ -59,7 +62,20 @@ test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
-  svc = await startService(dataDir, { agent: "replay" });
+  // Hermetic service (AGENTS.md: tests never hit real GitHub): fake
+  // `gh` (authenticated as a fake login, empty PR lists) and a `git`
+  // wrapper that fails `ls-remote` instantly, so the GitHub-fetch
+  // probe reports a deterministic offline warning — no real network.
+  tourBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-bin-"));
+  tourLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-gh-"));
+  writeFakeGhTour(tourBin, tourLog);
+  writeFakeGitOffline(tourBin, realGitPath());
+  tourShellPath = path.join(tourBin, "fakeshell");
+  writeFileSync(tourShellPath, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${tourBin}:$PATH"\n`, { mode: 0o755 });
+  svc = await startService(dataDir, {
+    agent: "replay",
+    extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+  });
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
   };
@@ -79,7 +95,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await svc?.stop().catch(() => {});
   svc = null;
-  rmSync(dataDir, { recursive: true, force: true });
+  for (const d of [dataDir, tourBin, tourLog]) rmSync(d, { recursive: true, force: true });
 });
 
 /**
@@ -1275,7 +1291,10 @@ test("visual tour document review (#222)", async ({ page }) => {
     } finally {
       db.close();
     }
-    svc = await startService(dataDir, { agent: "replay" });
+    svc = await startService(dataDir, {
+      agent: "replay",
+      extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
     await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
     const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
     await expect(cited.first()).toBeVisible({ timeout: 30_000 });
