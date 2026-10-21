@@ -16,7 +16,7 @@ export interface Field {
 }
 
 const FIELDS: Field[] = [
-  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 4." },
+  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 8." },
   { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000." },
   { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01" },
   { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000." },

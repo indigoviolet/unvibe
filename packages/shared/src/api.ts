@@ -938,7 +938,7 @@ export interface Settings {
   main: ModelPick;
   small: ModelPick;
   secondOpinion: ModelPick;
-  /** Max concurrent sessions per provider (default 4, PRD §12). */
+  /** Max concurrent sessions per provider (default 8, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */
   inlineBudgetTokens: number;

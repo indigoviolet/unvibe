@@ -291,7 +291,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         try {
           return settings.get().sessionsPerProvider;
         } catch {
-          return 4;
+          return 8;
         }
       },
       onEvent: (reviewId, event) => bus.publish(reviewId, event),
