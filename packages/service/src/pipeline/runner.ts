@@ -1712,8 +1712,20 @@ export class Pipeline {
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
-            // Issue #50: reader cards match their own `##` titles.
-            const { cards, data, validation } = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            // Issue #213: a malformed / non-object trailing data block never
+            // discards the guide. Keep the cards parsed from the body and
+            // run one data-block repair turn below (same session).
+            let brokenDataError: string | undefined;
+            let firstParsed: Awaited<ReturnType<typeof this.parseAndValidateWithCode>>;
+            try {
+              firstParsed = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            } catch (err) {
+              const msg = (err as Error).message;
+              if (!msg.includes("was not in the expected format (malformed") && !msg.includes("was not in the expected format (not-object")) throw err;
+              brokenDataError = msg;
+              firstParsed = await this.parseAndValidateWithCode(reviewId, splitReply(buffer).body, []);
+            }
+            const { cards, data, validation } = firstParsed;
             let finalCards = cards;
             let finalData = data;
             let finalValidation = validation;
@@ -1732,7 +1744,33 @@ export class Pipeline {
             if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
             if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
-            if (validation.needsRepairTurn && degradedReason === undefined) {
+            if (brokenDataError !== undefined) {
+              // #213: one repair turn, same session, just the data block.
+              const repairPrompt =
+                `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
+                `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
+                `(cardIds, pendingCards, plotlines and any contribute block), with no cards and no prose.`;
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
+              );
+              usage.inputTokens += repair.usage.inputTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.outputTokens += repair.usage.outputTokens;
+              ctx.reportUsage(repair.usage);
+              await this.recordUsage(reviewId, repair.usage);
+              const repaired = splitReply(repair.text);
+              if (repaired.ok) {
+                finalData = repaired.data as ReplyData;
+              } else {
+                degradedReason =
+                  "The reader's trailing data block did not parse and the repair reply did not parse either, so the guide has no plotlines or go-deeper directions.";
+              }
+            } else if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
