@@ -2452,16 +2452,23 @@ hunk coverage) is reported for a separate issue, not fixed here.
 - **Tour coverage (#225, second pass):** the main tour loop now visits
   every Settings tab (Limits, Repos, Models, Environment, Version,
   Appearance) and the start page (Open-a-PR row, Reviews list) in all
-  four variants, with `checkLayout` on each. The PR list's empty
-  sub-groups need gh-loaded lists, unreachable in the tour sandbox
-  (no repos, no login); rules 4b/4c cover them wherever they render.
+  four variants, with `checkLayout` on each. The PR list with its
+  empty sub-groups is covered by `e2e/journeys/j225-start-pr-list.spec.ts`:
+  its own service with the J3/J81 fake-`gh` pattern (canned `pr list`
+  for `--author`, empty direct requests, team requests; mixed open,
+  draft, merged, approved, changes-requested states for #224's future
+  badges) plus a scratch repo with a fake `acme/widgets` remote, in
+  all four variants. No real `gh`, no network.
 - **Violations on this branch (all part A's screens, unfixed here):**
   Settings → Limits fails everywhere (number inputs overflow the
   card, 8 violations); Settings → Repos fails everywhere (both add
   rows short of the row edge, ending at different edges: 974 vs 908
-  of 1100 at 1440); start page fails everywhere (Open-PR trailing
-  control ends 875 of 1100 at 1440). Models, Environment, Version,
-  Appearance and every review-page scene are clean. The tour aborts
-  at the first failing scene (settings-limits), so later scenes are
-  verified via the collected violations above; the combined tree with
-  part A must pass the full tour before the gate.
+  of 1100 at 1440); start page fails everywhere, with and without PR
+  lists (Open-PR trailing control ends 875 of 1100 at 1440 — the only
+  violation in the PR-list scene; Your PRs, the empty Requested-of-you
+  sub-group, the team rows and Reviews are clean). Models,
+  Environment, Version, Appearance and every review-page scene are
+  clean. The tour aborts at the first failing scene (settings-limits),
+  so later scenes are verified via the collected violations above;
+  the combined tree with part A must pass the full tour before the
+  gate.
