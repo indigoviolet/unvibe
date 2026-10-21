@@ -16,7 +16,7 @@ function stubLookup(overrides: Partial<ReviewLookup> = {}): ReviewLookup {
       if (fileKey === "conn" && hash === "h1") return { start: 80, end: 88 };
       return null;
     },
-    fileLineCount: (p) => (p === "src/a.py" ? 50 : null),
+    fileExists: (p) => p === "src/a.py",
     descParagraph: (id) => (id === "d-intro" ? "intro text" : null),
     pageExists: (id) => id === "f-lf",
     cardExists: (id) => id === "central",
@@ -62,9 +62,12 @@ describe("validateTarget", () => {
     expect(r).toMatchObject({ status: "repaired", repairedTo: "page:f-lf" });
   });
 
-  it("accepts known code ranges, rejects out-of-range ones", () => {
+  it("accepts code in an existing file at any range, rejects missing files (#81)", () => {
     expect(validateTarget("code:src/a.py:10-20", lookup).status).toBe("valid");
-    expect(validateTarget("code:src/a.py:10-99", lookup).status).toBe("unverified");
+    // No length check: a range past the end still validates; the file
+    // tab highlights whatever part of it exists.
+    expect(validateTarget("code:src/a.py:10-99", lookup).status).toBe("valid");
+    expect(validateTarget("code:src/a.py:999", lookup).status).toBe("valid");
     expect(validateTarget("code:src/missing.py:1", lookup).status).toBe("unverified");
   });
 

@@ -547,7 +547,13 @@ export type ActionAnchor =
    * real conversation card (no agent call), then run as a nested card on
    * the selected summary text.
    */
-  | { where: "hunk"; fileKey: string; contentHash: string };
+  | { where: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit (the source-pane file tab), addressed
+   * like a `code:` citation. Explain, Ask and Comment anchor here; the
+   * card or thread renders under the cited lines in that tab.
+   */
+  | { where: "code"; path: string; commit: string; line: number; endLine?: number };
 
 export interface ActionResponse {
   accepted: boolean;

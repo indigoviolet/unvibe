@@ -19,8 +19,11 @@ export interface ReviewLookup {
   hunkAtLine(fileKey: string, line: number): HunkLocation | null;
   /** New-side range of a hunk by content hash, if it exists. */
   hunkRange(fileKey: string, hash: string): { start: number; end: number } | null;
-  /** File length at a commit for `code:` ranges; null when unknown. */
-  fileLineCount(keyOrPath: string): number | null;
+  /**
+   * Whether the file exists at the cited commit (#81: no length check —
+   * a `code:` citation is valid when the file exists, whatever the range).
+   */
+  fileExists(path: string): boolean;
   /** Description paragraph text by id; null when unknown. */
   descParagraph(id: string): string | null;
   pageExists(id: string): boolean;

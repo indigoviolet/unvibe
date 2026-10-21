@@ -121,19 +121,18 @@ function validateDiff(target: string, lookup: ReviewLookup): TokenReport {
 function validateCode(target: string, lookup: ReviewLookup): TokenReport {
   const parsed = parseId(target);
   if (parsed?.kind !== "code") return unverified(target, `not a code ID: ${target}`);
-  const n = lookup.fileLineCount(parsed.path);
-  if (n === null) {
-    const mapped = tryRemap(target, lookup);
-    if (mapped) {
-      const again = validateCode(mapped, lookup);
-      if (again.status === "valid") {
-        return { target, status: "repaired", repairedTo: mapped, reason: `remapped from a previous version` };
-      }
+  // #81: no length check. The citation is valid when the file exists at
+  // the cited commit, whatever the range; a range past the end still
+  // opens and highlights whatever part of it exists.
+  if (lookup.fileExists(parsed.path)) return { target, status: "valid" };
+  const mapped = tryRemap(target, lookup);
+  if (mapped) {
+    const again = validateCode(mapped, lookup);
+    if (again.status === "valid") {
+      return { target, status: "repaired", repairedTo: mapped, reason: `remapped from a previous version` };
     }
-    return unverified(target, `unknown file for code range: ${parsed.path}`);
   }
-  if (parsed.start >= 1 && parsed.end <= n) return { target, status: "valid" };
-  return unverified(target, `lines ${parsed.start}–${parsed.end} outside ${parsed.path} (1–${n})`);
+  return unverified(target, `unknown file for code range: ${parsed.path}`);
 }
 
 function validateDesc(target: string, lookup: ReviewLookup): TokenReport {
