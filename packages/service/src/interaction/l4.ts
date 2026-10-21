@@ -144,6 +144,30 @@ function findBlockIn(
   return null;
 }
 
+/** Comment annotation behind a comment host (issue #214), or null. */
+export function findComment(snapshot: ReviewSnapshot, commentId: string): Annotation | null {
+  return (snapshot.annotations ?? []).find((a) => a.id === commentId && a.type === "comment") ?? null;
+}
+
+/** Plain text of a comment: its messages joined, in order. */
+export function commentPlainText(comment: Annotation): string {
+  return (comment.messages ?? []).map((m) => m.text ?? "").filter((t) => t !== "").join("\n\n");
+}
+
+/**
+ * Host text for a comment host: the message containing the quote when one
+ * does, else the whole comment text. Null when the comment is unknown.
+ */
+export function commentHostText(snapshot: ReviewSnapshot, commentId: string, quote?: string): string | null {
+  const comment = findComment(snapshot, commentId);
+  if (!comment) return null;
+  if (quote) {
+    const hit = (comment.messages ?? []).find((m) => (m.text ?? "").includes(quote));
+    if (hit?.text) return hit.text;
+  }
+  return commentPlainText(comment);
+}
+
 /** Full host block text for an anchor (paragraph / description / diff). */
 export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anchor"]): string {
   const host = anchor.host;
@@ -156,6 +180,10 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
     const text = descriptionParagraphText(currentDescriptionHtml(snapshot.description), host.paragraphId);
     if (text !== null) return text;
     return `(unknown description paragraph ${host.paragraphId})`;
+  }
+  if (host.kind === "comment") {
+    // Issue #214: the host block is the comment's own text.
+    return commentHostText(snapshot, host.commentId, anchor.quotedText) ?? "(unknown comment)";
   }
   if (host.kind === "hunk") {
     // Issue #138: a hunk card's text is its summary (the first turn's
@@ -220,6 +248,13 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
   if (anchor.host.kind === "description") {
     return `(PR description paragraph ${anchor.host.paragraphId})`;
   }
+  if (anchor.host.kind === "comment") {
+    // The comment sits on some other host; show that host's card context
+    // (never recursing into another comment host).
+    const comment = findComment(snapshot, anchor.host.commentId);
+    if (!comment || comment.anchor.host.kind === "comment") return "(none)";
+    return cardTextFor(snapshot, comment.anchor);
+  }
   const host = anchor.host;
   if (host.kind !== "diff-line") return "(none)";
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
@@ -241,6 +276,7 @@ export function nearbyAnnotationsText(
     if (h.kind === "diff-line" && anchor.host.kind === "diff-line") {
       return h.fileKey === anchor.host.fileKey && h.line === anchor.host.line;
     }
+    if (h.kind === "comment" && anchor.host.kind === "comment") return h.commentId === anchor.host.commentId;
     return false;
   });
   if (same.length === 0) return "(none)";

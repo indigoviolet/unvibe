@@ -109,6 +109,9 @@ export function isRevealedElement(el: HTMLElement): boolean {
  */
 export function selectionScopeElement(el: HTMLElement): Element | null {
   if (el.closest("[data-so]")) return null;
+  // Issue #214: offsets record within the comment text itself.
+  const commentScope = el.closest("[data-comment]");
+  if (commentScope) return commentScope as Element;
   // Issue #163: offsets record within the suggestion text (placement
   // falls back to text match on the comment's host — the quote comes
   // from the suggestion, not the host).
@@ -158,6 +161,16 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // Issue #214: a selection inside any comment card anchors to that
+  // comment (suggested question, AI review comment, or a person's
+  // comment), in the guide and the diff pane alike.
+  const commentEl = el.closest("[data-comment]");
+  if (commentEl) {
+    const id = (commentEl as HTMLElement).dataset.comment ?? "";
+    const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
+    if (!found || found.type !== "comment") return null;
+    return { anchor: { where: "comment", commentId: id } };
+  }
   // Issue #163: a selection inside an agent-suggested comment anchors to
   // the comment itself (its own anchor) — the suggestion text is agent
   // text, not a stable host. The toolbar's Ask/Explain/Comment then act
@@ -410,6 +423,25 @@ export function blockquoteQuote(quote: string): string {
  * Issue #138: an answer on a hunk card comments on the hunk's first
  * changed line (never the hunk — comments live on lines).
  */
+/**
+ * Issue #214: where a Comment on text inside a comment belongs — the
+ * comment's own underlying host (guide block, description, or diff
+ * line), quoting the selection. Null when unresolvable.
+ */
+export function underlyingCommentAnchor(commentId: string): ActionAnchor | null {
+  const found = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+  if (!found || found.type !== "comment") return null;
+  const host = found.anchor.host;
+  if (host.kind === "block") return { where: "block", blockId: host.blockId };
+  if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
+  if (host.kind === "hunk") {
+    return hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ?? null;
+  }
+  return null;
+}
+
 export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (anchor.where !== "block") return null;
   const hash = anchor.blockId.indexOf("#");
@@ -423,6 +455,7 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
   if (host.kind === "hunk") {
     return (
       hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ??
@@ -527,11 +560,16 @@ export function SelectionToolbar() {
         // comment (a reply on GitHub is out of scope).
         const inGhThread =
           host.anchor.where === "diff-line" && anchorEl.closest?.("[data-gh-thread]") != null;
-        // Issue #163: a selection inside a suggested comment comments on
-        // the comment's own anchor (quoting the selection into the user's
-        // own comment) — the suggestion text is not a host.
+        // Issue #163/#214: Explain/Ask anchor to the comment itself; a
+        // Comment on text inside a comment quotes the selection into the
+        // reviewer's own comment on the comment's underlying host.
+        const inComment = host.anchor.where === "comment";
         const inSuggested = anchorEl.closest("[data-ai-comment]") !== null;
-        const commentAnchor = inSuggested ? host.anchor : cardAnchor;
+        const commentAnchor = inComment && host.anchor.where === "comment"
+          ? (underlyingCommentAnchor(host.anchor.commentId) ?? cardAnchor ?? undefined)
+          : inSuggested
+            ? host.anchor
+            : cardAnchor;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,

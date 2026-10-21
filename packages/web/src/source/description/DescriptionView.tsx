@@ -125,6 +125,14 @@ export function DescriptionView({ reviewId, editor }: Props) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      if (req.anchor.where === "comment") {
+        const commentId = req.anchor.commentId;
+        const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+        if (!comment || comment.anchor.host.kind !== "description") return;
+        if (isReadOnlyVersionNow()) return;
+        setPending(req);
+        return;
+      }
       if (req.anchor.where !== "description") return;
       if (isReadOnlyVersionNow()) return;
       setPending(req);
@@ -420,7 +428,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         const open = threads.filter((t) => t.open);
         const markers = threads.filter((t) => t.messages.length > 0 && !t.open && !highlighted.has(t.id));
         const showPending =
-          pending && pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id;
+          pending &&
+          ((pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id) ||
+            (pending.anchor.where === "comment" &&
+              threads.some((t) => t.id === (pending.anchor as { commentId: string }).commentId)));
         return (
           <div key={seg.id ?? `seg-${i}`} data-top={seg.id ?? undefined}>
             <div className="dseg-body" dangerouslySetInnerHTML={{ __html: seg.html }} />

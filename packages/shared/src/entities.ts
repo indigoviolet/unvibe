@@ -572,6 +572,12 @@ export interface Annotation {
   | { kind: "description"; paragraphId: string }
   | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" }
   /**
+   * Issue #214: text inside a comment card (a suggested question, an
+   * AI-suggested review comment, or a person's comment). The host is that
+   * comment; its text is the host block for Ask/Explain.
+   */
+  | { kind: "comment"; commentId: string }
+  /**
    * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>` (stable
    * across versions while the hunk's content is). Hosts the conversation
    * card an idle hunk summary activates into.

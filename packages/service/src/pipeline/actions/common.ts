@@ -45,6 +45,8 @@ export function anchorKey(anchor: ActionAnchor): string {
       return `diff:${anchor.fileKey}:${anchor.line}`;
     case "hunk":
       return `h:${anchor.fileKey}:${anchor.contentHash}`;
+    case "comment":
+      return `comment:${anchor.commentId}`;
   }
 }
 
