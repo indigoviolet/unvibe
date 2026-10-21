@@ -54,9 +54,23 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
     setLines(null);
     setError(null);
     setTotalLines(0);
+    // A chunk past the end answers 400 with the file's real length —
+    // clamp and retry once instead of failing the tab.
+    const slice = async (from: number, to: number) => {
+      try {
+        return await api.fileSlice(reviewId, { path, commit, start: from, end: to });
+      } catch (err) {
+        const m = err instanceof Error ? err.message.match(/"totalLines":\s*(\d+)/) : null;
+        const total = m ? Number(m[1]) : 0;
+        if (total > 0 && from <= total) {
+          return api.fileSlice(reviewId, { path, commit, start: from, end: total });
+        }
+        throw err;
+      }
+    };
     void (async () => {
       try {
-        const first = await api.fileSlice(reviewId, { path, commit, start: 1, end: CHUNK });
+        const first = await slice(1, CHUNK);
         if (cancelled) return;
         const all = [...first.lines];
         setTotalLines(first.totalLines);
@@ -64,12 +78,7 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
         let loaded = first.end;
         let chunks = 1;
         while (loaded < first.totalLines && chunks < MAX_CHUNKS) {
-          const next = await api.fileSlice(reviewId, {
-            path,
-            commit,
-            start: loaded + 1,
-            end: Math.min(first.totalLines, loaded + CHUNK),
-          });
+          const next = await slice(loaded + 1, Math.min(first.totalLines, loaded + CHUNK));
           if (cancelled) return;
           all.push(...next.lines);
           loaded = next.end;

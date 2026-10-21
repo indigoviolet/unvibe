@@ -189,8 +189,23 @@ export function HoverPopover() {
                 end: Math.min(parsed.end, parsed.start + 3),
               });
               return { target: c.target, snippet: slice.lines.join("\n") };
-            } catch {
-              return null;
+            } catch (err) {
+              // Past-the-end range: the 400 carries the file end — retry
+              // clamped to whatever part of the range exists (#81).
+              const m = err instanceof Error ? err.message.match(/"totalLines":\s*(\d+)/) : null;
+              const total = m ? Number(m[1]) : 0;
+              if (total <= 0 || parsed.start > total) return null;
+              try {
+                const slice = await api.fileSlice(reviewId, {
+                  path: parsed.path,
+                  commit: parsed.sha ?? snap.version.headSha,
+                  start: parsed.start,
+                  end: total,
+                });
+                return { target: c.target, snippet: slice.lines.join("\n") };
+              } catch {
+                return null;
+              }
             }
           }),
         ).then((fills) => {
