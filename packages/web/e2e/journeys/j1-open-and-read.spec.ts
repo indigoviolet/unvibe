@@ -74,6 +74,10 @@ test.describe("J1 open and read the guide", () => {
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#C-problem")).toBeVisible();
+    // Explain-first reader order (#198): build-up, then decisions.
+    await expect(page.locator("#C-buildup")).toBeVisible();
+    await expect(page.locator("#C-decisions")).toBeVisible();
+    await expect(page.locator("#C-decisions")).toContainText("Decisions and alternatives");
 
     // Follow a citation into the diff (proven selector from guide-service).
     const seeded = page.locator("#C-problem [data-expansion]");

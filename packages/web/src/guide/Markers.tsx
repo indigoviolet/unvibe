@@ -21,7 +21,7 @@
 import type { Annotation } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
-import { openBlockThread } from "./annotations.js";
+import { openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
 
@@ -80,7 +80,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           data-threads={unquoted.map((t) => t.id).join("|")}
           aria-label={`${unquoted.length} comments`}
           data-tip="Show comments"
-          onClick={() => openBlockThread(unquoted[0].id, blockId)}
+          onClick={() => openBlockThreads(unquoted.map((t) => t.id), blockId)}
         >
           <Icon name="comment" />
           {unquoted.length}

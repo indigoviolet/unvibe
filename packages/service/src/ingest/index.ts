@@ -40,6 +40,36 @@ export interface IngestDeps {
   dataDir: string;
 }
 
+/** #179: the diff is empty — there is nothing to review. Distinct from a
+ * failed ingest so the UI can say "No changes to review" (with Retry /
+ * Remove) instead of "Couldn't open". No pipeline runs for an empty diff. */
+export class EmptyDiffError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmptyDiffError";
+  }
+}
+
+export function emptyDiffMessage(args: {
+  prNumber?: number;
+  prState?: string;
+  branch: string;
+  baseRef: string;
+}): string {
+  if (args.prNumber !== undefined) {
+    if (args.prState === "MERGED") {
+      return "No changes to review: this PR has been merged and its branch is now the same as its base, so the diff is empty.";
+    }
+    return "No changes to review: this PR's branch is the same as its base, so the diff is empty. Its changes may already be in the base branch.";
+  }
+  return `No changes to review: branch "${args.branch}" is the same as its base (${args.baseRef}), so the diff is empty. There are no changes to show yet.`;
+}
+
+/** #179: no hunks and no binary change — nothing for a reader or agent. */
+export function isEmptyDiff(files: ReviewFile[]): boolean {
+  return files.every((f) => f.hunks.length === 0 && !f.isBinary);
+}
+
 export interface IngestedReview {
   review: Review;
   version: Version;
@@ -108,6 +138,16 @@ export async function ingestReview(
   // classify → key → hash → hidden_reason via the shared pure pipeline
   // (the web mock fixture builds its files through this same function).
   const files: ReviewFile[] = buildReviewFiles(parsed, { linguistGenerated: gen });
+  if (isEmptyDiff(files)) {
+    throw new EmptyDiffError(
+      emptyDiffMessage({
+        ...(resolved.prNumber !== undefined ? { prNumber: resolved.prNumber } : {}),
+        ...(resolved.descriptionState !== undefined ? { prState: resolved.descriptionState } : {}),
+        branch: resolved.branch,
+        baseRef: resolved.baseRef,
+      }),
+    );
+  }
   // Issue #193: per-commit files/hunks for the reader's plotline evidence.
   const commitDiffs = await readCommitDiffs(deps.runner, source.repoPath, resolved.commits);
   const commits = buildReviewCommits(resolved.commits, commitDiffs, files);

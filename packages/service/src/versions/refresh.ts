@@ -366,6 +366,9 @@ export async function refreshReview(
   // still recorded (with its ID mapping) but nothing is stale, so the UI
   // shows no Update banner and the update pass reports nothing to do.
   const hasChanges = summary.changedHunks + summary.newHunks + summary.removedHunks > 0;
+  // #179: the new diff is empty — say so in the banner instead of
+  // silently showing no files, and never offer an agent update for it.
+  const isEmpty = newFiles.every((f) => f.hunks.length === 0 && !f.isBinary);
   const versionStatus: VersionStatus = {
     stale: hasChanges,
     fromVersion: oldVersion.n,
@@ -379,6 +382,7 @@ export async function refreshReview(
     changedNewIds: summary.changedNewIds,
     rangeDiff,
     fetchedAt: now,
+    ...(isEmpty ? { empty: true } : {}),
   };
 
   const newContents = await loadNewContents(deps.runner, repoPath, head.headSha, newFiles);

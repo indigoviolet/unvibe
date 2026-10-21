@@ -1284,6 +1284,8 @@ export function SessionRow({
             <>{ingestStepLabel(s.ingestStep)}</>
           ) : s.ingestStatus === "failed" ? (
             <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
+          ) : s.ingestStatus === "empty" ? (
+            <>{s.ingestError ?? "No changes to review: the diff is empty."}</>
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
@@ -1297,7 +1299,8 @@ export function SessionRow({
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
         {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
-        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" ? (
+        {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
+        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
           <span className="prtag">new commits</span>
         ) : null}
         {confirmDelete === s.id ? (

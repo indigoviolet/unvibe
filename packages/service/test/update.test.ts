@@ -36,7 +36,7 @@ import {
   shortCommit,
 } from "../src/update/channels.js";
 import type { InstalledBuild, UpdateChannel } from "../src/update/channels.js";
-import { installPrefixForPackage, installRef, installSpec } from "../src/update/install.js";
+import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "../src/update/install.js";
 
 function tmpDir(prefix: string): string {
   // realpath: macOS's tmpdir is a symlink (/var -> /private/var) and the code under test resolves it.
@@ -104,10 +104,21 @@ describe("channel names + install specs", () => {
     runner.enqueue({ cmd: "npm", stdout: "added 1 package", stderr: "", code: 0 });
     const res = await installRef(runner, "preview/feat-x");
     expect(res.code).toBe(0);
+    // Stable cwd (issue #42 regression): npm must not inherit a cwd
+    // inside the package it is replacing, which it deletes mid-install.
     expect(runner.calls).toEqual([
-      { cmd: "npm", opts: { args: ["install", "-g", "github:indigoviolet/unvibe#preview/feat-x"] } },
+      {
+        cmd: "npm",
+        opts: { args: ["install", "-g", "github:indigoviolet/unvibe#preview/feat-x"], cwd: stableNpmCwd() },
+      },
     ]);
     await expect(installRef(runner, "main")).rejects.toThrow();
+  });
+
+  it("picks a stable npm cwd that survives the install", () => {
+    expect(stableNpmCwd("/home/u")).toBe("/home/u");
+    expect(stableNpmCwd("")).toBe(os.tmpdir());
+    expect(path.isAbsolute(stableNpmCwd())).toBe(true);
   });
 
   it("pins --prefix when asked", async () => {
@@ -716,6 +727,41 @@ describe("runUpdateChannelFlow", () => {
     expect(fs.readFileSync(path.join(channelSlotDir(dataDir, "preview/feat-x"), "unvibe.db"), "utf8")).toBe("preview-db");
     expect(fs.readFileSync(path.join(dataDir, "unvibe.db"), "utf8")).toBe("preview-db");
     expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
+  });
+
+  it("runs the newly installed CLI's setup after a successful install (issue #42: install runs no setup)", async () => {
+    const dataDir = tmpDir("unvibe-update-setup-");
+    const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-update-setup-installed-"), {
+      name: "unvibe",
+      version: "0.0.1-preview.feat-x.older",
+      unvibe: { channel: "preview/feat-x", commit: "older1234full" },
+    });
+    const runner = new SwitchRunner(
+      packagePath,
+      {
+        name: "unvibe",
+        version: "0.0.1-preview.feat-x.abc1234",
+        unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+      },
+      {
+        "preview/feat-x": {
+          name: "unvibe",
+          version: "0.0.1-preview.feat-x.abc1234",
+          unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
+        },
+      },
+    );
+    const out = await runUpdateChannelFlow(
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      "preview/feat-x",
+    );
+    expect(out.code).toBe(0);
+    // The fake runner refuses the setup spawn (unexpected command); the
+    // flow treats setup as best-effort and still succeeds — but the
+    // attempt, via the installed CLI path, must be there.
+    const setupCall = runner.calls.find((c) => c.opts.args[1] === "setup");
+    expect(setupCall?.cmd).toBe(process.execPath);
+    expect(setupCall?.opts.args).toEqual([scriptPath, "setup"]);
   });
 
   it("reinstalls the same channel when the published commit is unreadable", async () => {

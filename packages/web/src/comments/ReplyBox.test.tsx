@@ -113,6 +113,27 @@ describe("ReplyBox draft race", () => {
     expect(api.updateComment).not.toHaveBeenCalled();
   });
 
+  test("send in flight, then unmount (answer being written): the sent text is never persisted back", async () => {
+    const { resolveSend } = show();
+    fireEvent.change(box(), { target: { value: "And why?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    // #203: the card hides its reply box while the answer is written, so
+    // the box unmounts before the send settles. The unmount flush must
+    // not persist the consumed text — that would resurrect it as a
+    // draft on the server, and the remounted box would show it again.
+    cleanup();
+    await act(async () => {
+      resolveSend({});
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(api.updateComment).not.toHaveBeenCalled();
+    // The remounted box (answer arrived, server draft cleared) is empty.
+    show({ serverReply: undefined });
+    expect(box().value).toBe("");
+  });
+
   test("unsent text flushes on unmount; server drafts flow back in", async () => {
     const first = show();
     void first;

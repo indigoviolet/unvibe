@@ -9,5 +9,6 @@ export function ingestRefusal(snapshot: ReviewSnapshot): string | null {
   const st = ingestStatusOf(snapshot);
   if (st === "ready") return null;
   if (st === "loading") return "the review is still opening";
+  if (st === "empty") return snapshot.ingest?.error ?? "No changes to review: the diff is empty.";
   return snapshot.ingest?.error ?? "the review couldn't be opened";
 }

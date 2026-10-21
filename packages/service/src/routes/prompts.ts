@@ -591,7 +591,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     {
       layer: "L1",
       label: hunkLabel,
-      text: render("hunk_pass", { hunk: hunkText, path: hunkPath }),
+      text: render("hunk_pass", { hunk: hunkText, path: hunkPath, plotline: "(none assigned yet)" }),
       cached: false,
     },
   ]);

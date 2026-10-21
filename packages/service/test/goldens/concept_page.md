@@ -18,10 +18,15 @@ obs-fold — Obsolete line folding: a header value continued on the next line.
 1. What the concept is, as this change uses it — with the citations that
    show it in the code or description.
 2. Why it matters here: the decision, risk, or mechanism it explains.
+   Where the concept embodies a decision, say what else was possible
+   and why this one — naming an alternative only when it is real for
+   this code, and saying when a reason is inferred.
 3. A concrete example: before/after values, a short trace, or a minimal
    snippet from the change. Prefer values from the actual code.
 4. A `### Follow-ups` section with at most three follow-up questions
-   on this change.
+   on this change, each following the shared follow-up rule in the
+   instructions (deepen understanding or test the change, with a
+   pre-baked question; never a restatement).
 
 Keep it to what this review needs. If a diagram helps, use a fenced `d2`
 block per the D2 convention (prompts/includes/d2-convention.md):

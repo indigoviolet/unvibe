@@ -188,6 +188,28 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return <FailedOpen reviewId={reviewId} prLabel={pr} error={error} />;
   }
+  if (ingestStatus === "empty") {
+    const error = snapshot.ingest?.error ?? "No changes to review: the diff is empty.";
+    const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
+    return <EmptyOpen reviewId={reviewId} prLabel={pr} error={error} />;
+  }
+
+  // #179: a version whose diff is empty (e.g. a refresh emptied it) says
+  // so here instead of the stale guide or "No guide yet / diff is ready".
+  // Gated on a real multi-version state so plain no-files fixtures and
+  // pipeline-error snapshots keep their own states.
+  const isEmptyVersion =
+    snapshot.files.every((f) => f.hunks.length === 0 && !f.isBinary) &&
+    (snapshot.versionStatus?.empty === true || snapshot.review.versions.length > 1 || snapshot.version.n > 1);
+  if (isEmptyVersion) {
+    return (
+      <EmptyVersionGuide
+        versionN={snapshot.version.n}
+        versionCount={snapshot.review.versions.length}
+        hasGuide={pages.some((p) => p.cards.length > 0)}
+      />
+    );
+  }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
   // Reviews whose guide is not built yet have no pages; the version
@@ -268,6 +290,74 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
         />
       </ErrorBoundary>
     </>
+  );
+}
+
+/** #179: the viewed version's diff is empty (a refresh emptied it). */
+export function EmptyVersionGuide({
+  versionN,
+  versionCount,
+  hasGuide,
+}: {
+  versionN: number;
+  versionCount: number;
+  hasGuide: boolean;
+}) {
+  return (
+    <div className="doc" data-testid="guide-empty-version">
+      <h1 className="title">No changes to review</h1>
+      <p className="hint" data-testid="guide-empty-version-message">
+        This version&apos;s diff is empty — the branch is the same as its base, so there is nothing to read in v{versionN}.
+      </p>
+      {versionCount > 1 ? (
+        <p className="hint">
+          Earlier versions are still available in the version picker above
+          {hasGuide ? " — pick one to read its guide and diff" : " — pick one to read its diff"}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** #179: empty diff — nothing to review, with Retry / Remove like #92. */
+export function EmptyOpen({ reviewId, prLabel, error }: { reviewId: string; prLabel: string; error: string }) {
+  const setSnapshot = useReview((s) => s.setSnapshot);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const onRetry = useCallback(async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const snap = await api.retryReview(reviewId);
+      setSnapshot(snap);
+    } catch (err) {
+      setRetryError(friendlyError(err));
+    } finally {
+      setRetrying(false);
+    }
+  }, [reviewId, setSnapshot]);
+  // The heading already says "No changes to review"; the body explains why.
+  const reason = error.replace(/^No changes to review:\s*/i, "");
+  const body = reason.charAt(0).toUpperCase() + reason.slice(1);
+  return (
+    <div className="doc" data-testid="review-empty">
+      <h1 className="title">No changes to review</h1>
+      <p className="hint" data-testid="review-empty-message">
+        {body}
+      </p>
+      <p className="hint">{prLabel} has no diff to read, so no guide was started.</p>
+      <div className="frow" style={{ gap: 8 }}>
+        <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
+          {retrying ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+      {retryError ? (
+        <p className="hint" role="alert">
+          Couldn&apos;t retry: {retryError}
+        </p>
+      ) : null}
+      <p className="hint">You can remove it from Reviews on the start page.</p>
+    </div>
   );
 }
 

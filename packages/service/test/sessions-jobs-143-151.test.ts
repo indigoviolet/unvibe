@@ -353,7 +353,7 @@ describe("repair prompt snapshots (#151)", () => {
         reviewId: id,
         kind: "hunk-pass",
         template: "hunk_pass",
-        variables: { hunk: "HUNKX", path: "a.py" },
+        variables: { hunk: "HUNKX", path: "a.py", plotline: "(none assigned yet)" },
         priority: JOB_PRIORITY.background,
       });
       expect(res.repaired).toBe(true);

@@ -18,10 +18,14 @@
 // previews, built tree commit, build time), so `unvibe update --list` (and
 // later the in-app picker) can show it without a second mechanism.
 //
-// The release package needs no build step and no lifecycle scripts on the
-// user's machine: no `prepare`, no `postinstall`, no devDependencies, no
-// workspaces. `npm install -g github:<org>/unvibe#release` installs it with
-// no flags. Nothing is pushed (CI pushes on tag).
+// The release package needs no build step on the user's machine: no
+// `prepare`, no devDependencies, no workspaces, and no lifecycle
+// scripts at all (issue #42: a lifecycle script makes npm link a git
+// install to its temporary preparation clone and then delete the
+// clone, leaving a dangling bin). Setup runs from the CLI itself on
+// first start instead. `npm install -g
+// github:<org>/unvibe#release` installs it with no flags. Nothing is
+// pushed (CI pushes on tag).
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -255,6 +259,9 @@ const releasePkg = {
   license: "MIT",
   type: "module",
   bin: { unvibe: "./packages/service/dist/index.js" },
+  // No lifecycle scripts (issue #42): see the header. Setup (token,
+  // unvibe:// handler, start-at-login unit) runs from the CLI on first
+  // start / after an update instead — `src/cli/setup/ensure.ts`.
   dependencies: deps,
   engines: { node: ">=24" },
   // Provenance for `unvibe update --list` (and the later in-app picker):
@@ -356,7 +363,7 @@ function commitTree() {
     (sourceBranch
       ? `unvibe preview ${version} from ${sourceBranch} (source ${short} ${day})\n`
       : `unvibe release ${version} (source ${short} ${day})\n`) +
-    `\nSelf-contained install tree: no prepare/postinstall, no devDependencies. ` +
+    `\nSelf-contained install tree: no lifecycle scripts (issue #42; setup runs on first start), no prepare, no devDependencies. ` +
     `Install with \`npm install -g github:<org>/unvibe#${releaseBranch}\`.`;
   const commit = spawnSync("git", [...releaseIdentityArgs(), "commit-tree", (tree.stdout ?? "").trim(), "-m", msg], {
     cwd: ROOT,

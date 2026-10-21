@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { createDemoReview } from "./journey-helpers.js";
+import { apiJson, createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -76,6 +76,38 @@ test.describe("J2 explain ask follow-up nested", () => {
       await expect(card.locator(".exp-b").last()).not.toBeEmpty({ timeout: 60_000 });
     }
 
+    // #204: the Ask card opened pinned inline — no floating class, no
+    // pin/unpin control — and its persisted state says pinned.
+    await expect(card).not.toHaveClass(/floating/);
+    await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
+    const cardId = await card.getAttribute("data-expansion");
+    expect(cardId).toBeTruthy();
+    if (!svc) throw new Error("no service");
+    const snapRes = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const anns = (snapRes.json as { annotations?: { id: string; pinned?: boolean }[] }).annotations ?? [];
+    expect(anns.find((a) => a.id === cardId)?.pinned).toBe(true);
+
+    // Close collapses the card back to its mark; hovering the mark shows
+    // the floating peek, and clicking the peek pins the card back.
+    await card.getByRole("button", { name: "Close" }).click();
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
+    const mark = page.locator(`#C-problem mark.anc.exl[data-jump="${cardId}"]:not(.fnote)`);
+    await expect(mark).toBeVisible({ timeout: 15_000 });
+    await mark.hover();
+    await expect(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#pop")).toContainText(/fold/i);
+    await page.locator(`#pop [data-open-expansion="${cardId}"]`).click();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card).not.toHaveClass(/floating/);
+
+    // Delete removes both the card and its mark, across a reload.
+    await card.getByRole("button", { name: "Delete" }).click();
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
+    await expect(mark).toHaveCount(0, { timeout: 15_000 });
+    await page.reload();
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(`#C-problem mark.anc.exl[data-jump="${cardId}"]:not(.fnote)`)).toHaveCount(0);
+
     // Second opinion on the bare-LF finding (its replay recording is keyed to it).
     await page.goto(`${svc.origin}/review/${reviewId}/page/f-lf?token=${svc.token}`);
     await expect(page.locator("#page")).toBeVisible({ timeout: 30_000 });
@@ -88,5 +120,41 @@ test.describe("J2 explain ask follow-up nested", () => {
       // the control must say so visibly, never silently do nothing.
       await expect(page.locator('[data-so-ctl] .so-warn, button[aria-label="Second opinion needs a different model"]').first()).toBeVisible({ timeout: 15_000 });
     }
+  });
+
+  test("diff pane: explain opens pinned; close, mark, reopen, delete (#204)", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+
+    await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const card = page.locator(".dhunk .card.child[data-expansion]").first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    // Pinned inline in the diff too: no floating overlay, no pin control.
+    await expect(card).not.toHaveClass(/floating/);
+    await expect(page.locator(".dhunk .exp-float")).toHaveCount(0);
+    await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
+    const cardId = await card.getAttribute("data-expansion");
+    expect(cardId).toBeTruthy();
+
+    // Close collapses to the mark in the diff row; clicking the mark
+    // reopens the card pinned.
+    await card.getByRole("button", { name: "Close" }).click();
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
+    const mark = page.locator(`#right mark.anc.exl[data-jump="${cardId}"]:not(.fnote)`);
+    await expect(mark).toBeVisible({ timeout: 15_000 });
+    await mark.click();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card).not.toHaveClass(/floating/);
+
+    // Delete removes the card and its mark.
+    await card.getByRole("button", { name: "Delete" }).click();
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
+    await expect(mark).toHaveCount(0, { timeout: 15_000 });
   });
 });

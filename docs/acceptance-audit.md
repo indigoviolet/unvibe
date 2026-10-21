@@ -329,7 +329,11 @@ needed (that deviation is closed, not added).
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
    failed citations) is kept on the job's stored prompt, so the Debug
-   page shows what failed (#124).
+   page shows what failed (#124). The instructions and reader prompts
+   now state the exact `diff:<fileKey>:<start>[-<end>]` grammar with
+   bundled-demo examples, so malformed `diff:` IDs (the 6 failures in
+   the #124 re-measure) are less likely to need a repair turn
+   (`prompts.test.ts` pins every concrete `diff:` example to the parser).
 - Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
   deepest, on-demand + kept — met (`actions/depth.ts`,
   `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
@@ -430,7 +434,17 @@ needed (that deviation is closed, not added).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
-  chip on the citations row).
+  chip on the citations row). Clicking the marker opens every comment
+  on the block, stacked; clicking one item of its hover preview opens
+  just that comment (issue #205, guide and PR description alike) — met
+  (`guide/Markers.test.tsx` “opens every comment”, journey J9 “marker
+  opens all”). Highlight passes retry placement with an overall bound
+  per change and leave the DOM alone when a pass would change nothing,
+  so one unplaceable anchor no longer re-marks the page every 250 ms
+  (issue #206); anchors that stay unplaced are listed with the reason
+  (host not on the page vs quote not found) on the review's Debug page
+  — met (`comments/anchor.test.ts` probe + bounded retry, journey
+  J206 MutationObserver stability + Debug record).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
@@ -465,24 +479,27 @@ needed (that deviation is closed, not added).
 ### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
 
 - Conversation card on the source block's anchor, highlight; header (quote,
-  Pin, Open as page, Delete, Close) + one answer view per turn, each with the
+  Open as page, Delete, Close) + one answer view per turn, each with the
   card controls acting on that answer alone, plus a reply box answered in
   the same conversation — met (`actions/conversation.ts`,
   `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
   `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
-  Issue #167: a clicked card floats persistently above the content under
-  it (zero-height `.exp-float` placeholder, no reflow; scrolls with the
-  page; pin inserts it inline; the pin is stored on the conversation
-  annotation (`pinned`, default false, set through the comment PATCH),
-  so it survives a reload; hunk-hosted cards stay inline;
-  ×/Escape close; diff floaters render at the hunk level outside the
-  hunk scroller so `.dwrap` never clips them, above the gutter and
-  below the pinned file/hunk headers, and are shifted to their anchored
-  row (`AnchoredFloat`, #185) so a card deep in a long hunk floats just
-  below its line, not at the hunk top) — met (`FloatingCard.test.tsx`,
-  `docs/screenshots/167-floating-guide.png`,
-  `167-pinned-guide.png`, `167-floating-diff.png`; e2e specs that reach
-  under the seeded open card close it first).
+  Issue #204 (revising #167): new Explain/Ask cards open pinned inline
+  in the guide, the description and the diff; there is no pin/unpin
+  control and no floating open state — floating survives only as the
+  hover peek on a closed card's mark, and clicking the mark (or the
+  peek) pins the card in place. Close collapses the card back to its
+  mark; delete removes card and mark. The pin is stored on the
+  conversation annotation (`pinned`, set at creation and on reopen
+  through the comment PATCH), so it survives a reload; a card stored
+  unpinned by older data renders inline when open. While a turn is
+  being written it shows only the header and the writing state; the
+  answer toolbar and the reply box appear when the answer arrives,
+  and a failed turn shows Retry (issue #203; a conversation job
+  interrupted by a restart settles its turn as failed at startup, so
+  Retry is what it shows) — met
+  (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
+  guide-pinned/guide-writing/diff scenes).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
@@ -1215,8 +1232,12 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, problem/central/directions, hidden concepts,
-   `pin_context`) — met (`pipeline/runner.ts:879`, demo 17 cards — ran).
+2. Reader (explore, plotlines settled first, then problem / central idea
+   (one per plotline when several) / "How it's built up" / "Decisions and
+   alternatives" / directions, hidden concepts, `pin_context`) — met
+   (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
+   L0 mission in `prompts/instructions.md`, neutral decisions card,
+   verdicts stay with the critic).
    Root cards stored once (#28): streamed cards and the final apply share
    one id scheme (`readerCardId`), the final reply replaces whatever was
    streamed, and text before the first `## ` card is dropped — met
@@ -1398,7 +1419,11 @@ needed (that deviation is closed, not added).
   jobs — ran). Superseded by issue #108: the service now starts at login
   (launchd/systemd, `UNVIBE_IDLE_MS=0` there so it never idle-exits);
   manual starts keep the idle exit. See "Starts at login" above.
-- Install `npm install -g github:<org>/unvibe#release` + `unvibe setup` +
+- Install `npm install -g github:<org>/unvibe#release` (one step since
+  issue #42: the release package declares no lifecycle scripts — a
+  script made npm dangle the git-installed bin on the owner's Mac —
+  and the first `unvibe start` runs setup: token, handler, login unit,
+  once per version; `unvibe setup` stays the manual/repair path) +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
   scripts, no devDependencies), installed with **no flags** on npm 11 and
@@ -2325,6 +2350,17 @@ hunk coverage) is reported for a separate issue, not fixed here.
   failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
   ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
   → guide, failing → Retry).
+- **#179 (empty diff):** ingest with no hunks (and no binary change) ends
+  in a distinct `ingest: {status: "empty"}` outcome — "No changes to
+  review" with the PR-merged / branch-equals-base reason — instead of a
+  ready review with 0 hunks. The pipeline never starts for an empty diff;
+  Retry (re-ingest) and Remove work as for #92's failed state, and the
+  start page shows the message with a "no changes" tag. A refresh that
+  empties the diff records `versionStatus.empty`, shows the same message
+  in the banner and diff (no Update offered), and the update pass refuses
+  with 409 so no agent time is spent. Evidence:
+  `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
+  `e2e/journeys/j18-empty-diff.spec.ts`.
 
 ## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
 

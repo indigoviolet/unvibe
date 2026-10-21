@@ -45,6 +45,8 @@ describe("snapshot build", () => {
     expect(root.cards.map((c) => c.id)).toEqual([
       "problem",
       "central",
+      "buildup",
+      "decisions",
       "g-flow",
       "g-design",
       "g-regex",

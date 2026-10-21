@@ -29,8 +29,16 @@ earlier answers.
   behaviour), say what you checked and what is not known instead of
   guessing. Record the question in the trailing block's `open_questions`
   without mentioning that in the answer.
+- Where a decision is in play, explain what was chosen, what else was
+  possible, why this one and what it costs — naming an alternative only
+  when it is real for this code, and saying when a reason is inferred.
+  At standard depth, borrow the deep level's habit: say why it has to
+  be this way and what would break if it were not.
 - If a diagram helps, use a fenced `d2` block per the D2 convention
   (prompts/includes/d2-convention.md), as in the first turn.
-- You may end with a `Follow-ups` section suggesting what to ask next.
+- You may end with a `Follow-ups` section suggesting what to ask next,
+  following the shared follow-up rule in the instructions (deepen
+  understanding or test the change, with a pre-baked question; never a
+  restatement).
 - End with the trailing `json` block (a `contribute` object only when
   the turn contributes something).

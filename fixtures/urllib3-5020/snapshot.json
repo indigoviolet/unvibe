@@ -1212,6 +1212,103 @@
           "undoStack": []
         },
         {
+          "id": "buildup",
+          "pageId": "root",
+          "title": "How it's built up",
+          "level": "standard",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "The change builds in two steps. First the unfolding itself: a helper replaces each fold with a single space, and both header views are built from the normalized values, so no consumer can see a raw line break again.   Then the proof: unit and socket-level tests pin the before/after values, so the reader can check the rule — a parsed header value never contains a line break — against real responses instead of taking it on trust. ",
+                "simple": "First the code learns to unfold folded headers everywhere it reads them. Then tests prove the unfolding gives the right values.",
+                "deep": "Normalize once, at the boundary, then prove the invariant at that boundary. Each later consumer inherits the property instead of re-establishing it, which is why the tests belong with the helper rather than with any one caller."
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:91-110"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "decisions",
+          "pageId": "root",
+          "title": "Decisions and alternatives",
+          "level": "standard",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "Three choices carry the change:"
+              },
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b2",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "First, normalize both views of the headers — urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive).  ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:650-651"
+                    },
+                    {
+                      "target": "desc:d-p2"
+                    }
+                  ]
+                },
+                {
+                  "html": "Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see <a class=\"cx\" data-link=\"concept:obs-fold\">obsolete line folding</a>).",
+                  "citations": []
+                },
+                {
+                  "html": "Third, guard the pattern so it stays <a class=\"cx\" data-link=\"concept:regex-performance\">linear-time</a> and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:80-88"
+                    }
+                  ]
+                }
+              ],
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                },
+                {
+                  "target": "desc:d-p2"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
+                "standard": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
+                "deep": "Each choice trades a local simplicity for a global property: one normalization point (both views equal by construction), standards-mandated tolerance (unfold, never reject), and a cost bound on untrusted input (linear time, with a fast path for the common case)."
+              },
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
           "id": "g-flow",
           "pageId": "root",
           "title": "Data flow: from the socket to HTTPHeaderDict",
@@ -2123,6 +2220,7 @@
         "version": 1
       },
       "open": true,
+      "pinned": false,
       "messages": [],
       "post": false,
       "turns": [
@@ -2183,6 +2281,7 @@
         "version": 1
       },
       "open": true,
+      "pinned": false,
       "messages": [
         {
           "who": "you",
@@ -2207,6 +2306,7 @@
         "version": 1
       },
       "open": true,
+      "pinned": false,
       "messages": [
         {
           "who": "ai",
@@ -2232,6 +2332,7 @@
         "version": 1
       },
       "open": true,
+      "pinned": false,
       "messages": [
         {
           "who": "ai",
@@ -2257,6 +2358,7 @@
         "version": 1
       },
       "open": true,
+      "pinned": false,
       "messages": [
         {
           "who": "you",
@@ -2310,13 +2412,15 @@
   ],
   "fileStates": [],
   "viewPrefs": {
-    "showExistingComments": true
+    "showExistingComments": true,
+    "existingCommentsCollapsed": false
   },
   "jobs": [
     {
       "id": "job-reader",
       "kind": "reader",
       "model": "fixture",
+      "effort": "",
       "priority": 1,
       "state": "done"
     },
@@ -2324,6 +2428,7 @@
       "id": "job-critic-lf",
       "kind": "critic",
       "model": "fixture",
+      "effort": "",
       "priority": 2,
       "state": "done"
     },
@@ -2331,6 +2436,7 @@
       "id": "job-critic-perf",
       "kind": "critic",
       "model": "fixture",
+      "effort": "",
       "priority": 2,
       "state": "done"
     },
@@ -2338,6 +2444,7 @@
       "id": "job-hunk-pass",
       "kind": "hunk-pass",
       "model": "fixture",
+      "effort": "",
       "priority": 3,
       "state": "done"
     }
