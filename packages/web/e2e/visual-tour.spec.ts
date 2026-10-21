@@ -7,7 +7,8 @@
  * comments menu, and Settings → Version. Screenshots land in the
  * git-ignored `visual-tour/` folder for the owner to look at.
  *
- * At every step, three generic checks (no per-feature asserts):
+ * At every step, generic checks (no per-feature asserts), including
+ * the #225 layout check (`layout-check.ts`) on every scene:
  * - every open menu/popover is fully inside the viewport and topmost
  *   at its corners and centre;
  * - every open card's FULL box is inside the viewport horizontally
@@ -26,6 +27,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { checkLayout } from "./layout-check.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -77,15 +79,6 @@ test.afterAll(async () => {
   svc = null;
   rmSync(dataDir, { recursive: true, force: true });
 });
-
-/** Generic check: no horizontal page overflow. */
-async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    return Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
-  });
-  expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
-}
-
 
 /**
  * Syntax-token contrast (issue #196 review): a string/comment token in
@@ -693,7 +686,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
     last = now;
     await page.waitForTimeout(300);
   }
-  await checkNoPageOverflow(page, step);
+  await checkLayout(page, step);
   await checkPinnedSlots(page, step);
   await checkPinnedBand(page, step);
   await checkGutters(page, step);
@@ -925,7 +918,7 @@ for (const combo of [
     await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
-    await checkNoPageOverflow(page, "debug");
+    await checkLayout(page, "debug");
     await shot(page, "debug", suffix, "Queued");
 
     // Debug Output (#207): one view per job (no Prompt button); the
@@ -940,13 +933,13 @@ for (const combo of [
     await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Arguments", { timeout: 15_000 });
     // Frame the whole job row, header (kind/state) above Turn 1.
     await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
-    await checkNoPageOverflow(page, "debug-output");
+    await checkLayout(page, "debug-output");
     await shot(page, "debug-output", suffix, "Raw usage");
 
     // Settings → Version.
     await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, "settings-version");
+    await checkLayout(page, "settings-version");
     await shot(page, "settings-version", suffix, "Installed:");
   });
 }
@@ -1012,12 +1005,12 @@ for (const combo of [
     }, sansFamily);
     expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
     expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
-    await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
+    await checkLayout(page, `theme-${combo.theme}-guide`);
     await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await checkLayout(page, `theme-${combo.theme}-diff`);
     await checkTokenContrast(page, `theme-${combo.theme}-diff`);
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
@@ -1043,7 +1036,7 @@ for (const combo of [
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
+    await checkLayout(page, `theme-${combo.theme}-settings`);
     await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
@@ -1091,10 +1084,12 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await expect(card.locator("textarea")).toHaveCount(0);
     mkdirSync(SHOTS, { recursive: true });
     await card.scrollIntoViewIfNeeded().catch(() => {});
+    await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
     // Once the answer arrives, the toolbar and reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
+    await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
     await slow.stop().catch(() => {});

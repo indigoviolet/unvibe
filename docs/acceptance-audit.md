@@ -2426,3 +2426,23 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #225 part B (branch `fix/225b-review-polish-layout-check`)
+
+- **Review-page tooltips (#225):** toolbar and card-toolbar tooltips are
+  the action only — no agent, cost, summary or state commentary and no
+  parentheticals (e.g. "Fold the code", "Check the branch for new
+  commits", "Summarize", "Ask about this"). The diff toolbar's review
+  filter uses the funnel `filter` icon with an active dot + accent
+  (`aria-pressed`) when a filter is on; Fold/Unfold are the mirrored
+  `fold`/`unfold` pair; Hide uninteresting uses `eyeOff`.
+- **Shared-context line (#225):** the "agent kept N notes" line is gone
+  from the review page; shared context stays on Debug → Shared context.
+- **Generic layout check (#225):** `e2e/layout-check.ts`
+  (`checkLayout`/`collectLayoutViolations`, reusable by journeys) runs
+  on every visual-tour scene: no card/panel horizontal overflow, no
+  page horizontal scroll, equal ListRow heights, shared right edges
+  for sibling form rows and add rows vs. the list below. No screenshot
+  baselines. Evidence: `e2e/journeys/j225-review-polish.spec.ts`,
+  `mise run visual-tour`. On `main-rc` the check flags only
+  Settings → Limits (part A's screens); the review page is clean.
