@@ -10,7 +10,7 @@
  * case). Repos are added in Settings, not here.
  */
 import { test, expect } from "./network-guard.js";
-import { pickOption } from "./select.js";
+import { openPopup, pickOption } from "./select.js";
 
 async function gotoStart(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/");
@@ -19,25 +19,25 @@ async function gotoStart(page: import("@playwright/test").Page): Promise<void> {
 
 test("repo selector lists remembered and detected repos, persisted", async ({ page }) => {
   await gotoStart(page);
-  const sel = page.getByLabel("Repo");
+  const sel = page.getByLabel("Repo", { exact: true });
   await expect(sel).toContainText("urllib3/urllib3");
   await sel.click();
   await expect(page.locator(".ui-select-grouplabel")).toContainText(["Repos", "Found on this machine"]);
-  await expect(page.getByRole("option", { name: "urllib3/urllib3" })).toBeVisible();
-  await expect(page.getByRole("option", { name: "you/demo-lib" })).toBeVisible();
+  await expect(openPopup(page).getByRole("option", { name: "urllib3/urllib3" })).toBeVisible();
+  await expect(openPopup(page).getByRole("option", { name: "you/demo-lib" })).toBeVisible();
   // The trigger carries the picked repo's local path as the title.
-  await page.getByRole("option", { name: "you/demo-lib" }).click();
+  await openPopup(page).getByRole("option", { name: "you/demo-lib" }).click();
   await expect(sel).toContainText("you/demo-lib");
   await expect(sel).toHaveAttribute("title", "~/code/demo-lib");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repo")).toContainText("you/demo-lib");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("you/demo-lib");
 });
 
 test("repo selector sits centered above Reviews, outside the top bar", async ({ page }) => {
   await gotoStart(page);
-  await expect(page.locator("header.top").getByLabel("Repo")).toHaveCount(0);
-  const sel = page.getByLabel("Repo");
+  await expect(page.locator("header.top").getByLabel("Repo", { exact: true })).toHaveCount(0);
+  const sel = page.getByLabel("Repo", { exact: true });
   await expect(sel).toBeVisible();
   const headerBox = await page.locator("header.top").boundingBox();
   const selBox = await sel.boundingBox();
@@ -187,8 +187,8 @@ test("re-selecting the current repo reloads its lists", async ({ page }) => {
   // Re-selecting the already-selected value still fires change and pairs
   // the kept lists with a fresh load: the kept rows stay visible with a
   // refresh sign — never a stuck "Loading…".
-  await page.getByLabel("Repo").click();
-  await page.getByRole("option", { name: "urllib3/urllib3" }).click();
+  await page.getByLabel("Repo", { exact: true }).click();
+  await openPopup(page).getByRole("option", { name: "urllib3/urllib3" }).click();
   await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /refreshing/);
   await expect(page.getByText("Your PRs")).toBeVisible();
   await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
@@ -271,7 +271,7 @@ test("PR by number opens a review; a URL for another known repo switches the sel
   await page.getByRole("button", { name: "Open PR" }).click();
   await expect(page).toHaveURL(/\/review\/demo/, { timeout: 15000 });
   await page.goto("/");
-  await expect(page.getByLabel("Repo")).toContainText("you/demo-lib");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("you/demo-lib");
 
   await pickOption(page, "Repo", "urllib3/urllib3");
   await page.getByLabel("Open a PR by URL or number").fill("not a pr!!!");
@@ -336,7 +336,7 @@ test("pasting a PR URL for an unknown repo offers to clone it, then selects the 
   await expect(page).toHaveURL(/\/review\//, { timeout: 15000 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repo")).toContainText("acme/app (cloned)");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("acme/app (cloned)");
 });
 
 test("pasting owner/name#N for an unknown repo offers the same clone flow", async ({ page }) => {
@@ -360,7 +360,7 @@ test("cancelling the clone offer leaves the input as typed", async ({ page }) =>
   await expect(offer).toHaveCount(0);
   await expect(input).toHaveValue("https://github.com/acme/app/pull/123");
   // Nothing was added: the selector still offers only the seeds.
-  await expect(page.getByLabel("Repo")).toContainText("urllib3/urllib3");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("urllib3/urllib3");
   await expect(page).toHaveURL("/");
 });
 
@@ -392,7 +392,7 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
     "/settings?tab=repositories",
   );
   // No repos, no selector yet.
-  await expect(page.getByLabel("Repo")).toHaveCount(0);
+  await expect(page.getByLabel("Repo", { exact: true })).toHaveCount(0);
   // A bare number still needs a repo first.
   await empty.getByLabel("Open a PR by URL or number").fill("5020");
   await empty.getByRole("button", { name: "Open PR" }).click();
@@ -407,6 +407,6 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
   // Back on the start page the selector exists with the clone selected.
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Repo")).toContainText("acme/app (cloned)");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("acme/app (cloned)");
   await expect(page.locator('[data-testid="no-repos"]')).toHaveCount(0);
 });

@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { createScratchReview, makeScratchRepo } from "./journey-helpers.js";
 
@@ -42,19 +43,29 @@ test.describe("J11 settings combos", () => {
     await expect(model).toBeVisible({ timeout: 30_000 });
     const currentText = (await model.textContent())?.trim() ?? "";
     await model.click();
-    const options = page.getByRole("option");
+    const options = openPopup(page).getByRole("option");
     await expect(options.first()).toBeVisible({ timeout: 15_000 });
-    const names = await options.evaluateAll((os) => os.map((o) => (o.textContent ?? "").trim()));
+    const names = await options.evaluateAll((os) =>
+      os.map((o) => (o.textContent ?? "").replace("✓", "").trim()),
+    );
     const picked = names.filter((n) => n !== "");
     expect(picked.length).toBeGreaterThan(1);
     const idx = names.findIndex((n) => n !== "" && n !== currentText);
     expect(idx).toBeGreaterThanOrEqual(0);
     const chosenName = names[idx];
-    await options.nth(idx).click();
-    await page.waitForResponse(
+    const target = options.nth(idx);
+    // Settle Floating UI first: scrolling the option into view repositions
+    // the popup, and clicking mid-reposition can land outside the item
+    // (popup closes with no selection). Subscribe before clicking: the
+    // localhost save can answer before the click resolves.
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    const saved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
+    await target.click();
+    await saved;
     await expect(page.locator("#effort-main")).toContainText("Default", { timeout: 15_000 });
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
@@ -86,12 +97,15 @@ test.describe("J11 settings combos", () => {
     await expect(themeSelect).toBeVisible({ timeout: 15_000 });
     await expect(themeSelect).toContainText("Default");
     await themeSelect.click();
-    await expect(page.getByRole("option")).toHaveText(["Default", "Studio", "Console"]);
-    await page.getByRole("option", { name: "Studio", exact: true }).click();
-    await page.waitForResponse(
+    await expect(openPopup(page).getByRole("option", { name: "Default" })).toBeVisible();
+    await expect(openPopup(page).getByRole("option", { name: "Studio" })).toBeVisible();
+    await expect(openPopup(page).getByRole("option", { name: "Console" })).toBeVisible();
+    const studioSaved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
+    await openPopup(page).getByRole("option", { name: "Studio" }).click();
+    await studioSaved;
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
     const accent = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
@@ -121,11 +135,12 @@ test.describe("J11 settings combos", () => {
     // Back to the default theme for the rest of the journey.
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.locator('[data-testid="ui-theme"]').click();
-    await page.getByRole("option", { name: "Default", exact: true }).click();
-    await page.waitForResponse(
+    const defaultSaved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
+    await openPopup(page).getByRole("option", { name: "Default" }).click();
+    await defaultSaved;
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "default");
 
     // Repos: add a second checkout in Settings, remove it, folder intact.

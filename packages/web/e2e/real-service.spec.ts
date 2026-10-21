@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import { startService, type RunningService } from "./service-harness.js";
 import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
@@ -107,8 +108,8 @@ test.describe("real service", () => {
     }
     // The start page follows the selected repo: select the added checkout,
     // then open a review of the scratch branch.
-    await page.getByLabel("Repo").click();
-    await page.getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
+    await page.getByLabel("Repo", { exact: true }).click();
+    await openPopup(page).getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();

@@ -9,6 +9,7 @@
  * `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 
 async function gotoSettings(page: import("@playwright/test").Page, url = "/settings"): Promise<void> {
   await page.goto(url);
@@ -216,13 +217,13 @@ test("model pickers list provider models and warn on same-model second opinion",
   // default main (claude/mock-main) is still there to match against.
   const second = page.locator('[data-testid="model-secondOpinion"]');
   await second.locator("#prov-secondOpinion").click();
-  await page.getByRole("option", { name: "claude", exact: true }).click();
+  await openPopup(page).getByRole("option", { name: "claude", exact: true }).click();
   // Switching provider only browses that provider's list (#87): nothing is
   // saved yet, so the model trigger waits on the placeholder pick.
   const secondModel = second.locator("#model-secondOpinion");
   await expect(secondModel).toContainText("Pick a claude model…");
   await secondModel.click();
-  await page.getByRole("option", { name: "mock-main" }).click();
+  await openPopup(page).getByRole("option", { name: "mock-main" }).click();
   await expect(page.getByText(/same model as main/)).toBeVisible();
 
   // Unknown provider (stored before the adapter went away): a clear
@@ -326,12 +327,12 @@ test("version switcher views the older version read-only", async ({ page }) => {
   await page.goto("/review/r-old");
   await expect(page.locator('[data-testid="version-switcher"]')).toBeVisible();
   await page.locator("#version-pick").click();
-  await page.getByRole("option", { name: /^v1 / }).click();
+  await openPopup(page).getByRole("option", { name: /^v1 / }).click();
   await expect(page).toHaveURL(/version=1/);
   // Current is annotated in the dropdown; the trigger flags the older
   // version and the bar itself carries no notice and no back button.
   await page.locator("#version-pick").click();
-  await expect(page.getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
   await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
@@ -340,7 +341,7 @@ test("version switcher views the older version read-only", async ({ page }) => {
   await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0);
   // Choosing the annotated current version is the way back.
   await page.locator("#version-pick").click();
-  await page.getByRole("option", { name: /v2.*current/ }).click();
+  await openPopup(page).getByRole("option", { name: /v2.*current/ }).click();
   await expect(page).not.toHaveURL(/version=1/);
   await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
 });

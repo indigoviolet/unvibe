@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import { startService, type RunningService } from "./service-harness.js";
 
 const exec = promisify(execFile);
@@ -70,7 +71,8 @@ test.describe("doctor on the real service", () => {
     await page.getByRole("tab", { name: "Models" }).click();
     // Static fallback carries names (Sonnet/Opus/GPT) even with UNVIBE_AGENT=none.
     const main = page.locator('[data-testid="model-main"]');
-    await expect(main.locator("#model-main")).toContainText("Sonnet");
+    await main.locator("#model-main").click();
+    await expect(openPopup(page).getByRole("option", { name: "Sonnet" })).toBeVisible();
   });
 
   // DISABLED(#119): API-only; same routes covered by diagnostics-api.test.ts (UI Reload button stays in doctor.spec.ts)

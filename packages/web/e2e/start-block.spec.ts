@@ -21,7 +21,7 @@ test("PR and branch lists form one block with the filter and refresh in its head
   await expect(block.getByRole("heading", { name: "PRs and branches" })).toBeVisible();
   // The recency control lives in the block's heading row, compact: the
   // window alone with an accessible label, not a sentence beside it.
-  await expect(block.getByLabel("Updated within")).toBeVisible();
+  await expect(block.getByLabel("Updated within", { exact: true })).toBeVisible();
   await expect(block.getByText("Updated within", { exact: true })).toHaveCount(0);
   // Reviews stays outside the block.
   await expect(block.getByRole("heading", { name: "Reviews" })).toHaveCount(0);

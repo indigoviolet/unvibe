@@ -7,6 +7,7 @@
  * no-overflow.
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 
 const CONN = "src-urllib3-connection.py";
 const connFile = `[id="F-${CONN}"]`;
@@ -93,7 +94,7 @@ test("older version annotates current and keeps the title at 800px (issue #120)"
   await expect(switcher).toHaveAttribute("data-ro", "1");
   await expect(page.locator("#version-pick")).toContainText("v1");
   await page.locator("#version-pick").click();
-  await expect(page.getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
   // The title is no longer squeezed out entirely.
@@ -103,7 +104,7 @@ test("older version annotates current and keeps the title at 800px (issue #120)"
   expect(overflow).toBeLessThanOrEqual(1);
   // Choosing the annotated current version is the way back.
   await page.locator("#version-pick").click();
-  await page.getByRole("option", { name: /v2.*current/ }).click();
+  await openPopup(page).getByRole("option", { name: /v2.*current/ }).click();
   await expect(page).not.toHaveURL(/version=1/);
 });
 

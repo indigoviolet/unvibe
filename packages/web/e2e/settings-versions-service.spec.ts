@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import { startService, type RunningService } from "./service-harness.js";
 import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
@@ -115,8 +116,8 @@ test.describe("settings + versions on the real service", () => {
       await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
-    await page.getByLabel("Repo").click();
-    await page.getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
+    await page.getByLabel("Repo", { exact: true }).click();
+    await openPopup(page).getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();
@@ -241,7 +242,7 @@ test.describe("settings + versions on the real service", () => {
 
     // Older version stays viewable, read-only, with the pre-refresh code.
     await page.locator("#version-pick").click();
-    await page.getByRole("option", { name: /^v1 / }).click();
+    await openPopup(page).getByRole("option", { name: /^v1 / }).click();
     await expect(page).toHaveURL(/version=1/);
     await expect(appFile.getByText(/return 11\b/)).toBeVisible();
     await expect(appFile.getByText("return 111")).toHaveCount(0);
@@ -251,7 +252,7 @@ test.describe("settings + versions on the real service", () => {
     // reports that plainly instead of hanging.
     // Choosing the current version (annotated in the dropdown) is the way back.
     await page.locator("#version-pick").click();
-    const options = page.getByRole("option");
+    const options = openPopup(page).getByRole("option");
     await expect(options.last()).toContainText("current");
     await options.last().click();
     await expect(banner).toBeVisible();

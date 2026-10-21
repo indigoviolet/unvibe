@@ -4,6 +4,7 @@
  * description editing, and the Submit panel.
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import type { Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
 
@@ -246,7 +247,7 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
   await expect(page.locator("#version-pick")).toContainText("v1");
   await page.locator("#version-pick").click();
-  await expect(page.getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
   await page.keyboard.press("Escape");
   // Selecting guide text offers no toolbar. The selection is made inline
   // (range + mouseup, no waits — the toolbar hides synchronously on
