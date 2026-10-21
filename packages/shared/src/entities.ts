@@ -210,6 +210,12 @@ export interface Card extends ContentBody {
   /** Placeholder ("Go deeper") cards that still need generation. */
   pending?: PendingCard;
   /**
+   * Go-deeper only (#217): the direction's why-line, kept when the card
+   * is written automatically so the collapsed card still shows the
+   * title and why-line, the way the placeholder looked.
+   */
+  why?: string;
+  /**
    * M5 (PRD §8): true when one or more cited hunks changed. `staleHunks`
    * lists the affected new-side `h:` IDs; `staleChangedHunks` is the count
    * the UI shows ("2 cited hunks changed") beside the Update button.
