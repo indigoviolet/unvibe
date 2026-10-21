@@ -538,7 +538,7 @@ needed (that deviation is closed, not added).
   text) — met (`actions/followup.ts` conversation branch,
   `ConversationCard.test.tsx` suggestion case). On guide cards a click
   still consumes the item and opens a new conversation card.
-- The card is never submitted to GitHub and carries no For-PR control —
+- The card is never submitted to GitHub and carries no Outbox control —
   met (no `post` on conversations; submit posts threads only).
 - Explanations nest (#116, #136): an Explain on text inside an answer
   anchors to the answer's block and renders under it, to any depth;
@@ -581,7 +581,7 @@ needed (that deviation is closed, not added).
   into `actions/conversation.ts`, `NewThreadComposer.tsx`,
   `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
   diff line opens a Comment. Only comments are submitted — conversation
-  cards carry no For-PR control and the submit path skips them (issue
+  cards carry no Outbox control and the submit path skips them (issue
   #135). A Comment from an agent answer quotes the selection as a
   Markdown blockquote. A comment offers “Ask the agent about this”: the
   usual Ask card on the comment's anchor, quoting the comment — the only
@@ -612,10 +612,10 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (all comments, jump, For PR filter with editable drafts,
+- Comments menu (all comments, jump, Outbox filter with editable drafts + export Markdown box with Copy (#223, hidden when the Outbox is empty),
   never posts; lives in the review bar next to Submit since round 2, so it
   opens with the source pane closed) — met (`comments-service.spec.ts`
-  “mark for PR, edit the draft, submit posts exactly one review”;
+  “mark Outbox, edit the draft, submit posts exactly one review”; branch-review export covered by `journeys/j223-outbox.spec.ts`;
   `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
@@ -1628,7 +1628,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
   change lists + contributions + per-review shared-context debug page,
   issue #32).
-- M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
+- M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).

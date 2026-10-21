@@ -51,9 +51,9 @@ test.describe("J9 comment edges", () => {
     await thread.getByRole("button", { name: "Reply" }).click();
     await expect(thread).toContainText("A reply to myself.", { timeout: 10_000 });
 
-    // Edit the For-PR draft in the Comments menu; it persists across reopen.
+    // Edit the Outbox draft in the Comments menu; it persists across reopen.
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="pr"]').click();
+    await page.locator('.cmenu [data-cmf="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await expect(draft).toBeVisible({ timeout: 10_000 });
     await draft.fill("Edited version of this note.");
@@ -63,7 +63,7 @@ test.describe("J9 comment edges", () => {
     );
     await page.keyboard.press("Escape");
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="pr"]').click();
+    await page.locator('.cmenu [data-cmf="outbox"]').click();
     await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Edited version of this note.");
     await page.keyboard.press("Escape");
 

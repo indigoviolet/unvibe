@@ -1,6 +1,6 @@
 /**
  * Comments + submit over mock mode (M6 web): selection toolbar, threads in
- * guide/diff/description, the Comments menu with For-PR drafts,
+ * guide/diff/description, the Comments menu with Outbox drafts,
  * description editing, and the Submit panel.
  */
 import { expect, test } from "./network-guard.js";
@@ -38,7 +38,7 @@ test("selection snaps to whole words and Ask creates a working card", async ({ p
   await expect(card).toContainText("Mock explanation", { timeout: 8000 });
   // The question reads as the answer heading; the card never posts.
   await expect(card.locator(".ans-q").first()).toContainText("What does optional mean here?");
-  await expect(card.getByRole("button", { name: "Mark for the PR" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Add to Outbox" })).toHaveCount(0);
 });
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
@@ -131,7 +131,7 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await expect(thread).toBeVisible({ timeout: 5000 });
   // A comment is for the PR by default: no agent reply, already marked.
   await expect(thread.locator(".working")).toHaveCount(0);
-  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -210,7 +210,7 @@ test("reply drafts survive unrelated re-renders; Discard clears", async ({ page 
   await expect(slot).toHaveCount(0);
 });
 
-test("For PR drafts live in the Comments menu and persist", async ({ page }) => {
+test("Outbox drafts live in the Comments menu and persist", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
   await line.click();
@@ -220,18 +220,18 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
   // Comments are for the PR by default — no explicit mark needed.
-  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
 
-  // The Comments menu lists it with a For-PR count; the draft is editable.
+  // The Comments menu lists it with an Outbox count; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="pr"]').click();
+  await page.locator('.cmenu [data-cmf="outbox"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="pr"]').click();
+  await page.locator('.cmenu [data-cmf="outbox"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
   await page.locator(".cmenu .cj").first().click();
@@ -328,9 +328,9 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   // Sensible min-width so content doesn't collapse to the button width.
   const width = await panel.evaluate((el) => el.getBoundingClientRect().width);
   expect(width).toBeGreaterThanOrEqual(340);
-  // The All / For PR segmented control fits on one line.
+  // The All / Outbox segmented control fits on one line.
   const all = await page.locator('.cmenu [data-cmf="all"]').boundingBox();
-  const pr = await page.locator('.cmenu [data-cmf="pr"]').boundingBox();
+  const pr = await page.locator('.cmenu [data-cmf="outbox"]').boundingBox();
   expect(all).not.toBeNull();
   expect(pr).not.toBeNull();
   expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
@@ -413,7 +413,7 @@ test("description editing saves locally with revert, then submits", async ({ pag
   await expect(page.locator("#right")).toContainText("Edited · goes to GitHub when you submit the review");
 });
 
-test("submit panel previews and posts For-PR threads", async ({ page }) => {
+test("submit panel previews and posts Outbox threads", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
   await line.click();
