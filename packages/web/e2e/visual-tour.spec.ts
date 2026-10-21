@@ -915,6 +915,21 @@ for (const combo of [
     await shot(page, "menu-review-filter", suffix, "GitHub comments");
     await page.keyboard.press("Escape");
 
+    // File tree (#227): no horizontal overflow in the panel, and every
+    // row's change indicators sit inside its right edge.
+    const treeBad = await page.locator(".flist").evaluate((el) => {
+      if (el.scrollWidth > el.clientWidth + 1) return `tree scrolls sideways ${el.scrollWidth}>${el.clientWidth}`;
+      const box = el.getBoundingClientRect();
+      for (const ind of el.querySelectorAll(".fr.file .st, .fr.file .rv")) {
+        const r = ind.getBoundingClientRect();
+        if (r.left < box.left - 1 || r.right > box.right + 1) return "tree indicator outside the panel";
+      }
+      return null;
+    });
+    expect(treeBad, `file-tree: ${treeBad ?? ""}`).toBeNull();
+    await stepChecks(page, "file-tree");
+    await shot(page, "file-tree", suffix, "connection.py");
+
     // Comments menu.
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await stepChecks(page, "menu-comments");
