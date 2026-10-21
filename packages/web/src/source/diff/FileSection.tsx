@@ -659,8 +659,8 @@ function HunkBlock(
           <button
             className="ib"
             type="button"
-            data-tip="Summarize with agent"
-            aria-label="Summarize with agent"
+            data-tip="Summarize"
+            aria-label="Summarize"
             onClick={() => props.actions.summarize(h.contentHash)}
           >
             <Icon name="spark" />

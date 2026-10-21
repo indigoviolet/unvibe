@@ -9,6 +9,7 @@
  * `debug.spec.ts`.)
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 
 async function gotoSettings(page: import("@playwright/test").Page, url = "/settings"): Promise<void> {
   await page.goto(url);
@@ -209,22 +210,20 @@ test("model pickers list provider models and warn on same-model second opinion",
   await gotoSettings(page);
   await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
-  await expect(main.locator("select").nth(1)).toHaveValue("mock-main");
+  await expect(main.locator("#model-main")).toContainText("mock-main");
 
   // Second opinion on the same model as main warns (PRD §4.10). This runs
   // before the unknown-provider override below replaces main, so the
   // default main (claude/mock-main) is still there to match against.
   const second = page.locator('[data-testid="model-secondOpinion"]');
-  await second.locator("select").first().selectOption("claude");
+  await second.locator("#prov-secondOpinion").click();
+  await openPopup(page).getByRole("option", { name: "claude", exact: true }).click();
   // Switching provider only browses that provider's list (#87): nothing is
-  // saved yet, so the model select waits on the disabled placeholder pick
-  // (a closed select's options are never "visible" to Playwright, so assert
-  // the selected value + the attached placeholder option instead).
-  const secondModel = second.locator("select").nth(1);
-  await expect(secondModel).toHaveValue("");
-  await expect(secondModel.locator('option[disabled][value=""]')).toBeAttached();
-  await expect(secondModel).toBeVisible();
-  await second.locator("select").nth(1).selectOption("mock-main");
+  // saved yet, so the model trigger waits on the placeholder pick.
+  const secondModel = second.locator("#model-secondOpinion");
+  await expect(secondModel).toContainText("Pick a claude model…");
+  await secondModel.click();
+  await openPopup(page).getByRole("option", { name: "mock-main" }).click();
   await expect(page.getByText(/same model as main/)).toBeVisible();
 
   // Unknown provider (stored before the adapter went away): a clear
@@ -327,18 +326,22 @@ test("stale review shows banner counts, range-diff and stale hunks", async ({ pa
 test("version switcher views the older version read-only", async ({ page }) => {
   await page.goto("/review/r-old");
   await expect(page.locator('[data-testid="version-switcher"]')).toBeVisible();
-  await page.locator("#version-pick").selectOption("1");
+  await page.locator("#version-pick").click();
+  await openPopup(page).getByRole("option", { name: /^v1 / }).click();
   await expect(page).toHaveURL(/version=1/);
-  // Current is annotated in the dropdown; the select flags the older
+  // Current is annotated in the dropdown; the trigger flags the older
   // version and the bar itself carries no notice and no back button.
-  await expect(page.locator('#version-pick option[value="2"]')).toContainText("current");
+  await page.locator("#version-pick").click();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
   await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
   // The page still signals read-only elsewhere (the diff hint).
   await expect(page.getByText("Viewing v1 · read-only", { exact: false }).first()).toBeVisible();
   await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0);
   // Choosing the annotated current version is the way back.
-  await page.locator("#version-pick").selectOption("2");
+  await page.locator("#version-pick").click();
+  await openPopup(page).getByRole("option", { name: /v2.*current/ }).click();
   await expect(page).not.toHaveURL(/version=1/);
   await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
 });

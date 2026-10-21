@@ -63,7 +63,7 @@ test.describe("J10 suggested comments and questions", () => {
     const markBtn = thread.getByRole("button", { name: "Add to Outbox" });
     if ((await markBtn.count()) > 0) {
       await markBtn.click();
-      await expect(thread.getByRole("button", { name: /In the Outbox/ })).toBeVisible({ timeout: 10_000 });
+      await expect(thread.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible({ timeout: 10_000 });
     }
 
     // Edit its draft in the Comments menu's Outbox section.

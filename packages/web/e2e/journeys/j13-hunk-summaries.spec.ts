@@ -56,7 +56,7 @@ test.describe("J13 hunk summaries", () => {
     await expect(connFile.locator("p[data-hunksum]")).toHaveCount(summariesBefore - 1, { timeout: 15_000 });
 
     // Summarize on demand: the replay hunk pass writes it again as idle text.
-    await connFile.getByRole("button", { name: "Summarize with agent" }).first().click();
+    await connFile.getByRole("button", { name: "Summarize" }).first().click();
     await expect(connFile.locator("p[data-hunksum]")).toHaveCount(summariesBefore, { timeout: 60_000 });
 
     // Fold all (diff toolbar): hunks fold behind their headers.

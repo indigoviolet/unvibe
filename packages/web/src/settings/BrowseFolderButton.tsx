@@ -43,8 +43,7 @@ export function BrowseFolderButton({ onPick }: { onPick: (path: string) => void 
   return (
     <span className="frow" style={{ gap: 6, alignItems: "center" }}>
       <Button
-        variant="quiet"
-        size="sm"
+        variant="secondary"
         type="button"
         onClick={() => void browse()}
         disabled={busy}

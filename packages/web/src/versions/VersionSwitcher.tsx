@@ -38,16 +38,13 @@ export function VersionSwitcher(): React.JSX.Element | null {
         id="version-pick"
         aria-label="View version"
         title="View version"
-        value={value}
-        onChange={(e) => pick(Number(e.target.value))}
-      >
-        {review.versions.map((v) => (
-          <option key={v.n} value={v.n}>
-            v{v.n} · {v.headSha.slice(0, 8)}
-            {v.n === current ? " · current" : ""}
-          </option>
-        ))}
-      </Select>
+        value={String(value)}
+        onValueChange={(v) => pick(Number(v))}
+        options={review.versions.map((v) => ({
+          value: String(v.n),
+          label: `v${v.n} · ${v.headSha.slice(0, 8)}${v.n === current ? " · current" : ""}`,
+        }))}
+      />
     </span>
   );
 }

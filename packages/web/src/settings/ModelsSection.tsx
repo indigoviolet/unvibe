@@ -7,6 +7,7 @@
  * different one).
  */
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { ModelInfo, ModelPick, ReadinessCheck, Settings, ThinkingResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Card, Field, Select } from "../ui/index.js";
@@ -234,18 +235,13 @@ function ModelPicker({
         <Select
           id={`prov-${role}`}
           value={provider}
-          onChange={(e) => {
+          onValueChange={(v) => {
             setSaveError(null);
             setEffortReset(null);
-            setProvider(e.target.value);
+            setProvider(v);
           }}
-        >
-          {providers.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </Select>
+          options={providers.map((p) => ({ value: p, label: p }))}
+        />
       </Field>
       <Field label="Model" htmlFor={`model-${role}`}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
@@ -256,41 +252,22 @@ function ModelPicker({
           ) : models === null ? (
             <span className="hint">Loading models…</span>
           ) : (
-            <>
-              <Select
-                id={`model-${role}`}
-                value={browsing ? "" : pick.model}
-                onChange={(e) => void saveModel(e.target.value)}
-                disabled={saving}
-              >
-                {browsing ? (
-                  <option value="" disabled>
-                    Pick a {provider} model…
-                  </option>
-                ) : pick.model === "" ? (
-                  <option value="">Not set</option>
-                ) : modelIds?.includes(pick.model) ? null : (
-                  <option value={pick.model}>{pick.model} (current)</option>
-                )}
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} title={m.description ?? undefined}>
-                    {modelLabel(m)}
-                  </option>
-                ))}
-              </Select>
-              {/* Description as secondary text for the current pick + all options (#21). */}
-              {(() => {
-                const current = browsing ? undefined : models.find((m) => m.id === pick.model);
-                if (current?.description) {
-                  return (
-                    <span className="hint" data-testid={`model-${role}-desc`}>
-                      {current.description}
-                    </span>
-                  );
-                }
-                return null;
-              })()}
-            </>
+            <Select
+              id={`model-${role}`}
+              value={browsing ? "" : pick.model}
+              onValueChange={(v) => void saveModel(v)}
+              disabled={saving}
+              options={[
+                ...(browsing
+                  ? [{ value: "", label: `Pick a ${provider} model…`, disabled: true }]
+                  : pick.model === ""
+                    ? [{ value: "", label: "Not set" }]
+                    : modelIds?.includes(pick.model)
+                      ? []
+                      : [{ value: pick.model, label: `${pick.model} (current)` }]),
+                ...models.map((m) => ({ value: m.id, label: modelLabel(m) })),
+              ]}
+            />
           )}
           {saving ? <span className="hint">Saving…</span> : null}
           {saveError ? (
@@ -299,18 +276,8 @@ function ModelPicker({
             </span>
           ) : null}
           {status && status.status !== "ok" ? (
-            <span
-              className={status.status === "warning" ? "warnline" : "err"}
-              role="status"
-              data-testid={`model-${role}-status`}
-            >
-              {status.summary}
-              {status.fix ? ` — ${status.fix}` : ""}
-            </span>
-          ) : null}
-          {status?.status === "ok" ? (
-            <span className="hint" data-testid={`model-${role}-status`}>
-              {status.summary}
+            <span className="hint" role="status" data-testid={`model-${role}-status`}>
+              Not ready. <Link to="/settings?tab=environment">Check Environment</Link>
             </span>
           ) : null}
         </div>
@@ -328,25 +295,18 @@ function ModelPicker({
               <Select
                 id={`effort-${role}`}
                 value={browsing ? "" : savedEffort}
-                onChange={(e) =>
-                  void save({ provider: pick.provider, model: pick.model, effort: e.target.value }, null)
+                onValueChange={(v) =>
+                  void save({ provider: pick.provider, model: pick.model, effort: v }, null)
                 }
                 disabled={saving || browsing}
                 title="How hard the model thinks. Default leaves the provider's own setting alone."
-              >
-                {browsing ? (
-                  <option value="" disabled>
-                    Pick a {provider} model first…
-                  </option>
-                ) : (
-                  <option value="">Default</option>
-                )}
-                {thinking.options.map((o) => (
-                  <option key={o.value} value={o.value} title={o.description ?? undefined}>
-                    {o.name ?? o.value}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  ...(browsing
+                    ? [{ value: "", label: `Pick a ${provider} model first…`, disabled: true }]
+                    : [{ value: "", label: "Default" }]),
+                  ...thinking.options.map((o) => ({ value: o.value, label: o.name ?? o.value })),
+                ]}
+              />
               {(() => {
                 const current = browsing ? undefined : thinking.options.find((o) => o.value === savedEffort);
                 if (current?.description) {

@@ -79,14 +79,16 @@ describe("DiffView file filters", () => {
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
     expect(document.getElementById(`F-${TSOCK}`)).toBeNull();
-    // No count badge: the active state is aria-pressed (accent icon),
-    // and the tooltip names what is hidden.
+    // No count badge: the active state is aria-pressed (accent + dot),
+    // and the tooltip stays action-only (#225).
     const filter = screen.getByRole("button", { name: /File filters/ });
     expect(filter).toHaveAttribute("aria-pressed", "true");
-    expect(filter.getAttribute("data-tip")).toContain("Hiding:");
+    expect(filter.getAttribute("data-tip")).toBe("Filter files by type");
+    expect(filter.querySelector("[data-filter-active]")).not.toBeNull();
     const reviewFilter = screen.getByRole("button", { name: /Review filters/ });
     expect(reviewFilter).toHaveAttribute("aria-pressed", "true");
-    expect(reviewFilter.getAttribute("data-tip")).toContain("Reviewed");
+    expect(reviewFilter.getAttribute("data-tip")).toBe("Reviewed and GitHub comment filters");
+    expect(reviewFilter.querySelector("[data-filter-active]")).not.toBeNull();
     // Stored prefs survive the render untouched.
     const stored = JSON.parse(localStorage.getItem("unvibe.diff.prefs.v1") as string) as {
       hideReviewed: boolean;
@@ -111,7 +113,8 @@ describe("DiffView file filters", () => {
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
     expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
     expect(filter).toHaveAttribute("aria-pressed", "true");
-    expect(filter.getAttribute("data-tip")).toBe("Hiding: Tests");
+    expect(filter.getAttribute("data-tip")).toBe("Filter files by type");
+    expect(filter.querySelector("[data-filter-active]")).not.toBeNull();
     await fireEvent.click(tests);
     expect(document.getElementById(`F-${TCONN}`)).not.toBeNull();
     expect(filter).toHaveAttribute("aria-pressed", "false");
@@ -135,7 +138,8 @@ describe("DiffView file filters", () => {
     // Enter toggles the focused row (Tests off).
     await fireEvent.click(document.activeElement as HTMLElement);
     expect(document.getElementById(`F-${TCONN}`)).toBeNull();
-    expect(filter.getAttribute("data-tip")).toBe("Hiding: Tests");
+    expect(filter.getAttribute("data-tip")).toBe("Filter files by type");
+    expect(filter.querySelector("[data-filter-active]")).not.toBeNull();
     // Esc closes and returns focus to the button.
     await fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "File filters" })).toBeNull();

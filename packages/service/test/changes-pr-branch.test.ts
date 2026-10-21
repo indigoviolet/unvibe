@@ -102,7 +102,7 @@ describe("repoChanges review markers (#149)", () => {
     // PR #77 ingest view (head = feature).
     fake.enqueue({
       cmd: "gh",
-      args: ["pr", "view", "77", "--json", "title,body,author,state,isDraft,baseRefName,headRefName,headRefOid"],
+      args: ["pr", "view", "77", "--json", "title,body,author,state,isDraft,reviewDecision,baseRefName,headRefName,headRefOid"],
       stdout: JSON.stringify({
         title: "Feature PR",
         body: "",
@@ -127,7 +127,7 @@ describe("repoChanges review markers (#149)", () => {
         "--author",
         "@me",
         "--json",
-        "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,reviewRequests",
+        "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,state,isDraft,reviewDecision,reviewRequests",
         "--limit",
         "30",
       ],

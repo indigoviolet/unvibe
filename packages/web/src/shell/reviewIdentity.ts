@@ -20,6 +20,9 @@ export interface ReviewIdentity {
   /** Full title with the same fallbacks the top bar always used. */
   title: string;
   prUrl: string | null;
+  /** #224: PR state/decision from the summary (branch reviews: undefined). */
+  prState?: import("@unvibe/shared").PrState;
+  reviewDecision?: import("@unvibe/shared").PrReviewDecision;
 }
 
 export function useReviewIdentity(reviewId: string): ReviewIdentity {
@@ -65,5 +68,11 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
     prNumber !== undefined && owner && name && repoId !== "demo"
       ? githubPrUrl(owner, name, prNumber)
       : null;
-  return { short, title, prUrl };
+  return {
+    short,
+    title,
+    prUrl,
+    ...(summary?.prState !== undefined ? { prState: summary.prState } : {}),
+    ...(summary?.reviewDecision !== undefined ? { reviewDecision: summary.reviewDecision } : {}),
+  };
 }

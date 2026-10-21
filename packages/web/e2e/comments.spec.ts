@@ -4,6 +4,7 @@
  * description editing, and the Submit panel.
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import type { Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
 
@@ -131,7 +132,7 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await expect(thread).toBeVisible({ timeout: 5000 });
   // A comment is for the PR by default: no agent reply, already marked.
   await expect(thread.locator(".working")).toHaveCount(0);
-  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -181,8 +182,8 @@ test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #16
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
   await expect(sug.locator("textarea")).toHaveCount(0);
-  // "Ask the agent about this", as on user comments.
-  await sug.getByRole("button", { name: "Ask the agent about this" }).click();
+  // "Ask about this", as on user comments.
+  await sug.getByRole("button", { name: "Ask about this" }).click();
   const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
   await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   await card.getByRole("button", { name: "Close" }).click();
@@ -220,7 +221,7 @@ test("Outbox drafts live in the Comments menu and persist", async ({ page }) => 
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
   // Comments are for the PR by default — no explicit mark needed.
-  await expect(thread.getByRole("button", { name: "In the Outbox" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
   // The Comments menu lists it in its Outbox section; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();
@@ -242,7 +243,10 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
     "Unfold obsolete folded response headers",
   );
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-  await expect(page.locator('#version-pick option[value="2"]')).toContainText("current");
+  await expect(page.locator("#version-pick")).toContainText("v1");
+  await page.locator("#version-pick").click();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   // Selecting guide text offers no toolbar. The selection is made inline
   // (range + mouseup, no waits — the toolbar hides synchronously on
   // read-only versions); the selected text is asserted first so a missing

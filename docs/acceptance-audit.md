@@ -155,8 +155,8 @@ UI); nothing below was edited by this pass.
 ### §4.2 Start page — all met
 
 - Repo selector centred above Reviews with remembered + detected checkouts —
-  met (`StartPage.tsx` native `<select>`: remembered
-  under "Repos", detected under "Detected checkouts" with the local path
+  met (Base UI `Select` in `StartPage.tsx`: remembered
+  under "Repos", detected under "Found on this machine" with the local path
   as the title; selection persisted in `unvibe.start.repoId`, demo never
   selectable; `e2e/start.spec.ts` "repo selector lists remembered and
   detected repos, persisted" + "sits centered above Reviews"; quiet
@@ -904,8 +904,10 @@ needed (that deviation is closed, not added).
   provider does not offer the saved effort resets to Default with a notice
   (`ModelsSection.test.tsx` "effort per role").
 - Model display names (#21) — met: `GET /api/models` carries `name` +
-  `description` from the adapters; pickers show display name beside the id
-  with description as secondary text (Claude + Codex); readiness, Doctor,
+  `description` from the adapters; pickers show the display name beside
+  the id as the trigger label (#225: no description or status/path line
+  under the picker; a role that isn't ready shows only a link to
+  Settings → Environment); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
 - Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
@@ -2416,6 +2418,38 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
 
+## Addendum: #225 part A + #224 (branch `fix/225a-settings-start-select-224`)
+
+- **#225 settings/start (part A; §4.14, §4.2, §4.1):** Settings →
+  Limits fields fit the card (numeric inputs sized for their values,
+  go-deeper toggle as the shared Field checkbox); Version channel rows
+  are equal-height shared ListRows with the trailing control (small
+  secondary Switch/Update/Confirm or badge) in one slot and the enable
+  toggle inside the card as a Field; Appearance shows theme names only
+  plus one line that light/dark follows the system; Repos list and both
+  add rows share one card and one right edge ("Browse…" is a shared
+  secondary button); Environment is one card with one ListRow per check
+  (problems first, short detail, full text on hover, actions in the
+  footer); the start-page PR opener row ends at the lists card's right
+  edge, empty sub-groups sit where a row would with consistent
+  sub-headings, and Reviews rows show the app's working indicator only
+  while work runs (nothing when idle, error mark stays); the shared
+  Select is Base UI's everywhere it is used (repo picker, recency,
+  Models, Version picker, Appearance). Evidence: journey
+  `e2e/journeys/j225a-settings-badges.spec.ts` (real service: one-card
+  screens, row heights/right edges, no page scroll, Base UI selects in
+  `e2e/start*.spec.ts`, `settings.spec.ts`, journeys J5/J11/J12/J18).
+- **#224 (PR state + review decision; §4.2, §4.1):** open/draft/merged/
+  closed and approved/changes-requested/review-required ride the shared
+  Badge with theme colours on the review bar (next to the PR title), the
+  start-page PR rows and the reviews list (merged/closed reviews also
+  faded). Data is the stored `gh` state (`state`/`isDraft`/
+  `reviewDecision` from the same `pr view`/`pr list` calls, refreshed on
+  list load/refresh — no new polling); branch reviews show nothing.
+  Evidence: journey `e2e/journeys/j225a-settings-badges.spec.ts`
+  (OPEN + APPROVED fake `gh`: badges in the session row and review bar,
+  none on branch rows, summary API carries the stored state).
+
 ## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
 
 - **#178 (§10):** `code:` citations are validated against the real file
@@ -2542,3 +2576,63 @@ hunk coverage) is reported for a separate issue, not fixed here.
   light and dark at 1440 and 960 (the tour's demo commits resolve in
   no checkout, so those frames use a scratch repo on an agent-less
   service, seeded the way J81 seeds).
+
+## Addendum: #225 part B (branch `fix/225b-review-polish-layout-check`)
+
+- **Review-page tooltips (#225):** toolbar and card-toolbar tooltips are
+  the action only — no agent, cost, summary or state commentary and no
+  parentheticals (e.g. "Fold the code", "Check the branch for new
+  commits", "Summarize", "Ask about this"). The diff toolbar's review
+  filter uses the funnel `filter` icon with an active dot + accent
+  (`aria-pressed`) when a filter is on; Fold/Unfold are the mirrored
+  `fold`/`unfold` pair; Hide uninteresting uses `eyeOff`.
+- **Shared-context line (#225):** the "agent kept N notes" line is gone
+  from the review page; shared context stays on Debug → Shared context.
+- **Generic layout check (#225):** `e2e/layout-check.ts`
+  (`checkLayout`/`collectLayoutViolations`, reusable by journeys) runs
+  on every visual-tour scene: no card/panel horizontal overflow, no
+  page horizontal scroll, equal ListRow heights, shared right edges
+  for sibling form rows and add rows vs. the list below, plus rule
+  4c — a single-line add row (text input + button) fills its own row,
+  trailing control at the row's right edge. 4c is needed because the
+  reported Repos/start-page gaps hide behind full-width row boxes:
+  `.ui-input` caps at 420px so the input never flexes. No screenshot
+  baselines. Evidence: `e2e/journeys/j225-review-polish.spec.ts`,
+  `mise run visual-tour`.
+- **Tour coverage (#225, second pass):** the main tour loop now visits
+  every Settings tab (Limits, Repos, Models, Environment, Version,
+  Appearance) and the start page (Open-a-PR row, Reviews list) in all
+  four variants, with `checkLayout` on each. The PR list with its
+  empty sub-groups is covered by `e2e/journeys/j225-start-pr-list.spec.ts`:
+  its own service with the J3/J81 fake-`gh` pattern (canned `pr list`
+  for `--author`, empty direct requests, team requests; mixed open,
+  draft, merged, approved, changes-requested states for #224's future
+  badges) plus a scratch repo with a fake `acme/widgets` remote, in
+  all four variants. No real `gh`, no network.
+- **Combined tree (main-rc + part A merged here):** every scene
+  passes with the check active — full visual tour 14/14, 218 tour
+  12/12, J225, the start-PR-list journey (all 4 variants), J225a and
+  J11. Part A fixed every flagged screen (Limits fields fit, Repos
+  rows share the edge, Open-PR row fills, PR list clean); Models,
+  Environment, Version, Appearance and every review-page scene stay
+  clean. Tour-merge notes: the #222 document scenes now run
+  `checkLayout` instead of the old page-overflow-only check; the tour's
+  Outbox toggle expectation follows the action-only rename ("Remove
+  from the Outbox"); same rename applied to the affected e2e/unit
+  expectations. Left for the gate: the full `mise run gate` on this
+  tree.
+- **#225 follow-up (owner review): hermetic tour + path-free rows.**
+  `shortDetail` now strips "at <path>" tails and path-like tokens
+  from every environment row (d2 reads "d2 0.9.0"; full detail stays
+  on hover and the Doctor page); J225a asserts the d2 row and that no
+  row contains a path. The tour's main service (and the #222 restart,
+  J225a, the start-PR-list journey) runs with a fake `gh` on PATH
+  (`auth status` ok, `api user` → fake login, empty `pr list`) and a
+  `writeFakeGitOffline` git wrapper that fails only the fetch probe's
+  `ls-remote` instantly — no real `gh`, no real network; the
+  GitHub-fetch row shows a deterministic offline warning instead.
+  (Two fake-`gh` bugs found on the way: match `ls-remote` anywhere in
+  argv, since the service passes `-c` flags first; and answer
+  `api user` with the bare login, as `--jq .login` would.) A DOM-text
+  grep over every Settings tab and the start page finds no real login
+  and no home-directory paths.

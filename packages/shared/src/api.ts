@@ -17,6 +17,8 @@ import type {
   ExistingReviewComment,
   FileState,
   HunkState,
+  PrReviewDecision,
+  PrState,
   ReviewKind,
   ReviewViewPrefs,
   Job,
@@ -152,6 +154,10 @@ export interface RepoChange {
    * ("team"). Absent on other rows and on rows stored before this change
    * (the start page shows those under "Requested of you").
    */
+  /** #224: normalised PR state from gh (`state` + `isDraft`). Absent on branch rows. */
+  prState?: PrState;
+  /** #224: normalised review decision from gh. Absent when none/unknown. */
+  reviewDecision?: PrReviewDecision;
   reviewScope?: "direct" | "team";
   /**
    * #95: team slugs (or names) from `gh`'s `reviewRequests` that asked for
@@ -430,6 +436,10 @@ export interface ReviewSummary {
   reviewedHunks: number;
   /** Threads in the Outbox and not yet posted. */
   pendingComments: number;
+  /** #224: PR state from the snapshot's stored gh data. Absent for branch reviews. */
+  prState?: PrState;
+  /** #224: review decision from the snapshot's stored gh data. Absent when none. */
+  reviewDecision?: PrReviewDecision;
   /** Guide generation state (reader/base/critic pipeline). */
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
   guideDetail?: string;

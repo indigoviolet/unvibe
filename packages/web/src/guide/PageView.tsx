@@ -8,7 +8,6 @@
  * class.
  */
 import { Fragment, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import type { Card, Page, Plotline } from "@unvibe/shared";
 import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
@@ -182,7 +181,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const allPages = useReview((s) => s.snapshot?.pages);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
   const inflight = useReview((s) => s.inflight);
-  const contributions = useReview((s) => s.snapshot?.contributions ?? []);
   const { cards, links } = contentsModel(page, lookupPage, allPages);
 
   // Breadcrumb back to the root (PRD §4.3 trail), following parent links.
@@ -218,12 +216,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     if (!job) return null;
     return inflightLabel("concept");
   })();
-
-  // Small unobtrusive indicator when a conversation contributed facts/open
-  // questions to shared context (PRD §9.5), linking to the debug page.
-  const sharedCount = contributions.filter((c) =>
-    c.items.some((i) => i.kind === "fact" || i.kind === "open_question"),
-  ).length;
 
   const renderCard = (card: Card, index: number) => (
     // Fragment (not a div): `.doc.finding > .ui-card` and other child
@@ -276,8 +268,8 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         <button
           className="ib save"
           type="button"
-          data-tip={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
-          aria-label={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
+          data-tip={saved ? "Unsave from this repo" : "Save to this repo"}
+          aria-label={saved ? "Unsave from this repo" : "Save to this repo"}
           aria-pressed={saved}
           data-save={page.id}
           onClick={() =>
@@ -298,12 +290,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           </span>
           <span>{conceptWorking}</span>
         </div>
-      ) : null}
-      {sharedCount > 0 ? (
-        <p className="hint" data-shared-indicator>
-          The agent kept {sharedCount} {sharedCount === 1 ? "note" : "notes"} from your conversations in this review ·{" "}
-          <Link to={`/review/${encodeURIComponent(reviewId)}/debug?tab=context`}>Debug → Shared context</Link>
-        </p>
       ) : null}
       <UiCard as="nav" variant="inset" className="toc" aria-label="Contents">
         <div className="toc-h">

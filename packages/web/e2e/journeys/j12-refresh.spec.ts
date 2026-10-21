@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
 import { apiJson, createScratchReview, git } from "./journey-helpers.js";
@@ -73,7 +74,8 @@ test.describe("J12 refresh with new commits", () => {
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
 
     // Older version: pre-refresh code, no description editing.
-    await page.locator("#version-pick").selectOption("1");
+    await page.locator("#version-pick").click();
+    await openPopup(page).getByRole("option", { name: /^v1 / }).click();
     await expect(page).toHaveURL(/version=1/);
     await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });

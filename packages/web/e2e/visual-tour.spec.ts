@@ -4,10 +4,12 @@
  * and dark): the guide with a pinned card, a card opened from inside
  * a pinned card in the guide and in the diff, the diff in unified
  * and split, a deep-anchored card, every toolbar/file-tree menu, the
- * comments menu, and Settings → Version. Screenshots land in the
+ * comments menu, every Settings tab, and the start page (Open-a-PR
+ * row, PR list, Reviews list). Screenshots land in the
  * git-ignored `visual-tour/` folder for the owner to look at.
  *
- * At every step, three generic checks (no per-feature asserts):
+ * At every step, generic checks (no per-feature asserts), including
+ * the #225 layout check (`layout-check.ts`) on every scene:
  * - every open menu/popover is fully inside the viewport and topmost
  *   at its corners and centre;
  * - every open card's FULL box is inside the viewport horizontally
@@ -26,7 +28,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
-import { writeFakeGh } from "./journeys/journey-helpers.js";
+import { checkLayout } from "./layout-check.js";
+import { realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -49,6 +52,9 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
 }
 
 let dataDir = "";
+let tourBin = "";
+let tourLog = "";
+let tourShellPath = "";
 let svc: RunningService | null = null;
 let reviewId = "";
 
@@ -56,7 +62,20 @@ test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
-  svc = await startService(dataDir, { agent: "replay" });
+  // Hermetic service (AGENTS.md: tests never hit real GitHub): fake
+  // `gh` (authenticated as a fake login, empty PR lists) and a `git`
+  // wrapper that fails `ls-remote` instantly, so the GitHub-fetch
+  // probe reports a deterministic offline warning — no real network.
+  tourBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-bin-"));
+  tourLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-gh-"));
+  writeFakeGhTour(tourBin, tourLog);
+  writeFakeGitOffline(tourBin, realGitPath());
+  tourShellPath = path.join(tourBin, "fakeshell");
+  writeFileSync(tourShellPath, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${tourBin}:$PATH"\n`, { mode: 0o755 });
+  svc = await startService(dataDir, {
+    agent: "replay",
+    extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+  });
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
   };
@@ -76,17 +95,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await svc?.stop().catch(() => {});
   svc = null;
-  rmSync(dataDir, { recursive: true, force: true });
+  for (const d of [dataDir, tourBin, tourLog]) rmSync(d, { recursive: true, force: true });
 });
-
-/** Generic check: no horizontal page overflow. */
-async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    return Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
-  });
-  expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
-}
-
 
 /**
  * Syntax-token contrast (issue #196 review): a string/comment token in
@@ -694,7 +704,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
     last = now;
     await page.waitForTimeout(300);
   }
-  await checkNoPageOverflow(page, step);
+  await checkLayout(page, step);
   await checkPinnedSlots(page, step);
   await checkPinnedBand(page, step);
   await checkGutters(page, step);
@@ -949,7 +959,7 @@ for (const combo of [
     // this step starts. Wait (bounded, with a clear message) for a
     // toggle in either state, and only click when nothing is marked.
     const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
-    const inOutbox = page.getByRole("button", { name: /In the Outbox/ }).first();
+    const inOutbox = page.getByRole("button", { name: "Remove from the Outbox" }).first();
     await expect
       .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
         timeout: 15_000,
@@ -971,7 +981,7 @@ for (const combo of [
     await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
-    await checkNoPageOverflow(page, "debug");
+    await checkLayout(page, "debug");
     await shot(page, "debug", suffix, "Queued");
 
     // Debug Output (#207): one view per job (no Prompt button); the
@@ -986,14 +996,37 @@ for (const combo of [
     await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Arguments", { timeout: 15_000 });
     // Frame the whole job row, header (kind/state) above Turn 1.
     await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
-    await checkNoPageOverflow(page, "debug-output");
+    await checkLayout(page, "debug-output");
     await shot(page, "debug-output", suffix, "Raw usage");
 
-    // Settings → Version.
-    await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
-    await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, "settings-version");
-    await shot(page, "settings-version", suffix, "Installed:");
+    // Settings → every tab (#225): fields must fit the card at
+    // every width. One scene per tab so the failure names the tab.
+    for (const tab of [
+      { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
+      { id: "repositories", name: "Repos", marker: "Add by path" },
+      { id: "models", name: "Models", marker: "Writes the guide" },
+      { id: "environment", name: "Environment", marker: "Re-check" },
+      { id: "version", name: "Version", marker: "Installed:" },
+      { id: "appearance", name: "Appearance", marker: "Theme" },
+    ] as const) {
+      await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
+      await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
+      await checkLayout(page, `settings-${tab.id}`);
+      await shot(page, `settings-${tab.id}`, suffix, tab.marker);
+    }
+
+    // Start page (#225): the "Open a PR" row and the Reviews list
+    // share one width. (The PR list with its empty sub-groups needs
+    // gh-loaded lists, unreachable in the tour sandbox: no repos, no
+    // login. Rules 4b/4c cover it wherever it renders.)
+    await page.goto(`${svc!.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start");
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-reviews");
+    await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");
   });
 }
 
@@ -1058,12 +1091,12 @@ for (const combo of [
     }, sansFamily);
     expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
     expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
-    await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
+    await checkLayout(page, `theme-${combo.theme}-guide`);
     await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await checkLayout(page, `theme-${combo.theme}-diff`);
     await checkTokenContrast(page, `theme-${combo.theme}-diff`);
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
@@ -1088,8 +1121,8 @@ for (const combo of [
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
+    await expect(page.locator('[data-testid="ui-theme"]')).toContainText(combo.theme === "studio" ? "Studio" : "Console", { timeout: 15_000 });
+    await checkLayout(page, `theme-${combo.theme}-settings`);
     await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
@@ -1152,7 +1185,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.getByTestId("doc-repo-select-0").selectOption(repoId);
     await page.getByRole("button", { name: "Add another context repo" }).click();
     await page.getByTestId("doc-repo-select-1").selectOption(repo2Id);
-    await checkNoPageOverflow(page, "start-document-form");
+    await checkLayout(page, "start-document-form");
     await shot(page, "start-document-form", "1440-light", "Paste the document's Markdown");
 
     await page.getByRole("button", { name: "Create document review" }).click();
@@ -1163,7 +1196,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(page.getByTestId("document-view")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("document-context")).toContainText("local copy");
     await page.evaluate(() => document.fonts.ready).catch(() => {});
-    await checkNoPageOverflow(page, "document-review");
+    await checkLayout(page, "document-review");
     await shot(page, "document-review", "1440-light", "folds obsolete headers");
 
     // An Explain answer on document text.
@@ -1173,7 +1206,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
     await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
-    await checkNoPageOverflow(page, "document-explain");
+    await checkLayout(page, "document-explain");
     await shot(page, "document-explain", "1440-light", "folds obsolete headers");
     await closeCard(page, exp);
 
@@ -1188,7 +1221,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
-    await checkNoPageOverflow(page, "document-ask");
+    await checkLayout(page, "document-ask");
     await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
 
     // A local comment on document text.
@@ -1201,7 +1234,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(page.locator("#C-document .ithread", { hasText: "Please expand this part." }).first()).toBeVisible({
       timeout: 15_000,
     });
-    await checkNoPageOverflow(page, "document-comment");
+    await checkLayout(page, "document-comment");
     await shot(page, "document-comment", "1440-light", "Please expand this part.");
 
     // A document answer citing the second repo's file (#81): seed the
@@ -1258,14 +1291,17 @@ test("visual tour document review (#222)", async ({ page }) => {
     } finally {
       db.close();
     }
-    svc = await startService(dataDir, { agent: "replay" });
+    svc = await startService(dataDir, {
+      agent: "replay",
+      extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
     await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
     const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
     await expect(cited.first()).toBeVisible({ timeout: 30_000 });
     await cited.first().getByRole("button", { name: "Source" }).click();
     await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".codefile")).toContainText("second repo");
-    await checkNoPageOverflow(page, "document-citation");
+    await checkLayout(page, "document-citation");
     await shot(page, "document-citation", "1440-light", "second repo");
 
     // The document comment in the Outbox section (#223, #226), with its
@@ -1324,10 +1360,12 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await expect(card.locator("textarea")).toHaveCount(0);
     mkdirSync(SHOTS, { recursive: true });
     await card.scrollIntoViewIfNeeded().catch(() => {});
+    await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
     // Once the answer arrives, the toolbar and reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
+    await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
     await slow.stop().catch(() => {});

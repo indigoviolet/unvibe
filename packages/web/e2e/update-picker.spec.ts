@@ -17,7 +17,8 @@ async function freshSettings(page: import("@playwright/test").Page): Promise<voi
 }
 
 async function enablePicker(page: import("@playwright/test").Page): Promise<void> {
-  await page.getByTestId("version-picker-toggle").check();
+  await page.getByTestId("version-picker-toggle").click();
+  await expect(page.getByTestId("version-picker-toggle")).toBeChecked();
   await expect(page.locator('[data-testid="update-channel"]')).not.toHaveCount(0);
 }
 
