@@ -21,7 +21,7 @@ Write citations and links inline as `[[…]]` with an optional `|label`:
 | `[[code:<path>:<start>-<end>]]` | Code at a commit | Citation marker |
 | `[[desc:<paragraph-id>]]` | PR description paragraph | Citation marker |
 | `[[h:<fileKey>:<contentHash>]]` | A hunk | Citation marker |
-| `[[concept:<slug>\|label]]` | Concept (unknown slugs become hidden candidates) | Dotted inline link |
+| `[[concept:<slug>\|label]]` | Concept (page written when the reader opens it) | Dotted inline link |
 | `[[page:<pageId>\|label]]` | A page | Dotted inline link |
 | `[[card:<cardId>#<blockId>\|label]]` | Guide content | Dotted inline link |
 | `[[ann:<id>\|label]]` | An annotation | Dotted inline link |
@@ -186,7 +186,7 @@ the item, and the block carries the union.
 
 ## 9. Finding metadata and other structured fields
 
-Evidence, assessment prose, and concept stubs live in the Markdown body.
+Evidence and assessment prose live in the Markdown body.
 Metadata goes in the trailing JSON block:
 
 Critic replies (#215) carry one to three findings in one reply: for
@@ -225,9 +225,6 @@ on its own: a finding with no usable cards is dropped, the rest stand.
       "diff": "diff:conn:82"
     }
   },
-  "concepts": [
-    {"slug": "obs-fold", "title": "Obsolete line folding", "summary": "…"}
-  ],
   "pendingCards": [
     {"id": "g-flow", "label": "Data flow …", "why": "Follows a folded header …"}
   ],

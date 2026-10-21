@@ -9,10 +9,6 @@
       "file": "critic.md"
     },
     {
-      "kind": "concept-stubs",
-      "file": "concept-stubs.md"
-    },
-    {
       "kind": "concept-page",
       "key": "obs-fold",
       "file": "concept-obs-fold.md"

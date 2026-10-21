@@ -8,7 +8,6 @@ describe("stageLabel", () => {
     expect(stageLabel("base")).toBe("Preparing…");
     expect(stageLabel("critic")).toBe("Checking findings…");
     expect(stageLabel("concept")).toBe("Writing concept pages…");
-    expect(stageLabel("concepts")).toBe("Writing concept pages…");
     expect(stageLabel("hunk-pass")).toBe("Summarizing code…");
     expect(stageLabel("go-deeper")).toBe("Writing deeper cards…");
   });
@@ -25,7 +24,6 @@ describe("stagePhrase", () => {
     expect(stagePhrase("reader")).toBe("reading the change");
     expect(stagePhrase("base")).toBe("preparing");
     expect(stagePhrase("critic")).toBe("checking findings");
-    expect(stagePhrase("concepts")).toBe("writing concept pages");
     expect(stagePhrase("hunk-pass")).toBe("summarizing code");
     expect(stagePhrase("anything-else")).toBe("building the guide");
     expect(stagePhrase(undefined)).toBe("building the guide");

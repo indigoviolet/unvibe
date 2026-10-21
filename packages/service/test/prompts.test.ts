@@ -93,7 +93,7 @@ describe("renderTemplate determinism", () => {
 });
 
 describe("repo prompts/ directory", () => {
-  it("loads all 17 PRD §13 templates with valid front matter", () => {
+  it("loads all 16 PRD §13 templates with valid front matter", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     // Issue #160 adds two `{{access_policy}}` fragments (not §13 table
     // templates) that fill the instructions variant.

@@ -265,20 +265,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
   }
 
-  const conceptTitles: Record<string, string> = {};
-  for (const entry of manifest.recordings.filter((e) => e.kind === "concept-page")) {
-    const parsed = parseReply(textOf(entry.file));
-    const title = (parsed.data?.title as string | undefined) ?? entry.key!;
-    conceptTitles[entry.key!] = title;
-    pages.push({
-      id: `c-${entry.key}`,
-      kind: "concept",
-      title,
-      saved: true,
-      parent: "root",
-      cards: [mkCard(`cc-${entry.key}`, `c-${entry.key}`, null, canonBlocks(parsed.blocks))],
-    });
-  }
+  // #216: no concept pages are seeded; a concept page is written when
+  // its link is opened (concept-page recordings stay for that on-demand fill).
 
   // "Restated →" mapping (PRD §4.11): description paragraph → guide block
   // ids whose citations restate it, derived from the root page's `desc:`.
@@ -523,11 +511,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
   }
 
-  if (Object.keys(conceptTitles).length !== meta.concepts.length) {
-    throw new Error(
-      `snapshot build failed: concept pages cover [${Object.keys(conceptTitles).join(", ")}] but meta lists [${meta.concepts.join(", ")}]`,
-    );
-  }
   if (failures.length > 0) {
     throw new Error(
       `snapshot build failed: ${failures.length} problem(s):\n` +

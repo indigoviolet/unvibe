@@ -745,8 +745,8 @@ export interface ResumeReviewResponse {
   pendingStages: PipelineStage[];
 }
 
-/** Pipeline stages (PRD §11): reader → base → critic/concepts → hunk pass. */
-export type PipelineStage = "reader" | "base" | "critic" | "concepts" | "hunk-pass" | "go-deeper";
+/** Pipeline stages (PRD §11): reader → base → critic → hunk pass. */
+export type PipelineStage = "reader" | "base" | "critic" | "hunk-pass" | "go-deeper";
 
 /**
  * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.

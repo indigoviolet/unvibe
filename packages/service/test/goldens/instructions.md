@@ -60,8 +60,8 @@ the reader would expect, rely on, or push back on.
 - An ID you use must come from your context or from an MCP tool result.
   Never guess a line number, hash, or card ID.
 - New `concept:` slugs are the one exception: linking a concept that has no
-  page yet creates a hidden candidate page. Only do this deliberately, when
-  the concept genuinely needs its own page.
+  page yet is fine — its page is written when the reader opens the link.
+  Only do this deliberately, when the concept genuinely needs its own page.
 - Keep ranges tight: cite the lines that show the claim, not the whole file.
 
 ## MCP tools
@@ -182,7 +182,7 @@ State the content itself instead.
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
   `finding`, `findings`, `contribute`, `depth`, `hunk`, `plotlines`,
-  `secondOpinion`, `concepts`, `pendingCards`, `anchor`, `degraded`):
+  `secondOpinion`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
     the reply is weaker for. A usable answer is still shown, with a note

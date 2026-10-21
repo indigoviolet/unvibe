@@ -26,7 +26,7 @@ export interface ReviewLookup {
   pageExists(id: string): boolean;
   cardExists(id: string): boolean;
   blockExists(cardId: string, blockId: string): boolean;
-  /** Unknown `concept:` slugs become hidden candidates (still valid). */
+  /** Unknown `concept:` slugs stay valid links (page written on open). */
   conceptKnown(slug: string): boolean;
   annotationExists(id: string): boolean;
   /** Plain text of an anchor host (`card:…#…`, `desc:…`, `diff:…`). */

@@ -11,7 +11,7 @@
  *                                            `ans_…` id for content
  *                                            inside a conversation, #136)
  * page:<pageId>                              a page
- * concept:<slug>                             a concept (may be a hidden candidate)
+ * concept:<slug>                             a concept (page written when opened)
  * ann:<id>                                   an annotation
  * ```
  *

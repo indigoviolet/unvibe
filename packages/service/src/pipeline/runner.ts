@@ -1,5 +1,5 @@
 /**
- * M3 pipeline (PRD §11): reader → base → critic/concepts → hunk pass.
+ * M3 pipeline (PRD §11): reader → base → critic → hunk pass.
  *
  * Every agent call is a job on the queue (kind, model, priority, prompt
  * snapshot, usage with cached tokens, cardId/progress). Streaming reader
@@ -880,7 +880,6 @@ export class Pipeline {
     this.setStage(reviewId, "reader", "pending");
     this.setStage(reviewId, "base", "pending");
     this.setStage(reviewId, "critic", "pending");
-    this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
     await this.enqueueReader(reviewId);
     // #123: the hunk pass needs only the diff, so it starts at ingest
@@ -911,7 +910,6 @@ export class Pipeline {
       if (stages.base !== "done") jobIds.push(...(await this.enqueueAfterReader(reviewId)).map((j) => j.id));
       else {
         if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
-        if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
         // Issue #169: the plotline assign step is not a stage; resume it
         // like the demo fill below (no-op unless the reader named
@@ -1975,28 +1973,6 @@ export class Pipeline {
           pending: { label: p.label, why: p.why },
         });
       }
-      for (const c of applied.concepts) {
-        if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-        draft.pages.push({
-          id: `c-${c.slug}`,
-          kind: "concept",
-          title: c.title,
-          saved: true,
-          parent: "root",
-          cards: [
-            {
-              id: `cc-${c.slug}`,
-              pageId: `c-${c.slug}`,
-              title: null,
-              level: "standard",
-              collapsed: false,
-              revision: 1,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary }, citations: [] }],
-              undoStack: [],
-            },
-          ],
-        });
-      }
       // Issue #169: store the validated plotlines; per-hunk assignment
       // rides `HunkState.plotline` (content-hash keyed, like summaries).
       draft.plotlines = plotlines.plotlines;
@@ -2028,7 +2004,6 @@ export class Pipeline {
     const out: Job[] = [];
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
-    out.push(...(await this.enqueueConcepts(reviewId)));
     // #123: the hunk pass starts in startReview now (at ingest), not here.
     // Hunks hidden before the guide existed are unhidden when cited.
     await this.unhideCitedHunks(reviewId);
@@ -2172,85 +2147,6 @@ export class Pipeline {
         } catch (err) {
           await this.reportPartialUsage(ctx, reviewId, err);
           this.setStage(reviewId, "critic", "error", (err as Error).message);
-          throw err;
-        }
-      },
-    });
-    return [job];
-  }
-
-  private async enqueueConcepts(reviewId: string): Promise<Job[]> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return [];
-    this.setStage(reviewId, "concepts", "running");
-    const settings = await this.effectiveSettings();
-    const promptBase = `Write concept stubs for this review. For each hidden concept candidate the reader named, emit one line with its concept: slug, title, one line of meaning, and where mentioned. End with a trailing JSON block carrying the concepts array (slug, title, summary).`;
-    const prompt = isReplayRunner(this.opts.runner) ? withReplayMark(promptBase, { kind: "concept-stubs" }) : promptBase;
-    const job = this.opts.jobs.enqueue({
-      reviewId,
-      kind: "concept",
-      ...roleFields(settings.main),
-      priority: JOB_PRIORITY.background,
-      dedupe: { anchor: "concepts", requestKind: "concept-stubs", baseVersion: `v${snapshot.version.n}` },
-      run: async (ctx) => {
-        ctx.setPromptSnapshot(prompt);
-        const base = await this.ensureBase(reviewId);
-        void base;
-        const forked = await this.forkFor(reviewId);
-        ctx.setSessionId(forked.session.id);
-        try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail, extra) => ctx.reportTool(name, detail, extra),
-          turnHooks(ctx));
-          ctx.reportUsage(usage);
-          await this.recordUsage(reviewId, usage);
-          const { data } = this.parseAndValidate(reviewId, text);
-          const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).filter(
-            (c) => c.slug,
-          );
-          await this.opts.reviews.mutate(reviewId, (draft) => {
-            for (const c of concepts) {
-              if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-              draft.pages.push({
-                id: `c-${c.slug}`,
-                kind: "concept",
-                title: c.title ?? c.slug!,
-                saved: true,
-                parent: "root",
-                cards: [
-                  {
-                    id: `cc-${c.slug}`,
-                    pageId: `c-${c.slug}`,
-                    title: null,
-                    level: "standard",
-                    collapsed: false,
-                    revision: 1,
-                    blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary ?? "" }, citations: [] }],
-                    undoStack: [],
-                  },
-                ],
-              });
-            }
-          });
-          this.setStage(reviewId, "concepts", "done");
-          // Demo auto-fill: expand every stub to its full page (same path as
-          // on-demand `ensureConceptPage`, background priority).
-          if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-            for (const c of concepts) {
-              if (!c.slug) continue;
-              try {
-                await this.ensureConceptPageInner(reviewId, c.slug);
-              } catch {
-                // best-effort; resume will retry
-              }
-            }
-          }
-          // #122: stubs changed the guide — rebuild the base ahead.
-          this.warmBase(reviewId);
-        } catch (err) {
-          await this.reportPartialUsage(ctx, reviewId, err);
-          this.setStage(reviewId, "concepts", "error", (err as Error).message);
           throw err;
         }
       },
@@ -2622,7 +2518,7 @@ export class Pipeline {
       if (r && !r.cards.some((x) => x.pending)) {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
@@ -2633,62 +2529,6 @@ export class Pipeline {
     await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
     this.warmBase(reviewId);
-  }
-
-  private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return;
-    const existing = snapshot.pages.find((p) => p.id === `c-${slug}`);
-    const prompt = withReplayMark(
-      this.render("concept_page", { concept: `${slug} — ${existing?.title ?? slug}`, mentions: this.mentionsOf(snapshot, slug) }),
-      isReplayRunner(this.opts.runner) ? { kind: "concept-page", key: slug } : undefined,
-    );
-    const base = await this.ensureBase(reviewId);
-    void base;
-    const forked = await this.forkFor(reviewId);
-    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, undefined, () => {});
-    await this.recordUsage(reviewId, usage);
-    // Issue #50: match the page title (an echo of the concept name).
-    const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
-      ...(existing?.title ? [existing.title] : []),
-      slug,
-    ]);
-    const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
-    const blocks = this.withValidation(
-      reviewId,
-      cards.flatMap((c) => c.blocks),
-      validation,
-    );
-    // Inline diagrams go through finalize + one repair turn on the fill's
-    // own session (#130), so stored blocks carry a real status.
-    const stored = await this.finalizeInlineBlocks(
-      reviewId,
-      forked.session,
-      undefined,
-      `Concept page: ${slug}`,
-      "standard",
-      blocks,
-    );
-    await this.opts.reviews.mutate(reviewId, (draft) => {
-      let page = draft.pages.find((p) => p.id === `c-${slug}`);
-      if (!page) {
-        page = { id: `c-${slug}`, kind: "concept", title, saved: true, parent: "root", cards: [] };
-        draft.pages.push(page);
-      }
-      page.title = title;
-      page.cards = [
-        {
-          id: `cc-${slug}`,
-          pageId: `c-${slug}`,
-          title: null,
-          level: "standard",
-          collapsed: false,
-          revision: (page.cards[0]?.revision ?? 0) + 1,
-          blocks: stored,
-          undoStack: [],
-        },
-      ];
-    });
   }
 
   // -- helpers --------------------------------------------------------
@@ -2957,7 +2797,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
       })
@@ -2971,7 +2811,6 @@ export class Pipeline {
       reader: stages.reader ?? "pending",
       base: stages.base ?? "pending",
       critic: stages.critic ?? "pending",
-      concepts: stages.concepts ?? "pending",
       "hunk-pass": stages["hunk-pass"] ?? "pending",
       "go-deeper": stages["go-deeper"] ?? "pending",
     };
@@ -2982,7 +2821,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)[stage] = state;

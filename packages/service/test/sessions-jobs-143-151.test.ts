@@ -196,7 +196,7 @@ describe("idle sweep never closes a session mid-turn (#143)", () => {
 });
 
 describe("fork registration and idle sweep (#143)", () => {
-  it("one-shot forks (critic/concepts) are registered and swept, not leaked", async () => {
+  it("one-shot forks (critic) are registered and swept, not leaked", async () => {
     const agents = new FakeAgentRunner(baseScripts());
     const { app, ctx, id } = await openDemo(agents);
     try {
@@ -205,9 +205,10 @@ describe("fork registration and idle sweep (#143)", () => {
       expect(criticJobs.length).toBeGreaterThan(0);
       const forkIds = criticJobs.map((j) => ctx.jobs.get(j.id)?.sessionId).filter(Boolean) as string[];
       expect(forkIds.length).toBeGreaterThan(0);
-      // Registered: live in the manager until swept.
+      // Registered: live in the manager until swept (#215/#216: the one
+      // critic fork plus its base).
       const counts = ctx.sessions.countsByProvider();
-      expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBeGreaterThan(2);
+      expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
       const { closed } = await ctx.sessions.sweepIdle(Date.now() + 10 * 60 * 1000, 5 * 60 * 1000);
       for (const fid of forkIds) expect(closed).toContain(fid);
     } finally {

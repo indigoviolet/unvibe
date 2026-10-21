@@ -28,7 +28,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
 export interface ReaderApply {
   cards: { id: string; title: string | null; blocks: Block[] }[];
   pendingCards: { id: string; label: string; why: string }[];
-  concepts: { slug: string; title: string; summary: string }[];
   /**
    * Issue #169: the reader's raw plotline payload (validated against the
    * review's hunk IDs by the caller — unknown IDs dropped, first
@@ -87,7 +86,7 @@ export function splitFinalizedBlocks<T extends { blocks: Block[] }>(cards: T[], 
   });
 }
 
-/** Split a reader reply into root cards + placeholders + concepts. */
+/** Split a reader reply into root cards + placeholders. */
 export function readerApply(
   parsedCards: { title: string | null; blocks: Block[] }[],
   data: Record<string, unknown> | null,
@@ -105,13 +104,6 @@ export function readerApply(
       why: p.why ?? "",
     }),
   );
-  const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).map(
-    (c) => ({
-      slug: c.slug ?? "",
-      title: c.title ?? c.slug ?? "",
-      summary: c.summary ?? "",
-    }),
-  ).filter((c) => c.slug);
   const plotlines = (
     (data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
   ).map((p) => ({
@@ -121,7 +113,7 @@ export function readerApply(
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));
-  return { cards, pendingCards, concepts, plotlines };
+  return { cards, pendingCards, plotlines };
 }
 
 export interface CriticApply {

@@ -1086,7 +1086,7 @@ needed (that deviation is closed, not added).
   conversation answer (`ans_…`).
 - App assigns IDs; agents never invent them — met: every token validated
   (`validate/*`); unknown IDs fail/repair/unverified; unknown `concept:`
-  slugs become hidden candidates (`validate/validate.ts`, `validate.test.ts`).
+  slugs stay valid links whose page is written on open (`validate/validate.ts`, `validate.test.ts`).
 - Short forms dropped in UI/prompts, stored full — met
   (`reply-format.md` §1, canonicalisation in `validate/lookup.ts`).
 - Card/block IDs stable across revisions — met (`guideRevisionForSnapshot`,
@@ -1223,8 +1223,8 @@ needed (that deviation is closed, not added).
   the IDs are in the context, so the reader cites them directly instead of
   spending `search_review` round-trips (live: first card cited
   `desc:d-p1/d-p2/d-p4`, 0 unverified, 0 MCP calls before it landed).
-- Validation (existence, ranges, anchor substring, hidden concept
-  candidates) — met (`validate/*`, `validate.test.ts`).
+- Validation (existence, ranges, anchor substring, unopened concept
+  links) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
   turn when ≥2 fail) — met (`validate/validate.ts`, pipeline repair turn;
   live: repairs resolved, 0 unverified).
@@ -1237,7 +1237,7 @@ needed (that deviation is closed, not added).
 2. Reader (explore, plotlines settled first, then problem / central idea
    (one per plotline when several) / "How it's built up" / "Decisions and
    questions" / "Names" (only when the change introduces names with
-   reach) / directions, hidden concepts, `pin_context`) — met
+   reach) / directions, `pin_context`) — met
    (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
    L0 mission in `prompts/instructions.md`, neutral decisions card,
    verdicts stay with the critic; #212 regularizer: L0 regularizer
@@ -1259,8 +1259,10 @@ needed (that deviation is closed, not added).
    at most one diagram repair per second-opinion run (each other fill
    keeps its existing one-repair bound).
 3. Base build — met (`ensureBase`).
-4. Parallel forks (critic ×2 with evidence/assessment/confidence +
-   suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
+4. Parallel forks (critic ×1, #215: one job carrying 1-3 findings with
+   evidence/assessment/confidence + suggested comments; concept pages
+   written on demand only, #216) — met (demo `f-lf`/`f-perf` from the one
+   combined critic recording — ran).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
    (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
@@ -1605,7 +1607,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   agent summaries… summaries now exist too; token service, installable
   app, helper, idle exit — `e2e-linux.mjs` green).
 - M2 reader/guide — met (reader/base/critic live or replayed; checked
-  citations + hover; findings pages; hidden concepts; hunk summaries +
+  citations + hover; findings pages; concept pages on open; hunk summaries +
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +

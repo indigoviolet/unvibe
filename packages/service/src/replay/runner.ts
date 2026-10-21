@@ -56,7 +56,6 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
-  { re: /concept[-_ ]stubs?|hidden concept/i, kind: "concept-stubs" },
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },
   { re: /\bhunk\b|summariz/i, kind: "hunk" },
   { re: /go[-_ ]deeper|placeholder card|\bgenerate\b/i, kind: "go-deeper" },

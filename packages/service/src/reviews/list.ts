@@ -55,7 +55,7 @@ type GuideStatus = ReviewSummary["guideStatus"];
  * auto-fill aside), so a pending go-deeper never blocks readiness — live
  * `go-deeper` jobs still report as running through `liveJobs` above.
  */
-const CORE_STAGES = ["reader", "base", "critic", "concepts", "hunk-pass"] as const;
+const CORE_STAGES = ["reader", "base", "critic", "hunk-pass"] as const;
 
 function guideStatusFor(
   snapshot: ReviewSnapshot | null,

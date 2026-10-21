@@ -386,7 +386,7 @@ code:<path>:<line>[-<line>]@<sha>          any code at a commit (pinned or fetch
 desc:<paragraph>@<rev>                     description paragraph
 card:<cardId>[#<blockId>]                  guide content (a page card, or one conversation answer `ans_…`)
 page:<pageId>                              a page
-concept:<slug>                             a concept (may be a hidden candidate)
+concept:<slug>                             a concept (page written when opened)
 ann:<id>                                   an annotation
 ```
 
@@ -498,7 +498,7 @@ A new base is built when any of these happens:
   - the ID must exist in the current version (or map to it);
   - line ranges must lie inside the hunk, or the file at that commit;
   - a quoted anchor must be a real substring of its host;
-  - unknown `concept:` slugs become **hidden concept candidates**, with the page written when first opened.
+  - unknown `concept:` slugs are valid links; the page is written when first opened (#216).
 - **On failure:**
   - repair automatically if the fix is unambiguous (for example a line range off by a few lines in the same hunk);
   - otherwise show the citation **dimmed as unverified** and record it in the job's debug data;
@@ -519,12 +519,10 @@ A new base is built when any of these happens:
 2. **Reader** (main model, one session, cards streamed as they finish):
    - explores the repo;
    - settles the plotlines first (a pedagogic progression: how the change is built up, each unit understandable on its own), then writes the problem card (including how the system worked before), the central-idea card (one per plotline when there are several), the "How it's built up" card walking the plotlines in landing order, the "Decisions and alternatives" card (each key choice, what else was possible, why this one, what it costs — neutral explanation; verdicts stay with the critic), and the "Go deeper" directions (title plus why);
-   - makes a **hidden concept pass** (slug, title, one line, where mentioned);
    - **pins code** with a `pin_context(path, lines, why)` tool, the one tool only the reader gets.
 3. **Build the base** (§9.2).
 4. **Parallel forks of the base:**
    - a **critic** (main model): findings with evidence, an assessment, a confidence level, and drafted suggested comments on diff lines;
-   - **concept stubs** (main model, one batch).
 5. **Hunk pass** (small model, no fork): a summary for each hunk, plus the uninteresting classification with a one-line reason.
 6. **On demand:** depth versions, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
 7. **Update pass** (§8).
@@ -561,7 +559,7 @@ A new base is built when any of these happens:
 | `base_pack` | Base | `{{source}}`, `{{diff_inline}}`, `{{pinned_code}}`, `{{guide}}`, `{{concepts}}`, `{{hunk_summaries}}` |
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
-| `concept_stub`, `concept_page` | Concept pages | `{{concept}}`, `{{mentions}}` |
+| `concept_page` | Concept pages (on demand) | `{{concept}}`, `{{mentions}}` |
 | `ask` | Conversation first turns, Explain and Ask alike | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
 | `ask_turn` | Conversation follow-ups on a live session | `{{change_list}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
@@ -672,7 +670,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 |---|---|---|
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
-| M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
+| M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept pages are written when a link is opened. Hunk pass summaries, and Hide uninteresting with reasons. |
 | M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |

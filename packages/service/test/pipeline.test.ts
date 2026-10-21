@@ -94,8 +94,8 @@ describe("pipeline demo e2e (replay)", () => {
         if (ev.type === "patch") patches.push({ ops: ev.ops, headRev: ev.headRev });
       });
 
-      // Wait for the full demo (reader + one critic job (#215) + stubs +
-      // 8 hunks + 4 go-deeper fills + 7 concept fills).
+      // Wait for the full demo (reader + one critic job (#215) +
+      // 8 hunks + 4 go-deeper fills; no concept pages before a click, #216).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
         if (!s) return false;
@@ -103,10 +103,6 @@ describe("pipeline demo e2e (replay)", () => {
         if (!root || root.cards.length < 6) return false;
         if (root.cards.some((c) => c.pending)) return false;
         if (s.pages.filter((p) => p.kind === "finding").length < 2) return false;
-        if (s.pages.filter((p) => p.kind === "concept").length < 7) return false;
-        // Concept pages filled (revision bumped past the one-line stub).
-        const concepts = s.pages.filter((p) => p.kind === "concept");
-        if (concepts.some((p) => (p.cards[0]?.revision ?? 1) < 2)) return false;
         if (s.hunkStates.filter((h) => h.summary).length < 8) return false;
         return true;
       }, 60000);
@@ -203,6 +199,9 @@ describe("pipeline demo e2e (replay)", () => {
       // #215: exactly one critic job per review (its reply made 2 findings).
       expect((jobs.json() as { jobs: Job[] }).jobs.filter((j) => j.kind === "critic")).toHaveLength(1);
       expect(snap.pages.filter((p) => p.kind === "finding")).toHaveLength(2);
+      // #216: no concept-stub job, no concept pages before a reader opens one.
+      expect((jobs.json() as { jobs: Job[] }).jobs.filter((j) => j.kind === "concept")).toHaveLength(0);
+      expect(snap.pages.filter((p) => p.kind === "concept")).toHaveLength(0);
     } finally {
       await app.close();
     }

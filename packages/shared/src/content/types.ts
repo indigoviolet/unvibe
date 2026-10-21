@@ -61,8 +61,6 @@ export interface ReplyData {
   depth?: { level?: string; cardId?: string };
   /** Follow-up suggestions (also writable inline; JSON wins on conflict). */
   followUps?: { label?: string; ask?: string }[];
-  /** Hidden concept pass entries (reader replies). */
-  concepts?: { slug?: string; title?: string; summary?: string }[];
   /** Hunk-pass result for one hunk (issue #169 adds the score level). */
   hunk?: { summary?: string; hiddenReason?: string | null; score?: string };
   /** Reader plotlines (issue #169): named threads with hunk IDs each. */
