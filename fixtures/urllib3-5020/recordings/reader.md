@@ -41,7 +41,7 @@ Normalize the source, then derive. The fix rewrites the `HTTPMessage` in place (
 
 Finding: [[page:f-lf]]
 
-The rule behind it: a parsed header value must never contain a line break. The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it [[concept:regex-performance|linear-time]] on long values, and a fast path skips any value without CRLF, which is almost all of them. [[diff:conn:80-88]]
+The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it [[concept:regex-performance|linear-time]] on long values, and a fast path skips any value without CRLF, which is almost all of them. [[diff:conn:80-88]]
 
 ::: simple
 No header value should contain a line break after parsing. The code also stays fast, even for very long or unusual values.
@@ -63,13 +63,21 @@ First the code learns to unfold folded headers everywhere it reads them. Then te
 Normalize once, at the boundary, then prove the invariant at that boundary. Each later consumer inherits the property instead of re-establishing it, which is why the tests belong with the helper rather than with any one caller.
 :::
 
-## Decisions and alternatives
+## Decisions and questions
+
+No new public interface is added. The existing header views keep their shape: urllib3's `HTTPHeaderDict` and the original `HTTPMessage` hold the same names, order and duplicates, with folded values unfolded in both. [[diff:conn:650-651]] [[desc:d-p2]]
+
+The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests. [[diff:conn:91-110]] [[diff:conn:650-651]]
 
 Three choices carry the change:
 
 - First, normalize both views of the headers — urllib3's `HTTPHeaderDict` and the original `HTTPMessage` — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive). [[diff:conn:650-651]] [[desc:d-p2]]
 - Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see [[concept:obs-fold|obsolete line folding]]).
 - Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
+
+What it adds and removes, as facts: two private helpers and one private pattern in the connection module, and no new concept, flag, setting, dependency or second header path; what it removes is the raw line break from parsed values. [[diff:conn:80-88]]
+
+Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. [[diff:conn:80-88]]
 
 ::: simple
 Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.
@@ -100,6 +108,7 @@ Each choice trades a local simplicity for a global property: one normalization p
     {"id": "unfold", "name": "Unfold folded values", "description": "Adds the unfolding itself, so every later step can assume no parsed header value contains a line break.", "hunks": ["h:src-urllib3-connection.py:fa60105d7fcbe8fe", "h:src-urllib3-connection.py:b355d2096d4d7f39"]},
     {"id": "unfold-tests", "name": "Prove the unfolding works", "description": "Adds unit and socket-level coverage, so the no-line-break rule can be checked against real responses.", "buildsOn": "unfold", "hunks": ["h:test-test_connection.py:6cfb09ec98cba6ba", "h:test-test_connection.py:92cf4ca541bdb0f2", "h:test-test_connection.py:b33779988cee5f8a", "h:test-with_dummyserver-test_socketlevel.py:949dda852e448b55"]}
   ],
-  "cardIds": ["problem", "central", "buildup", "decisions"]
+  "cardIds": ["problem", "central", "buildup", "decisions"],
+  "contribute": {"open_questions": ["Whether folded values that end in LF alone occur in real responses, and what traffic data would show it."]}
 }
 ```

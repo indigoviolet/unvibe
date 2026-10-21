@@ -43,14 +43,17 @@ export interface ReaderApply {
  * card a second time (#28).
  */
 export function readerCardId(index: number, cardIds: string[] = []): string {
-  // Issue #198: the reader's settled order is problem, central idea(s),
-  // "How it's built up", "Decisions and alternatives".
-  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : index === 2 ? "buildup" : index === 3 ? "decisions" : `reader-${index}`);
+  // Issue #198/#212: the reader's settled order is problem, central
+  // idea(s), "How it's built up", "Decisions and questions", "Names".
+  // The `decisions` id is kept for the renamed card so existing anchors
+  // (`#C-decisions`, `card:decisions#…`) stay valid; `names` is the new
+  // card's stable id. No migration: card ids are assigned at apply time.
+  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : index === 2 ? "buildup" : index === 3 ? "decisions" : index === 4 ? "names" : `reader-${index}`);
 }
 
 /** True for ids `readerCardId` hands out when the reply names none. */
 export function isDefaultReaderCardId(id: string): boolean {
-  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || /^reader-\d+$/.test(id);
+  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || id === "names" || /^reader-\d+$/.test(id);
 }
 
 /**

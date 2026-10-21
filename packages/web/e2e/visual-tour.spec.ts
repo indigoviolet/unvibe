@@ -728,7 +728,7 @@ for (const combo of [
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
     await stepChecks(page, "guide-decisions");
-    await shot(page, "guide-decisions", suffix, "Decisions and alternatives");
+    await shot(page, "guide-decisions", suffix, "Decisions and questions");
     await page.locator("#C-problem").scrollIntoViewIfNeeded();
     // Open a pinned card the way a reader does: select guide text
     // and Explain it.
