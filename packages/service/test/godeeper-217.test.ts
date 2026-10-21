@@ -207,7 +207,7 @@ describe("auto go-deeper (#217)", () => {
       // hunks (so plotline assign is the other background job in play).
       await ctx.reviews.mutate(id, (draft) => {
         draft.pipeline = { stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" } };
-        draft.plotlines = [{ id: "main-thread", name: "Main thread", description: "d", hunks: [] }];
+        draft.plotlines = [{ id: "main-thread", name: "Main thread", description: "d" }];
         const root = draft.pages.find((pg) => pg.id === "root")!;
         root.cards = [{
           id: "g-seeded", pageId: "root", title: "Seeded direction", level: "standard", collapsed: false,

@@ -322,7 +322,6 @@ async function makeBigReview(
         reader: "done",
         base: "done",
         critic: "done",
-        concepts: "done",
         "hunk-pass": "pending",
         "go-deeper": "pending",
       },

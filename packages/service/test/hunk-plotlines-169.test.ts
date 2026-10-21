@@ -145,7 +145,7 @@ function smallSnapshot(id: string): ReviewSnapshot {
     rev: 1,
     ingest: { status: "ready" },
     pipeline: {
-      stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+      stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
     },
   };
 }
@@ -409,7 +409,7 @@ function bigSnapshot(id: string, normalFiles: number, importFiles: number): { sn
     rev: 1,
     ingest: { status: "ready" },
     pipeline: {
-      stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+      stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
     },
   };
   return { snap, importIds };
