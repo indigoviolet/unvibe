@@ -226,7 +226,8 @@ export function RepositoriesSection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void add();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
         <Button variant="primary" type="button" onClick={() => void add()} disabled={adding}>
           {adding ? "Adding…" : "Add by path"}
@@ -258,7 +259,8 @@ export function RepositoriesSection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void addByUrl();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
         <Button variant="primary" type="button" onClick={() => void addByUrl()} disabled={addingUrl}>
           {addingUrl ? `Cloning ${cloningName ?? "repo"}…` : "Clone and add"}

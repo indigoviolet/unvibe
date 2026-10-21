@@ -125,3 +125,40 @@ Main chunk: 932.75 kB / 280.41 kB gzip, i.e. +0.87/+0.41 kB over the previous sp
 Merged `main-rc` in. Main-rc behaviour wins: cards pinned by default (#204), no floating card or Pin/Unpin, no actions while writing (#203), the #205/#206 anchor changes, #202's blank band, and #42's removal of install lifecycle scripts. The spike styling wins: Card variants, the card-surface variables, `.ui-card`, no legacy `.card`. Spike restyling of floating-only CSS/code was dropped with the floating card; `diff-floating.spec.ts` follows main-rc's rename to `diff-pinned.spec.ts` with the spike's class renames applied. The pinned `ExpansionCard` keeps the spike's `Card`/`CardHeader`/`CardFooter` structure over main-rc's logic. One knock-on fix in `HoverPopover`: a scroll that lands an anchor under the cursor (taller pinned cards scroll further) now re-checks the anchor under the cursor once scrolling settles, provided the pointer genuinely moved after the scroll began — content sliding under a stationary cursor still never opens. J2 covers this transition.
 
 Re-verified: typecheck, lint, `typecheck:tests`; settings + start specs and `diff-pinned` (43 passed, 2 skipped); J2/J4/J6/J9/J15/J206 (13 passed); visual tour (9 passed); spike specs `spike-201`, `spike-201-card`, `spike-201-surfaces` (6 + 6 + 6 passed; the 42-image after-surfaces set re-shot, Studio and Console dark inspected — pinned cards carry the spike styling on one continuous surface). The release tree's `package.json` has no lifecycle scripts. Full gate not run (spike).
+
+## Field surface (owner, 2026-10-21): fields inside cards
+
+Owner on the reconciled spike, Studio light, pinned Explain card: the follow-up textarea took the card's tinted (`--card-child-surface`) surface, so it did not read as a field. Card header, body and reply *area* share the card surface; fields inside still need their own surface.
+
+### Variable set
+
+`--field-surface`, `--field-border`, `--field-placeholder`, `--field-disabled-surface` are defined in `packages/web/src/styles/prototype.css` in every theme block — Default, Studio and Console, in light (both `prefers-color-scheme` and explicit) and dark sets:
+
+- Light (all three themes): `--field-surface: #ffffff` (white), border = the theme's `--line` hex, placeholder = `color-mix(in srgb, var(--ink) 55%, var(--bg))`, disabled = the theme's `--sunk` hex.
+- Dark Default: field `#20252d` (its sunk, lighter than the `#191d23` card/surface so it reads on the card), border `#3a434f`, disabled `#191d23`.
+- Dark Studio: field `#242230` (its surface, darker than the tinted child card `color-mix(accent-soft 60%, surface)`), border `#4a4662`, disabled `#2e2b3c`.
+- Dark Console: field `#161b22` (its surface, lighter than the `#0f1419` child/`--bg` card), border `#3d4754`, disabled `#1f262e`.
+
+`--card-input-surface` is removed (definition and both usages in `prototype.css`/`ui.css`); the card-surface set (`--card-surface`, `--card-child-surface`, `--card-header-surface`, `--card-reply-surface`) no longer reaches into any field. A single rule in `prototype.css` — `textarea, input:not([type=checkbox/radio/file]), select { background: var(--field-surface); border: var(--border-width) solid var(--field-border); color: var(--ink) }`, disabled → `--field-disabled-surface`, `::placeholder` → `--field-placeholder`, `:focus-visible` → `var(--focus-ring)` (= the theme accent) — covers every field; `.ui-select`/`.ui-input` (`ui.css`) and `.setgrid input/select` (`settings.css`) read the same variables. Checkboxes/radios keep `accent-color: var(--accent)` (they are not text fields); the Base UI checkbox uses the field border/surface at rest.
+
+### Audit: every input on a tinted surface
+
+| Where | Element | Before | After |
+|---|---|---|---|
+| Pinned Explain/Ask card reply (guide + diff) | `ReplyBox` `.composer textarea` in `.ui-card.child > .ui-card-footer` | `var(--card-input-surface)` = tinted child surface | `var(--field-surface)` + `--field-border` |
+| Comment thread reply | `ReplyBox` `.composer textarea` in `ThreadView` | `var(--surface)` | field set via `.composer textarea` |
+| New-thread composer (selection toolbar Ask/Comment, diff-line Comment) | `NewThreadComposer` `.composer textarea` inside `.ithread` (`--note-soft` tint) | `var(--surface)` | field set via `.composer textarea` |
+| Selection toolbar's ask box | same `NewThreadComposer` opened from `#selbar` (the bar itself has no input) | — | same composer field |
+| Comments menu draft (menu/popover on `--surface`) | `CommentsMenu` `DraftArea` `.ci textarea` | `var(--surface)` | `var(--field-surface)` + `--field-border` |
+| Diff Files filter (toolbar) | `DiffView` `.files input[type=search]` | `var(--surface)` | field set |
+| Diff file-filter / comments / second-opinion menus | menus/popovers themselves contain buttons only; any field inside inherits the single field rule | — | single rule |
+| Review-bar version select (toolbar) | `VersionSwitcher` `select.tbtn`, start repo/recency `select.tbtn`, `.prblock-tools select.tbtn` | `var(--surface)` via `.tbtn` | `select.tbtn` → field set |
+| Settings fields (cards on `--surface`/raised) | `Appearance/Models` `select`, `Limits` `input[type=number]` via `.setgrid`; `Repositories` path/URL `input` (was inline `var(--line)` border, no background → now `.ui-input`); `Version` checkbox (accent only) | `var(--surface)` / inline | `.setgrid`/`.ui-input` → field set |
+| Start page PR input | `StartPage` `.ui-input` (`Open a PR by URL or number`) | `var(--surface)` | field set via `.ui-input` |
+| Hover popover / tooltip | no text field inside (`#pop`, `#tip` are display only) | — | single rule covers any future field |
+
+### Screenshots
+
+Re-shot: `spike-201-surfaces` (42 after images: guide, guide-pinned, finding, diff, diff-pinned, Debug, Doctor × 3 themes × light/dark — pinned shots show the reply textarea) and `spike-201` (60 after images: start + 9 Settings tabs × 3 × light/dark, covering the PR input and Settings fields). Each pinned and Settings/start image was inspected: in Studio light the reply field is white against the tinted card; in every dark set the field contrasts with its card (Default lighter, Studio darker, Console lighter) and the field border holds.
+
+Verified (this round, targeted only): `mise run typecheck` pass, `mise run lint` pass, `mise run build` pass (main chunk 934.94 kB / 281.24 kB gzip). Settings + start specs 40 passed, 2 skipped (pre-existing). J2/J15 journeys 3 passed. Visual tour 9 passed. Spike specs: `spike-201-surfaces` 6 passed, `spike-201` + `spike-201-card` 12 passed (run separately — running all three specs in one Playwright invocation intermittently refused the surfaces service connection; each spec passes on its own). Full gate not run (spike).

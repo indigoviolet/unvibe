@@ -10,11 +10,11 @@
 .setgrid input[type="number"],
 .setgrid input[type="text"],
 .setgrid select {
-  border: var(--border-width) solid var(--line);
+  border: var(--border-width) solid var(--field-border);
   border-radius: var(--radius-control);
   padding: 3px 8px; min-height: var(--control-md);
   font: var(--text-sm) var(--sans);
-  background: var(--surface);
+  background: var(--field-surface);
   color: var(--ink);
   min-width: 0;
   max-width: 340px;
@@ -138,3 +138,6 @@ mark.tm {
 /* One shared label column across a whole form (#201): rows are subgrids of the form grid. */
 .setgrid-form { display: grid; grid-template-columns: minmax(140px, max-content) minmax(0, 1fr); gap: 6px 12px; }
 .setgrid-form > .setgrid { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: start; margin: 0; }
+
+.setgrid input:disabled,.setgrid select:disabled{background:var(--field-disabled-surface);color:var(--text-disabled)}
+.setgrid input:focus-visible,.setgrid select:focus-visible{outline:var(--focus-width) solid var(--focus-ring);outline-offset:var(--focus-offset)}
