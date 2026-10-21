@@ -26,7 +26,6 @@ import type {
   HealthResponse,
   Job,
   JobOutputResponse,
-  JobPromptResponse,
   JobReplyResponse,
   JobResponse,
   JobsResponse,
@@ -443,8 +442,6 @@ const realApi = {
   jobs: (reviewId?: string): Promise<JobsResponse> =>
     get(`/api/jobs${reviewId ? `?review=${encodeURIComponent(reviewId)}` : ""}`),
   job: (id: string): Promise<JobResponse> => get(`/api/jobs/${encodeURIComponent(id)}`),
-  jobPrompt: (id: string): Promise<JobPromptResponse> =>
-    get(`/api/jobs/${encodeURIComponent(id)}/prompt`),
   jobReply: (id: string): Promise<JobReplyResponse> =>
     get(`/api/jobs/${encodeURIComponent(id)}/reply`),
   jobOutput: (id: string): Promise<JobOutputResponse> =>

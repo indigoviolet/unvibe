@@ -305,7 +305,7 @@ export class JobQueue {
       .map((e) => {
         const job = copy(e.job);
         // Prompt and reply snapshots ride separately
-        // (`GET /api/jobs/:id/prompt`, `GET /api/jobs/:id/reply`): lists
+        // (`GET /api/jobs/:id/output`, `GET /api/jobs/:id/reply`): lists
         // stay small after hundreds of jobs (PRD §16 snapshot size).
         // `get()` keeps the full job.
         delete job.promptSnapshot;

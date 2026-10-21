@@ -1498,8 +1498,8 @@ row; deletes the clone directory for managed repos only, guarded to
 `PATCH /api/reviews/:id/comments/:id` (+POST/DELETE/replies) ✓,
 `PUT /api/reviews/:id/description` ✓, `POST …/submit` (+preview,
 pr-comments) ✓, `GET/PUT /api/settings` ✓, `GET /api/models` ✓,
-`GET /api/prompts` ✓, `GET /api/jobs` (+:id, :id/prompt, cancel,
-priority) ✓, `WS /api/events` ✓. Extras (all token-gated):
+`GET /api/prompts` ✓, `GET /api/jobs` (+:id, :id/output, :id/reply,
+cancel, priority) ✓, `WS /api/events` ✓. Extras (all token-gated):
 `GET/DELETE /api/reviews`, `POST …/resume`, `GET /api/readiness`,
 `GET /api/viewer`, contributions routes. No stubs remain except the
 no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
@@ -1585,7 +1585,14 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   failures. Capped per turn (prompt/output 20k chars, tool arguments
   and results 2k, marker names the original length). Job lists and WS
   events omit them; `GET /api/jobs/:id/output` serves them per job and
-  the Debug page shows a collapsible turn list. Fake/replay runners
+  the Debug page shows a collapsible turn list (the job's single view:
+  the old separate Prompt button/view and `GET /api/jobs/:id/prompt`
+  are removed, since each turn already shows its prompt). Tool calls
+  are never an unbounded block: the job row shows a `Tools: N` count
+  that expands to one line per call, and inside the turn view each
+  call is one line (name, truncated argument summary, time) expandable
+  to the full arguments and result, in a bounded scrolling list.
+  Fake/replay runners
   emit the same tool and raw-usage shapes as ACP
   (`job-turn-records-207.test.ts`, J14 journey, visual tour
   `debug-output` scene). Derived counts are each turn's own (#209:
