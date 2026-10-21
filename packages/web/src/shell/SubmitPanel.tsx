@@ -335,7 +335,15 @@ function PreviewBody({
         <ul>
           {preview.comments.map((c) => (
             <li key={c.threadId}>
-              <span className="cw">{locationLabel(c)}</span> {c.text.slice(0, 90)}
+              <span className="cw">{locationLabel(c)}</span>{" "}
+              {c.quote !== undefined ? (
+                // #81: show the whole review-body entry that will post —
+                // permalink, quoted lines and comment — not a slice the
+                // URL alone would swallow.
+                <div className="submit-entry">{c.text}</div>
+              ) : (
+                c.text.slice(0, 90)
+              )}
               {c.location.kind === "inline" && c.location.fallbackNote ? (
                 <div className="hint">{c.location.fallbackNote}</div>
               ) : null}

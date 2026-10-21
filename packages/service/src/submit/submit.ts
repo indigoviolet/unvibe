@@ -91,7 +91,14 @@ export function buildPreview(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): Su
     ...inline,
     ...pending
       .filter((p) => p.location.kind !== "inline")
-      .map((p) => ({ threadId: p.thread.id, location: p.location, text: p.text })),
+      .map((p) => ({
+        threadId: p.thread.id,
+        location: p.location,
+        text: p.text,
+        ...(p.thread.anchor.host.kind === "code" && (p.thread.anchor.quotedText ?? "") !== ""
+          ? { quote: p.thread.anchor.quotedText as string }
+          : {}),
+      })),
   ];
   const reviewBody = generalTexts.filter((t) => t.trim() !== "").join("\n\n---\n\n");
   const desc = snapshot.description;

@@ -4,14 +4,23 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, git } from "./journey-helpers.js";
+import { apiJson, createScratchReview, git, writeFakeGh } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 test.describe("J81 code citations outside the diff", () => {
-  let repoDir = "", dataDir = "";
+  let repoDir = "", dataDir = "", logDir = "", fakeBin = "";
   let svc: RunningService | null = null;
   let reviewId = "";
+
+  // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub).
+  async function start(): Promise<RunningService> {
+    const fakeShell = path.join(fakeBin, "fakeshell");
+    return startService(dataDir, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+  }
 
   test.beforeAll(async () => {
     repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-repo-"));
@@ -26,14 +35,21 @@ test.describe("J81 code citations outside the diff", () => {
     writeFileSync(path.join(repoDir, "app.py"), "def main():\n    return 2\n");
     await git(repoDir, "add", ".");
     await git(repoDir, "commit", "-m", "feature work");
+    const headSha = (await git(repoDir, "rev-parse", "HEAD")).trim();
+    logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-gh-"));
+    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-bin-"));
+    writeFakeGh(fakeBin, logDir, headSha);
+    writeFileSync(path.join(fakeBin, "fakeshell"), `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-data-"));
-    svc = await startService(dataDir, { agent: "none" });
+    svc = await start();
     reviewId = await createScratchReview(svc, repoDir);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     rmSync(repoDir, { recursive: true, force: true });
     rmSync(dataDir, { recursive: true, force: true });
+    rmSync(logDir, { recursive: true, force: true });
+    rmSync(fakeBin, { recursive: true, force: true });
   });
 
   test("hover previews, click opens a closable file tab, selection comments on the code host", async ({ page }) => {
@@ -91,7 +107,7 @@ test.describe("J81 code citations outside the diff", () => {
     } finally {
       db.close();
     }
-    svc = await startService(dataDir, { agent: "none" });
+    svc = await start();
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });

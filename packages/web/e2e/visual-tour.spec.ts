@@ -26,6 +26,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { writeFakeGh } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1277,5 +1278,230 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
   } finally {
     await slow.stop().catch(() => {});
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #81 file tab. The demo review's commits resolve in no checkout,
+// so its files cannot be read; these frames use a scratch repo (three
+// small files written here, nothing external) on an agent-less service,
+// the same way the J81 journey reads real content. Seeded guide cards
+// cite files outside the diff; one seeded file-tab comment, marked for
+// posting, shows the Submit preview's review-body permalink.
+test.describe("visual tour file tab (#81)", () => {
+  let ftRepo = "";
+  let ftData = "";
+  let ftBin = "";
+  let ftLog = "";
+  let ftSvc: RunningService | null = null;
+  let ftReview = "";
+  let ftHead = "";
+
+  async function ftGit(...args: string[]): Promise<void> {
+    await exec("git", args, { cwd: ftRepo });
+  }
+
+  // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub): the
+  // fake answers `api user` as "author" and records every call.
+  async function ftStart(): Promise<RunningService> {
+    const fakeShell = path.join(ftBin, "fakeshell");
+    return startService(ftData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${ftBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+  }
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    // Name the checkout so its registered repo reads local/<name>.
+    ftRepo = path.join(os.tmpdir(), `unvibe-tour-ft-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", ftRepo]);
+    await ftGit("config", "user.email", "t@example.com");
+    await ftGit("config", "user.name", "T");
+    writeFileSync(path.join(ftRepo, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    writeFileSync(path.join(ftRepo, "other.py"), "red = 1\ngreen = 2\n");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 1\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "base");
+    await ftGit("checkout", "-b", "feature");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 2\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: ftRepo });
+    ftBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-bin-"));
+    ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
+    writeFakeGh(ftBin, ftLog, headOut.trim());
+    writeFileSync(
+      path.join(ftBin, "fakeshell"),
+      `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${ftBin}:$PATH"\n`,
+      { mode: 0o755 },
+    );
+    ftData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-data-"));
+    ftSvc = await ftStart();
+    const repos = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/repos", { path: ftRepo })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === ftRepo);
+    if (!registered) throw new Error("scratch repo not registered");
+    const created = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    ftReview = created.review.id;
+    // Let ingest settle before seeding: the head SHA must have landed
+    // (citations pin to it), and a job still queued at shutdown resumes
+    // on the next boot and would replace the seeded snapshot.
+    const settleDeadline = Date.now() + 90_000;
+    let before: { version: { headSha: string }; files: { path: string }[] } | null = null;
+    for (;;) {
+      const snap = (await apiJson(ftSvc.origin, ftSvc.token, "GET", `/api/reviews/${ftReview}`)) as {
+        version: { headSha: string };
+        files: { path: string }[];
+        jobs?: { state: string }[];
+      };
+      const active = (snap.jobs ?? []).some((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+      if (snap.version.headSha !== "" && !active) {
+        before = snap;
+        break;
+      }
+      if (Date.now() > settleDeadline) throw new Error("scratch ingest did not settle");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    ftHead = before.version.headSha;
+    if (before.files.some((f) => f.path === "helper.py")) throw new Error("helper.py must sit outside the diff");
+
+    await ftSvc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(ftData, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(ftReview) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as {
+        pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+        annotations: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        ingest?: { status: string };
+      };
+      // Mark the ingest ready and every stage done: a snapshot still
+      // saying "loading" is re-ingested on boot, which would replace
+      // the seeded guide with an empty one.
+      snap.ingest = { status: "ready" };
+      snap.pipeline = {
+        stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" },
+      };
+      let root = snap.pages.find((p) => p.id === "root");
+      if (!root) {
+        root = { id: "root", kind: "root", title: "Guide", saved: false, cards: [] };
+        snap.pages.unshift(root);
+      }
+      const card = (id: string, text: string, target: string): unknown => ({
+        id,
+        pageId: "root",
+        title: id,
+        level: "standard",
+        collapsed: false,
+        revision: 1,
+        blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+        undoStack: [],
+      });
+      root.cards.push(
+        card("c-beta", "Uses the helper beta value.", `code:helper.py:2@${ftHead}`),
+        card("c-past", "Cites past the end.", `code:helper.py:2-99@${ftHead}`),
+        card("c-other", "Also see the other file.", `code:other.py:1@${ftHead}`),
+      );
+      snap.annotations = [
+        ...(snap.annotations ?? []),
+        {
+          id: "ft-comment",
+          type: "comment",
+          anchor: {
+            host: { kind: "code", path: "helper.py", commit: ftHead, line: 2, endLine: 3 },
+            quotedText: "beta = 2\ngamma = 3",
+            prefix: "",
+            suffix: "",
+            position: 2,
+            version: 1,
+          },
+          open: true,
+          pinned: false,
+          messages: [{ who: "you", text: "Is beta still the right default?" }],
+          post: true,
+        },
+      ];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        ftReview,
+      );
+      // Give the review a PR number so the Submit preview lists the
+      // comments instead of the no-PR notice (preview is read-only;
+      // nothing posts).
+      db.prepare("UPDATE reviews SET pr_number = 7 WHERE id = ?").run(ftReview);
+    } finally {
+      db.close();
+    }
+    ftSvc = await ftStart();
+  });
+
+  test.afterAll(async () => {
+    await ftSvc?.stop().catch(() => {});
+    rmSync(ftRepo, { recursive: true, force: true });
+    rmSync(ftData, { recursive: true, force: true });
+    rmSync(ftBin, { recursive: true, force: true });
+    rmSync(ftLog, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    test(`visual tour file tab (${combo.name})`, async ({ page }) => {
+      if (!ftSvc) throw new Error("file-tab service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${ftSvc.origin}/review/${ftReview}?token=${ftSvc.token}`);
+      await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
+
+      // Hover preview of the cited lines at the cited commit.
+      await page.locator("#C-c-beta .lk[data-refs]").hover();
+      await expect(page.locator("#pop")).toContainText("beta = 2", { timeout: 30_000 });
+      await stepChecks(page, "file-hover");
+      await shot(page, "file-hover", suffix, "beta = 2");
+
+      // Open tab; a past-the-end citation reuses it, clamped to line 3.
+      await page.locator("#C-c-beta .lk[data-refs]").click();
+      await expect(page.locator("#right .codefile")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
+      await page.locator("#C-c-past .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "helper.py" })).toHaveCount(1);
+      await expect(page.locator('.codefile [data-code-line="3"]')).toHaveClass(/cited/);
+      await stepChecks(page, "file-tab");
+      await shot(page, "file-tab", suffix, "helper.py");
+
+      // A second file opens a second tab; both show close buttons.
+      await page.locator("#C-c-other .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "other.py" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: /^Close / })).toHaveCount(2);
+      await stepChecks(page, "file-tabs");
+      await shot(page, "file-tabs", suffix, "other.py");
+
+      // Submit preview: the file-tab comment sits in the review body
+      // with its permalink.
+      await page.locator("[data-submit]").click();
+      const panel = page.locator(".submit");
+      await expect(panel).toBeVisible({ timeout: 30_000 });
+      await expect(panel).toContainText("goes in the review body", { timeout: 30_000 });
+      await expect(panel).toContainText("github.com/local/", { timeout: 30_000 });
+      await expect(panel).toContainText("beta = 2", { timeout: 30_000 });
+      await expect(panel).toContainText("Is beta still the right default?", { timeout: 30_000 });
+      await expect(panel).toContainText("Submit as author", { timeout: 30_000 });
+      await stepChecks(page, "file-submit");
+      await shot(page, "file-submit", suffix, "review body");
+    });
   }
 });
