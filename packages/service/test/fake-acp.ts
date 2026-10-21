@@ -13,6 +13,8 @@ import type { TransportFactory } from "../src/agent/acp/connection.js";
 export interface FakeChunk {
   text?: string;
   toolStart?: { id: string; title: string; name?: string; input?: unknown };
+  /** Streamed arguments on an intermediate update (no terminal status). */
+  toolArgs?: { id: string; input?: unknown };
   toolEnd?: { id: string; title: string; result?: string };
 }
 
@@ -315,6 +317,16 @@ export function buildFakeAgentApp(state: FakeAgentState): any {
               name: c.toolStart.name,
               status: "pending",
               ...(c.toolStart.input !== undefined ? { rawInput: c.toolStart.input } : {}),
+            },
+          });
+        }
+        if (c.toolArgs) {
+          await ctx.client.notify("session/update", {
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: c.toolArgs.id,
+              ...(c.toolArgs.input !== undefined ? { rawInput: c.toolArgs.input } : {}),
             },
           });
         }

@@ -606,6 +606,11 @@ export class AcpAgentRunner implements AgentRunner {
     else signal?.addEventListener("abort", onAbort, { once: true });
 
     const seenTools = new Set<string>();
+    // Adapters stream arguments: the opening `tool_call` carries `{}`
+    // and the real `rawInput` arrives on intermediate updates, while the
+    // terminal update often carries none. Remember the latest detail per
+    // call so the `end` event can carry it to the job record.
+    const toolDetails = new Map<string, string>();
     const flush = function* (): Generator<AgentEvent> {
       while (pending.length > 0) {
         const u = pending.shift() as {
@@ -620,6 +625,11 @@ export class AcpAgentRunner implements AgentRunner {
           input?: unknown;
         };
         const kind = u?.sessionUpdate;
+        if (process.env.UNVIBE_ACP_DEBUG === "2" && (kind === "tool_call" || kind === "tool_call_update")) {
+          try {
+            process.stderr.write(`[acp-tool] ${JSON.stringify(u).slice(0, 1500)}\n`);
+          } catch { /* debug only */ }
+        }
         if (kind === "agent_message_chunk" && u?.content?.type === "text" && typeof u.content.text === "string" && u.content.text !== "") {
           yield { type: "text", delta: u.content.text };
         } else if (kind === "tool_call") {
@@ -629,6 +639,7 @@ export class AcpAgentRunner implements AgentRunner {
           // (shell command, URL, …) when the adapter sends arguments with
           // the call. Adapters that send none record the name only.
           const detail = formatToolDetail(u.rawInput ?? u.input);
+          if (detail !== undefined && u.toolCallId) toolDetails.set(u.toolCallId, detail);
           const result = formatToolResult((u as { content?: unknown }).content);
           yield {
             type: "tool",
@@ -642,7 +653,9 @@ export class AcpAgentRunner implements AgentRunner {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
           const result = formatToolResult((u as { content?: unknown }).content);
-          const detail = formatToolDetail(u.rawInput ?? u.input);
+          const streamed = formatToolDetail(u.rawInput ?? u.input);
+          if (streamed !== undefined && u.toolCallId) toolDetails.set(u.toolCallId, streamed);
+          const detail = streamed ?? (u.toolCallId ? toolDetails.get(u.toolCallId) : undefined);
           if (status === "completed" || status === "failed") {
             yield {
               type: "tool",
@@ -652,7 +665,10 @@ export class AcpAgentRunner implements AgentRunner {
               ...(detail !== undefined ? { detail } : {}),
               ...(result !== undefined ? { result } : {}),
             };
-            if (u.toolCallId) seenTools.delete(u.toolCallId);
+            if (u.toolCallId) {
+              seenTools.delete(u.toolCallId);
+              toolDetails.delete(u.toolCallId);
+            }
           } else if (u.toolCallId && !seenTools.has(u.toolCallId)) {
             seenTools.add(u.toolCallId);
             yield {
@@ -983,6 +999,12 @@ export function formatToolDetail(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   const text = typeof input === "string" ? input : safeJson(input);
   if (!text || text.trim() === "") return undefined;
+  // Adapters stream tool calls: the first `tool_call` often carries an
+  // empty placeholder (`{}`) before the real arguments arrive on a later
+  // update. Treat empty containers as "no detail yet" so the later,
+  // real arguments can fill the record instead of sticking as `{}`.
+  const trimmed = text.trim();
+  if (trimmed === "{}" || trimmed === "[]") return undefined;
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }
 

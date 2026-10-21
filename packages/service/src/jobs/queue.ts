@@ -806,6 +806,11 @@ export class JobQueue {
               flat.result = truncateForRecord(extra.result, TOOL_RESULT_CAP);
               flat.resultOriginalLength = extra.result.length;
             }
+            // The start event may carry no arguments yet (adapters stream
+            // them in on later updates); backfill from the end event.
+            if (detail !== undefined && (flat.detail === undefined || flat.detail === "{}")) {
+              flat.detail = truncateForRecord(detail, TOOL_DETAIL_CAP);
+            }
           }
           let rec = match(turn.tools);
           if (!rec) {
@@ -817,7 +822,7 @@ export class JobQueue {
             rec.result = truncateForRecord(extra.result, TOOL_RESULT_CAP);
             rec.resultOriginalLength = extra.result.length;
           }
-          if (detail !== undefined && rec.detail === undefined) rec.detail = truncateForRecord(detail, TOOL_DETAIL_CAP);
+          if (detail !== undefined && (rec.detail === undefined || rec.detail === "{}")) rec.detail = truncateForRecord(detail, TOOL_DETAIL_CAP);
           this.save(entry);
           this.emit(entry);
           return;
