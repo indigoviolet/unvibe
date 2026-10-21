@@ -2442,9 +2442,17 @@ hunk coverage) is reported for a separate issue, not fixed here.
   single version (refresh is a no-op; redo/resume refuse). Comments use
   the shared comment model (`post: true`), so they land in the comments
   menu today and the Outbox when #223 merges; Submit stays disabled
-  (no PR). `code:` citations in answers validate through the existing
-  file-length path and open via #81's source-pane support once merged;
-  there is no code browser (phase 2, #82) and no "code" review kind.
+  (no PR). The review kind is derived from the snapshot's shape (a
+  discriminated union in shared types), never stored — no fallback read,
+  no reset needed. With two context repos, a `code:` citation and a
+  `get_code` call cannot yet name which repo they mean (the citation
+  grammar and the tool inputs carry only path/lines/sha, and the reader
+  resolves against the first repo's checkout); naming the repo — a repo
+  qualifier in the `code:` ID plus a `repo` input on `get_code`, or
+  resolving the cited sha to the repo that contains it — is #81's
+  wiring, noted in `packages/service/src/document/map.ts`. `code:`
+  citations open via #81's source-pane support once merged; there is
+  no code browser (phase 2, #82) and no "code" review kind.
   Evidence: `packages/shared/test/document.test.ts`,
   `packages/service/test/document-222.test.ts`,
   `packages/service/test/validate.test.ts` (doc: targets),

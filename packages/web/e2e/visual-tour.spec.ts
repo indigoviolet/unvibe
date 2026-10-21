@@ -17,7 +17,7 @@
  * Requires `mise run build` first. Run via `mise run visual-tour`.
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1048,6 +1048,95 @@ for (const combo of [
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
 }
+
+// Issue #222: the start page's New document review form and a document
+// review (rendered blocks, an Explain answer, an Ask answer, a comment)
+// in the default theme at 1440 light. The context repo is a throwaway
+// git checkout registered with the tour's own service.
+test("visual tour document review (#222)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-"));
+  try {
+    const git = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repoDir });
+    };
+    await git("init", "-b", "main");
+    await git("config", "user.email", "tour@example.com");
+    await git("config", "user.name", "Tour");
+    writeFileSync(path.join(repoDir, "README.md"), "# Widget\n\nA widget library.\n");
+    mkdirSync(path.join(repoDir, "src"));
+    writeFileSync(path.join(repoDir, "src", "widget.ts"), "export const widget = 1;\n");
+    await git("add", ".");
+    await git("commit", "-m", "init");
+    const added = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    expect(added.repos.some((r) => r.localPath === repoDir)).toBe(true);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Start page: the New document review form, filled in.
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await page.getByRole("button", { name: "New document review" }).click();
+    await page.getByTestId("doc-markdown").fill(
+      "# Design note\n\nThe widget folds obsolete headers before parsing.\n\nIt keeps the fast path for modern responses.\n\n## Details\n\n- Folding runs before parsing\n- The fast path skips folding\n",
+    );
+    await expect(page.getByTestId("doc-repo-select-0")).not.toHaveValue("");
+    await checkNoPageOverflow(page, "start-document-form");
+    await shot(page, "start-document-form", "1440-light", "Paste the document's Markdown");
+
+    await page.getByRole("button", { name: "Create document review" }).click();
+    await page.waitForURL(/\/review\//, { timeout: 30_000 });
+
+    // The document, rendered with its blocks.
+    await expect(page.getByTestId("document-view")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("document-context")).toContainText("local copy");
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkNoPageOverflow(page, "document-review");
+    await shot(page, "document-review", "1440-light", "folds obsolete headers");
+
+    // An Explain answer on document text.
+    await selectText(page, "#C-document", "folds obsolete headers");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const exp = page.locator("#C-document [data-expansion]").first();
+    await expect(exp).toBeVisible({ timeout: 15_000 });
+    await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkNoPageOverflow(page, "document-explain");
+    await shot(page, "document-explain", "1440-light", "folds obsolete headers");
+    await closeCard(page, exp);
+
+    // An Ask answer on document text.
+    await selectText(page, "#C-document", "fast path for modern responses");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(askComposer).toBeVisible({ timeout: 10_000 });
+    await askComposer.locator("textarea").fill("Why does it keep a fast path?");
+    await askComposer.getByRole("button", { name: "Ask" }).click();
+    const askCard = page.locator("#C-document [data-expansion]", { hasText: "Why does it keep a fast path?" });
+    await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
+    await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkNoPageOverflow(page, "document-ask");
+    await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
+
+    // A local comment on document text.
+    await selectText(page, "#C-document", "Folding runs before parsing");
+    await page.locator('#selbar [data-act="note"]').click();
+    const composer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible({ timeout: 10_000 });
+    await composer.locator("textarea").fill("Please expand this part.");
+    await composer.getByRole("button", { name: /comment|save/i }).first().click();
+    await expect(page.locator("#C-document .ithread", { hasText: "Please expand this part." }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await checkNoPageOverflow(page, "document-comment");
+    await shot(page, "document-comment", "1440-light", "Please expand this part.");
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
 
 // Issue #203 writing state, on a slow replay (like J6): the fast tour
 // replay answers before a writing frame can be captured, so this scene
