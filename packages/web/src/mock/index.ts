@@ -704,6 +704,17 @@ function seedJobs(): Job[] {
       state: "done",
       sessionId: "sess-reader-1",
       promptSnapshot: "You are the reader: explore the repo and write the guided review.",
+      tools: [
+        {
+          name: "Read",
+          id: "mock-tool-1",
+          detail: "{\"path\": \"src/urllib3/response.py\"}",
+          result: "Returned the response module (212 lines).",
+          resultOriginalLength: 41,
+          startedAt: 1700000000000,
+          finishedAt: 1700000001000,
+        },
+      ],
       turnRecords: [
         {
           label: "first",
@@ -3400,15 +3411,6 @@ export const mockApi = {
     const job = mockJobs.find((j) => j.id === id);
     if (!job) throw new Error(`GET /api/jobs/${id}: 404 {"error":"unknown job"}`);
     return { job };
-  },
-
-  jobPrompt: async (id: string) => {
-    const job = mockJobs.find((j) => j.id === id);
-    if (!job) throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"unknown job"}`);
-    if (job.promptSnapshot === undefined) {
-      throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"no prompt snapshot for job"}`);
-    }
-    return { jobId: job.id, promptSnapshot: job.promptSnapshot };
   },
 
   jobOutput: async (id: string) => {

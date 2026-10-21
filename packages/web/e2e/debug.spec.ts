@@ -1,8 +1,8 @@
 /**
  * Per-review debug page (issue #32, tabs + collapsible blocks issue #60)
  * against mock mode: reachable from the review bar; Jobs / Prompts /
- * Shared context tabs with the selected tab in `?tab=`; jobs with prompt
- * links + cancel; prompts with expandable templates and layers; base + log
+ * Shared context tabs with the selected tab in `?tab=`; jobs with a
+ * tool count + turn-by-turn Output + cancel; prompts with expandable templates and layers; base + log
  * + contributions as collapsible blocks with delete; and the page links
  * back to the review.
  */
@@ -126,7 +126,7 @@ test("open blocks survive a tab switch", async ({ page }) => {
   await expect(log).toContainText("[1 new-card global]");
 });
 
-test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ page }) => {
+test("jobs show state, tokens, cache rate, tool count and cancel", async ({ page }) => {
   await page.goto("/review/demo/debug");
   const running = page.locator('[data-testid="job-job-explain-1"]');
   await expect(running).toContainText("ask");
@@ -138,8 +138,21 @@ test("jobs show state, tokens, cache rate, prompt link and cancel", async ({ pag
   const backing = page.locator('[data-testid="job-job-critic-1"]');
   await expect(backing).toContainText(/backing-off · retry in/);
 
-  await running.getByRole("button", { name: "Prompt" }).click();
-  await expect(running).toContainText("Explain the quoted text");
+  // #207: one view per job — no Prompt button; the Output view shows
+  // each turn's prompt. The row shows a tool count that expands to
+  // one line per call, and a line expands to its full arguments.
+  await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
+  const reader = page.locator('[data-testid="job-job-reader-1"]');
+  await reader.getByRole("button", { name: /^Tools: \d+$/ }).click();
+  const jobTools = reader.locator('[data-testid="job-tools"]');
+  await expect(jobTools.locator('[data-testid="job-tool"]').first()).toContainText("Read");
+  await jobTools.locator('[data-testid="job-tool"]').first().locator("summary").click();
+  await expect(jobTools).toContainText("Arguments");
+  await expect(jobTools).toContainText("src/urllib3/response.py");
+  await reader.getByRole("button", { name: "Output" }).click();
+  await expect(reader.locator('[data-testid="job-output"]')).toContainText(
+    "You are the reader: explore the repo and write the guided review.",
+  );
 
   const queued = page.locator('[data-testid="job-job-hunk-1"]');
   await queued.getByRole("button", { name: "Cancel" }).click();

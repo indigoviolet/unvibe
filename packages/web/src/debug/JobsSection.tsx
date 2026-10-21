@@ -2,13 +2,15 @@
  * Jobs section (issue #32, PRD §4.14): running and queued jobs for the
  * review, live through the WebSocket `job` events. Each row shows kind,
  * model/provider, state (backing-off with the retry time), tokens,
- * cache-hit rate, and a toggle for the exact prompt it sent; cancel for
- * active jobs. A totals row sums tokens and the input-weighted cache-hit
- * rate. Relocated unchanged from Settings to the debug page; the
- * Markdown-only rule covers the shared-context parts, not this table.
+ * cache-hit rate, a tool-call count, and one button opening the job's
+ * turn-by-turn view (prompt, output, tool calls, usage per turn, #207);
+ * cancel for active jobs. A totals row sums tokens and the
+ * input-weighted cache-hit rate. Relocated unchanged from Settings to
+ * the debug page; the Markdown-only rule covers the shared-context
+ * parts, not this table.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Block, Job, JobTurnRecord, ReviewSnapshot } from "@unvibe/shared";
+import type { Block, Job, JobToolCall, JobTurnRecord, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
@@ -149,9 +151,7 @@ function JobRow({
   diagramErrors: string[];
   onCancel: () => void;
 }): React.JSX.Element {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
-  const [promptError, setPromptError] = useState<string | null>(null);
+  const [showTools, setShowTools] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
   const [outputTurns, setOutputTurns] = useState<JobTurnRecord[] | null>(job.turnRecords ?? null);
   const [outputError, setOutputError] = useState<string | null>(null);
@@ -175,19 +175,6 @@ function JobRow({
       cancelled = true;
     };
   }, [job.provider, job.model]);
-
-  const togglePrompt = async (): Promise<void> => {
-    const next = !showPrompt;
-    setShowPrompt(next);
-    if (next && prompt === null) {
-      setPromptError(null);
-      try {
-        setPrompt((await api.jobPrompt(job.id)).promptSnapshot);
-      } catch (err) {
-        setPromptError(friendlyError(err));
-      }
-    }
-  };
 
   const toggleOutput = async (): Promise<void> => {
     const next = !showOutput;
@@ -266,9 +253,6 @@ function JobRow({
         {job.degradedReason ? <span className="hint">Degraded (answer kept): {job.degradedReason}</span> : null}
         {job.state === "backing-off" && job.error ? <span className="hint">{job.error}</span> : null}
         <span className="sp" />
-        <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>
-          {showPrompt ? "Hide prompt" : "Prompt"}
-        </button>
         <button className="x" type="button" aria-expanded={showOutput} onClick={() => void toggleOutput()}>
           {showOutput ? "Hide output" : "Output"}
         </button>
@@ -282,15 +266,27 @@ function JobRow({
         <div className="frow" style={{ gap: 8 }}>
           <span className="hint">
             {job.accessMode === "full" ? "Full access" : job.accessMode === "lockdown" ? "Read-only" : ""}
-            {job.accessMode && job.tools && job.tools.length > 0 ? " · " : ""}
-            {job.tools && job.tools.length > 0
-              ? `Tools: ${job.tools
-                  .map((t) => `${t.name}${t.detail ? ` (${t.detail})` : ""}${t.startedAt !== undefined ? ` ${formatLocalTime(t.startedAt)}` : ""}`)
-                  .join(", ")}`
-              : ""}
-            {(job.accessMode || (job.tools && job.tools.length > 0)) && job.checkoutReset ? " · " : ""}
+            {job.accessMode && job.checkoutReset ? " · " : ""}
             {job.checkoutReset ? "The checkout changed and was reset after this job" : ""}
           </span>
+          <span className="sp" />
+          {job.tools && job.tools.length > 0 ? (
+            <button
+              className="x"
+              type="button"
+              aria-expanded={showTools}
+              onClick={() => setShowTools((v) => !v)}
+            >
+              Tools: {job.tools.length}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {showTools && job.tools && job.tools.length > 0 ? (
+        <div className="toollist" data-testid="job-tools">
+          {job.tools.map((tool, i) => (
+            <ToolCallLine key={i} tool={tool} testId="job-tool" />
+          ))}
         </div>
       ) : null}
       {diagramErrors.map((detail, i) => (
@@ -298,15 +294,6 @@ function JobRow({
           <span className="hint">Diagram: {detail}</span>
         </div>
       ))}
-      {showPrompt ? (
-        promptError ? (
-          <p className="err">{promptError}</p>
-        ) : prompt !== null ? (
-          <pre className="code">{prompt}</pre>
-        ) : (
-          <p className="hint">Loading prompt…</p>
-        )
-      ) : null}
       {showOutput ? (
         outputError ? (
           <p className="hint">{outputError}</p>
@@ -323,6 +310,42 @@ function JobRow({
         )
       ) : null}
     </div>
+  );
+}
+
+/** Short one-line argument summary for a tool-call row (#207). */
+function shortToolSummary(detail: string | undefined): string {
+  if (!detail) return "";
+  const oneLine = detail.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 80)}…` : oneLine;
+}
+
+/**
+ * Issue #207: one tool call as a single line — name, a short truncated
+ * argument summary and the start time — expandable to the full
+ * arguments and result.
+ */
+function ToolCallLine({ tool, testId }: { tool: JobToolCall; testId: string }): React.JSX.Element {
+  const summary = shortToolSummary(tool.detail);
+  return (
+    <details className="toolcall" data-testid={testId}>
+      <summary>
+        <span className="kind">{tool.name}</span>
+        {summary ? <span className="hint toolargs">{summary}</span> : null}
+        {tool.startedAt !== undefined ? <span className="hint">{formatLocalTime(tool.startedAt)}</span> : null}
+      </summary>
+      <div className="toolcall-body">
+        {tool.startedAt !== undefined ? (
+          <p className="hint">
+            {formatLocalTime(tool.startedAt)} → {formatLocalTime(tool.finishedAt)}
+          </p>
+        ) : null}
+        <p className="hint">Arguments</p>
+        {tool.detail ? <pre className="code">{tool.detail}</pre> : <p className="hint">No arguments recorded.</p>}
+        <p className="hint">Result</p>
+        {tool.result ? <pre className="code">{tool.result}</pre> : <p className="hint">No result recorded.</p>}
+      </div>
+    </details>
   );
 }
 
@@ -353,20 +376,11 @@ function TurnRecord({ turn, index, now }: { turn: JobTurnRecord; index: number; 
         {turn.tools.length === 0 ? (
           <p className="hint">No tool calls in this turn.</p>
         ) : (
-          turn.tools.map((tool, i) => (
-            <div key={i} data-testid="job-turn-tool">
-              <div className="frow" style={{ gap: 8 }}>
-                <span className="kind">{tool.name}</span>
-                {tool.detail ? <span className="hint">{tool.detail}</span> : null}
-                {tool.startedAt !== undefined ? (
-                  <span className="hint">
-                    {formatLocalTime(tool.startedAt)} → {formatLocalTime(tool.finishedAt)}
-                  </span>
-                ) : null}
-              </div>
-              {tool.result ? <pre className="code">{tool.result}</pre> : null}
-            </div>
-          ))
+          <div className="toollist" data-testid="job-turn-tools">
+            {turn.tools.map((tool, i) => (
+              <ToolCallLine key={i} tool={tool} testId="job-turn-tool" />
+            ))}
+          </div>
         )}
         <p className="hint">Usage</p>
         {turn.usage ? (
