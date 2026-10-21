@@ -37,7 +37,9 @@ Does Requests see the raw value?
 - Answer the question about the selected text, directly first, then the
   supporting detail — no longer than the question needs. Do not quote
   the selection or the question back — the app already shows both on
-  the card.
+  the card. When the selected detail serves a contract or invariant,
+  connect the local detail to it, so the answer says what the detail is
+  for, not only what it does.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first. An
   answer that cites something outside the base is shared with the review

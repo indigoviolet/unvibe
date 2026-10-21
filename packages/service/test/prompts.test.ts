@@ -143,6 +143,38 @@ describe("repo prompts/ directory", () => {
     }
   });
 
+  it("regularizer prompts: renamed card, Names, critic lens, tool preference (#212/#211)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const instructions = lib.get("instructions")?.body ?? "";
+    const reader = lib.get("reader")?.body ?? "";
+    const critic = lib.get("critic")?.body ?? "";
+    const accessFull = lib.get("access-full")?.body ?? "";
+    const hunk = lib.get("hunk_pass")?.body ?? "";
+    const ask = lib.get("ask")?.body ?? "";
+    expect(instructions).toContain("system's regularizer");
+    expect(instructions).toContain("get_hunk");
+    expect(instructions).toContain("never to re-derive the diff");
+    expect(reader).toContain("Decisions and questions");
+    expect(reader).not.toContain("Decisions and alternatives");
+    expect(reader).toContain("Interfaces with reach");
+    expect(reader).toContain("Known uncertainties");
+    expect(reader).toContain("also stay in `open_questions`");
+    expect(reader).toContain("**Names.**");
+    expect(reader).toContain("Leave out");
+    expect(reader).toContain("private helpers and plumbing");
+    expect(reader).toContain("follows its effects");
+    expect(reader).toContain("its footprint");
+    expect(reader).toContain("never to re-derive the diff");
+    expect(critic).toContain("Overfitting");
+    expect(critic).toContain("widened interface for one caller");
+    expect(critic).toContain("uncertainty becomes a finding only with evidence of risk");
+    expect(accessFull).toContain("read and cite the change itself through the");
+    expect(accessFull).toContain("never re-derive the diff with `git diff`");
+    expect(hunk).toContain('Judge "public API" by reach');
+    expect(hunk).toContain("private");
+    expect(ask).toContain("connect the local detail to it");
+  });
+
   it("resolvePromptsDir finds the repo prompts from the service package", () => {
     const serviceDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(resolvePromptsDir(serviceDir)).toBe(REPO_PROMPTS);
