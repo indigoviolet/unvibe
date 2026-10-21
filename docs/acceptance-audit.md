@@ -2460,3 +2460,24 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #228 (branch `feat/228-author-filter`)
+
+- **#228 (start-page author filter; §4.2):** one shared single-select
+  (Base UI, beside the recency filter) lists All plus the authors
+  present in the Reviews + PR lists with counts, and filters both the
+  Reviews list (by PR author) and the PR lists ("Your PRs" consistently,
+  "Waiting on your review" mainly) with one pick. The choice persists
+  in `localStorage` like the recency window; filtered-empty sections
+  name the author with a Show-all way back (clearing both filters).
+  Data is only what the app already fetches (PR authors from the same
+  `gh pr list`/`pr view` calls; no new agent/gh calls, no polling):
+  `ReviewSummary` carries the stored snapshot `description.author` for
+  PR reviews; branch rows and branch reviews carry no author and stay
+  visible under any specific author (owner question pending on #228
+  before any commit-author fetch). Evidence: unit
+  `src/start/StartPage.test.tsx` (matchesAuthor/authorCounts), journey
+  `e2e/journeys/j228-author-filter.spec.ts` (real service + fake `gh`:
+  option counts, Reviews + PR filtering, persistence, filter-row
+  layout), tour frames `packages/web/visual-tour/start-author-filter-*`
+  (git-ignored).
