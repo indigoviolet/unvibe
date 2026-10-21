@@ -90,6 +90,7 @@ export function LimitsSection({
             <input
               id="auto-go-deeper-toggle"
               data-testid="auto-go-deeper-toggle"
+              style={{ alignSelf: "flex-start" }}
               type="checkbox"
               checked={settings.autoGoDeeper === true}
               disabled={toggling}
