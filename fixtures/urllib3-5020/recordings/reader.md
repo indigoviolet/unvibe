@@ -20,7 +20,7 @@ Worse, other libraries copy these values into the next request, and the hidden l
 A safety property. A header value must never contain CR or LF once it leaves the parser, because anything that writes it out again treats the line break as the end of the header. Normalizing at the one point where urllib3 turns the parsed response into its own types fixes every consumer at once, as long as the original message is fixed too.
 :::
 
-## The central change
+## The central idea
 
 urllib3 now unfolds header values right after `http.client` parses the response, as restated in [[card:problem#b1|the problem]]. A new helper replaces each fold (optional whitespace, CRLF, then at least one space or tab) with a single space. It updates both urllib3's `HTTPHeaderDict` and the original `HTTPMessage`, so code reading either one sees the same clean values. [[diff:conn:91-110]] [[diff:conn:650-651]]
 
@@ -65,19 +65,17 @@ Normalize once, at the boundary, then prove the invariant at that boundary. Each
 
 ## Decisions and questions
 
-No new public interface is added. The existing header views keep their shape: urllib3's `HTTPHeaderDict` and the original `HTTPMessage` hold the same names, order and duplicates, with folded values unfolded in both. [[diff:conn:650-651]] [[desc:d-p2]]
-
-The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests. [[diff:conn:91-110]] [[diff:conn:650-651]]
-
 Three choices carry the change:
 
 - First, normalize both views of the headers — urllib3's `HTTPHeaderDict` and the original `HTTPMessage` — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive). [[diff:conn:650-651]] [[desc:d-p2]]
 - Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see [[concept:obs-fold|obsolete line folding]]).
 - Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
 
-What it adds and removes, as facts: two private helpers and one private pattern in the connection module, and no new concept, flag, setting, dependency or second header path; what it removes is the raw line break from parsed values. [[diff:conn:80-88]]
+The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests. [[diff:conn:91-110]] [[diff:conn:650-651]]
 
 Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. [[diff:conn:80-88]]
+
+No new public interface is added. The existing header views keep their shape: urllib3's `HTTPHeaderDict` and the original `HTTPMessage` hold the same names, order and duplicates, with folded values unfolded in both. [[diff:conn:650-651]] [[desc:d-p2]]
 
 ::: simple
 Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.
