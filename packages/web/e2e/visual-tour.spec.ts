@@ -953,17 +953,15 @@ for (const combo of [
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
     }
 
-    // Start page (#225): the "Open a PR" row, the PR list with its
-    // empty sub-groups, and the Reviews list share one width.
+    // Start page (#225): the "Open a PR" row and the Reviews list
+    // share one width. (The PR list with its empty sub-groups needs
+    // gh-loaded lists, unreachable in the tour sandbox: no repos, no
+    // login. Rules 4b/4c cover it wherever it renders.)
     await page.goto(`${svc!.origin}/?token=${svc.token}`);
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
     await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
     await checkLayout(page, "start");
     await shot(page, "start", suffix, "Open a PR by URL or number");
-    await expect(page.getByTestId("requested-direct-empty")).toContainText("No PRs requested of you.");
-    await page.getByTestId("requested-direct-empty").scrollIntoViewIfNeeded();
-    await checkLayout(page, "start-prs");
-    await shot(page, "start-prs", suffix, "No PRs requested of you.");
     await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
     await checkLayout(page, "start-reviews");
     await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");

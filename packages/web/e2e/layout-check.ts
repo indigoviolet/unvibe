@@ -9,8 +9,9 @@
  *   clientWidth` on cards and panels);
  * - rows in a ListRow list (`.ui-list > .ui-row`) share one height;
  * - rows in the same column/form share their right edge (sibling
- *   `.ui-field` rows, and an add row — input + button — vs. the list
- *   or card below it in the same parent).
+ *   `.ui-field` rows; an add row — input + button — vs. the list
+ *   or card below it in the same parent; and a single-line add row
+ *   fills its own row, trailing control at the row's right edge).
  *
  * Elements inside a horizontally scrollable ancestor (e.g. a diff
  * code table's scroller) are exempt from the descendant-box rule:
@@ -143,6 +144,16 @@ export async function collectLayoutViolations(page: Page): Promise<string[]> {
       }
     });
 
+    // Text inputs only: checkboxes (reviewed boxes), radios and hidden
+    // inputs are controls, not add-row fields.
+    const isTextInput = (el: Element): boolean =>
+      el.tagName === "INPUT" &&
+      (el as HTMLInputElement).type !== "checkbox" &&
+      (el as HTMLInputElement).type !== "radio" &&
+      (el as HTMLInputElement).type !== "hidden";
+    const hasTextInput = (el: Element): boolean =>
+      isTextInput(el) || [...el.querySelectorAll("input")].some(isTextInput);
+
     // 4b. An add row (input + button) and the list/card below it in
     // the same parent share their right edge.
     document.querySelectorAll("*").forEach((parent) => {
@@ -151,7 +162,7 @@ export async function collectLayoutViolations(page: Page): Promise<string[]> {
       const isListOrCard = (el: Element): boolean =>
         el.classList.contains("ui-list") || el.classList.contains("ui-card");
       const isAddRow = (el: Element): boolean =>
-        !isListOrCard(el) && !!el.querySelector("input") && !!el.querySelector("button");
+        !isListOrCard(el) && hasTextInput(el) && !!el.querySelector("button");
       const lists = kids.filter(isListOrCard);
       const adds = kids.filter(isAddRow);
       if (lists.length === 0 || adds.length === 0) return;
@@ -171,6 +182,45 @@ export async function collectLayoutViolations(page: Page): Promise<string[]> {
             `add rows in ${describe(parent)} do not share a right edge (${rights.map((r) => Math.round(r)).join(", ")})`,
           );
         }
+      }
+    });
+
+    // 4c. A single-line add row (a text input plus a button as direct
+    // children: path + "Add by path", PR URL + "Open PR") fills its
+    // own row: the trailing control ends at the row's right edge
+    // (inside padding). Both row boxes still stretch full width when
+    // the input is capped (`.ui-input` max-width), so comparing row
+    // boxes cannot see it — the #225 start-page and Repos complaints.
+    // Rows inside a positioned ancestor (menus, popovers) are exempt,
+    // like in rule 2. Scrollers are deliberately NOT exempt: the
+    // page's own vertical scroller computes to `overflow-x: auto`,
+    // which would exempt every row — and content narrower than its
+    // row is a gap inside a scroller too.
+    document.querySelectorAll("*").forEach((row) => {
+      const kids = [...row.children].filter(visible);
+      if (kids.length < 2) return;
+      if (!kids.some(isTextInput) || !kids.some((k) => k.tagName === "BUTTON")) return;
+      let exempt = false;
+      let node: Element | null = row.parentElement;
+      while (node && !exempt) {
+        const pos = getComputedStyle(node as HTMLElement).position;
+        if (pos === "fixed" || pos === "absolute") exempt = true;
+        node = node.parentElement;
+      }
+      if (exempt) return;
+      // Wrapped rows reflow legitimately short: single line only.
+      const centers = kids.map((k) => {
+        const b = k.getBoundingClientRect();
+        return (b.top + b.bottom) / 2;
+      });
+      if (Math.max(...centers) - Math.min(...centers) > TOL) return;
+      const box = row.getBoundingClientRect();
+      const padRight = Number.parseFloat(getComputedStyle(row as HTMLElement).paddingRight) || 0;
+      const trailing = Math.max(...kids.map((k) => k.getBoundingClientRect().right));
+      if (box.right - padRight - trailing > TOL) {
+        violations.push(
+          `${describe(row)} add row does not fill its row (trailing control ends ${Math.round(trailing)}, row ends ${Math.round(box.right)})`,
+        );
       }
     });
 
