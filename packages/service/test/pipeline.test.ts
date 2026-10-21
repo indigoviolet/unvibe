@@ -281,8 +281,9 @@ describe("pipeline failure paths (scripted fakes)", () => {
     return id;
   }
 
-  it("malformed trailing JSON is a job-visible error", async () => {
+  it("malformed trailing JSON keeps the guide cards (#213)", async () => {
     const agents = new FakeAgentRunner([
+      { match: "Resend just the data block", events: [{ type: "text", delta: "```json\n{bad\n```\n" }, { type: "done", stopReason: "end_turn" }] },
       { match: "Reader", events: [{ type: "text", delta: "## T\n\nBody.\n\n```json\n{bad\n```\n" }, { type: "done", stopReason: "end_turn" }] },
     ]);
     const { app, ctx } = await demoApp(agents);
@@ -292,8 +293,10 @@ describe("pipeline failure paths (scripted fakes)", () => {
       await ctx.jobs.drain(5000).catch(() => {});
       const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
       expect(readerJobs.length).toBeGreaterThan(0);
-      expect(readerJobs[0].state).toBe("error");
-      expect(readerJobs[0].error).toMatch(/trailing JSON/);
+      expect(readerJobs[0].state).toBe("done");
+      expect(readerJobs[0].degradedReason).toContain("no plotlines or go-deeper directions");
+      const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
+      expect(root.cards.map((c) => c.title)).toEqual(["T"]);
     } finally {
       await app.close();
     }
