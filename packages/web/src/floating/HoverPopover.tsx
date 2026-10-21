@@ -16,6 +16,7 @@
  *   short delayed close, entering the popover cancels it).
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
@@ -216,18 +217,26 @@ export function HoverPopover() {
   const openForRef = useRef(openFor);
   openForRef.current = openFor;
 
-  // Position after render, flipping above the anchor near the viewport edge.
+  // Position after render with Floating UI (#218): below the anchor,
+  // flipping above near the viewport edge and shifting inside it.
   useLayoutEffect(() => {
     const pop = popRef.current;
     const anchor = anchorRef.current;
     if (!html || !pop || !anchor) return;
-    const r = anchor.getBoundingClientRect();
-    const w = pop.offsetWidth;
-    const h = pop.offsetHeight;
-    let top = r.bottom + 6;
-    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
-    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left))}px`;
-    pop.style.top = `${top}px`;
+    let live = true;
+    void computePosition(anchor, pop, {
+      placement: "bottom",
+      middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
+    }).then(({ x, y }) => {
+      if (!live || anchorRef.current !== anchor || popRef.current !== pop) return;
+      // Final clamp (as the hand-rolled code had): an anchor partly past
+      // the viewport edge still lands the whole popover inside it.
+      pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, x))}px`;
+      pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, y))}px`;
+    });
+    return () => {
+      live = false;
+    };
   }, [html]);
 
   useEffect(() => {

@@ -37,7 +37,7 @@ import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/Selectio
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
 import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
-import { Card } from "../../ui/index.js";
+import { Button, Card } from "../../ui/index.js";
 import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
@@ -219,12 +219,12 @@ export function DescriptionView({ reviewId, editor }: Props) {
           <div className="dbar">
             <span className="hint">Editing the description. Type directly in the text below.</span>
             <span className="sp" />
-            <button className="btn ghost" type="button" data-descdiscard onClick={() => setEditing(false)}>
+            <Button variant="secondary" size="sm" type="button" data-descdiscard onClick={() => setEditing(false)}>
               Discard
-            </button>
-            <button className="btn" type="button" data-descsave onClick={saveEditing}>
+            </Button>
+            <Button variant="primary" size="sm" type="button" data-descsave onClick={saveEditing}>
               Save
-            </button>
+            </Button>
           </div>
           {editor ? (
             <div className="desc">

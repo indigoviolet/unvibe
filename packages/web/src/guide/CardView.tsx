@@ -34,7 +34,7 @@ import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
-import { Card as UiCard, CardHeader } from "../ui/index.js";
+import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -325,8 +325,9 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       {!busy && promoted?.turn.error ? (
         <div className="perr" role="alert">
           <span>Couldn't get an answer. Retry, or see Debug for details.</span>
-          <button
-            className="btn"
+          <Button
+            variant="primary"
+            size="sm"
             type="button"
             data-retry={promoted.turn.id}
             onClick={() =>
@@ -336,7 +337,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             }
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {blocks}

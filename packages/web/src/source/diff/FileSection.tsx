@@ -25,7 +25,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
-import { Card } from "../../ui/index.js";
+import { Button, Card } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
@@ -460,9 +460,9 @@ function HunkCard({
             </>
           ) : hunkCard && !hunkCard.open ? (
             <div className="fsum">
-              <button className="tbtn xs" type="button" onClick={activate}>
+              <Button variant="secondary" size="sm" type="button" onClick={activate}>
                 Reopen summary card
-              </button>
+              </Button>
             </div>
           ) : null}
         </Card>
@@ -1032,9 +1032,9 @@ export function FileSection(props: SectionProps): ReactNode {
               {expansion.error ? (
                 <div className="xerr">
                   <span>Couldn&apos;t load those lines: {expansion.error}</span>
-                  <button className="tbtn xs" type="button" onClick={expansion.retry}>
+                  <Button variant="secondary" size="sm" type="button" onClick={expansion.retry}>
                     Retry
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </>

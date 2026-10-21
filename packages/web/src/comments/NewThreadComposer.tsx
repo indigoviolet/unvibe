@@ -15,6 +15,7 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
 import { useReview } from "../state/store.js";
+import { Button } from "../ui/index.js";
 
 interface Props {
   reviewId: string;
@@ -133,12 +134,12 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
           }}
         />
         <div className="row">
-          <button className="btn ghost" type="button" onClick={onDiscard}>
+          <Button variant="secondary" size="sm" type="button" onClick={onDiscard}>
             Discard
-          </button>
-          <button className="btn" type="button" disabled={sending || text.trim() === ""} onClick={send}>
+          </Button>
+          <Button variant="primary" size="sm" type="button" disabled={sending || text.trim() === ""} onClick={send}>
             {ask ? "Ask" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

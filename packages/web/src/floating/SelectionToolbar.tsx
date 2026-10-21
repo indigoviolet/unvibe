@@ -55,6 +55,7 @@ import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
 import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
+import { computePosition, flip, offset, shift, type VirtualElement } from "@floating-ui/dom";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -621,11 +622,29 @@ export function SelectionToolbar() {
       const b = bar();
       const sel = window.getSelection();
       if (!b || !sel || sel.rangeCount === 0) return;
-      const r = sel.getRangeAt(0).getBoundingClientRect();
-      b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
-      const preferBelow = r.top - b.offsetHeight - 8 < 56;
-      const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
-      b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
+      const range = sel.getRangeAt(0);
+      // Floating UI (#218) positions the bar: the selection range is the
+      // reference (a virtual element reading its live rect, so the
+      // scroll-grace re-place follows it). Placement keeps the old rule
+      // — below when above would crowd the top bar (<56px), else above —
+      // and flip/shift keep the bar inside the viewport.
+      const r = range.getBoundingClientRect();
+      const placement = r.top - b.offsetHeight - 8 < 56 ? "bottom" : "top";
+      const reference: VirtualElement = {
+        getBoundingClientRect: () => range.getBoundingClientRect(),
+      };
+      void computePosition(reference, b, {
+        placement,
+        middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        if (!b.isConnected || b.hidden) return;
+        // Keep the old clamp as the final word: a selection rect partly
+        // past the viewport edge (a hunk at the pane's end) must still
+        // land the whole bar inside it — flip/shift alone do not clamp
+        // the placement's main axis.
+        b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, x))}px`;
+        b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, y))}px`;
+      });
     };
 
     const onSelectionChange = (): void => {

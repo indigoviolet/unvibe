@@ -38,7 +38,7 @@ import { conversationTurns, isAnchorStale, isNoAgentMessage, NO_AGENT_COPY } fro
 import { expansionsForBlock } from "./ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansionUtils.js";
 import { useProvisionalBlocks } from "./streamedAnswer.js";
-import { Card, CardFooter, CardHeader } from "../../ui/index.js";
+import { Button, Card, CardFooter, CardHeader } from "../../ui/index.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -250,8 +250,9 @@ function AnswerView({
       {errorText && !noAgent ? (
         <div className="perr" role="alert">
           <span>Couldn't get an answer. Retry, or see Debug for details.</span>
-          <button
-            className="btn"
+          <Button
+            variant="primary"
+            size="sm"
             type="button"
             data-retry={turn.id}
             disabled={controlsBusy}
@@ -259,7 +260,7 @@ function AnswerView({
             onClick={onRetry}
           >
             {controlsBusy ? "Retrying…" : "Retry"}
-          </button>
+          </Button>
         </div>
       ) : null}
       <div className={`exp-b${provisional ? " streaming" : ""}`}>

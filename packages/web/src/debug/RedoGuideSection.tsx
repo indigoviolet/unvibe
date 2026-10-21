@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, friendlyError } from "../api/client.js";
+import { Button } from "../ui/index.js";
 
 export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.Element | null {
   const navigate = useNavigate();
@@ -62,9 +63,9 @@ export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.
     <section aria-label="Re-do guide" style={{ marginTop: 24 }}>
       {ingestStatus === "loading" ? (
         <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-          <button className="btn" type="button" disabled title="The review is still opening.">
+          <Button variant="primary" size="sm" type="button" disabled title="The review is still opening.">
             Re-do guide
-          </button>
+          </Button>
           <span className="hint">The review is still opening.</span>
         </div>
       ) : confirming ? (
@@ -73,24 +74,25 @@ export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.
             Remove the guide, comments, notes and jobs, and open this change again as a new review?
             Anything already on GitHub stays there.
           </span>
-          <button className="btn" type="button" disabled={busy} onClick={() => void redo()}>
+          <Button variant="primary" size="sm" type="button" disabled={busy} onClick={() => void redo()}>
             {busy ? "Re-doing…" : "Re-do guide"}
-          </button>
-          <button
-            className="btn ghost"
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             type="button"
             disabled={busy}
             onClick={() => setConfirming(false)}
           >
             Cancel
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="frow" style={{ gap: 8, alignItems: "center" }}>
           <span className="hint">Start the guide over from the same change.</span>
-          <button className="btn" type="button" onClick={() => setConfirming(true)}>
+          <Button variant="primary" size="sm" type="button" onClick={() => setConfirming(true)}>
             Re-do guide
-          </button>
+          </Button>
         </div>
       )}
       {error ? (
