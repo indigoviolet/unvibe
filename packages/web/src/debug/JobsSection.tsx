@@ -126,7 +126,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
           <div className="frow" style={{ gap: 8, padding: "8px 0" }} data-testid="jobs-totals">
             <span className="hint">
               Totals: {formatTokens(totals.input)} in · {formatTokens(totals.output)} out ·{" "}
-              {formatCacheRate(rate)} hit · {formatTokens(totals.written)} written
+              {formatCacheRate(rate)} hit · {formatTokens(totals.read)} read · {formatTokens(totals.written)} written
             </span>
             <span className="sp" />
             <button className="x" type="button" onClick={() => void load()}>
@@ -210,7 +210,8 @@ function JobRow({
         {job.usage ? (
           <span className="hint">
             {formatTokens(job.usage.inputTokens)} in · {formatTokens(job.usage.outputTokens)} out ·{" "}
-            {formatCacheRate(job.cacheHitRate)} hit · {formatTokens(job.usage.cachedWriteTokens ?? 0)} written
+            {formatCacheRate(job.cacheHitRate)} hit · {formatTokens(job.usage.cachedReadTokens ?? 0)} read ·{" "}
+            {formatTokens(job.usage.cachedWriteTokens ?? 0)} written
           </span>
         ) : (
           <span className="hint">no token counts yet</span>

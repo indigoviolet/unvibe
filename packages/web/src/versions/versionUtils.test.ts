@@ -70,6 +70,18 @@ describe("pooled usage", () => {
     ];
     expect(pooledCacheRate(jobs)).toBe(0);
   });
+
+  it("owner #209 fixture: 787,812 read + 6,607 written shows ~99% hit, read and written split", () => {
+    const jobs = [
+      job({
+        usage: { inputTokens: 2, cachedReadTokens: 787812, cachedWriteTokens: 6607, outputTokens: 119 },
+      }),
+    ];
+    expect(pooledTokens(jobs)).toEqual({ input: 2, output: 119, read: 787812, written: 6607 });
+    expect(pooledCacheRate(jobs)).toBeCloseTo(787812 / (2 + 787812 + 6607), 6);
+    expect(formatTokens(787812)).toBe("788k");
+    expect(formatTokens(6607)).toBe("6.6k");
+  });
 });
 
 describe("formatRetryIn", () => {
