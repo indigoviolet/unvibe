@@ -50,7 +50,9 @@ export function quoteForPrompt(anchor: Annotation["anchor"]): string {
   const where =
     host.kind === "diff-line"
       ? `lines ${host.line}–${host.endLine ?? host.line} of ${host.fileKey}`
-      : "the host block below";
+      : host.kind === "code"
+        ? `lines ${host.line}–${host.endLine ?? host.line} of ${host.path}`
+        : "the host block below";
   return `${q.slice(0, 900)}\n\n[… ${q.length} characters selected (${where}); the full selection is in the host block below …]\n\n${q.slice(-300)}`;
 }
 
@@ -193,6 +195,12 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
     // Issue #214: the host block is the comment's own text.
     return commentHostText(snapshot, host.commentId, anchor.quotedText) ?? "(unknown comment)";
   }
+  if (host.kind === "code") {
+    // #81: the file lives outside the snapshot. The quoted selection is
+    // the host text the snapshot can offer; the pipeline replaces it
+    // with the real lines at the cited commit before prompting.
+    return anchor.quotedText;
+  }
   if (host.kind === "hunk") {
     // Issue #138: a hunk card's text is its summary (the first turn's
     // blocks). Actions run as nested cards on summary blocks, so this is
@@ -269,6 +277,9 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
     return cardTextFor(snapshot, comment.anchor);
   }
   const host = anchor.host;
+  if (host.kind === "code") {
+    return `(code ${host.path}:${host.line} at ${host.commit})`;
+  }
   if (host.kind !== "diff-line") return "(none)";
   const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
   return file ? `(diff ${file.path}:${host.line})` : "(none)";
@@ -288,6 +299,9 @@ export function nearbyAnnotationsText(
     if (h.kind === "description" && anchor.host.kind === "description") return h.paragraphId === anchor.host.paragraphId;
     if (h.kind === "diff-line" && anchor.host.kind === "diff-line") {
       return h.fileKey === anchor.host.fileKey && h.line === anchor.host.line;
+    }
+    if (h.kind === "code" && anchor.host.kind === "code") {
+      return h.path === anchor.host.path && h.commit === anchor.host.commit && h.line === anchor.host.line;
     }
     if (h.kind === "comment" && anchor.host.kind === "comment") return h.commentId === anchor.host.commentId;
     return false;

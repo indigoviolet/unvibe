@@ -19,7 +19,7 @@ import type {
   ReviewSnapshot,
   SubmitCommentLocation,
 } from "@unvibe/shared";
-import { parseId } from "@unvibe/shared";
+import { githubFileUrl, parseId } from "@unvibe/shared";
 import { threadPostText } from "./threads.js";
 import { findBlock } from "../interaction/l4.js";
 
@@ -28,6 +28,32 @@ export interface LocatedComment {
   location: SubmitCommentLocation;
   /** Exact text to post (draft + fallback note when we moved the line). */
   text: string;
+}
+
+/** Repo identity a permalink needs (the review's own repo). */
+export interface SubmitRepoRef {
+  owner: string;
+  name: string;
+}
+
+/**
+ * Review-body text for a file-tab comment (#81, owner decision A): the
+ * permalink to the cited lines at the cited commit, the quoted text as
+ * a blockquote, then the comment. Without a repo there is no permalink
+ * to build, so the plain text stands alone.
+ */
+export function codeCommentBodyText(thread: Annotation, base: string, repo?: SubmitRepoRef): string {
+  const host = thread.anchor.host;
+  if (host.kind !== "code" || !repo || base.trim() === "") return base;
+  const url = githubFileUrl(repo.owner, repo.name, host.commit, host.path, host.line, host.endLine);
+  const quote = (thread.anchor.quotedText ?? "").trim();
+  const quoted = quote
+    ? `\n\n${quote
+        .split("\n")
+        .map((l) => `> ${l}`.trimEnd())
+        .join("\n")}`
+    : "";
+  return `${url}${quoted}\n\n${base}`;
 }
 
 function fileByKey(snapshot: ReviewSnapshot, fileKey: string): ReviewFile | null {
@@ -239,6 +265,12 @@ function locateDiffLineThread(snapshot: ReviewSnapshot, thread: Annotation): Sub
  */
 export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): SubmitCommentLocation {
   const host = thread.anchor.host;
+  if (host.kind === "code") {
+    // #81 (owner decision A): GitHub takes inline comments only on diff
+    // lines, so a file-tab comment goes in the review body with a
+    // permalink to the cited lines (see `codeCommentBodyText`).
+    return { kind: "general", reason: `${host.path}:${host.line} is outside the diff, so it goes in the review body with a link to the lines.` };
+  }
   if (host.kind !== "diff-line") {
     if (host.kind === "block") {
       const citations = findBlockCitations(snapshot, host.blockId);
@@ -252,24 +284,26 @@ export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): Subm
 }
 
 /** Locate one thread with its exact post text (fallback note prepended). */
-export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotation): LocatedComment {
+export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotation, repo?: SubmitRepoRef): LocatedComment {
   const location = locateThread(snapshot, thread);
   const base = threadPostText(thread);
-  const text =
+  let text =
     location.kind === "inline" && location.fallbackNote ? `${location.fallbackNote}\n\n${base}` : base;
+  if (thread.anchor.host.kind === "code") text = codeCommentBodyText(thread, text, repo);
   return { thread, location, text };
 }
 
 /**
- * All comments marked For PR (`post`) that have not been posted yet,
- * each with its location + exact text. Posted comments (`postedAt`) are
- * skipped so retries never double-post. Conversations are never
- * submitted: only the reviewer's own comments go to the PR (#136).
+ * All comments marked for posting (`post`) that have not been posted
+ * yet, each with its location + exact text. Posted comments
+ * (`postedAt`) are skipped so retries never double-post. Conversations
+ * are never submitted: only the reviewer's own comments go to the PR
+ * (#136).
  */
-export function locatePendingThreads(snapshot: ReviewSnapshot): LocatedComment[] {
+export function locatePendingThreads(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): LocatedComment[] {
   return (snapshot.annotations ?? [])
     .filter((a) => a.type === "comment" && a.post && !a.postedAt)
-    .map((t) => locateThreadWithText(snapshot, t as Annotation));
+    .map((t) => locateThreadWithText(snapshot, t as Annotation, repo));
 }
 
 /** Comments already posted (skipped on retry). */

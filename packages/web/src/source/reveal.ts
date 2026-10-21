@@ -14,6 +14,7 @@ import { toast } from "../floating/Toast.js";
 import { canonicalRevealTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
 import { REVEAL_EVENT, revealSource as diffReveal } from "./diff/revealSource.js";
+import { openFileForCitation } from "./file/openFile.js";
 
 export { REVEAL_EVENT };
 
@@ -45,6 +46,17 @@ export function revealSource(target: string, opts?: { keepFilters?: boolean }): 
   if (target.startsWith("desc:")) {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
     flashParagraph(target.slice("desc:".length).split("@")[0]);
+    return;
+  }
+  if (target.startsWith("code:")) {
+    // #81: a file outside the diff opens in its own tab at the cited
+    // commit. The diff pane has no rows for it, so this never falls
+    // through to the diff reveal.
+    if (openFileForCitation(canonical, snapshot?.version.headSha)) {
+      window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
+      return;
+    }
+    toast("Couldn't open the cited file");
     return;
   }
   if (target.startsWith("diff:") || target.startsWith("h:") || target.startsWith("code:")) {

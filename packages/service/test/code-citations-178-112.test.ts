@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { RealCommandRunner } from "../src/exec/index.js";
-import { resolveCodeFileLengths } from "../src/pipeline/lookup.js";
+import { resolveCodeFileExistence } from "../src/pipeline/lookup.js";
 import { createApp } from "../src/server.js";
 import { remapCardCitations, remapCitationTarget, type CitationCtx } from "../src/versions/citations.js";
 
@@ -45,8 +45,8 @@ async function waitFor(check: () => boolean, timeoutMs = 30000): Promise<void> {
   }
 }
 
-describe("#178 resolveCodeFileLengths", () => {
-  it("reports lengths for real files at the cited commit, nothing for missing/binary", async () => {
+describe("#81 resolveCodeFileExistence", () => {
+  it("reports existing files at the cited commit, nothing for missing/binary", async () => {
     const dir = await initRepo();
     try {
       fs.writeFileSync(path.join(dir, "helper.py"), "a = 1\nb = 2\nc = 3\n");
@@ -54,13 +54,13 @@ describe("#178 resolveCodeFileLengths", () => {
       await git(dir, "add", ".");
       await git(dir, "commit", "-m", "base");
       const sha = await git(dir, "rev-parse", "HEAD");
-      const lengths = await resolveCodeFileLengths(real, dir, sha, [
+      const existing = await resolveCodeFileExistence(real, dir, sha, [
         `code:helper.py:2-3@${sha}`,
         `code:missing.py:1@${sha}`,
         `code:bin.dat:1@${sha}`,
         "diff:a-py:1-2",
       ]);
-      expect(lengths).toEqual({ "helper.py": 3 });
+      expect(existing).toEqual(new Set(["helper.py"]));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -2426,7 +2426,6 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
-
 ## Addendum: #222 phase 1 (branch `feat/222-document-review`)
 
 - **Document review kind (#222):** `POST /api/reviews` with
@@ -2458,3 +2457,40 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `packages/service/test/validate.test.ts` (doc: targets),
   `packages/web/e2e/journeys/j222-document.spec.ts` (create → read →
   Explain → Ask → Comment against the real service, replay agent).
+
+## Addendum: #81 (branch `fix/81-code-citations`)
+
+- **Validation (§10, supersedes the #178 range check):** no length
+  check. A `code:` citation is valid when the file exists at the cited
+  commit and unverified only when it does not (missing or binary);
+  `validateCode` checks existence only, and the pipeline resolves
+  existence through the same `git show` source. A range past the end
+  validates and highlights whatever part of it exists.
+- **Opening (§7/§9):** hovering a `code:` chip previews the cited lines
+  at the cited commit (fetched through the file route when no hunk
+  rows cover them); clicking opens the file in its own source-pane
+  tab at that commit — one tab per opened file, each with a close
+  button — scrolled to the cited lines. The reusable entry point is
+  `openFileAtCommit` in `packages/web/src/source/file/openFile.ts`
+  (path + commit + optional range; no PR-diff assumption), which #222
+  calls for context-repo citations. Scope stays files reached from a
+  citation or pin; there is no file tree.
+- **File tab (§7/§8):** text selects like diff lines — Explain, Ask
+  and Comment anchor to the new `code:` host and render under the
+  cited lines. On a new version, `code:` citations (in the diff or
+  outside it) and file-tab anchors are re-anchored by content like
+  pins: found again means moved to the new lines and commit, not
+  found means outdated with the original snippet kept.
+- **Submitting (§7, owner decision A):** GitHub takes inline comments
+  only on diff lines, so a marked file-tab comment goes in the review
+  body on Submit as a permalink to the cited lines at the cited
+  commit, plus the quoted text, plus the comment; the Submit preview
+  shows the same text. This rides the existing single-review submit
+  path and its in-flight lease — only the located text changes.
+  Evidence: `test/validate.test.ts`, `test/location-m6.test.ts`,
+  `test/submit-m6.test.ts` (stubbed `gh` only),
+  `test/versions-anchors.test.ts`, web `citations.test.ts` /
+  `openFile.test.ts`, journey `e2e/journeys/j81-code-citations.spec.ts`
+  (hover, tab, past-the-end clamp, selection comment). The visual
+  tour cannot show the file tab: its demo review has no file content
+  to read, so the journey is the screen's coverage.

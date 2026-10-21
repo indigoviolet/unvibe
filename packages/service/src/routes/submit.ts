@@ -50,12 +50,14 @@ export async function registerSubmit(app: FastifyInstance, ctx?: ServiceContext)
     if (refused) return reply.code(409).send({ error: refused });
     const row = readReviewRow(ctx.db, id);
     const prNumber = row?.prNumber ?? snapshot.review.prNumber;
+    const repo = row ? ctx.repos.get(row.repoId) : null;
+    const repoRef = repo ? { owner: repo.owner, name: repo.name } : undefined;
     if (prNumber === null || prNumber === undefined) {
-      const preview = buildPreview(snapshot);
+      const preview = buildPreview(snapshot, repoRef);
       const reason = "This branch has no PR, so there is nothing to submit to.";
       return { preview: { ...preview, disabledReason: reason }, reason };
     }
-    return { preview: buildPreview(snapshot) };
+    return { preview: buildPreview(snapshot, repoRef) };
   });
 
   app.get("/api/reviews/:id/pr-comments", async (req, reply) => {

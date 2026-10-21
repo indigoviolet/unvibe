@@ -87,6 +87,13 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
       return { kind: "hunk", fileKey: anchor.fileKey, contentHash: anchor.contentHash };
     case "comment":
       return { kind: "comment", commentId: anchor.commentId };
+    case "code": {
+      const host: AnchorHost = { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line };
+      if (anchor.endLine !== undefined) {
+        (host as { endLine?: number }).endLine = anchor.endLine;
+      }
+      return host;
+    }
   }
 }
 
@@ -224,6 +231,35 @@ export function buildAnchor(
       prefix: opts.prefix ?? ctx.prefix,
       suffix: opts.suffix ?? ctx.suffix,
       position: opts.position ?? 0,
+      version,
+      ...recorded,
+    };
+  }
+  if (host.kind === "code") {
+    // #81: a file-tab anchor. The file lives outside the snapshot's diff
+    // files, so there is nothing to look the quote up in here; the client
+    // sends the quote (and any prefix/suffix it recorded). Lines are
+    // 1-based; a range past the end is kept as cited.
+    if (!host.path || host.path.includes("\0") || host.path.startsWith("/") || host.path.split(/[\\/]/).includes("..")) {
+      throw new Error(`invalid code path ${host.path}`);
+    }
+    if (!host.commit || !/^[0-9a-fA-F]{4,64}$/.test(host.commit)) {
+      throw new Error(`invalid code commit ${host.commit}`);
+    }
+    if (!Number.isSafeInteger(host.line) || host.line < 1) {
+      throw new Error(`invalid code line ${String(host.line)}`);
+    }
+    if (host.endLine !== undefined) {
+      if (!Number.isSafeInteger(host.endLine) || host.endLine < host.line) {
+        throw new Error(`invalid code endLine ${String(host.endLine)}`);
+      }
+    }
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? "",
+      suffix: opts.suffix ?? "",
+      position: opts.position ?? host.line,
       version,
       ...recorded,
     };

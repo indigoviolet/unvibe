@@ -1488,6 +1488,10 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
       location = file
         ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
         : { kind: "general", reason: `unknown file ${host.fileKey}` };
+    } else if (host.kind === "code") {
+      // #81: review body with a permalink on the real service; the mock
+      // has no real repo to link to, so it shows the same slot plainly.
+      location = { kind: "general", reason: `${host.path}:${host.line} is outside the diff, so it goes in the review body with a link to the lines.` };
     } else {
       location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
@@ -2679,7 +2683,9 @@ export const mockApi = {
               ? { kind: "description", paragraphId: anchor.paragraphId }
               : anchor.where === "comment"
                 ? { kind: "comment", commentId: anchor.commentId }
-                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+                : anchor.where === "code"
+                  ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                  : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const turnId = newTurnId();
         const askJobId = `mock-ask-${id}`;
@@ -2805,7 +2811,9 @@ export const mockApi = {
             ? { kind: "description", paragraphId: anchor.paragraphId }
             : anchor.where === "comment"
               ? { kind: "comment", commentId: anchor.commentId }
-              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+              : anchor.where === "code"
+                ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
@@ -3258,7 +3266,9 @@ export const mockApi = {
           ? { kind: "description", paragraphId: anchor.paragraphId }
           : anchor.where === "comment"
             ? { kind: "comment", commentId: anchor.commentId }
-            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+            : anchor.where === "code"
+              ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
     const thread: import("@unvibe/shared").Annotation = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
       type: "comment",

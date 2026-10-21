@@ -10,8 +10,8 @@ import type { ReviewLookup } from "./lookup.js";
 export interface SnapshotLookupExtra {
   /** alias → fileKey (e.g. prototype `conn` when the scheme differs). */
   aliases?: Record<string, string>;
-  /** New-side file lengths by fileKey or path (for `code:` ranges). */
-  fileLengths?: Record<string, number>;
+  /** Paths known to exist at their cited commit (#81: existence only). */
+  existingFiles?: ReadonlySet<string>;
   /** Description paragraph id → text. */
   descTexts?: Record<string, string>;
   /** Known concept slugs. */
@@ -49,7 +49,7 @@ export function createSnapshotLookup(
   extra: SnapshotLookupExtra = {},
 ): ReviewLookup {
   const aliases = extra.aliases ?? {};
-  const fileLengths = extra.fileLengths ?? {};
+  const existingFiles = extra.existingFiles ?? new Set<string>();
   const descTexts = extra.descTexts ?? {};
   const concepts = new Set(extra.concepts ?? []);
   const hostTexts = extra.hostTexts ?? {};
@@ -117,13 +117,10 @@ export function createSnapshotLookup(
       return h ? { start: h.newStart, end: h.newEnd } : null;
     },
 
-    fileLineCount(keyOrPath) {
-      if (fileLengths[keyOrPath] !== undefined) return fileLengths[keyOrPath];
-      const key = resolveFileKey(keyOrPath);
-      if (key !== null && fileLengths[key] !== undefined) return fileLengths[key];
-      const byPath = filesByPath.get(keyOrPath);
-      if (byPath && fileLengths[byPath.fileKey] !== undefined) return fileLengths[byPath.fileKey];
-      return null;
+    fileExists(filePath) {
+      if (existingFiles.has(filePath)) return true;
+      // A file in the diff exists at the head by construction.
+      return filesByPath.has(filePath);
     },
 
     descParagraph(id) {

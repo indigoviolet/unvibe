@@ -635,7 +635,14 @@ export interface Annotation {
    * across versions while the hunk's content is). Hosts the conversation
    * card an idle hunk summary activates into.
    */
-  | { kind: "hunk"; fileKey: string; contentHash: string };
+  | { kind: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit, addressed `code:<path>:<lines>@<sha>`
+   * (the file tab). `line` is the first cited line; `endLine` the last
+   * when the selection spans lines. Remapped by content on a new version
+   * like every other code anchor (PRD §8).
+   */
+  | { kind: "code"; path: string; commit: string; line: number; endLine?: number };
 
 /**
  * Issue #166: a live text selection as character offsets within its host's
