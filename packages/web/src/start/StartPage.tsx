@@ -109,6 +109,56 @@ export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
 
+/**
+ * Author filter (#228): one shared single-select for the Reviews list
+ * and the PR lists, next to the recency filter. `"all"` (the default)
+ * shows everything; any other value is an author login. The choice
+ * persists like the recency window.
+ */
+export const AUTHOR_KEY = "unvibe.start.author";
+export const AUTHOR_ALL = "all";
+
+function readAuthor(): string {
+  try {
+    const saved = localStorage.getItem(AUTHOR_KEY);
+    if (typeof saved === "string" && saved.trim() !== "") return saved;
+  } catch {
+    // Ignore: default below.
+  }
+  return AUTHOR_ALL;
+}
+
+/**
+ * True when a row passes the author filter (#228). Rows with no known
+ * author (branch rows, branch reviews — the app fetches no commit
+ * author) stay visible under any specific author until the owner
+ * decides otherwise (see #228).
+ */
+export function matchesAuthor(rowAuthor: string | undefined, filter: string): boolean {
+  if (filter === AUTHOR_ALL) return true;
+  if (typeof rowAuthor !== "string" || rowAuthor === "") return true;
+  return rowAuthor === filter;
+}
+
+/**
+ * Author → row count across the counted lists (#228): the Reviews rows
+ * for the selected repo plus the PR rows (Your PRs + both review
+ * groups). Branch rows carry no author and are not counted. Each row
+ * occurrence counts (a review and its PR row count separately).
+ */
+export function authorCounts(
+  sessions: Pick<ReviewSummary, "author">[],
+  changes: Pick<RepoChange, "author">[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of [...sessions, ...changes]) {
+    if (typeof row.author === "string" && row.author !== "") {
+      counts.set(row.author, (counts.get(row.author) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 export const RECENCY_WINDOWS: {
   value: RecencyWindow;
   label: string;
@@ -292,6 +342,8 @@ export function StartPage(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   // Review-request recency filter (#95): remembered like the repo choice.
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
+  // Author filter (#228): one shared single-select for Reviews + PR lists.
+  const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -462,6 +514,22 @@ export function StartPage(): React.JSX.Element {
       // Ignore: the choice simply does not persist.
     }
   }, []);
+
+  const selectAuthor = useCallback((login: string) => {
+    const next = login.trim() !== "" ? login : AUTHOR_ALL;
+    setAuthorFilter(next);
+    try {
+      localStorage.setItem(AUTHOR_KEY, next);
+    } catch {
+      // Ignore: the choice simply does not persist.
+    }
+  }, []);
+
+  /** Clear both list filters (#228 shares one author filter across lists). */
+  const showAllLists = useCallback(() => {
+    selectRecency("all");
+    selectAuthor(AUTHOR_ALL);
+  }, [selectRecency, selectAuthor]);
 
   const retryLists = useCallback(() => {
     if (!selectedId) return;
@@ -746,7 +814,11 @@ export function StartPage(): React.JSX.Element {
   // Sessions whose repo is neither demo nor known (a checkout that went
   // away, or repos failing to load) render in their own group below so
   // they stay openable and removable.
-  const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
+  const repoSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
+  // #228: the shared author filter applies to Reviews (by PR author;
+  // branch reviews carry no author and stay visible — see matchesAuthor)
+  // as well as to the PR lists below. Recency still skips Reviews.
+  const visibleSessions = repoSessions.filter((s) => matchesAuthor(s.author, authorFilter));
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
   const knownIds = new Set(repos.map((r) => r.id));
@@ -771,14 +843,37 @@ export function StartPage(): React.JSX.Element {
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
   const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
-  const visibleDirect = directRequested.filter((c) => inRecencyWindow(c, windowMs));
-  const visibleTeam = teamRequested.filter((c) => inRecencyWindow(c, windowMs));
+  // #228: author options (with counts) from the unfiltered lists, so the
+  // options stay stable while either filter is active. Sorted by login.
+  const authorOptions = (() => {
+    const counts = authorCounts(repoSessions, [...authoring, ...requested]);
+    const logins = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    return [
+      { value: AUTHOR_ALL, label: "All" },
+      ...logins.map((login) => ({ value: login, label: `${login} (${counts.get(login)})` })),
+    ];
+  })();
+  // When a picked author is gone from the lists (repo switch, refresh),
+  // fall back to All rather than filtering everything out silently.
+  const effectiveAuthor =
+    authorFilter !== AUTHOR_ALL && !authorOptions.some((o) => o.value === authorFilter) ? AUTHOR_ALL : authorFilter;
+  const visibleDirect = directRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleTeam = teamRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
     .sort(byUpdatedDesc)
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleBranches = [...branches]
     .sort(byUpdatedDesc)
     .filter((c) => inRecencyWindow(c, windowMs));
+  // #228: empty notes when the author filter (not recency, not genuinely
+  // empty) hides every row; the way back clears both filters.
+  const authorEmptyNote = (noun: string): string | null =>
+    effectiveAuthor !== AUTHOR_ALL ? `No ${noun} by ${effectiveAuthor}.` : null;
 
   return (
     <div className="app">
@@ -882,7 +977,14 @@ export function StartPage(): React.JSX.Element {
               ))}
               {visibleSessions.length === 0 && demoSessions.length === 0 && orphanSessions.length === 0 ? (
                 <p className="hint" data-testid="sessions-empty">
-                  {reposLoaded && realRepos.length === 0 ? (
+                  {authorEmptyNote("reviews") && repoSessions.length > 0 ? (
+                    <>
+                      {authorEmptyNote("reviews")}{" "}
+                      <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                        Show all
+                      </Button>
+                    </>
+                  ) : reposLoaded && realRepos.length === 0 ? (
                     <>
                       No reviews yet. <Link to="/settings?tab=repositories">Add a repo in Settings</Link>{" "}
                       to open your first review — or try the demo below.
@@ -1006,8 +1108,9 @@ export function StartPage(): React.JSX.Element {
                       {/* Recency filter (#95, #131, #148): one compact
                           control for everything in this block — "Your
                           PRs", both review groups and Recent branches (by
-                          last commit date). Reviews above stays
-                          unfiltered. */}
+                          last commit date). Recency never filters Reviews
+                          above. The author filter (#228) beside it is the
+                          one shared control: it filters Reviews too. */}
                       <span style={{ width: 150, flex: "none" }}>
                         <Select
                           aria-label="Updated within"
@@ -1016,6 +1119,14 @@ export function StartPage(): React.JSX.Element {
                             if (isRecencyWindow(v)) selectRecency(v);
                           }}
                           options={RECENCY_WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
+                        />
+                      </span>
+                      <span style={{ width: 170, flex: "none" }}>
+                        <Select
+                          aria-label="Author"
+                          value={effectiveAuthor}
+                          onValueChange={(v) => selectAuthor(v)}
+                          options={authorOptions}
                         />
                       </span>
                     </div>
@@ -1041,8 +1152,12 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No open PRs."
                     emptyTestId="authoring-empty"
-                    filteredNote={authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null}
-                    onShowAll={() => selectRecency("all")}
+                    filteredNote={
+                      authoring.length > 0 && visibleAuthoring.length === 0
+                        ? (authorEmptyNote("PRs") ?? windowEmptyNote)
+                        : null
+                    }
+                    onShowAll={showAllLists}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) =>
@@ -1068,8 +1183,8 @@ export function StartPage(): React.JSX.Element {
                         "No PRs requested of you."
                       ) : (
                         <>
-                          {windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={() => selectRecency("all")}>
+                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                             Show all
                           </Button>
                         </>
@@ -1103,8 +1218,8 @@ export function StartPage(): React.JSX.Element {
                         "No PRs requested of your team."
                       ) : (
                         <>
-                          {windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={() => selectRecency("all")}>
+                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                             Show all
                           </Button>
                         </>
@@ -1140,7 +1255,7 @@ export function StartPage(): React.JSX.Element {
                     empty="No branches."
                     emptyTestId="branches-empty"
                     filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
-                    onShowAll={() => selectRecency("all")}
+                    onShowAll={showAllLists}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
