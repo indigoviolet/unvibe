@@ -40,22 +40,26 @@ test.describe("J11 settings combos", () => {
     await expect(page.locator('[data-testid="model-main"]')).toBeVisible({ timeout: 30_000 });
     const model = page.locator("#model-main");
     await expect(model).toBeVisible({ timeout: 30_000 });
-    const modelValues = await model.locator("option").evaluateAll((os) =>
-      os.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ""),
-    );
-    expect(modelValues.length).toBeGreaterThan(1);
-    const currentModel = await model.inputValue();
-    const chosen = modelValues.find((v) => v !== currentModel)!;
-    await model.selectOption(chosen);
+    const currentText = (await model.textContent())?.trim() ?? "";
+    await model.click();
+    const options = page.getByRole("option");
+    await expect(options.first()).toBeVisible({ timeout: 15_000 });
+    const names = await options.evaluateAll((os) => os.map((o) => (o.textContent ?? "").trim()));
+    const picked = names.filter((n) => n !== "");
+    expect(picked.length).toBeGreaterThan(1);
+    const idx = names.findIndex((n) => n !== "" && n !== currentText);
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const chosenName = names[idx];
+    await options.nth(idx).click();
     await page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
-    await expect(page.locator("#effort-main")).toHaveValue("", { timeout: 15_000 });
+    await expect(page.locator("#effort-main")).toContainText("Default", { timeout: 15_000 });
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator("#model-main")).toHaveValue(chosen, { timeout: 30_000 });
+    await expect(page.locator("#model-main")).toContainText(chosenName, { timeout: 30_000 });
 
     // Full access: acknowledge, marker shows on a review, turn off, marker goes.
     await page.getByRole("tab", { name: "Access" }).click();
@@ -80,9 +84,10 @@ test.describe("J11 settings combos", () => {
     await page.getByRole("tab", { name: "Appearance" }).click();
     const themeSelect = page.locator('[data-testid="ui-theme"]');
     await expect(themeSelect).toBeVisible({ timeout: 15_000 });
-    await expect(themeSelect).toHaveValue("default");
-    await expect(themeSelect.locator("option")).toHaveText(["Default", "Studio", "Console"]);
-    await themeSelect.selectOption("studio");
+    await expect(themeSelect).toContainText("Default");
+    await themeSelect.click();
+    await expect(page.getByRole("option")).toHaveText(["Default", "Studio", "Console"]);
+    await page.getByRole("option", { name: "Studio", exact: true }).click();
     await page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
@@ -115,7 +120,8 @@ test.describe("J11 settings combos", () => {
     expect(after.serverTheme).toBe("studio");
     // Back to the default theme for the rest of the journey.
     await page.getByRole("tab", { name: "Appearance" }).click();
-    await page.locator('[data-testid="ui-theme"]').selectOption("default");
+    await page.locator('[data-testid="ui-theme"]').click();
+    await page.getByRole("option", { name: "Default", exact: true }).click();
     await page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },

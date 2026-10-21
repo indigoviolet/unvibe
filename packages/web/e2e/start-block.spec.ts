@@ -5,6 +5,7 @@
  * the block; the fetch time rides the icon's tooltip.
  */
 import { test, expect } from "./network-guard.js";
+import { pickOption, expectTriggerText } from "./select.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -36,10 +37,10 @@ test("PR and branch lists form one block with the filter and refresh in its head
 
 test("the recency filter empties lists inside the block with a way back", async ({ page }) => {
   const block = page.getByTestId("pr-block");
-  await block.getByLabel("Updated within").selectOption("1d");
+  await pickOption(page, "Updated within", "Last day");
   // The filtered-out team asks name their window inside the block.
   await expect(block.getByTestId("requested-team-empty")).toContainText("No PRs updated in the last day.");
   await block.getByTestId("requested-team-empty").getByRole("button", { name: "Show all" }).click();
-  await expect(block.getByLabel("Updated within")).toHaveValue("all");
+  await expectTriggerText(page, "Updated within", "All");
   await expect(page.getByText("CI: pin the lint action")).toBeVisible();
 });

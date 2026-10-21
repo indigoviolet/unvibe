@@ -70,7 +70,7 @@ test.describe("doctor on the real service", () => {
     await page.getByRole("tab", { name: "Models" }).click();
     // Static fallback carries names (Sonnet/Opus/GPT) even with UNVIBE_AGENT=none.
     const main = page.locator('[data-testid="model-main"]');
-    await expect(main.locator("select").nth(1)).toContainText("Sonnet");
+    await expect(main.locator("#model-main")).toContainText("Sonnet");
   });
 
   // DISABLED(#119): API-only; same routes covered by diagnostics-api.test.ts (UI Reload button stays in doctor.spec.ts)

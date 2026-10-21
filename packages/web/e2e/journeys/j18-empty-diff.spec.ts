@@ -169,7 +169,8 @@ test.describe("J18 empty diff (#179)", () => {
       await page.screenshot({ path: "test-results/j18-refresh-empty.png", fullPage: true });
 
       // Picking v1 brings its guide and diff back.
-      await page.locator("#version-pick").selectOption("1");
+      await page.locator("#version-pick").click();
+      await page.getByRole("option", { name: /^v1 / }).click();
       await expect(page).toHaveURL(/version=1/);
       await expect(page.getByText("Seed guide text for v1.")).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("y = 2")).toBeVisible({ timeout: 30_000 });

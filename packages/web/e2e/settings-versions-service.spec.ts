@@ -104,7 +104,7 @@ test.describe("settings + versions on the real service", () => {
     // Wait for the repo state to settle: the selector or the empty state
     // (the repo may already exist in the service DB from an earlier test).
     await expect(
-      page.locator('select[aria-label="Repo"], [data-testid="no-repos"]').first(),
+      page.locator('button[aria-label="Repo"], [data-testid="no-repos"]').first(),
     ).toBeVisible();
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await page.getByRole("link", { name: "Add one in Settings" }).click();
@@ -115,7 +115,8 @@ test.describe("settings + versions on the real service", () => {
       await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
-    await page.getByLabel("Repo").selectOption({ label: `local/${path.basename(repoDir)}` });
+    await page.getByLabel("Repo").click();
+    await page.getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();
@@ -239,7 +240,8 @@ test.describe("settings + versions on the real service", () => {
     await expect(appFile.getByText(/return 11\b/)).toHaveCount(0);
 
     // Older version stays viewable, read-only, with the pre-refresh code.
-    await page.locator("#version-pick").selectOption("1");
+    await page.locator("#version-pick").click();
+    await page.getByRole("option", { name: /^v1 / }).click();
     await expect(page).toHaveURL(/version=1/);
     await expect(appFile.getByText(/return 11\b/)).toBeVisible();
     await expect(appFile.getByText("return 111")).toHaveCount(0);
@@ -248,9 +250,10 @@ test.describe("settings + versions on the real service", () => {
     // Update is not wired without the pipeline (no base runner): the button
     // reports that plainly instead of hanging.
     // Choosing the current version (annotated in the dropdown) is the way back.
-    const options = page.locator("#version-pick option");
+    await page.locator("#version-pick").click();
+    const options = page.getByRole("option");
     await expect(options.last()).toContainText("current");
-    await page.locator("#version-pick").selectOption({ index: (await options.count()) - 1 });
+    await options.last().click();
     await expect(banner).toBeVisible();
     await banner.getByRole("button", { name: "Update" }).click();
   });

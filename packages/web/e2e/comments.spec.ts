@@ -244,7 +244,10 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
     "Unfold obsolete folded response headers",
   );
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-  await expect(page.locator('#version-pick option[value="2"]')).toContainText("current");
+  await expect(page.locator("#version-pick")).toContainText("v1");
+  await page.locator("#version-pick").click();
+  await expect(page.getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   // Selecting guide text offers no toolbar. The selection is made inline
   // (range + mouseup, no waits — the toolbar hides synchronously on
   // read-only versions); the selected text is asserted first so a missing

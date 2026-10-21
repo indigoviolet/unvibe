@@ -1042,7 +1042,7 @@ for (const combo of [
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
+    await expect(page.locator('[data-testid="ui-theme"]')).toContainText(combo.theme === "studio" ? "Studio" : "Console", { timeout: 15_000 });
     await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
     await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
