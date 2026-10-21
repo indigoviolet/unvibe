@@ -229,8 +229,10 @@ export function HoverPopover() {
       middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
     }).then(({ x, y }) => {
       if (!live || anchorRef.current !== anchor || popRef.current !== pop) return;
-      pop.style.left = `${x}px`;
-      pop.style.top = `${y}px`;
+      // Final clamp (as the hand-rolled code had): an anchor partly past
+      // the viewport edge still lands the whole popover inside it.
+      pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, x))}px`;
+      pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, y))}px`;
     });
     return () => {
       live = false;

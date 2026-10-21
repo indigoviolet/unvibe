@@ -638,8 +638,12 @@ export function SelectionToolbar() {
         middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
       }).then(({ x, y }) => {
         if (!b.isConnected || b.hidden) return;
-        b.style.left = `${x}px`;
-        b.style.top = `${y}px`;
+        // Keep the old clamp as the final word: a selection rect partly
+        // past the viewport edge (a hunk at the pane's end) must still
+        // land the whole bar inside it — flip/shift alone do not clamp
+        // the placement's main axis.
+        b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, x))}px`;
+        b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, y))}px`;
       });
     };
 
