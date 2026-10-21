@@ -46,18 +46,51 @@ async function seedFixture(dataDir: string): Promise<void> {
   for (const [alias, real] of Object.entries(meta.keyAliases)) {
     json = json.split(`diff:${alias}:`).join(`diff:${real}:`);
   }
-  const seeded = JSON.parse(json) as typeof snapshot;
+  const seeded = JSON.parse(json) as typeof snapshot & {
+    review: { repoId: string; branch?: string; prNumber?: number; createdAt?: number };
+    version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt?: number };
+  };
   seeded.review.id = REVIEW_ID;
   const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
   try {
+    // The review's own rows too: jobs persist against reviews(id), so a
+    // snapshot-only seed could never enqueue the on-demand concept job
+    // (#216). Tables mirror migration 001 (the service's migrate keeps
+    // IF NOT EXISTS tables as-is).
     db.exec(
-      `CREATE TABLE IF NOT EXISTS review_snapshots (
+      `CREATE TABLE IF NOT EXISTS repos (
+        id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL,
+        local_path TEXT NOT NULL, last_opened INTEGER NOT NULL DEFAULT 0,
+        managed INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY, repo_id TEXT NOT NULL REFERENCES repos(id),
+        branch TEXT NOT NULL, pr_number INTEGER,
+        current_version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL, data JSON NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE IF NOT EXISTS versions (
+        review_id TEXT NOT NULL REFERENCES reviews(id), n INTEGER NOT NULL,
+        head_sha TEXT NOT NULL, merge_base_sha TEXT NOT NULL,
+        base_ref TEXT NOT NULL, fetched_at INTEGER NOT NULL,
+        id_mapping JSON NOT NULL DEFAULT '{}', PRIMARY KEY (review_id, n)
+      );
+      CREATE TABLE IF NOT EXISTS review_snapshots (
         review_id TEXT PRIMARY KEY,
         rev INTEGER NOT NULL,
         snapshot JSON NOT NULL,
         updated_at INTEGER NOT NULL
       );`,
     );
+    db.prepare(
+      "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+    ).run(seeded.review.repoId, "urllib3", "urllib3", "/tmp", Date.now());
+    db.prepare(
+      "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(REVIEW_ID, seeded.review.repoId, seeded.review.branch ?? "main", seeded.review.prNumber ?? null, seeded.version.n, seeded.review.createdAt ?? Date.now(), "{}");
+    db.prepare(
+      "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(REVIEW_ID, seeded.version.n, seeded.version.headSha, seeded.version.mergeBaseSha, seeded.version.baseRef, seeded.version.fetchedAt ?? Date.now(), "{}");
     db.prepare(
       "INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?) " +
         "ON CONFLICT(review_id) DO UPDATE SET rev = excluded.rev, snapshot = excluded.snapshot",
@@ -108,9 +141,11 @@ test.describe("guide over real service", () => {
     test.setTimeout(120_000);
     await openSeededReview(page);
     await closeSeedCard(page);
+    // #216: no concept page exists yet; opening the link writes it
+    // (replayed concept_page job), and the title lands when it's written.
     await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
     await expect(page).toHaveURL(/\/review\/guide-seed\/page\/c-obs-fold/);
-    await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding");
+    await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 60_000 });
     // Description tab serves the fixture HTML with stable paragraph ids.
     await page.locator('#right [role="tab"]').getByText("PR description").click();
     await expect(page.locator("#right #d-p1")).toBeVisible();

@@ -108,16 +108,24 @@ export function openLinkTarget(
       return;
     }
     const stubId = `c-${slug}`;
+    // Navigate once, optimistically: repeated navigation to the same page
+    // would add duplicate browser-history entries and break Back.
+    let navigated = false;
+    const openStub = (pageId: string): void => {
+      if (navigated) return;
+      navigated = true;
+      onOpenPage(pageId);
+    };
     // If the stub already exists (empty or full), open it at once so the
     // working state is visible while the job fills it.
     if (pages?.some((p) => p.id === stubId)) {
-      onOpenPage(stubId);
+      openStub(stubId);
     }
     // The in-flight entry is set synchronously so the stub page shows its
     // working state immediately, before the request returns.
     void performAction(reviewId, { kind: "concept", slug }, { toast: false })
       .then((res) => {
-        if (res.accepted && res.pageId) onOpenPage(res.pageId);
+        if (res.accepted && res.pageId) openStub(res.pageId);
         else if (!res.accepted) toast("Not available with mock data");
       })
       .catch((err: unknown) => {
@@ -129,7 +137,7 @@ export function openLinkTarget(
         }
       });
     // Optimistic navigation so the working state shows immediately.
-    onOpenPage(stubId);
+    openStub(stubId);
     return;
   }
   toast("That link can't be opened");

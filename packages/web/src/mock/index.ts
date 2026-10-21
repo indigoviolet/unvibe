@@ -2941,7 +2941,11 @@ export const mockApi = {
         settleMockJob(jobId);
         const live = mockPages.find((p) => p.id === pageId);
         if (!live) return;
-        live.title = `${slug} (mock concept)`;
+        // The demo's obs-fold page is the one the specs read closely:
+        // give it its recorded title, its OWS/RWS link and an example
+        // aside, like the replayed recording (#216 on-demand fill).
+        const known = slug === "obs-fold";
+        live.title = known ? "Obsolete line folding (obs-fold)" : `${slug} (mock concept)`;
         live.cards = [
           {
             id: `cc-${slug}`,
@@ -2952,6 +2956,12 @@ export const mockApi = {
             revision: 2,
             blocks: [
               { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              ...(known
+                ? [
+                    { type: "paragraph", id: `cc-${slug}-b2`, text: { standard: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.' }, citations: [] },
+                    mockExampleAside(),
+                  ]
+                : []),
             ] as never,
             undoStack: [],
           },
