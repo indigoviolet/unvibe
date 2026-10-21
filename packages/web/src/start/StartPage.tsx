@@ -60,6 +60,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
+import { Button, Card } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
@@ -735,11 +736,12 @@ export function StartPage(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") openPrInput();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 220px" }}
         />
-        <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
+        <Button variant="primary" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
           Open PR
-        </button>
+        </Button>
       </div>
       {prError ? (
         <p className="hint" role="alert">
@@ -755,12 +757,12 @@ export function StartPage(): React.JSX.Element {
             </span>
           </div>
           <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-            <button className="btn" type="button" onClick={() => void cloneAndOpenPr()}>
+            <Button variant="primary" type="button" onClick={() => void cloneAndOpenPr()}>
               Clone and open #{prOffer.pr}
-            </button>
-            <button className="btn ghost" type="button" onClick={() => setPrOffer(null)}>
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => setPrOffer(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -886,14 +888,12 @@ export function StartPage(): React.JSX.Element {
                     <Link className="tbtn" to="/doctor">
                       Doctor
                     </Link>
+                    <Button variant="quiet" size="sm" type="button" onClick={() => void recheck()} disabled={checking}>
+                      {checking ? "Checking…" : "Re-check"}
+                    </Button>
                   </div>
                 </div>
               ))}
-              <div>
-                <button className="mini" type="button" onClick={() => void recheck()} disabled={checking}>
-                  {checking ? "Checking…" : "Re-check"}
-                </button>
-              </div>
             </div>
           ) : null}
 
@@ -1036,12 +1036,12 @@ export function StartPage(): React.JSX.Element {
               ) : listsError && keptFetchedAt === null ? (
                 <p className="hint" role="alert" data-testid="lists-error">
                   Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
-                  <button className="mini" type="button" onClick={retryLists}>
+                  <Button variant="quiet" size="sm" type="button" onClick={retryLists}>
                     Retry
-                  </button>
+                  </Button>
                 </p>
               ) : (
-                <section className="prblock" aria-label="PRs and branches" data-testid="pr-block">
+                <Card as="section" variant="plain" className="prblock" aria-label="PRs and branches" data-testid="pr-block">
                   <div className="prblock-head">
                     <h2 className="prblock-title">PRs and branches</h2>
                     <div className="prblock-tools">
@@ -1084,9 +1084,9 @@ export function StartPage(): React.JSX.Element {
                   {listsError ? (
                     <p className="hint" role="alert" data-testid="lists-error">
                       Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
-                      <button className="mini" type="button" onClick={retryLists}>
+                      <Button variant="quiet" size="sm" type="button" onClick={retryLists}>
                         Retry
-                      </button>
+                      </Button>
                     </p>
                   ) : null}
                   {fetchNote ? (
@@ -1130,9 +1130,9 @@ export function StartPage(): React.JSX.Element {
                       ) : (
                         <>
                           {windowEmptyNote}{" "}
-                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                          <Button variant="quiet" size="sm" type="button" onClick={() => selectRecency("all")}>
                             Show all
-                          </button>
+                          </Button>
                         </>
                       )}
                     </p>
@@ -1165,9 +1165,9 @@ export function StartPage(): React.JSX.Element {
                       ) : (
                         <>
                           {windowEmptyNote}{" "}
-                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                          <Button variant="quiet" size="sm" type="button" onClick={() => selectRecency("all")}>
                             Show all
-                          </button>
+                          </Button>
                         </>
                       )}
                     </p>
@@ -1206,7 +1206,7 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
-                </section>
+                </Card>
               )}
             </>
           )}
@@ -1306,26 +1306,26 @@ export function SessionRow({
         {confirmDelete === s.id ? (
           <>
             <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
-            <button
-              className="btn"
+            <Button
+              variant="primary"
               type="button"
               disabled={deleting === s.id}
               onClick={() => void removeSession(s.id)}
             >
               {deleting === s.id ? "Removing…" : "Remove"}
-            </button>
-            <button
-              className="btn ghost"
+            </Button>
+            <Button
+              variant="secondary"
               type="button"
               disabled={deleting === s.id}
               onClick={() => setConfirmDelete(null)}
             >
               Cancel
-            </button>
+            </Button>
           </>
         ) : (
-          <button
-            className="mini"
+          <Button
+            variant="quiet" size="sm"
             type="button"
             aria-label={`Remove ${s.title}`}
             disabled={deleting !== null}
@@ -1333,7 +1333,7 @@ export function SessionRow({
             title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
           >
             Remove
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -1510,9 +1510,9 @@ function ChangeSection({
         filteredNote ? (
           <p className="hint" data-testid={emptyTestId}>
             {filteredNote}{" "}
-            <button type="button" className="mini" onClick={onShowAll ?? undefined}>
+            <Button variant="quiet" size="sm" type="button" onClick={onShowAll ?? undefined}>
               Show all
-            </button>
+            </Button>
           </p>
         ) : (
           <p className="hint" data-testid={emptyTestId}>

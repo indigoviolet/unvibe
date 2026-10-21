@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModelInfo, ModelPick, ReadinessCheck, Settings, ThinkingResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Card, Field, Select } from "../ui/index.js";
 
 /** Display label the same way everywhere (#21): name beside the id. */
 export function modelLabel(m: ModelInfo): string {
@@ -212,7 +213,7 @@ function ModelPicker({
   };
 
   return (
-    <div className="card" style={{ padding: "8px 14px" }} data-testid={`model-${role}`}>
+    <Card variant="raised" data-testid={`model-${role}`}>
       <div className="frow" style={{ gap: 8 }}>
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
@@ -229,9 +230,8 @@ function ModelPicker({
           models below.
         </p>
       ) : null}
-      <div className="setgrid">
-        <label htmlFor={`prov-${role}`}>Provider</label>
-        <select
+      <Field label="Provider" htmlFor={`prov-${role}`}>
+        <Select
           id={`prov-${role}`}
           value={provider}
           onChange={(e) => {
@@ -245,9 +245,10 @@ function ModelPicker({
               {p}
             </option>
           ))}
-        </select>
-        <label htmlFor={`model-${role}`}>Model</label>
-        <div className="fld">
+        </Select>
+      </Field>
+      <Field label="Model" htmlFor={`model-${role}`}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           {error ? (
             <span className="err" role="alert">
               {error}
@@ -256,7 +257,7 @@ function ModelPicker({
             <span className="hint">Loading models…</span>
           ) : (
             <>
-              <select
+              <Select
                 id={`model-${role}`}
                 value={browsing ? "" : pick.model}
                 onChange={(e) => void saveModel(e.target.value)}
@@ -276,7 +277,7 @@ function ModelPicker({
                     {modelLabel(m)}
                   </option>
                 ))}
-              </select>
+              </Select>
               {/* Description as secondary text for the current pick + all options (#21). */}
               {(() => {
                 const current = browsing ? undefined : models.find((m) => m.id === pick.model);
@@ -313,8 +314,9 @@ function ModelPicker({
             </span>
           ) : null}
         </div>
-        <label htmlFor={`effort-${role}`}>{thinking?.label ?? "Effort"}</label>
-        <div className="fld">
+      </Field>
+      <Field label="Effort" htmlFor={`effort-${role}`}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           {thinkingError ? (
             <span className="hint" role="status">
               Couldn't load thinking levels ({thinkingError}) — Default stands.
@@ -323,7 +325,7 @@ function ModelPicker({
             <span className="hint">Loading thinking levels…</span>
           ) : (
             <>
-              <select
+              <Select
                 id={`effort-${role}`}
                 value={browsing ? "" : savedEffort}
                 onChange={(e) =>
@@ -341,10 +343,10 @@ function ModelPicker({
                 )}
                 {thinking.options.map((o) => (
                   <option key={o.value} value={o.value} title={o.description ?? undefined}>
-                    {o.name ? `${o.name} (${o.value})` : o.value}
+                    {o.name ?? o.value}
                   </option>
                 ))}
-              </select>
+              </Select>
               {(() => {
                 const current = browsing ? undefined : thinking.options.find((o) => o.value === savedEffort);
                 if (current?.description) {
@@ -373,7 +375,7 @@ function ModelPicker({
             </span>
           ) : null}
         </div>
-      </div>
-    </div>
+      </Field>
+    </Card>
   );
 }

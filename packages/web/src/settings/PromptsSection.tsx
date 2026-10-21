@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { PromptTemplate, PromptsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Card } from "../ui/index.js";
 
 export function PromptsSection(): React.JSX.Element {
   const [data, setData] = useState<PromptsResponse | null>(null);
@@ -44,7 +45,7 @@ export function PromptsSection(): React.JSX.Element {
 function PromptCard({ template }: { template: PromptTemplate }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
-    <div className="card" style={{ padding: "8px 14px" }} data-testid={`prompt-${template.name}`}>
+    <Card variant="raised" data-testid={`prompt-${template.name}`}>
       <div className="frow" style={{ gap: 8 }}>
         <button
           className="ib"
@@ -61,7 +62,7 @@ function PromptCard({ template }: { template: PromptTemplate }): React.JSX.Eleme
         </span>
       </div>
       {open ? <TemplateView template={template} /> : null}
-    </div>
+    </Card>
   );
 }
 

@@ -12,10 +12,11 @@
  * - shows the reason as an inline hint on "unavailable" so the user falls
  *   back to typing the path (the text field stays usable).
  *
- * Styling reuses the prototype classes (`btn`, `mini`, `hint`).
+ * Styling uses the shared Button (#201) and the prototype `hint` class.
  */
 import { useState } from "react";
 import { api, friendlyError } from "../api/client.js";
+import { Button } from "../ui/index.js";
 
 export function BrowseFolderButton({ onPick }: { onPick: (path: string) => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
@@ -41,15 +42,16 @@ export function BrowseFolderButton({ onPick }: { onPick: (path: string) => void 
 
   return (
     <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-      <button
-        className="btn mini"
+      <Button
+        variant="quiet"
+        size="sm"
         type="button"
         onClick={() => void browse()}
         disabled={busy}
         aria-busy={busy}
       >
         {busy ? "Choosing…" : "Browse…"}
-      </button>
+      </Button>
       {hint ? (
         <span className="hint" role="status">
           {hint}
