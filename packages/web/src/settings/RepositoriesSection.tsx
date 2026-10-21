@@ -25,7 +25,7 @@ import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { BrowseFolderButton } from "./BrowseFolderButton.js";
-import { Button } from "../ui/index.js";
+import { Button, Card } from "../ui/index.js";
 
 export function RepositoriesSection(): React.JSX.Element {
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -130,6 +130,7 @@ export function RepositoriesSection(): React.JSX.Element {
 
   return (
     <section aria-label="Repos" id="repositories" style={{ scrollMarginTop: 12 }} data-testid="repositories-section">
+      <Card variant="raised">
       <p className="hint">
         Repos you can open reviews from. The start page lists these, plus any it finds on this machine.
       </p>
@@ -143,7 +144,7 @@ export function RepositoriesSection(): React.JSX.Element {
         remembered.length === 0 ? (
           <p className="hint">No repos yet. Add one below by folder path or GitHub URL.</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="ui-list" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {remembered.map((r) => (
               <div key={r.id} className="ci" data-testid={`repo-${r.id}`}>
                 <div style={{ minWidth: 0 }}>
@@ -168,16 +169,11 @@ export function RepositoriesSection(): React.JSX.Element {
                           {removeError}
                         </span>
                       ) : null}
-                      <button
-                        className="ui-btn" data-variant="primary"
-                        type="button"
-                        disabled={removing === r.id}
-                        onClick={() => void remove(r)}
-                      >
+                      <Button variant="primary" size="sm" type="button" disabled={removing === r.id} onClick={() => void remove(r)}>
                         {removing === r.id ? "Removing…" : "Remove"}
-                      </button>
-                      <button
-                        className="ui-btn" data-variant="secondary"
+                      </Button>
+                      <Button
+                        variant="secondary" size="sm"
                         type="button"
                         disabled={removing === r.id}
                         onClick={() => {
@@ -186,11 +182,11 @@ export function RepositoriesSection(): React.JSX.Element {
                         }}
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </>
                   ) : (
-                    <button
-                      className="ui-btn" data-variant="quiet" data-size="sm"
+                    <Button
+                      variant="quiet" size="sm"
                       type="button"
                       aria-label={`Remove ${r.owner}/${r.name}`}
                       disabled={removing !== null}
@@ -205,7 +201,7 @@ export function RepositoriesSection(): React.JSX.Element {
                       }
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -213,7 +209,7 @@ export function RepositoriesSection(): React.JSX.Element {
           </div>
         )
       ) : null}
-      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "nowrap", marginTop: 8, width: "100%" }}>
         <input
           type="text"
           aria-label="Add a repo by path"
@@ -227,7 +223,7 @@ export function RepositoriesSection(): React.JSX.Element {
             if (e.key === "Enter") void add();
           }}
           className="ui-input"
-          style={{ flex: "1 1 220px" }}
+          style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "none" }}
         />
         <Button variant="primary" type="button" onClick={() => void add()} disabled={adding}>
           {adding ? "Adding…" : "Add by path"}
@@ -244,7 +240,7 @@ export function RepositoriesSection(): React.JSX.Element {
           {hint}
         </p>
       ) : null}
-      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "nowrap", marginTop: 8, width: "100%" }}>
         <input
           type="text"
           aria-label="Add a repo by URL"
@@ -260,7 +256,7 @@ export function RepositoriesSection(): React.JSX.Element {
             if (e.key === "Enter") void addByUrl();
           }}
           className="ui-input"
-          style={{ flex: "1 1 220px" }}
+          style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "none" }}
         />
         <Button variant="primary" type="button" onClick={() => void addByUrl()} disabled={addingUrl}>
           {addingUrl ? `Cloning ${cloningName ?? "repo"}…` : "Clone and add"}
@@ -276,6 +272,7 @@ export function RepositoriesSection(): React.JSX.Element {
           {urlError}
         </p>
       ) : null}
+      </Card>
     </section>
   );
 }

@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { api } from "../api/client.js";
 import { resetMockState } from "../mock/index.js";
@@ -227,11 +227,12 @@ describe("ReviewBar", () => {
       const switches = screen.getAllByTestId("version-switcher");
       expect(switches).toHaveLength(1);
       expect(document.getElementById("reviewbar")).toContainElement(switches[0]);
-      const pick = screen.getByLabelText("View version") as HTMLSelectElement;
-      expect(pick.value).toBe("2");
+      const pick = screen.getByLabelText("View version");
+      expect(pick).toHaveTextContent("v2 · e4f5a6b7 · current");
       expect(pick).toHaveClass("ui-select");
       // The current version is annotated in the dropdown.
-      const texts = [...pick.options].map((o) => o.textContent);
+      fireEvent.click(pick);
+      const texts = (await screen.findAllByRole("option")).map((o) => o.textContent?.replace("✓", "").trim());
       expect(texts).toContain("v2 · e4f5a6b7 · current");
       expect(texts).toContain("v1 · bdcc1e49");
       cleanup();
@@ -267,9 +268,10 @@ describe("ReviewBar", () => {
         expect(switcher).toHaveAttribute("data-ro", "1");
         expect(screen.queryByRole("button", { name: "Back to current" })).toBeNull();
         expect(switcher).not.toHaveTextContent("read-only");
-        const pick = screen.getByLabelText("View version") as HTMLSelectElement;
-        expect(pick.value).toBe("1");
-        const texts = [...pick.options].map((o) => o.textContent);
+        const pick = screen.getByLabelText("View version");
+        expect(pick).toHaveTextContent("v1 · bdcc1e49");
+        fireEvent.click(pick);
+        const texts = (await screen.findAllByRole("option")).map((o) => o.textContent?.replace("✓", "").trim());
         expect(texts).toContain("v2 · e4f5a6b7 · current");
       } finally {
         window.history.replaceState({}, "", "/");

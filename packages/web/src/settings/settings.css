@@ -16,24 +16,8 @@ mark.tm {
   font-family: var(--mono);
   font-size: 0.86em;
 }
-/* Version section (issue #73): the enable checkbox sits above the card,
-   top right; versions are one grid row each. */
-.ver-head {
-  display: flex;
-  align-items: start;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.ver-toggle {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: start;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--muted);
-  white-space: nowrap;
-  cursor: pointer;
-}
+/* Version section: the enable Field sits inside the card (#225);
+   channel rows are shared ListRows with equal heights. */
 .ver-current {
   font-size: 13px;
   margin: 6px 0;
@@ -54,16 +38,6 @@ mark.tm {
   justify-content: space-between;
   gap: 8px;
   margin: 6px 0 2px;
-}
-.ver-row {
-  display: grid;
-  /* Fixed action column (fits Confirm + Cancel): each row is its own
-     grid, so an auto column would shift sha/built between rows. */
-  grid-template-columns: minmax(0, 1fr) 5em 10em 150px;
-  gap: 2px 12px;
-  align-items: start;
-  padding: 5px 0;
-  border-top: var(--border-width) solid var(--line);
 }
 .ver-name {
   font-family: var(--mono);
@@ -86,16 +60,9 @@ mark.tm {
   color: var(--muted);
   white-space: nowrap;
 }
-.ver-action {
-  display: flex;
-  gap: 6px;
-  align-items: start;
-  justify-self: end;
-  white-space: nowrap;
-}
 .ver-note {
-  grid-column: 1 / -1;
   min-width: 0;
+  padding: 0 var(--space-2) var(--space-2);
 }
 .ver-note.warnline {
   margin: 2px 0;

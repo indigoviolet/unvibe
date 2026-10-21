@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle, isDocumentReview } from "@unvibe/shared";
+import { isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -145,6 +145,10 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       (a) => a.type === "comment" && (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt,
     ).length;
     const stale = snapshot?.versionStatus?.stale ?? false;
+    // #224: PR badges from the gh data stored on the description at
+    // ingest/refresh time (no gh call here, per this module's contract).
+    const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
+    const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
     // Issue #222: document reviews have no guide pipeline; the document is ready.
     const guide =
       snapshot !== null && isDocumentReview(snapshot)
@@ -170,6 +174,8 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       totalHunks,
       reviewedHunks,
       pendingComments,
+      ...(prState !== undefined ? { prState } : {}),
+      ...(reviewDecision !== undefined ? { reviewDecision } : {}),
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
       ingestStatus,

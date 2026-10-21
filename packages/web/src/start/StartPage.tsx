@@ -62,10 +62,10 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button, Card } from "../ui/index.js";
+import { Button, Card, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
-import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
+import { ingestStepLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
@@ -193,52 +193,6 @@ function timeAgo(ts: number): string {
     return new Date(ts).toLocaleDateString();
   } catch {
     return "";
-  }
-}
-
-/** Plain-words guide state for a prior review row (no job-kind jargon). */
-function guideLabel(s: ReviewSummary): string {
-  switch (s.guideStatus) {
-    case "ready":
-      return "Guide ready";
-    case "running":
-      return runningLabel(s.guideDetail);
-    case "error":
-      return "Guide didn't finish";
-    case "disabled":
-      return "Guide off";
-    default:
-      return "Guide not started";
-  }
-}
-
-/** Map the service's "Running: <job kinds>" detail to one short line. */
-function runningLabel(detail: string | undefined): string {
-  const kinds = (detail ?? "").replace(/^Running:\s*/i, "").split(",").map((k) => k.trim().toLowerCase());
-  const first = kinds.find((k) => k !== "");
-  // Stage names shared with the guide empty state (guide/stageLabels.ts);
-  // the rest are start-page-only labels.
-  const shared = stageLabel(first);
-  if (shared) return shared;
-  switch (first) {
-    case "explain":
-      return "Writing explanation…";
-    case "ask":
-      return "Answering a question…";
-    case "depth":
-      return "Rewriting…";
-    case "examples":
-      return "Adding examples…";
-    case "diagram":
-      return "Drawing diagram…";
-    case "second-opinion":
-      return "Getting a second opinion…";
-    case "update-pass":
-      return "Updating for new commits…";
-    case "summarize":
-      return "Summarizing…";
-    default:
-      return "Working…";
   }
 }
 
@@ -464,8 +418,8 @@ export function StartPage(): React.JSX.Element {
   // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
   // Bumped on every explicit selection so the load effect re-runs even
-  // when the id is unchanged: `selectOption` fires `change` (and
-  // `selectRepo` clears) even for the already-selected repo, and without
+  // when the id is unchanged: Base UI's Select calls `onValueChange` (and
+  // `selectRepo` clears) even for the already-selected option, and without
   // this the effect's id-equality bail-out would leave no load in flight
   // — a permanent "Loading…" with no recovery.
   const [listsNonce, setListsNonce] = useState(0);
@@ -885,7 +839,7 @@ export function StartPage(): React.JSX.Element {
   const renderPrOpener = (): React.JSX.Element => (
     <>
       <div className="divider">Open a PR by URL or number</div>
-      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "nowrap", marginBottom: 8, width: "100%" }}>
         <input
           type="text"
           aria-label="Open a PR by URL or number"
@@ -900,7 +854,7 @@ export function StartPage(): React.JSX.Element {
             if (e.key === "Enter") openPrInput();
           }}
           className="ui-input"
-          style={{ flex: "1 1 220px" }}
+          style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "none" }}
         />
         <Button variant="primary" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
           Open PR
@@ -997,33 +951,22 @@ export function StartPage(): React.JSX.Element {
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-              <select
-                aria-label="Repo"
-                className="tbtn"
-                value={selectedId}
-                title={selected?.localPath ?? ""}
-                onChange={(e) => selectRepo(e.target.value)}
-              >
-                {remembered.length > 0 ? (
-                  <optgroup label="Repos">
-                    {remembered.map((r) => (
-                      <option key={r.id} value={r.id} title={r.localPath}>
-                        {r.owner}/{r.name}
-                        {r.managed ? " (cloned)" : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {detected.length > 0 ? (
-                  <optgroup label="Found on this machine">
-                    {detected.map((r) => (
-                      <option key={r.id} value={r.id} title={r.localPath}>
-                        {r.owner}/{r.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
+              <span style={{ width: 320, maxWidth: "100%" }}>
+                <Select
+                  aria-label="Repo"
+                  value={selectedId}
+                  title={selected?.localPath ?? ""}
+                  onValueChange={selectRepo}
+                  options={[
+                    ...(remembered.length > 0
+                      ? [{ label: "Repos", options: remembered.map((r) => ({ value: r.id, label: `${r.owner}/${r.name}${r.managed ? " (cloned)" : ""}` })) }]
+                      : []),
+                    ...(detected.length > 0
+                      ? [{ label: "Found on this machine", options: detected.map((r) => ({ value: r.id, label: `${r.owner}/${r.name}` })) }]
+                      : []),
+                  ]}
+                />
+              </span>
             </div>
           ) : null}
           {/* Readiness callouts: one compact row per problem, each linking
@@ -1241,20 +1184,16 @@ export function StartPage(): React.JSX.Element {
                           PRs", both review groups and Recent branches (by
                           last commit date). Reviews above stays
                           unfiltered. */}
-                      <select
-                        aria-label="Updated within"
-                        className="tbtn"
-                        value={recency}
-                        onChange={(e) => {
-                          if (isRecencyWindow(e.target.value)) selectRecency(e.target.value);
-                        }}
-                      >
-                        {RECENCY_WINDOWS.map((w) => (
-                          <option key={w.value} value={w.value}>
-                            {w.label}
-                          </option>
-                        ))}
-                      </select>
+                      <span style={{ width: 150, flex: "none" }}>
+                        <Select
+                          aria-label="Updated within"
+                          value={recency}
+                          onValueChange={(v) => {
+                            if (isRecencyWindow(v)) selectRecency(v);
+                          }}
+                          options={RECENCY_WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
+                        />
+                      </span>
                     </div>
                   </div>
                   {listsError ? (
@@ -1300,7 +1239,7 @@ export function StartPage(): React.JSX.Element {
                   ) : null}
                   <div className="subhead">Requested of you</div>
                   {visibleDirect.length === 0 ? (
-                    <p className="hint" data-testid="requested-direct-empty">
+                    <p className="hint subempty" data-testid="requested-direct-empty">
                       {directRequested.length === 0 ? (
                         "No PRs requested of you."
                       ) : (
@@ -1335,7 +1274,7 @@ export function StartPage(): React.JSX.Element {
                   )}
                   <div className="subhead">Requested of your team</div>
                   {visibleTeam.length === 0 ? (
-                    <p className="hint" data-testid="requested-team-empty">
+                    <p className="hint subempty" data-testid="requested-team-empty">
                       {teamRequested.length === 0 ? (
                         "No PRs requested of your team."
                       ) : (
@@ -1422,8 +1361,9 @@ export function SessionRow({
       ? githubPrUrl(s.repoOwner, s.repoName, s.prNumber)
       : null;
   const canOpen = opening === null && deleting === null;
+  const faded = s.prState === "merged" || s.prState === "closed";
   return (
-    <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
+    <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
         <span className="cw">
           {s.repoOwner}/{s.repoName} ·{" "}
@@ -1466,13 +1406,23 @@ export function SessionRow({
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
-              {" · "}
-              {guideLabel(s)}
+              {s.guideStatus === "running" ? (
+                <>
+                  {" · "}
+                  <ProcessingDots />
+                </>
+              ) : s.guideStatus === "error" ? (
+                <>
+                  {" · "}
+                  <span className="err" role="status">Guide didn&apos;t finish</span>
+                </>
+              ) : null}
             </>
           )}
         </span>
       </div>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+        <PrBadges prState={s.prState} reviewDecision={s.reviewDecision} />
         {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
         {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
@@ -1631,8 +1581,9 @@ function ChangeRow({
           <span className="cx2">{c.title}</span>
         </button>
       </div>
-      {c.reviewId || opening === changeKey(c, i) ? (
+      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision ? (
         <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+          <PrBadges prState={c.prState} reviewDecision={c.reviewDecision} />
           {c.reviewId ? <span className="prtag">review</span> : null}
           {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
           {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
@@ -1684,14 +1635,14 @@ function ChangeSection({
       ) : null}
       {changes.length === 0 && !error ? (
         filteredNote ? (
-          <p className="hint" data-testid={emptyTestId}>
+          <p className="hint subempty" data-testid={emptyTestId}>
             {filteredNote}{" "}
             <Button variant="quiet" size="sm" type="button" onClick={onShowAll ?? undefined}>
               Show all
             </Button>
           </p>
         ) : (
-          <p className="hint" data-testid={emptyTestId}>
+          <p className="hint subempty" data-testid={emptyTestId}>
             {empty}
           </p>
         )

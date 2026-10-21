@@ -50,7 +50,7 @@ export function AppearanceSection({
         <Field
           label="Theme"
           htmlFor="ui-theme"
-          help={<>{UI_THEMES.find((t) => t.id === selected)?.hint} Light and dark stay as your system (or browser) sets them; the theme only changes colours, fonts, corners and shadows.</>}
+          help="Light and dark follow your system."
           status={<>{errors.map((m) => (<span className="err" role="alert" key={m}>{m}</span>))}{savedNote ? <span className="hint">{savedNote}</span> : null}</>}
         >
           <Select
@@ -58,14 +58,9 @@ export function AppearanceSection({
             data-testid="ui-theme"
             value={selected}
             disabled={saving}
-            onChange={(e) => void pick(e.target.value as UiThemeId)}
-          >
-            {UI_THEMES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </Select>
+            onValueChange={(v) => void pick(v as UiThemeId)}
+            options={UI_THEMES.map((t) => ({ value: t.id, label: t.label }))}
+          />
         </Field>
       </Card>
     </section>
