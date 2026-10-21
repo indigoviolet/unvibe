@@ -147,6 +147,7 @@ export function DiagramView({ reviewId, block, onOpenPage, fetchSvg }: Props) {
               variant="secondary"
               size="sm"
               type="button"
+              className="dg-expand"
               aria-label="Expand diagram"
               aria-haspopup="dialog"
               onClick={() => setExpanded(true)}
