@@ -934,9 +934,11 @@ export async function registerReviews(
     if (!first) return reply.code(404).send({ error: "unknown review" });
     const refused = ingestRefusal(first);
     if (refused) return reply.code(409).send({ error: refused });
-    // Issue #222: document reviews have a single version — nothing to refresh.
+    // Issue #222: document reviews have a single version — refresh is a
+    // no-op (the web checks for new commits on every review open).
     if (first.review.kind === "document") {
-      return reply.code(409).send({ error: "document reviews have a single version — there is nothing to refresh" });
+      const response: RefreshResponse = { review: first.review, newVersion: false };
+      return response;
     }
     if (first.review.repoId === "demo") {
       const response: RefreshResponse = { review: first.review, newVersion: false };

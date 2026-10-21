@@ -2426,3 +2426,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #222 phase 1 (branch `feat/222-document-review`)
+
+- **Document review kind (#222):** `POST /api/reviews` with
+  `kind: "document"` creates a review from pasted Markdown plus 1–2
+  context repos, each read from a particular worktree, `origin/main`,
+  or the local copy (`GET /api/repos/:id/worktrees` feeds the picker;
+  picks resolve at creation). The document renders in the left pane
+  with paragraph block IDs (`p1`, `p2`, …; cited as `doc:pN`, anchored
+  as `document#pN`), and Explain / Ask / Comment work on it with the
+  context repos as context: one base session per document (the document
+  plus a tree/README map of each repo), forked per Explain/Ask, no
+  captive session. Nothing is generated up front; the review has a
+  single version (refresh is a no-op; redo/resume refuse). Comments use
+  the shared comment model (`post: true`), so they land in the comments
+  menu today and the Outbox when #223 merges; Submit stays disabled
+  (no PR). `code:` citations in answers validate through the existing
+  file-length path and open via #81's source-pane support once merged;
+  there is no code browser (phase 2, #82) and no "code" review kind.
+  Evidence: `packages/shared/test/document.test.ts`,
+  `packages/service/test/document-222.test.ts`,
+  `packages/service/test/validate.test.ts` (doc: targets),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (create → read →
+  Explain → Ask → Comment against the real service, replay agent).

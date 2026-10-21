@@ -121,8 +121,10 @@ describe("document reviews (#222)", () => {
       payload: { kind: "document", markdown: "# T\n\nHello world.\n", contextRepos: [{ repoId, source: "origin-main" }] },
     });
     const id = (created.json() as { review: { id: string } }).review.id;
+    // Single version: refresh is a no-op, not an error.
     const refresh = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: AUTH });
-    expect(refresh.statusCode).toBe(409);
+    expect(refresh.statusCode).toBe(200);
+    expect((refresh.json() as { newVersion: boolean }).newVersion).toBe(false);
   });
 
   it("anchors a local comment on a document block (Outbox model)", async () => {
