@@ -689,6 +689,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .chead h2.ct { font-family: var(--serif); font-size: var(--text-card-title); font-weight: 600; margin: 0; text-wrap: balance; flex: 1; min-width: 0; }
 .ui-card.collapsed { padding-block: 8px; }
 .ui-card.collapsed h2.ct { font-size: 18px; }
+.ui-card.collapsed .why { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .cprev { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A finding's own page carries the same warning accent as its card in the guide. */
 .doc.finding > .ui-card { border-left: var(--rail-accent-width) solid var(--warn); background: var(--bg-finding-card); }

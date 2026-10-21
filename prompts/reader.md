@@ -85,7 +85,8 @@ Write the cards in this order, walking the plotlines you settled:
 
 1. **The problem.** Lead with what was wrong before the change and why it
    mattered, in the first sentence. The first paragraph alone states the
-   problem and the central idea. Include how the system worked before —
+   problem. This card states the problem only: do not state the change's
+   central idea here — it has the next card. Include how the system worked before —
    the architecture the reader needs to follow the problem — not only
    what the description says. Cite the description paragraphs that
    state the problem and the code that shows it (their `desc:` IDs are
@@ -94,52 +95,60 @@ Write the cards in this order, walking the plotlines you settled:
    agent-written boilerplate, reconstruct the problem from the commits
    and the code instead, and say where a reason is inferred rather than
    stated.
-2. **The central idea.** What the change does and how. With one plotline,
-   write one card ("The central change"). With several plotlines, write
-   one card per plotline, each stating that thread's idea on its own.
-   Name the mechanism and the few pieces the idea lives in. Leave out
+2. **The central idea.** Always write one card titled "The central idea"
+   immediately after the problem card, even when there are several plotlines.
+   In a few sentences it states the whole change's central
+   idea — what it does and how, at the level the reader needs before
+   any detail. It is the guide's summary card: keep it short, and leave
+   the detail to the cards that follow. With one plotline, this card is
+   the only central-idea card. With several plotlines, follow it with
+   one card per plotline, titled with the plotline's name, each stating
+   that thread's idea on its own in more detail. Name the mechanism and
+   the few pieces the idea lives in. Leave out
    private helpers and plumbing unless the idea depends on them.
    Invariants and contracts belong to the Decisions and questions card.
-   Small tables of before/after values are welcome where
-   the change is a transformation.
+   Small tables of before/after values are welcome in the per-plotline
+   cards where the change is a transformation.
 3. **How it's built up.** Walk the plotlines in landing order: for each
    step, what it adds and what it makes possible for the next one, so
    the reader sees the progression the plotlines were chosen for. With
    a single plotline, say how its pieces build up instead.
-4. **Decisions and questions.** Widest reach first; skip a part that has
-   nothing real in this change. This card explains; it does not judge —
-   whether a choice was right stays with the critic. Name an alternative
-   only when it is real for this code (a nearby pattern, an existing
-   helper, an obvious other design), cited where it can be grounded;
-   when the author's reason is not stated in the description or the
-   commits, say the reason is inferred, and never invent one.
-   - **Interfaces with reach:** public/exported APIs, shared types, wire
-     and storage formats, schemas, configuration and CLI surface,
-     events, module boundaries, extension points. What changed and who
-     depends on it (cite consumers). Private and local interfaces are
-     free; leave them out. Test: would anyone outside this module have
-     to know or change something?
-   - **Invariants:** rules that now hold or no longer hold; where
-     established, where relied on, what enforces them (type, check,
-     test) or that nothing does.
+4. **Decisions and questions.** Give its parts in this order —
+   Decisions, Invariants, Known uncertainties, Interfaces — and skip a
+   part that has nothing real in this change. This card explains; it
+   does not judge — whether a choice was right stays with the critic.
+   Name an alternative only when it is real for this code (a nearby
+   pattern, an existing helper, an obvious other design), cited where
+   it can be grounded; when the author's reason is not stated in the
+   description or the commits, say the reason is inferred, and never
+   invent one.
    - **Decisions:** architectural (where responsibility lives, data and
      control flow, state ownership, new dependencies) and product or
      user-affecting (visible behaviour, defaults, errors, performance,
      permissions, migration). For each: chosen, real alternatives, why
      (stated or inferred, say which), cost, what it locks in or keeps
      open, and whether it follows the system's existing patterns or
-     starts a new one (deliberately or incidentally).
-   - **What it adds and removes:** new concepts, types and modules;
-     special cases; flags and settings; a second way to do something
-     the system already does; duplicated logic; new dependencies; wider
-     interfaces; and what it simplifies or deletes. Where an existing
-     pattern, helper or path could have carried the change, cite it.
-     Stated as facts, not verdicts.
+     starts a new one (deliberately or incidentally). When a decision
+     introduces a second way of doing something the system already does
+     (two mechanisms for the same job), or departs from an existing
+     pattern, say so plainly and cite the existing pattern, helper or
+     path it departs from. Stated as a fact about the decision, not a
+     verdict. No inventories: do not list everything the change adds
+     or removes.
+   - **Invariants:** rules that now hold or no longer hold; where
+     established, where relied on, what enforces them (type, check,
+     test) or that nothing does.
    - **Known uncertainties:** what can't be settled from the code and
      description (assumptions about inputs or environment, unseen code,
      unstated intent, untested paths), each with what would settle it.
      These also stay in `open_questions` (in the trailing `contribute`
      block), so they still become suggested comments.
+   - **Interfaces with reach:** public/exported APIs, shared types, wire
+     and storage formats, schemas, configuration and CLI surface,
+     events, module boundaries, extension points. What changed and who
+     depends on it (cite consumers). Private and local interfaces are
+     free; leave them out. Test: would anyone outside this module have
+     to know or change something?
 5. **Names.** Only when the change introduces names with reach;
    otherwise omit this card entirely. For each newly introduced name of
    a process, job, service, interface, type, endpoint/route, event,
@@ -167,7 +176,8 @@ Write the cards in this order, walking the plotlines you settled:
 ## Output shape
 
 Stream one `## Title` card at a time, in the order above: the problem
-card, the central-idea card(s), "How it's built up", then "Decisions
+card, the one central-idea card, the per-plotline card(s) when there
+are several plotlines, "How it's built up", then "Decisions
 and questions", then "Names" (only when it applies), then stop. Every card starts with its `## Title`
 line, and the first one opens your reply: no greeting, plan or notes
 before it, because any text there is discarded. The Go deeper directions
@@ -192,7 +202,8 @@ the page is written when the reader opens the link.
   never mentions the list. Known uncertainties named in the Decisions
   and questions card also go in `open_questions`, so both places carry
   them.
-- The problem card comes first and carries the central idea. Do not bury
+- The problem card comes first and states the problem only; the
+  central idea has its own card right after it. Do not bury
   the point in background.
 - Citations on every paragraph that states something about the change.
   For `diff:` use exactly `diff:<fileKey>:<start>[-<end>]` with the

@@ -175,6 +175,31 @@ describe("repo prompts/ directory", () => {
     expect(ask).toContain("connect the local detail to it");
   });
 
+  it("problem-only, always-one central card, Decisions order and second-way signal (#212/#217 follow-ups)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const instructions = lib.get("instructions")?.body ?? "";
+    const reader = lib.get("reader")?.body ?? "";
+    // Problem card states the problem only; no central idea in it, in
+    // the reader prompt or in L0.
+    expect(reader).not.toContain("problem and the central idea");
+    expect(reader).not.toContain("carries the central idea");
+    expect(reader).toContain("states the problem only");
+    expect(instructions).not.toContain("what idea the change is built around, which choices");
+    // Always one central-idea (TL;DR) card right after the problem,
+    // even with several plotlines; per-plotline cards follow it.
+    expect(reader).toContain("**The central idea.** Always write one card");
+    expect(reader).toContain("even when there are several plotlines");
+    expect(reader).toContain("one card per plotline");
+    // Decisions parts in owner order; "What it adds and removes" gone.
+    expect(reader).not.toContain("What it adds and removes");
+    const order = ["- **Decisions:**", "- **Invariants:**", "- **Known uncertainties:**", "- **Interfaces with reach:**"].map((s) => reader.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Second-way signal lives in Decisions, with no inventories.
+    expect(reader).toContain("second way of doing something the system already does");
+    expect(reader).toContain("No inventories");
+  });
+
   it("resolvePromptsDir finds the repo prompts from the service package", () => {
     const serviceDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(resolvePromptsDir(serviceDir)).toBe(REPO_PROMPTS);
