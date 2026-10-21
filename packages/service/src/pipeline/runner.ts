@@ -915,10 +915,10 @@ export class Pipeline {
         // like the demo fill below (no-op unless the reader named
         // plotlines on a degraded rung with hunks still unassigned).
         jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
-        // Demo auto-fill is part of enqueueAfterReader, not a stage: a
-        // restart after the base finished would otherwise leave pending
-        // placeholders unfilled. No-op when nothing is pending.
-        jobIds.push(...(await this.enqueueDemoFill(reviewId)).map((j) => j.id));
+        // Auto go-deeper (#217) is part of enqueueAfterReader, not a stage:
+        // a restart after the base finished would otherwise leave pending
+        // placeholders unfilled when the setting is on. No-op otherwise.
+        jobIds.push(...(await this.enqueueAutoGoDeeper(reviewId)).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -2058,9 +2058,9 @@ export class Pipeline {
     // places the hunks the reader never saw; otherwise left-outs stay
     // "other".
     out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
-    if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-      out.push(...(await this.enqueueDemoFill(reviewId)));
-    }
+    // #217: with the setting on, every go-deeper placeholder is written
+    // in the background once the guide lands (demo included).
+    out.push(...(await this.enqueueAutoGoDeeper(reviewId)));
     return out;
   }
 
@@ -2453,31 +2453,26 @@ export class Pipeline {
     return [job];
   }
 
-  private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
+  private async enqueueAutoGoDeeper(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
-    const out: Job[] = [];
     const effective = await this.effectiveSettings();
+    if (!effective.autoGoDeeper) return [];
     const root = snapshot.pages.find((p) => p.id === "root");
-    // Pending cards may not exist yet (reader still running when this is
-    // called from enqueueAfterReader). Demo fill runs AFTER reader, so root
-    // should have placeholders; if not, skip (resume will pick them up).
     const pending = root?.cards.filter((c) => c.pending) ?? [];
-    for (const card of pending) {
-      out.push(
-        this.opts.jobs.enqueue({
-          reviewId,
-          kind: "go-deeper",
-          ...roleFields(effective.main),
-          priority: JOB_PRIORITY.background,
-          dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
-          run: async (ctx) => {
-            await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
-          },
-        }),
-      );
-    }
-    return out;
+    return pending.map((card) =>
+      this.opts.jobs.enqueue({
+        reviewId,
+        kind: "go-deeper",
+        ...roleFields(effective.main),
+        priority: JOB_PRIORITY.background,
+        dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
+        cardId: card.id,
+        run: async (ctx) => {
+          await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
+        },
+      }),
+    );
   }
 
   async fillGoDeeper(

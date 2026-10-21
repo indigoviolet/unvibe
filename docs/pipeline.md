@@ -61,9 +61,10 @@ GET /api/repos/demo/changes        → [{ kind: "demo", title: "Demo: urllib3#50
 POST /api/reviews { repoId: "demo" } → 201 + pipeline starts
 ```
 
-In demo, the pipeline also auto-fills go-deeper placeholders
-(background jobs, same `runInFork` path) so the demo snapshot ends up
-complete without clicks. Concept pages are written only when a reader
+With `autoGoDeeper` on (the default, #217), the pipeline fills every
+go-deeper placeholder in the background once the guide lands (background
+jobs, same fill path; demo included). With it off, a placeholder is
+written only on Generate. Concept pages are written only when a reader
 opens a concept link (#216).
 
 ## Stages (all jobs on the queue)

@@ -62,7 +62,7 @@ async function enqueueGenerate(
     model: settings.main.model,
     effort: settings.main.effort,
     priority: JOB_PRIORITY.userRequested,
-    dedupe: { anchor: `go-deeper:${cardId}`, requestKind: "generate", baseVersion },
+    dedupe: { anchor: `go-deeper:${cardId}`, requestKind: "go-deeper", baseVersion },
     cardId,
     run: async (ctx) => {
       await pipeline.fillGoDeeper(reviewId, cardId, ctx.signal, (d) => ctx.reportText(d), ctx);

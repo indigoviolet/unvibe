@@ -685,6 +685,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   versionPickerEnabled: false,
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
+  autoGoDeeper: true,
 };
 
 function getMockSettings(): Settings {

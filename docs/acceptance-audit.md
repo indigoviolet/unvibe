@@ -1282,7 +1282,7 @@ needed (that deviation is closed, not added).
    reason, and summary-less rows render the reason copy with no spinner
    (`DiffView.test.tsx` "folds on the deterministic hidden reason").
    Deviation from PRD §11 step 5 noted below.
-6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — automatic in the background by default (#217), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).

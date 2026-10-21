@@ -30,7 +30,8 @@ function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>>
     uiTheme: "default",
   versionPickerEnabled: false,
     fullAccess,
-    fullAccessAcknowledgedAt: fullAccess ? 1 : null,
+    autoGoDeeper: true,
+  fullAccessAcknowledgedAt: fullAccess ? 1 : null,
   };
 }
 
