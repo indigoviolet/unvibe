@@ -1,5 +1,5 @@
 /**
- * Where a For-PR thread lands on GitHub (PRD 4.8, 4.12).
+ * Where an Outbox thread lands on GitHub (PRD 4.8, 4.12).
  *
  * - A diff-line thread -> that path + line + side.
  * - A guide-block thread -> the first `diff:` citation of its host block.
@@ -294,11 +294,10 @@ export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotatio
 }
 
 /**
- * All comments marked for posting (`post`) that have not been posted
- * yet, each with its location + exact text. Posted comments
- * (`postedAt`) are skipped so retries never double-post. Conversations
- * are never submitted: only the reviewer's own comments go to the PR
- * (#136).
+ * All comments in the Outbox (`post`) that have not been posted yet,
+ * each with its location + exact text. Posted comments (`postedAt`) are
+ * skipped so retries never double-post. Conversations are never
+ * submitted: only the reviewer's own comments go to the PR (#136).
  */
 export function locatePendingThreads(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): LocatedComment[] {
   return (snapshot.annotations ?? [])

@@ -62,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -3417,6 +3417,14 @@ export const mockApi = {
   prComments: async () => {
     emitExisting();
     return { comments: existingComments };
+  },
+
+  outbox: async (id: string) => {
+    const snap = currentSnapshot(id);
+    return {
+      markdown: buildOutboxExportMarkdown(snap, { title: snap.review.branch || id }),
+      count: outboxThreads(snap).length,
+    };
   },
 
   viewer: async () => ({ login: "you" }),

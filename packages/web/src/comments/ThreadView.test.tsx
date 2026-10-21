@@ -128,11 +128,11 @@ describe("ThreadView reply box", () => {
     }
   });
 
-  test("comments carry the For-PR control", async () => {
+  test("comments carry the Outbox control", async () => {
     const commenting = thread({ messages: [{ who: "you", text: "Nit" }], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
-    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /In the Outbox/ })).toBeVisible();
   });
 });
 
@@ -216,12 +216,12 @@ describe("ThreadView suggested comments (issue #163)", () => {
     expect(screen.getByText("Consider a boundary test.")).toBeInTheDocument();
   });
 
-  test("a suggestion keeps ask-about, mark-for-PR, delete and close", () => {
+  test("a suggestion keeps ask-about, Outbox, delete and close", () => {
     const s = suggested();
     seedSuggested(s);
     render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
     expect(screen.getByRole("button", { name: "Ask the agent about this" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Mark for the PR/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add to Outbox/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });

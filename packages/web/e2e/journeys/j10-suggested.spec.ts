@@ -55,15 +55,15 @@ test.describe("J10 suggested comments and questions", () => {
     await expect(thread.locator("textarea")).toHaveCount(0);
 
     // Accept: mark it for the PR.
-    const markBtn = thread.getByRole("button", { name: "Mark for the PR" });
+    const markBtn = thread.getByRole("button", { name: "Add to Outbox" });
     if ((await markBtn.count()) > 0) {
       await markBtn.click();
-      await expect(thread.getByRole("button", { name: /Marked for the PR/ })).toBeVisible({ timeout: 10_000 });
+      await expect(thread.getByRole("button", { name: /In the Outbox/ })).toBeVisible({ timeout: 10_000 });
     }
 
     // Edit its draft in the Comments menu.
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="pr"]').click();
+    await page.locator('.cmenu [data-cmf="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     if ((await draft.count()) > 0) {
       await draft.fill("Edited suggestion for the PR.");

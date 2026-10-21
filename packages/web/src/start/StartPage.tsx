@@ -1465,7 +1465,7 @@ export function SessionRow({
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {" · "}
               {guideLabel(s)}
             </>

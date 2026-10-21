@@ -922,6 +922,32 @@ for (const combo of [
     await shot(page, "menu-comments", suffix, "Already on GitHub");
     await page.keyboard.press("Escape");
 
+    // Outbox view with the Markdown export box (#223): mark one visible
+    // suggested comment, then show the Outbox filter with its Copy box.
+    // The four variants share one review, so an earlier variant may
+    // already have marked every rendered comment (no "Add to Outbox"
+    // left), and at 960 the diff threads can still be mounting when
+    // this step starts. Wait (bounded, with a clear message) for a
+    // toggle in either state, and only click when nothing is marked.
+    const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
+    const inOutbox = page.getByRole("button", { name: /In the Outbox/ }).first();
+    await expect
+      .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
+        timeout: 15_000,
+        message: "menu-outbox: no comment Outbox toggle rendered yet (diff threads not mounted)",
+      })
+      .toBeGreaterThan(0);
+    if ((await inOutbox.count()) === 0) {
+      await addToOutbox.click({ timeout: 10_000 });
+      await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
+    }
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('.cmenu [data-cmf="outbox"]').click();
+    await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
+    await stepChecks(page, "menu-outbox");
+    await shot(page, "menu-outbox", suffix, "Copy");
+    await page.keyboard.press("Escape");
+
     // Debug page (#194): job timings in local time with durations.
     await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });

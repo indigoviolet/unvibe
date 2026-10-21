@@ -6,9 +6,10 @@
  * - lists every comment from the guide, the description and the diff with
  *   its location; clicking one jumps to it (opening the thread, switching
  *   page/tab, unfolding/unhiding as needed);
- * - the For PR filter shows the comments marked for the PR, each with an
+ * - the Outbox filter shows the comments in the Outbox, each with an
  *   editable draft of the text to post (saved through `PATCH …/comments`,
- *   debounced, never lost on re-render);
+ *   debounced, never lost on re-render), plus the export Markdown box
+ *   with a Copy button (hidden when the Outbox is empty, #223);
  * - counts on the button; it never posts.
  * - Existing PR comments already on GitHub (`existingComments`) render
  *   read-only under a separate heading.
@@ -149,7 +150,7 @@ function DraftArea({
   return (
     <textarea
       id={`ob-${thread.id}`}
-      aria-label="Draft PR comment"
+      aria-label="Outbox draft"
       value={value}
       readOnly={readOnly}
       title={readOnly ? "Viewing an older version · read-only" : undefined}
@@ -171,7 +172,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const snapshot = useReview((s) => s.snapshot);
   const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pr">("all");
+  const [filter, setFilter] = useState<"all" | "outbox">("all");
+  const [exportMd, setExportMd] = useState<string | null>(null);
   const [fetchedExisting, setFetchedExisting] = useState<ExistingReviewComment[] | null>(null);
   const navigate = useNavigate();
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -186,7 +188,33 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       ) as Annotation[]),
     [snapshot],
   );
-  const forPr = useMemo(() => threads.filter((t) => t.post && !t.postedAt), [threads]);
+  const outbox = useMemo(() => threads.filter((t) => t.post && !t.postedAt), [threads]);
+
+  // #223: export Markdown from the service (shared builder), shown in a
+  // box with Copy in the Outbox view. Hidden (and unfetched) when empty.
+  useEffect(() => {
+    if (!open || filter !== "outbox" || outbox.length === 0) return;
+    let cancelled = false;
+    api
+      .outbox(reviewId)
+      .then((res) => {
+        if (!cancelled) setExportMd(res.markdown);
+      })
+      .catch(() => {
+        if (!cancelled) setExportMd(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, filter, outbox.length, reviewId, snapshot?.rev]);
+
+  const copyExport = (): void => {
+    if (exportMd === null) return;
+    navigator.clipboard
+      .writeText(exportMd)
+      .then(() => toast("Copied the Outbox Markdown"))
+      .catch(() => toast("Couldn't copy — select the text in the box instead"));
+  };
   const existing = snapshot?.existingComments ?? fetchedExisting ?? null;
 
   // Fetch read-only GitHub comments once per menu opening when the
@@ -272,7 +300,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     go();
   };
 
-  const list = filter === "pr" ? forPr : threads;
+  const list = filter === "outbox" ? outbox : threads;
 
   // Existing GitHub threads grouped by file, in fetch order (issue #168).
   const githubGroups = useMemo(() => {
@@ -332,7 +360,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       >
         <Icon name="comment" />
         Comments {threads.length}
-        {forPr.length > 0 ? <Badge tone="warn">{forPr.length} for PR</Badge> : null}
+        {outbox.length > 0 ? <Badge tone="warn">{outbox.length} in Outbox</Badge> : null}
       </Button>
       {open && snapshot ? (
         <div className="cmenu" role="dialog" aria-label="Comments">
@@ -341,8 +369,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               <button type="button" data-cmf="all" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
                 All {threads.length}
               </button>
-              <button type="button" data-cmf="pr" aria-pressed={filter === "pr"} onClick={() => setFilter("pr")}>
-                For PR {forPr.length}
+              <button type="button" data-cmf="outbox" aria-pressed={filter === "outbox"} onClick={() => setFilter("outbox")}>
+                Outbox {outbox.length}
               </button>
             </span>
             <span className="sp" />
@@ -356,24 +384,36 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               <div className="ci" key={thread.id}>
                 <button className="cj" type="button" data-cjump={thread.id} onClick={() => jump(thread)}>
                   <span className="cw">
-                    {filter === "pr" ? `${prLocationLabel(snapshot, thread)} · from ${where}` : where}
+                    {filter === "outbox" ? `${prLocationLabel(snapshot, thread)} · from ${where}` : where}
                   </span>
                   <span className="cx2">{excerpt(thread)}</span>
                 </button>
-                {thread.post ? <Badge tone="warn">For PR</Badge> : null}
-                {filter === "pr" ? <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} /> : null}
+                {thread.post ? <Badge tone="warn">Outbox</Badge> : null}
+                {filter === "outbox" ? <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} /> : null}
               </div>
             );
           })}
           {list.length === 0 ? (
             <p className="hint" style={{ margin: 4 }}>
-              {filter === "pr"
-                ? "Nothing marked for the PR yet. Use “Mark for the PR” on any comment."
+              {filter === "outbox"
+                ? "Nothing in the Outbox yet. Use “Add to Outbox” on any comment."
                 : "No comments yet. Select text and choose Ask or Comment."}
             </p>
           ) : null}
-          {filter === "pr" && forPr.length > 0 ? (
+          {filter === "outbox" && outbox.length > 0 ? (
             <span className="hint">These are drafts. Nothing reaches GitHub until you use Submit review.</span>
+          ) : null}
+          {filter === "outbox" && outbox.length > 0 ? (
+            <div className="obbox">
+              <div className="frow">
+                <span className="hint">Export</span>
+                <span className="sp" />
+                <Button variant="secondary" size="sm" type="button" data-copy-outbox="" disabled={exportMd === null} onClick={copyExport}>
+                  Copy
+                </Button>
+              </div>
+              <pre className="obmd" data-outbox-md="">{exportMd ?? "Loading…"}</pre>
+            </div>
           ) : null}
           <div>
             <button
