@@ -74,6 +74,20 @@ describe("assessBinReachability", () => {
     expect(advice).toContain(`ln -s ${path.join(BIN_DIR, "unvibe")} ~/.local/bin/unvibe`);
   });
 
+  it("reachable when PATH spells the prefix /private/var but the install is under /var (macOS)", () => {
+    const varHome = path.join(path.sep, "var", "home", "user");
+    const varPrefix = path.join(varHome, ".local", "share", "mise", "installs", "node", "26.11.1");
+    const r = assessBinReachability({
+      cliPath: path.join(varPrefix, "lib", "node_modules", "unvibe", "packages", "service", "dist", "index.js"),
+      homeDir: varHome,
+      interactivePathDirs: [path.join(path.sep, "private", "var", "home", "user", ".local", "share", "mise", "installs", "node", "26.11.1", "bin")],
+      exists: none,
+      canonicalize: (p) => p.replace(/^\/private\/var\//, "/var/"),
+    });
+    expect(r.reachable).toBe(true);
+    expect(r.via).toBe("prefix-bin");
+  });
+
   it("dev layout: not an installed install, no advice", () => {
     const r = assessBinReachability({
       cliPath: path.join(path.sep, "repo", "packages", "service", "dist", "index.js"),
