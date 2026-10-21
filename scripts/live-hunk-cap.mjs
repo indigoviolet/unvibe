@@ -1,7 +1,7 @@
 /*global console process setTimeout Buffer */
 // Live hunk-pass concurrency measurement (issue #210), run as:
-//   mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-hunk-cap.mjs \
-//     --repo-path /path/to/checkout --pr 123 [--caps 4,8,16,32] [--port-base 4640]
+//   mise run test:live:hunk-cap -- --repo-path /path/to/checkout --pr 123 \
+//     [--caps 4,8,16,32] [--port-base 4640]
 //
 // For each concurrency cap (Settings -> sessionsPerProvider): starts the
 // BUILT service with a fresh data dir, sets main = small (the product's
