@@ -32,7 +32,7 @@ import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, 
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
-import type { JobQueue } from "../jobs/index.js";
+import type { JobContext, JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
@@ -169,6 +169,22 @@ function appendPromptSnapshot(
   const out = `${current}\n\n--- ${label} ---\n${next}`;
   ctx.setPromptSnapshot(out);
   return out;
+}
+
+/** Spike #208: plain text of a parsed card, for the fork prompts. */
+function cardPlainText(card: ParsedCard): string {
+  const parts: string[] = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") parts.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if (typeof o["standard"] === "string") parts.push(o["standard"]);
+      else for (const k of ["items", "inner", "rows"]) walk(o[k]);
+    }
+  };
+  walk(card.blocks);
+  return parts.join("\n");
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -1605,7 +1621,9 @@ export class Pipeline {
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    let prompt = renderTemplate(lib.get("reader")!, {
+    // Spike #208: forked reader behind a flag (never on by default).
+    const forkedReader = process.env.UNVIBE_FORKED_READER === "1";
+    let prompt = renderTemplate(lib.get(forkedReader ? "reader_forked" : "reader")!, {
       source,
       diff_inline: diff.text,
       repo_path: this.worktreeOf(reviewId),
@@ -1742,6 +1760,15 @@ export class Pipeline {
               if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
+            // Spike #208: with a plan, the remaining cards are written by
+            // parallel forks of this reader session.
+            if (forkedReader && degradedReason === undefined) {
+              const forked = await this.runForkedReaderCards(reviewId, ctx, session, finalCards, finalData, usage, prompt, finalValidation);
+              if (forked) {
+                finalCards = forked.cards;
+                finalValidation = forked.validation;
+              }
+            }
             if (degradedReason !== undefined) {
               attachDegradedNote(finalCards);
               ctx.setDegradedReason(degradedReason);
@@ -1820,6 +1847,140 @@ export class Pipeline {
         }
       },
     });
+  }
+
+  /**
+   * Spike #208: write the planned remaining guide cards in parallel forks
+   * of the reader session. Returns the full card list (problem first), or
+   * null when the first reply carried no usable plan (caller keeps the
+   * baseline single-turn result). A fork that fails falls back to writing
+   * its card on the reader session itself, sequentially for that card.
+   */
+  private async runForkedReaderCards(
+    reviewId: string,
+    ctx: JobContext,
+    readerSession: Session,
+    firstCards: ParsedCard[],
+    data: ReplyData | null,
+    usage: TokenUsage,
+    promptSnapshot: string,
+    problemValidation: ReturnType<typeof validateReply>,
+  ): Promise<{ cards: ParsedCard[]; promptSnapshot: string; validation: ReturnType<typeof validateReply> } | null> {
+    const applied = readerApply(
+      firstCards.map((c) => ({ title: c.title, blocks: c.blocks })),
+      (data ?? null) as Record<string, unknown> | null,
+    );
+    const plan = applied.cardPlan.slice(0, 6);
+    if (plan.length === 0 || firstCards.length === 0) return null;
+    const lib = loadTemplatesDirSync(this.promptsDir);
+    const problem = firstCards[0]!;
+    const planOverview = plan
+      .map((p, i) => `${i + 1}. [${p.kind}] ${p.title}\n${p.points.map((pt) => `   - ${pt}`).join("\n")}`)
+      .join("\n");
+    const prompts = plan.map((p) =>
+      renderTemplate(lib.get("reader_card")!, {
+        card_title: p.title,
+        card_kind: p.kind,
+        card_points: p.points.map((pt) => `- ${pt}`).join("\n") || "- (cover the title's ground)",
+        plan_overview: planOverview,
+        problem_card: cardPlainText(problem).slice(0, 6000),
+      }),
+    );
+    let snap = promptSnapshot;
+    prompts.forEach((p, i) => {
+      snap = appendPromptSnapshot(ctx, snap, `fork ${i + 1}: ${plan[i]!.title}`, p);
+    });
+
+    const writeOne = async (
+      sess: Session,
+      index: number,
+      label: string,
+    ): Promise<{ card: ParsedCard; validation: ReturnType<typeof validateReply> }> => {
+      let buffer = "";
+      const streamed = new Set<number>();
+      const { text, usage: u } = await timedTurn(ctx, label, () =>
+        collectTracked(this.opts.sessions, this.opts.runner, sess, prompts[index]!, ctx.signal, (delta) => {
+          ctx.reportText(delta);
+          buffer += delta;
+          try {
+            const partials = parseCardsPartial(buffer);
+            const skip = partials[0]?.title === null ? 1 : 0;
+            for (let i = skip; i < partials.length; i++) {
+              if (streamed.has(i - skip)) continue;
+              streamed.add(i - skip);
+              void this.applyReaderCard(reviewId, index + 1, partials[i]!.title, partials[i]!.blocks);
+            }
+          } catch {
+            // ignore mid-stream
+          }
+        }, (name, detail) => ctx.reportTool(name, detail)),
+      );
+      usage.inputTokens += u.inputTokens;
+      usage.cachedReadTokens += u.cachedReadTokens;
+      usage.cachedWriteTokens += u.cachedWriteTokens;
+      usage.outputTokens += u.outputTokens;
+      ctx.reportUsage(u);
+      await this.recordUsage(reviewId, u);
+      let parsed = await this.parseAndValidateWithCode(reviewId, text, []);
+      if (parsed.cards.length === 0) throw new Error(`fork card ${index + 1} was empty`);
+      const degraded = typeof parsed.data?.degraded === "string" && parsed.data.degraded.trim() !== "";
+      if (parsed.validation.needsRepairTurn && !degraded) {
+        const repairPrompt =
+          `Some citations in your previous reply could not be verified:\n` +
+          parsed.validation.tokens
+            .filter((t) => t.status === "unverified")
+            .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
+            .join("\n") +
+          `\nReply with the same single card and corrected citation tokens.`;
+        snap = appendPromptSnapshot(ctx, snap, `${label} repair`, repairPrompt);
+        const repair = await timedTurn(ctx, `${label}-repair`, () =>
+          collectTracked(this.opts.sessions, this.opts.runner, sess, repairPrompt, ctx.signal, (d) => ctx.reportText(d),
+            (name, detail) => ctx.reportTool(name, detail)),
+        );
+        usage.inputTokens += repair.usage.inputTokens;
+        usage.cachedReadTokens += repair.usage.cachedReadTokens;
+        usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+        usage.outputTokens += repair.usage.outputTokens;
+        ctx.reportUsage(repair.usage);
+        await this.recordUsage(reviewId, repair.usage);
+        parsed = await this.parseAndValidateWithCode(reviewId, repair.text, []);
+        if (parsed.cards.length === 0) throw new Error(`fork card ${index + 1} repair was empty`);
+      }
+      // Land this card as its fork finishes, not at the assembled apply.
+      await this.applyReaderCard(reviewId, index + 1, parsed.cards[0]!.title, parsed.cards[0]!.blocks);
+      return { card: parsed.cards[0]!, validation: parsed.validation };
+    };
+
+    const forkCards = await Promise.all(
+      plan.map(async (_p, index) => {
+        if (typeof this.opts.runner.fork === "function") {
+          let forkSession: Session | undefined;
+          try {
+            forkSession = await this.opts.runner.fork(readerSession);
+            return await writeOne(forkSession, index, `fork:${index}`);
+          } catch (err) {
+            if (ctx.signal.aborted) throw err;
+            console.warn(`[forked-reader] ${reviewId}: fork ${index + 1} failed, writing on reader session: ${(err as Error).message}`);
+          } finally {
+            if (forkSession) await this.opts.runner.close(forkSession).catch(() => {});
+          }
+        }
+        return writeOne(readerSession, index, `fork-fallback:${index}`);
+      }),
+    );
+    const validations = [problemValidation, ...forkCards.map((f) => f.validation)];
+    return {
+      cards: [problem, ...forkCards.map((f) => f.card)],
+      promptSnapshot: snap,
+      validation: {
+        tokens: validations.flatMap((v) => v.tokens),
+        candidates: validations.flatMap((v) => v.candidates),
+        unverified: validations.reduce((n, v) => n + v.unverified, 0),
+        repaired: validations.reduce((n, v) => n + v.repaired, 0),
+        needsRepairTurn: false,
+        anchor: null,
+      },
+    };
   }
 
   private async applyReaderCard(

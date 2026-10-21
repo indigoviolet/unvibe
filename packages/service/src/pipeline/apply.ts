@@ -35,6 +35,8 @@ export interface ReaderApply {
    * plotline wins a hunk claimed twice).
    */
   plotlines: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
+  /** Spike #208 (forked reader): planned remaining cards from `cardPlan`. */
+  cardPlan: { kind: string; title: string; points: string[] }[];
 }
 
 /**
@@ -118,7 +120,16 @@ export function readerApply(
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));
-  return { cards, pendingCards, concepts, plotlines };
+  const cardPlan = (
+    (data?.["cardPlan"] as { kind?: string; title?: string; points?: unknown }[] | undefined) ?? []
+  )
+    .map((p) => ({
+      kind: typeof p.kind === "string" && p.kind ? p.kind : "central",
+      title: typeof p.title === "string" ? p.title.trim() : "",
+      points: Array.isArray(p.points) ? p.points.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [],
+    }))
+    .filter((p) => p.title !== "");
+  return { cards, pendingCards, concepts, plotlines, cardPlan };
 }
 
 export interface CriticApply {
