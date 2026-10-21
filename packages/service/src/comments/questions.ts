@@ -116,6 +116,7 @@ export function questionHostKey(host: Annotation["anchor"]["host"]): string {
   if (host.kind === "block") return `block:${host.blockId}`;
   if (host.kind === "description") return `description:${host.paragraphId}`;
   if (host.kind === "diff-line") return `diff-line:${host.fileKey}:${host.line}`;
+  if (host.kind === "comment") return `comment:${host.commentId}`;
   return `hunk:${host.fileKey}:${host.contentHash}`;
 }
 

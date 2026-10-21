@@ -42,6 +42,9 @@ export {
 export {
   findBlock,
   findAnswer,
+  findComment,
+  commentPlainText,
+  commentHostText,
   hostBlockText,
   cardTextFor,
   nearbyAnnotationsText,

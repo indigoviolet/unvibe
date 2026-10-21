@@ -160,6 +160,12 @@ export function createSnapshotLookup(
       if (parsed?.kind === "desc") {
         return descTexts[parsed.paragraph] ?? null;
       }
+      if (parsed?.kind === "ann") {
+        // Issue #214: an `ann:` host is a comment; its text is the host block.
+        const ann = snapshot.annotations.find((a) => a.id === parsed.id && a.type === "comment");
+        if (!ann) return null;
+        return (ann.messages ?? []).map((m) => m.text ?? "").filter((t) => t !== "").join("\n\n");
+      }
       if (parsed?.kind === "diff") {
         // New-side line text from the hunk rows, so quoted anchors on diff
         // lines check against the real cited content.

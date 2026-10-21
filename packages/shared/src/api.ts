@@ -531,6 +531,8 @@ export type ActionAnchor =
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
+  /** Issue #214: a selection inside a comment card, hosted on that comment. */
+  | { where: "comment"; commentId: string }
   | {
       where: "diff-line";
       fileKey: string;
