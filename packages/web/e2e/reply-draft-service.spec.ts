@@ -96,7 +96,7 @@ test.describe("reply drafts over the real service", () => {
     await expect(composer).toBeVisible();
     await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-central .card.child[data-expansion]", {
+    const card = page.locator("#C-central .ui-card.child[data-expansion]", {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
@@ -115,7 +115,7 @@ test.describe("reply drafts over the real service", () => {
     // stored draft cleared with the turn).
     await page.reload();
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete", { timeout: 30_000 });
-    const again = page.locator("#C-central .card.child[data-expansion]", {
+    const again = page.locator("#C-central .ui-card.child[data-expansion]", {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(again.first()).toBeVisible({ timeout: 30_000 });

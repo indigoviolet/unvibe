@@ -106,8 +106,8 @@ test.describe("ask over the real service", () => {
       if (!root) return;
       new MutationObserver(() => {
         const seen = (window as unknown as { __m4seen: { working: boolean; stream: boolean } }).__m4seen;
-        if (root.querySelector(".card.child .working")) seen.working = true;
-        if (root.querySelector(".card.child .stream")) seen.stream = true;
+        if (root.querySelector(".ui-card.child .working")) seen.working = true;
+        if (root.querySelector(".ui-card.child .stream")) seen.stream = true;
       }).observe(root, { childList: true, subtree: true, characterData: true });
     });
     await selectText(page, "#C-central", "fast path");
@@ -119,7 +119,7 @@ test.describe("ask over the real service", () => {
     // The card carries the question; the agent answer arrives as blocks
     // with a citation marker whose refs point at the diff (never the
     // 60 s waiting fallback, never raw thread HTML).
-    const card = page.locator("#C-central .card.child[data-expansion]", {
+    const card = page.locator("#C-central .ui-card.child[data-expansion]", {
       hasText: "Does the fast path still catch a fold",
     });
     // Card-creation patch latency stretches under parallel-suite load

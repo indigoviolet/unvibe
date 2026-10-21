@@ -32,14 +32,14 @@ test("open as page mid-fill keeps filling the page; anchor links at once", async
     await card.getByRole("button", { name: "Open as page" }).click();
     await expect(page).toHaveURL(/\/review\/demo\/page\/p-mock-/, { timeout: 5000 });
     // The page shows the working state (never an empty silent card).
-    await expect(page.locator("#page .card .working").first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#page .ui-card .working").first()).toBeVisible({ timeout: 5000 });
 
     // Releasing the hold fills the page card.
     await page.evaluate(() => localStorage.removeItem("unvibe.mock.turnFillHold"));
-    await expect(page.locator("#page .card .exp-b, #page .card .blk").first()).toContainText("Mock explanation", {
+    await expect(page.locator("#page .ui-card .exp-b, #page .ui-card .blk").first()).toContainText("Mock explanation", {
       timeout: 8000,
     });
-    await expect(page.locator("#page .card .working")).toHaveCount(0);
+    await expect(page.locator("#page .ui-card .working")).toHaveCount(0);
 
     // Back on the guide, the anchor is a page link (fault a).
     await page.goBack();
