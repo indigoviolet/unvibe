@@ -592,7 +592,7 @@ needed (that deviation is closed, not added).
   with suggestions, they render as chips on that answer, and clicking one
   sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
   `ConversationCard.test.tsx` suggestion case).
-- Thread header (quote/`file:line`, Mark for PR filled when on,
+- Thread header (quote/`file:line`, Outbox toggle filled when on,
   Delete, Close) — met (`comments/threads.test.ts`,
   `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
   comment” threads with Reply/Discard).
@@ -640,7 +640,7 @@ needed (that deviation is closed, not added).
 - Finding page label + rust-border Evidence/Assessment cards — met
   (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
   ran).
-- Suggested comments (“Agent · suggested comment”, not for PR, linked
+- Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
   Issue #163: no reply box on suggestions; the selection toolbar works

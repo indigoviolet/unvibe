@@ -169,7 +169,7 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         headers: authed,
         payload: { reviewed: true },
       });
-      // A For-PR thread → pendingComments = 1.
+      // An Outbox thread → pendingComments = 1.
       const thread = await app.inject({
         method: "POST",
         url: `/api/reviews/${id}/comments`,

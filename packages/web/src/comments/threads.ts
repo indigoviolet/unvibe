@@ -35,7 +35,7 @@ export function outboxThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   ) as Annotation[];
 }
 
-/** Submit count: For-PR threads + pending description edit. */
+/** Submit count: Outbox threads + pending description edit. */
 export function pendingCount(snapshot: ReviewSnapshot | null): number {
   if (!snapshot) return 0;
   const comments = outboxThreads(snapshot).length;

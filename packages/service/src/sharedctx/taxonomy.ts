@@ -2,7 +2,7 @@
  * Log taxonomy (PRD §9.3): which interaction events enter the append-only
  * log, with what kind, payload and scope.
  *
- * - never: read, collapse, depth-stepper state, open/close, mark-for-PR,
+ * - never: read, collapse, depth-stepper state, open/close, Outbox marking,
  *   bookmark (and undo — UI state, not shared knowledge);
  * - local to conversations anchored on that card: examples, diagrams, depth
  *   rewrites (card scope required);

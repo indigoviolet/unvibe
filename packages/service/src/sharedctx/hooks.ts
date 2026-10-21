@@ -19,7 +19,7 @@
  *   cited something outside the base, in full), `item-deleted` (one line for
  *   a deleted item that had been shared);
  * - accepted but never logged (UI state): `read`, `collapse`,
- *   `depth-state`, `open`, `close`, `mark-for-pr`, `undo`, `bookmark`
+ *   `depth-state`, `open`, `close`, Outbox marking (`mark-for-pr`), `undo`, `bookmark`
  *   (page-saved flag).
  */
 export type InteractionEventKind =

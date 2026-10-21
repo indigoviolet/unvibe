@@ -174,7 +174,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - A **Comment** is in the Outbox by default and can be switched off to keep it local. A conversation card is never in the Outbox and carries no Outbox control. Only comments are submitted to GitHub.
 - Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
 - A comment offers **Ask the agent about this**: the usual Ask card on the comment's anchor, quoting the comment. The answer is never submitted; it is the only way a comment leads to an agent reply.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Outbox** (a send icon, filled when on), **Delete** and **Close**.
 - **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent).
   - Typed text survives anything else on the page re-rendering.
   - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
@@ -450,7 +450,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** collapse, depth, open/close and "mark for PR" state;
+  - **never:** collapse, depth, open/close and Outbox state;
   - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
