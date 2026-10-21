@@ -923,8 +923,23 @@ for (const combo of [
 
     // Outbox view with the Markdown export box (#223): mark one visible
     // suggested comment, then show the Outbox filter with its Copy box.
-    await page.getByRole("button", { name: "Add to Outbox" }).first().click();
-    await expect(page.getByRole("button", { name: /In the Outbox/ }).first()).toBeVisible({ timeout: 10_000 });
+    // The four variants share one review, so an earlier variant may
+    // already have marked every rendered comment (no "Add to Outbox"
+    // left), and at 960 the diff threads can still be mounting when
+    // this step starts. Wait (bounded, with a clear message) for a
+    // toggle in either state, and only click when nothing is marked.
+    const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
+    const inOutbox = page.getByRole("button", { name: /In the Outbox/ }).first();
+    await expect
+      .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
+        timeout: 15_000,
+        message: "menu-outbox: no comment Outbox toggle rendered yet (diff threads not mounted)",
+      })
+      .toBeGreaterThan(0);
+    if ((await inOutbox.count()) === 0) {
+      await addToOutbox.click({ timeout: 10_000 });
+      await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
+    }
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await page.locator('.cmenu [data-cmf="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
