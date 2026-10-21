@@ -46,12 +46,17 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
   const annotations = useReview((s) => s.snapshot?.annotations);
   const [, setTick] = useState(0);
 
-  const exps = (annotations ?? []).filter(
-    (a) =>
-      (a.type === "conversation" || a.type === "link") &&
-      a.anchor.host.kind === "description" &&
-      a.anchor.host.paragraphId === paragraphId,
-  );
+  const exps = (annotations ?? []).filter((a) => {
+    if (a.type !== "conversation" && a.type !== "link") return false;
+    if (a.anchor.host.kind === "description") return a.anchor.host.paragraphId === paragraphId;
+    // Issue #214: a card on a comment renders under that comment's paragraph.
+    if (a.anchor.host.kind === "comment") {
+      const commentId = a.anchor.host.commentId;
+      const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+      return comment?.anchor.host.kind === "description" && comment.anchor.host.paragraphId === paragraphId;
+    }
+    return false;
+  });
   const open = exps.filter((a) => a.type === "conversation" && a.open && !a.promotedToPage);
 
   useEffect(() => {
@@ -107,6 +112,18 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
             continue;
           }
           const closed = !a.open;
+          if (a.anchor.host.kind === "comment") {
+            // Issue #214: mark inside the comment, not the paragraph body.
+            const msgs = root.querySelectorAll(`[data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
+            for (const msg of msgs) {
+              if (placeAnchorSpot(msg, spotFromAnchor(a.anchor), () => makeExpMark(a.id, closed)) > 0) {
+                changed = true;
+                pending.delete(a.id);
+                break;
+              }
+            }
+            continue;
+          }
           if (markInBody(spotFromAnchor(a.anchor), () => makeExpMark(a.id, closed))) {
             changed = true;
             pending.delete(a.id);

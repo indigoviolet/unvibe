@@ -199,6 +199,62 @@ describe("hunk summarize reply shapes (#99, on-demand site)", () => {
   });
 });
 
+describe("hunk job turn timings (#210, #194)", () => {
+  it("hunk-pass job records session-start and first-turn timings", async () => {
+    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: textEvents(bareJson(SUMMARY, HIDDEN)) }]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeReview(ctx);
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.pipeline = {
+          stages: {
+            reader: "done",
+            base: "done",
+            critic: "done",
+            concepts: "done",
+            "hunk-pass": "pending",
+            "go-deeper": "pending",
+          },
+        };
+      });
+      const resumed = await ctx.pipeline.resumeReview(id);
+      expect(resumed.jobIds.length).toBeGreaterThan(0);
+      await ctx.jobs.drain(15000);
+      const job = ctx.jobs.listByReview(id).find((j) => j.kind === "hunk-pass");
+      expect(job).toBeDefined();
+      expect(job!.state).toBe("done");
+      expect((job!.turns ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
+      for (const turn of job!.turns ?? []) {
+        expect(turn.finishedAt).toBeDefined();
+        expect(turn.finishedAt!).toBeGreaterThanOrEqual(turn.startedAt);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("on-demand summarize job records the same turn timings", async () => {
+    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: textEvents(bareJson(SUMMARY, HIDDEN)) }]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const id = await makeReview(ctx);
+      const res = await ctx.pipeline.summarizeHunk(id, "h222");
+      expect("reused" in res).toBe(false);
+      await ctx.jobs.drain(5000);
+      const job = ctx.jobs.listByReview(id).find((j) => j.kind === "summarize");
+      expect(job).toBeDefined();
+      expect(job!.state).toBe("done");
+      expect((job!.turns ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
+      for (const turn of job!.turns ?? []) {
+        expect(turn.finishedAt).toBeDefined();
+        expect(turn.finishedAt!).toBeGreaterThanOrEqual(turn.startedAt);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("hunk-pass background stage (#99)", () => {
   it("bare JSON reply stores summary + hiddenReason on the hunk-pass path", async () => {
     const agents = new FakeAgentRunner([{ match: "Hunk pass", events: textEvents(bareJson(SUMMARY, HIDDEN)) }]);

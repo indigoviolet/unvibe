@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
   secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
-  sessionsPerProvider: 4,
+  sessionsPerProvider: 16,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10_000,

@@ -665,6 +665,13 @@ needed (that deviation is closed, not added).
   `docs/screenshots/181-suggested-question.png`, one live run on the
   demo: answer states what is not known with no “filed” narration, the
   question suggestion created end to end).
+- Explain/Ask on text inside any comment (issue #214): the selection
+  anchors to that comment (new `comment` host) in the guide and the
+  diff, the host block sent to the agent is the comment's text, and the
+  card renders under the comment; `ask.md` answers about the quote even
+  when it cannot be placed, and reply hygiene forbids internal IDs in
+  reader-facing text — met (`comment-host-214.test.ts`,
+  `j214-explain-in-comment.spec.ts` on the real service).
 
 ### §4.10 Second opinion — all met
 
@@ -1318,7 +1325,7 @@ needed (that deviation is closed, not added).
   full access (issue #160) the isolation is a prompt rule only — a shell
   can read the data directory — stated in PRD §12, `docs/acp-runner.md`,
   and the base-module header.
-- Per-provider cap (setting `sessionsPerProvider`, default 4) applied
+- Per-provider cap (setting `sessionsPerProvider`, default 16 since #210) applied
   separately to main-model and small-model jobs, read live — met (#182;
   `jobs/queue.ts`, `jobs.test.ts` cap cases incl. N-at-once and live raise).
 - Priority queue (asked > visible > background) — met (`JOB_PRIORITY`,

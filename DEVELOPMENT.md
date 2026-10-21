@@ -56,6 +56,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
 | `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
 | `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
+| `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review | `claude` login; small spend |
 | `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
 

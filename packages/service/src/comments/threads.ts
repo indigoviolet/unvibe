@@ -35,7 +35,7 @@ import type {
 import type { WritableDraft } from "immer";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
-import { findBlock } from "../interaction/l4.js";
+import { commentHostText, findBlock } from "../interaction/l4.js";
 
 export interface CreateThreadParams {
   anchor: ActionAnchor;
@@ -85,6 +85,8 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
     }
     case "hunk":
       return { kind: "hunk", fileKey: anchor.fileKey, contentHash: anchor.contentHash };
+    case "comment":
+      return { kind: "comment", commentId: anchor.commentId };
   }
 }
 
@@ -200,6 +202,21 @@ export function buildAnchor(
       // a client bug, but keep the message actionable.
       throw new Error(`unknown description paragraph ${host.paragraphId}`);
     }
+    const ctx = contextAround(text, quote);
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? ctx.prefix,
+      suffix: opts.suffix ?? ctx.suffix,
+      position: opts.position ?? 0,
+      version,
+      ...recorded,
+    };
+  }
+  if (host.kind === "comment") {
+    // Issue #214: the host is that comment; its text is the host block.
+    const text = commentHostText(snapshot, host.commentId, quote);
+    if (text === null) throw new Error(`unknown comment ${host.commentId}`);
     const ctx = contextAround(text, quote);
     return {
       host,
