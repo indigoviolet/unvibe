@@ -12,6 +12,8 @@ export interface SnapshotLookupExtra {
   aliases?: Record<string, string>;
   /** Paths known to exist at their cited commit (#81: existence only). */
   existingFiles?: ReadonlySet<string>;
+  /** `path@sha` keys known to exist at that exact commit (#222). */
+  existingCodeTargets?: ReadonlySet<string>;
   /** Description paragraph id → text. */
   descTexts?: Record<string, string>;
   /** Known concept slugs. */
@@ -95,7 +97,7 @@ export function createSnapshotLookup(
     return null;
   };
 
-  return {
+  const lookup: ReviewLookup = {
     resolveFileKey,
 
     hunkAtLine(fileKey, line) {
@@ -122,6 +124,10 @@ export function createSnapshotLookup(
       // A file in the diff exists at the head by construction.
       return filesByPath.has(filePath);
     },
+
+    // `fileExistsAtCommit` is attached below only when the caller
+    // resolved `path@sha` existence (#222); otherwise sha citations use
+    // the path-only `fileExists` above (#81).
 
     descParagraph(id) {
       return descTexts[id] ?? null;
@@ -202,4 +208,9 @@ export function createSnapshotLookup(
       return snapshot.version.idMapping[id] ?? null;
     },
   };
+  if (extra.existingCodeTargets) {
+    const targets = extra.existingCodeTargets;
+    lookup.fileExistsAtCommit = (filePath, sha) => targets.has(`${filePath}@${sha}`);
+  }
+  return lookup;
 }

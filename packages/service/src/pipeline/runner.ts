@@ -51,6 +51,7 @@ import { validateReply } from "../validate/index.js";
 import { lookupForSnapshot, resolveCodeFileExistence } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { buildDocumentBaseText } from "../document/map.js";
+import { resolveDocumentCodeExistence } from "../document/resolve.js";
 import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
@@ -1195,6 +1196,7 @@ export class Pipeline {
     text: string,
     echoCandidates?: string[],
     existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
@@ -1210,7 +1212,7 @@ export class Pipeline {
       echoCandidates === undefined ? parseCards(body) : parseCards(body, { echoCandidates });
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const lookup = this.lookupWithAliases(snapshot, existingFiles);
+    const lookup = this.lookupWithAliases(snapshot, existingFiles, existingCodeTargets);
     const blocks = cards.flatMap((c) => c.blocks);
     const anchor =
       split.ok && typeof split.data === "object" && split.data !== null
@@ -1238,6 +1240,7 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     let existingFiles: ReadonlySet<string> | undefined;
+    let existingCodeTargets: ReadonlySet<string> | undefined;
     try {
       const split = splitReply(text);
       const cards =
@@ -1245,17 +1248,25 @@ export class Pipeline {
       const collected = collectTargets(cards.flatMap((c) => c.blocks));
       const targets = [...collected.citations, ...collected.links];
       if (targets.some((t) => t.startsWith("code:"))) {
-        existingFiles = await resolveCodeFileExistence(
-          this.opts.commands,
-          this.worktreeOf(reviewId),
-          snapshot.version.headSha,
-          targets,
-        );
+        // Issue #222: document answers cite context-repo files; the repo
+        // is resolved from the cited sha (first repo containing it), and
+        // existence is keyed by the exact `path@sha`.
+        if (isDocumentReview(snapshot)) {
+          existingCodeTargets = await resolveDocumentCodeExistence(this.opts.commands, snapshot.contextRepos, targets);
+        } else {
+          existingFiles = await resolveCodeFileExistence(
+            this.opts.commands,
+            this.worktreeOf(reviewId),
+            snapshot.version.headSha,
+            targets,
+          );
+        }
       }
     } catch {
       existingFiles = undefined;
+      existingCodeTargets = undefined;
     }
-    return this.parseAndValidate(reviewId, text, echoCandidates, existingFiles);
+    return this.parseAndValidate(reviewId, text, echoCandidates, existingFiles, existingCodeTargets);
   }
 
   /** Alias-aware lookup for diagram cite validation (demo fixture keys). */
@@ -1396,10 +1407,13 @@ export class Pipeline {
   private lookupWithAliases(
     snapshot: ReviewSnapshot,
     existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): ReturnType<typeof lookupForSnapshot> {
     const aliases = aliasesForReview(snapshot, this.opts.fixturesDir);
-    if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { existingFiles: existingFiles });
-    const base = lookupForSnapshot(snapshot, { existingFiles: existingFiles });
+    if (Object.keys(aliases).length === 0) {
+      return lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
+    }
+    const base = lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
     const inner = base.resolveFileKey.bind(base);
     return {
       ...base,

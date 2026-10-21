@@ -24,6 +24,12 @@ export interface ReviewLookup {
    * a `code:` citation is valid when the file exists, whatever the range).
    */
   fileExists(path: string): boolean;
+  /**
+   * Issue #222: file existence at an exact commit (`path@sha`), when the
+   * lookup is sha-aware (document reviews resolve the repo from the sha).
+   * Absent means the lookup only knows paths (`fileExists`).
+   */
+  fileExistsAtCommit?(path: string, sha: string): boolean;
   /** Description paragraph text by id; null when unknown. */
   descParagraph(id: string): string | null;
   /** Document block text by id (`doc:pN`, issue #222); null when unknown. */

@@ -2443,20 +2443,25 @@ hunk coverage) is reported for a separate issue, not fixed here.
   menu today and the Outbox when #223 merges; Submit stays disabled
   (no PR). The review kind is derived from the snapshot's shape (a
   discriminated union in shared types), never stored — no fallback read,
-  no reset needed. With two context repos, a `code:` citation and a
-  `get_code` call cannot yet name which repo they mean (the citation
-  grammar and the tool inputs carry only path/lines/sha, and the reader
-  resolves against the first repo's checkout); naming the repo — a repo
-  qualifier in the `code:` ID plus a `repo` input on `get_code`, or
-  resolving the cited sha to the repo that contains it — is #81's
-  wiring, noted in `packages/service/src/document/map.ts`. `code:`
-  citations open via #81's source-pane support once merged; there is
-  no code browser (phase 2, #82) and no "code" review kind.
+  no reset needed. With #81 merged, `code:` citations in document
+  answers open through `openFileForCitation` into source-pane file
+  tabs, and the Guide/Source toggle is meaningful on documents. With
+  two context repos, the repo is resolved from the cited sha — the
+  first context repo (in pick order) whose object store contains that
+  commit — for citation validation (existence keyed by the exact
+  `path@sha`, #81's existence-only rule), for `get_code`, and for the
+  file route; a sha in neither repo leaves the citation unverified and
+  reads fail rather than reading the same path in the wrong repo. No
+  grammar change and no new `get_code` input, so the golden tool
+  surface stays frozen. There is no code browser (phase 2, #82) and no
+  "code" review kind.
   Evidence: `packages/shared/test/document.test.ts`,
-  `packages/service/test/document-222.test.ts`,
+  `packages/service/test/document-222.test.ts` (two-repo sha
+  resolution, validation, and the file route),
   `packages/service/test/validate.test.ts` (doc: targets),
-  `packages/web/e2e/journeys/j222-document.spec.ts` (create → read →
-  Explain → Ask → Comment against the real service, replay agent).
+  `packages/web/e2e/journeys/j222-document.spec.ts` (create with two
+  repos → read → Explain → Ask → Comment → cited file tab against the
+  real service, replay agent), and the visual tour's document frames.
 
 ## Addendum: #81 (branch `fix/81-code-citations`)
 

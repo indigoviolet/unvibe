@@ -11,6 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import type { ContextRepoRef } from "@unvibe/shared";
 import { documentBlockText, isDocumentReview, isReadySnapshot, renderMarkdown } from "@unvibe/shared";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
@@ -98,6 +99,13 @@ export class StoreReviewReader implements ReviewReader {
       contributions,
       description,
     };
+  }
+
+  /** Issue #222: a document review's context repos (sha resolution source). */
+  getContextRepos(reviewId: string): ContextRepoRef[] | null {
+    const snap = this.opts.reviews.getSnapshot(reviewId);
+    if (snap && isDocumentReview(snap)) return snap.contextRepos;
+    return null;
   }
 
   getWorktreePath(reviewId: string): string | null {

@@ -124,6 +124,13 @@ function validateCode(target: string, lookup: ReviewLookup): TokenReport {
   // #81: no length check. The citation is valid when the file exists at
   // the cited commit, whatever the range; a range past the end still
   // opens and highlights whatever part of it exists.
+  // Issue #222: a sha-aware lookup (document reviews) decides by the
+  // exact commit — the same path at a sha in no context repo is unverified.
+  if (parsed.sha && lookup.fileExistsAtCommit) {
+    return lookup.fileExistsAtCommit(parsed.path, parsed.sha)
+      ? { target, status: "valid" }
+      : unverified(target, `unknown file for code range: ${parsed.path}@${parsed.sha}`);
+  }
   if (lookup.fileExists(parsed.path)) return { target, status: "valid" };
   const mapped = tryRemap(target, lookup);
   if (mapped) {

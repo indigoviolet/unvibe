@@ -10,6 +10,7 @@
  *   since the diff pane only handles diff locations.
  * - Anything else toasts instead of failing silently.
  */
+import { isDocumentReview } from "@unvibe/shared";
 import { toast } from "../floating/Toast.js";
 import { canonicalRevealTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
@@ -52,7 +53,13 @@ export function revealSource(target: string, opts?: { keepFilters?: boolean }): 
     // #81: a file outside the diff opens in its own tab at the cited
     // commit. The diff pane has no rows for it, so this never falls
     // through to the diff reveal.
-    if (openFileForCitation(canonical, snapshot?.version.headSha)) {
+    // Issue #222: on a document review, a sha-less citation falls back to
+    // the first context repo's commit, never the document's own hash.
+    const fallback =
+      snapshot && isDocumentReview(snapshot)
+        ? (snapshot.contextRepos[0]?.sha ?? snapshot.version.headSha)
+        : snapshot?.version.headSha;
+    if (openFileForCitation(canonical, fallback)) {
       window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
       return;
     }

@@ -22,7 +22,7 @@ function descTextsOf(html: string): Record<string, string> {
 
 export function lookupForSnapshot(
   snapshot: ReviewSnapshot,
-  extra: { existingFiles?: ReadonlySet<string> } = {},
+  extra: { existingFiles?: ReadonlySet<string>; existingCodeTargets?: ReadonlySet<string> } = {},
 ): ReturnType<typeof createSnapshotLookup> {
   const descTexts = descTextsOf(currentDescriptionHtml(snapshot.description));
   const concepts = new Set<string>();
@@ -39,6 +39,7 @@ export function lookupForSnapshot(
     descTexts,
     concepts: [...concepts],
     ...(extra.existingFiles ? { existingFiles: extra.existingFiles } : {}),
+    ...(extra.existingCodeTargets ? { existingCodeTargets: extra.existingCodeTargets } : {}),
   });
 }
 

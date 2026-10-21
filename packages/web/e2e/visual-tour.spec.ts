@@ -1050,13 +1050,15 @@ for (const combo of [
 }
 
 // Issue #222: the start page's New document review form and a document
-// review (rendered blocks, an Explain answer, an Ask answer, a comment)
-// in the default theme at 1440 light. The context repo is a throwaway
-// git checkout registered with the tour's own service.
+// review (rendered blocks, an Explain answer, an Ask answer, a comment,
+// and a `code:` citation opening the second context repo's file) in the
+// default theme at 1440 light. The context repos are throwaway git
+// checkouts registered with the tour's own service.
 test("visual tour document review (#222)", async ({ page }) => {
   if (!svc) throw new Error("service not running");
   test.setTimeout(240_000);
   const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-"));
+  const repo2Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-b-"));
   try {
     const git = async (...args: string[]): Promise<void> => {
       await exec("git", args, { cwd: repoDir });
@@ -1073,6 +1075,25 @@ test("visual tour document review (#222)", async ({ page }) => {
       repos: { id: string; localPath: string }[];
     };
     expect(added.repos.some((r) => r.localPath === repoDir)).toBe(true);
+    const repoId = added.repos.find((r) => r.localPath === repoDir)!.id;
+    // Second context repo: same path, different line, so the cited sha
+    // decides whose bytes the file tab shows.
+    const git2 = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo2Dir });
+    };
+    await git2("init", "-b", "main");
+    await git2("config", "user.email", "tour@example.com");
+    await git2("config", "user.name", "Tour");
+    writeFileSync(path.join(repo2Dir, "README.md"), "# Widget two\n");
+    mkdirSync(path.join(repo2Dir, "src"));
+    writeFileSync(path.join(repo2Dir, "src", "widget.ts"), "export const widget = 2; // second repo\n");
+    await git2("add", ".");
+    await git2("commit", "-m", "init two");
+    await git2("remote", "add", "origin", "https://github.com/acme/widget-two.git");
+    const added2 = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repo2Dir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const repo2Id = added2.repos.find((r) => r.localPath === repo2Dir)!.id;
 
     await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -1082,12 +1103,15 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.getByTestId("doc-markdown").fill(
       "# Design note\n\nThe widget folds obsolete headers before parsing.\n\nIt keeps the fast path for modern responses.\n\n## Details\n\n- Folding runs before parsing\n- The fast path skips folding\n",
     );
-    await expect(page.getByTestId("doc-repo-select-0")).not.toHaveValue("");
+    await page.getByTestId("doc-repo-select-0").selectOption(repoId);
+    await page.getByRole("button", { name: "Add another context repo" }).click();
+    await page.getByTestId("doc-repo-select-1").selectOption(repo2Id);
     await checkNoPageOverflow(page, "start-document-form");
     await shot(page, "start-document-form", "1440-light", "Paste the document's Markdown");
 
     await page.getByRole("button", { name: "Create document review" }).click();
     await page.waitForURL(/\/review\//, { timeout: 30_000 });
+    const docReviewId = page.url().split("/review/")[1].split(/[/?#]/)[0];
 
     // The document, rendered with its blocks.
     await expect(page.getByTestId("document-view")).toBeVisible({ timeout: 30_000 });
@@ -1133,8 +1157,73 @@ test("visual tour document review (#222)", async ({ page }) => {
     });
     await checkNoPageOverflow(page, "document-comment");
     await shot(page, "document-comment", "1440-light", "Please expand this part.");
+
+    // A document answer citing the second repo's file (#81): seed the
+    // answer (the J81/J222 pattern), click its citation, and frame the
+    // file tab showing the second repo's bytes.
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${docReviewId}`)) as {
+      contextRepos: { repoId: string; sha?: string }[];
+    };
+    const sha2 = snap.contextRepos.find((c) => c.repoId === repo2Id)?.sha ?? "";
+    expect(sha2).toMatch(/^[0-9a-f]{40}$/);
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(docReviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
+      seeded.annotations.push({
+        id: "ann-doc-cite",
+        type: "conversation",
+        anchor: {
+          host: { kind: "block", blockId: "document#p2" },
+          quotedText: "folds obsolete headers",
+          prefix: "The widget ",
+          suffix: " before parsing.",
+          position: 11,
+          version: 1,
+        },
+        open: true,
+        pinned: true,
+        messages: [],
+        post: false,
+        turns: [
+          {
+            question: null,
+            blocks: [
+              {
+                type: "paragraph",
+                id: "b-cite",
+                text: { standard: "The widget constant lives in the second repo." },
+                citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
+              },
+            ],
+          },
+        ],
+      });
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        docReviewId,
+      );
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, { agent: "replay" });
+    await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
+    const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
+    await expect(cited.first()).toBeVisible({ timeout: 30_000 });
+    await cited.first().getByRole("button", { name: "Source" }).click();
+    await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".codefile")).toContainText("second repo");
+    await checkNoPageOverflow(page, "document-citation");
+    await shot(page, "document-citation", "1440-light", "second repo");
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
+    rmSync(repo2Dir, { recursive: true, force: true });
   }
 });
 

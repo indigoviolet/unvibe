@@ -62,15 +62,10 @@ export async function buildContextRepoMap(runner: CommandRunner, ref: ContextRep
       "fetch file ranges with `get_code` before citing lines you have not seen.",
     "",
   );
-  // NOTE (#222, for the #81 wiring): with two context repos, neither a
-  // `code:` citation nor a `get_code` call can yet name WHICH repo it
-  // means — the citation grammar carries only path + lines + sha, the
-  // `get_code` inputs carry only path/lines/sha, and the reader resolves
-  // both against a single checkout (today: the first context repo's).
-  // Naming the repo needs one of: a repo qualifier in the `code:` ID and
-  // a matching `repo` input on `get_code` (e.g. the repo label above), or
-  // resolving the cited sha to the context repo that contains it. That
-  // is #81's source-pane/citation wiring, not built here.
+  // NOTE (#222 with #81): with two context repos, a `code:` citation and
+  // a `get_code` call name the repo by sha alone — the first context
+  // repo containing the cited commit is the repo meant (see
+  // document/resolve.ts). A sha in neither repo stays unverified.
   return parts.join("\n");
 }
 

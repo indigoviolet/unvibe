@@ -9,6 +9,7 @@
  * #222 reuses) opens file tabs for `code:` refs: one tab per file at a
  * commit, each with a close button.
  */
+import { isDocumentReview } from "@unvibe/shared";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
@@ -119,6 +120,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     setActiveFile((cur) => (cur === key ? null : cur));
   };
   const activeReq = openFiles.find((f) => openFileKey(f) === activeFile) ?? null;
+  // Issue #222: a document review's source pane holds only file tabs
+  // (opened from `code:` citations in answers) — no description or diff.
+  const isDocument = snapshot ? isDocumentReview(snapshot) : false;
 
   // #92: no diff/description/comments while loading or failed (service also
   // 409s). After all hooks so the hook order never changes.
@@ -140,30 +144,34 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     <>
       <div className="rstick">
         <div className="tabs" role="tablist">
-          <button
-            className="tab"
-            role="tab"
-            type="button"
-            aria-selected={activeFile === null && tab === "desc"}
-            onClick={() => {
-              setActiveFile(null);
-              onTab("desc");
-            }}
-          >
-            {descriptionPaneName(snapshot)}
-          </button>
-          <button
-            className="tab"
-            role="tab"
-            type="button"
-            aria-selected={activeFile === null && tab === "diff"}
-            onClick={() => {
-              setActiveFile(null);
-              onTab("diff");
-            }}
-          >
-            Diff
-          </button>
+          {isDocument ? null : (
+            <>
+              <button
+                className="tab"
+                role="tab"
+                type="button"
+                aria-selected={activeFile === null && tab === "desc"}
+                onClick={() => {
+                  setActiveFile(null);
+                  onTab("desc");
+                }}
+              >
+                {descriptionPaneName(snapshot)}
+              </button>
+              <button
+                className="tab"
+                role="tab"
+                type="button"
+                aria-selected={activeFile === null && tab === "diff"}
+                onClick={() => {
+                  setActiveFile(null);
+                  onTab("diff");
+                }}
+              >
+                Diff
+              </button>
+            </>
+          )}
           {openFiles.map((f) => {
             const key = openFileKey(f);
             const name = f.path.split("/").pop() ?? f.path;
@@ -211,6 +219,13 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}
           />
+        ) : isDocument ? (
+          <div className="doc">
+            <p className="hint">
+              Files cited in answers open here. Context:{" "}
+              {(snapshot && isDocumentReview(snapshot) ? snapshot.contextRepos : []).map((c) => c.label).join(" · ")}
+            </p>
+          </div>
         ) : tab === "desc" ? (
           <DescriptionView reviewId={reviewId} />
         ) : (
