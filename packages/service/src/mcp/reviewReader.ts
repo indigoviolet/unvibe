@@ -11,7 +11,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { isReadySnapshot, renderMarkdown } from "@unvibe/shared";
+import type { ContextRepoRef } from "@unvibe/shared";
+import { documentBlockText, isDocumentReview, isReadySnapshot, renderMarkdown } from "@unvibe/shared";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import type { McpReviewData, ReviewReader } from "./read.js";
@@ -56,6 +57,14 @@ export class StoreReviewReader implements ReviewReader {
         text: plainText(renderMarkdown(c.blocks)),
       })),
     );
+    // Issue #222: the document is searchable/resolvable like a card.
+    if (snap.document) {
+      cards.push({
+        id: "document",
+        title: snap.document.title,
+        text: snap.document.blocks.map((b) => `[doc:${b.id}] ${documentBlockText(b)}`).join("\n\n"),
+      });
+    }
     // Issue #143: agents read explanation text through the review tools.
     // Conversation answers are blocks, rendered like cards; comments
     // contribute their messages.
@@ -92,7 +101,19 @@ export class StoreReviewReader implements ReviewReader {
     };
   }
 
+  /** Issue #222: a document review's context repos (sha resolution source). */
+  getContextRepos(reviewId: string): ContextRepoRef[] | null {
+    const snap = this.opts.reviews.getSnapshot(reviewId);
+    if (snap && isDocumentReview(snap)) return snap.contextRepos;
+    return null;
+  }
+
   getWorktreePath(reviewId: string): string | null {
+    // Issue #222: document reviews read code from their first context repo.
+    const snap = this.opts.reviews.getSnapshot(reviewId);
+    if (snap && isDocumentReview(snap)) {
+      return snap.contextRepos[0]?.repoPath ?? null;
+    }
     const wt = path.join(this.opts.dataDir, "worktrees", reviewId);
     try {
       if (fs.existsSync(wt)) return wt;

@@ -199,6 +199,43 @@ describe("locateThread", () => {
     expect(locateThread(snap, desc).kind).toBe("general");
   });
 
+  it("sends a file-tab comment to the review body with a permalink (#81)", () => {
+    const t: Annotation = {
+      id: "t-code",
+      type: "comment",
+      anchor: {
+        host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2, endLine: 3 },
+        quotedText: "beta = 2\ngamma = 3",
+        prefix: "",
+        suffix: "",
+        position: 2,
+        version: 1,
+      },
+      open: true,
+      pinned: false,
+      messages: [{ who: "you", text: "Is beta still the right default?" }],
+      post: true,
+    };
+    const snap = snapshotWith([t]);
+    expect(locateThread(snap, t).kind).toBe("general");
+    const withRepo = locateThreadWithText(snap, t, { owner: "octo", name: "hello" });
+    expect(withRepo.text).toBe(
+      `https://github.com/octo/hello/blob/${HEAD_SHA}/helper.py#L2-L3\n\n> beta = 2\n> gamma = 3\n\nIs beta still the right default?`,
+    );
+    // No repo to link to: the plain text stands alone. An empty comment
+    // stays empty, so Submit still refuses it instead of posting a bare link.
+    expect(locateThreadWithText(snap, t).text).toBe("Is beta still the right default?");
+    const empty: Annotation = { ...t, id: "t-code-empty", messages: [{ who: "you", text: "" }] };
+    expect(locateThreadWithText(snap, empty, { owner: "octo", name: "hello" }).text).toBe("");
+    // Single-line citations link #Lx, not #Lx-Lx.
+    const single: Annotation = {
+      ...t,
+      id: "t-code-1",
+      anchor: { ...t.anchor, host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2 } },
+    };
+    expect(locateThreadWithText(snap, single, { owner: "octo", name: "hello" }).text).toContain(`/helper.py#L2\n`);
+  });
+
   it("skips unmarked + already-posted threads in pending", () => {
     const a = diffThread("a-py", 1, "one");
     const b = { ...diffThread("a-py", 2, "two"), post: false };
