@@ -21,6 +21,7 @@ import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest
 import { emptyGuideState } from "./guideUtils.js";
 import { ingestStepLabel, stageLabel } from "./stageLabels.js";
 import { PageView } from "./PageView.js";
+import { Button } from "../ui/index.js";
 import "./guide-m2.css";
 
 function pageIdFromSplat(splat: string | undefined): string | null {
@@ -239,9 +240,9 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
               <h1 className="title">Couldn't build the guide</h1>
               <p className="hint">{empty.detail}</p>
               <p>
-                <button className="btn" type="button" disabled={retrying} onClick={retryGuide}>
+                <Button variant="primary" type="button" disabled={retrying} onClick={retryGuide}>
                   {retrying ? "Retrying…" : "Retry"}
-                </button>
+                </Button>
               </p>
             </>
           ) : (
@@ -347,9 +348,9 @@ export function EmptyOpen({ reviewId, prLabel, error }: { reviewId: string; prLa
       </p>
       <p className="hint">{prLabel} has no diff to read, so no guide was started.</p>
       <div className="frow" style={{ gap: 8 }}>
-        <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
+        <Button variant="primary" type="button" disabled={retrying} onClick={() => void onRetry()}>
           {retrying ? "Retrying…" : "Retry"}
-        </button>
+        </Button>
       </div>
       {retryError ? (
         <p className="hint" role="alert">
@@ -385,9 +386,9 @@ export function FailedOpen({ reviewId, prLabel, error }: { reviewId: string; prL
         {error}
       </p>
       <div className="frow" style={{ gap: 8 }}>
-        <button className="btn" type="button" disabled={retrying} onClick={() => void onRetry()}>
+        <Button variant="primary" type="button" disabled={retrying} onClick={() => void onRetry()}>
           {retrying ? "Retrying…" : "Retry"}
-        </button>
+        </Button>
       </div>
       {retryError ? (
         <p className="hint" role="alert">

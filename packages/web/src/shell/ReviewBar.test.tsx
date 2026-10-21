@@ -76,7 +76,8 @@ describe("ReviewBar", () => {
     expect(screen.getByRole("button", { name: /Comments/ })).toBeInTheDocument();
     // Submit is the primary (filled) action in the bar.
     const submit = document.querySelector("#submitSlot [data-submit]");
-    expect(submit?.className).toContain("btn");
+    expect(submit?.className).toContain("ui-btn");
+    expect(submit?.getAttribute("data-variant")).toBe("primary");
     expect(submit?.textContent).toMatch(/Submit/);
   });
 
@@ -228,7 +229,7 @@ describe("ReviewBar", () => {
       expect(document.getElementById("reviewbar")).toContainElement(switches[0]);
       const pick = screen.getByLabelText("View version") as HTMLSelectElement;
       expect(pick.value).toBe("2");
-      expect(pick).toHaveClass("tbtn");
+      expect(pick).toHaveClass("ui-select");
       // The current version is annotated in the dropdown.
       const texts = [...pick.options].map((o) => o.textContent);
       expect(texts).toContain("v2 · e4f5a6b7 · current");

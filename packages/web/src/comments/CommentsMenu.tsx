@@ -28,6 +28,7 @@ import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
 import { useIsReadOnlyVersion } from "./readOnly.js";
+import { Badge, Button } from "../ui/index.js";
 import { threadPostText } from "./threads.js";
 import { groupGithubComments, isOutdatedComment, requestGithubThread, type GithubThread } from "./GithubThreads.js";
 
@@ -321,8 +322,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
 
   return (
     <span ref={rootRef} style={{ position: "relative" }}>
-      <button
-        className="tbtn"
+      <Button
+        variant="secondary"
+        size="sm"
         type="button"
         data-cm=""
         aria-expanded={open}
@@ -330,8 +332,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
       >
         <Icon name="comment" />
         Comments {threads.length}
-        {forPr.length > 0 ? <span className="count">{forPr.length} for PR</span> : null}
-      </button>
+        {forPr.length > 0 ? <Badge tone="warn">{forPr.length} for PR</Badge> : null}
+      </Button>
       {open && snapshot ? (
         <div className="cmenu" role="dialog" aria-label="Comments">
           <div className="frow">
@@ -358,7 +360,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
                   </span>
                   <span className="cx2">{excerpt(thread)}</span>
                 </button>
-                {thread.post ? <span className="prtag">For PR</span> : null}
+                {thread.post ? <Badge tone="warn">For PR</Badge> : null}
                 {filter === "pr" ? <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} /> : null}
               </div>
             );

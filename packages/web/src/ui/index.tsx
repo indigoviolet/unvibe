@@ -6,9 +6,9 @@ import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import "./ui.css";
 
-export function Button({ variant = "secondary", size = "md", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }): React.JSX.Element {
-  return <BaseButton data-variant={variant} data-size={size} className="ui-btn" {...p} />;
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }>(function Button({ variant = "secondary", size = "md", ...p }, ref): React.JSX.Element {
+  return <BaseButton ref={ref} data-variant={variant} data-size={size} className="ui-btn" {...p} />;
+});
 export function Field({ label, htmlFor, help, status, children }: { label: string; htmlFor?: string; help?: ReactNode; status?: ReactNode; children: ReactNode }): React.JSX.Element {
   return <div className="ui-field"><label htmlFor={htmlFor}>{label}</label><div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>{children}{help ? <span className="ui-help">{help}</span> : null}{status}</div></div>;
 }

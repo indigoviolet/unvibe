@@ -8,6 +8,8 @@
 .ui-btn[data-variant="quiet"]:hover{background:var(--sunk);color:var(--ink)}
 .ui-btn[data-variant="danger"]{background:var(--warn);color:var(--surface);border-color:var(--warn)}
 .ui-btn:disabled{opacity:.45;cursor:default}
+.ui-btn[data-variant="secondary"][aria-expanded="true"]{background:var(--sunk)}
+.ui-btn[data-variant="secondary"][aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
 .ui-field{display:grid;grid-template-columns:minmax(140px,max-content) minmax(0,1fr);gap:var(--space-2) var(--space-4);align-items:start;margin:var(--space-3) 0}
 .ui-field>label,.ui-field>.ui-field-label{font-size:var(--text-sm);color:var(--text-secondary);padding-top:6px;font-weight:var(--weight-medium)}
 .ui-field .ui-help{font-size:var(--text-xs);color:var(--text-muted);line-height:1.45}

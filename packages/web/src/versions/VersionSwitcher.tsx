@@ -10,6 +10,7 @@
  */
 import { useLocation, useNavigate } from "react-router-dom";
 import { useReview } from "../state/store.js";
+import { Select } from "../ui/index.js";
 import { useReviewVersion } from "./useReviewVersion.js";
 
 export function VersionSwitcher(): React.JSX.Element | null {
@@ -33,9 +34,8 @@ export function VersionSwitcher(): React.JSX.Element | null {
 
   return (
     <span className="vs" data-testid="version-switcher" data-ro={readOnly ? "1" : undefined}>
-      <select
+      <Select
         id="version-pick"
-        className="tbtn"
         aria-label="View version"
         title="View version"
         value={value}
@@ -47,7 +47,7 @@ export function VersionSwitcher(): React.JSX.Element | null {
             {v.n === current ? " · current" : ""}
           </option>
         ))}
-      </select>
+      </Select>
     </span>
   );
 }

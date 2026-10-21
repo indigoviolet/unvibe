@@ -33,6 +33,7 @@ import {
 import { refreshErrorNotice } from "../../versions/versionUtils.js";
 import { useReviewVersion } from "../../versions/useReviewVersion.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
+import { Button } from "../../ui/index.js";
 import {
   buildFileTree,
   citedHunkHashes,
@@ -822,8 +823,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             </button>
           </span>
         ) : null}
-        <button
-          className="tbtn"
+        <Button
+          variant="secondary"
+          size="sm"
           type="button"
           aria-expanded={prefs.filesOpen}
           data-tip={prefs.filesOpen ? "Hide file list" : "Show file list"}
@@ -838,7 +840,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         >
           <Icon name={prefs.filesOpen ? "down" : "right"} />
           Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
-        </button>
+        </Button>
         <FilterMenuButton
           label="Review filters"
           tip={
@@ -1231,9 +1233,10 @@ function FilterMenuButton({
 
   return (
     <span className="fctl" ref={ctlRef}>
-      <button
+      <Button
         ref={btnRef}
-        className="tbtn fbtn"
+        variant="secondary"
+        size="sm"
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1249,7 +1252,7 @@ function FilterMenuButton({
         }}
       >
         <Icon name={icon} />
-      </button>
+      </Button>
       {menu ? createPortal(menu, document.body) : null}
     </span>
   );

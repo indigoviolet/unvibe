@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { Card } from "../ui/index.js";
+import { Button, Card } from "../ui/index.js";
 
 function redactForCopy(text: string): string {
   // Token redaction (defense in depth; the API never sends the token) +
@@ -111,13 +111,13 @@ export function DoctorPage(): React.JSX.Element {
             What Unvibe found for each tool it needs, which copy it uses and why, the full error text, and the shell, PATH and start mode of the service. <code>unvibe doctor</code> in a terminal runs the same checks.
           </p>
           <div className="frow" style={{ gap: 8, marginBottom: 12 }}>
-            <button className="btn ghost" type="button" onClick={() => void load()} disabled={loading}>
+            <Button variant="secondary" size="sm" type="button" onClick={() => void load()} disabled={loading}>
               {loading ? "Checking…" : "Re-check"}
-            </button>
-            <button className="btn ghost" type="button" onClick={() => void copy()} disabled={!report}>
+            </Button>
+            <Button variant="secondary" size="sm" type="button" onClick={() => void copy()} disabled={!report}>
               {copied ? "Copied" : "Copy diagnostics"}
-            </button>
-            <Link className="tbtn" to="/settings?tab=environment">
+            </Button>
+            <Link className="ui-btn" data-variant="secondary" data-size="sm" to="/settings?tab=environment">
               Settings → Environment
             </Link>
           </div>
