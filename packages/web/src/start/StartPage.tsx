@@ -1594,30 +1594,28 @@ export function changeHead(c: RepoChange): string {
 }
 
 /**
- * Diff size for a PR row (#100): formatted add/delete/file parts, or null
- * when the row carries no size data (the row omits the size then).
- * Thousands separators per the glossary; "1 file" stays singular.
+ * Diff size for a PR row (#100, #224): formatted add/delete parts, or
+ * null when the row carries no size data (the row omits the size then).
+ * Thousands separators per the glossary. The file count is intentionally
+ * not shown (#224).
  */
 export interface DiffSizeParts {
   additions: string | null;
   deletions: string | null;
-  files: string | null;
 }
 
 export function diffSizeParts(
-  c: Pick<RepoChange, "additions" | "deletions" | "changedFiles">,
+  c: Pick<RepoChange, "additions" | "deletions">,
 ): DiffSizeParts | null {
   const num = (n: number | undefined): string | null =>
     typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
   const additions = num(c.additions);
   const deletions = num(c.deletions);
-  const changed = num(c.changedFiles);
-  if (additions === null && deletions === null && changed === null) return null;
+  if (additions === null && deletions === null) return null;
   return {
     additions: additions === null ? null : `+${additions}`,
     // U+2212 minus, as in the diff pane.
     deletions: deletions === null ? null : `−${deletions}`,
-    files: changed === null ? null : `${changed} ${c.changedFiles === 1 ? "file" : "files"}`,
   };
 }
 
@@ -1683,9 +1681,6 @@ function ChangeRow({
               {size.additions !== null ? <span className="a">{size.additions}</span> : null}
               {size.additions !== null && size.deletions !== null ? " " : null}
               {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
-              {size.files !== null ? (
-                <>{size.additions !== null || size.deletions !== null ? " · " : ""}{size.files}</>
-              ) : null}
             </>
           ) : null}
           {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}

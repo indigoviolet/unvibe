@@ -27,24 +27,22 @@ describe("changeHead (#91)", () => {
   });
 });
 
-describe("diffSizeParts (#100)", () => {
-  test("formats additions, deletions and file count", () => {
+describe("diffSizeParts (#100, #224: no file count)", () => {
+  test("formats additions and deletions", () => {
     expect(
-      diffSizeParts({ additions: 120, deletions: 34, changedFiles: 6 }),
-    ).toEqual({ additions: "+120", deletions: "−34", files: "6 files" });
+      diffSizeParts({ additions: 120, deletions: 34 }),
+    ).toEqual({ additions: "+120", deletions: "−34" });
   });
 
-  test("large numbers stay readable and one file stays singular", () => {
-    expect(diffSizeParts({ additions: 1200, deletions: 0, changedFiles: 1 })).toEqual({
+  test("large numbers stay readable and zero sides stay", () => {
+    expect(diffSizeParts({ additions: 1200, deletions: 0 })).toEqual({
       additions: "+1,200",
       deletions: "−0",
-      files: "1 file",
     });
   });
 
   test("partial sizes render the known parts", () => {
-    expect(diffSizeParts({ additions: 9 })).toEqual({ additions: "+9", deletions: null, files: null });
-    expect(diffSizeParts({ changedFiles: 3 })).toEqual({ additions: null, deletions: null, files: "3 files" });
+    expect(diffSizeParts({ additions: 9 })).toEqual({ additions: "+9", deletions: null });
   });
 
   test("no size data is null (the row omits the size)", () => {

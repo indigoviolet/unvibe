@@ -49,10 +49,11 @@ test("recency filter hides older rows in both groups and persists", async ({ pag
   await expect(page.getByText("Changelog: backfill old entries")).toHaveCount(0);
 });
 
-test("PR rows show the diff size and omit it when unknown", async ({ page }) => {
+test("PR rows show the diff size without the file count, and omit it when unknown", async ({ page }) => {
   const row = page.locator(".ci", { hasText: "Pool: reuse connections across redirects" });
   await expect(row).toContainText("+545");
-  await expect(row).toContainText("30 files");
+  // #224: no "· N files" in the row meta.
+  await expect(row).not.toContainText("files");
   // The size-less row carries no size text.
   const unsized = page.locator(".ci", { hasText: "Changelog: backfill old entries" });
   await expect(unsized).not.toContainText("+");

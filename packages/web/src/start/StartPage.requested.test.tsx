@@ -186,7 +186,8 @@ describe("StartPage requested split and filter (#95)", () => {
     const sizedMeta = screen.getByText("Sized PR").closest(".ci")?.querySelector(".cw");
     expect(sizedMeta?.textContent).toContain("+1,200");
     expect(sizedMeta?.textContent).toContain("−34");
-    expect(sizedMeta?.textContent).toContain("6 files");
+    // #224: the file count is not shown.
+    expect(sizedMeta?.textContent).not.toContain("files");
     expect(sizedMeta?.querySelector(".a")?.textContent).toBe("+1,200");
     expect(sizedMeta?.querySelector(".d")?.textContent).toBe("−34");
     // The unsized row carries no size text in its meta line.
