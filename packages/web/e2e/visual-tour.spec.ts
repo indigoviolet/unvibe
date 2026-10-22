@@ -1021,7 +1021,7 @@ for (const combo of [
       { id: "repositories", name: "Repos", marker: "Add by path" },
       { id: "models", name: "Models", marker: "Writes the guide" },
       { id: "environment", name: "Environment", marker: "Re-check" },
-      { id: "version", name: "Version", marker: "Installed:" },
+      { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
     ] as const) {
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
@@ -1043,9 +1043,9 @@ for (const combo of [
           Math.abs(vToggleBox!.y + vToggleBox!.height / 2 - (vLabelBox!.y + vLabelBox!.height / 2)),
           "version: checkbox and label share one line",
         ).toBeLessThanOrEqual(2);
-        const vHelp = (await page.locator(".ver-toggle-hint").textContent()) ?? "";
-        expect(vHelp.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
-        expect(vHelp).not.toMatch(/gh|login|restart/i);
+        // #246: the "Releases always listed." help text is gone.
+        await expect(page.locator(".ver-toggle-hint")).toHaveCount(0);
+        await expect(page.getByTestId("update-current-version")).toHaveCount(0);
         const vRows = page.locator('[data-testid="update-channel"]');
         expect(await vRows.locator(".ui-row-meta").count()).toBe(0);
         const vHeights = await vRows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));

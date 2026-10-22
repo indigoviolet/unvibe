@@ -2902,3 +2902,36 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (boxed link: same height as Comments, bottoms within 2px),
   `e2e/journeys/j230-pr-state-fresh.spec.ts` (title selector + Comments
   height check), tour review-page frames (light + dark, 1440 + 960).
+
+## Addendum: #245 (review-bar heights + status icon inside the link)
+
+- **#245 (every review-bar control one height, centred; §4.1):** home,
+  GitHub link, Refresh, version picker, Debug, Guide | Source, Comments,
+  Submit and the jobs count all render at the theme's small control
+  height (`--control-sm`) with the same vertical centre (within 1px) in
+  Default, Studio and Console, light and dark. `.rid` is centred
+  (`align-items: center`, old `align-self: flex-end` overrides removed).
+  Evidence: `e2e/review-bar.spec.ts` (all 6 theme combos), J230 (bottoms
+  + icon centre), tour review-page frames in all three themes.
+- **#245 (status icon inside the link box; §4.1):** `PrBadges` renders
+  inside the GitHub link after `owner/repo#N`, vertically centred by the
+  shared `ui-btn` flex layout. Hovering the icon still shows its shared
+  `data-tip` tooltip (e.g. "Changes requested", "Merged"); the link keeps
+  its own "Open PR on GitHub" title. No sibling badges in the row.
+  Evidence: `src/shell/ReviewBar.test.tsx` (inside + tooltip attrs),
+  J225a + J230 (inside + hover `#tip` + no sibling), `review-bar.spec.ts`
+  (no sibling + centre).
+
+## Addendum: #246 (Version tab: hint text + Installed line removed)
+
+- **#246 (Settings → Version help text removed; §4.14):** the "Releases
+  always listed." hint under "Show previews" is gone, with its
+  `.ver-toggle-hint` CSS. Tour/J5 assert the hint is absent.
+- **#246 (Settings → Version Installed line removed; §4.14):** the
+  `CurrentVersion` line (`Installed: … · sha · built … · from …`,
+  `data-testid="update-current-version"`), its `.ver-current` CSS and its
+  now-unused import are gone — no dead code (`mergedProvenance` stays,
+  still used by the preview badge title). The installed channel is marked
+  by the Installed badge in the channel list. Evidence:
+  `e2e/update-picker.spec.ts`, J5, `VersionSection.disabled.test.tsx`
+  (Installed badge / absent line), tour Version frames.
