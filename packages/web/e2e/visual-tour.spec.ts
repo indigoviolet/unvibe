@@ -1017,10 +1017,10 @@ for (const combo of [
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
       if (tab.id === "version") {
-        // #233: enable the picker (fake backend) and assert the two
-        // fixes: toggle on one line with short help, single-line rows
-        // in standard ListRow padding with equal heights, and the
-        // Channels label bottom-aligned with Refresh above the divider.
+        // #233 (with #229's horizontal alignment): enable the picker
+        // (fake backend) and assert compact single-line rows sharing
+        // the card's side padding with equal heights, and the Channels
+        // label bottom-aligned with Refresh above the divider.
         const versionToggle = page.getByTestId("version-picker-toggle");
         if (!(await versionToggle.isChecked())) {
           await versionToggle.click();
@@ -1053,6 +1053,13 @@ for (const combo of [
         const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
         const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
         expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
+        const vActionBox = await vRows.locator("button").first().boundingBox();
+        expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
+        // Compact rows (#233): each row is at most the button height + 16px.
+        const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
+        for (const h of vHeights) {
+          expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
+        }
       }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);

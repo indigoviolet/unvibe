@@ -62,9 +62,10 @@ test.describe("J5 settings and versions", () => {
     await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("update-current-version")).toBeVisible({ timeout: 15_000 });
 
-    // #233: toggle on one line with short help; single-line channel rows
-    // in standard ListRow padding; the Channels label's bottom and the
-    // Refresh button's bottom sit the same distance above the divider.
+    // #233 (with #229's horizontal alignment): compact single-line
+    // channel rows sharing the card's side padding; the Channels
+    // label's bottom and the Refresh button's bottom sit the same
+    // distance above the divider.
     const toggleBox = await toggle.boundingBox();
     const toggleLabel = page.locator('.ver-toggle label[for="version-picker-toggle"]');
     await expect(toggleLabel).toBeVisible();
@@ -99,6 +100,8 @@ test.describe("J5 settings and versions", () => {
     const labelAbove = dividerY - (channelsLabelBox!.y + channelsLabelBox!.height);
     const buttonAbove = dividerY - (refreshBox!.y + refreshBox!.height);
     expect(Math.abs(labelAbove - buttonAbove)).toBeLessThanOrEqual(2);
+    const actionBox = await rows.locator("button").first().boundingBox();
+    expect(Math.abs(refreshBox!.x + refreshBox!.width - (actionBox!.x + actionBox!.width))).toBeLessThanOrEqual(2);
     const channels = await apiJson(svc, "GET", "/api/update/channels");
     expect(channels.status).toBe(200);
     // From a source checkout the switch itself refuses with a readable reason
