@@ -192,14 +192,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                             pick(r.buildsOnId as string, r.buildsOnRef);
                           }}
                         >
-                          <Badge tone="neutral">{r.buildsOnName}</Badge>
+                          <Badge tone="outline">{r.buildsOnName}</Badge>
                         </button>
                       </span>
                     ) : null}
                   </>
                 }
                 trailing={
-                  <Badge tone="neutral">
+                  <Badge tone="outline">
                     {r.count === 0 ? "no hunks" : r.count === 1 ? "1 hunk" : `${r.count} hunks`}
                   </Badge>
                 }

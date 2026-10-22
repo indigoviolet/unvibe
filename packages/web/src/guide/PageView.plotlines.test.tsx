@@ -66,6 +66,11 @@ describe("PageView plotlines", () => {
     expect(names).toEqual(["Unfold folded values", "Prove the unfolding works", "Other"]);
     const chips = [...(box?.querySelectorAll(".ui-row .ui-badge") ?? [])].map((el) => el.textContent ?? "");
     expect(chips.filter((c) => /hunks?$/.test(c))).toHaveLength(3);
+    // #242: chips are bordered pills (the outline Badge, which reads on
+    // the sunk card), including the builds-on target.
+    for (const chip of box?.querySelectorAll(".ui-badge") ?? []) {
+      expect(chip).toHaveAttribute("data-tone", "outline");
+    }
     // Two plotlines + Other.
     expect(box?.querySelectorAll("li")).toHaveLength(3);
   });
