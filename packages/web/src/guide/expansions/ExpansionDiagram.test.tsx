@@ -84,7 +84,6 @@ function seedSnapshot(ann: Annotation): void {
         id: "root",
         kind: "root",
         title: "Root",
-        saved: false,
         cards: [
           {
             id: "c1",

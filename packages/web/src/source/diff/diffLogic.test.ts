@@ -181,7 +181,6 @@ describe("citedHunkHashes", () => {
         id: "p1",
         kind: "root",
         title: "t",
-        saved: false,
         cards: [
           {
             id: "c1",

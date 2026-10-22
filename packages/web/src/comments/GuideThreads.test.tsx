@@ -29,7 +29,7 @@ function seedSnapshot(): void {
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
-    pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards: [card] }],
+    pages: [{ id: "root", kind: "root", title: "Root", cards: [card] }],
     annotations: [],
     hunkStates: [],
     jobs: [],

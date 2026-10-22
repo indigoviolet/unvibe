@@ -4,7 +4,7 @@
  * Every agent control shows the clear no-agent state while non-agent
  * controls keep working: explain/ask/depth/examples/diagram/generate/
  * followup/concept/second-opinion fail with "no agent configured" copy (or
- * a visible error + retry), and read/collapse/bookmark/threads/diff controls
+ * a visible error + retry), and read/collapse/threads/diff controls
  * work.
  *
  * Requires `mise run build` first. Skipped when the service isn't built.

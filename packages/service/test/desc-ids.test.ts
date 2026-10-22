@@ -195,7 +195,6 @@ describe("issue #96: desc: IDs from the review tools", () => {
         id: "root",
         kind: "root",
         title: "t",
-        saved: false,
         cards: [
           {
             id: "c-central",

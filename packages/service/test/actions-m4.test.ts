@@ -423,7 +423,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("promote moves conversation content to a new page; collapse/bookmark/close/delete", { timeout: 120000 }, async () => {
+  it("promote moves conversation content to a new page; collapse/close/delete", { timeout: 120000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
@@ -461,10 +461,6 @@ describe("M4 actions on the demo review (replay)", () => {
       expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.collapsed).toBe(
         true,
       );
-
-      const bookmark = await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true });
-      expect(bookmark.status).toBe(200);
-      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.saved).toBe(true);
 
       // close + delete on fresh note threads.
       const note = await postAction(app, id, {
@@ -962,7 +958,6 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const noteId = note.json.annotationId as string;
 
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
-      expect((await postAction(app, id, { kind: "bookmark", pageId: "root", saved: true })).status).toBe(200);
       // Cached depth switch needs no agent.
       const depth = await postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" });
       expect(depth.status).toBe(200);
@@ -978,7 +973,6 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
 
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe("standard");
-      expect(snap.pages.find((p) => p.id === "root")!.saved).toBe(true);
       expect(snap.annotations.find((a) => a.id === noteId)!.open).toBe(false);
       expect(snap.annotations.some((a) => a.id === (note2.json.annotationId as string))).toBe(false);
       unsub();

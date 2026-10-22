@@ -52,7 +52,7 @@ describe("GuidePage error retry (finding 14)", () => {
   it("retries the failed guide and shows the fresh snapshot", async () => {
     const healed = {
       ...failedSnapshot(),
-      pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+      pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
       pipeline: { stages: { reader: "done" } },
     } as unknown as ReviewSnapshot;
     useReview.getState().setSnapshot(failedSnapshot());
