@@ -1621,8 +1621,8 @@ export function diffSizeParts(
 
 /**
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
- * number and branch, author, relative update time, diff size and team
- * names — each omitted when unknown — above the title that opens the
+ * number and branch, author, relative update time and diff size — each
+ * omitted when unknown — above the title that opens the review. Where
  * review. Where the row names a GitHub PR, the number is a link to the PR
  * page (new tab); the title button (and the row around it) opens the
  * review, so the link never triggers the row and both stay
@@ -1683,7 +1683,6 @@ function ChangeRow({
               {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
             </>
           ) : null}
-          {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
         </span>
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
