@@ -81,7 +81,7 @@ test.describe("J16 refresh carry-over", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V1.replace("    return 1", "    return 111").replace("    return 2", "    return 22"));
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/1 changed/, { timeout: 60_000 });
 
     // Carried over: guide cards, the comment, and the unchanged reviewed state.

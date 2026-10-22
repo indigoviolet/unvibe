@@ -227,7 +227,8 @@ test.describe("settings + versions on the real service", () => {
     await git(repoDir, "commit", "--amend", "--no-edit");
 
     // Refresh from the UI: banner with correct counts.
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    // #241: Refresh lives in the review top bar now.
+    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks", { timeout: 60_000 });
     await banner.getByText("range-diff").click();

@@ -63,6 +63,15 @@ test("review page has one bar with a home control and no breadcrumb", async ({ p
   await expect(page).toHaveURL("/");
 });
 
+test("review bar carries Refresh, diff toolbar does not (#241)", async ({ page }) => {
+  await gotoDemo(page);
+  const bar = page.locator("#reviewbar");
+  const refresh = bar.getByRole("button", { name: "Refresh" });
+  await expect(refresh).toBeVisible();
+  await expect(refresh).toHaveAttribute("data-tip", "Refresh");
+  await expect(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
+});
+
 test("comments menu opens with the source pane closed", async ({ page }) => {
   await gotoDemo(page);
   await page.locator("#toggleRight").click();
