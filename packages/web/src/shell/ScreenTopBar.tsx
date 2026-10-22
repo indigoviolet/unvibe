@@ -52,7 +52,7 @@ export function ScreenTopBar({
       <span className="sp" />
       {showBadge ? <PreviewBuildBadge /> : null}
       <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents">
-        <Icon name="note" />
+        <Icon name="doc" />
       </Link>
       {hideSettings ? null : (
         <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings">
