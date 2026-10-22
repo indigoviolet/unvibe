@@ -52,12 +52,19 @@ test.describe("J223 outbox export (branch review)", () => {
     expect(body.markdown).toContain("## src/app.py:2");
     expect(body.markdown).toContain("Branch-only thought");
 
-    // The menu is one list with three counted sections (#226): the marked
-    // comment sits in the Outbox only, with its draft and the export box.
+    // The menu has two counted tabs (#236): the Comments tab holds This
+    // review and On GitHub, the Outbox tab the marked comment with its
+    // draft and the export box.
     await page.locator('#reviewbar [data-cm=""]').click();
     const menu = page.locator(".cmenu");
+    await expect(menu.locator('[data-cmtab="comments"]')).toContainText("Comments 0");
+    await expect(menu.locator('[data-cmtab="outbox"]')).toContainText("Outbox 1");
     await expect(menu.locator('[data-cmsec="review"]')).toHaveAttribute("aria-label", "This review, 0 comments");
-    await expect(menu.locator('[data-cmsec="review"]')).toContainText("Everything is marked for the Outbox below.");
+    await expect(menu.locator('[data-cmsec="review"]')).toContainText("Everything is marked in the Outbox tab.");
+    await expect(menu.locator('[data-cmsec="outbox"]')).toHaveCount(0);
+    await expect(menu.locator('[data-cmsec="github"]')).toHaveAttribute("aria-label", "On GitHub, 0 threads");
+    await expect(menu.locator('[data-cmsec="github"]')).toContainText("No review comments on GitHub yet.");
+    await menu.locator('[data-cmtab="outbox"]').click();
     await expect(menu.locator('[data-cmsec="outbox"]')).toHaveAttribute("aria-label", "Outbox, 1 comments");
     await expect(menu.locator('[data-cmsec="outbox"]')).toContainText("Branch-only thought");
     // Entries under a file group show only their line, not the file again
@@ -65,8 +72,6 @@ test.describe("J223 outbox export (branch review)", () => {
     await expect(menu.locator('[data-cmsec="outbox"] .cmgroup')).toHaveText("src/app.py");
     await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).toContainText(":2");
     await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).not.toContainText("src/app.py:2");
-    await expect(menu.locator('[data-cmsec="github"]')).toHaveAttribute("aria-label", "On GitHub, 0 threads");
-    await expect(menu.locator('[data-cmsec="github"]')).toContainText("No review comments on GitHub yet.");
     const box = menu.locator("[data-outbox-md]");
     await expect(box).toBeVisible({ timeout: 10_000 });
     await expect(box).toContainText("Branch-only thought");
@@ -76,14 +81,17 @@ test.describe("J223 outbox export (branch review)", () => {
     if (clip) expect(clip).toContain("Branch-only thought");
 
     // Removing from the Outbox returns the thread to This review and hides
-    // the export box; the three counts still add up to the one thread.
+    // the export box; the tab counts still add up to the one thread.
     await page.locator(".cmenu [data-cmclose]").click();
     await thread.getByRole("button", { name: "Remove from the Outbox" }).click();
     await expect(thread.getByRole("button", { name: "Add to Outbox" })).toBeVisible({ timeout: 10_000 });
     await page.locator('#reviewbar [data-cm=""]').click();
-    await expect(page.locator(".cmenu [data-outbox-md]")).toHaveCount(0);
+    await expect(page.locator('.cmenu [data-cmtab="comments"]')).toContainText("Comments 1");
+    await expect(page.locator('.cmenu [data-cmtab="outbox"]')).toContainText("Outbox 0");
     await expect(page.locator('.cmenu [data-cmsec="review"]')).toHaveAttribute("aria-label", "This review, 1 comments");
     await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("Branch-only thought");
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
+    await expect(page.locator(".cmenu [data-outbox-md]")).toHaveCount(0);
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Nothing in the Outbox yet.");
     const empty = await apiJson(svc, "GET", `/api/reviews/${reviewId}/outbox`);
     expect((empty.json as unknown as { count: number }).count).toBe(0);

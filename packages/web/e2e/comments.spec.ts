@@ -223,14 +223,16 @@ test("Outbox drafts live in the Comments menu and persist", async ({ page }) => 
   // Comments are for the PR by default — no explicit mark needed.
   await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
-  // The Comments menu lists it in its Outbox section; the draft is editable.
+  // The Comments menu lists it on its Outbox tab; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();
+  await page.locator('.cmenu [data-cmtab="outbox"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
   await page.locator('#reviewbar [data-cm=""]').click();
+  await page.locator('.cmenu [data-cmtab="outbox"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
   await page.locator(".cmenu [data-cjump]").first().click();
@@ -324,7 +326,7 @@ test("outdated threads sit at their file; removed-file threads at the end; hidin
   await expect(page.locator('.cmenu [data-ghjump="101"]')).toHaveCount(0);
 });
 
-test("comments dropdown is wide enough for sections, paths and previews", async ({ page }) => {
+test("comments dropdown is wide enough for tabs, sections, paths and previews", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
@@ -332,10 +334,17 @@ test("comments dropdown is wide enough for sections, paths and previews", async 
   // Sensible min-width so content doesn't collapse to the button width.
   const width = await panel.evaluate((el) => el.getBoundingClientRect().width);
   expect(width).toBeGreaterThanOrEqual(340);
-  // One scrolling list with three counted sections (#226), no tabs.
+  // Two tabs in the segmented control (#236): the Comments tab holds This
+  // review and On GitHub; the Outbox tab holds the Outbox section.
+  await expect(panel.locator('[data-cmtab="comments"]')).toBeVisible();
+  await expect(panel.locator('[data-cmtab="outbox"]')).toBeVisible();
   await expect(panel.locator('[data-cmsec="review"]')).toContainText("This review");
-  await expect(panel.locator('[data-cmsec="outbox"]')).toContainText("Outbox");
   await expect(panel.locator('[data-cmsec="github"]')).toContainText("On GitHub");
+  await expect(panel.locator('[data-cmsec="outbox"]')).toHaveCount(0);
+  await panel.locator('[data-cmtab="outbox"]').click();
+  await expect(panel.locator('[data-cmsec="outbox"]')).toContainText("Outbox");
+  await expect(panel.locator('[data-cmsec="review"]')).toHaveCount(0);
+  await expect(panel.locator('[data-cmsec="github"]')).toHaveCount(0);
   await expect(panel.locator("[data-cmf]")).toHaveCount(0);
 });
 

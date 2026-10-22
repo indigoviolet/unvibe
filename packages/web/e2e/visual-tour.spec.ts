@@ -946,11 +946,12 @@ for (const combo of [
     await stepChecks(page, "file-tree");
     await shot(page, "file-tree", suffix, "connection.py");
 
-    // Comments menu: one list with This review, Outbox, On GitHub (#226).
+    // Comments menu, Comments tab: This review and On GitHub (#226, #236).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmtab="comments"]')).toBeVisible();
     await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
-    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Outbox");
     await expect(page.locator('.cmenu [data-cmsec="github"]')).toContainText("On GitHub");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toHaveCount(0);
     await stepChecks(page, "menu-comments");
     await shot(page, "menu-comments", suffix, "On GitHub");
     await page.keyboard.press("Escape");
@@ -976,8 +977,11 @@ for (const combo of [
       await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
     }
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).not.toContainText("Nothing in the Outbox yet.");
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toHaveCount(0);
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
     await stepChecks(page, "menu-outbox");
     await shot(page, "menu-outbox", suffix, "Copy");
     await page.keyboard.press("Escape");
@@ -1619,9 +1623,11 @@ test("visual tour document review (#222)", async ({ page }) => {
     await checkLayout(page, "document-citation");
     await shot(page, "document-citation", "1440-light", "second repo");
 
-    // The document comment in the Outbox section (#223, #226), with its
-    // export box — and no GitHub side on a document.
+    // The document comment on the Outbox tab (#223, #226, #236), with
+    // its export box — and no GitHub side on a document, either tab.
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
     await stepChecks(page, "document-outbox");
