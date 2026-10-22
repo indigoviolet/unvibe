@@ -22,7 +22,7 @@ import type {
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { putErrors } from "./LimitsSection.js";
-import { Badge, Button, Card, Checkbox, Field as UiField, ListRow } from "../ui/index.js";
+import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
 import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
@@ -230,22 +230,18 @@ export function VersionSection({
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
       {/* No title here: the Settings tab names the section (#61). */}
       <Card variant="raised">
-        <UiField
-          label="Show channels and allow switching"
-          htmlFor="version-picker-toggle"
-          help="Listing channels uses gh with your GitHub login. Switching restarts the service."
-        >
-          <span style={{ paddingTop: 2 }}>
-            <Checkbox
-              id="version-picker-toggle"
-              testId="version-picker-toggle"
-              ariaLabel="Show channels and allow switching"
-              checked={enabled}
-              disabled={toggling}
-              onChange={() => void toggle()}
-            />
-          </span>
-        </UiField>
+        <div className="ver-toggle">
+          <Checkbox
+            id="version-picker-toggle"
+            testId="version-picker-toggle"
+            ariaLabel="Show channels and allow switching"
+            checked={enabled}
+            disabled={toggling}
+            onChange={() => void toggle()}
+          />
+          <label htmlFor="version-picker-toggle">Show channels and allow switching</label>
+        </div>
+        <p className="hint ver-toggle-hint">Optional.</p>
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
@@ -487,12 +483,11 @@ function VersionRow({
         data-testid="update-channel"
         data-ref={c.ref}
         primary={
-          <code className="ver-name" title={c.version ?? c.ref}>
-            {c.ref}
-          </code>
-        }
-        meta={
           <>
+            <code className="ver-name" title={c.version ?? c.ref}>
+              {c.ref}
+            </code>
+            {" · "}
             <span className="ver-sha" title={c.commit ?? undefined}>{shortCommit(c.commit) ?? "—"}</span>
             {" · "}
             <span className="ver-built">{built ? `built ${built}` : "—"}</span>

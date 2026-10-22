@@ -74,7 +74,12 @@ test.beforeAll(async () => {
   writeFileSync(tourShellPath, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${tourBin}:$PATH"\n`, { mode: 0o755 });
   svc = await startService(dataDir, {
     agent: "replay",
-    extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    extraEnv: {
+      SHELL: tourShellPath,
+      PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}`,
+      // Fake updater so the Settings → Version scene lists channels (#229).
+      UNVIBE_UPDATER_BACKEND: "fake",
+    },
   });
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
@@ -1011,6 +1016,41 @@ for (const combo of [
     ] as const) {
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
+      if (tab.id === "version") {
+        // #229: enable the picker (fake backend) and assert the three
+        // fixes: toggle on one line with short help, single-line rows,
+        // shared padding and centred label.
+        const versionToggle = page.getByTestId("version-picker-toggle");
+        if (!(await versionToggle.isChecked())) {
+          await versionToggle.click();
+          await expect(versionToggle).toBeChecked({ timeout: 15_000 });
+        }
+        await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
+        const vToggleBox = await versionToggle.boundingBox();
+        const vLabelBox = await page.locator('.ver-toggle label[for="version-picker-toggle"]').boundingBox();
+        expect(
+          Math.abs(vToggleBox!.y + vToggleBox!.height / 2 - (vLabelBox!.y + vLabelBox!.height / 2)),
+          "version: checkbox and label share one line",
+        ).toBeLessThanOrEqual(2);
+        const vHelp = (await page.locator(".ver-toggle-hint").textContent()) ?? "";
+        expect(vHelp.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+        expect(vHelp).not.toMatch(/gh|login|restart/i);
+        const vRows = page.locator('[data-testid="update-channel"]');
+        expect(await vRows.locator(".ui-row-meta").count()).toBe(0);
+        const vHeights = await vRows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+        expect(Math.max(...vHeights) - Math.min(...vHeights)).toBeLessThanOrEqual(1.5);
+        const vHeadBox = await page.locator(".ver-listhead").boundingBox();
+        const vFirstBox = await vRows.first().boundingBox();
+        expect(Math.abs(vHeadBox!.x - vFirstBox!.x)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vHeadBox!.x + vHeadBox!.width - (vFirstBox!.x + vFirstBox!.width))).toBeLessThanOrEqual(2);
+        const vRefreshBox = await page.getByTestId("update-refresh").boundingBox();
+        const vChannelsBox = await page.locator(".ver-listhead .hint").boundingBox();
+        expect(
+          Math.abs(vRefreshBox!.y + vRefreshBox!.height / 2 - (vChannelsBox!.y + vChannelsBox!.height / 2)),
+        ).toBeLessThanOrEqual(2);
+        const vActionBox = await vRows.locator("button").first().boundingBox();
+        expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
+      }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
     }

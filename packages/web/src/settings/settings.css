@@ -16,8 +16,22 @@ mark.tm {
   font-family: var(--mono);
   font-size: 0.86em;
 }
-/* Version section: the enable Field sits inside the card (#225);
-   channel rows are shared ListRows with equal heights. */
+/* Version section: the enable toggle sits on one line (#229);
+   channel rows are single-line ListRows sharing the card padding. */
+.ver-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.ver-toggle label {
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.ver-toggle-hint {
+  margin: 0 0 6px 26px;
+}
 .ver-current {
   font-size: 13px;
   margin: 6px 0;
@@ -34,10 +48,17 @@ mark.tm {
 }
 .ver-listhead {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin: 6px 0 2px;
+}
+/* Channel rows share the card's one inner padding on both sides:
+   no extra row inset, so row content starts where the heading starts
+   and the Switch buttons end at Refresh's right edge. */
+.ver-list > .ui-row {
+  padding-left: 0;
+  padding-right: 0;
 }
 .ver-name {
   font-family: var(--mono);

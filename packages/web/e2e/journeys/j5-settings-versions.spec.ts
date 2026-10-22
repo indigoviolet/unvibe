@@ -61,6 +61,42 @@ test.describe("J5 settings and versions", () => {
     }
     await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("update-current-version")).toBeVisible({ timeout: 15_000 });
+
+    // #229: toggle on one line with short help; single-line channel rows;
+    // heading, divider and rows share the card padding; label centred
+    // with Refresh.
+    const toggleBox = await toggle.boundingBox();
+    const toggleLabel = page.locator('.ver-toggle label[for="version-picker-toggle"]');
+    await expect(toggleLabel).toBeVisible();
+    const labelBox = await toggleLabel.boundingBox();
+    expect(
+      Math.abs(toggleBox!.y + toggleBox!.height / 2 - (labelBox!.y + labelBox!.height / 2)),
+    ).toBeLessThanOrEqual(2);
+    expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(labelBox!.x + 1);
+    const helpText = (await page.locator(".ver-toggle-hint").textContent()) ?? "";
+    expect(helpText.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+    expect(helpText).not.toMatch(/gh|login|restart/i);
+
+    const rows = page.locator('[data-testid="update-channel"]');
+    expect(await rows.count()).toBeGreaterThan(0);
+    expect(await rows.locator(".ui-row-meta").count()).toBe(0);
+    for (const text of await rows.evaluateAll((els) => els.map((el) => el.textContent ?? ""))) {
+      expect(text).toMatch(/·.*·/);
+    }
+    const heights = await rows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1.5);
+
+    const headBox = await page.locator(".ver-listhead").boundingBox();
+    const firstRowBox = await rows.first().boundingBox();
+    expect(Math.abs(headBox!.x - firstRowBox!.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(headBox!.x + headBox!.width - (firstRowBox!.x + firstRowBox!.width))).toBeLessThanOrEqual(2);
+    const refreshBox = await page.getByTestId("update-refresh").boundingBox();
+    const channelsLabelBox = await page.locator(".ver-listhead .hint").boundingBox();
+    expect(
+      Math.abs(refreshBox!.y + refreshBox!.height / 2 - (channelsLabelBox!.y + channelsLabelBox!.height / 2)),
+    ).toBeLessThanOrEqual(2);
+    const actionBox = await rows.locator("button").first().boundingBox();
+    expect(Math.abs(refreshBox!.x + refreshBox!.width - (actionBox!.x + actionBox!.width))).toBeLessThanOrEqual(2);
     const channels = await apiJson(svc, "GET", "/api/update/channels");
     expect(channels.status).toBe(200);
     // From a source checkout the switch itself refuses with a readable reason
