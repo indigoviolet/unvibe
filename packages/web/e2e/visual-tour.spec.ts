@@ -1340,9 +1340,12 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await new Promise((r) => setTimeout(r, 500));
     }
     // Seed the building state: finished ingest with a real diff, no
-    // guide pages, one running pipeline stage. Stable under agent=none
-    // (no pipeline to mutate it); the loading review resumes its held
-    // ingest on the restart below and stays loading.
+    // guide pages, one finished stage with the rest pending (the
+    // about-to-queue gap). Stable under agent=none (no pipeline to
+    // mutate it); a `running` stage with no live jobs would now read as
+    // idle, since running is keyed to live jobs (#247), which agent=none
+    // can never provide. The loading review resumes its held ingest on
+    // the restart below and stays loading.
     await svc232.stop();
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(path.join(dir232, "unvibe.db"));
@@ -1357,7 +1360,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
         jobs: unknown[];
       };
       seeded.pages = [];
-      seeded.pipeline = { stages: { reader: "running", base: "pending" } };
+      seeded.pipeline = { stages: { reader: "done", base: "pending" } };
       seeded.jobs = [];
       db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
         row.rev + 1,

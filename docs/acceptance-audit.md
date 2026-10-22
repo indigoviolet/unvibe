@@ -2833,8 +2833,10 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
   asserts "Building the guide", no step), new tour scenes
   `review-preparing-*` (ingest loading: both panes) and
-  `guide-building-*` (seeded running pipeline stage under
-  agent=none: guide loading, diff ready) in every theme
+  `guide-building-*` (seeded about-to-queue pipeline stages — one done,
+  the rest pending — under agent=none: guide loading, diff ready; a bare
+  `running` stage with no live job now reads as idle, see #247) in every
+  theme
   (Default, Studio, Console) × scheme × width with `checkLayout`,
   frames `packages/web/visual-tour/review-preparing-*` and
   `guide-building-*` (git-ignored).
@@ -2902,3 +2904,34 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (boxed link: same height as Comments, bottoms within 2px),
   `e2e/journeys/j230-pr-state-fresh.spec.ts` (title selector + Comments
   height check), tour review-page frames (light + dark, 1440 + 960).
+
+## Addendum: #247 (branch `fix/247-running-indicator`)
+
+- **#247 (start dots and review pill agree; §4.2, §4.1):** the start
+  page's Reviews-row processing dots (`guideStatus === "running"`) and
+  the review bar's `running · queued` pill counted different things —
+  the list derived running from the stored pipeline *stages*, the bar
+  from live snapshot *jobs*. A stage can stay `running` with no live
+  job behind it (a queued job cancelled before it ran never marks its
+  stage), so the list showed dots while the review showed nothing
+  running and no pill. Both now count live jobs only
+  (`queued`/`running`/`backing-off`): `guideStatusFor`
+  (`service/src/reviews/list.ts`) no longer reports running from
+  stages, and the guide empty state (`web/src/guide/guideUtils.ts`)
+  no longer reports building from a bare `running` stage (the
+  some-done/rest-pending hedge for the about-to-queue gap is kept;
+  the stage-error paths are untouched). No polling was added. The
+  visual tour's `guide-building` seed moved to the done+pending shape,
+  since a `running` stage with no live job is now the idle stuck
+  state. Evidence: `service/test/reviews-running-247.test.ts`
+  (cancel-everything leaves stages running with no live job: list
+  reported running pre-fix, agrees post-fix),
+  `e2e/journeys/j247-running-agreement.spec.ts` (API agreement sampled
+  through a live pipeline and after it drains; a seeded
+  running-stages/no-live-job snapshot reads non-running on the list
+  and shows no dots and no pill on fresh page loads — the seeded test
+  fails pre-fix at the list assertion),
+  `src/guide/guideUtils.test.ts` (lone running stage is idle),
+  `src/shell/ReviewBar.test.tsx` + `src/shell/jobCounts.test.ts` +
+  service `test/reviews-list.test.ts` (unchanged behaviour).
+  Full gates not yet run.
