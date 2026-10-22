@@ -738,6 +738,12 @@ for (const combo of [
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // #242: the Plotlines card tops the guide root (two plotlines,
+    // one building on the other) — capture it before scrolling on.
+    await expect(page.locator(".plotlines")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".plotlines").scrollIntoViewIfNeeded();
+    await stepChecks(page, "guide-plotlines");
+    await shot(page, "guide-plotlines", suffix, "Plotlines");
     // Explain-first guide (#198): the build-up and decisions cards sit
     // after the central change in the settled reader order.
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
