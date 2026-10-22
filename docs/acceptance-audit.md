@@ -1041,6 +1041,13 @@ needed (that deviation is closed, not added).
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
   permission tests in `acp-runner.test.ts` 14 tests).
+- Agent sessions load only Unvibe's own MCP servers — met (#209 option
+  (a), owner decision): every Claude session passes `strictMcpConfig`,
+  so user and repository MCP configurations are ignored and only
+  session-passed servers load (hunk sessions pass none). Measured with
+  synthetic servers: 810 project tools cost ~958k first-turn tokens +
+  ~29 s start before, ~5k tokens + ~2.5 s after. Codex unchanged (no
+  equivalent mechanism found; reported on #209).
 - Full-access opt-in (issue #160, this branch): setting off by default
   with a stored warning acknowledgement (the service refuses to enable
   without it); two system-prompt variants (`access-lockdown` byte-

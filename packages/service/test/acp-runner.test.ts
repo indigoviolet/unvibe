@@ -255,6 +255,27 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     await runner.dispose();
   });
 
+  it("sessions request strict MCP config: only Unvibe's own MCP servers load (#209)", async () => {
+    const state = createFakeState([]);
+    const runner = new AcpAgentRunner({ settleMs: 0, factories: { claude: fakeTransportFactory(state), codex: fakeTransportFactory(state) } });
+    const locked = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    const full = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [], readOnly: false });
+    const instructed = await runner.start({ provider: "claude", model: "default", cwd: "/tmp", systemPrompt: "unvibe-instructions", mcpServers: [] });
+    for (const s of [locked, full, instructed]) {
+      const meta = state.newMetas.get(s.id) as { claudeCode?: { options?: Record<string, unknown> } } | undefined;
+      expect(meta?.claudeCode?.options?.strictMcpConfig).toBe(true);
+    }
+    // Lockdown tool set intact; full access still unrestricted.
+    const lockedOpts = (state.newMetas.get(locked.id) as { claudeCode: { options: Record<string, unknown> } }).claudeCode.options;
+    expect(lockedOpts["tools"]).toEqual(["Read", "Glob", "Grep"]);
+    const fullOpts = (state.newMetas.get(full.id) as { claudeCode: { options: Record<string, unknown> } }).claudeCode.options;
+    expect(fullOpts).not.toHaveProperty("tools");
+    // Codex sessions carry no Claude MCP options.
+    const cx = await runner.start({ provider: "codex", model: "default", cwd: "/tmp", systemPrompt: "", mcpServers: [] });
+    expect(state.newMetas.get(cx.id)).not.toHaveProperty("claudeCode");
+    await runner.dispose();
+  });
+
   it("cache probe (#177): empty-system-prompt jobs share one first turn", async () => {
     // Hunk-pass / summarize / runSmall jobs start a fresh Claude session
     // per job with systemPrompt:"". Live payload captures show the CLI
@@ -328,8 +349,14 @@ describe("AcpAgentRunner over fake ACP agent", () => {
     });
     // Full-access meta (no tool reduction) and no warmup turn: the
     // shared first turn fires only for empty-system-prompt sessions.
-    expect(state.newMetas.get(s.id)).toMatchObject({ systemPrompt: "unvibe-instructions" });
-    expect(state.newMetas.get(s.id)).not.toHaveProperty("claudeCode");
+    // strictMcpConfig still applies (#209: only Unvibe's own MCP servers).
+    expect(state.newMetas.get(s.id)).toMatchObject({
+      systemPrompt: "unvibe-instructions",
+      claudeCode: { options: { strictMcpConfig: true } },
+    });
+    const fullOpts = (state.newMetas.get(s.id) as { claudeCode: { options: Record<string, unknown> } }).claudeCode.options;
+    expect(fullOpts).not.toHaveProperty("tools");
+    expect(fullOpts).not.toHaveProperty("disallowedTools");
     expect(state.promptCalls.filter((c) => c.sessionId === s.id)).toEqual([]);
     await runner.dispose();
   });
