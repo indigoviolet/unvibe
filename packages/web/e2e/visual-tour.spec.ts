@@ -2058,60 +2058,78 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(row.getByRole("img", { name: "Changes requested" })).toBeVisible();
       await expect(row.getByRole("img", { name: "Open" })).toHaveCount(0);
       await expect(row).toContainText("new commits");
-      const title = row.locator(".cx2");
-      const meta = row.locator(".cj > .hint");
-      // Settle the row before measuring (#225 flake: the "before" boxes
-      // were read while fonts/line metrics were still settling, so the
-      // meta sat 87px lower relative to the row). Fonts first, then the
-      // row+title+meta boxes identical across two animation frames.
+      // Readiness callouts mount above the list after first paint; pin
+      // their final state (present here: the hermetic gh stub always
+      // fails the fetch probe) before measuring.
+      await expect(
+        page.locator('[aria-label="Environment problems"]').or(page.getByTestId("readiness-ready")),
+      ).toBeVisible({ timeout: 30_000 });
+      // Boxes are read atomically (one evaluate per snapshot): the old
+      // sequential boundingBox awaits could straddle a layout shift from
+      // a late-mounting callout, mixing boxes from two layouts in one
+      // "before" set — the 87px CI flake. Settle first (fonts, then
+      // identical snapshots across two animation frames), then measure.
+      interface RowBox { x: number; y: number; width: number; height: number }
+      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pop: RowBox | null }> =>
+        page.evaluate((id: string) => {
+          const rect = (el: Element | null): RowBox | null => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+          };
+          const rowEl = document.querySelector(`[data-testid="session-${id}"]`);
+          const popEl = document.querySelector(".confirm-pop");
+          return {
+            row: rect(rowEl),
+            title: rect(rowEl?.querySelector(".cx2") ?? null),
+            meta: rect(rowEl?.querySelector(".cj > .hint") ?? null),
+            pop: popEl ? rect(popEl) : null,
+          };
+        }, rcReview);
       await page.evaluate(() => document.fonts.ready).catch(() => {});
       await expect
         .poll(
           async () => {
-            const first = await Promise.all([row.boundingBox(), title.boundingBox(), meta.boundingBox()]);
+            const first = await readLayout();
             await page.evaluate(
               () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
             );
-            const second = await Promise.all([row.boundingBox(), title.boundingBox(), meta.boundingBox()]);
+            const second = await readLayout();
             return JSON.stringify(first) === JSON.stringify(second) ? "stable" : "settling";
           },
           { timeout: 15_000 },
         )
         .toBe("stable");
       // The row keeps its size and the title/meta keep their size and
-      // position relative to it; the popover covers neither. Relative
-      // boxes, so async callouts above the list can't flake the assert.
-      const rowBoxBefore = await row.boundingBox();
-      const titleBefore = await title.boundingBox();
-      const metaBefore = await meta.boundingBox();
-      expect(rowBoxBefore).not.toBeNull();
-      expect(titleBefore).not.toBeNull();
-      expect(metaBefore).not.toBeNull();
+      // position relative to it; the popover covers neither. Each side
+      // is one atomic snapshot, so a layout shift can never mix boxes
+      // from two layouts into one comparison.
+      const before = await readLayout();
+      expect(before.row).not.toBeNull();
+      expect(before.title).not.toBeNull();
+      expect(before.meta).not.toBeNull();
       await row.getByRole("button", { name: "Remove this review" }).click();
       const pop = page.locator(".confirm-pop");
       await expect(pop).toContainText("Remove this review?");
       await expect(pop.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
       await expect(pop.getByRole("button", { name: "Cancel" })).toBeVisible();
-      const rowBoxAfter = await row.boundingBox();
-      const titleAfter = await title.boundingBox();
-      const metaAfter = await meta.boundingBox();
+      const after = await readLayout();
       const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
       const offsetOf = (
         inner: { x: number; y: number },
         outer: { x: number; y: number },
       ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
-      expect(sizeOf(rowBoxAfter!)).toEqual(sizeOf(rowBoxBefore!));
-      expect(sizeOf(titleAfter!)).toEqual(sizeOf(titleBefore!));
-      expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
-      expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
-      expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
-      const popBox = await pop.boundingBox();
+      expect(sizeOf(after.row!)).toEqual(sizeOf(before.row!));
+      expect(sizeOf(after.title!)).toEqual(sizeOf(before.title!));
+      expect(sizeOf(after.meta!)).toEqual(sizeOf(before.meta!));
+      expect(offsetOf(after.title!, after.row!)).toEqual(offsetOf(before.title!, before.row!));
+      expect(offsetOf(after.meta!, after.row!)).toEqual(offsetOf(before.meta!, before.row!));
       const overlaps = (
         a: { x: number; y: number; width: number; height: number },
         b: { x: number; y: number; width: number; height: number },
       ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-      expect(overlaps(popBox!, titleBefore!)).toBe(false);
-      expect(overlaps(popBox!, metaBefore!)).toBe(false);
+      expect(overlaps(after.pop!, after.title!)).toBe(false);
+      expect(overlaps(after.pop!, after.meta!)).toBe(false);
       await checkLayout(page, "start-remove-confirm");
       await shot(page, "start-remove-confirm", suffix, "Remove this review?");
       await page.keyboard.press("Escape");
