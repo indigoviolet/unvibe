@@ -49,7 +49,9 @@
  *   the lists they concern (`newreview-agent-hint` by Reviews,
  *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   ContextRepoSource,
@@ -1479,6 +1481,57 @@ export function SessionRow({
       : null;
   const canOpen = opening === null && deleting === null;
   const faded = s.prState === "merged" || s.prState === "closed";
+  // #225: the Remove confirmation is a small popover anchored to the
+  // Remove button (a portal overlay like the other popovers and menus,
+  // positioned from the button with Floating UI and clamped into the
+  // viewport), so the row never reflows, open or closed.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [popPos, setPopPos] = useState<{ x: number; y: number } | null>(null);
+  const confirmOpen = confirmDelete === s.id;
+  useLayoutEffect(() => {
+    if (!confirmOpen) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const pop = popRef.current;
+      if (!btn || !pop) return;
+      void computePosition(btn, pop, {
+        placement: "bottom-end",
+        middleware: [offset(4), flip(), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        setPopPos((prev) => (prev && prev.x === x && prev.y === y ? prev : { x, y }));
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [confirmOpen]);
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onPointer = (e: PointerEvent): void => {
+      const n = e.target as Node;
+      if (!btnRef.current?.contains(n) && !popRef.current?.contains(n)) setConfirmDelete(null);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setConfirmDelete(null);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmOpen, setConfirmDelete]);
+  useEffect(() => {
+    if (confirmOpen && popPos) popRef.current?.querySelector("button")?.focus();
+  }, [confirmOpen, popPos]);
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
@@ -1546,38 +1599,54 @@ export function SessionRow({
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
           <span className="prtag">new commits</span>
         ) : null}
-        {confirmDelete === s.id ? (
-          <>
-            <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
-            <Button
-              variant="primary"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => void removeSession(s.id)}
+        {confirmOpen ? (
+          createPortal(
+            <div
+              ref={popRef}
+              className="confirm-pop"
+              role="dialog"
+              aria-label="Remove this review?"
+              style={popPos ? { left: popPos.x, top: popPos.y } : { visibility: "hidden" }}
             >
-              {deleting === s.id ? "Removing…" : "Remove"}
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => setConfirmDelete(null)}
-            >
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button
-            variant="secondary" size="sm"
-            type="button"
-            aria-label="Remove this review"
-            disabled={deleting !== null}
-            onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review"
-          >
-            Remove
-          </Button>
-        )}
+              <span className="q">Remove this review?</span>
+              <span className="row">
+                <Button
+                  variant="primary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => void removeSession(s.id)}
+                >
+                  {deleting === s.id ? "Removing…" : "Remove"}
+                </Button>
+                <Button
+                  variant="secondary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    btnRef.current?.focus();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </span>
+            </div>,
+            document.body,
+          )
+        ) : null}
+        <Button
+          ref={btnRef}
+          variant="secondary" size="sm"
+          type="button"
+          aria-label="Remove this review"
+          aria-haspopup="dialog"
+          aria-expanded={confirmOpen}
+          disabled={deleting !== null}
+          onClick={() => setConfirmDelete(confirmOpen ? null : s.id)}
+          title="Remove this review"
+        >
+          Remove
+        </Button>
       </div>
     </div>
   );

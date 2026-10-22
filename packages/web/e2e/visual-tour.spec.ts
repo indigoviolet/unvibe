@@ -29,7 +29,7 @@ import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1594,6 +1594,159 @@ test.describe("visual tour file tab (#81)", () => {
       await expect(panel).toContainText("Submit as author", { timeout: 30_000 });
       await stepChecks(page, "file-submit");
       await shot(page, "file-submit", suffix, "review body");
+    });
+  }
+});
+
+/**
+ * Remove-confirm popover (#225) on the worst-case Reviews row: state +
+ * decision + new commits. Own service (agent-less) with a scratch repo
+ * and a fake `gh` whose PR view resolves the branch head at call time,
+ * so a commit added after open is picked up by refresh and the row gains
+ * its third badge. The popover is asserted not to move the row's title
+ * or meta and not to cover them, then cancelled with Escape.
+ */
+test.describe("visual tour remove-confirm (#225)", () => {
+  let rcRepo = "";
+  let rcData = "";
+  let rcBin = "";
+  let rcLog = "";
+  let rcSvc: RunningService | null = null;
+  let rcReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rcRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-repo-"));
+    await makeScratchRepo(rcRepo);
+    rcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-data-"));
+    rcLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-gh-"));
+    rcBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-bin-"));
+    writeFileSync(
+      path.join(rcBin, "gh"),
+      `#!/bin/sh
+mkdir -p "${rcLog}"
+printf '%s\\n' "$*" >> "${rcLog}/calls.log"
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  HEAD=$(git -C "${rcRepo}" rev-parse feature 2>/dev/null || echo none)
+  cat <<EOF
+{"title":"Tour remove PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","baseRefName":"main","headRefName":"feature","headRefOid":"$HEAD"}
+EOF
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'author'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as author"; exit 0; fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(rcBin, realGitPath());
+    const fakeShell = path.join(rcBin, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${rcBin}:$PATH"\n`, { mode: 0o755 });
+    rcSvc = await startService(rcData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${rcBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+    rcReview = await createJourneyReview(rcSvc, rcRepo, { pr: 1 });
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    writeFileSync(path.join(rcRepo, "src", "util.py"), "VALUE = 43\n");
+    await journeyGit(rcRepo, "add", ".");
+    await journeyGit(rcRepo, "commit", "-m", "bump value");
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    // The tour's apiJson always sends a JSON content-type, which Fastify
+    // rejects on a bodiless POST; the refresh route ignores its body.
+    const refreshed = (await apiJson(rcSvc.origin, rcSvc.token, "POST", `/api/reviews/${rcReview}/refresh`, {})) as {
+      newVersion?: boolean;
+    };
+    expect(refreshed.newVersion).toBe(true);
+    await expect
+      .poll(async () => {
+        const s = (await apiJson(rcSvc!.origin, rcSvc!.token, "GET", "/api/reviews")) as {
+          reviews: { id: string; stale?: boolean }[];
+        };
+        return s.reviews.find((r) => r.id === rcReview)?.stale;
+      }, { timeout: 60_000 })
+      .toBe(true);
+  });
+
+  test.afterAll(async () => {
+    await rcSvc?.stop().catch(() => {});
+    rcSvc = null;
+    for (const d of [rcRepo, rcData, rcBin, rcLog]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "960-light", width: 960, dark: false },
+  ] as const) {
+    test(`remove-confirm popover on the worst-case row (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${rcReview}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      // The most badges a row can have: state + decision + new commits.
+      await expect(row.getByRole("img", { name: "Open" })).toBeVisible();
+      await expect(row.getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(row).toContainText("new commits");
+      const title = row.locator(".cx2");
+      const meta = row.locator(".cj > .hint");
+      // The row keeps its size and the title/meta keep their size and
+      // position relative to it; the popover covers neither. Relative
+      // boxes, so async callouts above the list can't flake the assert.
+      const rowBoxBefore = await row.boundingBox();
+      const titleBefore = await title.boundingBox();
+      const metaBefore = await meta.boundingBox();
+      expect(rowBoxBefore).not.toBeNull();
+      expect(titleBefore).not.toBeNull();
+      expect(metaBefore).not.toBeNull();
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      const pop = page.locator(".confirm-pop");
+      await expect(pop).toContainText("Remove this review?");
+      await expect(pop.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+      await expect(pop.getByRole("button", { name: "Cancel" })).toBeVisible();
+      const rowBoxAfter = await row.boundingBox();
+      const titleAfter = await title.boundingBox();
+      const metaAfter = await meta.boundingBox();
+      const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
+      const offsetOf = (
+        inner: { x: number; y: number },
+        outer: { x: number; y: number },
+      ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
+      expect(sizeOf(rowBoxAfter!)).toEqual(sizeOf(rowBoxBefore!));
+      expect(sizeOf(titleAfter!)).toEqual(sizeOf(titleBefore!));
+      expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
+      expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
+      expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
+      const popBox = await pop.boundingBox();
+      const overlaps = (
+        a: { x: number; y: number; width: number; height: number },
+        b: { x: number; y: number; width: number; height: number },
+      ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      expect(overlaps(popBox!, titleBefore!)).toBe(false);
+      expect(overlaps(popBox!, metaBefore!)).toBe(false);
+      await checkLayout(page, "start-remove-confirm");
+      await shot(page, "start-remove-confirm", suffix, "Remove this review?");
+      await page.keyboard.press("Escape");
+      await expect(pop).toHaveCount(0);
+      await expect(row).toBeVisible();
     });
   }
 });

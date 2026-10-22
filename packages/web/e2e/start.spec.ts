@@ -238,8 +238,11 @@ test("reviews for checkouts no longer listed stay openable and removable", async
   await page.goto("/");
   await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
   await group.getByRole("button", { name: /Remove/ }).click();
-  await expect(group).toContainText("Remove this review from Unvibe? Nothing changes on GitHub.");
-  await group.getByRole("button", { name: "Remove", exact: true }).click();
+  // The confirm is a small popover, not inline in the row (#225).
+  const pop = page.locator(".confirm-pop");
+  await expect(pop).toContainText("Remove this review?");
+  await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
+  await pop.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(group.locator('[data-testid="session-r-gone"]')).toHaveCount(0);
   // The other rows are untouched.
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
@@ -249,8 +252,17 @@ test("remove asks to confirm and deletes local data only", async ({ page }) => {
   await gotoStart(page);
   const old = page.locator('[data-testid="session-r-old"]');
   await old.getByRole("button", { name: /Remove/ }).click();
-  await expect(old).toContainText("Remove this review from Unvibe? Nothing changes on GitHub.");
-  await old.getByRole("button", { name: "Remove", exact: true }).click();
+  // The confirm is a small popover, not inline in the row (#225):
+  // Escape cancels it without touching the row.
+  const pop = page.locator(".confirm-pop");
+  await expect(pop).toContainText("Remove this review?");
+  await page.keyboard.press("Escape");
+  await expect(pop).toHaveCount(0);
+  await expect(page.locator('[data-testid="session-r-old"]')).toBeVisible();
+  // Confirming removes the row.
+  await old.getByRole("button", { name: /Remove/ }).click();
+  await expect(pop).toContainText("Remove this review?");
+  await pop.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.locator('[data-testid="session-r-old"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
 });
