@@ -613,16 +613,18 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (one scrolling list with three counted, disjoint sections —
-  This review, Outbox, On GitHub (#226; posted threads return to This
-  review), jump, Outbox drafts + export Markdown box with Copy (#223,
-  hidden when the Outbox is empty), never posts; lives in the review bar
-  next to Submit since round 2, so it opens with the source pane closed) —
-  met (`comments/CommentsMenu.test.tsx` sections/counts/fold cases,
-  `comments-service.spec.ts` “mark Outbox, edit the draft, submit posts
-  exactly one review”; branch-review sections covered by
-  `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments menu
-  opens with the source pane closed”).
+- Comments menu (two counted tabs in the segmented control — Comments
+  (This review + On GitHub) and Outbox (#236; opening shows Comments,
+  the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep
+  #226's disjoint hierarchy, counts, tags and fold/show-hide, posted
+  threads return to This review; jump, Outbox drafts + export Markdown
+  box with Copy (#223, hidden when the Outbox is empty), never posts;
+  lives in the review bar next to Submit since round 2, so it opens with
+  the source pane closed) — met (`comments/CommentsMenu.test.tsx`
+  tabs/counts/fold cases, `comments-service.spec.ts` “mark Outbox, edit
+  the draft, submit posts exactly one review”; branch-review tabs covered
+  by `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments
+  menu opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
