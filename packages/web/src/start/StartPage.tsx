@@ -1324,28 +1324,32 @@ export function StartPage(): React.JSX.Element {
                       })
                     }
                   />
-                  <div className="divider">Waiting on your review</div>
+                  {/* Waiting on your review (#228): the heading carries
+                      the author filter on its line, right-aligned — the
+                      same heading-row pattern as "PRs and branches" above
+                      (same control height, same right edge as the rows).
+                      The filter reads and filters only these two groups
+                      ("Your PRs", branches and Reviews stay unfiltered).
+                      Authors with counts come from the two groups; the
+                      choice persists like the time filter. */}
+                  <div className="prblock-head" style={{ marginTop: 14 }}>
+                    <h2 className="prblock-title">Waiting on your review</h2>
+                    <div className="prblock-tools">
+                      <span style={{ width: 170, flex: "none" }}>
+                        <Select
+                          aria-label="Author"
+                          value={effectiveAuthor}
+                          onValueChange={(v) => selectAuthor(v)}
+                          options={authorOptions}
+                        />
+                      </span>
+                    </div>
+                  </div>
                   {listErrors.requested ? (
                     <p className="hint" role="alert" data-testid="changes-error-requested">
                       {listErrors.requested}
                     </p>
                   ) : null}
-                  {/* Author filter (#228): one single-select for these
-                      two groups only ("Your PRs", branches and Reviews
-                      stay unfiltered). Authors with counts come from the
-                      two groups; the choice persists like the time
-                      filter. Right-aligned like the block tools above, so
-                      the trailing control shares the rows' right edge. */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-                    <span style={{ width: 170, flex: "none" }}>
-                      <Select
-                        aria-label="Author"
-                        value={effectiveAuthor}
-                        onValueChange={(v) => selectAuthor(v)}
-                        options={authorOptions}
-                      />
-                    </span>
-                  </div>
                   <div className="subhead">Requested of you</div>
                   {visibleDirect.length === 0 ? (
                     <p className="hint subempty" data-testid="requested-direct-empty">
