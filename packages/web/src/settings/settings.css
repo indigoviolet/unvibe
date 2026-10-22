@@ -48,17 +48,10 @@ mark.tm {
 }
 .ver-listhead {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
   margin: 6px 0 2px;
-}
-/* Channel rows share the card's one inner padding on both sides:
-   no extra row inset, so row content starts where the heading starts
-   and the Switch buttons end at Refresh's right edge. */
-.ver-list > .ui-row {
-  padding-left: 0;
-  padding-right: 0;
 }
 .ver-name {
   font-family: var(--mono);
