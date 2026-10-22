@@ -85,6 +85,29 @@ export function PrBadges({ prState, reviewDecision }: { prState?: PrState; revie
   );
 }
 
+/**
+ * #224: one shared diff stat (`+N −M`) for the PR list, diff file
+ * headers, hunk headers and the file tree. Plain coloured text, no
+ * pill; thousands separators per the glossary; zero sides stay
+ * (`+N −0`); null when neither side is known. The style lives in
+ * `ui.css` (`.ui-diffstat`), so a restyle is a one-line edit.
+ */
+export function DiffStat({ added, removed }: { added?: number | null; removed?: number | null }): React.JSX.Element | null {
+  const num = (n: number | null | undefined): string | null =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
+  const a = num(added);
+  const r = num(removed);
+  if (a === null && r === null) return null;
+  return (
+    <span className="ui-diffstat">
+      {a !== null ? <span className="a">+{a}</span> : null}
+      {a !== null && r !== null ? " " : null}
+      {/* U+2212 minus, as in the diff pane. */}
+      {r !== null ? <span className="d">−{r}</span> : null}
+    </span>
+  );
+}
+
 /** The app's processing indicator (dots, as on the review page), without text. */
 export function ProcessingDots(): React.JSX.Element {
   return (

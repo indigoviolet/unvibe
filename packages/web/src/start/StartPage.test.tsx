@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 import type { RepoChange } from "@unvibe/shared";
-import { AUTHOR_ALL, authorCounts, changeHead, diffSizeParts, matchesAuthor } from "./StartPage.js";
+import { AUTHOR_ALL, authorCounts, changeHead, matchesAuthor } from "./StartPage.js";
 
 describe("changeHead (#91)", () => {
   test("PR row with a branch shows number and branch", () => {
@@ -24,29 +24,6 @@ describe("changeHead (#91)", () => {
   test("branch rows still show the branch", () => {
     const c: RepoChange = { kind: "branch", title: "main", branch: "main" };
     expect(changeHead(c)).toBe("main");
-  });
-});
-
-describe("diffSizeParts (#100, #224: no file count)", () => {
-  test("formats additions and deletions", () => {
-    expect(
-      diffSizeParts({ additions: 120, deletions: 34 }),
-    ).toEqual({ additions: "+120", deletions: "−34" });
-  });
-
-  test("large numbers stay readable and zero sides stay", () => {
-    expect(diffSizeParts({ additions: 1200, deletions: 0 })).toEqual({
-      additions: "+1,200",
-      deletions: "−0",
-    });
-  });
-
-  test("partial sizes render the known parts", () => {
-    expect(diffSizeParts({ additions: 9 })).toEqual({ additions: "+9", deletions: null });
-  });
-
-  test("no size data is null (the row omits the size)", () => {
-    expect(diffSizeParts({})).toBeNull();
   });
 });
 

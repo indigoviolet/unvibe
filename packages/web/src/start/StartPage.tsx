@@ -62,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button, Card, PrBadges, ProcessingDots, Select } from "../ui/index.js";
+import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
@@ -1594,39 +1594,12 @@ export function changeHead(c: RepoChange): string {
 }
 
 /**
- * Diff size for a PR row (#100, #224): formatted add/delete parts, or
- * null when the row carries no size data (the row omits the size then).
- * Thousands separators per the glossary. The file count is intentionally
- * not shown (#224).
- */
-export interface DiffSizeParts {
-  additions: string | null;
-  deletions: string | null;
-}
-
-export function diffSizeParts(
-  c: Pick<RepoChange, "additions" | "deletions">,
-): DiffSizeParts | null {
-  const num = (n: number | undefined): string | null =>
-    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
-  const additions = num(c.additions);
-  const deletions = num(c.deletions);
-  if (additions === null && deletions === null) return null;
-  return {
-    additions: additions === null ? null : `+${additions}`,
-    // U+2212 minus, as in the diff pane.
-    deletions: deletions === null ? null : `−${deletions}`,
-  };
-}
-
-/**
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
  * number and branch, author, relative update time and diff size — each
  * omitted when unknown — above the title that opens the review. Where
- * review. Where the row names a GitHub PR, the number is a link to the PR
- * page (new tab); the title button (and the row around it) opens the
- * review, so the link never triggers the row and both stay
- * keyboard-reachable.
+ * the row names a GitHub PR, the number is a link to the PR page (new
+ * tab); the title button (and the row around it) opens the review, so
+ * the link never triggers the row and both stay keyboard-reachable.
  */
 function ChangeRow({
   c,
@@ -1643,7 +1616,7 @@ function ChangeRow({
   owner: string | null;
   name: string | null;
 }): React.JSX.Element {
-  const size = diffSizeParts(c);
+  const hasSize = typeof c.additions === "number" || typeof c.deletions === "number";
   const prLabel = c.kind === "pr" ? (c.prNumber !== undefined ? `#${c.prNumber}` : "PR") : null;
   const prUrl = prLabel !== null && owner !== null && name !== null ? changePrUrl(c, owner, name) : null;
   const open = opening === null ? (): void => onOpen(c, i) : undefined;
@@ -1675,12 +1648,11 @@ function ChangeRow({
           {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
             ? ` · ${timeAgo(c.updatedAt)}`
             : ""}
-          {size !== null ? (
+          {hasSize ? (
             <>
               {" · "}
-              {size.additions !== null ? <span className="a">{size.additions}</span> : null}
-              {size.additions !== null && size.deletions !== null ? " " : null}
-              {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
+              {/* #224: the shared diff stat; the file count is not shown. */}
+              <DiffStat added={c.additions} removed={c.deletions} />
             </>
           ) : null}
         </span>

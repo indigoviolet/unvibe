@@ -84,7 +84,7 @@ test.describe("J227 file tree (#227)", () => {
     await expect(longSection.locator(".dfile-h .path")).toHaveAttribute("title", LONG_FILE);
     await expect(longSection.locator(".dfile-h .path .dir-end")).toContainText("and-one-more-long-directory-level/");
     await expect(longSection.locator(".dfile-h .path b")).toHaveText("a_very_long_file_name_for_the_component_under_review_with_extra_words.py");
-    await expect(longSection.locator(".dfile-h .st")).toContainText("+15");
+    await expect(longSection.locator(".dfile-h .ui-diffstat")).toContainText("+15");
 
     // Open the file list.
     if (!(await page.locator(".flist").isVisible().catch(() => false))) {
@@ -98,7 +98,7 @@ test.describe("J227 file tree (#227)", () => {
     const geo = await flist.evaluate((el) => {
       const box = el.getBoundingClientRect();
       const rows = [...el.querySelectorAll(".fr.file")].map((row) => {
-        const st = row.querySelector(".st")!.getBoundingClientRect();
+        const st = row.querySelector(".ui-diffstat")!.getBoundingClientRect();
         const rv = row.querySelector(".rv")!.getBoundingClientRect();
         const nm = row.querySelector(".nm")!;
         return {
@@ -136,7 +136,7 @@ test.describe("J227 file tree (#227)", () => {
     const header = await longSection.locator(".dfile-h").evaluate((el) => {
       const box = el.getBoundingClientRect();
       const pane = document.getElementById("right")!.getBoundingClientRect();
-      const st = el.querySelector(".st")!.getBoundingClientRect();
+      const st = el.querySelector(".ui-diffstat")!.getBoundingClientRect();
       const revc = el.querySelector(".revc")!.getBoundingClientRect();
       const box2 = el.querySelector("input.revbox")!.getBoundingClientRect();
       const name = el.querySelector(".path b")!;

@@ -33,7 +33,7 @@ import {
 import { refreshErrorNotice } from "../../versions/versionUtils.js";
 import { useReviewVersion } from "../../versions/useReviewVersion.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
-import { Button } from "../../ui/index.js";
+import { Button, DiffStat } from "../../ui/index.js";
 import {
   buildFileTree,
   citedHunkHashes,
@@ -1276,9 +1276,7 @@ function FileTreeRow({
         <span className="nm">{file.path.split("/").pop()}</span>
         {file.category === "generated" ? <span className="gtag">gen</span> : null}
       </button>
-      <span className="st">
-        <span className="a">+{added}</span> <span className="d">−{removed}</span>
-      </span>
+      <DiffStat added={added} removed={removed} />
       <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
     </div>
   );
