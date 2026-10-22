@@ -1059,7 +1059,41 @@ for (const combo of [
     // share one width. (The PR list with its empty sub-groups needs
     // gh-loaded lists, unreachable in the tour sandbox: no repos, no
     // login. Rules 4b/4c cover it wherever it renders.)
-    await page.goto(`${svc!.origin}/?token=${svc.token}`);
+    // Issue #231: stage a newer release (fake backend: installed older
+    // than published on the same ref) so the top bar shows the update
+    // icon from here on; the Version scene above already ran on the seed.
+    {
+      const upd = path.join(dataDir, "update");
+      mkdirSync(upd, { recursive: true });
+      const now = Date.now();
+      writeFileSync(
+        path.join(upd, "fake-channels.json"),
+        JSON.stringify([
+          {
+            ref: "release",
+            version: "0.0.2",
+            commit: "tournew00000001",
+            builtAt: new Date(now).toISOString(),
+          },
+          {
+            ref: "release-rc",
+            version: "0.0.2-rc.1",
+            commit: "tourrc000000001",
+            builtAt: new Date(now - 3600_000).toISOString(),
+          },
+        ]),
+      );
+      writeFileSync(
+        path.join(upd, "fake-installed.json"),
+        JSON.stringify({
+          version: "0.0.1",
+          commit: "tourold00000001",
+          builtAt: new Date(now - 7 * 86400_000).toISOString(),
+        }),
+      );
+      await apiJson(svc.origin, svc.token, "GET", "/api/update/channels?refresh=1");
+    }
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
     await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
     await checkLayout(page, "start");
@@ -1067,6 +1101,12 @@ for (const combo of [
     await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
     await checkLayout(page, "start-reviews");
     await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");
+    // Issue #231: top bar with the update icon (tooltip names the release).
+    await expect(page.getByTestId("update-available-icon")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("update-available-icon")).toHaveAttribute("title", "Update available: v0.0.2");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-update-icon");
+    await shot(page, "start-update-icon", suffix, "Open a PR by URL or number");
   });
 }
 

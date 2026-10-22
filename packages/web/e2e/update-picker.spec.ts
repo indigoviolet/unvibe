@@ -26,10 +26,14 @@ test.beforeEach(async ({ page }) => {
   await freshSettings(page);
 });
 
-test("picker is off by default: only the toggle shows", async ({ page }) => {
+test("toggle is off by default: releases listed, previews hidden (#231)", async ({ page }) => {
   await expect(page.getByTestId("version-picker-toggle")).not.toBeChecked();
-  await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(0);
-  await expect(page.getByText("Show channels and allow switching")).toBeVisible();
+  await expect(page.getByText("Show previews")).toBeVisible();
+  // Releases are always listed and switchable; previews need the toggle.
+  await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
+  await expect(page.locator('[data-testid="update-channel"][data-ref="release-rc"]')).toBeVisible();
+  await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
 });
 
 test("enable lists one aligned row per version with the current one marked", async ({ page }) => {

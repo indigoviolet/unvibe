@@ -2663,6 +2663,34 @@ hunk coverage) is reported for a separate issue, not fixed here.
   the filter row), tour frames
   `packages/web/visual-tour/start-author-filter-*` (git-ignored).
 
+## Addendum: #231 (branch `feat/231-update-icon`)
+
+- **#231 (top-bar update icon + previews toggle; §4.1, §4.14):** when a
+  newer release than the running build exists, a small icon (`upUp`
+  from the app set, tooltip "Update available: vX.Y.Z") sits next to
+  the Settings icon in the top bar and links to Settings → Version.
+  Release builds compare by version, preview builds by date (release
+  published after the preview was built); up to date or a check that
+  cannot run shows nothing with no error UI. The check runs on app load
+  and when Settings → Version refreshes, session-cached, no polling,
+  reusing the Version panel's listing (no new `gh` calls: the existing
+  per-ref package metadata already carries version + published date).
+  Settings → Version's toggle is now "Show previews" ("Releases always
+  listed."): releases are always listed and switchable, preview channels
+  only with the toggle on; the update check runs either way. #229's
+  layout (one-line toggle, short help, one-line rows, aligned padding)
+  is unchanged. Test-only fake-backend additions: `fake-installed.json`
+  (stage an installed build older than published on the same ref) and
+  `UNVIBE_UPDATE_FAKE_FAIL=list` (stage a failing check). Evidence:
+  `versionFormat.test.ts` (version/date comparison), journey
+  `e2e/journeys/j5-settings-versions.spec.ts` (real service + fake
+  updater: release-newer shows, up to date hides, preview-date shows,
+  failing check hides with the panel naming the failure, toggle hides
+  previews while releases stay), mock `e2e/update-picker.spec.ts`
+  (toggle off lists releases, hides previews), tour frames
+  `packages/web/visual-tour/start-update-icon-*` and
+  `settings-version-*` (git-ignored).
+
 ## Addendum: #229 (branch `fix/229-version-tab`)
 
 - **#229 (Settings → Version layout; §4.14):** the enable toggle is a
