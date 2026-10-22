@@ -244,7 +244,8 @@ describe("ACP sessions per posture (fake transport)", () => {
     });
     const meta = state.newMetas.get(full.id) as Record<string, unknown>;
     expect(meta["systemPrompt"]).toBe("s");
-    expect(meta).not.toHaveProperty("claudeCode");
+    // Full access drops the tool restriction; only strict MCP (#209) remains.
+    expect(meta["claudeCode"]).toEqual({ options: { strictMcpConfig: true } });
     await runner.dispose();
   });
 

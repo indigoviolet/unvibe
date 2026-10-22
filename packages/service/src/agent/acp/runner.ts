@@ -203,33 +203,35 @@ export class AcpAgentRunner implements AgentRunner {
 
   private newSessionMeta(provider: ProviderId, systemPrompt: string, readOnly: boolean): Record<string, unknown> {
     if (provider === "claude") {
-      const meta: Record<string, unknown> = { systemPrompt };
+      // Issue #209 (owner decision: option (a)): Unvibe sessions load
+      // only Unvibe's own MCP servers (passed via `mcpServers`), never
+      // the user's or the repository's. Without `strictMcpConfig`, every
+      // configured MCP server's tools load eagerly into the first turn
+      // (~0.9k tokens each — ~790k for ~880 tools, plus ~28 s connecting
+      // them), instead of staying deferred as in interactive sessions.
+      const options: Record<string, unknown> = { strictMcpConfig: true };
       if (readOnly) {
         // Tightest lockdown verified by live tests (see docs/acp-runner.md):
         // built-ins reduced to file readers; everything else denied by the
         // permission handler. MCP tools are unaffected (separate channel).
-        (meta as Record<string, unknown>).claudeCode = {
-          options: {
-            tools: ["Read", "Glob", "Grep"],
-            disallowedTools: [
-              "Bash",
-              "Edit",
-              "Write",
-              "NotebookEdit",
-              "WebFetch",
-              "WebSearch",
-              "Task",
-              "TodoWrite",
-              "BashOutput",
-              "KillShell",
-            ],
-          },
-        };
+        options["tools"] = ["Read", "Glob", "Grep"];
+        options["disallowedTools"] = [
+          "Bash",
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "WebFetch",
+          "WebSearch",
+          "Task",
+          "TodoWrite",
+          "BashOutput",
+          "KillShell",
+        ];
       }
       // Full access (issue #160): no tool reduction — the adapter defaults
       // (the agent's full tool set) apply, and the permission handler
       // approves. The limits live only in the system prompt.
-      return meta;
+      return { systemPrompt, claudeCode: { options } };
     }
     // Codex: `_meta.systemPrompt` is silently ignored (spike 1a FAIL).
     // Developer/base instructions travel as AIR customInstructions, which
