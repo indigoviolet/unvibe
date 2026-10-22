@@ -180,16 +180,20 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(Math.abs(openerRight - blockRight)).toBeLessThanOrEqual(1.5);
     await noPageScroll(page);
 
-    // Reviews list: the PR review carries Open + Changes requested icons…
+    // Reviews list: the PR review carries only the Changes requested icon
+    // (#234: no icon for open)…
     const prRow = page.locator(`[data-testid="session-${prReviewId}"]`);
     await expect(prRow).toBeVisible({ timeout: 30_000 });
     const badges = prRow.locator('[data-testid="pr-badges"]');
-    await expect(badges.getByRole("img", { name: "Open" })).toBeVisible();
     await expect(badges.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    await expect(badges.getByRole("img", { name: "Open" })).toHaveCount(0);
     // …with accessible labels and no text pills. #230: review_required never shows.
     await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
     await expect(badges).not.toContainText("Open");
     await expect(badges).not.toContainText("Changes requested");
+    // #234: hovering the icon shows the status-only tooltip.
+    await badges.getByRole("img", { name: "Changes requested" }).hover({ timeout: 15_000 });
+    await expect(page.locator("#tip")).toContainText("Changes requested", { timeout: 15_000 });
     // The row's Remove is a real button with the action-only tooltip (#225).
     const removeBtn = prRow.getByRole("button", { name: "Remove this review" });
     await expect(removeBtn).toBeVisible();
@@ -199,15 +203,23 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(await branchRows.count()).toBeGreaterThanOrEqual(2);
     await expect(page.locator('[data-testid^="session-"] [data-testid="pr-badges"]')).toHaveCount(1);
 
-    // The review bar badges the PR review the same way.
+    // The review bar badges the PR review the same way (#234: open has no icon).
     await page.goto(`${svc.origin}/review/${prReviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
     const barBadges = page.locator('#reviewbar [data-testid="pr-badges"]');
-    await expect(barBadges.getByRole("img", { name: "Open" })).toBeVisible();
     await expect(barBadges.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    await expect(barBadges.getByRole("img", { name: "Open" })).toHaveCount(0);
     await expect(barBadges).not.toContainText("Open");
     await expect(barBadges).not.toContainText("Changes requested");
     await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
+    // #235: the bar keeps the GitHub link and status icon, but no PR title
+    // and no preview/full-access badges. (Agent is none here, so the left
+    // pane keeps today's "No guide yet" empty state; the title move is
+    // covered by the guide heading in reviews with a guide.)
+    await expect(page.locator("#reviewbar")).not.toContainText("Journey PR");
+    await expect(page.locator('[data-testid="preview-marker"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0);
+    await expect(page.locator("#page .doc h1.title")).toContainText("No guide yet", { timeout: 30_000 });
     // The summary API carries the same state (no new polling: stored gh data).
     const summary = await apiJson(svc, "GET", "/api/reviews");
     const found = (summary.json as { reviews: { id: string; prState?: string; reviewDecision?: string }[] }).reviews.find(
@@ -216,9 +228,9 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(found?.prState).toBe("open");
     expect(found?.reviewDecision).toBe("changes_requested");
 
-    // Worst case (#225): state + decision + new commits on one row. One
-    // more commit on the watched branch, then refresh: the row gains the
-    // "new commits" tag next to its two icons.
+    // Worst case (#225, #234): decision + new commits on one row (open has
+    // no icon). One more commit on the watched branch, then refresh: the
+    // row gains the "new commits" tag next to its one icon.
     writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 43\n");
     await git(repoDir, "add", ".");
     await git(repoDir, "commit", "-m", "bump value");
@@ -236,8 +248,8 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
     const staleRow = page.locator(`[data-testid="session-${prReviewId}"]`);
     await expect(staleRow.locator('[data-testid="pr-badges"]')).toBeVisible();
-    await expect(staleRow.getByRole("img", { name: "Open" })).toBeVisible();
     await expect(staleRow.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    await expect(staleRow.getByRole("img", { name: "Open" })).toHaveCount(0);
     await expect(staleRow).toContainText("new commits");
 
     // The row's title and meta keep their size and position with the
