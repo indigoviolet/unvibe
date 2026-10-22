@@ -3,8 +3,9 @@
  * `gear` and `bug` are additions in the same stroke style (the prototype
  * has no settings/debug icons), as are `person` (author avatar for the
  * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
- * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out) and
- * `eyeOff` are additions in the same stroke style. Usage: `<Icon name="check" />`.
+ * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out),
+ * `eyeOff`, and `doc` (a page with a folded corner for the documents
+ * screen) are additions in the same stroke style. Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
 
@@ -130,6 +131,13 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M8 2.5v11" />
       <path d="M2.5 5h3M2.5 8h3M2.5 11h3M10.5 5h3M10.5 8h3M10.5 11h3" />
+    </>
+  ),
+  doc: (
+    <>
+      <path d="M4 2h5.5L12 4.5V14H4z" />
+      <path d="M9.5 2v2.5H12" />
+      <path d="M6 7.5h4M6 10h2.8" />
     </>
   ),
 };
