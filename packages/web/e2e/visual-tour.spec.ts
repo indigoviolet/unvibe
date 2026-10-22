@@ -1216,8 +1216,21 @@ test("visual tour document review (#222)", async ({ page }) => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    // Start page: the New document review form, filled in.
+    // Start page: the top bar carries the Documents icon (tooltip
+    // "Documents") next to the Settings gear; the page itself holds no
+    // Document section.
     await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("link", { name: "Documents" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toHaveCount(0);
+    await checkLayout(page, "start-topbar-documents");
+    await shot(page, "start-topbar-documents", "1440-light", "Reviews");
+
+    // Documents screen: the New document review form, filled in.
+    await page.getByRole("link", { name: "Documents" }).click();
+    await page.waitForURL(/\/documents/, { timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toBeVisible({ timeout: 15_000 });
+    await checkLayout(page, "documents-screen");
+    await shot(page, "documents-screen", "1440-light", "No documents yet");
     await page.getByRole("button", { name: "New document review" }).click();
     await page.getByTestId("doc-markdown").fill(
       "# Design note\n\nThe widget folds obsolete headers before parsing.\n\nIt keeps the fast path for modern responses.\n\n## Details\n\n- Folding runs before parsing\n- The fast path skips folding\n",

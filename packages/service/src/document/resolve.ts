@@ -1,9 +1,9 @@
 /**
- * Two context repos (issue #222, wired with #81): a `code:` citation and
- * a `get_code` call carry only path + lines + sha — no repo name. The
- * repo is resolved from the sha: the first context repo (in the order
- * the owner picked them) whose object store contains the cited commit
- * is the repo meant. A sha in neither repo resolves to nothing, so the
+ * Any number of context repos (issue #222, wired with #81): a `code:`
+ * citation and a `get_code` call carry only path + lines + sha — no repo
+ * name. The repo is resolved from the sha: the first context repo (in the
+ * order the owner picked them) whose object store contains the cited
+ * commit is the repo meant. A sha in no repo resolves to nothing, so the
  * citation stays unverified and reads fail instead of silently reading
  * the same path in the wrong repo. No grammar change and no new tool
  * input: the golden `get_code` surface stays frozen.
@@ -13,7 +13,7 @@ import { parseId } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { readCodeSlice } from "../mcp/read.js";
 
-/** The first context repo containing `sha`, or null when neither does. */
+/** The first context repo containing `sha`, or null when none does. */
 export async function repoContainingSha(
   runner: CommandRunner,
   refs: readonly ContextRepoRef[],

@@ -196,7 +196,7 @@ export interface RepoChangesResponse {
 
 /**
  * Issue #222: `POST /api/reviews` with `kind: "document"` — a pasted
- * Markdown document plus 1–2 context repos. Each context repo names its
+ * Markdown document plus any number of context repos. Each context repo names its
  * registered repo and where to read it: a particular worktree
  * (`source: "worktree"` with `worktreePath`), `origin/main`, or the
  * local copy. Answered synchronously with the ready snapshot (201);
