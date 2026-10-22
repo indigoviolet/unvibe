@@ -627,7 +627,11 @@ export function StartPage(): React.JSX.Element {
     }
     setListsFor(id);
     setRefreshing(false);
-  }, []);
+    // #230: the PR lists just synced stored reviews server-side (same gh
+    // result, no extra calls) — reload the Reviews list so it shows the
+    // fresh states. Best effort; list errors above already describe gh.
+    if (fulfilled > 0) void loadSessions();
+  }, [loadSessions]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes

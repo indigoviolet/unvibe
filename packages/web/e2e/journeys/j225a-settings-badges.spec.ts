@@ -13,7 +13,7 @@ import { apiJson, createScratchReview, makeScratchRepo, realGitPath, writeFakeGi
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
-/** Fake `gh`: PR view carries state + reviewDecision (#224); pr list stays unimplemented. */
+/** Fake `gh`: PR view carries state + reviewDecision (#224, #230); pr list stays unimplemented. */
 function writeFakeGhDecision(binDir: string, logDir: string, headSha: string): void {
   const script = `#!/bin/sh
 LOG="${logDir}"
@@ -21,7 +21,7 @@ mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   cat <<EOF
-{"title":"Journey PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"APPROVED","baseRefName":"main","headRefName":"feature","headRefOid":"${headSha}"}
+{"title":"Journey PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"APPROVED","reviewRequests":[],"latestReviews":[],"baseRefName":"main","headRefName":"feature","headRefOid":"${headSha}"}
 EOF
   exit 0
 fi
@@ -177,9 +177,10 @@ test.describe("J225a settings, start page and PR badges", () => {
     const badges = prRow.locator('[data-testid="pr-badges"]');
     await expect(badges.getByRole("img", { name: "Open" })).toBeVisible();
     await expect(badges.getByRole("img", { name: "Approved" })).toBeVisible();
-    // …with accessible labels and no text pills.
+    // …with accessible labels and no text pills. #230: review_required never shows.
     await expect(badges).not.toContainText("Open");
     await expect(badges).not.toContainText("Approved");
+    await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
     // The row's Remove is a real button with the action-only tooltip (#225).
     const removeBtn = prRow.getByRole("button", { name: "Remove this review" });
     await expect(removeBtn).toBeVisible();
@@ -197,6 +198,7 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(barBadges.getByRole("img", { name: "Approved" })).toBeVisible();
     await expect(barBadges).not.toContainText("Open");
     await expect(barBadges).not.toContainText("Approved");
+    await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
     // The summary API carries the same state (no new polling: stored gh data).
     const summary = await apiJson(svc, "GET", "/api/reviews");
     const found = (summary.json as { reviews: { id: string; prState?: string; reviewDecision?: string }[] }).reviews.find(

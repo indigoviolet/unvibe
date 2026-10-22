@@ -250,10 +250,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
   // Skipped while viewing an older version, and a no-op for reviews with
   // no git source (demo). Counts come from the refresh `comparison`, or
-  // from `versionStatus` already on the snapshot.
+  // from `versionStatus` already on the snapshot. Check-only: new commits
+  // surface as the banner (never auto-applied, no jobs start); PR state
+  // and decision update silently through the snapshot WS patch (#230).
+  // No polling. The guard below keeps StrictMode/remounts to one call
+  // per review open.
   const sourceRepoId = snapshot?.review.repoId;
+  const autoRefreshKey = useRef<string | null>(null);
   useEffect(() => {
     if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
+    const key = `${reviewId}@${sourceRepoId}`;
+    if (autoRefreshKey.current === key) return;
+    autoRefreshKey.current = key;
     let cancelled = false;
     api
       .refresh(reviewId)
@@ -276,6 +284,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const doRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      const prevDesc = useReview.getState().snapshot?.description;
       const r = await api.refresh(reviewId);
       if (r.newVersion && r.comparison) {
         const snap = useReview.getState().snapshot;
@@ -283,8 +292,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         setBanner(comparisonToBanner(r.comparison, current));
         setSnapshot(await api.review(reviewId));
       } else {
+        // #230: same-head refresh still updates PR state/decision — refetch
+        // so the bar changes even if the WS patch is delayed. Silent when
+        // only the PR state moved; "Already up to date" only when truly
+        // unchanged.
+        const fresh = await api.review(reviewId);
+        setSnapshot(fresh);
         setBanner(null);
-        toast("Already up to date");
+        const nextDesc = fresh.description;
+        const stateSame =
+          (prevDesc?.state ?? null) === (nextDesc?.state ?? null) &&
+          (prevDesc?.isDraft ?? false) === (nextDesc?.isDraft ?? false) &&
+          (prevDesc?.reviewDecision ?? null) === (nextDesc?.reviewDecision ?? null);
+        if (stateSame) toast("Already up to date");
       }
     } catch (err) {
       toast(refreshErrorNotice(err));

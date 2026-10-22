@@ -54,7 +54,6 @@ const PR_STATE_ICON: Record<PrState, { icon: IconName; color: string; label: str
 const PR_DECISION_ICON: Record<PrReviewDecision, { icon: IconName; color: string; label: string }> = {
   approved: { icon: "check", color: "var(--accent)", label: "Approved" },
   changes_requested: { icon: "request-changes", color: "var(--warn)", label: "Changes requested" },
-  review_required: { icon: "eye", color: "var(--note)", label: "Review required" },
 };
 
 /**

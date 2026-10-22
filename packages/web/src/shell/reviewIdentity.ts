@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
-import { githubPrUrl, isDefaultGuideTitle } from "@unvibe/shared";
+import { githubPrUrl, isDefaultGuideTitle, prStateFromGh } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 
@@ -68,11 +68,28 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
     prNumber !== undefined && owner && name && repoId !== "demo"
       ? githubPrUrl(owner, name, prNumber)
       : null;
+  // #230: badges read the live snapshot first (refresh updates it via the
+  // WS patch even when the head is steady), falling back to the summary
+  // fetched once on mount. Branch reviews carry no PR state. A stored
+  // review_required (pre-#230 data) reads as no decision.
+  const snapPrState =
+    snapshot?.description?.source === "pr"
+      ? prStateFromGh(snapshot.description.state, snapshot.description.isDraft)
+      : undefined;
+  const rawSnapDecision =
+    snapshot?.description?.source === "pr" ? snapshot.description.reviewDecision : undefined;
+  const snapDecision =
+    rawSnapDecision === "approved" || rawSnapDecision === "changes_requested" ? rawSnapDecision : undefined;
+  const prState = snapPrState ?? summary?.prState;
+  const summaryDecision = summary?.reviewDecision;
+  const validSummaryDecision =
+    summaryDecision === "approved" || summaryDecision === "changes_requested" ? summaryDecision : undefined;
+  const reviewDecision = snapDecision ?? validSummaryDecision;
   return {
     short,
     title,
     prUrl,
-    ...(summary?.prState !== undefined ? { prState: summary.prState } : {}),
-    ...(summary?.reviewDecision !== undefined ? { reviewDecision: summary.reviewDecision } : {}),
+    ...(prState !== undefined ? { prState } : {}),
+    ...(reviewDecision !== undefined ? { reviewDecision } : {}),
   };
 }
