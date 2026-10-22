@@ -228,8 +228,9 @@ test.describe("comments over the real service", () => {
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Already marked for the PR by default (comments are for the PR).
     await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
-    // Edit the Outbox draft in the Comments menu and let it save.
+    // Edit the Outbox draft on the Comments menu's Outbox tab and let it save.
     await page.locator('#reviewbar [data-cm=""]').click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await draft.fill("Why 2 and not 3? Please explain.");
     // The draft autosaves through PATCH (debounced): wait for the save

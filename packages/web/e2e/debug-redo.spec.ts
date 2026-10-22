@@ -11,6 +11,20 @@ test("demo debug page offers no re-do", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Re-do guide" })).toHaveCount(0);
 });
 
+test("re-do sits at the top right with the caption as its tooltip (#237)", async ({ page }) => {
+  await page.goto("/review/r-old/debug");
+  const button = page.getByRole("button", { name: "Re-do guide" });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAttribute("title", "Start the guide over from the same change.");
+  await expect(page.getByText("Start the guide over from the same change.")).toHaveCount(0);
+  // Top right: above the tabs, flush with the content column's right edge.
+  const btnBox = await button.boundingBox();
+  const tabsBox = await page.getByRole("tablist", { name: "Debug sections" }).boundingBox();
+  const docBox = await page.locator("main .doc").boundingBox();
+  expect(btnBox!.y + btnBox!.height).toBeLessThanOrEqual(tabsBox!.y);
+  expect(Math.abs(btnBox!.x + btnBox!.width - (docBox!.x + docBox!.width))).toBeLessThanOrEqual(2);
+});
+
 test("cancel closes the confirmation without leaving", async ({ page }) => {
   await page.goto("/review/r-old/debug");
   await page.getByRole("button", { name: "Re-do guide" }).click();

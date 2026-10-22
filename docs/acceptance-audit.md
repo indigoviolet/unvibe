@@ -613,16 +613,18 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (one scrolling list with three counted, disjoint sections —
-  This review, Outbox, On GitHub (#226; posted threads return to This
-  review), jump, Outbox drafts + export Markdown box with Copy (#223,
-  hidden when the Outbox is empty), never posts; lives in the review bar
-  next to Submit since round 2, so it opens with the source pane closed) —
-  met (`comments/CommentsMenu.test.tsx` sections/counts/fold cases,
-  `comments-service.spec.ts` “mark Outbox, edit the draft, submit posts
-  exactly one review”; branch-review sections covered by
-  `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments menu
-  opens with the source pane closed”).
+- Comments menu (two counted tabs in the segmented control — Comments
+  (This review + On GitHub) and Outbox (#236; opening shows Comments,
+  the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep
+  #226's disjoint hierarchy, counts, tags and fold/show-hide, posted
+  threads return to This review; jump, Outbox drafts + export Markdown
+  box with Copy (#223, hidden when the Outbox is empty), never posts;
+  lives in the review bar next to Submit since round 2, so it opens with
+  the source pane closed) — met (`comments/CommentsMenu.test.tsx`
+  tabs/counts/fold cases, `comments-service.spec.ts` “mark Outbox, edit
+  the draft, submit posts exactly one review”; branch-review tabs covered
+  by `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments
+  menu opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
@@ -2785,6 +2787,22 @@ hunk coverage) is reported for a separate issue, not fixed here.
   service + fake updater: one-line toggle, short help, no `.ui-row-meta`
   in channel rows, shared left/right edges, centred label), tour
   frames `packages/web/visual-tour/settings-version-*` (git-ignored).
+
+## Addendum: #233 (branch `fix/233-version-spacing`)
+
+- **#233 (Settings → Version spacing; §4.14):** the Channels label and
+  the Refresh button are bottom-aligned, so the label's bottom and the
+  button's bottom sit the same distance above the divider (within 2px,
+  replacing #229's centre alignment); channel rows keep #229's shared
+  side padding (row content starts where the heading starts, actions
+  end at Refresh's right edge) but are compact — the Switch button's
+  height plus ~7px above and below, at most button height + 16px — and
+  every row stays the same height whether it shows Switch or Installed.
+  Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
+  service + fake updater: bottom alignment above the divider, shared
+  right edge, equal row heights) and the tour's Version scene with
+  `checkLayout` at 1440 and 960 in light and dark, frames
+  `packages/web/visual-tour/settings-version-*` (git-ignored).
 
 ## Addendum: #232 (branch `fix/232-loading-states`)
 

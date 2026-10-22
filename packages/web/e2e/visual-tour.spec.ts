@@ -946,11 +946,12 @@ for (const combo of [
     await stepChecks(page, "file-tree");
     await shot(page, "file-tree", suffix, "connection.py");
 
-    // Comments menu: one list with This review, Outbox, On GitHub (#226).
+    // Comments menu, Comments tab: This review and On GitHub (#226, #236).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmtab="comments"]')).toBeVisible();
     await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
-    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Outbox");
     await expect(page.locator('.cmenu [data-cmsec="github"]')).toContainText("On GitHub");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toHaveCount(0);
     await stepChecks(page, "menu-comments");
     await shot(page, "menu-comments", suffix, "On GitHub");
     await page.keyboard.press("Escape");
@@ -976,8 +977,11 @@ for (const combo of [
       await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
     }
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).not.toContainText("Nothing in the Outbox yet.");
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toHaveCount(0);
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
     await stepChecks(page, "menu-outbox");
     await shot(page, "menu-outbox", suffix, "Copy");
     await page.keyboard.press("Escape");
@@ -1017,9 +1021,10 @@ for (const combo of [
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
       if (tab.id === "version") {
-        // #229: enable the picker (fake backend) and assert the three
-        // fixes: toggle on one line with short help, single-line rows,
-        // shared padding and centred label.
+        // #233 (with #229's horizontal alignment): enable the picker
+        // (fake backend) and assert compact single-line rows sharing
+        // the card's side padding with equal heights, and the Channels
+        // label bottom-aligned with Refresh above the divider.
         const versionToggle = page.getByTestId("version-picker-toggle");
         if (!(await versionToggle.isChecked())) {
           await versionToggle.click();
@@ -1045,11 +1050,20 @@ for (const combo of [
         expect(Math.abs(vHeadBox!.x + vHeadBox!.width - (vFirstBox!.x + vFirstBox!.width))).toBeLessThanOrEqual(2);
         const vRefreshBox = await page.getByTestId("update-refresh").boundingBox();
         const vChannelsBox = await page.locator(".ver-listhead .hint").boundingBox();
-        expect(
-          Math.abs(vRefreshBox!.y + vRefreshBox!.height / 2 - (vChannelsBox!.y + vChannelsBox!.height / 2)),
-        ).toBeLessThanOrEqual(2);
+        // Bottom-aligned (#233): the label's bottom and the button's
+        // bottom sit the same distance above the divider (the first
+        // row's top border), within 2px.
+        const vDividerY = vFirstBox!.y;
+        const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
+        const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
+        expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
         const vActionBox = await vRows.locator("button").first().boundingBox();
         expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
+        // Compact rows (#233): each row is at most the button height + 16px.
+        const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
+        for (const h of vHeights) {
+          expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
+        }
       }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
@@ -1479,7 +1493,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // Start page: the top bar carries the Documents icon (tooltip
-    // "Documents") next to the Settings gear; the page itself holds no
+    // "Documents") next to the Unvibe home link; the page itself holds no
     // Document section.
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("link", { name: "Documents" })).toBeVisible({ timeout: 15_000 });
@@ -1619,9 +1633,11 @@ test("visual tour document review (#222)", async ({ page }) => {
     await checkLayout(page, "document-citation");
     await shot(page, "document-citation", "1440-light", "second repo");
 
-    // The document comment in the Outbox section (#223, #226), with its
-    // export box — and no GitHub side on a document.
+    // The document comment on the Outbox tab (#223, #226, #236), with
+    // its export box — and no GitHub side on a document, either tab.
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
     await stepChecks(page, "document-outbox");

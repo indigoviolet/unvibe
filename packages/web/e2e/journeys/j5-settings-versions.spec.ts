@@ -62,9 +62,10 @@ test.describe("J5 settings and versions", () => {
     await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("update-current-version")).toBeVisible({ timeout: 15_000 });
 
-    // #229: toggle on one line with short help; single-line channel rows;
-    // heading, divider and rows share the card padding; label centred
-    // with Refresh.
+    // #233 (with #229's horizontal alignment): compact single-line
+    // channel rows sharing the card's side padding; the Channels
+    // label's bottom and the Refresh button's bottom sit the same
+    // distance above the divider.
     const toggleBox = await toggle.boundingBox();
     const toggleLabel = page.locator('.ver-toggle label[for="version-picker-toggle"]');
     await expect(toggleLabel).toBeVisible();
@@ -92,9 +93,13 @@ test.describe("J5 settings and versions", () => {
     expect(Math.abs(headBox!.x + headBox!.width - (firstRowBox!.x + firstRowBox!.width))).toBeLessThanOrEqual(2);
     const refreshBox = await page.getByTestId("update-refresh").boundingBox();
     const channelsLabelBox = await page.locator(".ver-listhead .hint").boundingBox();
-    expect(
-      Math.abs(refreshBox!.y + refreshBox!.height / 2 - (channelsLabelBox!.y + channelsLabelBox!.height / 2)),
-    ).toBeLessThanOrEqual(2);
+    // Bottom-aligned (#233): the label's bottom and the button's bottom
+    // sit the same distance above the divider (the first row's top
+    // border), within 2px.
+    const dividerY = firstRowBox!.y;
+    const labelAbove = dividerY - (channelsLabelBox!.y + channelsLabelBox!.height);
+    const buttonAbove = dividerY - (refreshBox!.y + refreshBox!.height);
+    expect(Math.abs(labelAbove - buttonAbove)).toBeLessThanOrEqual(2);
     const actionBox = await rows.locator("button").first().boundingBox();
     expect(Math.abs(refreshBox!.x + refreshBox!.width - (actionBox!.x + actionBox!.width))).toBeLessThanOrEqual(2);
     const channels = await apiJson(svc, "GET", "/api/update/channels");

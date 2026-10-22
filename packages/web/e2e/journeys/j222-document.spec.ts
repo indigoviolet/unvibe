@@ -84,6 +84,17 @@ test.describe("J222 document review", () => {
     await expect(page.getByRole("button", { name: "New document review" })).toHaveCount(0);
     await expect(page.getByTestId("document-form")).toHaveCount(0);
 
+    // #238: the Documents icon sits next to the Unvibe home link on the
+    // left, before the breadcrumb, badge, update and Settings controls.
+    const barOrder = await page.evaluate(() =>
+      [...(document.querySelector("header.top")?.children ?? [])].map(
+        (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
+      ),
+    );
+    expect(barOrder[0]).toBe("Unvibe");
+    expect(barOrder[1]).toBe("Documents");
+    expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
+
     // The top-bar icon opens the documents screen.
     await page.getByRole("link", { name: "Documents" }).click();
     await page.waitForURL(/\/documents/, { timeout: 30_000 });
@@ -223,11 +234,14 @@ test.describe("J222 document review", () => {
 
     // The earlier document comment is in the Outbox (#223, #226),
     // exported under its document block with a Copy-able Markdown box.
+    // A document has no GitHub side on either tab (#236): no
+    // "On GitHub" section, no Submit-drafts line, and a short entry
+    // meta (the guide pattern).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator(".cmenu")).not.toContainText("On GitHub");
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Please expand this part.");
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Design note");
-    // A document has no GitHub side: no "On GitHub" section, no
-    // Submit-drafts line, and a short entry meta (the guide pattern).
     await expect(page.locator(".cmenu")).not.toContainText("On GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("Nothing reaches GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("stays in the Outbox");

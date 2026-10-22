@@ -1,11 +1,11 @@
 /**
  * Top bar, shared by every screen but reviews (issue #141: a review page
  * shows only its review bar): only app-wide things. The "Unvibe" home
- * link, a breadcrumb after it on every screen but the start page, the
- * preview-build badge where it shows today (start page, Settings), the
- * documents screen as a note-icon button (issue #222), and Settings as a
- * gear icon button in the same place on every screen. The Settings screen
- * itself renders no Settings button.
+ * link with the documents screen as a note-icon button beside it (issue
+ * #222, moved left in #238), a breadcrumb after them on every screen but
+ * the start page, the preview-build badge where it shows today (start
+ * page, Settings), and Settings as a gear icon button in the same place
+ * on every screen. The Settings screen itself renders no Settings button.
  */
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon.js";
@@ -34,6 +34,9 @@ export function ScreenTopBar({
       <Link className="brand" to="/" title="Back to the start page">
         Unvibe
       </Link>
+      <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents">
+        <Icon name="doc" />
+      </Link>
       {crumbs && crumbs.length > 0 ? (
         <nav aria-label="Breadcrumb" className="tcrumbs">
           {crumbs.map((c, i) => (
@@ -52,9 +55,6 @@ export function ScreenTopBar({
       ) : null}
       <span className="sp" />
       {showBadge ? <PreviewBuildBadge /> : null}
-      <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents">
-        <Icon name="doc" />
-      </Link>
       <UpdateIcon />
       {hideSettings ? null : (
         <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings">
