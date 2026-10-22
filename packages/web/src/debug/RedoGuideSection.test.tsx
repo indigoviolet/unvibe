@@ -62,6 +62,15 @@ function renderSection(reviewId: string): void {
 }
 
 describe("RedoGuideSection", () => {
+  it("carries the caption as the button's tooltip, with no inline caption (#237)", async () => {
+    vi.spyOn(api, "review").mockResolvedValue(snapshot("r1"));
+    renderSection("r1");
+
+    const button = await screen.findByRole("button", { name: "Re-do guide" });
+    expect(button).toHaveAttribute("title", "Start the guide over from the same change.");
+    expect(screen.queryByText("Start the guide over from the same change.")).toBeNull();
+  });
+
   it("confirms, then navigates to the new loading review", async () => {
     vi.spyOn(api, "review").mockResolvedValue(snapshot("r1"));
     const redo = vi.spyOn(api, "redoReview").mockResolvedValue(loadingSnapshot("r2"));
