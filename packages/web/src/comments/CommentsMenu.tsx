@@ -1,16 +1,21 @@
 /**
- * Comments menu (comments owner; PRD §4.8; issue #226).
+ * Comments menu (comments owner; PRD §4.8; issues #226, #236).
  *
- * Prototype behaviour + classes (`.cmenu`, `.cx2`), not code:
- * - one scrolling list with three sections — This review, Outbox,
- *   On GitHub — each heading with its count (owner decision A: disjoint,
- *   each thread appears once; posted threads return to This review);
+ * Prototype behaviour + classes (`.cmenu`, `.seg`), not code:
+ * - two tabs in the app's segmented control — Comments and Outbox, each
+ *   with its count; opening the menu shows the Comments tab;
+ * - the Comments tab holds This review and On GitHub as sections of one
+ *   list, each heading with its count (owner decision A: disjoint, each
+ *   thread appears once; posted threads return to This review);
+ * - the Outbox tab holds the marked, unposted comments with their
+ *   editable post text, followed by the Markdown export box with Copy;
  * - hierarchy: section heading (strong) → group heading such as a file
  *   (secondary; file name, path shortened from the left) → entry meta
  *   (tertiary, small) → entry text (body size, clamped to two lines);
  *   entries under a file group show only their line, not the file again;
  * - kinds at a glance: an AI-suggested tag, and the author on GitHub
  *   entries; shared ListRow + Badge components (#201/#218);
+ * - the top-bar "N in Outbox" pill opens the menu on the Outbox tab;
  * - clicking an entry jumps to it (opening the thread, switching
  *   page/tab, unfolding/unhiding as needed);
  * - the Outbox section shows each marked, unposted comment with an
@@ -292,6 +297,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const isDocument = snapshot ? isDocumentReview(snapshot) : false;
   const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
+  // #236: the menu has two tabs — Comments (This review + On GitHub) and
+  // the Outbox. Opening the menu shows the first tab.
+  const [tab, setTab] = useState<"comments" | "outbox">("comments");
   const [exportMd, setExportMd] = useState<string | null>(null);
   const [fetchedExisting, setFetchedExisting] = useState<ExistingReviewComment[] | null>(null);
   const navigate = useNavigate();
@@ -574,20 +582,53 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
         type="button"
         data-cm=""
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          // The "N in Outbox" pill opens the menu on the Outbox tab;
+          // anywhere else on the button opens the first tab (#236).
+          const pill = (e.target as Element | null)?.closest?.("[data-outbox-pill]");
+          setTab(pill ? "outbox" : "comments");
+          setOpen(true);
+        }}
       >
         <Icon name="comment" />
         Comments {threads.length}
-        {outbox.length > 0 ? <Badge tone="warn">{outbox.length} in Outbox</Badge> : null}
+        {outbox.length > 0 ? (
+          <span data-outbox-pill="">
+            <Badge tone="warn">{outbox.length} in Outbox</Badge>
+          </span>
+        ) : null}
       </Button>
       {open && snapshot ? (
         <div className="cmenu" role="dialog" aria-label="Comments">
           <div className="frow">
+            <span className="seg" role="group" aria-label="Comments sections">
+              <button
+                type="button"
+                data-cmtab="comments"
+                aria-pressed={tab === "comments"}
+                onClick={() => setTab("comments")}
+              >
+                Comments {thisReview.length}
+              </button>
+              <button
+                type="button"
+                data-cmtab="outbox"
+                aria-pressed={tab === "outbox"}
+                onClick={() => setTab("outbox")}
+              >
+                Outbox {outbox.length}
+              </button>
+            </span>
             <span className="sp" />
             <button className="ib" type="button" data-tip="Close" aria-label="Close" data-cmclose="" onClick={() => setOpen(false)}>
               <Icon name="x" />
             </button>
           </div>
+          {tab === "comments" ? (
           <section data-cmsec="review" aria-label={`This review, ${thisReview.length} comments`}>
             <div className="cmsec-head">
               <strong>This review</strong> <Badge tone="neutral">{thisReview.length}</Badge>
@@ -602,10 +643,12 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               <p className="hint" style={{ margin: 4 }}>
                 {threads.length === 0
                   ? "No comments yet. Select text and choose Ask or Comment."
-                  : "Everything is marked for the Outbox below."}
+                  : "Everything is marked in the Outbox tab."}
               </p>
             ) : null}
           </section>
+          ) : null}
+          {tab === "outbox" ? (
           <section data-cmsec="outbox" aria-label={`Outbox, ${outbox.length} comments`}>
             <div className="cmsec-head">
               <strong>Outbox</strong> <Badge tone="warn">{outbox.length}</Badge>
@@ -637,7 +680,8 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               </div>
             ) : null}
           </section>
-          {isDocument ? null : (
+          ) : null}
+          {tab === "comments" && !isDocument ? (
           <section data-cmsec="github" aria-label={`On GitHub, ${ghThreadCount} threads`}>
             <button
               className="cmsec-head ghhead"
@@ -704,7 +748,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
               ))
             )}
           </section>
-          )}
+          ) : null}
         </div>
       ) : null}
     </span>
