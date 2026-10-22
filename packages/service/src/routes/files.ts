@@ -87,7 +87,7 @@ export async function registerFileSlices(app: FastifyInstance, ctx: ServiceConte
 
     // Issue #222: on a document review, the repo is resolved from the
     // cited commit — the first context repo containing it. A commit in
-    // neither repo falls through to the plain checkout, which cannot
+    // no repo falls through to the plain checkout, which cannot
     // serve it (the citation stays unverified and unopened).
     let cwd = cwdForReview(ctx, id, snapshot.review.repoId);
     if (isDocumentReview(snapshot)) {

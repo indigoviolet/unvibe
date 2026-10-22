@@ -1,8 +1,8 @@
 /**
  * Document reviews (issue #222 phase 1): create from pasted Markdown with
- * 1–2 context repos (worktree / origin/main / local), block IDs, local
- * comments on document blocks, and the single-version guards. Git runs
- * for real against a temp checkout; no agent is configured.
+ * any number of context repos (worktree / origin/main / local), block IDs,
+ * local comments on document blocks, and the single-version guards. Git
+ * runs for real against a temp checkout; no agent is configured.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -104,17 +104,22 @@ describe("document reviews (#222)", () => {
       (await app.inject({ method: "POST", url: "/api/reviews", headers: AUTH, payload })).statusCode;
     expect(await bad({ kind: "document", markdown: "", contextRepos: [{ repoId, source: "local" }] })).toBe(400);
     expect(await bad({ kind: "document", markdown: "# T\n\nx", contextRepos: [] })).toBe(400);
-    expect(
-      await bad({
+    // Any number of context repos (follow-up): three is fine.
+    const three = await app.inject({
+      method: "POST",
+      url: "/api/reviews",
+      headers: AUTH,
+      payload: {
         kind: "document",
         markdown: "# T\n\nx",
         contextRepos: [
           { repoId, source: "local" },
-          { repoId, source: "local" },
+          { repoId, source: "origin-main" },
           { repoId, source: "local" },
         ],
-      }),
-    ).toBe(400);
+      },
+    });
+    expect(three.statusCode).toBe(201);
     expect(
       await bad({ kind: "document", markdown: "# T\n\nx", contextRepos: [{ repoId, source: "worktree", worktreePath: "/nope" }] }),
     ).toBe(400);
