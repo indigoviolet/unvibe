@@ -2791,13 +2791,15 @@ hunk coverage) is reported for a separate issue, not fixed here.
 - **#233 (Settings → Version spacing; §4.14):** the Channels label and
   the Refresh button are bottom-aligned, so the label's bottom and the
   button's bottom sit the same distance above the divider (within 2px,
-  replacing #229's centre alignment); channel rows use the shared
-  ListRow's standard padding with no Version-specific extra, and every
-  row stays the same height whether it shows Switch or Installed.
+  replacing #229's centre alignment); channel rows keep #229's shared
+  side padding (row content starts where the heading starts, actions
+  end at Refresh's right edge) but are compact — the Switch button's
+  height plus ~7px above and below, at most button height + 16px — and
+  every row stays the same height whether it shows Switch or Installed.
   Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
-  service + fake updater: bottom alignment above the divider, equal
-  row heights) and the tour's Version scene with `checkLayout` at 1440
-  and 960 in light and dark, frames
+  service + fake updater: bottom alignment above the divider, shared
+  right edge, equal row heights) and the tour's Version scene with
+  `checkLayout` at 1440 and 960 in light and dark, frames
   `packages/web/visual-tour/settings-version-*` (git-ignored).
 
 ## Addendum: #232 (branch `fix/232-loading-states`)
