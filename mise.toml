@@ -267,7 +267,7 @@ description = "Publish a branch as an installable preview/<slug> ref (builds; pu
 run = "node scripts/preview-publish.mjs"
 
 [tasks."release:tag"]
-description = "Cut a release tag: clean/main/CI-green checks, version bump for finals, tag (rc tags: no bump)"
+description = "Cut a final release tag: clean/main/CI-green checks, version bump, tag"
 run = "node scripts/release-tag.mjs"
 
 [tasks."test:live:installed"]

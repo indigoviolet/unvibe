@@ -41,6 +41,17 @@ export function fakeChannelsPath(dataDir: string): string {
   return path.join(updateDir(dataDir), "fake-channels.json");
 }
 
+/**
+ * Test-only: fake backend's installed-build override (issue #231). A
+ * partial build (`{ version, commit, builtAt, ... }`) applied over the
+ * current channel spec, so journeys can stage an installed build older
+ * than the published one on the same ref (the spec alone serves both
+ * sides and can never diverge). Absent = installed matches published.
+ */
+export function fakeInstalledPath(dataDir: string): string {
+  return path.join(updateDir(dataDir), "fake-installed.json");
+}
+
 function readJsonFile<T>(file: string): T | null {
   let raw: string;
   try {

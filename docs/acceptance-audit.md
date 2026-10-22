@@ -1473,10 +1473,12 @@ needed (that deviation is closed, not added).
    the isolated npm cache). Agents run the user's installed `claude`/`codex`
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
-   `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo has since gone public —
-   at the time it was private, so the git ref needed `gh auth setup-git`
-   and the tarball needed `gh release download`). Installing from the default branch (source
+   `gh release download` of the then-current tag + `npm install -g` on npm
+   10 and 11, doctor/start/demo/diagrams/stop green; the `-rc` release shape
+   that tag used is gone — candidates now ship as `preview/main-rc`; the
+   repo has since gone public — at the time it was private, so the git ref
+   needed `gh auth setup-git` and the tarball needed `gh release download`).
+   Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
@@ -1757,7 +1759,8 @@ when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
-In-app switching between `release`, `release-rc` and `preview/*` builds,
+In-app switching between `release` and `preview/*` builds (the `release-rc`
+channel is removed; candidates go out as `preview/main-rc`),
 merged with step 1: one shared switch core (`update/switch.ts`) serves
 the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
 moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
@@ -2662,6 +2665,34 @@ hunk coverage) is reported for a separate issue, not fixed here.
   option counts, both-group filtering, persistence, `checkLayout` on
   the filter row), tour frames
   `packages/web/visual-tour/start-author-filter-*` (git-ignored).
+
+## Addendum: #231 (branch `feat/231-update-icon`)
+
+- **#231 (top-bar update icon + previews toggle; §4.1, §4.14):** when a
+  newer release than the running build exists, a small icon (`upUp`
+  from the app set, tooltip "Update available: vX.Y.Z") sits next to
+  the Settings icon in the top bar and links to Settings → Version.
+  Release builds compare by version, preview builds by date (release
+  published after the preview was built); up to date or a check that
+  cannot run shows nothing with no error UI. The check runs on app load
+  and when Settings → Version refreshes, session-cached, no polling,
+  reusing the Version panel's listing (no new `gh` calls: the existing
+  per-ref package metadata already carries version + published date).
+  Settings → Version's toggle is now "Show previews" ("Releases always
+  listed."): releases are always listed and switchable, preview channels
+  only with the toggle on; the update check runs either way. #229's
+  layout (one-line toggle, short help, one-line rows, aligned padding)
+  is unchanged. Test-only fake-backend additions: `fake-installed.json`
+  (stage an installed build older than published on the same ref) and
+  `UNVIBE_UPDATE_FAKE_FAIL=list` (stage a failing check). Evidence:
+  `versionFormat.test.ts` (version/date comparison), journey
+  `e2e/journeys/j5-settings-versions.spec.ts` (real service + fake
+  updater: release-newer shows, up to date hides, preview-date shows,
+  failing check hides with the panel naming the failure, toggle hides
+  previews while releases stay), mock `e2e/update-picker.spec.ts`
+  (toggle off lists releases, hides previews), tour frames
+  `packages/web/visual-tour/start-update-icon-*` and
+  `settings-version-*` (git-ignored).
 
 ## Addendum: #222 follow-ups (branch `feat/222-documents-screen`)
 

@@ -192,15 +192,26 @@ describe("update status", () => {
 });
 
 describe("update channels", () => {
-  it("404s with the gate off, 401s anonymously", async () => {
-    const h = await makeHarness();
+  it("lists releases with the gate off, previews only with it on; 401s anonymously (#231)", async () => {
+    const off = await makeHarness({ fakeUpdater: true });
     try {
-      expect((await h.app.inject(auth("/api/update/channels"))).statusCode).toBe(404);
-      expect((await h.app.inject({ method: "GET", url: "/api/update/channels" })).statusCode).toBe(401);
-      const body = (await h.app.inject(auth("/api/update/channels"))).json() as { error: string };
-      expect(body.error).toContain("turned off");
+      const res = await off.app.inject(auth("/api/update/channels"));
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual(["release"]);
+      expect((await off.app.inject({ method: "GET", url: "/api/update/channels" })).statusCode).toBe(401);
     } finally {
-      await h.close();
+      await off.close();
+    }
+    const on = await makeHarness({ gate: true, fakeUpdater: true });
+    try {
+      const res = await on.app.inject(auth("/api/update/channels"));
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual([
+        "release",
+        "preview/feat-x",
+      ]);
+    } finally {
+      await on.close();
     }
   });
 
@@ -240,7 +251,7 @@ describe("update channels", () => {
       const first = await h.app.inject(auth("/api/update/channels"));
       expect(first.statusCode).toBe(200);
       const channels = (first.json() as { channels: UpdateChannel[] }).channels;
-      expect(channels.length).toBeGreaterThanOrEqual(3);
+      expect(channels.length).toBeGreaterThanOrEqual(2);
       expect(channels.filter((c) => c.current)).toHaveLength(1);
       const second = await h.app.inject(auth("/api/update/channels"));
       expect(second.statusCode).toBe(200);
@@ -354,6 +365,26 @@ describe("update switch", () => {
     }
   });
 
+  it("gate off: releases still switch, previews refuse (#231)", async () => {
+    const h = await makeHarness({ fakeUpdater: true });
+    try {
+      const rel = await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"));
+      expect(rel.statusCode).toBe(202);
+      expect(readPendingSwitch(h.dataDir)).toMatchObject({ from: "release", to: "release" });
+    } finally {
+      await h.close();
+    }
+    const p = await makeHarness({ fakeUpdater: true });
+    try {
+      const prev = await p.app.inject(auth("/api/update/switch", { ref: "preview/feat-x" }, "POST"));
+      expect(prev.statusCode).toBe(404);
+      expect((prev.json() as { error: string }).error).toContain("hidden");
+      expect(p.spawned).toHaveLength(0);
+    } finally {
+      await p.close();
+    }
+  });
+
   it("force: true skips the jobs refusal and records the interrupted count", async () => {
     const jobs = new JobQueue();
     jobs.enqueue({
@@ -405,11 +436,11 @@ describe("update switch", () => {
     } finally {
       await pending.close();
     }
-    // Gate off still 404s.
+    // Gate off still 404s previews (releases switch freely, #231).
     const gated = await makeHarness({ fakeUpdater: true });
     try {
       expect(
-        (await gated.app.inject(auth("/api/update/switch", { ref: "release", force: true }, "POST"))).statusCode,
+        (await gated.app.inject(auth("/api/update/switch", { ref: "preview/feat-x", force: true }, "POST"))).statusCode,
       ).toBe(404);
     } finally {
       await gated.close();
@@ -438,10 +469,11 @@ describe("update switch", () => {
     }
   });
 
-  it("404s with the gate off and 401s anonymously", async () => {
-    const h = await makeHarness();
+  it("gate off refuses previews, allows releases; 401s anonymously (#231)", async () => {
+    const h = await makeHarness({ fakeUpdater: true });
     try {
-      expect((await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"))).statusCode).toBe(404);
+      expect((await h.app.inject(auth("/api/update/switch", { ref: "preview/feat-x" }, "POST"))).statusCode).toBe(404);
+      expect((await h.app.inject(auth("/api/update/switch", { ref: "release" }, "POST"))).statusCode).toBe(202);
       expect(
         (await h.app.inject({ method: "POST", url: "/api/update/switch", payload: JSON.stringify({ ref: "release" }) }))
           .statusCode,

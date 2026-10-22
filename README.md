@@ -27,7 +27,7 @@ http://unvibe.localhost:4517
 ```
 
 After that the bookmark just works, across browser restarts. The same command updates (or `unvibe update <channel>` to switch between
-`release`, `release-rc` and `preview/*` builds — see `DEVELOPMENT.md`
+`release` and `preview/*` builds — see `DEVELOPMENT.md`
 "Preview builds"). From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
 
 ```sh
@@ -45,7 +45,7 @@ Other commands:
 - `stop` / `status` — stop it; report whether it runs.
 - `token` — print the app URL with the per-install token.
 - `doctor` — environment checks, each with a fix.
-- `update --list` — list install channels (`release`, `release-rc`, `preview/*`), marking the installed one.
+- `update --list` — list install channels (`release`, `preview/*`), marking the installed one.
 - `update <channel>` — install that channel globally (switching keeps your database and backs it up first).
 
 ## Using it

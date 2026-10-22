@@ -34,7 +34,7 @@ export const CLI_USAGE = [
   "  open                   start if needed, open the app URL in a browser",
   "  token                  print the app URL, including your token",
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
-  "  update --list          list the channels you can install (release, release-rc, preview/*)",
+  "  update --list          list the channels you can install (release, preview/*)",
   "  update <channel>       install that channel (npm install -g github:indigoviolet/unvibe#<channel>)",
   "  version                print the installed version",
   "  (no command)           start the service in the foreground",

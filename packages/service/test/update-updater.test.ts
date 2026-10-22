@@ -177,6 +177,44 @@ describe("build identity", () => {
     expect(info?.sourceBranch).toBe("feat/x");
   });
 
+  it("fake-installed.json stages an installed build older than published (#231)", () => {
+    const dir = tempDir();
+    fs.mkdirSync(path.join(dir, "update"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "update", "fake-channels.json"),
+      JSON.stringify([{ ref: "release", version: "0.0.2", commit: "newcommit", builtAt: "2026-10-12T12:00:00.000Z" }]),
+    );
+    // Without the override the install matches the published spec.
+    expect(fakeBuildInfo(dir)?.version).toBe("0.0.2");
+    fs.writeFileSync(
+      path.join(dir, "update", "fake-installed.json"),
+      JSON.stringify({ version: "0.0.1", commit: "oldcommit", builtAt: "2026-10-11T12:00:00.000Z" }),
+    );
+    expect(fakeBuildInfo(dir)).toMatchObject({
+      version: "0.0.1",
+      channel: "release",
+      commit: "oldcommit",
+      builtAt: "2026-10-11T12:00:00.000Z",
+    });
+    // Corrupt override: ignored, install matches published again.
+    fs.writeFileSync(path.join(dir, "update", "fake-installed.json"), "not json");
+    expect(fakeBuildInfo(dir)?.version).toBe("0.0.2");
+  });
+
+  it("UNVIBE_UPDATE_FAKE_FAIL=list makes listChannels throw (#231)", async () => {
+    const dir = tempDir();
+    const prev = process.env.UNVIBE_UPDATE_FAKE_FAIL;
+    process.env.UNVIBE_UPDATE_FAKE_FAIL = "list";
+    try {
+      await expect(new FakeUpdater(dir).listChannels()).rejects.toThrow("fake channel listing failed");
+    } finally {
+      if (prev === undefined) delete process.env.UNVIBE_UPDATE_FAKE_FAIL;
+      else process.env.UNVIBE_UPDATE_FAKE_FAIL = prev;
+    }
+    // Untouched afterwards.
+    expect((await new FakeUpdater(dir).listChannels()).length).toBeGreaterThan(0);
+  });
+
   it("resolveBuildInfo reads the installed package, else null", () => {
     const dir = tempDir();
     // No install at the script path: null (source checkout shape).
