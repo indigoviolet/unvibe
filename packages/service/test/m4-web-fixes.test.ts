@@ -41,7 +41,6 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
       id: "root",
       kind: "root",
       title: "Guide",
-      saved: false,
       cards: [
         {
           id: "central",

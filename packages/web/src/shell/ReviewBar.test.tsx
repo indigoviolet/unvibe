@@ -68,18 +68,31 @@ describe("ReviewBar", () => {
     expect(bar).not.toHaveTextContent("Fix retry backoff on 429s");
     // #235: the GitHub link (owner/repo#N) opens the PR — no separate
     // open-externally button — and preview/full-access badges live on
-    // the front page only.
-    const github = screen.getByRole("link", { name: "urllib3/urllib3#5011" });
+    // the front page only. #244: the link is boxed with the shared
+    // Button styling, like the Comments button (secondary/sm). #245:
+    // the PR status icon sits INSIDE the link box, after owner/repo#N
+    // (not as a sibling in the row).
+    const github = screen.getByRole("link", { name: /urllib3\/urllib3#5011/ });
     expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noreferrer");
     expect(github).toHaveAttribute("title", "Open PR on GitHub");
+    expect(github.className).toContain("ui-btn");
+    expect(github).toHaveAttribute("data-variant", "secondary");
+    expect(github).toHaveAttribute("data-size", "sm");
     expect(bar?.querySelector('a[aria-label="Open PR on GitHub"]')).toBeNull();
+    // #245: no sibling badges in the row — any badges live inside the link.
+    expect(bar?.querySelector(':scope > .rid > [data-testid="pr-badges"]')).toBeNull();
     expect(screen.queryByTestId("preview-marker")).toBeNull();
     expect(screen.queryByTestId("full-access-marker")).toBeNull();
     const debug = screen.getByRole("link", { name: "Debug" });
     expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");
+    // #241: Refresh lives in the bar now (next to the status icon),
+    // tooltip exactly "Refresh".
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    expect(refresh).toHaveAttribute("data-tip", "Refresh");
+    expect(document.getElementById("reviewbar")).toContainElement(refresh);
     expect(screen.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
     expect(screen.getByRole("button", { name: /Comments/ })).toBeInTheDocument();
@@ -88,6 +101,45 @@ describe("ReviewBar", () => {
     expect(submit?.className).toContain("ui-btn");
     expect(submit?.getAttribute("data-variant")).toBe("primary");
     expect(submit?.textContent).toMatch(/Submit/);
+  });
+
+  it("PR status icon sits inside the GitHub link with its own tooltip (#245)", async () => {
+    // Force badges: merged + approved on the snapshot description, so
+    // PrBadges renders inside the link even in mock mode.
+    const snap = await api.review("r-old");
+    useReview.getState().setSnapshot({
+      ...snap,
+      description: {
+        ...snap.description,
+        source: "pr",
+        state: "MERGED",
+        isDraft: false,
+        reviewDecision: "approved",
+      },
+    } as typeof snap);
+    render(
+      <MemoryRouter initialEntries={["/review/r-old"]}>
+        <ReviewBar reviewId="r-old" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    const github = await screen.findByRole("link", { name: /urllib3\/urllib3#5011/ });
+    const badges = github.querySelector('[data-testid="pr-badges"]');
+    expect(badges).not.toBeNull();
+    // No sibling badges in the row.
+    expect(document.querySelector('#reviewbar > .rid > [data-testid="pr-badges"]')).toBeNull();
+    const imgs = badges!.querySelectorAll('[role="img"]');
+    expect(imgs.length).toBeGreaterThanOrEqual(1);
+    // The icon keeps its shared data-tip tooltip inside the link, which
+    // keeps its own title — hovering the icon shows the icon label.
+    const labels = [...imgs].map((el) => el.getAttribute("aria-label"));
+    expect(labels).toContain("Merged");
+    expect(labels).toContain("Approved");
+    for (const el of imgs) {
+      expect(el.getAttribute("data-tip")).toBe(el.getAttribute("aria-label"));
+    }
+    expect(github).toHaveAttribute("title", "Open PR on GitHub");
+    cleanup();
+    useReview.getState().clear();
   });
 
   it("shows no GitHub link for a branch review", async () => {
@@ -106,6 +158,26 @@ describe("ReviewBar", () => {
     // the PR link-out stays hidden even though the summary names the PR.
     await renderBar("demo", "urllib3/urllib3#5020");
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
+  });
+
+  it("shows Refresh in the bar, hidden for document reviews (#241)", async () => {
+    await renderBar("r-old", "urllib3/urllib3#5011");
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("data-tip", "Refresh");
+    cleanup();
+    useReview.getState().clear();
+    const snap = await api.review("demo");
+    useReview.getState().setSnapshot({
+      ...snap,
+      review: { ...snap.review, id: "doc-1", branch: "document" },
+      document: { title: "Doc", markdown: "# Doc", blocks: [] },
+    } as typeof snap);
+    render(
+      <MemoryRouter initialEntries={["/review/doc-1"]}>
+        <ReviewBar reviewId="doc-1" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("button", { name: "Guide" });
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
   it("hides the Debug icon while the review is still opening (#92)", async () => {

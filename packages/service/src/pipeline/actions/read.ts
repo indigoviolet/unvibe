@@ -1,9 +1,8 @@
 /**
- * `collapse` / `bookmark` actions (PRD §4.4, §4.3).
+ * `collapse` action (PRD §4.4).
  *
  * - `collapse` toggles the collapsed flag (collapsed cards show only the
  *   title row — the real title, else the shared fallback, issue #49).
- * - `bookmark` flips the page saved flag.
  *
  * UI state only: never enters the log (PRD §9.3). `cardId` may be a page
  * card id or a conversation card id.
@@ -42,20 +41,4 @@ export async function collapseAction(
   });
   await recordInteraction({ kind: "collapse", reviewId, cardId, text: `${collapsed ? "Collapsed" : "Expanded"} ${cardId}` });
   return { cardId };
-}
-
-export async function bookmarkAction(
-  ctx: ActionContext,
-  pageId: string,
-  saved: boolean,
-): Promise<{ pageId: string }> {
-  const { reviews, reviewId } = ctx;
-  getSnapshotOrThrow(reviews, reviewId);
-  await reviews.mutate(reviewId, (draft) => {
-    const page = draft.pages.find((p) => p.id === pageId);
-    if (!page) throw new Error(`unknown page ${pageId}`);
-    page.saved = saved;
-  });
-  await recordInteraction({ kind: "bookmark", reviewId, pageId, text: `${saved ? "Saved" : "Unsaved"} page ${pageId}` });
-  return { pageId };
 }

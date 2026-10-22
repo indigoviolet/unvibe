@@ -54,6 +54,12 @@ type GuideStatus = ReviewSummary["guideStatus"];
  * `go-deeper` is on demand (placeholder cards generate when asked, demo
  * auto-fill aside), so a pending go-deeper never blocks readiness — live
  * `go-deeper` jobs still report as running through `liveJobs` above.
+ *
+ * Running is reported from live jobs only (#247): a stage can stay
+ * `running` in the stored snapshot with no live job behind it (a queued
+ * job was cancelled before it ran, so its run never marked the stage),
+ * and the review bar counts live jobs too — reporting stages here showed
+ * dots on the start page while the review showed nothing running.
  */
 const CORE_STAGES = ["reader", "base", "critic", "hunk-pass"] as const;
 
@@ -79,15 +85,15 @@ function guideStatusFor(
   if (stages) {
     const core = CORE_STAGES.map((s) => stages[s] ?? "pending");
     if (core.every((v) => v === "done")) return { status: "ready" };
-    if (core.some((v) => v === "error")) {
-      const errs = snapshot?.pipeline?.errors;
-      const first = errs ? Object.values(errs)[0] : undefined;
-      return { status: "error", detail: typeof first === "string" ? first : "A pipeline stage failed" };
-    }
-    if (core.some((v) => v === "running")) {
-      const names = CORE_STAGES.filter((s) => stages[s] === "running").slice(0, 3).join(", ");
-      return { status: "running", detail: `Running: ${names}` };
-    }
+  if (core.some((v) => v === "error")) {
+    const errs = snapshot?.pipeline?.errors;
+    const first = errs ? Object.values(errs)[0] : undefined;
+    return { status: "error", detail: typeof first === "string" ? first : "A pipeline stage failed" };
+  }
+  // #247: no `running` from stages. A stored `running` stage with no live
+  // job is stuck (cancelled while queued), not work — and the review bar
+  // counts live jobs, so the list must too. While work runs the liveJobs
+  // branch above already reports it.
   }
   if (pipelineDisabled) return { status: "disabled", detail: "Pipeline disabled (UNVIBE_AGENT=none)" };
   const hasCards = (snapshot?.pages ?? []).some((p) => (p.cards ?? []).length > 0);

@@ -262,10 +262,9 @@ needed (that deviation is closed, not added).
 
 - Kinds (root/concept/finding/opened-expansion), root+finding labels only
   — met (walk shows “GUIDED REVIEW”; `reply-format.md` §7 finding refs).
-- Header (label only where it matters, bookmark right-aligned on the
-  title line — #118, deliberately off-prototype; no empty label row) —
-  met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
-  `guide.spec.ts` finding-label + saved-bookmark cases).
+- Header (label only where it matters on its own row; no empty label
+  row) — met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header
+  cases, `guide.spec.ts` finding-label case).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
 - Contents box (cards jump + linked pages, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
@@ -276,8 +275,9 @@ needed (that deviation is closed, not added).
 - Go deeper placeholders + Generate fills + follow-ups — met
   (`pipeline/demo.ts` auto-fill, `actions/generate.ts`,
   `guide-service.spec.ts`).
-- Bookmark + state exists (sharing deferred) — met (`Page.saved`,
-  `reviews/list.ts` summaries).
+- Saved-pages sharing stays deferred (PRD §2, §19) — no page-saved state
+  (#240 removed the bookmark button, the `bookmark` action and
+  `Page.saved`).
 
 ### §4.4 Cards — all met (audit-10; #136 slice 1)
 
@@ -1980,7 +1980,7 @@ positives (the done event can precede the revision-bumping patch).
 Covered kinds (verified against `pipeline/actions/`): depth, examples,
 diagram, generate, followup, explain, ask, reply, retry, second_opinion,
 concept, and the update pass. Local-only kinds (read, collapse,
-bookmark, note, promote, close, delete, undo) need nothing.
+note, promote, close, delete, undo) need nothing.
 UI: the clicked control shows dots with `aria-busy` and conflicting
 controls go disabled; rewrites (depth/examples/diagram) get an accent
 left border plus a pale wash with the text readable (the wash is what
@@ -2283,8 +2283,11 @@ or stacked PR), never a file type — tests, docs and config belong to
 the thread they serve. The reader prompt (`prompts/reader.md`, and
 `plotline_assign.md` for the fallback) defines this with a good and a
 bad example; each stored plotline carries an optional `buildsOn`
-and is listed in landing order. The guide Plotlines box shows the
-order and a short "Builds on" line. Toolbar and file tree (#184): the
+and is listed in landing order. The guide Plotlines box (#242)
+shows no numbering: each row is a shared ListRow with the title in
+full (wrapping, never truncated or underlined), the hunk count as a
+Badge chip in the trailing slot, and "Builds on" followed by a chip
+naming the earlier plotline that goes to that plotline when clicked. Toolbar and file tree (#184): the
 file list's filter is an icon menu of file types only; the reviewed
 progress line, score legend and per-file dots left the tree (progress
 is now the pinned toolbar's bottom border, counts only in its tooltip
@@ -2830,8 +2833,10 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
   asserts "Building the guide", no step), new tour scenes
   `review-preparing-*` (ingest loading: both panes) and
-  `guide-building-*` (seeded running pipeline stage under
-  agent=none: guide loading, diff ready) in every theme
+  `guide-building-*` (seeded about-to-queue pipeline stages — one done,
+  the rest pending — under agent=none: guide loading, diff ready; a bare
+  `running` stage with no live job now reads as idle, see #247) in every
+  theme
   (Default, Studio, Console) × scheme × width with `checkLayout`,
   frames `packages/web/visual-tour/review-preparing-*` and
   `guide-building-*` (git-ignored).
@@ -2868,3 +2873,99 @@ hunk coverage) is reported for a separate issue, not fixed here.
   asserts), tour frames `theme-*-guide-*` (guide heading carries the
   PR title, slim bar), `document-review-*` (document title kept) and
   `start-*` (badges stay on the front page).
+
+## Addendum: #239 and #241 (branch `fix/239-241-topbar-refresh`)
+
+- **#239 (review top bar bottom alignment):** the review bar identity row
+  (`.rid`) aligns on the bottom (`align-items: flex-end`; buttons and the
+  version selector `align-self: flex-end`), so home, GitHub link, status
+  icon and Debug share one bottom edge. Evidence: J230 (merged icon:
+  bottoms within 2px + `checkLayout`).
+- **#241 (Refresh moves to the review top bar):** Refresh moved from the
+  diff toolbar to the review bar next to the status icon, bottom-aligned
+  (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
+  shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
+  hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
+  `review-bar.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
+  (Refresh in `#reviewbar`), J225 (tooltip "Refresh").
+
+## Addendum: #244 (branch `fix/244-github-link-box`)
+
+- **#244 (GitHub link in a button-style box; §4.1):** the review bar PR
+  link (`owner/repo#N`, title "Open PR on GitHub") uses the shared Button
+  styling (an anchor with the `ui-btn` secondary/sm classes, like the
+  Comments button) instead of the small monospace `.num` look — same
+  height, border, radius and padding as the other buttons, button text
+  size. Same href/target (PR on GitHub, new tab); the status icon stays
+  after it; branch reviews (no PR) and document reviews keep the plain
+  `.num` span. Bottom alignment from #239 kept (`.rid` stays
+  `flex-end`; the link aligns like the icon buttons). Evidence:
+  `src/shell/ReviewBar.test.tsx` (boxed classes), `e2e/review-bar.spec.ts`
+  (boxed link: same height as Comments, bottoms within 2px),
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (title selector + Comments
+  height check), tour review-page frames (light + dark, 1440 + 960).
+
+## Addendum: #245 (review-bar heights + status icon inside the link)
+
+- **#245 (every review-bar control one height, centred; §4.1):** home,
+  GitHub link, Refresh, version picker, Debug, Guide | Source, Comments,
+  Submit and the jobs count all render at the theme's small control
+  height (`--control-sm`) with the same vertical centre (within 1px) in
+  Default, Studio and Console, light and dark. `.rid` is centred
+  (`align-items: center`, old `align-self: flex-end` overrides removed).
+  Evidence: `e2e/review-bar.spec.ts` (all 6 theme combos), J230 (bottoms
+  + icon centre), tour review-page frames in all three themes.
+- **#245 (status icon inside the link box; §4.1):** `PrBadges` renders
+  inside the GitHub link after `owner/repo#N`, vertically centred by the
+  shared `ui-btn` flex layout. Hovering the icon still shows its shared
+  `data-tip` tooltip (e.g. "Changes requested", "Merged"); the link keeps
+  its own "Open PR on GitHub" title. No sibling badges in the row.
+  Evidence: `src/shell/ReviewBar.test.tsx` (inside + tooltip attrs),
+  J225a + J230 (inside + hover `#tip` + no sibling), `review-bar.spec.ts`
+  (no sibling + centre).
+
+## Addendum: #246 (Version tab: hint text + Installed line removed)
+
+- **#246 (Settings → Version help text removed; §4.14):** the "Releases
+  always listed." hint under "Show previews" is gone, with its
+  `.ver-toggle-hint` CSS. Tour/J5 assert the hint is absent.
+- **#246 (Settings → Version Installed line removed; §4.14):** the
+  `CurrentVersion` line (`Installed: … · sha · built … · from …`,
+  `data-testid="update-current-version"`), its `.ver-current` CSS and its
+  now-unused import are gone — no dead code (`mergedProvenance` stays,
+  still used by the preview badge title). The installed channel is marked
+  by the Installed badge in the channel list. Evidence:
+  `e2e/update-picker.spec.ts`, J5, `VersionSection.disabled.test.tsx`
+  (Installed badge / absent line), tour Version frames.
+
+
+## Addendum: #247 (branch `fix/247-running-indicator`)
+
+- **#247 (start dots and review pill agree; §4.2, §4.1):** the start
+  page's Reviews-row processing dots (`guideStatus === "running"`) and
+  the review bar's `running · queued` pill counted different things —
+  the list derived running from the stored pipeline *stages*, the bar
+  from live snapshot *jobs*. A stage can stay `running` with no live
+  job behind it (a queued job cancelled before it ran never marks its
+  stage), so the list showed dots while the review showed nothing
+  running and no pill. Both now count live jobs only
+  (`queued`/`running`/`backing-off`): `guideStatusFor`
+  (`service/src/reviews/list.ts`) no longer reports running from
+  stages, and the guide empty state (`web/src/guide/guideUtils.ts`)
+  no longer reports building from a bare `running` stage (the
+  some-done/rest-pending hedge for the about-to-queue gap is kept;
+  the stage-error paths are untouched). No polling was added. The
+  visual tour's `guide-building` seed moved to the done+pending shape,
+  since a `running` stage with no live job is now the idle stuck
+  state. Evidence: `service/test/reviews-running-247.test.ts`
+  (cancel-everything leaves stages running with no live job: list
+  reported running pre-fix, agrees post-fix),
+  `e2e/journeys/j247-running-agreement.spec.ts` (API agreement sampled
+  through a live pipeline and after it drains; a seeded
+  running-stages/no-live-job snapshot reads non-running on the list
+  and shows no dots and no pill on fresh page loads — the seeded test
+  fails pre-fix at the list assertion),
+  `src/guide/guideUtils.test.ts` (lone running stage is idle),
+  `src/shell/ReviewBar.test.tsx` + `src/shell/jobCounts.test.ts` +
+  service `test/reviews-list.test.ts` (unchanged behaviour).
+  Full gates not yet run.

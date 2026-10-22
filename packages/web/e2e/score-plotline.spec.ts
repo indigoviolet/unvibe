@@ -72,7 +72,10 @@ test("guide root lists plotlines with hunk counts", async ({ page }) => {
   // Landing order and builds-on, with no explanation line.
   await expect(box.locator(".plnote")).toHaveCount(0);
   await expect(box.locator(".plbuilds")).toContainText("Builds on Unfold folded values");
-  await expect(box.locator("li").first()).toContainText("1. Unfold folded values");
+  // #242: no numbering; the hunk count rides a chip in the row's
+  // trailing slot.
+  await expect(box.locator(".plorder")).toHaveCount(0);
+  await expect(box.locator("li").first()).toContainText("Unfold folded values");
 });
 
 test("guide Plotlines entry filters the diff and scrolls to its first hunk", async ({ page }) => {

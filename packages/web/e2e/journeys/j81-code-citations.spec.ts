@@ -93,7 +93,7 @@ test.describe("J81 code citations outside the diff", () => {
         | undefined;
       if (!row) throw new Error("no snapshot row to seed");
       const snap = JSON.parse(row.snapshot) as {
-        pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+        pages: { id: string; kind: string; title: string; cards: unknown[] }[];
         pipeline?: { stages: Record<string, string> };
         ingest?: { status: string };
       };
@@ -104,7 +104,7 @@ test.describe("J81 code citations outside the diff", () => {
       };
       let root = snap.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: "Guide", saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: "Guide", cards: [] };
         snap.pages.unshift(root);
       }
       const card = (id: string, text: string, target: string, unverified?: boolean): unknown => ({

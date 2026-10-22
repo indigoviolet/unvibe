@@ -206,11 +206,19 @@ test.describe("J225a settings, start page and PR badges", () => {
     // The review bar badges the PR review the same way (#234: open has no icon).
     await page.goto(`${svc.origin}/review/${prReviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
-    const barBadges = page.locator('#reviewbar [data-testid="pr-badges"]');
+    // #245: the status icon sits INSIDE the GitHub link box, after owner/repo#N.
+    const barLink = page.locator('#reviewbar a[title="Open PR on GitHub"]');
+    await expect(barLink).toBeVisible();
+    const barBadges = barLink.locator('[data-testid="pr-badges"]');
     await expect(barBadges.getByRole("img", { name: "Changes requested" })).toBeVisible();
     await expect(barBadges.getByRole("img", { name: "Open" })).toHaveCount(0);
     await expect(barBadges).not.toContainText("Open");
     await expect(barBadges).not.toContainText("Changes requested");
+    // No sibling badges in the row — the icon lives inside the link.
+    await expect(page.locator('#reviewbar > .rid > [data-testid="pr-badges"]')).toHaveCount(0);
+    // The icon keeps its shared tooltip inside the link.
+    await barBadges.getByRole("img", { name: "Changes requested" }).hover({ timeout: 15_000 });
+    await expect(page.locator("#tip")).toContainText("Changes requested", { timeout: 15_000 });
     await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
     // #235: the bar keeps the GitHub link and status icon, but no PR title,
     // no open-externally button, no preview/full-access badges. (Agent is

@@ -79,7 +79,7 @@ function seed(annotations: Annotation[]): void {
     review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [file()],
-    pages: [{ id: "p-1", kind: "opened-expansion", title: "Unfolds folded values", saved: false, parent: "root", cards: [] }],
+    pages: [{ id: "p-1", kind: "opened-expansion", title: "Unfolds folded values", parent: "root", cards: [] }],
     annotations,
     hunkStates: [{ contentHash: HASH, folded: false, reviewed: false, summary: "Unfolds folded header values." }],
     jobs: [],

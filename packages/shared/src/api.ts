@@ -568,7 +568,6 @@ export type ReviewAction =
   /** Issue #136: `cardId` is a page-card id or a conversation card id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
-  | { kind: "bookmark"; pageId: string; saved: boolean }
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }
@@ -645,7 +644,7 @@ export interface ActionResponse {
   annotationId?: string;
   /** Issue #136: turn created or targeted by the action (explain/ask/reply/retry/followup). */
   turnId?: string;
-  /** M4: page created or targeted (promote/concept/bookmark). */
+  /** M4: page created or targeted (promote/concept). */
   pageId?: string;
   /** M4: card created or targeted (depth/examples/diagram/undo/collapse/followup). */
   cardId?: string;

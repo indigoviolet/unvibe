@@ -74,7 +74,6 @@ function pagesFor(): ReviewSnapshot["pages"] {
       id: "root",
       kind: "root",
       title: "Guide",
-      saved: false,
       cards: [
         {
           id: "central",

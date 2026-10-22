@@ -311,7 +311,6 @@ export async function applyUpdateResult(
         id: nf.pageId,
         kind: "finding",
         title: nf.title,
-        saved: false,
         confidence: nf.confidence,
         summary: nf.summary,
         cards: nf.cards as ReviewSnapshot["pages"][number]["cards"],

@@ -1,5 +1,5 @@
 /* #201 shared components: styled only through theme + scale variables. */
-.ui-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--control-md);padding:0 var(--space-4);border-radius:var(--radius-control);font-size:var(--text-sm);font-weight:var(--weight-button);border:var(--border-width) solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none}
+.ui-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--control-md);padding:0 var(--space-4);border-radius:var(--radius-control);font-size:var(--text-sm);font-weight:var(--weight-button);border:var(--border-width) solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none;box-sizing:border-box}
 .ui-btn[data-size="sm"]{height:var(--control-sm);padding:0 var(--space-3);font-size:var(--text-xs)}
 .ui-btn[data-size="lg"]{height:var(--control-lg);padding:0 var(--space-5)}
 .ui-btn[data-variant="primary"]{background:var(--ink);color:var(--text-on-accent);border-color:var(--ink)}
@@ -40,6 +40,10 @@
 .ui-badge[data-tone="warn"]{background:var(--note-soft);color:var(--note)}
 .ui-badge[data-tone="error"]{background:var(--warn-soft);color:var(--warn)}
 .ui-badge[data-tone="merged"]{background:var(--note-soft);color:var(--note)}
+/* #242: neutral pill with its own border, so it reads as a chip on any
+   background — including a sunk (inset-card) one, where the borderless
+   neutral pill disappears. No semantic colour: for counts and names. */
+.ui-badge[data-tone="outline"]{background:var(--surface);border:var(--border-width) solid var(--line);color:var(--text-secondary)}
 /* #224: the one shared diff stat: plain coloured +N −M, no pill. */
 .ui-diffstat{display:inline-flex;gap:4px;align-items:baseline;font:11px var(--mono);white-space:nowrap;flex:none}
 .ui-diffstat .a{color:var(--add-ink)}

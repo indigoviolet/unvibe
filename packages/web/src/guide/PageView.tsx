@@ -1,13 +1,12 @@
 /**
  * Guide page (M2, web-guide owner; PRD §4.3, §4.9).
  *
- * Header (type label only where it matters, then the title with the
- * bookmark right-aligned on its line — #118, deliberately off-prototype),
+ * Header (type label only where it matters, then the title),
  * trail, collapsible Contents box, cards, and the "Go deeper" divider
  * before pending cards. Finding pages get the rust-accent `.finding`
  * class.
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
 import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
@@ -16,10 +15,10 @@ import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
 import { revealSource } from "../source/reveal.js";
-import { performAction, performFollowUp } from "./actions.js";
+import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
-import { Card as UiCard } from "../ui/index.js";
+import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
 import { inflightLabel } from "./inflight.js";
 import { useReviewIdentity } from "../shell/reviewIdentity.js";
 
@@ -29,11 +28,6 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string | null) => void;
   onJumpToCard: (cardId: string) => void;
-}
-
-/** Bookmark state: explicit flag wins, concept pages default to saved. */
-export function isSaved(page: Page): boolean {
-  return page.saved || page.kind === "concept";
 }
 
 /** Finding recheck status line (PRD §8): set by refresh / the update pass. */
@@ -93,26 +87,54 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     return n;
   };
   const otherCount = countOf(undefined);
-  const nameOf = (id: string | undefined): string | undefined =>
-    id === undefined ? undefined : (plotlines.find((p) => p.id === id)?.name ?? id);
+  const plotlineOf = (id: string | undefined): Plotline | undefined =>
+    id === undefined ? undefined : plotlines.find((p) => p.id === id);
+  const nameOf = (id: string | undefined): string | undefined => {
+    if (id === undefined) return undefined;
+    return plotlineOf(id)?.name ?? id;
+  };
+  // Picking a plotline is a filter action (#190): filter the diff to
+  // it and jump to its first hunk without clearing the file tree's
+  // own filters. The builds-on chip (#242) picks the earlier
+  // plotline the same way — it goes to that plotline.
+  const pick = (plotId: string, ref: string | null): void => {
+    const active = snapshot?.diffFilter?.plotline === plotId;
+    const body = {
+      plotline: active ? null : plotId,
+      score: snapshot?.diffFilter?.score ?? null,
+    };
+    api
+      .updateDiffFilter(reviewId, body)
+      .then(() => {
+        if (!active && ref) revealSource(ref, { keepFilters: true });
+      })
+      .catch(() => {
+        toast("Couldn't save the filter");
+      });
+  };
   const rows = [
-    ...plotlines.map((p, i) => ({
-      id: p.id,
-      order: i + 1,
-      name: p.name,
-      desc: p.description,
-      buildsOnName: nameOf(p.buildsOn),
-      count: countOf(p.id),
-      ref: firstRefOf(p.id),
-    })),
+    ...plotlines.map((p) => {
+      const buildsOn = plotlineOf(p.buildsOn);
+      return {
+        id: p.id,
+        name: p.name,
+        desc: p.description,
+        buildsOnId: buildsOn?.id,
+        buildsOnName: nameOf(p.buildsOn),
+        buildsOnRef: buildsOn ? firstRefOf(buildsOn.id) : null,
+        count: countOf(p.id),
+        ref: firstRefOf(p.id),
+      };
+    }),
     ...(otherCount > 0
       ? [
           {
             id: PLOTLINE_OTHER_ID,
-            order: undefined as number | undefined,
             name: "Other",
             desc: "Hunks no plotline claimed.",
+            buildsOnId: undefined as string | undefined,
             buildsOnName: undefined as string | undefined,
+            buildsOnRef: null as string | null,
             count: otherCount,
             ref: firstRefOf(undefined),
           },
@@ -123,53 +145,62 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     <UiCard as="section" variant="inset" className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
       <ul>
-        {rows.map((r) => (
-          <li key={r.id}>
-            {r.ref ? (
-              <button
-                type="button"
-                className={snapshot?.diffFilter?.plotline === r.id ? "sel" : undefined}
-                aria-pressed={snapshot?.diffFilter?.plotline === r.id}
-                data-plotpick={r.id}
-                data-tip={snapshot?.diffFilter?.plotline === r.id ? "Show all hunks" : `Show only ${r.name}`}
-                onClick={() => {
-                  const active = snapshot?.diffFilter?.plotline === r.id;
-                  const body = {
-                    plotline: active ? null : r.id,
-                    score: snapshot?.diffFilter?.score ?? null,
-                  };
-                  api
-                    .updateDiffFilter(reviewId, body)
-                    .then(() => {
-                      // A plotline pick is a filter action (#190):
-                      // jump to its first hunk without clearing the
-                      // file tree's own filters.
-                      if (!active) revealSource(r.ref as string, { keepFilters: true });
-                    })
-                    .catch(() => {
-                      toast("Couldn't save the filter");
-                    });
-                }}
-              >
-                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
-                <span className="plname">{r.name}</span>
-                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
-                <span className="plcount">
-                  {r.count} {r.count === 1 ? "hunk" : "hunks"}
-                </span>
-                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
-              </button>
-            ) : (
-              <span>
-                {r.order !== undefined ? <span className="plorder">{r.order}. </span> : null}
-                <span className="plname">{r.name}</span>
-                {r.desc ? <span className="pldesc"> — {r.desc}</span> : null}
-                <span className="plcount">no hunks</span>
-                {r.buildsOnName ? <span className="plbuilds">Builds on {r.buildsOnName}</span> : null}
-              </span>
-            )}
-          </li>
-        ))}
+        {rows.map((r) => {
+          const active = snapshot?.diffFilter?.plotline === r.id;
+          const clickable = r.ref !== null;
+          return (
+            <li key={r.id}>
+              <ListRow
+                className={active ? "ui-row sel" : "ui-row"}
+                {...(clickable
+                  ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-pressed": active,
+                      "data-plotpick": r.id,
+                      "data-tip": active ? "Show all hunks" : `Show only ${r.name}`,
+                      onClick: () => pick(r.id, r.ref),
+                      onKeyDown: (e: KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          pick(r.id, r.ref);
+                        }
+                      },
+                    }
+                  : {})}
+                primary={<span className="plname">{r.name}</span>}
+                meta={
+                  <>
+                    {r.desc ? <span className="pldesc">{r.desc}</span> : null}
+                    {r.buildsOnId && r.buildsOnName ? (
+                      <span className="plbuilds">
+                        Builds on{" "}
+                        <button
+                          type="button"
+                          className="plbuilds-chip"
+                          data-buildson={r.buildsOnId}
+                          data-tip={`Show only ${r.buildsOnName}`}
+                          aria-label={`Show only ${r.buildsOnName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pick(r.buildsOnId as string, r.buildsOnRef);
+                          }}
+                        >
+                          <Badge tone="outline">{r.buildsOnName}</Badge>
+                        </button>
+                      </span>
+                    ) : null}
+                  </>
+                }
+                trailing={
+                  <Badge tone="outline">
+                    {r.count === 0 ? "no hunks" : r.count === 1 ? "1 hunk" : `${r.count} hunks`}
+                  </Badge>
+                }
+              />
+            </li>
+          );
+        })}
       </ul>
     </UiCard>
   );
@@ -179,7 +210,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const [tocOpen, setTocOpen] = useState(true);
   const { title: identityTitle } = useReviewIdentity(reviewId);
   const isFinding = page.kind === "finding";
-  const saved = isSaved(page);
   // #235: the PR title lives here on the root, using the heading's style.
   // A default-stored root ("Guide") shows the review title (PR title, else
   // branch); non-default roots and other pages keep today's display.
@@ -275,19 +305,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
         <h1 className="title">{rootTitle}</h1>
-        <button
-          className="ib save"
-          type="button"
-          data-tip={saved ? "Unsave from this repo" : "Save to this repo"}
-          aria-label={saved ? "Unsave from this repo" : "Save to this repo"}
-          aria-pressed={saved}
-          data-save={page.id}
-          onClick={() =>
-            void performAction(reviewId, { kind: "bookmark", pageId: page.id, saved: !saved })
-          }
-        >
-          <Icon name="bookmark" />
-        </button>
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />

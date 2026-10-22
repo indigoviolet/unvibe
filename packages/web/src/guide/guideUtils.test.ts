@@ -44,7 +44,7 @@ function mkCard(id: string, pageId: string, opts?: Partial<Card>): Card {
 }
 
 function mkPage(id: string, cards: Card[], kind: Page["kind"] = "concept"): Page {
-  return { id, kind, title: `Title ${id}`, saved: false, parent: "root", cards };
+  return { id, kind, title: `Title ${id}`, parent: "root", cards };
 }
 
 describe("depth text selection (PRD §4.4)", () => {
@@ -191,12 +191,11 @@ describe("emptyGuideState (issue #44)", () => {
   const job = (state: string, extra: object = {}) =>
     ({ id: "j", kind: "reader", model: "m", priority: 1, state, ...extra }) as Job;
 
-  it("is building while a job is live or a stage is running", () => {
+  it("is building while a job is live; a lone running stage with no live job is idle (#247)", () => {
     expect(emptyGuideState(undefined, [job("queued")])).toEqual({ kind: "building", detail: "reader" });
-    expect(emptyGuideState({ stages: { reader: "done", base: "running" } }, [job("done")])).toEqual({
-      kind: "building",
-      detail: "base",
-    });
+    // No live job and nothing done: a stored `running` stage alone is
+    // stuck (cancelled while queued), not work.
+    expect(emptyGuideState({ stages: { reader: "running", base: "pending" } }, [])).toEqual({ kind: "idle" });
     expect(emptyGuideState({ stages: { reader: "done", base: "pending" } }, [])).toEqual({ kind: "building" });
   });
 

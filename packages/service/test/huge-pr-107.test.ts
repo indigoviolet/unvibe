@@ -285,7 +285,6 @@ async function makeBigReview(
         id: "root",
         kind: "root",
         title: "Guide",
-        saved: false,
         cards: cited.map((hash, i) => {
           const loc = byHash.get(hash)!;
           const target = `h:${loc.fileKey}:${hash}`;

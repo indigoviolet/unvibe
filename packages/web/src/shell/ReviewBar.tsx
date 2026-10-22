@@ -5,26 +5,41 @@
  *
  * - Left: a home control back to the start page (first in focus order),
  *   then the review identity (`owner/name#N`, linking to GitHub for PR
- *   reviews, #94, new tab) and the PR status icon when the PR has one
- *   (#234: none when open), the version selector next to it (issue #120;
- *   hidden for single-version reviews, the current version annotated in
- *   the dropdown, an older shown version flagged with a warning border),
+ *   reviews, #94, new tab, #244: boxed with the shared Button styling
+ *   like the Comments button; #245: the PR status icon sits INSIDE the
+ *   link box after owner/repo#N, #234: none when open) and the Refresh
+ *   button next to the link (#241: same handler/check/banner as the diff
+ *   toolbar owned, tooltip "Refresh", hidden for document reviews which
+ *   never had it),
+ *   the version selector next to it (issue #120; hidden for
+ *   single-version reviews, the current version annotated in the
+ *   dropdown, an older shown version flagged with a warning border),
  *   and Debug as an icon button (hidden until the review finishes
  *   opening, issue #92). #235: no PR title here (it lives as the guide
  *   heading), no open-externally button (the GitHub link opens the PR),
  *   no preview/full-access badges (front page only). No Settings gear:
- *   Settings is reached from the start page.
+ *   Settings is reached from the start page. #245: every control is one
+ *   height (the theme's small control height) and centred on one line.
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button,
  *   plus the live job count (running · queued, issue #98) once the review
  *   is open and at least one job is live — a link to the Debug jobs list.
  */
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { isDocumentReview } from "@unvibe/shared";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";
+import { api } from "../api/client.js";
+import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
+import { comparisonToBanner } from "../versions/VersionBanner.js";
+import { useRefreshState } from "../versions/refreshStore.js";
+import { useRefresh } from "../versions/useRefresh.js";
+import { refreshErrorNotice } from "../versions/versionUtils.js";
+import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { PrBadges } from "../ui/index.js";
 import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
@@ -60,6 +75,48 @@ export function ReviewBar({
   const counts = jobCounts(snapshot?.jobs ?? []);
   const showJobs = ingestReady && counts.running + counts.queued > 0;
   const jobsLabel = `${counts.running} running, ${counts.queued} queued`;
+  // #241: Refresh lives here now (moved from the diff toolbar). Same
+  // handler/check/banner as before; hidden for document reviews, which
+  // never had it. Tooltip is exactly "Refresh".
+  const { refreshing, doRefresh } = useRefresh(reviewId);
+  const versionParam = useReviewVersion();
+  const readOnly =
+    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
+  const isDocument = snapshot ? isDocumentReview(snapshot) : false;
+  // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
+  // Skipped while viewing an older version, and a no-op for reviews with
+  // no git source (demo) or document reviews. Check-only: new commits
+  // surface as the banner (never auto-applied, no jobs start); PR state
+  // and decision update silently through the snapshot WS patch (#230).
+  // No polling. The guard keeps StrictMode/remounts to one call per
+  // review open.
+  const sourceRepoId = snapshot?.review.repoId;
+  const autoRefreshKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
+    if (snapshot && isDocumentReview(snapshot)) return;
+    const key = `${reviewId}@${sourceRepoId}`;
+    if (autoRefreshKey.current === key) return;
+    autoRefreshKey.current = key;
+    let cancelled = false;
+    api
+      .refresh(reviewId)
+      .then((r) => {
+        if (cancelled) return;
+        if (r.newVersion && r.comparison) {
+          const snap = useReview.getState().snapshot;
+          const current = snap?.review.currentVersion ?? r.comparison.newVersion;
+          useRefreshState.getState().setBanner(reviewId, comparisonToBanner(r.comparison, current));
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) toast(refreshErrorNotice(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId, versionParam, sourceRepoId, snapshot]);
+  useEffect(() => () => useRefreshState.getState().clearReview(reviewId), [reviewId]);
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
@@ -72,13 +129,33 @@ export function ReviewBar({
           <Icon name="home" />
         </Link>
         {prUrl ? (
-          <a className="num" href={prUrl} target="_blank" rel="noreferrer" title="Open PR on GitHub">
+          <a
+            className="ui-btn"
+            data-variant="secondary"
+            data-size="sm"
+            href={prUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open PR on GitHub"
+          >
             {short}
+            <PrBadges prState={prState} reviewDecision={reviewDecision} />
           </a>
         ) : (
           <span className="num">{short}</span>
         )}
-        <PrBadges prState={prState} reviewDecision={reviewDecision} />
+        {!isDocument ? (
+          <button
+            className="ib bd"
+            type="button"
+            data-tip="Refresh"
+            aria-label="Refresh"
+            disabled={refreshing || readOnly}
+            onClick={() => void doRefresh()}
+          >
+            <Icon name="refresh" />
+          </button>
+        ) : null}
         <VersionSwitcher />
         {ingestReady ? (
           <Link

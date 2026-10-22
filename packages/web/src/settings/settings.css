@@ -29,18 +29,6 @@ mark.tm {
   color: var(--text-primary);
   cursor: pointer;
 }
-.ver-toggle-hint {
-  margin: 0 0 6px 26px;
-}
-.ver-current {
-  font-size: 13px;
-  margin: 6px 0;
-}
-.ver-current .ver-name {
-  display: inline-block;
-  max-width: 100%;
-  vertical-align: bottom;
-}
 .ver-list {
   display: flex;
   flex-direction: column;

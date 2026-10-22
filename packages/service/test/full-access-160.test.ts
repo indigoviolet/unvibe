@@ -822,7 +822,6 @@ describe("follow-ups across a posture flip (owner report)", () => {
       id: "root",
       kind: "root",
       title: "Guide",
-      saved: false,
       cards: [
         {
           id: "c1",

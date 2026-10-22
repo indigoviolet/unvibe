@@ -101,18 +101,12 @@ describe("VersionSection installed and channel states", () => {
     current: false,
   };
 
-  it("Installed shows the running build, never the published head", async () => {
-    renderWith(running, [currentRow("b535a30ccccccc"), otherRow]);
-    const line = await screen.findByTestId("update-current-version");
-    expect(line).toHaveTextContent("preview/feat-x");
-    expect(line).toHaveTextContent("6818b23");
-    expect(line).toHaveTextContent("main@c562ed1 + feat/x@6818b23");
-    expect(line).not.toHaveTextContent("b535a30");
-  });
-
+  // #246: no separate Installed line — the installed channel is marked
+  // by its Installed badge in the list.
   it("up to date: INSTALLED pill and no Update button", async () => {
     renderWith(running, [currentRow("6818b23aaaaaaa"), otherRow]);
-    await screen.findByTestId("update-current-version");
+    await screen.findByText("preview/feat-x");
+    expect(screen.queryByTestId("update-current-version")).toBeNull();
     await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')).not.toBeNull());
     const row = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
     expect(row.querySelector('[data-testid="update-current"]')).not.toBeNull();
@@ -122,7 +116,8 @@ describe("VersionSection installed and channel states", () => {
 
   it("newer available: Update available state, latest commit and age, Update button, no INSTALLED pill", async () => {
     renderWith(running, [currentRow("b535a30ccccccc"), otherRow]);
-    await screen.findByTestId("update-current-version");
+    await screen.findByText("preview/feat-x");
+    expect(screen.queryByTestId("update-current-version")).toBeNull();
     await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')).not.toBeNull());
     const row = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
     expect(row.querySelector('[data-testid="update-current"]')).toBeNull();
@@ -134,7 +129,8 @@ describe("VersionSection installed and channel states", () => {
 
   it("other channel: no pill, Switch button", async () => {
     renderWith(running, [currentRow("6818b23aaaaaaa"), otherRow]);
-    await screen.findByTestId("update-current-version");
+    await screen.findByText("preview/feat-x");
+    expect(screen.queryByTestId("update-current-version")).toBeNull();
     await waitFor(() => expect(document.querySelector('[data-testid="update-channel"][data-ref="release"]')).not.toBeNull());
     const row = document.querySelector('[data-testid="update-channel"][data-ref="release"]')!;
     expect(row.querySelector('[data-testid="update-current"]')).toBeNull();

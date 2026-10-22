@@ -104,7 +104,7 @@ describe("update pass", () => {
         const hk = `h:${draft.files[0].fileKey}:${h.contentHash}`;
         draft.hunkStates.push({ contentHash: h.contentHash, folded: false, reviewed: false, stale: true, needsSummary: true });
         draft.pages.push({
-          id: "p-root", kind: "root", title: "Guide", saved: false,
+          id: "p-root", kind: "root", title: "Guide",
           cards: [{
             id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
             revision: 1,
@@ -114,7 +114,7 @@ describe("update pass", () => {
           }],
         });
         draft.pages.push({
-          id: "f-1", kind: "finding", title: "Finding", saved: false, confidence: "medium",
+          id: "f-1", kind: "finding", title: "Finding", confidence: "medium",
           summary: "something", cards: [], needsRecheck: true, recheckStatus: "pending",
         });
         draft.versionStatus = {

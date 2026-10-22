@@ -1111,7 +1111,6 @@
       "id": "root",
       "kind": "root",
       "title": "Unfold obsolete folded response headers",
-      "saved": false,
       "cards": [
         {
           "id": "problem",
@@ -1719,7 +1718,6 @@
       "id": "f-lf",
       "kind": "finding",
       "title": "Folds that end in a bare LF are not unfolded",
-      "saved": false,
       "parent": "root",
       "confidence": "medium",
       "summary": "http.client accepts header lines ending in LF alone, but the new code only looks for CRLF.",
@@ -1822,7 +1820,6 @@
       "id": "f-perf",
       "kind": "finding",
       "title": "The linear-time claim has no test",
-      "saved": false,
       "parent": "root",
       "confidence": "high",
       "summary": "The description and a comment rely on the pattern being linear-time, but nothing would catch a regression.",

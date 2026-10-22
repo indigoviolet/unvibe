@@ -75,7 +75,7 @@ async function makeDemoReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"])
       },
     ],
     ingest: { status: "ready" },
-    pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+    pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
     annotations: [],
     hunkStates: [],
     fileStates: [],

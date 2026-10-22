@@ -98,6 +98,20 @@ describe("document reviews (#222)", () => {
     expect(summaries[0].title).toBe("Spec");
   });
 
+  it("accepts a worktree path reached through a symlink (macOS /var is /private/var)", async () => {
+    const { app, repoId, dir } = await setup();
+    const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-doc222-link-")), "wt-link");
+    fs.symlinkSync(path.join(dir, "..", "wt-feature"), link);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reviews",
+      headers: AUTH,
+      payload: { kind: "document", markdown: "# T\n\nx", contextRepos: [{ repoId, source: "worktree", worktreePath: link }] },
+    });
+    if (res.statusCode !== 201) throw new Error(`create failed: ${res.statusCode} ${res.body}`);
+    expect((res.json() as { contextRepos: { source: string }[] }).contextRepos.map((c) => c.source)).toEqual(["worktree"]);
+  });
+
   it("refuses bad creates and refresh on a document", async () => {
     const { app, repoId } = await setup();
     const bad = async (payload: Record<string, unknown>): Promise<number> =>

@@ -4,8 +4,22 @@
  * (a particular worktree, `origin/main`, or the local copy) to the
  * stored `ContextRepoRef`. All git goes through the injectable runner.
  */
+import { realpathSync } from "node:fs";
 import type { ContextRepoRef, ContextRepoSource, Repo, RepoWorktree } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
+
+/** Same directory? Compares resolved paths (macOS `/var` is `/private/var`). */
+function samePath(a: string, b: string): boolean {
+  if (a === b) return true;
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  return real(a) === real(b);
+}
 
 async function git(runner: CommandRunner, args: string[], cwd: string): Promise<string | null> {
   try {
@@ -62,7 +76,7 @@ export async function resolveContextRepo(
   // source === "worktree": the path must be one of the repo's worktrees.
   if (!worktreePath) throw new Error(`pick a worktree for ${repo.owner}/${repo.name}`);
   const worktrees = await listWorktrees(runner, repo.localPath);
-  const found = worktrees.find((w) => w.path === worktreePath);
+  const found = worktrees.find((w) => samePath(w.path, worktreePath));
   if (!found) throw new Error(`${worktreePath} is not a worktree of ${repo.owner}/${repo.name}`);
   const sha = found.head ?? (await git(runner, ["rev-parse", "HEAD"], found.path));
   return {

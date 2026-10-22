@@ -44,7 +44,6 @@ export async function conceptAction(
         id: pageId,
         kind: "concept",
         title: slug,
-        saved: true,
         parent: "root",
         cards: [
           {

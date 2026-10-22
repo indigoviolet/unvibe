@@ -263,17 +263,29 @@ code { font-family: var(--mono); font-size: .86em; }
    top bar — identity left (truncates first), Guide|Source selector, then
    Comments + Submit. Never wraps; the dropdowns anchor inside it. */
 .rbar { display: flex; align-items: center; gap: 8px; margin: var(--bar-margin); border-radius: var(--bar-radius); box-shadow: var(--bar-shadow); padding: 6px 12px; border-bottom: var(--border-width) solid var(--line); background: var(--surface); }
-.rbar .rid { display: flex; gap: 6px; align-items: baseline; min-width: 0; flex: 1 1 auto; }
+.rbar .rid { display: flex; gap: 6px; align-items: center; min-width: 0; flex: 1 1 auto; }
 .rbar .rid .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
-/* Review bar (#94): the PR label links out but keeps its quiet meta look. */
-.rbar .rid a.num { color: inherit; text-decoration: none; }
-.rbar .rid a.num:hover { text-decoration: underline; }
+/* Review bar (#244, #245): the PR link uses the shared Button styling (an
+   anchor with the `ui-btn` secondary/sm classes, like the Comments
+   button) with the status icon inside it, so the box itself needs no
+   rule here — just the identity-row layout the icon buttons share.
+   Branch reviews (no PR) keep the plain `.num` span. */
+.rbar .rid .ui-btn { flex: none; }
 .rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.rbar .rid .ib { flex: none; align-self: center; }
+.rbar .rid .ib { flex: none; }
+/* Review bar (#245): every control is one height, the theme's small control
+   height (the same as the PR link, Comments and Submit buttons): icon
+   buttons, the version picker, Guide | Source and the jobs count. The row
+   is centred so the icon inside the link sits on the centre line. */
+.rbar .ib { width: var(--control-sm); height: var(--control-sm); box-sizing: border-box; }
+.rbar .ui-select { height: var(--control-sm); box-sizing: border-box; }
+.rbar .seg { height: var(--control-sm); box-sizing: border-box; }
+.rbar .seg button { height: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
+.rbar .jcount { height: var(--control-sm); box-sizing: border-box; display: inline-flex; align-items: center; }
 /* Review bar (#120): the version selector sits next to the identity. It
    never shrinks (the title gives way first); an older shown version flags
    it with the warning border. */
-.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; align-self: center; min-width: 0; }
+.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; min-width: 0; }
 .rbar .rid .vs .ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
 .rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }
@@ -630,15 +642,9 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .crumbs button:hover { color: var(--ink); text-decoration: underline; }
 .eyebrow { font-family: var(--label-font); font-size: var(--text-label); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: var(--weight-label); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .eyebrow.find { color: var(--warn); }
-.ib.save { width: 22px; height: 20px; }
-.ib.save[aria-pressed="true"] { color: var(--accent); }
-.ib.save[aria-pressed="true"] .ic { fill: currentColor; }
-/* #118: the bookmark sits on the title line, right-aligned (deliberately
-   off-prototype). The title takes the width; the button stays top-right
-   when the title wraps and never overlaps the text. */
+/* #118: the title sits on its own line. The title takes the width. */
 .title-row { display: flex; align-items: flex-start; gap: 12px; }
 .title-row .title { flex: 1; min-width: 0; }
-.title-row .ib.save { flex: none; margin-top: 10px; }
 h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-page-title); line-height: 1.18; margin: 6px 0 10px; text-wrap: balance; }
 .meta { color: var(--muted); font-family: var(--label-font); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; }
 .prov { font-family: var(--mono); font-size: 11px; color: var(--muted); margin: 2px 0 6px; }
@@ -662,16 +668,21 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines { margin: 14px 0 4px; font-size: 13px; }
 .ui-card.plotlines { padding: 8px 14px; }
 .plotlines h2 { font-size: 11px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; letter-spacing: .08em; text-transform: uppercase; }
-.plotlines ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.plotlines li button { border: 0; background: none; padding: 2px 0; text-align: left; width: 100%; font-size: 13px; }
-.plotlines li button:hover .plname { text-decoration: underline; }
-.plotlines li button.sel { background: var(--sunk); border-radius: var(--radius-6); }
-.plotlines li button.sel .plname { text-decoration: underline; }
-.plotlines .plname { font-weight: 600; }
+.plotlines ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.plotlines li { min-width: 0; }
+.plotlines .ui-row { border-top: 0; border-radius: var(--radius-6); padding: var(--space-2) var(--space-2); min-height: 0; }
+.plotlines .ui-row[role="button"] { cursor: pointer; }
+.plotlines .ui-row.sel { background: var(--sunk); }
+/* Titles show in full and all look the same (#242): no truncation,
+   no ellipsis, no underline — long titles wrap. This overrides the
+   single-line ListRow defaults, which stay for every other list. */
+.plotlines .ui-row-primary { white-space: normal; overflow: visible; text-overflow: clip; }
+.plotlines .ui-row-meta { white-space: normal; overflow: visible; text-overflow: clip; display: flex; flex-direction: column; gap: 2px; }
+.plotlines .plname { font-weight: 600; text-decoration: none; }
 .plotlines .pldesc { color: var(--muted); font-size: 12.5px; }
-.plotlines .plcount { color: var(--muted); font-size: 11.5px; margin-left: 6px; white-space: nowrap; }
-.plotlines .plorder { color: var(--muted); }
-.plotlines .plbuilds { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+.plotlines .plbuilds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
+.plotlines .plbuilds-chip { border: 0; background: none; padding: 0; margin: 0; cursor: pointer; font: inherit; }
+.plotlines .plbuilds-chip:hover .ui-badge { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .divider { font-family: var(--label-font); font-size: var(--text-label); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: var(--weight-label); margin: 30px 0 4px; }
 /* Start page (#95): quiet label for the review-request sub-groups under a divider. */
 .subhead { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }

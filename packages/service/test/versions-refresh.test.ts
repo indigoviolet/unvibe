@@ -97,7 +97,6 @@ describe("refresh integration", () => {
           id: "p-root",
           kind: "root",
           title: "Guide",
-          saved: false,
           cards: [{
             id: "c1", pageId: "p-root", title: "Change", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "adds y" }, citations: [{ target: `h:${fileKey}:${hash}` }] }],
@@ -177,7 +176,6 @@ describe("refresh integration", () => {
           id: "p-root",
           kind: "root",
           title: "Guide",
-          saved: false,
           cards: [{
             id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "touches a" }, citations: [{ target: `h:${aKey}:${aHash}` }] }],
@@ -642,7 +640,7 @@ describe("refresh integration", () => {
       const { id, snap } = await openReview(app, dir, "feature");
       await ctx.reviews.mutate(id, (draft) => {
         draft.pages.push({
-          id: "p-root", kind: "root", title: "Guide", saved: false,
+          id: "p-root", kind: "root", title: "Guide",
           cards: [{
             id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
@@ -680,7 +678,7 @@ describe("refresh integration", () => {
       const { id, snap } = await openReview(app, dir, "feature");
       await ctx.reviews.mutate(id, (draft) => {
         draft.pages.push({
-          id: "p-root", kind: "root", title: "Guide", saved: false,
+          id: "p-root", kind: "root", title: "Guide",
           cards: [{
             id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
             revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
@@ -725,7 +723,7 @@ describe("refresh integration", () => {
       const { id, snap } = await openReview(app, dir, "feature");
       await ctx.reviews.mutate(id, (draft) => {
         draft.pages.push({
-          id: "p-root", kind: "root", title: "Guide", saved: false,
+          id: "p-root", kind: "root", title: "Guide",
           cards: [
             {
               id: "c-gone-text", pageId: "p-root", title: "GoneText", level: "standard", collapsed: false,

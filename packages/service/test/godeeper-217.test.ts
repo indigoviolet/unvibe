@@ -64,7 +64,7 @@ function makeSnapshot(id: string): ReviewSnapshot {
         ],
       }],
     }],
-    pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+    pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
     annotations: [], hunkStates: [], fileStates: [],
     viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },

@@ -116,14 +116,13 @@ test.describe("J18 empty diff (#179)", () => {
           | undefined;
         if (!row) throw new Error("no snapshot row to seed");
         const snap = JSON.parse(row.snapshot) as {
-          pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+          pages: { id: string; kind: string; title: string; cards: unknown[] }[];
         };
         snap.pages = [
           {
             id: "root",
             kind: "root",
             title: "Guide",
-            saved: false,
             cards: [
               {
                 id: "c-seed",
@@ -155,7 +154,7 @@ test.describe("J18 empty diff (#179)", () => {
 
       await git(dir2, "checkout", "feature");
       await git(dir2, "reset", "--hard", "main");
-      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
       // Diff pane: the empty message appears once (the banner), not twice.
       await expect(page.getByTestId("empty-diff-message")).toContainText("No changes to review", { timeout: 60_000 });
       await expect(page.getByTestId("diff-empty")).toHaveCount(0);

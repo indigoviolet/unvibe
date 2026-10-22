@@ -60,7 +60,10 @@ test.describe("J5 settings and versions", () => {
       await expect(toggle).toBeChecked({ timeout: 15_000 });
     }
     await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("update-current-version")).toBeVisible({ timeout: 15_000 });
+    // #246: no separate Installed line — the installed channel is marked
+    // by its Installed badge in the list.
+    await expect(page.getByTestId("update-current-version")).toHaveCount(0);
+    await expect(page.getByTestId("update-current").first()).toBeVisible({ timeout: 15_000 });
 
     // #233 (with #229's horizontal alignment): compact single-line
     // channel rows sharing the card's side padding; the Channels
@@ -74,9 +77,8 @@ test.describe("J5 settings and versions", () => {
       Math.abs(toggleBox!.y + toggleBox!.height / 2 - (labelBox!.y + labelBox!.height / 2)),
     ).toBeLessThanOrEqual(2);
     expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(labelBox!.x + 1);
-    const helpText = (await page.locator(".ver-toggle-hint").textContent()) ?? "";
-    expect(helpText.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
-    expect(helpText).not.toMatch(/gh|login|restart/i);
+    // #246: the "Releases always listed." help text is gone.
+    await expect(page.locator(".ver-toggle-hint")).toHaveCount(0);
 
     const rows = page.locator('[data-testid="update-channel"]');
     expect(await rows.count()).toBeGreaterThan(0);
