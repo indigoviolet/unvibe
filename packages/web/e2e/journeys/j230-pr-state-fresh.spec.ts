@@ -92,16 +92,24 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
     // The refresh button: same head, new state — no new version, no banner.
     // #241: Refresh lives in the review top bar now, next to the status icon.
     await page.locator("#reviewbar").getByRole("button", { name: "Refresh" }).click();
-    await expect(bar.getByRole("img", { name: "Merged" })).toBeVisible({ timeout: 30_000 });
-    await expect(bar.getByRole("img", { name: "Approved" })).toBeVisible();
+    // #245: the status icons sit INSIDE the GitHub link box, after owner/repo#N.
+    const barLink = bar.locator('a[title="Open PR on GitHub"]');
+    await expect(barLink.getByRole("img", { name: "Merged" })).toBeVisible({ timeout: 30_000 });
+    await expect(barLink.getByRole("img", { name: "Approved" })).toBeVisible();
     await expect(bar).not.toContainText("Merged");
     await expect(bar).not.toContainText("Approved");
+    // No sibling badges in the row — the icons live inside the link.
+    await expect(page.locator('#reviewbar > .rid > [data-testid="pr-badges"]')).toHaveCount(0);
+    // The icon keeps its shared tooltip inside the link.
+    await barLink.getByRole("img", { name: "Merged" }).hover({ timeout: 15_000 });
+    await expect(page.locator("#tip")).toContainText("Merged", { timeout: 15_000 });
 
-    // #239: home, GitHub link (when present), status icon, Refresh and
-    // Debug all line up on the bottom (within 1–2px) on a PR with a
-    // status icon (merged here, not open). #244: the link is boxed with
-    // the shared Button styling, like the Comments button — same height,
-    // bottoms within 2px.
+    // #239: home, GitHub link (when present), Refresh and Debug all line
+    // up on the bottom (within 1–2px) on a PR with a status icon (merged
+    // here, not open). #244: the link is boxed with the shared Button
+    // styling, like the Comments button — same height, bottoms within
+    // 2px. #245: the icon is inside the link, so it is not a separate
+    // bottom — its centre sits on the bar's centre line instead.
     const bottoms = await page.evaluate(() => {
       const barEl = document.getElementById("reviewbar");
       if (!barEl) return null;
@@ -109,7 +117,6 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
       const els: Element[] = [
         pick('a[aria-label="Back to the start page"]'),
         pick('a[title="Open PR on GitHub"]'),
-        pick('[data-testid="pr-badges"]'),
         pick('button[aria-label="Refresh"]'),
         pick('a[aria-label="Debug"]'),
       ].filter((el): el is Element => el !== null);
@@ -126,6 +133,20 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
       Math.max(...bs) - Math.min(...bs),
       `review bar bottoms misaligned: ${JSON.stringify(bottoms)}`,
     ).toBeLessThanOrEqual(2);
+    const iconMid = await page.evaluate(() => {
+      const barEl = document.getElementById("reviewbar");
+      const link = barEl?.querySelector('a[title="Open PR on GitHub"]');
+      const icon = link?.querySelector('[data-testid="pr-badges"] [role="img"]');
+      const lr = link?.getBoundingClientRect();
+      const ir = icon?.getBoundingClientRect();
+      if (!lr || !ir) return null;
+      return { linkMid: lr.top + lr.height / 2, iconMid: ir.top + ir.height / 2 };
+    });
+    expect(iconMid).not.toBeNull();
+    expect(
+      Math.abs(iconMid!.iconMid - iconMid!.linkMid),
+      `icon not centred in link: ${JSON.stringify(iconMid)}`,
+    ).toBeLessThanOrEqual(1);
     // #244: the boxed link matches the Comments button height.
     const heights = await page.evaluate(() => {
       const barEl = document.getElementById("reviewbar");

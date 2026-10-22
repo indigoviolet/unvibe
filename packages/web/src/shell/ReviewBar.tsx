@@ -6,10 +6,11 @@
  * - Left: a home control back to the start page (first in focus order),
  *   then the review identity (`owner/name#N`, linking to GitHub for PR
  *   reviews, #94, new tab, #244: boxed with the shared Button styling
- *   like the Comments button) and the PR status icon when the PR has one
- *   (#234: none when open), the Refresh button next to the status icon
- *   (#241: same handler/check/banner as the diff toolbar owned, tooltip
- *   "Refresh", hidden for document reviews which never had it),
+ *   like the Comments button; #245: the PR status icon sits INSIDE the
+ *   link box after owner/repo#N, #234: none when open) and the Refresh
+ *   button next to the link (#241: same handler/check/banner as the diff
+ *   toolbar owned, tooltip "Refresh", hidden for document reviews which
+ *   never had it),
  *   the version selector next to it (issue #120; hidden for
  *   single-version reviews, the current version annotated in the
  *   dropdown, an older shown version flagged with a warning border),
@@ -17,8 +18,8 @@
  *   opening, issue #92). #235: no PR title here (it lives as the guide
  *   heading), no open-externally button (the GitHub link opens the PR),
  *   no preview/full-access badges (front page only). No Settings gear:
- *   Settings is reached from the start page. #239: home, GitHub link,
- *   status icon and Debug line up on the bottom.
+ *   Settings is reached from the start page. #245: every control is one
+ *   height (the theme's small control height) and centred on one line.
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button,
@@ -138,11 +139,11 @@ export function ReviewBar({
             title="Open PR on GitHub"
           >
             {short}
+            <PrBadges prState={prState} reviewDecision={reviewDecision} />
           </a>
         ) : (
           <span className="num">{short}</span>
         )}
-        <PrBadges prState={prState} reviewDecision={reviewDecision} />
         {!isDocument ? (
           <button
             className="ib bd"
