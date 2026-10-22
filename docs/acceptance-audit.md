@@ -2283,8 +2283,11 @@ or stacked PR), never a file type — tests, docs and config belong to
 the thread they serve. The reader prompt (`prompts/reader.md`, and
 `plotline_assign.md` for the fallback) defines this with a good and a
 bad example; each stored plotline carries an optional `buildsOn`
-and is listed in landing order. The guide Plotlines box shows the
-order and a short "Builds on" line. Toolbar and file tree (#184): the
+and is listed in landing order. The guide Plotlines box (#242)
+shows no numbering: each row is a shared ListRow with the title in
+full (wrapping, never truncated or underlined), the hunk count as a
+Badge chip in the trailing slot, and "Builds on" followed by a chip
+naming the earlier plotline that goes to that plotline when clicked. Toolbar and file tree (#184): the
 file list's filter is an icon menu of file types only; the reviewed
 progress line, score legend and per-file dots left the tree (progress
 is now the pinned toolbar's bottom border, counts only in its tooltip
