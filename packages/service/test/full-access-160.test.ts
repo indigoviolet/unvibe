@@ -86,7 +86,7 @@ describe("prompt variants", () => {
       "You may run read-only `git` commands",
       "You may run `gh` to read",
       "You may fetch pages from the web and search the web.",
-      "when a review tool\n  fails or cannot reach something, read the file directly instead.",
+      "when a review tool\n  fails or cannot reach something, say so in the trailing `degraded`\n  field",
     ]) {
       expect(full).toContain(line);
     }
@@ -244,7 +244,8 @@ describe("ACP sessions per posture (fake transport)", () => {
     });
     const meta = state.newMetas.get(full.id) as Record<string, unknown>;
     expect(meta["systemPrompt"]).toBe("s");
-    expect(meta).not.toHaveProperty("claudeCode");
+    // Full access drops the tool restriction; only strict MCP (#209) remains.
+    expect(meta["claudeCode"]).toEqual({ options: { strictMcpConfig: true } });
     await runner.dispose();
   });
 
@@ -387,6 +388,7 @@ describe("ACP sessions per posture (fake transport)", () => {
       type: "tool",
       name: "Bash",
       status: "start",
+      id: "t1",
       detail: '{"command":"git log --oneline -5"}',
     });
     await runner.dispose();
@@ -400,6 +402,10 @@ describe("formatToolDetail", () => {
     expect(formatToolDetail("")).toBeUndefined();
     expect(formatToolDetail("git log")).toBe("git log");
     expect(formatToolDetail({ command: "git log" })).toBe('{"command":"git log"}');
+    // Streamed placeholder arguments carry no information yet.
+    expect(formatToolDetail({})).toBeUndefined();
+    expect(formatToolDetail([])).toBeUndefined();
+    expect(formatToolDetail("{}")).toBeUndefined();
     const long = "x".repeat(500);
     expect(formatToolDetail(long)).toBe(`${"x".repeat(300)}…`);
   });

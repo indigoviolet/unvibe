@@ -8,8 +8,8 @@
  *   an older version);
  * - `unverified` — with a `reason` for the job's debug data.
  *
- * Unknown `concept:` slugs are `valid` with `candidate: true`: they become
- * hidden concept candidates. When several citations in one reply fail,
+ * Unknown `concept:` slugs are `valid` with `candidate: true`: the concept
+ * page is written when the reader opens the link. When several citations in one reply fail,
  * `needsRepairTurn` is set so the caller can send one repair turn.
  */
 import { parseId } from "@unvibe/shared";
@@ -26,7 +26,7 @@ export interface TokenReport {
   repairedTo?: string;
   /** Repair explanation or unverified cause (job debug data). */
   reason?: string;
-  /** Unknown concept slug → hidden concept candidate. */
+  /** Unknown concept slug → page written on open. */
   candidate?: boolean;
 }
 
@@ -39,7 +39,7 @@ export interface AnchorCheck {
 
 export interface ValidationReport {
   tokens: TokenReport[];
-  /** Unknown concept slugs encountered (hidden candidates). */
+  /** Unknown concept slugs encountered (pages not yet written). */
   candidates: string[];
   unverified: number;
   repaired: number;
@@ -121,19 +121,25 @@ function validateDiff(target: string, lookup: ReviewLookup): TokenReport {
 function validateCode(target: string, lookup: ReviewLookup): TokenReport {
   const parsed = parseId(target);
   if (parsed?.kind !== "code") return unverified(target, `not a code ID: ${target}`);
-  const n = lookup.fileLineCount(parsed.path);
-  if (n === null) {
-    const mapped = tryRemap(target, lookup);
-    if (mapped) {
-      const again = validateCode(mapped, lookup);
-      if (again.status === "valid") {
-        return { target, status: "repaired", repairedTo: mapped, reason: `remapped from a previous version` };
-      }
-    }
-    return unverified(target, `unknown file for code range: ${parsed.path}`);
+  // #81: no length check. The citation is valid when the file exists at
+  // the cited commit, whatever the range; a range past the end still
+  // opens and highlights whatever part of it exists.
+  // Issue #222: a sha-aware lookup (document reviews) decides by the
+  // exact commit — the same path at a sha in no context repo is unverified.
+  if (parsed.sha && lookup.fileExistsAtCommit) {
+    return lookup.fileExistsAtCommit(parsed.path, parsed.sha)
+      ? { target, status: "valid" }
+      : unverified(target, `unknown file for code range: ${parsed.path}@${parsed.sha}`);
   }
-  if (parsed.start >= 1 && parsed.end <= n) return { target, status: "valid" };
-  return unverified(target, `lines ${parsed.start}–${parsed.end} outside ${parsed.path} (1–${n})`);
+  if (lookup.fileExists(parsed.path)) return { target, status: "valid" };
+  const mapped = tryRemap(target, lookup);
+  if (mapped) {
+    const again = validateCode(mapped, lookup);
+    if (again.status === "valid") {
+      return { target, status: "repaired", repairedTo: mapped, reason: `remapped from a previous version` };
+    }
+  }
+  return unverified(target, `unknown file for code range: ${parsed.path}`);
 }
 
 function validateDesc(target: string, lookup: ReviewLookup): TokenReport {
@@ -148,6 +154,13 @@ function validateDesc(target: string, lookup: ReviewLookup): TokenReport {
     }
   }
   return unverified(target, `unknown description paragraph: ${parsed.paragraph}`);
+}
+
+function validateDoc(target: string, lookup: ReviewLookup): TokenReport {
+  const parsed = parseId(target);
+  if (parsed?.kind !== "doc") return unverified(target, `not a doc ID: ${target}`);
+  if (lookup.docBlock(parsed.blockId) !== null) return { target, status: "valid" };
+  return unverified(target, `unknown document block: ${parsed.blockId}`);
 }
 
 function validateCard(target: string, lookup: ReviewLookup): TokenReport {
@@ -191,7 +204,7 @@ function validateConcept(target: string, lookup: ReviewLookup): TokenReport {
     target,
     status: "valid",
     candidate: true,
-    reason: `unknown slug becomes a hidden concept candidate: ${parsed.slug}`,
+    reason: `unknown slug: concept page written when opened: ${parsed.slug}`,
   };
 }
 
@@ -251,6 +264,8 @@ export function validateTarget(target: string, lookup: ReviewLookup): TokenRepor
       return validateAnn(target, lookup);
     case "h":
       return validateHunk(target, lookup);
+    case "doc":
+      return validateDoc(target, lookup);
   }
 }
 

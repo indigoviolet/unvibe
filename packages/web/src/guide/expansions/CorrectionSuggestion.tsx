@@ -11,6 +11,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { revealSource } from "../../source/reveal.js";
 import { useReview } from "../../state/store.js";
+import { Button } from "../../ui/index.js";
 import { resolveCitation } from "../citations.js";
 
 interface Props {
@@ -97,8 +98,9 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                 </span>
               ) : null}
               <span className="sp" />
-              <button
-                className="btn ghost"
+              <Button
+                variant="secondary"
+                size="sm"
                 type="button"
                 disabled={busy === key}
                 onClick={() =>
@@ -106,9 +108,10 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                 }
               >
                 Dismiss
-              </button>
-              <button
-                className="btn"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 type="button"
                 disabled={busy === key}
                 onClick={() =>
@@ -116,7 +119,7 @@ export function CorrectionSuggestion({ reviewId, card, contributions }: Props) {
                 }
               >
                 Accept
-              </button>
+              </Button>
             </div>
           </div>
         );

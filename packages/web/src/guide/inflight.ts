@@ -172,6 +172,8 @@ export function anchorEntryForConversation(
       if (blockIdsMatch(key.slice("explain:block:".length), host.blockId)) return entry;
     } else if (host.kind === "description") {
       if (key === `explain:desc:${host.paragraphId}`) return entry;
+    } else if (host.kind === "comment") {
+      if (key === `explain:comment:${host.commentId}`) return entry;
     } else if (host.kind === "diff-line") {
       const anchor = diffAnchorForExplainKey(key);
       if (anchor && anchor.fileKey === host.fileKey && anchor.line === host.line) return entry;
@@ -206,7 +208,9 @@ export function updateKey(reviewId: string): string {
 function anchorSuffix(anchor: ActionAnchor): string {
   if (anchor.where === "block") return `block:${anchor.blockId}`;
   if (anchor.where === "description") return `desc:${anchor.paragraphId}`;
+  if (anchor.where === "comment") return `comment:${anchor.commentId}`;
   if (anchor.where === "hunk") return `hunk:${anchor.fileKey}:${anchor.contentHash}`;
+  if (anchor.where === "code") return `code:${anchor.path}:${anchor.line}@${anchor.commit}`;
   return `diff:${anchor.fileKey}:${anchor.line}`;
 }
 

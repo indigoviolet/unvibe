@@ -71,7 +71,7 @@ test("an on-demand summary arrives as ordinary idle text and activates", async (
   // the connection file.
   await expect(page.locator("p[data-hunksum]")).toHaveCount(1);
   const file = page.locator('[id="F-src-urllib3-connection.py"]');
-  await file.getByRole("button", { name: "Summarize with agent" }).first().click();
+  await file.getByRole("button", { name: "Summarize" }).first().click();
   await expect(page.locator("p[data-hunksum]")).toHaveCount(2, { timeout: 8000 });
   // The newcomer activates like any idle summary.
   await page.locator("p[data-hunksum]").nth(1).click();

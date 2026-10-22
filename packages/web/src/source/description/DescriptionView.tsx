@@ -37,6 +37,7 @@ import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/Selectio
 import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
 import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
+import { Button, Card } from "../../ui/index.js";
 import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
@@ -125,6 +126,14 @@ export function DescriptionView({ reviewId, editor }: Props) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      if (req.anchor.where === "comment") {
+        const commentId = req.anchor.commentId;
+        const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+        if (!comment || comment.anchor.host.kind !== "description") return;
+        if (isReadOnlyVersionNow()) return;
+        setPending(req);
+        return;
+      }
       if (req.anchor.where !== "description") return;
       if (isReadOnlyVersionNow()) return;
       setPending(req);
@@ -135,9 +144,9 @@ export function DescriptionView({ reviewId, editor }: Props) {
 
   if (!description) {
     return (
-      <div className="desc">
+      <Card variant="plain" className="desc">
         <p className="hint">No description.</p>
-      </div>
+      </Card>
     );
   }
 
@@ -210,12 +219,12 @@ export function DescriptionView({ reviewId, editor }: Props) {
           <div className="dbar">
             <span className="hint">Editing the description. Type directly in the text below.</span>
             <span className="sp" />
-            <button className="btn ghost" type="button" data-descdiscard onClick={() => setEditing(false)}>
+            <Button variant="secondary" size="sm" type="button" data-descdiscard onClick={() => setEditing(false)}>
               Discard
-            </button>
-            <button className="btn" type="button" data-descsave onClick={saveEditing}>
+            </Button>
+            <Button variant="primary" size="sm" type="button" data-descsave onClick={saveEditing}>
               Save
-            </button>
+            </Button>
           </div>
           {editor ? (
             <div className="desc">
@@ -386,7 +395,8 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   };
 
   return (
-    <div
+    <Card
+      variant="plain"
       className="desc"
       ref={setRefs}
       onClick={(e) => {
@@ -420,7 +430,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         const open = threads.filter((t) => t.open);
         const markers = threads.filter((t) => t.messages.length > 0 && !t.open && !highlighted.has(t.id));
         const showPending =
-          pending && pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id;
+          pending &&
+          ((pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id) ||
+            (pending.anchor.where === "comment" &&
+              threads.some((t) => t.id === (pending.anchor as { commentId: string }).commentId)));
         return (
           <div key={seg.id ?? `seg-${i}`} data-top={seg.id ?? undefined}>
             <div className="dseg-body" dangerouslySetInnerHTML={{ __html: seg.html }} />
@@ -502,6 +515,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             ))}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 });

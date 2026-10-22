@@ -155,8 +155,8 @@ UI); nothing below was edited by this pass.
 ### §4.2 Start page — all met
 
 - Repo selector centred above Reviews with remembered + detected checkouts —
-  met (`StartPage.tsx` native `<select>`: remembered
-  under "Repos", detected under "Detected checkouts" with the local path
+  met (Base UI `Select` in `StartPage.tsx`: remembered
+  under "Repos", detected under "Found on this machine" with the local path
   as the title; selection persisted in `unvibe.start.repoId`, demo never
   selectable; `e2e/start.spec.ts` "repo selector lists remembered and
   detected repos, persisted" + "sits centered above Reviews"; quiet
@@ -295,7 +295,8 @@ needed (that deviation is closed, not added).
    address the reader about how to read the guide or whether to keep
    reading (#175): no "if you only need…", "in short…" or "TL;DR"
    framings (prompt rule in `instructions.md`; the problem card's first
-   paragraph states the problem and the central idea). Agent process
+   paragraph states the problem only, and the central idea has its own
+   card after it). Agent process
    chatter never reaches the reader (#51): the body never mentions
    tools, connections, refusals or what could not be looked up (prompt
    rule; failures go in the trailing `degraded` field). The service
@@ -538,7 +539,7 @@ needed (that deviation is closed, not added).
   text) — met (`actions/followup.ts` conversation branch,
   `ConversationCard.test.tsx` suggestion case). On guide cards a click
   still consumes the item and opens a new conversation card.
-- The card is never submitted to GitHub and carries no For-PR control —
+- The card is never submitted to GitHub and carries no Outbox control —
   met (no `post` on conversations; submit posts threads only).
 - Explanations nest (#116, #136): an Explain on text inside an answer
   anchors to the answer's block and renders under it, to any depth;
@@ -581,7 +582,7 @@ needed (that deviation is closed, not added).
   into `actions/conversation.ts`, `NewThreadComposer.tsx`,
   `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
   diff line opens a Comment. Only comments are submitted — conversation
-  cards carry no For-PR control and the submit path skips them (issue
+  cards carry no Outbox control and the submit path skips them (issue
   #135). A Comment from an agent answer quotes the selection as a
   Markdown blockquote. A comment offers “Ask the agent about this”: the
   usual Ask card on the comment's anchor, quoting the comment — the only
@@ -592,7 +593,7 @@ needed (that deviation is closed, not added).
   with suggestions, they render as chips on that answer, and clicking one
   sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
   `ConversationCard.test.tsx` suggestion case).
-- Thread header (quote/`file:line`, Mark for PR filled when on,
+- Thread header (quote/`file:line`, Outbox toggle filled when on,
   Delete, Close) — met (`comments/threads.test.ts`,
   `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
   comment” threads with Reply/Discard).
@@ -612,18 +613,27 @@ needed (that deviation is closed, not added).
   (`comments/NewThreadComposer.tsx`,
   `guide/expansions/ExpansionCard.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”).
-- Comments menu (all comments, jump, For PR filter with editable drafts,
-  never posts; lives in the review bar next to Submit since round 2, so it
-  opens with the source pane closed) — met (`comments-service.spec.ts`
-  “mark for PR, edit the draft, submit posts exactly one review”;
-  `e2e/review-bar.spec.ts` “comments menu opens with the source pane closed”).
+- Comments menu (two counted tabs in the segmented control — Comments
+  (This review + On GitHub) and Outbox (#236; opening shows Comments,
+  the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep
+  #226's disjoint hierarchy, counts, tags and fold/show-hide, posted
+  threads return to This review; jump, Outbox drafts + export Markdown
+  box with Copy (#223, hidden when the Outbox is empty), never posts;
+  lives in the review bar next to Submit since round 2, so it opens with
+  the source pane closed) — met (`comments/CommentsMenu.test.tsx`
+  tabs/counts/fold cases, `comments-service.spec.ts` “mark Outbox, edit
+  the draft, submit posts exactly one review”; branch-review tabs covered
+  by `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments
+  menu opens with the source pane closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
   (author + count, Open on GitHub, Markdown rendered with the shared
   untrusted renderer), outdated ones at their file and removed-file ones
-  at the diff's end; the menu groups them by file and thread with
-  rendered bodies and jumps to them; selecting their text offers
+  at the diff's end;   the menu groups them by file and thread with
+  line-only entry metas, rendered bodies and jumps to them; the On GitHub
+  count is the threads shown and the section keeps its fold and show/hide
+  behaviour under its strong heading (#226); selecting their text offers
   Explain/Ask/Comment (quoting into the reviewer's own comment); one
   filter-menu control hides them in the diff (remembered with the
   review) without removing them from the agents' context, where they
@@ -640,7 +650,7 @@ needed (that deviation is closed, not added).
 - Finding page label + rust-border Evidence/Assessment cards — met
   (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
   ran).
-- Suggested comments (“Agent · suggested comment”, not for PR, linked
+- Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
   Issue #163: no reply box on suggestions; the selection toolbar works
@@ -665,6 +675,13 @@ needed (that deviation is closed, not added).
   `docs/screenshots/181-suggested-question.png`, one live run on the
   demo: answer states what is not known with no “filed” narration, the
   question suggestion created end to end).
+- Explain/Ask on text inside any comment (issue #214): the selection
+  anchors to that comment (new `comment` host) in the guide and the
+  diff, the host block sent to the agent is the comment's text, and the
+  card renders under the comment; `ask.md` answers about the quote even
+  when it cannot be placed, and reply hygiene forbids internal IDs in
+  reader-facing text — met (`comment-host-214.test.ts`,
+  `j214-explain-in-comment.spec.ts` on the real service).
 
 ### §4.10 Second opinion — all met
 
@@ -889,8 +906,10 @@ needed (that deviation is closed, not added).
   provider does not offer the saved effort resets to Default with a notice
   (`ModelsSection.test.tsx` "effort per role").
 - Model display names (#21) — met: `GET /api/models` carries `name` +
-  `description` from the adapters; pickers show display name beside the id
-  with description as secondary text (Claude + Codex); readiness, Doctor,
+  `description` from the adapters; pickers show the display name beside
+  the id as the trigger label (#225: no description or status/path line
+  under the picker; a role that isn't ready shows only a link to
+  Settings → Environment); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
 - Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
@@ -1024,6 +1043,13 @@ needed (that deviation is closed, not added).
   (`agent/acp/permissions.ts` deny-by-default; Claude tools allowlist +
   `workspace-write` + sandbox for Codex; `docs/acp-runner.md`; unit
   permission tests in `acp-runner.test.ts` 14 tests).
+- Agent sessions load only Unvibe's own MCP servers — met (#209 option
+  (a), owner decision): every Claude session passes `strictMcpConfig`,
+  so user and repository MCP configurations are ignored and only
+  session-passed servers load (hunk sessions pass none). Measured with
+  synthetic servers: 810 project tools cost ~958k first-turn tokens +
+  ~29 s start before, ~5k tokens + ~2.5 s after. Codex unchanged (no
+  equivalent mechanism found; reported on #209).
 - Full-access opt-in (issue #160, this branch): setting off by default
   with a stored warning acknowledgement (the service refuses to enable
   without it); two system-prompt variants (`access-lockdown` byte-
@@ -1053,7 +1079,9 @@ needed (that deviation is closed, not added).
   restart — met (`acp-runner.test.ts`: load replay drain, cancel
   mid-reply, crash/restart).
 - Usage aggregation incl. background titling models — met
-  (`agent/acp/usage.ts`, delta-ized Claude counters, unit-pinned).
+  (`agent/acp/usage.ts`; both adapters report per-turn, #209 —
+  no second delta in the runner, unit-pinned for fresh / second-turn /
+  fork payloads).
 - Version-manager shims + untrusted review configs (#105) — met: agent
   candidates are probed from a worktree-shaped temp dir and mise/asdf
   shims resolve to the real executable (`mise which` / `asdf which`
@@ -1084,7 +1112,7 @@ needed (that deviation is closed, not added).
   conversation answer (`ans_…`).
 - App assigns IDs; agents never invent them — met: every token validated
   (`validate/*`); unknown IDs fail/repair/unverified; unknown `concept:`
-  slugs become hidden candidates (`validate/validate.ts`, `validate.test.ts`).
+  slugs stay valid links whose page is written on open (`validate/validate.ts`, `validate.test.ts`).
 - Short forms dropped in UI/prompts, stored full — met
   (`reply-format.md` §1, canonicalisation in `validate/lookup.ts`).
 - Card/block IDs stable across revisions — met (`guideRevisionForSnapshot`,
@@ -1221,8 +1249,8 @@ needed (that deviation is closed, not added).
   the IDs are in the context, so the reader cites them directly instead of
   spending `search_review` round-trips (live: first card cited
   `desc:d-p1/d-p2/d-p4`, 0 unverified, 0 MCP calls before it landed).
-- Validation (existence, ranges, anchor substring, hidden concept
-  candidates) — met (`validate/*`, `validate.test.ts`).
+- Validation (existence, ranges, anchor substring, unopened concept
+  links) — met (`validate/*`, `validate.test.ts`).
 - Repair (same-hunk few-lines auto-fix; else dimmed + logged; one repair
   turn when ≥2 fail) — met (`validate/validate.ts`, pipeline repair turn;
   live: repairs resolved, 0 unverified).
@@ -1232,12 +1260,22 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, plotlines settled first, then problem / central idea
-   (one per plotline when several) / "How it's built up" / "Decisions and
-   alternatives" / directions, hidden concepts, `pin_context`) — met
+2. Reader (explore, plotlines settled first, then problem (the problem
+   only) / one central-idea card (always, even with several plotlines;
+   per-plotline cards follow it when several) / "How it's built up" /
+   "Decisions and questions" (parts in the order Decisions, Invariants,
+   Known uncertainties, Interfaces; no "What it adds and removes" part;
+   a decision that introduces a second way of doing something the
+   system already does, or departs from an existing pattern, is stated
+   in Decisions) / "Names" (only when the change introduces names with
+   reach) / directions, `pin_context`) — met
    (`pipeline/runner.ts:879`, demo 19 cards — ran; #198 explain-first:
    L0 mission in `prompts/instructions.md`, neutral decisions card,
-   verdicts stay with the critic).
+   verdicts stay with the critic; #212 regularizer: L0 regularizer
+   mission, Decisions and questions card, Names card
+   with stable `names` id (`decisions` id kept for the renamed card),
+   critic overfitting lens; #211: reader reads and cites through the
+   review tools, terminal only for what they do not cover).
    Root cards stored once (#28): streamed cards and the final apply share
    one id scheme (`readerCardId`), the final reply replaces whatever was
    streamed, and text before the first `## ` card is dropped — met
@@ -1252,8 +1290,10 @@ needed (that deviation is closed, not added).
    at most one diagram repair per second-opinion run (each other fill
    keeps its existing one-repair bound).
 3. Base build — met (`ensureBase`).
-4. Parallel forks (critic ×2 with evidence/assessment/confidence +
-   suggested comments; concept stubs) — met (demo `f-lf`/`f-perf` — ran).
+4. Parallel forks (critic ×1, #215: one job carrying 1-3 findings with
+   evidence/assessment/confidence + suggested comments; concept pages
+   written on demand only, #216) — met (demo `f-lf`/`f-perf` from the one
+   combined critic recording — ran).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
    (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
@@ -1273,7 +1313,7 @@ needed (that deviation is closed, not added).
    reason, and summary-less rows render the reason copy with no spinner
    (`DiffView.test.tsx` "folds on the deterministic hidden reason").
    Deviation from PRD §11 step 5 noted below.
-6. On demand (depth/go-deeper/explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
@@ -1311,7 +1351,7 @@ needed (that deviation is closed, not added).
   full access (issue #160) the isolation is a prompt rule only — a shell
   can read the data directory — stated in PRD §12, `docs/acp-runner.md`,
   and the base-module header.
-- Per-provider cap (setting `sessionsPerProvider`, default 4) applied
+- Per-provider cap (setting `sessionsPerProvider`, default 16 since #210) applied
   separately to main-model and small-model jobs, read live — met (#182;
   `jobs/queue.ts`, `jobs.test.ts` cap cases incl. N-at-once and live raise).
 - Priority queue (asked > visible > background) — met (`JOB_PRIORITY`,
@@ -1422,8 +1462,9 @@ needed (that deviation is closed, not added).
 - Install `npm install -g github:<org>/unvibe#release` (one step since
   issue #42: the release package declares no lifecycle scripts — a
   script made npm dangle the git-installed bin on the owner's Mac —
-  and the first `unvibe start` runs setup: token, handler, login unit,
-  once per version; `unvibe setup` stays the manual/repair path) +
+  and `unvibe setup` is the one manual step after install — token,
+  handler, login unit (issue #220: no automatic setup on first start
+  or after update/switch; starting without setup prints the hint)) +
   same command updates — **met**: the `#release` ref serves a
   self-contained tree (built service + web, no build step, no lifecycle
   scripts, no devDependencies), installed with **no flags** on npm 11 and
@@ -1434,10 +1475,12 @@ needed (that deviation is closed, not added).
    the isolated npm cache). Agents run the user's installed `claude`/`codex`
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
-   `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo has since gone public —
-   at the time it was private, so the git ref needed `gh auth setup-git`
-   and the tarball needed `gh release download`). Installing from the default branch (source
+   `gh release download` of the then-current tag + `npm install -g` on npm
+   10 and 11, doctor/start/demo/diagrams/stop green; the `-rc` release shape
+   that tag used is gone — candidates now ship as `preview/main-rc`; the
+   repo has since gone public — at the time it was private, so the git ref
+   needed `gh auth setup-git` and the tarball needed `gh release download`).
+   Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
@@ -1491,8 +1534,8 @@ row; deletes the clone directory for managed repos only, guarded to
 `PATCH /api/reviews/:id/comments/:id` (+POST/DELETE/replies) ✓,
 `PUT /api/reviews/:id/description` ✓, `POST …/submit` (+preview,
 pr-comments) ✓, `GET/PUT /api/settings` ✓, `GET /api/models` ✓,
-`GET /api/prompts` ✓, `GET /api/jobs` (+:id, :id/prompt, cancel,
-priority) ✓, `WS /api/events` ✓. Extras (all token-gated):
+`GET /api/prompts` ✓, `GET /api/jobs` (+:id, :id/output, :id/reply,
+cancel, priority) ✓, `WS /api/events` ✓. Extras (all token-gated):
 `GET/DELETE /api/reviews`, `POST …/resume`, `GET /api/readiness`,
 `GET /api/viewer`, contributions routes. No stubs remain except the
 no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
@@ -1572,6 +1615,30 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   +361 B/annotation (200 annotations measured); jobs lists omit prompt
   snapshots (per-job fetch) — `GET` stays reasonable after hundreds of
   annotations and jobs (this branch).
+- Debug Output (issue #207): every job keeps per-turn records
+  (`Job.turnRecords`: prompt, streamed output, tool calls with truncated
+  results, derived + raw usage verbatim) in every state, not only
+  failures. Capped per turn (prompt/output 20k chars, tool arguments
+  and results 2k, marker names the original length). Job lists and WS
+  events omit them; `GET /api/jobs/:id/output` serves them per job and
+  the Debug page shows a collapsible turn list (the job's single view:
+  the old separate Prompt button/view and `GET /api/jobs/:id/prompt`
+  are removed, since each turn already shows its prompt). Tool calls
+  are never an unbounded block: the job row shows a `Tools: N` count
+  that expands to one line per call, and inside the turn view each
+  call is one line (name, truncated argument summary, time) expandable
+  to the full arguments and result, in a bounded scrolling list.
+  Fake/replay runners
+  emit the same tool and raw-usage shapes as ACP
+  (`job-turn-records-207.test.ts`, J14 journey, visual tour
+  `debug-output` scene). Derived counts are each turn's own (#209:
+  the runner's extra Claude delta, which turned per-turn payloads
+  into a per-component maximum and charged the shared warm turn's
+  cache write to every fresh small job, is gone; raw payloads stay
+  verbatim). Streamed tool arguments land on the record too: adapters
+  send `{}` first and the real arguments on intermediate updates, so
+  the runner keeps the latest per call and the job backfills from the
+  end event (found in the #211 investigation).
 
 ## §17 Milestones — all met
 
@@ -1581,13 +1648,13 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   agent summaries… summaries now exist too; token service, installable
   app, helper, idle exit — `e2e-linux.mjs` green).
 - M2 reader/guide — met (reader/base/critic live or replayed; checked
-  citations + hover; findings pages; hidden concepts; hunk summaries +
+  citations + hover; findings pages; concept pages on open; hunk summaries +
   reasons; live: 0 unverified, no hide violations).
 - M3 interaction — met (explain/ask/note everywhere; depth/examples/
   diagrams/undo; expansions→links; open-as-page; read; contents; log +
   change lists + contributions + per-review shared-context debug page,
   issue #32).
-- M4 comments/submit — met (threads ×3, Comments menu + For-PR drafts,
+- M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
 - M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
   hunk state, update pass, rebase-no-change test (a)).
@@ -1694,7 +1761,8 @@ when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
-In-app switching between `release`, `release-rc` and `preview/*` builds,
+In-app switching between `release` and `preview/*` builds (the `release-rc`
+channel is removed; candidates go out as `preview/main-rc`),
 merged with step 1: one shared switch core (`update/switch.ts`) serves
 the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
 moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
@@ -2362,6 +2430,38 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
 
+## Addendum: #225 part A + #224 (branch `fix/225a-settings-start-select-224`)
+
+- **#225 settings/start (part A; §4.14, §4.2, §4.1):** Settings →
+  Limits fields fit the card (numeric inputs sized for their values,
+  go-deeper toggle as the shared Field checkbox); Version channel rows
+  are equal-height shared ListRows with the trailing control (small
+  secondary Switch/Update/Confirm or badge) in one slot and the enable
+  toggle inside the card as a Field; Appearance shows theme names only
+  plus one line that light/dark follows the system; Repos list and both
+  add rows share one card and one right edge ("Browse…" is a shared
+  secondary button); Environment is one card with one ListRow per check
+  (problems first, short detail, full text on hover, actions in the
+  footer); the start-page PR opener row ends at the lists card's right
+  edge, empty sub-groups sit where a row would with consistent
+  sub-headings, and Reviews rows show the app's working indicator only
+  while work runs (nothing when idle, error mark stays); the shared
+  Select is Base UI's everywhere it is used (repo picker, recency,
+  Models, Version picker, Appearance). Evidence: journey
+  `e2e/journeys/j225a-settings-badges.spec.ts` (real service: one-card
+  screens, row heights/right edges, no page scroll, Base UI selects in
+  `e2e/start*.spec.ts`, `settings.spec.ts`, journeys J5/J11/J12/J18).
+- **#224 (PR state + review decision; §4.2, §4.1):** open/draft/merged/
+  closed and approved/changes-requested/review-required ride the shared
+  Badge with theme colours on the review bar (next to the PR title), the
+  start-page PR rows and the reviews list (merged/closed reviews also
+  faded). Data is the stored `gh` state (`state`/`isDraft`/
+  `reviewDecision` from the same `pr view`/`pr list` calls, refreshed on
+  list load/refresh — no new polling); branch reviews show nothing.
+  Evidence: journey `e2e/journeys/j225a-settings-badges.spec.ts`
+  (OPEN + APPROVED fake `gh`: badges in the session row and review bar,
+  none on branch rows, summary API carries the stored state).
+
 ## Addendum: #178 / #112 (branch `fix/178-112-code-citations`)
 
 - **#178 (§10):** `code:` citations are validated against the real file
@@ -2385,3 +2485,386 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/code-citations-178-112.test.ts`, journey
   `e2e/journeys/j12-refresh.spec.ts` (outside-diff citation points at
   the shifted line after refresh, chip verified).
+
+## Addendum: #227 (branch `fix/227-file-tree`)
+
+- **File tree (§4.13):** the tree panel never scrolls sideways. Rows are
+  border-box and the list is `overflow-x: hidden`; file names truncate
+  with an ellipsis, directory chains shorten from the middle (the head
+  ellipsises, the last segments stay readable, full path on hover via
+  `title`), and the `+N −M` / reviewed-count indicators sit in fixed
+  right-hand tracks outside the name button (shared subgrid columns, so
+  they align across rows and depths). The diff's file headers get the
+  same treatment: middle-shortened directory, truncating file name, and
+  the counts/reviewed/checkbox fixed at the right edge inside the pane.
+  Root cause of the original scrollbar: rows were `width: 100%` in
+  content-box sizing, so padding pushed every row past the panel and
+  the indicators with it. Evidence: `tailPathParts` cases in
+  `diffLogic.test.ts`, journey `e2e/journeys/j227-file-tree.spec.ts`
+  (scratch repo with a long path against the real service: no horizontal
+  scroll, indicators inside and aligned, hover titles, header fits the
+  pane), and the `file-tree` frames in `e2e/visual-tour.spec.ts`.
+  The owner declined the optional indicator treatments (dropping zero
+  sides, a proportional add/remove bar, a "done" look); `+N −M` stays.
+
+## Addendum: #222 phase 1 (branch `feat/222-document-review`)
+
+- **Document review kind (#222):** `POST /api/reviews` with
+  `kind: "document"` creates a review from pasted Markdown plus 1–2
+  context repos, each read from a particular worktree, `origin/main`,
+  or the local copy (`GET /api/repos/:id/worktrees` feeds the picker;
+  picks resolve at creation). The document renders in the left pane
+  with paragraph block IDs (`p1`, `p2`, …; cited as `doc:pN`, anchored
+  as `document#pN`), and Explain / Ask / Comment work on it with the
+  context repos as context: one base session per document (the document
+  plus a tree/README map of each repo), forked per Explain/Ask, no
+  captive session. Nothing is generated up front; the review has a
+  single version (refresh is a no-op; redo/resume refuse). Comments use
+  the shared comment model (`post: true`), so they land in the Outbox;
+  Submit stays disabled for them
+  (no PR). With #223 merged, document comments show in the Outbox and
+  its export: their heading names the document and paragraph
+  (`<title> › pN`, from what the comment already knows), document
+  blocks sit in the export's guide slot in document order (the
+  document is the left-pane reading text), and file-tab (`code:`)
+  comments follow under `path:line` headings. The review kind is
+  derived from the snapshot's shape (a
+  discriminated union in shared types), never stored — no fallback read,
+  no reset needed. With #81 merged, `code:` citations in document
+  answers open through `openFileForCitation` into source-pane file
+  tabs, and the Guide/Source toggle is meaningful on documents. With
+  two context repos, the repo is resolved from the cited sha — the
+  first context repo (in pick order) whose object store contains that
+  commit — for citation validation (existence keyed by the exact
+  `path@sha`, #81's existence-only rule), for `get_code`, and for the
+  file route; a sha in neither repo leaves the citation unverified and
+  reads fail rather than reading the same path in the wrong repo. No
+  grammar change and no new `get_code` input, so the golden tool
+  surface stays frozen. There is no code browser (phase 2, #82) and no
+  "code" review kind.
+  Evidence: `packages/shared/test/document.test.ts`,
+  `packages/service/test/document-222.test.ts` (two-repo sha
+  resolution, validation, and the file route),
+  `packages/service/test/validate.test.ts` (doc: targets),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (create with two
+  repos → read → Explain → Ask → Comment → cited file tab against the
+  real service, replay agent), and the visual tour's document frames.
+
+## Addendum: #81 (branch `fix/81-code-citations`)
+
+- **Validation (§10, supersedes the #178 range check):** no length
+  check. A `code:` citation is valid when the file exists at the cited
+  commit and unverified only when it does not (missing or binary);
+  `validateCode` checks existence only, and the pipeline resolves
+  existence through the same `git show` source. A range past the end
+  validates and highlights whatever part of it exists.
+- **Opening (§7/§9):** hovering a `code:` chip previews the cited lines
+  at the cited commit (fetched through the file route when no hunk
+  rows cover them); clicking opens the file in its own source-pane
+  tab at that commit — one tab per opened file, each with a close
+  button — scrolled to the cited lines. The reusable entry point is
+  `openFileAtCommit` in `packages/web/src/source/file/openFile.ts`
+  (path + commit + optional range; no PR-diff assumption), which #222
+  calls for context-repo citations. Scope stays files reached from a
+  citation or pin; there is no file tree.
+- **File tab (§7/§8):** text selects like diff lines — Explain, Ask
+  and Comment anchor to the new `code:` host and render under the
+  cited lines. On a new version, `code:` citations (in the diff or
+  outside it) and file-tab anchors are re-anchored by content like
+  pins: found again means moved to the new lines and commit, not
+  found means outdated with the original snippet kept.
+- **Submitting (§7, owner decision A):** GitHub takes inline comments
+  only on diff lines, so a marked file-tab comment goes in the review
+  body on Submit as a permalink to the cited lines at the cited
+  commit, plus the quoted text, plus the comment; the Submit preview
+  shows the same text. This rides the existing single-review submit
+  path and its in-flight lease — only the located text changes.
+  Evidence: `test/validate.test.ts`, `test/location-m6.test.ts`,
+  `test/submit-m6.test.ts` (stubbed `gh` only),
+  `test/versions-anchors.test.ts`, web `citations.test.ts` /
+  `openFile.test.ts`, journey `e2e/journeys/j81-code-citations.spec.ts`
+  (hover, tab, past-the-end clamp, selection comment), visual tour
+  `file-hover` / `file-tab` / `file-tabs` / `file-submit` frames in
+  light and dark at 1440 and 960 (the tour's demo commits resolve in
+  no checkout, so those frames use a scratch repo on an agent-less
+  service, seeded the way J81 seeds).
+
+## Addendum: #225 part B (branch `fix/225b-review-polish-layout-check`)
+
+- **Review-page tooltips (#225):** toolbar and card-toolbar tooltips are
+  the action only — no agent, cost, summary or state commentary and no
+  parentheticals (e.g. "Fold the code", "Check the branch for new
+  commits", "Summarize", "Ask about this"). The diff toolbar's review
+  filter uses the funnel `filter` icon with an active dot + accent
+  (`aria-pressed`) when a filter is on; Fold/Unfold are the mirrored
+  `fold`/`unfold` pair; Hide uninteresting uses `eyeOff`.
+- **Shared-context line (#225):** the "agent kept N notes" line is gone
+  from the review page; shared context stays on Debug → Shared context.
+- **Generic layout check (#225):** `e2e/layout-check.ts`
+  (`checkLayout`/`collectLayoutViolations`, reusable by journeys) runs
+  on every visual-tour scene: no card/panel horizontal overflow, no
+  page horizontal scroll, equal ListRow heights, shared right edges
+  for sibling form rows and add rows vs. the list below, plus rule
+  4c — a single-line add row (text input + button) fills its own row,
+  trailing control at the row's right edge. 4c is needed because the
+  reported Repos/start-page gaps hide behind full-width row boxes:
+  `.ui-input` caps at 420px so the input never flexes. No screenshot
+  baselines. Evidence: `e2e/journeys/j225-review-polish.spec.ts`,
+  `mise run visual-tour`.
+- **Tour coverage (#225, second pass):** the main tour loop now visits
+  every Settings tab (Limits, Repos, Models, Environment, Version,
+  Appearance) and the start page (Open-a-PR row, Reviews list) in all
+  four variants, with `checkLayout` on each. The PR list with its
+  empty sub-groups is covered by `e2e/journeys/j225-start-pr-list.spec.ts`:
+  its own service with the J3/J81 fake-`gh` pattern (canned `pr list`
+  for `--author`, empty direct requests, team requests; mixed open,
+  draft, merged, approved, changes-requested states for #224's future
+  badges) plus a scratch repo with a fake `acme/widgets` remote, in
+  all four variants. No real `gh`, no network.
+- **Combined tree (main-rc + part A merged here):** every scene
+  passes with the check active — full visual tour 14/14, 218 tour
+  12/12, J225, the start-PR-list journey (all 4 variants), J225a and
+  J11. Part A fixed every flagged screen (Limits fields fit, Repos
+  rows share the edge, Open-PR row fills, PR list clean); Models,
+  Environment, Version, Appearance and every review-page scene stay
+  clean. Tour-merge notes: the #222 document scenes now run
+  `checkLayout` instead of the old page-overflow-only check; the tour's
+  Outbox toggle expectation follows the action-only rename ("Remove
+  from the Outbox"); same rename applied to the affected e2e/unit
+  expectations. Left for the gate: the full `mise run gate` on this
+  tree.
+- **#225 follow-up (owner review): hermetic tour + path-free rows.**
+  `shortDetail` now strips "at <path>" tails and path-like tokens
+  from every environment row (d2 reads "d2 0.9.0"; full detail stays
+  on hover and the Doctor page); J225a asserts the d2 row and that no
+  row contains a path. The tour's main service (and the #222 restart,
+  J225a, the start-PR-list journey) runs with a fake `gh` on PATH
+  (`auth status` ok, `api user` → fake login, empty `pr list`) and a
+  `writeFakeGitOffline` git wrapper that fails only the fetch probe's
+  `ls-remote` instantly — no real `gh`, no real network; the
+  GitHub-fetch row shows a deterministic offline warning instead.
+  (Two fake-`gh` bugs found on the way: match `ls-remote` anywhere in
+  argv, since the service passes `-c` flags first; and answer
+  `api user` with the bare login, as `--jq .login` would.) A DOM-text
+  grep over every Settings tab and the start page finds no real login
+  and no home-directory paths.
+
+## Addendum: #228 (branch `feat/228-author-filter`)
+
+- **#228 (start-page author filter; §4.2, narrowed per owner decision):**
+  the filter applies only to the requested-review PR groups ("Waiting
+  on your review": requested of you / of your team) — not "Your PRs",
+  branch rows, or the Reviews list. The shared Base UI Select sits
+  with that section, listing All plus the authors in those two groups
+  with counts; one pick filters both groups. The choice persists in
+  `localStorage` like the recency window; a filtered-empty group names
+  the author with a Show-all way back (clearing both filters). Data is
+  only what the app already fetches (authors from the same `gh pr
+  list` calls; no new agent/gh calls, no polling, no new contract
+  fields). Evidence: unit `src/start/StartPage.test.tsx`
+  (matchesAuthor/authorCounts), journey
+  `e2e/journeys/j228-author-filter.spec.ts` (real service + fake `gh`:
+  option counts, both-group filtering, persistence, `checkLayout` on
+  the filter row), tour frames
+  `packages/web/visual-tour/start-author-filter-*` (git-ignored).
+
+## Addendum: #230 (branch `fix/230-pr-state-fresh`)
+
+- **Refresh keeps PR state fresh (§4.2, §4.1):** the steady-head
+  `prChanged` path in `versions/refresh.ts` already mutated the stored
+  description when only state/decision moved — the bar stayed stale
+  because it read the once-fetched summary. The bar now reads the live
+  snapshot first (WS patch) with the summary as fallback, and manual
+  refresh refetches the snapshot even when no new version is created
+  (silent when only PR state moved; "Already up to date" only when
+  truly unchanged). Opening a review still runs the same check-only
+  refresh in the background (no auto-apply, no jobs, no polling) with a
+  one-per-open guard against StrictMode/remount double-fires.
+  Evidence: service `test/refresh-pr-state-230.test.ts` (OPEN +
+  REVIEW_REQUIRED → MERGED + APPROVED, same head: snapshot + summary
+  flip, `newVersion: false`), journey
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (fake `gh` flips with no
+  new commits: refresh button flips the bar and the Reviews list).
+- **Displayed decision (§4.2, §4.1):** `review_required` is dropped
+  entirely (never stored, never rendered for fresh data;
+  `PrReviewDecision` is now only `approved | changes_requested`). No
+  backward compatibility: an old stored `review_required` is not mapped
+  to "no decision" — the next refresh or start-page PR-list sync
+  overwrites it with the displayed shape (or the owner resets); until
+  then `PrBadges` drops the missing icon key and renders the remaining
+  badges (a lookup miss filters out like `null`, covered by
+  `src/ui/PrBadges.test.tsx`). A `CHANGES_REQUESTED` whose
+  requester was re-requested shows no decision at all (GitHub keeps
+  `reviewDecision: CHANGES_REQUESTED` after a re-request; the
+  re-request only shows in `reviewRequests`). The rule is the pure
+  `displayedReviewDecision` in `packages/shared` (`reviewRequests` user
+  logins + `latestReviews` author/state, case-insensitive). Data rides
+  the existing calls as extra JSON fields — `gh pr view` at ingest
+  and refresh (`reviewRequests,latestReviews`) and `gh pr list` for the
+  start page (same) — no new gh calls. The Reviews list reuses the
+  start page's PR-list result: `GET /api/repos/:id/changes` syncs any
+  review whose PR appears there (state + displayed decision) into the
+  stored review; PRs not in the result keep stored state. The start
+  page reloads its Reviews list after the PR lists land so the fresh
+  states show. Evidence: shared `test/pr-decision-230.test.ts`, service
+  re-requested case in `test/refresh-pr-state-230.test.ts`, journeys
+  J225a + start-PR-list (no "Review required" icon; re-requested row
+  shows Open with no decision), visual tour (start/review frames:
+  no regressions).
+
+
+## Addendum: #231 (branch `feat/231-update-icon`)
+
+- **#231 (top-bar update icon + previews toggle; §4.1, §4.14):** when a
+  newer release than the running build exists, a small icon (`upUp`
+  from the app set, tooltip "Update available: vX.Y.Z") sits next to
+  the Settings icon in the top bar and links to Settings → Version.
+  Release builds compare by version, preview builds by date (release
+  published after the preview was built); up to date or a check that
+  cannot run shows nothing with no error UI. The check runs on app load
+  and when Settings → Version refreshes, session-cached, no polling,
+  reusing the Version panel's listing (no new `gh` calls: the existing
+  per-ref package metadata already carries version + published date).
+  Settings → Version's toggle is now "Show previews" ("Releases always
+  listed."): releases are always listed and switchable, preview channels
+  only with the toggle on; the update check runs either way. #229's
+  layout (one-line toggle, short help, one-line rows, aligned padding)
+  is unchanged. Test-only fake-backend additions: `fake-installed.json`
+  (stage an installed build older than published on the same ref) and
+  `UNVIBE_UPDATE_FAKE_FAIL=list` (stage a failing check). Evidence:
+  `versionFormat.test.ts` (version/date comparison), journey
+  `e2e/journeys/j5-settings-versions.spec.ts` (real service + fake
+  updater: release-newer shows, up to date hides, preview-date shows,
+  failing check hides with the panel naming the failure, toggle hides
+  previews while releases stay), mock `e2e/update-picker.spec.ts`
+  (toggle off lists releases, hides previews), tour frames
+  `packages/web/visual-tour/start-update-icon-*` and
+  `settings-version-*` (git-ignored).
+
+## Addendum: #222 follow-ups (branch `feat/222-documents-screen`)
+
+- **Documents start screen (#222):** the PR start page no longer shows
+  the Document section and lists no document reviews; a new `/documents`
+  route holds the paste-Markdown form and the document-reviews list. The
+  top bar gains a note-icon link (tooltip "Documents") next to the
+  Settings gear; the home link still returns to the PR start page. The
+  form's behaviour is unchanged apart from the repo count below.
+- **Any number of context repos (#222):** "Add another context repo"
+  keeps adding removable rows with no cap (creation requires at least
+  one). Agent context, `code:` citation resolution by commit (validation
+  keyed by the exact `path@sha`, `get_code`, the file route, and now the
+  second-opinion reply check too) and the source pane handle N repos:
+  the repo always comes from the first context repo whose object store
+  contains the cited commit. Evidence:
+  `packages/service/test/document-222.test.ts` (three-repo create),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (documents screen,
+  three repos, remove-a-row, third-repo citation, start-page exclusion),
+  tour frames `start-topbar-documents-*` and `documents-screen-*`.
+- **Header-only context map (#222):** the document base pack carries no
+  file list and no README — one header line per context repo (name,
+  read-from source, commit, path) plus a single citation/`get_code`
+  instruction for the whole document. Measured base pack (the
+  ~4-chars-per-token estimator, unvibe's own checkout as context, sample
+  document): 1 repo 923 chars / ~231 tokens, 2 repos 1119 chars / ~280
+  tokens, 4 repos 1471 chars / ~368 tokens — far under any cap, so no
+  trimming rule was added. File finding stays with the existing tools:
+  `get_code` by path + sha across all context repos, the lockdown
+  allowlist's read-only Glob/Grep (session cwd is the first context
+  repo's reading location), and full-access direct reads; `search_review`
+  does not index context trees and no file-listing MCP tool exists, so
+  none was added.
+
+
+## Addendum: #229 (branch `fix/229-version-tab`)
+
+- **#229 (Settings → Version layout; §4.14):** the enable toggle is a
+  one-line checkbox + label (no shared Field two-column layout) with
+  short help ("Optional."); each channel row is a single line (name ·
+  sha · built · action, no ListRow secondary line); the Channels
+  heading, its divider and the rows share the card's one inner padding
+  on both sides with the label vertically centred on Refresh.
+  Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
+  service + fake updater: one-line toggle, short help, no `.ui-row-meta`
+  in channel rows, shared left/right edges, centred label), tour
+  frames `packages/web/visual-tour/settings-version-*` (git-ignored).
+
+## Addendum: #233 (branch `fix/233-version-spacing`)
+
+- **#233 (Settings → Version spacing; §4.14):** the Channels label and
+  the Refresh button are bottom-aligned, so the label's bottom and the
+  button's bottom sit the same distance above the divider (within 2px,
+  replacing #229's centre alignment); channel rows keep #229's shared
+  side padding (row content starts where the heading starts, actions
+  end at Refresh's right edge) but are compact — the Switch button's
+  height plus ~7px above and below, at most button height + 16px — and
+  every row stays the same height whether it shows Switch or Installed.
+  Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
+  service + fake updater: bottom alignment above the divider, shared
+  right edge, equal row heights) and the tour's Version scene with
+  `checkLayout` at 1440 and 960 in light and dark, frames
+  `packages/web/visual-tour/settings-version-*` (git-ignored).
+
+## Addendum: #232 (branch `fix/232-loading-states`)
+
+- **#232 (review-page loading states):** while a review is being
+  prepared both panes share one modest loading state — the app's
+  processing indicator (`PaneLoading` in `ui/index.tsx`, next to
+  `ProcessingDots`) plus a short label at body size ("Building the
+  guide" / "Loading the diff"), inside the pane's normal content
+  padding (the diff pane's placeholder carries its own 16px 20px
+  padding, matching the description pane, instead of sitting
+  unpadded against the pane edge). Dropped: the serif title-size
+  "Building the guide…" heading, the stage label ("Reading the
+  change…"), and the commentary sentences ("The diff is ready to
+  read while you wait.", "The diff appears here once the review
+  opens."). The indicator is the only working signal (no trailing
+  ellipses, no stacked dots). Both panes use the one shared
+  `.pane-loading-pad` padding (16px 20px); `#page`'s own top padding
+  is neutralised exactly while the guide shows only loading
+  (`#page:has(> .pane-loading-pad)`), so the two labels sit at the
+  same height in every theme (their vertical centres match within
+  2px, asserted in the tour). The ingest "Opening PR…" heading and
+  its step label go the same way (the review bar already names the
+  review); the start page's Reviews-row step text is untouched, as
+  are the failed/empty terminal states. Evidence: updated
+  `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
+  asserts "Building the guide", no step), new tour scenes
+  `review-preparing-*` (ingest loading: both panes) and
+  `guide-building-*` (seeded running pipeline stage under
+  agent=none: guide loading, diff ready) in every theme
+  (Default, Studio, Console) × scheme × width with `checkLayout`,
+  frames `packages/web/visual-tour/review-preparing-*` and
+  `guide-building-*` (git-ignored).
+
+## Addendum: #234 + #235 (branch `fix/234-235-status-icons-topbar`)
+
+- **#234 (PR status icon tooltips; no icon for open; §4.2, §4.1):**
+  every `PrBadges` icon carries the status-only tooltip via the shared
+  `data-tip` (`Draft`, `Merged`, `Closed`, `Approved`, `Changes
+  requested`) and `open` renders no state icon (decisions still show;
+  open with no decision renders nothing). Root cause of the missing
+  tooltips: `Tooltip` was mounted only in `ReviewRoute`, so the start
+  page (Reviews list + PR lists) had no tooltip layer — `StartPage`
+  now renders `<Tooltip/>`; the review bar already had it. Evidence:
+  `src/ui/PrBadges.test.tsx` (open cases + tooltip text), journey
+  `e2e/journeys/j225a-settings-badges.spec.ts` (Playwright hover on the
+  Changes-requested icon sees `#tip` "Changes requested"),
+  `e2e/journeys/j225-start-pr-list.spec.ts` (open rows show no badges),
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (open shows nothing, then
+  merged+approved after refresh), tour frames `start-remove-confirm-*`.
+- **#235 (review top bar slim-down; §4.1, §4.3):** the review bar keeps
+  home, the GitHub link (`owner/repo#N`, title "Open PR on GitHub"),
+  the PR status icon when there is one (none when open), the version
+  picker, Debug, Guide|Source, Comments + Submit; removed: the PR
+  title `<b>`, the open-externally icon button (the GitHub link already
+  opens the PR, per the owner's follow-up comment), and the compact
+  PREVIEW / FULL ACCESS badges (front page only). The PR title moved
+  to the left pane root heading (`PageView`: a default-stored root
+  "Guide" renders the review identity title — PR title, else branch —
+  in the same `h1.title` style; non-default roots unchanged; document
+  reviews keep their document title). Evidence: `src/shell/ReviewBar.test.tsx`
+  (no title/button/badges in the bar), `src/guide/PageView.test.tsx`
+  (default root shows the branch fallback), journeys J225a/J230 (bar
+  asserts), tour frames `theme-*-guide-*` (guide heading carries the
+  PR title, slim bar), `document-review-*` (document title kept) and
+  `start-*` (badges stay on the front page).

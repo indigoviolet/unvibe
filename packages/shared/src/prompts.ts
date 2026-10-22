@@ -15,7 +15,6 @@ export const PROMPT_TEMPLATE_NAMES = [
   "critic",
   "hunk_pass",
   "plotline_assign",
-  "concept_stub",
   "concept_page",
   "ask",
   "ask_turn",

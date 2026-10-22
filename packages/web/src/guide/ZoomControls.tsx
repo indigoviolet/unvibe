@@ -5,6 +5,8 @@
  * zoom: zoom out, live zoom percentage, zoom in, reset to fit. Same
  * names in both places ("Zoom in", "Zoom out", "Reset").
  */
+import { Button } from "../ui/index.js";
+
 export function ZoomControls({
   scale,
   onZoomIn,
@@ -29,9 +31,9 @@ export function ZoomControls({
       <button type="button" className="ib" aria-label="Zoom in" onClick={onZoomIn}>
         <span aria-hidden="true">+</span>
       </button>
-      <button type="button" className="tbtn" aria-label="Reset view" onClick={onReset}>
+      <Button variant="secondary" size="sm" type="button" aria-label="Reset view" onClick={onReset}>
         Reset
-      </button>
+      </Button>
     </>
   );
 }

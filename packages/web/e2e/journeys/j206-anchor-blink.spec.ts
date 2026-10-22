@@ -105,7 +105,7 @@ test.describe("J206 anchor blink", () => {
     // The unplaced anchor is recorded on the Debug page, with its reason.
     // Reach it the way the owner does (the Debug link, no reload): the
     // record is client-side and a full page load would wipe it.
-    await page.getByRole("link", { name: "Debug" }).click();
+    await page.getByRole("link", { name: "Debug", exact: true }).click();
     const section = page.locator("[data-unplaced-anchors]");
     await expect(section).toBeVisible({ timeout: 30_000 });
     await expect(section).toContainText(stuckId!, { timeout: 15_000 });

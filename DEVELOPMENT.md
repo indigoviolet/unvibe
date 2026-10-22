@@ -56,6 +56,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
 | `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
 | `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
+| `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review | `claude` login; small spend |
 | `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
 
@@ -241,19 +242,16 @@ git push origin main v0.0.1      # the tag push triggers .github/workflows/relea
 The script bumps the version everywhere it lives (root + workspace
 `package.json`s, the `@unvibe/shared` cross-dep, `SERVICE_VERSION`,
 `MCP_SERVICE_VERSION`, `package-lock.json`), commits the bump, and creates
-tag `v<version>`. Candidates need no bump — tag the candidate commit
-directly (`git tag v0.0.1-rc.1 && git push origin v0.0.1-rc.1`); the workflow
-takes the version from the tag and patches the built bundle, so the source
-can stay at the base version.
+tag `v<version>`. Candidates ship as preview builds instead — publish the
+branch (`mise run preview:publish -- <branch> --push`) and install it with
+`unvibe update preview/<slug>`; nothing but finals ever touches the
+`release` ref users install from.
 
 Tag → branch → install command:
 
 | Tag | Version | Branch (pushed) | Pre-release | Install |
 |---|---|---|---|---|
 | `v0.0.1` | `0.0.1` | `release` | no | `npm install -g github:indigoviolet/unvibe#release` |
-| `v0.0.1-rc.1` | `0.0.1-rc.1` | `release-rc` | yes | `npm install -g github:indigoviolet/unvibe#release-rc` |
-
-Candidates never overwrite the `release` ref users install from.
 
 ### What the workflow does
 
@@ -269,8 +267,7 @@ then force-pushes the release branch (an orphan with one commit, so every
 publish is non-fast-forward by design — force is confined to these refs),
 writes notes with `scripts/release-notes.mjs` (commits since the previous
 tag, or a fixed text for the first release), and attaches the tarball to the
-GitHub release (`softprops/action-gh-release`, `prerelease: true` for
-`-rc.` tags).
+GitHub release (`softprops/action-gh-release`, never a pre-release).
 
 ### Install story
 
@@ -303,7 +300,8 @@ git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
 # Fix forward on main, then re-tag when CI is green.
 ```
 
-Deleting a candidate keeps the same shape (`release-rc`, `v0.0.1-rc.N`).
+Deleting a candidate preview means deleting its `preview/<slug>` ref (and the
+local branch once it is merged or abandoned).
 
 ### Preview builds (issue #36)
 
@@ -332,7 +330,7 @@ clearly and nothing is published. `--as-is` keeps the old behaviour
 — refusing a dirty tree there — else in this checkout, or in a
 throwaway at the branch when it has no worktree). `--all` publishes
 every local branch with commits not on `main`, plus `main` itself
-(publish artifacts `preview/*`, `release`, `release-rc` are never
+(publish artifacts `preview/*` and `release` are never
 selected); one branch failing does not stop the rest and a summary
 prints at the end (exit nonzero when anything failed). The version is
 `<base>-preview.<slug>.<shortsha>` of the built tree (base =
@@ -353,7 +351,7 @@ refspec `refs/heads/preview/<slug>:refs/heads/preview/<slug>` (guarded in
 code — no other ref can pass). Without `--push` it prints the push
 command and the install command. Like the release refs, `preview/*` refs
 are orphans with one commit, so every publish is non-fast-forward by
-design: **the only refs ever force-pushed are `release`, `release-rc`
+design: **the only refs ever force-pushed are `release`
 and `preview/*`** (agents otherwise never push; CI never pushes
 `preview/*` — only a human `--push` does).
 
@@ -361,7 +359,7 @@ On the test machine (needs the updater once — the first build with it is
 installed by hand):
 
 ```sh
-unvibe update --list              # release, release-rc, preview/* via gh; marks the installed one
+unvibe update --list              # release, preview/* via gh; marks the installed one
 unvibe stop
 unvibe update preview/feat-other  # npm install -g github:indigoviolet/unvibe#preview/feat-other
 unvibe start
@@ -375,8 +373,9 @@ reinstalls in place (same database, still backed up first), which is the
 normal publish → try → fix → publish → update loop; `--list` flags a
 newer build on the installed row with both short shas and the build
 time. Installs that predate the `unvibe` package field map to their real
-channel from the version (`X.Y.Z` → `release`, `-rc.N` → `release-rc`,
-`-preview.<slug>.<sha>` → `preview/<slug>`); source checkouts stay
+channel from the version (`X.Y.Z` → `release`,
+`-preview.<slug>.<sha>` → `preview/<slug>`; old `-rc.N` builds map to no
+channel); source checkouts stay
 unknown. The install is pinned with `npm --prefix` to the prefix this
 binary came from (derived from its own package path; npm defaults apply
 when the layout is unrecognised) and verified afterwards — a landing
@@ -431,7 +430,7 @@ select what the install check verifies.
 
 The release tree is self-contained: built service bundle (`packages/service/dist/index.js` plus bundled adapter entries `dist/adapters/`), the web build, `prompts/`, the demo fixture, `README.md`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, and a generated dependency-lean `package.json` (runtime deps only, no workspaces, **no lifecycle scripts** — neither does the source tree).
 
-Setup-on-first-start (issue #42): the release package once carried a `postinstall` that ran setup, but any lifecycle script makes npm install a git dependency as a link to its temporary preparation clone and then delete the clone — on the owner's Mac (npm 11, `github:` install) the bin link survived while its target vanished (`unvibe: command not found`), and the same script first died with `ENOENT uv_cwd` when npm launched it from a directory it had already deleted. So setup runs from our own code instead (`packages/service/src/cli/setup/ensure.ts`): the marker `<dataDir>/setup-version` records the version setup last completed for; `unvibe start`/`open` run setup when it does not match (idempotent, quiet, never blocking the start — a failure prints the one-line `unvibe setup` hint; the `--foreground` service child skips it, since setup's login enable would start a second generation); `unvibe update` and the in-app switch run the newly installed CLI's `setup` by absolute path after a successful install; manual `unvibe setup` also records the marker. The switch/update path still spawns npm with a stable cwd (`stableNpmCwd()` in `src/update/install.ts`: the home dir), never inheriting a cwd inside the package being replaced. With mise-managed Node the global bin can land in one Node version's prefix off the interactive PATH; `unvibe setup` and `unvibe doctor` detect that (`src/cli/setup/bin-reachability.ts`) and print the exact fix (prefix bin dir, `mise reshim` / shims dir, or a `~/.local/bin/unvibe` symlink) — detection only, they never edit PATH. `scripts/global-install-check.mjs` asserts all of it: no lifecycle scripts in the release package.json, the git-ref install (copy mode, no `--install-links`) landing a real package whose bin target exists and runs on npm 10 and 11, first-start setup placement, a reinstall spawned from inside the package being replaced, and a mise stand-in phase (version prefix + shims-only PATH, temp HOME).
+Setup is one manual step (issues #42, #220): the release package once carried a `postinstall` that ran setup, but any lifecycle script makes npm install a git dependency as a link to its temporary preparation clone and then delete the clone — on the owner's Mac (npm 11, `github:` install) the bin link survived while its target vanished (`unvibe: command not found`), and the same script first died with `ENOENT uv_cwd` when npm launched it from a directory it had already deleted. Automatic setup on first start / after update (v0.0.8) was dropped in #220: `unvibe setup` is run once by hand after install; `unvibe start` without it still starts the service and prints the one-line hint (detection is the pure file check `isSetupInstalled`, also what the start hint uses). The switch/update path still spawns npm with a stable cwd (`stableNpmCwd()` in `src/update/install.ts`: the home dir), never inheriting a cwd inside the package being replaced. With mise-managed Node the global bin can land in one Node version's prefix off the interactive PATH; `unvibe setup` and `unvibe doctor` detect that (`src/cli/setup/bin-reachability.ts`) and print the exact fix (prefix bin dir, `mise reshim` / shims dir, or a `~/.local/bin/unvibe` symlink) — detection only, they never edit PATH. `scripts/global-install-check.mjs` asserts all of it: no lifecycle scripts in the release package.json, the git-ref install (copy mode, no `--install-links`) landing a real package whose bin target exists and runs on npm 10 and 11, start-without-setup printing the hint and still running, setup placement after the explicit `unvibe setup` step, a reinstall spawned from inside the package being replaced, and a mise stand-in phase (version prefix + shims-only PATH, temp HOME).
 
 Installing from the default branch is unsupported: it is the source tree, not an installable package.
 
@@ -447,7 +446,7 @@ Updater throws joined lines and streams them to the switch log.
 
 How it works:
 
-- Gate: `versionPickerEnabled` in settings (off by default). When off, `GET /api/update/channels` and `POST /api/update/switch` answer 404 and Settings shows only the toggle; `GET /api/update/status` always works (gate state, running build, pending switch, last outcome).
+- Gate: `versionPickerEnabled` in settings (off by default) now means "show previews" (issue #231). Releases are always listed and switchable; with the toggle off `GET /api/update/channels` returns only releases and `POST /api/update/switch` to a preview answers 404 (the top-bar update check runs either way); `GET /api/update/status` always works (gate state, running build, pending switch, last outcome).
 - Listing is cached 30 s server-side with one shared in-flight call (`?refresh=1` bypasses); a switch is refused with 409 while a submit is in flight or another switch is pending. Running jobs refuse with a structured 409 (`code: "jobs-running"` + count + first 5 blocking jobs); `POST /api/update/switch { ref, force: true }` skips only that refusal — the shutdown path stops the jobs and their count rides the pending switch into the outcome (`interruptedJobs`), so the UI names it after the reload. `force` never bypasses the submit lease, a pending switch, the gate, or the installed-build check. Stopped jobs show as interrupted (resume or retry them from the review; on a different channel they stay with that channel's data).
 - `from` is the installed channel read locally from the installed package (`readInstalledBuild` on `process.argv[1]`): a preview ref can be deleted from the remote while installed, and a rollback to "unknown" cannot work. Source checkouts (and pre-field installs without an inferable channel) get 409 + an installed-only message — listing still works there. The install's own version seeds the rollback health wait (`fromVersion`).
 - Same channel, same published commit: 200 `{unchanged: true}`, nothing done. A moved commit reinstalls through the same flow (`from === to`); the current row shows "newer build available" with an Update action. A same-channel rollback is one reinstall attempt (the previous build of that ref is no longer published); on failure the outcome is `failed` with the recovery command — never loops.
@@ -480,7 +479,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 ## Conventions
 
 - ACP lives only in `packages/service/src/agent/acp/` (enforced by `eslint.config.mjs` `no-restricted-imports` plus `test/acp-isolation.test.ts`). Everything else uses the `AgentRunner` interface from `@unvibe/shared`.
-- API types live in `packages/shared`. Service and web both import them; change the contract there first. `GET /api/jobs` and snapshot job lists omit `promptSnapshot` (fetch per job at `/api/jobs/:id/prompt`) to keep snapshots small.
+- API types live in `packages/shared`. Service and web both import them; change the contract there first. `GET /api/jobs` and snapshot job lists omit `promptSnapshot` and `turnRecords` (fetch per job at `/api/jobs/:id/output`) to keep snapshots small.
 - Work is tracked in GitHub issues at `indigoviolet/unvibe`. Each piece of work has an issue; name it in your report and in the merge commit (`Closes #N`); tick its checklist as items land; open a new issue for anything found but not fixed. Keep the issue's state current (branch comment and `waiting-for-user-testing` once implemented, sub-issues for what remains, closed only when merged to `main`): the steps are in `CLAUDE.md`. Commit in small logical commits on your branch; do not push or merge.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict plus the open list; update it when behaviour changes.
 
@@ -488,7 +487,7 @@ For a rollback drill, lie about the target version in the channels file (with a 
 
 - Data: look in the data dir (`unvibe.db`, per-review folders, `worktrees/`). Point a scratch run at a temp dir with `UNVIBE_DATA_DIR` and a temp port with `UNVIBE_PORT`.
 - Logs: the service logs to stderr (`Unvibe listening on …`, job errors, permission decisions with `UNVIBE_ACP_DEBUG=1`).
-- A job's exact prompt: `GET /api/jobs/:id/prompt` (the Jobs section on the review's debug page links it too), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
+- A job's exact prompt, output, tool calls and usage, turn by turn: `GET /api/jobs/:id/output` (the Jobs section on the review's debug page opens it via its Output button), with tokens and cache-hit rate on `GET /api/jobs?review=:id`.
 - Environment: `unvibe doctor` locally, `GET /api/readiness` in the app; both share `src/readiness/checks.ts`.
 - Reproduce without tokens: `UNVIBE_AGENT=replay` for agent behaviour, `UNVIBE_AGENT=none` for everything else.
 - Restart behaviour: `node scripts/restart-resilience.mjs` exercises SIGKILL mid-stage against the built service.

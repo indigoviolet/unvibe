@@ -1,9 +1,9 @@
 /**
  * Submit review button + panel (comments owner; PRD §4.12).
  *
- * - The top-bar button shows the count of pending changes (For-PR threads
+ * - The top-bar button shows the count of pending changes (Outbox threads
  *   plus the description edit).
- * - The panel lists every comment marked for the PR (location as the
+ * - The panel lists every comment in the Outbox (location as the
  *   backend's preview computes it + draft text) and the description
  *   change, with Cancel and Submit. It shows the backend's preview
  *   (`dryRun`) so what the user sees is what is posted, including
@@ -22,6 +22,7 @@ import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
+import { Badge, Button } from "../ui/index.js";
 
 const READ_ONLY_REASON = "Viewing an older version · read-only · back to current to submit";
 
@@ -191,15 +192,16 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
 
   return (
     <span id="submitSlot">
-      <button
-        className={primary ? "btn" : "tbtn"}
+      <Button
+        variant={primary ? "primary" : "secondary"}
+        size="sm"
         type="button"
         data-submit=""
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        Submit review{count > 0 ? <span className="count">{count}</span> : null}
-      </button>
+        Submit review{count > 0 ? <Badge tone="warn">{count}</Badge> : null}
+      </Button>
       {open ? (
         <div className="submit" role="dialog" aria-label="Submit review">
           {state.status === "loading" ? <span className="hint">Loading…</span> : null}
@@ -209,12 +211,12 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
               <b>Couldn't submit</b>
               <span className="hint">{state.error}</span>
               <div className="frow" style={{ justifyContent: "flex-end" }}>
-                <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
+                <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={() => setOpen(false)}>
                   Cancel
-                </button>
-                <button className="btn" type="button" onClick={reloadPreview}>
+                </Button>
+                <Button variant="primary" size="sm" type="button" onClick={reloadPreview}>
                   Retry
-                </button>
+                </Button>
               </div>
             </>
           ) : null}
@@ -223,12 +225,12 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
               <b>The PR has new commits</b>
               <span className="hint">{state.error}</span>
               <div className="frow" style={{ justifyContent: "flex-end" }}>
-                <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
+                <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={() => setOpen(false)}>
                   Cancel
-                </button>
-                <button className="btn" type="button" onClick={doRefresh}>
+                </Button>
+                <Button variant="primary" size="sm" type="button" onClick={doRefresh}>
                   Refresh the review
-                </button>
+                </Button>
               </div>
             </>
           ) : null}
@@ -254,9 +256,9 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
                 </a>
               ) : null}
               <div className="frow" style={{ justifyContent: "flex-end" }}>
-                <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
+                <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={() => setOpen(false)}>
                   OK
-                </button>
+                </Button>
               </div>
             </>
           ) : null}
@@ -270,11 +272,12 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
                 </a>
               ) : null}
               <div className="frow" style={{ justifyContent: "flex-end" }}>
-                <button className="btn ghost" type="button" data-submitclose="" onClick={() => setOpen(false)}>
+                <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={() => setOpen(false)}>
                   Close
-                </button>
-                <button
-                  className="btn"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   type="button"
                   onClick={() => {
                     // Retry posts nothing twice: posted threads are skipped.
@@ -283,7 +286,7 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
                   }}
                 >
                   Retry the description
-                </button>
+                </Button>
               </div>
             </>
           ) : null}
@@ -313,9 +316,9 @@ function PreviewBody({
         <b>Submit review</b>
         <span className="hint">{preview.disabledReason}</span>
         <div className="frow" style={{ justifyContent: "flex-end" }}>
-          <button className="btn ghost" type="button" data-submitclose="" onClick={onCancel}>
+          <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={onCancel}>
             Close
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -332,7 +335,15 @@ function PreviewBody({
         <ul>
           {preview.comments.map((c) => (
             <li key={c.threadId}>
-              <span className="cw">{locationLabel(c)}</span> {c.text.slice(0, 90)}
+              <span className="cw">{locationLabel(c)}</span>{" "}
+              {c.quote !== undefined ? (
+                // #81: show the whole review-body entry that will post —
+                // permalink, quoted lines and comment — not a slice the
+                // URL alone would swallow.
+                <div className="submit-entry">{c.text}</div>
+              ) : (
+                c.text.slice(0, 90)
+              )}
               {c.location.kind === "inline" && c.location.fallbackNote ? (
                 <div className="hint">{c.location.fallbackNote}</div>
               ) : null}
@@ -348,16 +359,16 @@ function PreviewBody({
           ) : null}
         </ul>
       ) : (
-        <span className="hint">Nothing to submit. Mark comments for the PR or edit the description first.</span>
+        <span className="hint">Nothing to submit. Add comments to the Outbox or edit the description first.</span>
       )}
       <div className="frow" style={{ justifyContent: "flex-end" }}>
-        <button className="btn ghost" type="button" data-submitclose="" onClick={onCancel}>
+        <Button variant="secondary" size="sm" type="button" data-submitclose="" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
         {n > 0 ? (
-          <button className="btn" type="button" data-submitgo="" disabled={disabled} onClick={onSubmit}>
+          <Button variant="primary" size="sm" type="button" data-submitgo="" disabled={disabled} onClick={onSubmit}>
             {submitLabel}
-          </button>
+          </Button>
         ) : null}
       </div>
     </>

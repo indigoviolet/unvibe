@@ -8,7 +8,6 @@
  * class.
  */
 import { Fragment, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import type { Card, Page, Plotline } from "@unvibe/shared";
 import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
@@ -20,7 +19,9 @@ import { revealSource } from "../source/reveal.js";
 import { performAction, performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
+import { Card as UiCard } from "../ui/index.js";
 import { inflightLabel } from "./inflight.js";
+import { useReviewIdentity } from "../shell/reviewIdentity.js";
 
 interface Props {
   reviewId: string;
@@ -119,7 +120,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
       : []),
   ];
   return (
-    <section className="plotlines" aria-label="Plotlines">
+    <UiCard as="section" variant="inset" className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
       <ul>
         {rows.map((r) => (
@@ -170,18 +171,23 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
           </li>
         ))}
       </ul>
-    </section>
+    </UiCard>
   );
 }
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
   const [tocOpen, setTocOpen] = useState(true);
+  const { title: identityTitle } = useReviewIdentity(reviewId);
   const isFinding = page.kind === "finding";
   const saved = isSaved(page);
+  // #235: the PR title lives here on the root, using the heading's style.
+  // A default-stored root ("Guide") shows the review title (PR title, else
+  // branch); non-default roots and other pages keep today's display.
+  const rootTitle =
+    page.kind === "root" && isDefaultGuideTitle(page.title) ? identityTitle : displayTitle(page.title);
   const allPages = useReview((s) => s.snapshot?.pages);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
   const inflight = useReview((s) => s.inflight);
-  const contributions = useReview((s) => s.snapshot?.contributions ?? []);
   const { cards, links } = contentsModel(page, lookupPage, allPages);
 
   // Breadcrumb back to the root (PRD §4.3 trail), following parent links.
@@ -218,14 +224,8 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     return inflightLabel("concept");
   })();
 
-  // Small unobtrusive indicator when a conversation contributed facts/open
-  // questions to shared context (PRD §9.5), linking to the debug page.
-  const sharedCount = contributions.filter((c) =>
-    c.items.some((i) => i.kind === "fact" || i.kind === "open_question"),
-  ).length;
-
   const renderCard = (card: Card, index: number) => (
-    // Fragment (not a div): `.doc.finding > .card` and other child
+    // Fragment (not a div): `.doc.finding > .ui-card` and other child
     // selectors in prototype.css depend on the section being a direct child.
     // The boundary itself renders no element, and its fallback keeps the
     // card shape, so the selectors hold in both states.
@@ -235,9 +235,9 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         name="guide-card"
         resetKey={`${reviewId}:${card.id}:${card.revision ?? 0}`}
         fallback={({ reset }) => (
-          <section className="card">
+          <UiCard as="section" variant="raised">
             <InlineFallback message="Couldn't show this card: something went wrong" onRetry={reset} />
-          </section>
+          </UiCard>
         )}
       >
         <CardView
@@ -251,17 +251,20 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     </Fragment>
   );
 
+  const titleFor = (p: Page): string =>
+    p.id === page.id ? rootTitle : p.kind === "root" && isDefaultGuideTitle(p.title) ? rootTitle : displayTitle(p.title);
+
   return (
     <div className={`doc${isFinding ? " finding" : ""}`}>
       {trail.length > 1 ? (
         <nav className="crumbs" aria-label="Trail">
           {trail.map((p, i) =>
             i === trail.length - 1 ? (
-              <span key={p.id}>{displayTitle(p.title)}</span>
+              <span key={p.id}>{titleFor(p)}</span>
             ) : (
               <span key={p.id}>
                 <button type="button" onClick={() => onOpenPage(p.id === "root" ? null : p.id)}>
-                  {displayTitle(p.title)}
+                  {titleFor(p)}
                 </button>
                 <span> › </span>
               </span>
@@ -271,12 +274,12 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       ) : null}
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
-        <h1 className="title">{displayTitle(page.title)}</h1>
+        <h1 className="title">{rootTitle}</h1>
         <button
           className="ib save"
           type="button"
-          data-tip={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
-          aria-label={saved ? "Saved to this repo · click to unsave" : "Save to this repo"}
+          data-tip={saved ? "Unsave from this repo" : "Save to this repo"}
+          aria-label={saved ? "Unsave from this repo" : "Save to this repo"}
           aria-pressed={saved}
           data-save={page.id}
           onClick={() =>
@@ -298,13 +301,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
           <span>{conceptWorking}</span>
         </div>
       ) : null}
-      {sharedCount > 0 ? (
-        <p className="hint" data-shared-indicator>
-          The agent kept {sharedCount} {sharedCount === 1 ? "note" : "notes"} from your conversations in this review ·{" "}
-          <Link to={`/review/${encodeURIComponent(reviewId)}/debug?tab=context`}>Debug → Shared context</Link>
-        </p>
-      ) : null}
-      <nav className="toc" aria-label="Contents">
+      <UiCard as="nav" variant="inset" className="toc" aria-label="Contents">
         <div className="toc-h">
           <button
             className="ib"
@@ -352,7 +349,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
             ) : null}
           </div>
         ) : null}
-      </nav>
+      </UiCard>
       {page.kind === "root" ? <Plotlines reviewId={reviewId} /> : null}
       {page.cards.map(renderCard)}
     </div>

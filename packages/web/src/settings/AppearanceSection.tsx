@@ -11,6 +11,7 @@ import { UI_THEMES, type Settings, type UiThemeId } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { applyUiTheme, currentUiTheme } from "../theme/theme.js";
 import { putErrors } from "./LimitsSection.js";
+import { Card, Field, Select } from "../ui/index.js";
 
 export function AppearanceSection({
   settings,
@@ -45,36 +46,23 @@ export function AppearanceSection({
 
   return (
     <section aria-label="Appearance">
-      <div className="card" style={{ padding: "8px 14px" }}>
-        <div className="setgrid">
-          <label htmlFor="ui-theme">Theme</label>
-          <div className="fld">
-            <select
-              id="ui-theme"
-              data-testid="ui-theme"
-              value={selected}
-              disabled={saving}
-              onChange={(e) => void pick(e.target.value as UiThemeId)}
-            >
-              {UI_THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              {UI_THEMES.find((t) => t.id === selected)?.hint} Light and dark stay as your system (or
-              browser) sets them; the theme only changes colours, fonts, corners and shadows.
-            </span>
-            {errors.map((m) => (
-              <span className="err" role="alert" key={m}>
-                {m}
-              </span>
-            ))}
-            {savedNote ? <span className="hint">{savedNote}</span> : null}
-          </div>
-        </div>
-      </div>
+      <Card variant="raised">
+        <Field
+          label="Theme"
+          htmlFor="ui-theme"
+          help="Light and dark follow your system."
+          status={<>{errors.map((m) => (<span className="err" role="alert" key={m}>{m}</span>))}{savedNote ? <span className="hint">{savedNote}</span> : null}</>}
+        >
+          <Select
+            id="ui-theme"
+            data-testid="ui-theme"
+            value={selected}
+            disabled={saving}
+            onValueChange={(v) => void pick(v as UiThemeId)}
+            options={UI_THEMES.map((t) => ({ value: t.id, label: t.label }))}
+          />
+        </Field>
+      </Card>
     </section>
   );
 }

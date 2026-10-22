@@ -5,10 +5,10 @@
  * - `POST /api/reviews/:id/comments` — create a comment with the user's
  *   first message (guide block, description paragraph, or diff line),
  *   or an agent-suggested comment (`suggested` on a diff line, never marked
- *   For PR initially).
+ *   the Outbox initially).
  * - `POST …/comments/:commentId/replies` — user reply.
  * - `PATCH …/comments/:commentId` — `{ post?, draft?, open?, reply? }`:
- *   mark For PR, edit the For-PR draft, open/close, reply-box content.
+ *   mark Outbox, edit the Outbox draft, open/close, reply-box content.
  * - `DELETE …/comments/:commentId` — delete the comment.
  *
  * Everything goes through `ReviewStore.mutate`. The `POST …/actions`
@@ -37,6 +37,20 @@ function validAnchor(a: unknown): a is ActionAnchor {
   if (w === "diff-line") {
     const f = a as { fileKey?: unknown; line?: unknown };
     return typeof f.fileKey === "string" && Number.isSafeInteger(f.line);
+  }
+  if (w === "comment") return typeof (a as { commentId?: unknown }).commentId === "string";
+  if (w === "hunk") {
+    const f = a as { fileKey?: unknown; contentHash?: unknown };
+    return typeof f.fileKey === "string" && typeof f.contentHash === "string";
+  }
+  if (w === "code") {
+    const f = a as { path?: unknown; commit?: unknown; line?: unknown; endLine?: unknown };
+    return (
+      typeof f.path === "string" &&
+      typeof f.commit === "string" &&
+      Number.isSafeInteger(f.line) &&
+      (f.endLine === undefined || Number.isSafeInteger(f.endLine))
+    );
   }
   return false;
 }

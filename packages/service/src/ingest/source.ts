@@ -32,6 +32,12 @@ export interface PrInfo {
   /** OPEN | CLOSED | MERGED (gh `state` field). */
   state: string;
   isDraft: boolean;
+  /** gh `reviewDecision` (APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""). */
+  reviewDecision: string;
+  /** #230: gh `reviewRequests` (users carry `login`; teams carry `slug`/`name`). */
+  reviewRequests: unknown;
+  /** #230: gh `latestReviews` (entries carry `author.login` + `state`). */
+  latestReviews: unknown;
   baseRefName: string;
   headRefName: string;
   headRefOid: string;
@@ -53,6 +59,14 @@ export interface ResolvedSource {
   /** PR author login + gh state (OPEN/CLOSED/MERGED) for the author line. Absent on branches. */
   descriptionAuthor?: string;
   descriptionState?: string;
+  /** #224: gh `isDraft` for the stored description. Absent on branches. */
+  descriptionIsDraft?: boolean;
+  /** #224: raw gh `reviewDecision` for the stored description. Absent on branches. */
+  descriptionReviewDecision?: string;
+  /** #230: raw gh `reviewRequests` for the displayed-decision rule. Absent on branches. */
+  descriptionReviewRequests?: unknown;
+  /** #230: raw gh `latestReviews` for the displayed-decision rule. Absent on branches. */
+  descriptionLatestReviews?: unknown;
   worktreePath: string;
 }
 
@@ -264,7 +278,7 @@ export async function fetchPrInfo(
     "view",
     String(pr),
     "--json",
-    "title,body,author,state,isDraft,baseRefName,headRefName,headRefOid",
+    "title,body,author,state,isDraft,reviewDecision,reviewRequests,latestReviews,baseRefName,headRefName,headRefOid",
   ];
   const res = await runGh(runner, args, { args, cwd: repoPath });
   if (res.code !== 0) {
@@ -276,6 +290,9 @@ export async function fetchPrInfo(
     author: { login: string };
     state: string;
     isDraft: boolean;
+    reviewDecision?: string;
+    reviewRequests?: unknown;
+    latestReviews?: unknown;
     baseRefName: string;
     headRefName: string;
     headRefOid: string;
@@ -286,6 +303,9 @@ export async function fetchPrInfo(
     authorLogin: json.author?.login ?? "",
     state: json.state ?? "",
     isDraft: json.isDraft ?? false,
+    reviewDecision: json.reviewDecision ?? "",
+    reviewRequests: json.reviewRequests ?? [],
+    latestReviews: json.latestReviews ?? [],
     baseRefName: json.baseRefName ?? "",
     headRefName: json.headRefName ?? "",
     headRefOid: json.headRefOid ?? "",
@@ -409,6 +429,10 @@ export async function resolveSource(
   let descriptionEditable = false;
   let descriptionAuthor: string | undefined;
   let descriptionState: string | undefined;
+  let descriptionIsDraft: boolean | undefined;
+  let descriptionReviewDecision: string | undefined;
+  let descriptionReviewRequests: unknown = [];
+  let descriptionLatestReviews: unknown = [];
 
   if (source.pr !== undefined) {
     const [info] = await Promise.all([fetchPrInfo(runner, repoPath, source.pr), refresh ?? null]);
@@ -423,6 +447,10 @@ export async function resolveSource(
     descriptionEditable = info.state === "OPEN";
     descriptionAuthor = info.authorLogin || undefined;
     descriptionState = info.state || undefined;
+    descriptionIsDraft = info.isDraft;
+    descriptionReviewDecision = info.reviewDecision || undefined;
+    descriptionReviewRequests = info.reviewRequests ?? [];
+    descriptionLatestReviews = info.latestReviews ?? [];
     let attempts = await fetchPrHeadAndBase(runner, repoPath, source.pr, info.headRefName, baseRef);
     if (!headSha) {
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
@@ -478,7 +506,7 @@ export async function resolveSource(
   const mergeBaseSha = resolvedBase.mergeBaseSha;
   return finishResolve(runner, {
     repoPath, title, branch, prNumber, baseRef, headSha, mergeBaseSha,
-    descriptionMarkdown, descriptionEditable, descriptionAuthor, descriptionState, dataDir, reviewId,
+    descriptionMarkdown, descriptionEditable, descriptionAuthor, descriptionState, descriptionIsDraft, descriptionReviewDecision, descriptionReviewRequests, descriptionLatestReviews, dataDir, reviewId,
   });
 }
 
@@ -496,6 +524,10 @@ async function finishResolve(
     descriptionEditable: boolean;
     descriptionAuthor?: string;
     descriptionState?: string;
+    descriptionIsDraft?: boolean;
+    descriptionReviewDecision?: string;
+    descriptionReviewRequests?: unknown;
+    descriptionLatestReviews?: unknown;
     dataDir: string;
     reviewId: string;
   },
@@ -521,6 +553,10 @@ async function finishResolve(
     descriptionEditable: r.descriptionEditable,
     ...(r.descriptionAuthor !== undefined ? { descriptionAuthor: r.descriptionAuthor } : {}),
     ...(r.descriptionState !== undefined ? { descriptionState: r.descriptionState } : {}),
+    ...(r.descriptionIsDraft !== undefined ? { descriptionIsDraft: r.descriptionIsDraft } : {}),
+    ...(r.descriptionReviewDecision !== undefined ? { descriptionReviewDecision: r.descriptionReviewDecision } : {}),
+    ...(r.descriptionReviewRequests !== undefined ? { descriptionReviewRequests: r.descriptionReviewRequests } : {}),
+    ...(r.descriptionLatestReviews !== undefined ? { descriptionLatestReviews: r.descriptionLatestReviews } : {}),
     worktreePath,
   };
 }
@@ -534,7 +570,7 @@ export async function resolveHead(
   runner: CommandRunner,
   repoPath: string,
   opts: { pr?: number; branch?: string },
-): Promise<{ headSha: string; baseRef: string }> {
+): Promise<{ headSha: string; baseRef: string; prState?: string; isDraft?: boolean; reviewDecision?: string; reviewRequests?: unknown; latestReviews?: unknown }> {
   if (opts.pr !== undefined) {
     const info = await fetchPrInfo(runner, repoPath, opts.pr);
     await fetchPrHead(runner, repoPath, opts.pr, info.headRefName);
@@ -543,7 +579,7 @@ export async function resolveHead(
       const local = await runGit(runner, ["rev-parse", info.headRefName], repoPath);
       headSha = local.ok ? local.stdout.trim() : "";
     }
-    return { headSha, baseRef: info.baseRefName };
+    return { headSha, baseRef: info.baseRefName, prState: info.state || undefined, isDraft: info.isDraft, reviewDecision: info.reviewDecision || undefined, reviewRequests: info.reviewRequests ?? [], latestReviews: info.latestReviews ?? [] };
   }
   const branch = opts.branch ?? "";
   await bestEffortFetch(runner, repoPath, branch);

@@ -1,6 +1,7 @@
 /**
- * Default guide title display (issue #102): a root page whose stored title
- * is the default "Guide" shows "Guide".
+ * Default guide title display (issue #102, #235): a root page whose stored
+ * title is the default "Guide" shows the review title (branch fallback
+ * here) — the PR title moved out of the top bar into this heading.
  *
  * Card error boundaries (issue #101): a component that throws inside one
  * card shows that card's fallback and leaves the other cards rendered.
@@ -73,9 +74,10 @@ afterEach(() => {
 });
 
 describe("default guide title display", () => {
-  test("stored 'Guide' shows as 'Guide'", () => {
+  test("stored 'Guide' shows the review title (#235)", () => {
     show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guide");
+    // No summary for page-test: falls back to the branch, like a branch review.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("b");
   });
 
   test("a real title is shown unchanged", () => {
@@ -129,7 +131,7 @@ describe("page header bookmark (#118)", () => {
     expect(document.querySelector(".eyebrow")).toBeNull();
     const row = document.querySelector(".title-row");
     expect(row).not.toBeNull();
-    expect(row?.querySelector("h1.title")).toHaveTextContent("Guide");
+    expect(row?.querySelector("h1.title")).toHaveTextContent("b");
     const save = screen.getByRole("button", { name: "Save to this repo" });
     expect(row?.contains(save)).toBe(true);
     expect(save).toHaveAttribute("aria-pressed", "false");
@@ -153,7 +155,7 @@ describe("page header bookmark (#118)", () => {
 
   test("a saved page keeps the pressed bookmark state and label", () => {
     show({ id: "c-x", kind: "concept", title: "A concept", saved: false, cards: [] } as Page);
-    const save = screen.getByRole("button", { name: "Saved to this repo · click to unsave" });
+    const save = screen.getByRole("button", { name: "Unsave from this repo" });
     expect(save).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelector(".title-row")?.contains(save)).toBe(true);
   });

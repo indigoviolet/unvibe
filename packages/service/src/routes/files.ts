@@ -15,6 +15,8 @@ import type { FastifyInstance } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 import type { FileSliceResponse } from "@unvibe/shared";
+import { isDocumentReview } from "@unvibe/shared";
+import { repoContainingSha } from "../document/resolve.js";
 import { sendError } from "../errors.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { readCodeSlice } from "../mcp/read.js";
@@ -83,7 +85,15 @@ export async function registerFileSlices(app: FastifyInstance, ctx: ServiceConte
       return reply.code(400).send({ error: `at most ${MAX_SLICE_LINES} lines per request` });
     }
 
-    const cwd = cwdForReview(ctx, id, snapshot.review.repoId);
+    // Issue #222: on a document review, the repo is resolved from the
+    // cited commit — the first context repo containing it. A commit in
+    // no repo falls through to the plain checkout, which cannot
+    // serve it (the citation stays unverified and unopened).
+    let cwd = cwdForReview(ctx, id, snapshot.review.repoId);
+    if (isDocumentReview(snapshot)) {
+      const ref = await repoContainingSha(ctx.runner, snapshot.contextRepos, commit);
+      if (ref) cwd = ref.repoPath;
+    }
     if (!cwd) return reply.code(404).send({ error: "no checkout for this review" });
     try {
       McpRegistry.checkPathInRepo(cwd, relPath);

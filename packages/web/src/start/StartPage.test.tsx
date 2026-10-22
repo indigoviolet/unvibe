@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 import type { RepoChange } from "@unvibe/shared";
-import { changeHead, diffSizeParts } from "./StartPage.js";
+import { AUTHOR_ALL, authorCounts, changeHead, matchesAuthor } from "./StartPage.js";
 
 describe("changeHead (#91)", () => {
   test("PR row with a branch shows number and branch", () => {
@@ -27,27 +27,31 @@ describe("changeHead (#91)", () => {
   });
 });
 
-describe("diffSizeParts (#100)", () => {
-  test("formats additions, deletions and file count", () => {
-    expect(
-      diffSizeParts({ additions: 120, deletions: 34, changedFiles: 6 }),
-    ).toEqual({ additions: "+120", deletions: "−34", files: "6 files" });
+describe("author filter (#228)", () => {
+  test("All passes everything, including rows with no known author", () => {
+    expect(matchesAuthor("alice", AUTHOR_ALL)).toBe(true);
+    expect(matchesAuthor(undefined, AUTHOR_ALL)).toBe(true);
   });
 
-  test("large numbers stay readable and one file stays singular", () => {
-    expect(diffSizeParts({ additions: 1200, deletions: 0, changedFiles: 1 })).toEqual({
-      additions: "+1,200",
-      deletions: "−0",
-      files: "1 file",
-    });
+  test("a specific author passes matching rows and author-less rows", () => {
+    expect(matchesAuthor("alice", "alice")).toBe(true);
+    expect(matchesAuthor("bob", "alice")).toBe(false);
+    // Requested-review rows with no known author stay visible (unknown,
+    // not a mismatch — same rule as the recency window).
+    expect(matchesAuthor(undefined, "alice")).toBe(true);
+    expect(matchesAuthor("", "alice")).toBe(true);
   });
 
-  test("partial sizes render the known parts", () => {
-    expect(diffSizeParts({ additions: 9 })).toEqual({ additions: "+9", deletions: null, files: null });
-    expect(diffSizeParts({ changedFiles: 3 })).toEqual({ additions: null, deletions: null, files: "3 files" });
-  });
-
-  test("no size data is null (the row omits the size)", () => {
-    expect(diffSizeParts({})).toBeNull();
+  test("counts cover the requested-review rows, skipping author-less rows", () => {
+    const counts = authorCounts([
+      { kind: "pr", title: "a", author: "alice" },
+      { kind: "pr", title: "b", author: "alice" },
+      { kind: "pr", title: "c", author: "bob" },
+      { kind: "pr", title: "d" },
+    ] as RepoChange[]);
+    expect(counts.get("alice")).toBe(2);
+    expect(counts.get("bob")).toBe(1);
+    expect(counts.has("")).toBe(false);
+    expect(counts.size).toBe(2);
   });
 });

@@ -49,21 +49,27 @@
  *   the lists they concern (`newreview-agent-hint` by Reviews,
  *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { Link, useNavigate } from "react-router-dom";
 import type {
+  ContextRepoSource,
   CreateReviewRequest,
   ReadinessCheck,
   Repo,
   RepoChange,
+  RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
+import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
-import { ingestStepLabel, stageLabel } from "../guide/stageLabels.js";
+import { ingestStepLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
+import { Tooltip } from "../floating/Tooltip.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
   clearAllKeptLists,
@@ -107,6 +113,51 @@ export function reviewScopeOf(c: RepoChange): "direct" | "team" {
 export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
+
+/**
+ * Author filter (#228, narrowed per owner decision): one single-select
+ * for the requested-review PR groups only ("Waiting on your review":
+ * requested of you / of your team). `"all"` (the default) shows
+ * everything; any other value is an author login. The choice persists
+ * like the recency window.
+ */
+export const AUTHOR_KEY = "unvibe.start.author";
+export const AUTHOR_ALL = "all";
+
+function readAuthor(): string {
+  try {
+    const saved = localStorage.getItem(AUTHOR_KEY);
+    if (typeof saved === "string" && saved.trim() !== "") return saved;
+  } catch {
+    // Ignore: default below.
+  }
+  return AUTHOR_ALL;
+}
+
+/**
+ * True when a row passes the author filter (#228). Requested-review
+ * rows with no known author stay visible (their age is unknown, not
+ * a mismatch — same rule as the recency window).
+ */
+export function matchesAuthor(rowAuthor: string | undefined, filter: string): boolean {
+  if (filter === AUTHOR_ALL) return true;
+  if (typeof rowAuthor !== "string" || rowAuthor === "") return true;
+  return rowAuthor === filter;
+}
+
+/**
+ * Author → row count across the requested-review groups (#228): the
+ * only lists the filter reads. Each row occurrence counts.
+ */
+export function authorCounts(changes: Pick<RepoChange, "author">[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of changes) {
+    if (typeof row.author === "string" && row.author !== "") {
+      counts.set(row.author, (counts.get(row.author) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
 
 export const RECENCY_WINDOWS: {
   value: RecencyWindow;
@@ -193,52 +244,6 @@ function timeAgo(ts: number): string {
   }
 }
 
-/** Plain-words guide state for a prior review row (no job-kind jargon). */
-function guideLabel(s: ReviewSummary): string {
-  switch (s.guideStatus) {
-    case "ready":
-      return "Guide ready";
-    case "running":
-      return runningLabel(s.guideDetail);
-    case "error":
-      return "Guide didn't finish";
-    case "disabled":
-      return "Guide off";
-    default:
-      return "Guide not started";
-  }
-}
-
-/** Map the service's "Running: <job kinds>" detail to one short line. */
-function runningLabel(detail: string | undefined): string {
-  const kinds = (detail ?? "").replace(/^Running:\s*/i, "").split(",").map((k) => k.trim().toLowerCase());
-  const first = kinds.find((k) => k !== "");
-  // Stage names shared with the guide empty state (guide/stageLabels.ts);
-  // the rest are start-page-only labels.
-  const shared = stageLabel(first);
-  if (shared) return shared;
-  switch (first) {
-    case "explain":
-      return "Writing explanation…";
-    case "ask":
-      return "Answering a question…";
-    case "depth":
-      return "Rewriting…";
-    case "examples":
-      return "Adding examples…";
-    case "diagram":
-      return "Drawing diagram…";
-    case "second-opinion":
-      return "Getting a second opinion…";
-    case "update-pass":
-      return "Updating for new commits…";
-    case "summarize":
-      return "Summarizing…";
-    default:
-      return "Working…";
-  }
-}
-
 /** Parse "123" / "#123" / PR URL / "owner/repo#123" into a target or an error. */
 function parsePrInput(
   raw: string,
@@ -272,6 +277,164 @@ function parsePrInput(
   return { error: "Enter a PR number or a GitHub PR URL." };
 }
 
+interface DocRepoPick {
+  repoId: string;
+  source: ContextRepoSource;
+  worktreePath: string;
+  worktrees: RepoWorktree[];
+}
+
+/**
+ * New document review (issue #222): paste Markdown, pick any number of
+ * context repos, each read from a particular worktree, `origin/main`, or
+ * the local copy. Creates the review and navigates to it; nothing is
+ * generated up front.
+ */
+export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (id: string) => void }): React.JSX.Element {
+  const realRepos = repos.filter((r) => r.id !== "demo");
+  const [markdown, setMarkdown] = useState("");
+  const [picks, setPicks] = useState<DocRepoPick[]>([
+    { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadWorktrees = useCallback(async (index: number, repoId: string) => {
+    try {
+      const res = await api.repoWorktrees(repoId);
+      setPicks((prev) =>
+        prev.map((p, i) =>
+          i === index ? { ...p, worktrees: res.worktrees, worktreePath: res.worktrees[0]?.path ?? "" } : p,
+        ),
+      );
+    } catch {
+      // The create call surfaces the same failure with words.
+    }
+  }, []);
+
+  const setPick = (index: number, patch: Partial<DocRepoPick>): void => {
+    setPicks((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    if (patch.repoId) void loadWorktrees(index, patch.repoId);
+  };
+
+  const create = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const snap = await api.createDocument({
+        kind: "document",
+        markdown,
+        contextRepos: picks.map((p) => ({
+          repoId: p.repoId,
+          source: p.source,
+          ...(p.source === "worktree" ? { worktreePath: p.worktreePath } : {}),
+        })),
+      });
+      onCreated(snap.review.id);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="document-form" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <label className="hint" htmlFor="doc-markdown">
+        Paste the document&apos;s Markdown
+      </label>
+      <textarea
+        id="doc-markdown"
+        data-testid="doc-markdown"
+        rows={10}
+        value={markdown}
+        onChange={(e) => setMarkdown(e.target.value)}
+        placeholder={"# Title\n\nPaste Markdown here…"}
+        style={{ width: "100%", fontFamily: "monospace" }}
+      />
+      {picks.map((pick, i) => (
+        <div key={i} className="frow" style={{ gap: 6, flexWrap: "wrap" }} data-testid={`doc-repo-${i}`}>
+          <select
+            aria-label={`Context repo ${i + 1}`}
+            data-testid={`doc-repo-select-${i}`}
+            value={pick.repoId}
+            onChange={(e) => setPick(i, { repoId: e.target.value, worktreePath: "", worktrees: [] })}
+          >
+            <option value="">Pick a repo…</option>
+            {realRepos.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.owner}/{r.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={`Read repo ${i + 1} from`}
+            data-testid={`doc-repo-source-${i}`}
+            value={pick.source}
+            onChange={(e) => {
+              const source = e.target.value as ContextRepoSource;
+              setPick(i, { source });
+              if (source === "worktree" && pick.repoId) void loadWorktrees(i, pick.repoId);
+            }}
+          >
+            <option value="local">Local copy</option>
+            <option value="origin-main">origin/main</option>
+            <option value="worktree">A worktree</option>
+          </select>
+          {pick.source === "worktree" ? (
+            <select
+              aria-label={`Worktree ${i + 1}`}
+              data-testid={`doc-repo-worktree-${i}`}
+              value={pick.worktreePath}
+              onChange={(e) => setPick(i, { worktreePath: e.target.value })}
+            >
+              {pick.worktrees.length === 0 ? <option value="">No worktrees found</option> : null}
+              {pick.worktrees.map((w) => (
+                <option key={w.path} value={w.path}>
+                  {w.branch ? `${w.branch} · ` : ""}
+                  {w.path}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {picks.length > 1 ? (
+            <Button variant="quiet" size="sm" type="button" onClick={() => setPicks((p) => p.filter((_, j) => j !== i))}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      <div>
+        <Button
+          variant="quiet"
+          size="sm"
+          type="button"
+          onClick={() =>
+            setPicks((p) => [...p, { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] }])
+          }
+        >
+          Add another context repo
+        </Button>
+      </div>
+      {error ? (
+        <p className="hint" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div>
+        <Button
+          variant="primary"
+          type="button"
+          disabled={busy || markdown.trim() === "" || picks.some((p) => !p.repoId)}
+          onClick={() => void create()}
+        >
+          {busy ? "Creating…" : "Create document review"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function StartPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -301,8 +464,8 @@ export function StartPage(): React.JSX.Element {
   // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
   // Bumped on every explicit selection so the load effect re-runs even
-  // when the id is unchanged: `selectOption` fires `change` (and
-  // `selectRepo` clears) even for the already-selected repo, and without
+  // when the id is unchanged: Base UI's Select calls `onValueChange` (and
+  // `selectRepo` clears) even for the already-selected option, and without
   // this the effect's id-equality bail-out would leave no load in flight
   // — a permanent "Loading…" with no recovery.
   const [listsNonce, setListsNonce] = useState(0);
@@ -313,7 +476,8 @@ export function StartPage(): React.JSX.Element {
   const [demo, setDemo] = useState<RepoChange[]>([]);
   const [opening, setOpening] = useState<string | null>(null);
 
-  // Prior sessions (front-screen list, filtered to the selected repo below).
+  // Prior sessions (front-screen list, filtered to the selected repo
+  // and to change reviews below — document reviews live on /documents).
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -337,6 +501,8 @@ export function StartPage(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   // Review-request recency filter (#95): remembered like the repo choice.
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
+  // Author filter (#228): one single-select for the requested-review groups.
+  const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -462,7 +628,11 @@ export function StartPage(): React.JSX.Element {
     }
     setListsFor(id);
     setRefreshing(false);
-  }, []);
+    // #230: the PR lists just synced stored reviews server-side (same gh
+    // result, no extra calls) — reload the Reviews list so it shows the
+    // fresh states. Best effort; list errors above already describe gh.
+    if (fulfilled > 0) void loadSessions();
+  }, [loadSessions]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes
@@ -507,6 +677,22 @@ export function StartPage(): React.JSX.Element {
       // Ignore: the choice simply does not persist.
     }
   }, []);
+
+  const selectAuthor = useCallback((login: string) => {
+    const next = login.trim() !== "" ? login : AUTHOR_ALL;
+    setAuthorFilter(next);
+    try {
+      localStorage.setItem(AUTHOR_KEY, next);
+    } catch {
+      // Ignore: the choice simply does not persist.
+    }
+  }, []);
+
+  /** Clear both list filters (#228's way back clears the pair). */
+  const showAllLists = useCallback(() => {
+    selectRecency("all");
+    selectAuthor(AUTHOR_ALL);
+  }, [selectRecency, selectAuthor]);
 
   const retryLists = useCallback(() => {
     if (!selectedId) return;
@@ -721,7 +907,7 @@ export function StartPage(): React.JSX.Element {
   const renderPrOpener = (): React.JSX.Element => (
     <>
       <div className="divider">Open a PR by URL or number</div>
-      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+      <div className="frow" style={{ display: "flex", gap: 6, flexWrap: "nowrap", marginBottom: 8, width: "100%" }}>
         <input
           type="text"
           aria-label="Open a PR by URL or number"
@@ -735,11 +921,12 @@ export function StartPage(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") openPrInput();
           }}
-          style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 6, padding: "3px 8px" }}
+          className="ui-input"
+          style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "none" }}
         />
-        <button className="btn" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
+        <Button variant="primary" type="button" onClick={openPrInput} disabled={opening !== null || cloningPr !== null}>
           Open PR
-        </button>
+        </Button>
       </div>
       {prError ? (
         <p className="hint" role="alert">
@@ -755,12 +942,12 @@ export function StartPage(): React.JSX.Element {
             </span>
           </div>
           <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-            <button className="btn" type="button" onClick={() => void cloneAndOpenPr()}>
+            <Button variant="primary" type="button" onClick={() => void cloneAndOpenPr()}>
               Clone and open #{prOffer.pr}
-            </button>
-            <button className="btn ghost" type="button" onClick={() => setPrOffer(null)}>
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => setPrOffer(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -785,17 +972,21 @@ export function StartPage(): React.JSX.Element {
 
   // Reviews for the selected repo only (`ReviewSummary.repoId` comes from
   // the service's review row, so this stays correct for remembered and
-  // detected repos alike). Demo sessions (`repoId: "demo"`) never match a
+  // detected repos alike). Demo sessions (`repoId: "demo") never match a
   // real selection; they render as the demo row instead (no duplicates).
-  // Sessions whose repo is neither demo nor known (a checkout that went
-  // away, or repos failing to load) render in their own group below so
-  // they stay openable and removable.
-  const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
+  // Document reviews (`kind: "document"`) live on the documents screen,
+  // never here. Sessions whose repo is neither demo nor known (a checkout
+  // that went away, or repos failing to load) render in their own group
+  // below so they stay openable and removable.
+  // #228 leaves Reviews unfiltered (owner decision): only the
+  // requested-review groups below read the author filter.
+  const changeSessions = (sessions ?? []).filter((s) => s.kind !== "document");
+  const visibleSessions = changeSessions.filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
   const knownIds = new Set(repos.map((r) => r.id));
   const orphanSessions = reposLoaded
-    ? (sessions ?? []).filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
+    ? changeSessions.filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
     : [];
   // Quiet kept-lists sign (#90, #148): how old the shown rows are, plus a
   // refresh marker while the background fetch is in flight. Short plain
@@ -815,50 +1006,64 @@ export function StartPage(): React.JSX.Element {
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
   const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
-  const visibleDirect = directRequested.filter((c) => inRecencyWindow(c, windowMs));
-  const visibleTeam = teamRequested.filter((c) => inRecencyWindow(c, windowMs));
+  // #228: author options (with counts) from the requested-review
+  // groups only — the only lists the filter reads. Computed from the
+  // unfiltered groups, so the options stay stable while either filter
+  // is active. Sorted by login.
+  const authorOptions = (() => {
+    const counts = authorCounts(requested);
+    const logins = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    return [
+      { value: AUTHOR_ALL, label: "All" },
+      ...logins.map((login) => ({ value: login, label: `${login} (${counts.get(login)})` })),
+    ];
+  })();
+  // When a picked author is gone from the lists (repo switch, refresh),
+  // fall back to All rather than filtering everything out silently.
+  const effectiveAuthor =
+    authorFilter !== AUTHOR_ALL && !authorOptions.some((o) => o.value === authorFilter) ? AUTHOR_ALL : authorFilter;
+  const visibleDirect = directRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleTeam = teamRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
     .sort(byUpdatedDesc)
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleBranches = [...branches]
     .sort(byUpdatedDesc)
     .filter((c) => inRecencyWindow(c, windowMs));
+  // #228: empty notes when the author filter (not recency, not genuinely
+  // empty) hides every row; the way back clears both filters.
+  const authorEmptyNote = (noun: string): string | null =>
+    effectiveAuthor !== AUTHOR_ALL ? `No ${noun} by ${effectiveAuthor}.` : null;
 
   return (
     <div className="app">
       <Toast />
+      <Tooltip />
       <ScreenTopBar showBadge />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-              <select
-                aria-label="Repo"
-                className="tbtn"
-                value={selectedId}
-                title={selected?.localPath ?? ""}
-                onChange={(e) => selectRepo(e.target.value)}
-              >
-                {remembered.length > 0 ? (
-                  <optgroup label="Repos">
-                    {remembered.map((r) => (
-                      <option key={r.id} value={r.id} title={r.localPath}>
-                        {r.owner}/{r.name}
-                        {r.managed ? " (cloned)" : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {detected.length > 0 ? (
-                  <optgroup label="Found on this machine">
-                    {detected.map((r) => (
-                      <option key={r.id} value={r.id} title={r.localPath}>
-                        {r.owner}/{r.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
+              <span style={{ width: 320, maxWidth: "100%" }}>
+                <Select
+                  aria-label="Repo"
+                  value={selectedId}
+                  title={selected?.localPath ?? ""}
+                  onValueChange={selectRepo}
+                  options={[
+                    ...(remembered.length > 0
+                      ? [{ label: "Repos", options: remembered.map((r) => ({ value: r.id, label: `${r.owner}/${r.name}${r.managed ? " (cloned)" : ""}` })) }]
+                      : []),
+                    ...(detected.length > 0
+                      ? [{ label: "Found on this machine", options: detected.map((r) => ({ value: r.id, label: `${r.owner}/${r.name}` })) }]
+                      : []),
+                  ]}
+                />
+              </span>
             </div>
           ) : null}
           {/* Readiness callouts: one compact row per problem, each linking
@@ -886,14 +1091,12 @@ export function StartPage(): React.JSX.Element {
                     <Link className="tbtn" to="/doctor">
                       Doctor
                     </Link>
+                    <Button variant="quiet" size="sm" type="button" onClick={() => void recheck()} disabled={checking}>
+                      {checking ? "Checking…" : "Re-check"}
+                    </Button>
                   </div>
                 </div>
               ))}
-              <div>
-                <button className="mini" type="button" onClick={() => void recheck()} disabled={checking}>
-                  {checking ? "Checking…" : "Re-check"}
-                </button>
-              </div>
             </div>
           ) : null}
 
@@ -993,7 +1196,8 @@ export function StartPage(): React.JSX.Element {
 
           {/* PRs and branches for the selected repo. The PR input never
               waits on the lists; the lists track loading / loaded / failed
-              per selection below it. */}
+              per selection below it. Document reviews live on the
+              documents screen (the top-bar icon). */}
           {!reposLoaded || realRepos.length === 0 ? (
             reposLoaded ? (
               <div data-testid="no-repos">
@@ -1036,12 +1240,12 @@ export function StartPage(): React.JSX.Element {
               ) : listsError && keptFetchedAt === null ? (
                 <p className="hint" role="alert" data-testid="lists-error">
                   Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
-                  <button className="mini" type="button" onClick={retryLists}>
+                  <Button variant="quiet" size="sm" type="button" onClick={retryLists}>
                     Retry
-                  </button>
+                  </Button>
                 </p>
               ) : (
-                <section className="prblock" aria-label="PRs and branches" data-testid="pr-block">
+                <Card as="section" variant="plain" className="prblock" aria-label="PRs and branches" data-testid="pr-block">
                   <div className="prblock-head">
                     <h2 className="prblock-title">PRs and branches</h2>
                     <div className="prblock-tools">
@@ -1064,29 +1268,27 @@ export function StartPage(): React.JSX.Element {
                           control for everything in this block — "Your
                           PRs", both review groups and Recent branches (by
                           last commit date). Reviews above stays
-                          unfiltered. */}
-                      <select
-                        aria-label="Updated within"
-                        className="tbtn"
-                        value={recency}
-                        onChange={(e) => {
-                          if (isRecencyWindow(e.target.value)) selectRecency(e.target.value);
-                        }}
-                      >
-                        {RECENCY_WINDOWS.map((w) => (
-                          <option key={w.value} value={w.value}>
-                            {w.label}
-                          </option>
-                        ))}
-                      </select>
+                          unfiltered. The author filter (#228) lives with
+                          the "Waiting on your review" section below: it
+                          reads and filters only those two groups. */}
+                      <span style={{ width: 150, flex: "none" }}>
+                        <Select
+                          aria-label="Updated within"
+                          value={recency}
+                          onValueChange={(v) => {
+                            if (isRecencyWindow(v)) selectRecency(v);
+                          }}
+                          options={RECENCY_WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
+                        />
+                      </span>
                     </div>
                   </div>
                   {listsError ? (
                     <p className="hint" role="alert" data-testid="lists-error">
                       Couldn&apos;t load PRs and branches for {selected ? `${selected.owner}/${selected.name}` : "this repo"}: {listsError}{" "}
-                      <button className="mini" type="button" onClick={retryLists}>
+                      <Button variant="quiet" size="sm" type="button" onClick={retryLists}>
                         Retry
-                      </button>
+                      </Button>
                     </p>
                   ) : null}
                   {fetchNote ? (
@@ -1102,7 +1304,9 @@ export function StartPage(): React.JSX.Element {
                     opening={opening}
                     empty="No open PRs."
                     emptyTestId="authoring-empty"
-                    filteredNote={authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null}
+                    filteredNote={
+                      authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null
+                    }
                     onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
@@ -1116,7 +1320,27 @@ export function StartPage(): React.JSX.Element {
                       })
                     }
                   />
-                  <div className="divider">Waiting on your review</div>
+                  {/* Waiting on your review (#228): the heading carries
+                      the author filter on its line, right-aligned — the
+                      same heading-row pattern as "PRs and branches" above
+                      (same control height, same right edge as the rows).
+                      The filter reads and filters only these two groups
+                      ("Your PRs", branches and Reviews stay unfiltered).
+                      Authors with counts come from the two groups; the
+                      choice persists like the time filter. */}
+                  <div className="prblock-head" style={{ marginTop: 14 }}>
+                    <h2 className="prblock-title">Waiting on your review</h2>
+                    <div className="prblock-tools">
+                      <span style={{ width: 170, flex: "none" }}>
+                        <Select
+                          aria-label="Author"
+                          value={effectiveAuthor}
+                          onValueChange={(v) => selectAuthor(v)}
+                          options={authorOptions}
+                        />
+                      </span>
+                    </div>
+                  </div>
                   {listErrors.requested ? (
                     <p className="hint" role="alert" data-testid="changes-error-requested">
                       {listErrors.requested}
@@ -1124,15 +1348,15 @@ export function StartPage(): React.JSX.Element {
                   ) : null}
                   <div className="subhead">Requested of you</div>
                   {visibleDirect.length === 0 ? (
-                    <p className="hint" data-testid="requested-direct-empty">
+                    <p className="hint subempty" data-testid="requested-direct-empty">
                       {directRequested.length === 0 ? (
                         "No PRs requested of you."
                       ) : (
                         <>
-                          {windowEmptyNote}{" "}
-                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                             Show all
-                          </button>
+                          </Button>
                         </>
                       )}
                     </p>
@@ -1159,15 +1383,15 @@ export function StartPage(): React.JSX.Element {
                   )}
                   <div className="subhead">Requested of your team</div>
                   {visibleTeam.length === 0 ? (
-                    <p className="hint" data-testid="requested-team-empty">
+                    <p className="hint subempty" data-testid="requested-team-empty">
                       {teamRequested.length === 0 ? (
                         "No PRs requested of your team."
                       ) : (
                         <>
-                          {windowEmptyNote}{" "}
-                          <button type="button" className="mini" onClick={() => selectRecency("all")}>
+                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                             Show all
-                          </button>
+                          </Button>
                         </>
                       )}
                     </p>
@@ -1206,7 +1430,7 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
-                </section>
+                </Card>
               )}
             </>
           )}
@@ -1246,8 +1470,60 @@ export function SessionRow({
       ? githubPrUrl(s.repoOwner, s.repoName, s.prNumber)
       : null;
   const canOpen = opening === null && deleting === null;
+  const faded = s.prState === "merged" || s.prState === "closed";
+  // #225: the Remove confirmation is a small popover anchored to the
+  // Remove button (a portal overlay like the other popovers and menus,
+  // positioned from the button with Floating UI and clamped into the
+  // viewport), so the row never reflows, open or closed.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [popPos, setPopPos] = useState<{ x: number; y: number } | null>(null);
+  const confirmOpen = confirmDelete === s.id;
+  useLayoutEffect(() => {
+    if (!confirmOpen) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const pop = popRef.current;
+      if (!btn || !pop) return;
+      void computePosition(btn, pop, {
+        placement: "bottom-end",
+        middleware: [offset(4), flip(), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        setPopPos((prev) => (prev && prev.x === x && prev.y === y ? prev : { x, y }));
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [confirmOpen]);
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onPointer = (e: PointerEvent): void => {
+      const n = e.target as Node;
+      if (!btnRef.current?.contains(n) && !popRef.current?.contains(n)) setConfirmDelete(null);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setConfirmDelete(null);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmOpen, setConfirmDelete]);
+  useEffect(() => {
+    if (confirmOpen && popPos) popRef.current?.querySelector("button")?.focus();
+  }, [confirmOpen, popPos]);
   return (
-    <div key={s.id} className="ci" data-testid={`session-${s.id}`}>
+    <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
         <span className="cw">
           {s.repoOwner}/{s.repoName} ·{" "}
@@ -1289,52 +1565,78 @@ export function SessionRow({
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
-              {" · "}
-              {guideLabel(s)}
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
+              {s.guideStatus === "running" ? (
+                <>
+                  {" · "}
+                  <ProcessingDots />
+                </>
+              ) : s.guideStatus === "error" ? (
+                <>
+                  {" · "}
+                  <span className="err" role="status">Guide didn&apos;t finish</span>
+                </>
+              ) : null}
             </>
           )}
         </span>
       </div>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+        <PrBadges prState={s.prState} reviewDecision={s.reviewDecision} />
         {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
         {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
           <span className="prtag">new commits</span>
         ) : null}
-        {confirmDelete === s.id ? (
-          <>
-            <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
-            <button
-              className="btn"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => void removeSession(s.id)}
+        {confirmOpen ? (
+          createPortal(
+            <div
+              ref={popRef}
+              className="confirm-pop"
+              role="dialog"
+              aria-label="Remove this review?"
+              style={popPos ? { left: popPos.x, top: popPos.y } : { visibility: "hidden" }}
             >
-              {deleting === s.id ? "Removing…" : "Remove"}
-            </button>
-            <button
-              className="btn ghost"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => setConfirmDelete(null)}
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            className="mini"
-            type="button"
-            aria-label={`Remove ${s.title}`}
-            disabled={deleting !== null}
-            onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
-          >
-            Remove
-          </button>
-        )}
+              <span className="q">Remove this review?</span>
+              <span className="row">
+                <Button
+                  variant="primary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => void removeSession(s.id)}
+                >
+                  {deleting === s.id ? "Removing…" : "Remove"}
+                </Button>
+                <Button
+                  variant="secondary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    btnRef.current?.focus();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </span>
+            </div>,
+            document.body,
+          )
+        ) : null}
+        <Button
+          ref={btnRef}
+          variant="secondary" size="sm"
+          type="button"
+          aria-label="Remove this review"
+          aria-haspopup="dialog"
+          aria-expanded={confirmOpen}
+          disabled={deleting !== null}
+          onClick={() => setConfirmDelete(confirmOpen ? null : s.id)}
+          title="Remove this review"
+        >
+          Remove
+        </Button>
       </div>
     </div>
   );
@@ -1355,41 +1657,12 @@ export function changeHead(c: RepoChange): string {
 }
 
 /**
- * Diff size for a PR row (#100): formatted add/delete/file parts, or null
- * when the row carries no size data (the row omits the size then).
- * Thousands separators per the glossary; "1 file" stays singular.
- */
-export interface DiffSizeParts {
-  additions: string | null;
-  deletions: string | null;
-  files: string | null;
-}
-
-export function diffSizeParts(
-  c: Pick<RepoChange, "additions" | "deletions" | "changedFiles">,
-): DiffSizeParts | null {
-  const num = (n: number | undefined): string | null =>
-    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
-  const additions = num(c.additions);
-  const deletions = num(c.deletions);
-  const changed = num(c.changedFiles);
-  if (additions === null && deletions === null && changed === null) return null;
-  return {
-    additions: additions === null ? null : `+${additions}`,
-    // U+2212 minus, as in the diff pane.
-    deletions: deletions === null ? null : `−${deletions}`,
-    files: changed === null ? null : `${changed} ${c.changedFiles === 1 ? "file" : "files"}`,
-  };
-}
-
-/**
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
- * number and branch, author, relative update time, diff size and team
- * names — each omitted when unknown — above the title that opens the
- * review. Where the row names a GitHub PR, the number is a link to the PR
- * page (new tab); the title button (and the row around it) opens the
- * review, so the link never triggers the row and both stay
- * keyboard-reachable.
+ * number and branch, author, relative update time and diff size — each
+ * omitted when unknown — above the title that opens the review. Where
+ * the row names a GitHub PR, the number is a link to the PR page (new
+ * tab); the title button (and the row around it) opens the review, so
+ * the link never triggers the row and both stay keyboard-reachable.
  */
 function ChangeRow({
   c,
@@ -1406,7 +1679,7 @@ function ChangeRow({
   owner: string | null;
   name: string | null;
 }): React.JSX.Element {
-  const size = diffSizeParts(c);
+  const hasSize = typeof c.additions === "number" || typeof c.deletions === "number";
   const prLabel = c.kind === "pr" ? (c.prNumber !== undefined ? `#${c.prNumber}` : "PR") : null;
   const prUrl = prLabel !== null && owner !== null && name !== null ? changePrUrl(c, owner, name) : null;
   const open = opening === null ? (): void => onOpen(c, i) : undefined;
@@ -1438,25 +1711,21 @@ function ChangeRow({
           {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
             ? ` · ${timeAgo(c.updatedAt)}`
             : ""}
-          {size !== null ? (
+          {hasSize ? (
             <>
               {" · "}
-              {size.additions !== null ? <span className="a">{size.additions}</span> : null}
-              {size.additions !== null && size.deletions !== null ? " " : null}
-              {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
-              {size.files !== null ? (
-                <>{size.additions !== null || size.deletions !== null ? " · " : ""}{size.files}</>
-              ) : null}
+              {/* #224: the shared diff stat; the file count is not shown. */}
+              <DiffStat added={c.additions} removed={c.deletions} />
             </>
           ) : null}
-          {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
         </span>
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
         </button>
       </div>
-      {c.reviewId || opening === changeKey(c, i) ? (
+      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision ? (
         <div className="frow" style={{ gap: 4, alignItems: "center" }}>
+          <PrBadges prState={c.prState} reviewDecision={c.reviewDecision} />
           {c.reviewId ? <span className="prtag">review</span> : null}
           {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
           {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
@@ -1508,14 +1777,14 @@ function ChangeSection({
       ) : null}
       {changes.length === 0 && !error ? (
         filteredNote ? (
-          <p className="hint" data-testid={emptyTestId}>
+          <p className="hint subempty" data-testid={emptyTestId}>
             {filteredNote}{" "}
-            <button type="button" className="mini" onClick={onShowAll ?? undefined}>
+            <Button variant="quiet" size="sm" type="button" onClick={onShowAll ?? undefined}>
               Show all
-            </button>
+            </Button>
           </p>
         ) : (
-          <p className="hint" data-testid={emptyTestId}>
+          <p className="hint subempty" data-testid={emptyTestId}>
             {empty}
           </p>
         )

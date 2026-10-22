@@ -74,10 +74,15 @@ test.describe("J1 open and read the guide", () => {
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#C-problem")).toBeVisible();
-    // Explain-first reader order (#198): build-up, then decisions.
+    // Explain-first reader order (#198/#212): build-up, then the renamed
+    // decisions card. The demo introduces no name with reach (only
+    // private helpers), so it correctly has no Names card.
     await expect(page.locator("#C-buildup")).toBeVisible();
     await expect(page.locator("#C-decisions")).toBeVisible();
-    await expect(page.locator("#C-decisions")).toContainText("Decisions and alternatives");
+    await expect(page.locator("#C-decisions")).toContainText("Decisions and questions");
+    await expect(page.locator("#C-names")).toHaveCount(0);
+    // Contents lists the renamed card under its stable id.
+    await expect(page.locator('[data-tocard="decisions"]')).toContainText("Decisions and questions");
 
     // Follow a citation into the diff (proven selector from guide-service).
     const seeded = page.locator("#C-problem [data-expansion]");

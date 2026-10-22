@@ -479,27 +479,7 @@ async function main(): Promise<number> {
       nowIso: () => new Date().toISOString(),
     },
   );
-  // Issue #42: the release package declares no install scripts, so
-  // the switch runs setup itself once the new build
-  // is verified healthy — via the just-installed CLI, so it is the new
-  // version's setup (it also records the setup-version marker, making
-  // the next `unvibe start` a no-op). Best-effort and quiet: output
-  // goes to the switch log, and a failure never changes the outcome.
-  if (outcome.status === "ok") {
-    try {
-      const res = await new RealCommandRunner().run(process.execPath, {
-        args: [args.scriptPath, "setup"],
-        cwd: os.homedir() || os.tmpdir(),
-        timeoutMs: 120_000,
-      });
-      log(`setup after switch exited ${res.code}`);
-      for (const line of `${res.stdout}\n${res.stderr}`.split("\n")) {
-        if (line.trim()) log(`setup: ${line}`);
-      }
-    } catch (err) {
-      log(`setup after switch failed (${err instanceof Error ? err.message : String(err)}); run \`unvibe setup\``);
-    }
-  }
+  // No automatic setup (issue #220): `unvibe setup` is a manual step.
   void outcome;
   return 0;
 }

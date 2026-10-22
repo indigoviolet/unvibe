@@ -2,7 +2,7 @@
  * Comment thread behaviour against the mock API (`VITE_MOCK=1`):
  * typed text survives unrelated WS patches, Discard clears the box on an
  * existing comment (deletes a new one), Cmd/Ctrl+Enter sends through the
- * comments route, and "Ask the agent about this" opens the usual Ask
+ * comments route, and "Ask about this" opens the usual Ask
  * card on the comment's anchor, quoting the comment.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -128,11 +128,11 @@ describe("ThreadView reply box", () => {
     }
   });
 
-  test("comments carry the For-PR control", async () => {
+  test("comments carry the Outbox control", async () => {
     const commenting = thread({ messages: [{ who: "you", text: "Nit" }], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
-    expect(screen.getByRole("button", { name: /Marked for the PR/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible();
   });
 });
 
@@ -143,7 +143,7 @@ describe("ThreadView ask-about (issue #136)", () => {
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     try {
-      fireEvent.click(screen.getByRole("button", { name: "Ask the agent about this" }));
+      fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
         kind: "ask",
         quote: "Why is this so?",
@@ -162,7 +162,7 @@ describe("ThreadView ask-about (issue #136)", () => {
     render(<ThreadView reviewId={REVIEW_ID} thread={empty} />);
     try {
       // New (unsaved) comments offer no ask-about control.
-      expect(screen.queryByRole("button", { name: "Ask the agent about this" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
       expect(actionSpy).not.toHaveBeenCalled();
     } finally {
       actionSpy.mockRestore();
@@ -216,12 +216,12 @@ describe("ThreadView suggested comments (issue #163)", () => {
     expect(screen.getByText("Consider a boundary test.")).toBeInTheDocument();
   });
 
-  test("a suggestion keeps ask-about, mark-for-PR, delete and close", () => {
+  test("a suggestion keeps ask-about, Outbox, delete and close", () => {
     const s = suggested();
     seedSuggested(s);
     render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
-    expect(screen.getByRole("button", { name: "Ask the agent about this" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Mark for the PR/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add to Outbox/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
@@ -232,7 +232,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
     render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
     try {
-      fireEvent.click(screen.getByRole("button", { name: "Ask the agent about this" }));
+      fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
         kind: "ask",
         quote: "Consider a boundary test.",
@@ -260,7 +260,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
     expect(screen.getByText("Suggested question")).toBeInTheDocument();
     expect(container.querySelector("textarea")).toBeNull();
     // Same suggestion controls as findings: ask-about, mark, delete, close.
-    expect(screen.getByRole("button", { name: "Ask the agent about this" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
   });
 
   test("a finding suggestion carries no question tag", () => {

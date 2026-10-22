@@ -227,7 +227,7 @@ test.describe("reader journey over the real service (replay)", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .card.child[data-expansion]", { hasText: "What is line folding?" });
+    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".ans-q").first()).toContainText("What is line folding?", { timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
@@ -239,15 +239,21 @@ test.describe("reader journey over the real service (replay)", () => {
     // it before reaching under it, as a reader would.
     await card.first().getByRole("button", { name: "Close" }).click();
 
-    // Go deeper: generate when a placeholder is still pending, else assert
-    // the filled card; then use a follow-up suggestion.
-    const pendings = page.locator("#page .card.pend");
+    // Go deeper: generate when a placeholder is still pending, else the
+    // filled card. The follow-up chips live in the auto-written go-deeper
+    // cards, which stay collapsed until opened (#217): open the flow card,
+    // then use a follow-up suggestion.
+    const pendings = page.locator("#page .ui-card.pend");
     if ((await pendings.count()) > 0) {
       await pendings.first().getByRole("button", { name: "Generate" }).click();
       await expect(pendings.first().locator(".working").first()).toBeVisible({ timeout: 15_000 });
       await expect(pendings.first()).toHaveCount(0, { timeout: 90_000 });
     }
-    const follow = page.locator("#page .follow button").first();
+    const flow = page.locator("#C-g-flow");
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+    await flow.getByRole("button", { name: "Expand" }).click();
+    const follow = page.locator("#C-g-flow .follow button").first();
     await expect(follow).toBeVisible({ timeout: 15_000 });
     const label = await follow.innerText();
     await follow.click();

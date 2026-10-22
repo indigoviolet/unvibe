@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { createScratchReview, makeScratchRepo } from "./journey-helpers.js";
 
@@ -40,22 +41,36 @@ test.describe("J11 settings combos", () => {
     await expect(page.locator('[data-testid="model-main"]')).toBeVisible({ timeout: 30_000 });
     const model = page.locator("#model-main");
     await expect(model).toBeVisible({ timeout: 30_000 });
-    const modelValues = await model.locator("option").evaluateAll((os) =>
-      os.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ""),
+    const currentText = (await model.textContent())?.trim() ?? "";
+    await model.click();
+    const options = openPopup(page).getByRole("option");
+    await expect(options.first()).toBeVisible({ timeout: 15_000 });
+    const names = await options.evaluateAll((os) =>
+      os.map((o) => (o.textContent ?? "").replace("✓", "").trim()),
     );
-    expect(modelValues.length).toBeGreaterThan(1);
-    const currentModel = await model.inputValue();
-    const chosen = modelValues.find((v) => v !== currentModel)!;
-    await model.selectOption(chosen);
-    await page.waitForResponse(
+    const picked = names.filter((n) => n !== "");
+    expect(picked.length).toBeGreaterThan(1);
+    const idx = names.findIndex((n) => n !== "" && n !== currentText);
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const chosenName = names[idx];
+    const target = options.nth(idx);
+    // Settle Floating UI first: scrolling the option into view repositions
+    // the popup, and clicking mid-reposition can land outside the item
+    // (popup closes with no selection). Subscribe before clicking: the
+    // localhost save can answer before the click resolves.
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    const saved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
-    await expect(page.locator("#effort-main")).toHaveValue("", { timeout: 15_000 });
+    await target.click();
+    await saved;
+    await expect(page.locator("#effort-main")).toContainText("Default", { timeout: 15_000 });
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator("#model-main")).toHaveValue(chosen, { timeout: 30_000 });
+    await expect(page.locator("#model-main")).toContainText(chosenName, { timeout: 30_000 });
 
     // Full access: acknowledge, marker shows on a review, turn off, marker goes.
     await page.getByRole("tab", { name: "Access" }).click();
@@ -64,13 +79,17 @@ test.describe("J11 settings combos", () => {
     await expect(page.locator('[data-testid="access-warning"]')).toBeVisible();
     await page.getByRole("button", { name: "I understand, turn on full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Full access is on", { timeout: 15_000 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    // #235: the marker shows on the front page only, not in the review bar.
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.locator('[data-testid="full-access-marker"]')).toBeVisible({ timeout: 30_000 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0);
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Access" }).click();
     await page.getByRole("button", { name: "Turn off full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Read-only", { timeout: 15_000 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0, { timeout: 30_000 });
 
     // Appearance (issue #196): switch the UI theme, reload, and it is
@@ -80,13 +99,17 @@ test.describe("J11 settings combos", () => {
     await page.getByRole("tab", { name: "Appearance" }).click();
     const themeSelect = page.locator('[data-testid="ui-theme"]');
     await expect(themeSelect).toBeVisible({ timeout: 15_000 });
-    await expect(themeSelect).toHaveValue("default");
-    await expect(themeSelect.locator("option")).toHaveText(["Default", "Studio", "Console"]);
-    await themeSelect.selectOption("studio");
-    await page.waitForResponse(
+    await expect(themeSelect).toContainText("Default");
+    await themeSelect.click();
+    await expect(openPopup(page).getByRole("option", { name: "Default" })).toBeVisible();
+    await expect(openPopup(page).getByRole("option", { name: "Studio" })).toBeVisible();
+    await expect(openPopup(page).getByRole("option", { name: "Console" })).toBeVisible();
+    const studioSaved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
+    await openPopup(page).getByRole("option", { name: "Studio" }).click();
+    await studioSaved;
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
     const accent = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
@@ -115,11 +138,13 @@ test.describe("J11 settings combos", () => {
     expect(after.serverTheme).toBe("studio");
     // Back to the default theme for the rest of the journey.
     await page.getByRole("tab", { name: "Appearance" }).click();
-    await page.locator('[data-testid="ui-theme"]').selectOption("default");
-    await page.waitForResponse(
+    await page.locator('[data-testid="ui-theme"]').click();
+    const defaultSaved = page.waitForResponse(
       (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
       { timeout: 15_000 },
     );
+    await openPopup(page).getByRole("option", { name: "Default" }).click();
+    await defaultSaved;
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "default");
 
     // Repos: add a second checkout in Settings, remove it, folder intact.

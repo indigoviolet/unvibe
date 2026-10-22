@@ -13,6 +13,19 @@ import { api } from "../api/client.js";
 import { StartPage } from "./StartPage.js";
 import { __resetKeptForTests, setKeptLists } from "./keptChanges.js";
 
+// #225: shared Select is Base UI — pick by clicking the popup option with a
+// full pointer sequence (a bare click does not commit in jsdom).
+async function pickOption(trigger: HTMLElement, label: string): Promise<void> {
+  fireEvent.click(trigger);
+  const option = await screen.findByRole("option", { name: label });
+  fireEvent.pointerDown(option, { pointerType: "mouse" });
+  fireEvent.mouseDown(option);
+  fireEvent.pointerUp(option, { pointerType: "mouse" });
+  fireEvent.mouseUp(option);
+  fireEvent.click(option);
+}
+
+
 const REPO_KEY = "unvibe.start.repoId";
 
 const REPO1: Repo = { id: "r1", owner: "acme", name: "app", localPath: "/tmp/app", lastOpened: 0 };
@@ -182,7 +195,7 @@ describe("StartPage kept lists (#90)", () => {
     expect(await screen.findByTestId("repo-lists-loading")).toBeInTheDocument();
 
     // Switch before the first repo answers.
-    fireEvent.change(screen.getByLabelText("Repo"), { target: { value: "r2" } });
+    await pickOption(screen.getByLabelText("Repo"), "acme/other");
     fastAuthoring.resolve({ changes: [pr(2, "R2 PR", "r2-branch")] });
     fastOther.resolve({ changes: [] });
     expect(await screen.findByText("R2 PR")).toBeInTheDocument();

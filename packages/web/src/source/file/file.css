@@ -1,0 +1,43 @@
+/* File tab (#81): one opened file at its cited commit. */
+.codefile-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.codefile-path { font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
+.codefile-commit, .codefile-range { color: var(--muted); font-family: var(--mono); }
+.codefile-body { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; padding: var(--space-2) 0; }
+.cf-line { display: flex; white-space: pre; }
+.cf-line.cited { background: var(--note-mark); }
+.cf-n {
+  color: var(--muted);
+  text-align: right;
+  min-width: 3.6em;
+  padding: 0 var(--space-2);
+  user-select: none;
+  flex: none;
+}
+.cf-c { padding-right: var(--space-4); }
+.cf-slot { white-space: normal; font-family: var(--sans); padding: var(--space-1) var(--space-4); }
+.cf-reopen {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-decoration: underline dotted;
+  cursor: pointer;
+  text-align: left;
+}
+.codefile-msg { padding: var(--space-4); }
+.codefile-more { padding: var(--space-2) var(--space-4); }
+.tab-close {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 0 0 var(--space-1);
+  font-size: var(--text-sm);
+}

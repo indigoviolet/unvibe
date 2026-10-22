@@ -16,7 +16,8 @@ What about ordering?
 ## Rules
 
 - Answer the question asked, directly first, then the supporting detail
-  — no longer than the question needs.
+  — no longer than the question needs. When the detail serves a contract
+  or invariant, connect the local detail to it.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first.
 - If the question has no answer in the code (maintainer intent, unseen

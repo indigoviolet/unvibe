@@ -15,7 +15,6 @@ export function stageLabel(stage: string | undefined): string | undefined {
     case "critic":
       return "Checking findings…";
     case "concept":
-    case "concepts":
       return "Writing concept pages…";
     case "hunk-pass":
       return "Summarizing code…";
@@ -48,7 +47,6 @@ export function stagePhrase(stage: string | undefined): string {
     case "critic":
       return "checking findings";
     case "concept":
-    case "concepts":
       return "writing concept pages";
     case "hunk-pass":
       return "summarizing code";

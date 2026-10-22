@@ -59,7 +59,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 2. **Understand.** Read the guide. Hover links and citations, open concept pages, change the depth, and explain or ask about selected text.
 3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
-5. **Comment and submit.** Mark comments "For PR", edit the drafts, then submit one GitHub review. If it's your PR, the description edit goes in the same submit.
+5. **Comment and submit.** Mark comments in the Outbox, edit the drafts, then submit one GitHub review (PR reviews) or copy the Outbox Markdown export (any review). If it's your PR, the description edit goes in the same submit.
 6. **Come back after new commits.** See what changed, click Update, and continue.
 
 ---
@@ -166,15 +166,15 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
-- The card is never submitted to GitHub; it carries no For-PR control.
+- The card is never submitted to GitHub; it carries no Outbox control.
 - **Answers stream paragraph by paragraph (experiment, #126):** while an answer is being written, each completed paragraph appears when the model finishes it — never half sentences. The answer is marked as still being written until the turn ends (the fixed working label stays); citations show as pending and resolve when the turn ends and validation has run. A repair turn replaces the shown text. Applies to conversation answers only; `localStorage unvibe:no-stream-paragraphs = "1"` restores all-at-once answers.
 
 ### 4.8 Comments
 - **Ask…** opens the conversation card (§4.7) on the selection's anchor, with the question as its first turn. **Comment** starts a comment thread with no agent reply. Only Ask sends text to the agent.
-- A **Comment** is for the PR by default and can be switched off to keep it local. A conversation card is never for the PR and carries no For-PR control. Only comments are submitted to GitHub.
+- A **Comment** is in the Outbox by default and can be switched off to keep it local. A conversation card is never in the Outbox and carries no Outbox control. Only comments are submitted to GitHub.
 - Selecting text inside an agent answer and choosing **Comment** opens a comment anchored where the card is anchored, with the selection quoted as a Markdown blockquote for the reviewer to write under.
 - A comment offers **Ask the agent about this**: the usual Ask card on the comment's anchor, quoting the comment. The answer is never submitted; it is the only way a comment leads to an agent reply.
-- **Thread header:** the quoted text (or `file:line` in the diff), then **Mark for PR** (a send icon, filled when on), **Delete** and **Close**.
+- **Thread header:** the quoted text (or `file:line` in the diff), then **Outbox** (a send icon, filled when on), **Delete** and **Close**.
 - **Reply box:** always visible, with **Discard** and **Reply**. A reply in a comment thread is a comment (no agent).
   - Typed text survives anything else on the page re-rendering.
   - Discard removes a new thread, and clears the box on an existing one; on an existing thread it stays disabled until there is a draft.
@@ -184,7 +184,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
   - **Description:** threads sit under their paragraph. Closing one leaves the highlight, or a marker.
 - **Comments menu:**
   - lists every comment, from the guide, the description and the diff, and clicking one jumps to it;
-  - the **For PR** filter shows the comments marked for the PR, each with an editable draft of the text to post;
+  - the **Outbox** filter shows the comments in the Outbox, each with an editable draft of the text to post, plus the export Markdown box with a Copy button (hidden when the Outbox is empty);
   - it never posts.
 - **Already on GitHub:** review comments already posted on the PR show as read-only threads on their diff lines (collapsed, author + count), marked as from GitHub; outdated ones list at their file, and ones on removed files at the diff's end. Each thread carries an Open on GitHub link. Selecting their text offers Explain, Ask… and Comment (which quotes the selection into the reviewer's own comment). The comments menu groups them by file and thread with rendered bodies, and each item jumps to its place in the diff. One show/hide control in the diff's filter menu hides them in the diff (remembered with the review; each thread also collapses on its own) without removing them from what the agents see. They load with the review and reload on refresh; nothing here ever posts.
 
@@ -192,8 +192,8 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Findings are the agent's own judgements about the change: mismatches, risks, questionable choices. They are **separate pages**, never sentences mixed into the restatement.
 - **In the guide:** an orange card labelled "Agent finding · <confidence>", with the title, a one-line summary and "Open →".
 - **The finding page:** carries the same label, and its cards have a rust left border. Typical cards are Evidence (each piece cited) and Assessment.
-- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* marked for the PR. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
-- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment for the PR (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
+- **Suggested comments:** the agent drafts one on the relevant diff line, shown as "Agent · suggested comment" and *not* in the Outbox. The finding page links to it: hover previews it, click jumps to it. There's no separate suggestion card. A suggestion carries no reply box (a reply could never be answered); selecting in it summons the selection toolbar, and Ask opens the usual Ask card anchored to the comment. "Ask the agent about this" answers from the comment like on any other comment; accept / edit / dismiss work as before.
+- **Open questions as suggestions (#181):** an agent's unanswered question is offered the same way: an AI-suggested comment anchored where the question came from (the code, the card, or a general review comment when there is no line), tagged "Suggested question". Accept makes it the reviewer's comment in the Outbox (editable draft); dismissing it marks the question resolved in the shared context so agents do not raise it again. Same question twice is offered once. Nothing reaches GitHub before accept + Submit.
 
 ### 4.10 Second opinion
 - A **Second opinion** action is available on any card, finding, or conversation answer. It asks a *different* model (§12).
@@ -210,7 +210,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 
 ### 4.12 Submit review
 - **Nothing reaches GitHub until Submit review**, whether comments or a description edit. Only comments are submitted; Ask threads and explanations are never posted.
-- The top-bar button shows how many changes are pending. Its panel lists every comment marked for the PR (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
+- The top-bar button shows how many changes are pending. Its panel lists every comment in the Outbox (location and draft text) and the description change if there is one, with **Cancel** and **Submit as <user>**.
 - Submitting creates **one GitHub review** containing all the comments, and updates the description.
 - For a branch without a PR, Submit is disabled and says why.
 
@@ -260,7 +260,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 ### 4.14 Settings page
 - **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings. Each role also has an effort control with the thinking levels its adapter offers, Default first (leave the adapter's own setting alone); when the model changes and the saved effort is not offered, it falls back to Default. The small role stays at the adapter default unless changed — its jobs run many times per review.
 - **Prompts:** each template (Template view): the raw text with its variables marked. View-only to start. The per-review "Expanded for this review" view — the exact text that would be sent now, with layers L0–L4 marked, token counts, and the cached part set apart — lives on the debug page below.
-- **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds.
+- **Limits:** concurrent sessions per provider, the inline size budget, base-rebuild thresholds, and whether go-deeper cards are written automatically once the guide is ready (on by default, #217; off means Generate on click).
 - **Debug page** (per review, `/review/:id/debug`, linked from the review top bar):
   - **Jobs:** running, queued and finished jobs. Each links to the exact prompt it sent, with tokens, cache-hit rate, provider, model and the effort it ran with. Finished jobs stay listed after a restart, with their prompts and results.
   - **Shared context** as a rendered Markdown document — the base session(s) with the current base pack, the append-only log (§9.3), and every contribution (§9.5) with the thread it came from — plus delete for any item. No formatting beyond Markdown rendering.
@@ -386,7 +386,7 @@ code:<path>:<line>[-<line>]@<sha>          any code at a commit (pinned or fetch
 desc:<paragraph>@<rev>                     description paragraph
 card:<cardId>[#<blockId>]                  guide content (a page card, or one conversation answer `ans_…`)
 page:<pageId>                              a page
-concept:<slug>                             a concept (may be a hidden candidate)
+concept:<slug>                             a concept (page written when opened)
 ann:<id>                                   an annotation
 ```
 
@@ -450,7 +450,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** collapse, depth, open/close and "mark for PR" state;
+  - **never:** collapse, depth, open/close and Outbox state;
   - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
@@ -498,7 +498,7 @@ A new base is built when any of these happens:
   - the ID must exist in the current version (or map to it);
   - line ranges must lie inside the hunk, or the file at that commit;
   - a quoted anchor must be a real substring of its host;
-  - unknown `concept:` slugs become **hidden concept candidates**, with the page written when first opened.
+  - unknown `concept:` slugs are valid links; the page is written when first opened (#216).
 - **On failure:**
   - repair automatically if the fix is unambiguous (for example a line range off by a few lines in the same hunk);
   - otherwise show the citation **dimmed as unverified** and record it in the job's debug data;
@@ -519,12 +519,10 @@ A new base is built when any of these happens:
 2. **Reader** (main model, one session, cards streamed as they finish):
    - explores the repo;
    - settles the plotlines first (a pedagogic progression: how the change is built up, each unit understandable on its own), then writes the problem card (including how the system worked before), the central-idea card (one per plotline when there are several), the "How it's built up" card walking the plotlines in landing order, the "Decisions and alternatives" card (each key choice, what else was possible, why this one, what it costs — neutral explanation; verdicts stay with the critic), and the "Go deeper" directions (title plus why);
-   - makes a **hidden concept pass** (slug, title, one line, where mentioned);
    - **pins code** with a `pin_context(path, lines, why)` tool, the one tool only the reader gets.
 3. **Build the base** (§9.2).
 4. **Parallel forks of the base:**
    - a **critic** (main model): findings with evidence, an assessment, a confidence level, and drafted suggested comments on diff lines;
-   - **concept stubs** (main model, one batch).
 5. **Hunk pass** (small model, no fork): a summary for each hunk, plus the uninteresting classification with a one-line reason.
 6. **On demand:** depth versions, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
 7. **Update pass** (§8).
@@ -539,7 +537,7 @@ A new base is built when any of these happens:
 - **Role defaults:** tiers opus | sol > sonnet | terra > haiku | luna; the newest version offered within a tier wins; Fable and Astra are never picked. Second opinion is picked from the provider main is not using, and stays unset with a single provider. One source of effective settings serves Settings, readiness, the pipeline, second opinions and shared context: a saved pick wins, an unset role takes the live default, and unfillable roles keep the stored fallback (readiness reports it plainly).
 - **Effort (thinking level) per role:** the adapter's effort values (Claude `effort`, Codex `reasoning_effort`), Default first. The setting rides `AgentRunner.start`, so any runner can honour it; forks inherit it, reopened sessions keep it, and a changed level builds a new base session. Second-opinion reuse matches on it, and each job records the effort it ran with.
 - **Concurrency:**
-  - a per-provider session cap, starting at 4, applied separately to main-model and small-model jobs (so the cap can allow that many of each at once, per provider);
+  - a per-provider session cap, starting at 16, applied separately to main-model and small-model jobs (so the cap can allow that many of each at once, per provider);
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
   - back off on rate limits, and show it on the job;
   - cancel a job when its card is deleted (ACP `session/cancel`); closing a card only hides it, and its running job keeps filling the turn;
@@ -561,7 +559,7 @@ A new base is built when any of these happens:
 | `base_pack` | Base | `{{source}}`, `{{diff_inline}}`, `{{pinned_code}}`, `{{guide}}`, `{{concepts}}`, `{{hunk_summaries}}` |
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
-| `concept_stub`, `concept_page` | Concept pages | `{{concept}}`, `{{mentions}}` |
+| `concept_page` | Concept pages (on demand) | `{{concept}}`, `{{mentions}}` |
 | `ask` | Conversation first turns, Explain and Ask alike | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
 | `ask_turn` | Conversation follow-ups on a live session | `{{change_list}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
@@ -588,7 +586,7 @@ A new base is built when any of these happens:
   - When the service isn't running, the installed web app's cached "Start Unvibe" page links to `unvibe://start`. The link handler starts the service, and the page reloads.
   - A login-started service never idle-exits (`UNVIBE_IDLE_MS=0` in the unit). A manually started service exits after a period with no open window and no running jobs (default 10 minutes).
   - While the unit is installed, `stop`/`start` (and `open`) go through the service manager; otherwise the CLI owns the process directly. The units restart on crash only (launchd `KeepAlive SuccessfulExit:false`, systemd `Restart=on-failure`), so a deliberate stop stays down and an update (`stop` → install → `start`, or the in-app switch) can never race a manager restart. Every update rewrites the unit with the just-installed paths; `doctor` warns when the baked paths go stale.
-- **Install:** one step, `npm install -g github:<org>/unvibe#release`: the release package declares no lifecycle scripts (any install script makes npm link a git install to its temporary preparation clone and delete the clone, dangling the bin — issue #42), so setup (token, link handler, start-at-login unit) runs from the CLI: once per installed version on first `unvibe start`/`open`, and right after `unvibe update` / the in-app switch via the newly installed CLI's absolute path. It is idempotent, quiet, and never blocks a start; on failure it prints the `unvibe setup` hint. `unvibe setup` remains the manual and repair path. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
+- **Install:** one step, `npm install -g github:<org>/unvibe#release`: the release package declares no lifecycle scripts (any install script makes npm link a git install to its temporary preparation clone and delete the clone, dangling the bin — issue #42), so setup (token, link handler, start-at-login unit) is one manual step: `unvibe setup`, run once after install (issue #220 — nothing runs setup automatically, not on first start, not after `unvibe update` or the in-app switch). It is idempotent; `unvibe start` without setup still starts the service and prints the one-line `unvibe setup` hint. Updates use the same install command. The agent CLIs (`claude`/`codex`) are the user's own installs (see `DEVELOPMENT.md` "Releases" and `docs/acceptance-audit.md` "Intentional deviations" item 1).
 - **macOS gotcha:** apps opened from Finder don't inherit the shell's `PATH`. On startup the service must read it from a login shell (`zsh -lc 'echo $PATH'`) so it can find `gh`, `git`, `claude`, `codex` and mise-installed tools.
 - **Storage:** `~/.local/share/unvibe/` holds a SQLite database plus a folder per review (`<owner>/<repo>/<review-id>/`) for the log and snapshots. Nothing is written into the user's checkout, apart from the worktree, which is created alongside it under a managed path.
 
@@ -672,9 +670,9 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 |---|---|---|
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
-| M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept candidates are hidden. Hunk pass summaries, and Hide uninteresting with reasons. |
+| M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept pages are written when a link is opened. Hunk pass summaries, and Hide uninteresting with reasons. |
 | M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
-| M4 | Comments and submit | Threads in all three places, the Comments menu with For PR drafts, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
+| M4 | Comments and submit | Threads in all three places, the Comments menu with Outbox drafts and Markdown export, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |
 

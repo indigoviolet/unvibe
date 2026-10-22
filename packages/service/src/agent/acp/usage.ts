@@ -8,6 +8,18 @@
  * - The top-level turn usage can MISS background sub-calls (the spike saw a
  *   61.6k-input Haiku titling call present only in `_meta.quota.model_usage`).
  *   Always aggregate `_meta.quota.model_usage` when present.
+ * - Both pinned adapters already return PER-TURN figures (#209, verified
+ *   live against claude-agent-acp 0.89.0 + codex-acp 2.2.2): Claude resets
+ *   its turn accumulators on turn activation and diffs the SDK's
+ *   session-cumulative `result.modelUsage` into that turn's increment
+ *   itself; Codex diffs its thread total per prompt. Do NOT delta-ize
+ *   again here: a second delta turns each component into
+ *   `max(previous, current)` once the warm-turn fold is added, so a fresh
+ *   hunk session reported the shared first turn's cache write on every
+ *   job and dropped the real turn's smaller counters. (The older
+ *   "session-cumulative" reading mistook a growing context — turn 2
+ *   legitimately cache-reads turn 1's larger prefix — for a running
+ *   total.)
  *
  * AgentEvent carries `cachedReadTokens` + `cachedWriteTokens` (#125); the
  * split is preserved end to end so the hit rate counts reads only.
@@ -126,28 +138,27 @@ export function cacheReadShare(u: Pick<TurnUsage, "inputTokens" | "cachedReadTok
 }
 
 /**
- * Claude counters are SESSION-CUMULATIVE ("Total ... across all turns" in
- * the schema docs; verified live: turn2 total 21254 > turn1 total 19259 on
- * the same session, with cachedRead/cachedWrite growing across turns).
- * Codex counters are PER-TURN (verified: turn2 inputTokens=237 after a
- * 5338-input turn1).
+ * Sum two per-turn tallies (#209). Only for turns of the SAME job — the
+ * shared warm first turn folded into a small session's first real prompt
+ * (see `runner.start`). Per-turn payloads from the adapters must never be
+ * diffed against each other; summing distinct turns of one job is the
+ * only combining this module does.
  *
- * This helper diffs a cumulative vector against the session baseline so
- * callers can sum per-turn usage without double-counting. All components
- * clamp at 0 (counters occasionally reset, e.g. after compaction).
+ * Since #209 (session-start attribution) the runner no longer folds: the
+ * warm turn's tally is consumed once via `takeSessionStartUsage` and
+ * reported on the job's "session start" turn record, while each prompt's
+ * usage event carries that turn alone. Job and review totals still sum
+ * both, so per-job figures are unchanged — only which turn shows them.
  */
-export function deltaTurnUsage(last: TurnUsage | null, current: TurnUsage): TurnUsage {
-  if (!last) return current;
-  const d = (c: number, l: number): number => Math.max(0, c - l);
-  const out: TurnUsage = {
-    inputTokens: d(current.inputTokens, last.inputTokens),
-    cachedReadTokens: d(current.cachedReadTokens, last.cachedReadTokens),
-    cachedWriteTokens: d(current.cachedWriteTokens, last.cachedWriteTokens),
-    outputTokens: d(current.outputTokens, last.outputTokens),
-    totalTokens: d(current.totalTokens, last.totalTokens),
-    models: current.models,
+export function addTurnUsage(a: TurnUsage, b: TurnUsage): TurnUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    cachedReadTokens: a.cachedReadTokens + b.cachedReadTokens,
+    cachedWriteTokens: a.cachedWriteTokens + b.cachedWriteTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+    models: [...a.models, ...b.models],
   };
-  return out;
 }
 
 export function emptyUsage(): TurnUsage {

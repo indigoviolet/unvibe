@@ -1,5 +1,5 @@
 /**
- * M3 pipeline (PRD §11): reader → base → critic/concepts → hunk pass.
+ * M3 pipeline (PRD §11): reader → base → critic → hunk pass.
  *
  * Every agent call is a job on the queue (kind, model, priority, prompt
  * snapshot, usage with cached tokens, cardId/progress). Streaming reader
@@ -28,7 +28,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, isDocumentReview, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
@@ -48,9 +48,11 @@ import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
 import { validateReply } from "../validate/index.js";
-import { lookupForSnapshot, resolveCodeFileLengths } from "./lookup.js";
+import { lookupForSnapshot, resolveCodeFileExistence } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
-import { criticApply, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
+import { buildDocumentBaseText } from "../document/map.js";
+import { resolveDocumentCodeExistence } from "../document/resolve.js";
+import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -92,17 +94,41 @@ export function roleFields(pick: { provider: string; model: string; effort: stri
   return { provider: pick.provider, model: pick.model, effort: pick.effort };
 }
 
+/** Issue #207: extra data on a tool callback (start detail, end result). */
+export type ToolCallExtra = { id?: string; result?: string; status?: "start" | "end" };
+export type ToolCallback = (name: string, detail?: string, extra?: ToolCallExtra) => void;
+
+/** Issue #207: per-turn record hooks, wired to the job context by callers. */
+export interface TurnHooks {
+  onPrompt?: (prompt: string) => void;
+  onUsage?: (usage: TokenUsage, raw?: unknown) => void;
+}
+
+/** Build turn hooks from a job-like context (absent methods are skipped). */
+export function turnHooks(ctx?: {
+  setTurnPrompt?: (text: string) => void;
+  reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
+} | null): TurnHooks | undefined {
+  if (!ctx) return undefined;
+  return {
+    onPrompt: (p) => ctx.setTurnPrompt?.(p),
+    onUsage: (u, raw) => ctx.reportTurnUsage?.(u, raw),
+  };
+}
+
 async function collectStreaming(
   runner: AgentRunner,
   session: Session,
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   let text = "";
   let afterTool = false;
   const usage: TokenUsage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+  turn?.onPrompt?.(prompt);
   try {
     for await (const ev of runner.prompt(session, prompt, signal)) {
       if (ev.type === "text") {
@@ -115,13 +141,19 @@ async function collectStreaming(
       } else if (ev.type === "tool") {
         if (ev.status === "start") {
           afterTool = true;
-          onTool?.(ev.name, ev.detail);
+          onTool?.(ev.name, ev.detail, { status: "start", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
+        } else {
+          onTool?.(ev.name, ev.detail, { status: "end", ...(ev.id ? { id: ev.id } : {}), ...(ev.result !== undefined ? { result: ev.result } : {}) });
         }
       } else if (ev.type === "usage") {
         usage.inputTokens += ev.inputTokens;
         usage.cachedReadTokens += ev.cachedReadTokens;
         usage.cachedWriteTokens += ev.cachedWriteTokens;
         usage.outputTokens += ev.outputTokens;
+        turn?.onUsage?.(
+          { inputTokens: ev.inputTokens, cachedReadTokens: ev.cachedReadTokens, cachedWriteTokens: ev.cachedWriteTokens, outputTokens: ev.outputTokens },
+          ev.raw,
+        );
       } else if (ev.type === "error") {
         if (ev.retryable) throw new RetryableError(ev.message);
         throw new Error(ev.message);
@@ -149,11 +181,12 @@ async function collectTracked(
   prompt: string,
   signal: AbortSignal | undefined,
   onDelta: (delta: string) => void,
-  onTool?: (name: string, detail?: string) => void,
+  onTool?: ToolCallback,
+  turn?: TurnHooks,
 ): Promise<{ text: string; usage: TokenUsage }> {
   sessions.beginSessionUse(session.id);
   try {
-    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool);
+    return await collectStreaming(runner, session, prompt, signal, onDelta, onTool, turn);
   } finally {
     sessions.endSessionUse(session.id);
   }
@@ -191,10 +224,10 @@ async function timedTurn<T>(
 
 /** Optional tool-call relay for contexts that may not report tools. */
 function reportToolFrom(ctx?: {
-  reportTool?: (name: string, detail?: string) => void;
-}): ((name: string, detail?: string) => void) | undefined {
+  reportTool?: ToolCallback;
+}): ToolCallback | undefined {
   const fn = ctx?.reportTool;
-  return fn ? (name, detail) => fn(name, detail) : undefined;
+  return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
 }
 
 /**
@@ -519,8 +552,8 @@ export class Pipeline {
                   }
                 }
               },
-              (name, detail) => ctx.reportTool(name, detail),
-              ),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+              turnHooks(ctx)),
             );
             const first = await this.parseAndValidateWithCode(o.reviewId, text, o.echoCandidates);
             // Facts only (#180): the reply's wording is never judged. A
@@ -566,8 +599,8 @@ export class Pipeline {
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -714,7 +747,7 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           try {
             ctx.setPromptSnapshot(snapshotText);
-            const session = await this.opts.runner.start({
+            const session = await this.startSessionForJob(ctx, o.reviewId, {
               provider,
               model,
               effort,
@@ -728,8 +761,8 @@ export class Pipeline {
               const { text, usage } = await timedTurn(ctx, "first", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, prompt, o.signal ?? ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               const first = await this.parseAndValidateWithCode(o.reviewId, text);
               let finalText = text;
@@ -750,8 +783,8 @@ export class Pipeline {
                 const repair = await timedTurn(ctx, "repair", () =>
                   collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
                     ctx.reportText(d),
-                    (name, detail) => ctx.reportTool(name, detail),
-                  ),
+                    (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                  turnHooks(ctx)),
                 );
                 usage.inputTokens += repair.usage.inputTokens;
                 usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -849,7 +882,6 @@ export class Pipeline {
     this.setStage(reviewId, "reader", "pending");
     this.setStage(reviewId, "base", "pending");
     this.setStage(reviewId, "critic", "pending");
-    this.setStage(reviewId, "concepts", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
     await this.enqueueReader(reviewId);
     // #123: the hunk pass needs only the diff, so it starts at ingest
@@ -880,16 +912,15 @@ export class Pipeline {
       if (stages.base !== "done") jobIds.push(...(await this.enqueueAfterReader(reviewId)).map((j) => j.id));
       else {
         if (stages.critic !== "done") jobIds.push(...(await this.enqueueCritic(reviewId)).map((j) => j.id));
-        if (stages.concepts !== "done") jobIds.push(...(await this.enqueueConcepts(reviewId)).map((j) => j.id));
         if (stages["hunk-pass"] !== "done") jobIds.push(...(await this.enqueueHunkPass(reviewId)).map((j) => j.id));
         // Issue #169: the plotline assign step is not a stage; resume it
         // like the demo fill below (no-op unless the reader named
         // plotlines on a degraded rung with hunks still unassigned).
+        // Auto go-deeper (#217) is part of enqueueAfterReader, not a stage:
+        // a restart after the base finished would otherwise leave pending
+        // placeholders unfilled when the setting is on. No-op otherwise.
+        jobIds.push(...(await this.enqueueAutoGoDeeper(reviewId)).map((j) => j.id));
         jobIds.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)).map((j) => j.id));
-        // Demo auto-fill is part of enqueueAfterReader, not a stage: a
-        // restart after the base finished would otherwise leave pending
-        // placeholders unfilled. No-op when nothing is pending.
-        jobIds.push(...(await this.enqueueDemoFill(reviewId)).map((j) => j.id));
       }
     }
     const after = this.stageStates(reviewId);
@@ -936,8 +967,8 @@ export class Pipeline {
         ctx.setSessionId(forked.session.id);
         const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
           ctx.reportText(d),
-          (name, detail) => ctx.reportTool(name, detail),
-        );
+          (name, detail, extra) => ctx.reportTool(name, detail, extra),
+        turnHooks(ctx));
         ctx.reportUsage(usage);
         await this.recordUsage(reviewId, usage);
         // Issue #50: match the page title (an echo of the concept name).
@@ -961,7 +992,8 @@ export class Pipeline {
           "standard",
           blocks,
           (u) => ctx.reportUsage(u),
-          (name, detail) => ctx.reportTool(name, detail),
+          (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx),
         );
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
@@ -1022,7 +1054,12 @@ export class Pipeline {
       accessMode: postureFor(settings, "summarize"),
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const session = await this.opts.runner.start({
+        // Issue #210 (#194): time the fresh-session start separately from
+        // the summary turn, so the Debug page can split setup from model
+        // time. For Claude the start includes the shared-cache warm-up
+        // turn, which runs inside `runner.start`; its usage lands on this
+        // turn (see startSessionForJob), not on the summary turn.
+        const session = await this.startSessionForJob(ctx, reviewId, {
           ...roleFields(settings.small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
@@ -1031,9 +1068,11 @@ export class Pipeline {
         });
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
+          const { text, usage } = await timedTurn(ctx, "first", () =>
+            collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
+              ctx.reportText(d),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+            turnHooks(ctx)),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -1122,11 +1161,41 @@ export class Pipeline {
     return path.join(this.opts.dataDir, "worktrees", reviewId);
   }
 
+  /**
+   * Issue #222: a document review's session cwd — the first context
+   * repo's reading location (no managed worktree exists for it). Falls
+   * back to the change-review worktree path when unknown.
+   */
+  private sessionCwd(reviewId: string): string {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (snapshot && isDocumentReview(snapshot)) {
+      const first = snapshot.contextRepos[0];
+      if (first && fs.existsSync(first.path)) return first.path;
+    }
+    return this.worktreeOf(reviewId);
+  }
+
+  /** Issue #222: the base pack text — the document pack for document reviews. */
+  private async basePackTextFor(
+    snapshot: ReviewSnapshot,
+    instructions: string,
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+  ): Promise<string> {
+    if (isDocumentReview(snapshot)) {
+      const text = await buildDocumentBaseText(this.opts.commands, snapshot);
+      return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
+    }
+    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
+    return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+  }
+
   private parseAndValidate(
     reviewId: string,
     text: string,
     echoCandidates?: string[],
-    codeLengths?: Record<string, number>,
+    existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): { cards: ParsedCard[]; data: ReplyData | null; validation: ReturnType<typeof validateReply>; body: string } {
     const split = splitReply(text);
     // Malformed / non-object trailers are job-visible errors (reply-format
@@ -1142,7 +1211,7 @@ export class Pipeline {
       echoCandidates === undefined ? parseCards(body) : parseCards(body, { echoCandidates });
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const lookup = this.lookupWithAliases(snapshot, codeLengths);
+    const lookup = this.lookupWithAliases(snapshot, existingFiles, existingCodeTargets);
     const blocks = cards.flatMap((c) => c.blocks);
     const anchor =
       split.ok && typeof split.data === "object" && split.data !== null
@@ -1155,12 +1224,12 @@ export class Pipeline {
   }
 
   /**
-   * `parseAndValidate` with `code:` ranges checked against the real file
-   * at the cited commit (#178, PRD §10). The snapshot lookup alone only
-   * knows hunk-covered lines, so every `code:` citation to a file outside
-   * the diff used to come back unverified and burn a repair turn. Lengths
-   * are resolved through `git show` (the `get_code` source) first; files
-   * that cannot be read stay unverified, exactly as before.
+   * `parseAndValidate` with `code:` files checked for existence at the
+   * cited commit (#81, PRD §10: no length check). The snapshot lookup
+   * alone only knows diff files, so every `code:` citation to a file
+   * outside the diff used to come back unverified and burn a repair turn.
+   * Existence is resolved through `git show` (the `get_code` source)
+   * first; missing and binary files stay unverified.
    */
   private async parseAndValidateWithCode(
     reviewId: string,
@@ -1169,7 +1238,8 @@ export class Pipeline {
   ): Promise<ReturnType<typeof this.parseAndValidate>> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    let codeLengths: Record<string, number> | undefined;
+    let existingFiles: ReadonlySet<string> | undefined;
+    let existingCodeTargets: ReadonlySet<string> | undefined;
     try {
       const split = splitReply(text);
       const cards =
@@ -1177,17 +1247,25 @@ export class Pipeline {
       const collected = collectTargets(cards.flatMap((c) => c.blocks));
       const targets = [...collected.citations, ...collected.links];
       if (targets.some((t) => t.startsWith("code:"))) {
-        codeLengths = await resolveCodeFileLengths(
-          this.opts.commands,
-          this.worktreeOf(reviewId),
-          snapshot.version.headSha,
-          targets,
-        );
+        // Issue #222: document answers cite context-repo files; the repo
+        // is resolved from the cited sha (first repo containing it), and
+        // existence is keyed by the exact `path@sha`.
+        if (isDocumentReview(snapshot)) {
+          existingCodeTargets = await resolveDocumentCodeExistence(this.opts.commands, snapshot.contextRepos, targets);
+        } else {
+          existingFiles = await resolveCodeFileExistence(
+            this.opts.commands,
+            this.worktreeOf(reviewId),
+            snapshot.version.headSha,
+            targets,
+          );
+        }
       }
     } catch {
-      codeLengths = undefined;
+      existingFiles = undefined;
+      existingCodeTargets = undefined;
     }
-    return this.parseAndValidate(reviewId, text, echoCandidates, codeLengths);
+    return this.parseAndValidate(reviewId, text, echoCandidates, existingFiles, existingCodeTargets);
   }
 
   /** Alias-aware lookup for diagram cite validation (demo fixture keys). */
@@ -1273,11 +1351,12 @@ export class Pipeline {
     level: string,
     blocks: Block[],
     onUsage?: (u: TokenUsage) => void,
-    onTool?: (name: string, detail?: string) => void,
+    onTool?: ToolCallback,
+    turn?: TurnHooks,
   ): Promise<Block[]> {
     const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
     if (!first.needsRepair) return first.blocks;
-    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool);
+    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool, turn);
   }
 
   /**
@@ -1298,7 +1377,8 @@ export class Pipeline {
     level: string,
     first: { blocks: Block[]; messages: string[] },
     onUsage?: (u: TokenUsage) => void,
-    onTool?: (name: string, detail?: string) => void,
+    onTool?: ToolCallback,
+    turn?: TurnHooks,
   ): Promise<Block[]> {
     const actx = this.actionContextFor(reviewId);
     try {
@@ -1309,6 +1389,7 @@ export class Pipeline {
         signal,
         () => {},
         onTool,
+        turn,
       );
       onUsage?.(usage);
       await this.recordUsage(reviewId, usage);
@@ -1324,11 +1405,14 @@ export class Pipeline {
 
   private lookupWithAliases(
     snapshot: ReviewSnapshot,
-    codeLengths?: Record<string, number>,
+    existingFiles?: ReadonlySet<string>,
+    existingCodeTargets?: ReadonlySet<string>,
   ): ReturnType<typeof lookupForSnapshot> {
     const aliases = aliasesForReview(snapshot, this.opts.fixturesDir);
-    if (Object.keys(aliases).length === 0) return lookupForSnapshot(snapshot, { fileLengths: codeLengths });
-    const base = lookupForSnapshot(snapshot, { fileLengths: codeLengths });
+    if (Object.keys(aliases).length === 0) {
+      return lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
+    }
+    const base = lookupForSnapshot(snapshot, { existingFiles, existingCodeTargets });
     const inner = base.resolveFileKey.bind(base);
     return {
       ...base,
@@ -1391,14 +1475,19 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    // The base pack instructs the agent to answer "ready" (SessionManager
-    // waits for it). buildBasePack's user is L1+L1b+L2; prefix the ready
-    // instruction so fakes and real models alike acknowledge.
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    // Document reviews build their pack from the document + repo maps
+    // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
+    const isDocument = isDocumentReview(snapshot);
+    const pack = isDocument
+      ? null
+      : buildBasePack(toPromptSnapshot(snapshot, { model: settings.main.model }), instructions, {
+          inlineBudgetTokens: settings.inlineBudgetTokens,
+        });
+    const packText = isDocument
+      ? await this.basePackTextFor(snapshot, instructions, settings)
+      : `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack!.user}`;
     const key = {
       reviewId,
       reviewVersion: `v${snapshot.version.n}`,
@@ -1412,7 +1501,7 @@ export class Pipeline {
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
     const handle = await this.opts.sessions.getBase({
       key,
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers,
@@ -1426,7 +1515,7 @@ export class Pipeline {
     }
     if (handle.fresh) {
       try {
-        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack.tokens);
+        this.opts.sharedctx?.noteBaseBuilt(reviewId, handle.key, pack?.tokens ?? 0);
       } catch {
         // observability is best-effort
       }
@@ -1532,11 +1621,9 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
-    const packText = `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
+    const packText = await this.basePackTextFor(snapshot, instructions, settings);
     const base = await this.opts.sessions.getBase({
       key: {
         reviewId,
@@ -1547,7 +1634,7 @@ export class Pipeline {
         access: postureFor(settings),
         effort: settings.main.effort,
       },
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
@@ -1578,7 +1665,7 @@ export class Pipeline {
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
       ...roleFields(settings.main),
-      cwd: this.worktreeOf(reviewId),
+      cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
       readOnly: postureFor(settings) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
@@ -1669,18 +1756,30 @@ export class Pipeline {
                   // ignore mid-stream
                 }
               },
-              (name, detail) => {
+              (name, detail, extra) => {
                 // Text written before a tool call and before any card heading
                 // is the agent narrating its exploration, not card content.
-                ctx.reportTool(name, detail);
-                if (!/^## /m.test(buffer)) buffer = "";
+                ctx.reportTool(name, detail, extra);
+                if (extra?.status !== "end" && !/^## /m.test(buffer)) buffer = "";
               },
-              ),
+              turnHooks(ctx)),
             );
             ctx.reportUsage(usage);
             await this.recordUsage(reviewId, usage);
-            // Issue #50: reader cards match their own `##` titles.
-            const { cards, data, validation } = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            // Issue #213: a malformed / non-object trailing data block never
+            // discards the guide. Keep the cards parsed from the body and
+            // run one data-block repair turn below (same session).
+            let brokenDataError: string | undefined;
+            let firstParsed: Awaited<ReturnType<typeof this.parseAndValidateWithCode>>;
+            try {
+              firstParsed = await this.parseAndValidateWithCode(reviewId, buffer, []);
+            } catch (err) {
+              const msg = (err as Error).message;
+              if (!msg.includes("was not in the expected format (malformed") && !msg.includes("was not in the expected format (not-object")) throw err;
+              brokenDataError = msg;
+              firstParsed = await this.parseAndValidateWithCode(reviewId, splitReply(buffer).body, []);
+            }
+            const { cards, data, validation } = firstParsed;
             let finalCards = cards;
             let finalData = data;
             let finalValidation = validation;
@@ -1699,7 +1798,33 @@ export class Pipeline {
             if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
             if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
-            if (validation.needsRepairTurn && degradedReason === undefined) {
+            if (brokenDataError !== undefined) {
+              // #213: one repair turn, same session, just the data block.
+              const repairPrompt =
+                `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
+                `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
+                `(cardIds, pendingCards, plotlines and any contribute block), with no cards and no prose.`;
+              ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
+              const repair = await timedTurn(ctx, "repair", () =>
+                collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
+                  ctx.reportText(d),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
+              );
+              usage.inputTokens += repair.usage.inputTokens;
+              usage.cachedReadTokens += repair.usage.cachedReadTokens;
+              usage.cachedWriteTokens += repair.usage.cachedWriteTokens;
+              usage.outputTokens += repair.usage.outputTokens;
+              ctx.reportUsage(repair.usage);
+              await this.recordUsage(reviewId, repair.usage);
+              const repaired = splitReply(repair.text);
+              if (repaired.ok) {
+                finalData = repaired.data as ReplyData;
+              } else {
+                degradedReason =
+                  "The reader's trailing data block did not parse and the repair reply did not parse either, so the guide has no plotlines or go-deeper directions.";
+              }
+            } else if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
@@ -1719,8 +1844,8 @@ export class Pipeline {
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
                   ctx.reportText(d),
-                  (name, detail) => ctx.reportTool(name, detail),
-                ),
+                  (name, detail, extra) => ctx.reportTool(name, detail, extra),
+                turnHooks(ctx)),
               );
               usage.inputTokens += repair.usage.inputTokens;
               usage.cachedReadTokens += repair.usage.cachedReadTokens;
@@ -1759,7 +1884,8 @@ export class Pipeline {
               "standard",
               flat,
               (u) => ctx.reportUsage(u),
-              (name, detail) => ctx.reportTool(name, detail),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+              turnHooks(ctx),
             );
             const withDiagrams = splitFinalizedBlocks(finalCards, finalized);
             await this.applyReaderResult(reviewId, withDiagrams, finalData, finalValidation);
@@ -1833,7 +1959,7 @@ export class Pipeline {
     const lookup = this.lookupWithAliases(snapshot);
     const validation = validateReply(blocks, lookup);
     const fixed = this.withValidation(reviewId, blocks, validation);
-    const provisionalId = readerCardId(index);
+    const provisionalId = readerCardId(index, [], title);
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
@@ -1939,28 +2065,6 @@ export class Pipeline {
           pending: { label: p.label, why: p.why },
         });
       }
-      for (const c of applied.concepts) {
-        if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-        draft.pages.push({
-          id: `c-${c.slug}`,
-          kind: "concept",
-          title: c.title,
-          saved: true,
-          parent: "root",
-          cards: [
-            {
-              id: `cc-${c.slug}`,
-              pageId: `c-${c.slug}`,
-              title: null,
-              level: "standard",
-              collapsed: false,
-              revision: 1,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary }, citations: [] }],
-              undoStack: [],
-            },
-          ],
-        });
-      }
       // Issue #169: store the validated plotlines; per-hunk assignment
       // rides `HunkState.plotline` (content-hash keyed, like summaries).
       draft.plotlines = plotlines.plotlines;
@@ -1992,7 +2096,6 @@ export class Pipeline {
     const out: Job[] = [];
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
-    out.push(...(await this.enqueueConcepts(reviewId)));
     // #123: the hunk pass starts in startReview now (at ingest), not here.
     // Hunks hidden before the guide existed are unhidden when cited.
     await this.unhideCitedHunks(reviewId);
@@ -2005,13 +2108,15 @@ export class Pipeline {
     if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
       out.push(...(await this.enqueueHunkPass(reviewId)));
     }
+    // #217 owner order: auto go-deeper runs after the hunk summaries
+    // (enqueued at start) and the critic, before any other background
+    // job. The queue is FIFO within the background band, so enqueue
+    // order is the run order: critic, go-deeper, then plotline assign.
+    out.push(...(await this.enqueueAutoGoDeeper(reviewId)));
     // Issue #169: on degraded reader rungs the follow-up assign step
     // places the hunks the reader never saw; otherwise left-outs stay
     // "other".
     out.push(...(await this.maybeEnqueuePlotlineAssign(reviewId)));
-    if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-      out.push(...(await this.enqueueDemoFill(reviewId)));
-    }
     return out;
   }
 
@@ -2022,41 +2127,38 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
     const basePrompt = renderTemplate(lib.get("critic")!, {});
-    // Replay keys select the f-lf/f-perf recordings; live runs get neutral
-    // ids (page titles carry the meaning; ids are opaque).
+    // #215: one critic job per review; its reply carries its findings (usually 1-3, all kept).
     const replay = isReplayRunner(this.opts.runner);
-    const keys = replay ? ["f-lf", "f-perf"] : ["f-critic-0", "f-critic-1"];
-    return keys.map((key) => {
-      const prompt = replay ? withReplayMark(basePrompt, { kind: "critic", key }) : basePrompt;
-      return this.opts.jobs.enqueue({
-        reviewId,
-        kind: "critic",
-        ...roleFields(settings.main),
-        priority: JOB_PRIORITY.background,
-        dedupe: { anchor: `finding:${key}`, requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
-        run: async (ctx) => {
-          ctx.setPromptSnapshot(prompt);
-          const base = await this.ensureBase(reviewId);
-          void base;
-          const forked = await this.forkFor(reviewId);
-          ctx.setSessionId(forked.session.id);
-          try {
-            const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-              ctx.reportText(d),
-              (name, detail) => ctx.reportTool(name, detail),
-            );
-            ctx.reportUsage(usage);
-            await this.recordUsage(reviewId, usage);
-            // Issue #50: finding cards match their own `##` titles.
-            const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
-            const applied = criticApply(
-              cards.map((c) => ({ title: c.title, blocks: c.blocks })),
-              (data ?? null) as Record<string, unknown> | null,
-              key,
-            );
-            const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
-            await this.opts.reviews.mutate(reviewId, (draft) => {
-              if (draft.pages.some((p) => p.id === applied.pageId)) return;
+    const prompt = replay ? withReplayMark(basePrompt, { kind: "critic" }) : basePrompt;
+    const job = this.opts.jobs.enqueue({
+      reviewId,
+      kind: "critic",
+      ...roleFields(settings.main),
+      priority: JOB_PRIORITY.background,
+      dedupe: { anchor: "finding:critic", requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
+      run: async (ctx) => {
+        ctx.setPromptSnapshot(prompt);
+        const base = await this.ensureBase(reviewId);
+        void base;
+        const forked = await this.forkFor(reviewId);
+        ctx.setSessionId(forked.session.id);
+        try {
+          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
+            ctx.reportText(d),
+            (name, detail, extra) => ctx.reportTool(name, detail, extra),
+          turnHooks(ctx));
+          ctx.reportUsage(usage);
+          await this.recordUsage(reviewId, usage);
+          const { cards, data, validation } = this.parseAndValidate(reviewId, text, []);
+          const appliedList = criticApplyAll(
+            cards.map((c) => ({ title: c.title, blocks: c.blocks })),
+            (data ?? null) as Record<string, unknown> | null,
+            "f-critic",
+          );
+          await this.opts.reviews.mutate(reviewId, (draft) => {
+            for (const applied of appliedList) {
+              if (draft.pages.some((p) => p.id === applied.pageId)) continue;
+              const fixedCards = applied.cards.map((c) => ({ ...c, blocks: this.withValidation(reviewId, c.blocks, validation) }));
               draft.pages.push({
                 id: applied.pageId,
                 kind: "finding",
@@ -2077,8 +2179,6 @@ export class Pipeline {
                 })),
               });
               if (applied.suggestedComment) {
-                // Suggested comments go through comments/threads.ts (M6):
-                // buildAnchor derives prefix/suffix/position from the diff.
                 const parsed = parseId(applied.suggestedComment.diff);
                 if (parsed?.kind === "diff") {
                   const before = this.opts.reviews.getSnapshot(reviewId);
@@ -2106,9 +2206,6 @@ export class Pipeline {
                         suggestionText: applied.suggestedComment.text,
                       },
                     );
-                    // Tie the thread back to the finding (PRD §4.9): a
-                    // comment-link block on the Assessment (last) card.
-                    // Hover previews the thread, click jumps to the diff.
                     const page = draft.pages.find((p) => p.id === applied.pageId);
                     const last = page?.cards[page.cards.length - 1];
                     if (last) {
@@ -2135,100 +2232,61 @@ export class Pipeline {
                 payload: { summary: `${applied.title}\n\n${applied.summary}`, unverified: validation.unverified },
                 scope: { scope: "global" },
               });
-            });
-            await this.updateRestatedMapping(reviewId);
-            // #122: the finding is applied above; bookkeeping joins the chain.
-            await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
-            // #122: findings changed the guide — rebuild the base ahead.
-            this.warmBase(reviewId);
-            this.maybeMarkStageDone(reviewId, "critic", 2);
-          } catch (err) {
-            await this.reportPartialUsage(ctx, reviewId, err);
-            this.setStage(reviewId, "critic", "error", (err as Error).message);
-            throw err;
-          }
-        },
-      });
-    });
-  }
-
-  private async enqueueConcepts(reviewId: string): Promise<Job[]> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return [];
-    this.setStage(reviewId, "concepts", "running");
-    const settings = await this.effectiveSettings();
-    const promptBase = `Write concept stubs for this review. For each hidden concept candidate the reader named, emit one line with its concept: slug, title, one line of meaning, and where mentioned. End with a trailing JSON block carrying the concepts array (slug, title, summary).`;
-    const prompt = isReplayRunner(this.opts.runner) ? withReplayMark(promptBase, { kind: "concept-stubs" }) : promptBase;
-    const job = this.opts.jobs.enqueue({
-      reviewId,
-      kind: "concept",
-      ...roleFields(settings.main),
-      priority: JOB_PRIORITY.background,
-      dedupe: { anchor: "concepts", requestKind: "concept-stubs", baseVersion: `v${snapshot.version.n}` },
-      run: async (ctx) => {
-        ctx.setPromptSnapshot(prompt);
-        const base = await this.ensureBase(reviewId);
-        void base;
-        const forked = await this.forkFor(reviewId);
-        ctx.setSessionId(forked.session.id);
-        try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
-          );
-          ctx.reportUsage(usage);
-          await this.recordUsage(reviewId, usage);
-          const { data } = this.parseAndValidate(reviewId, text);
-          const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).filter(
-            (c) => c.slug,
-          );
-          await this.opts.reviews.mutate(reviewId, (draft) => {
-            for (const c of concepts) {
-              if (draft.pages.some((p) => p.id === `c-${c.slug}`)) continue;
-              draft.pages.push({
-                id: `c-${c.slug}`,
-                kind: "concept",
-                title: c.title ?? c.slug!,
-                saved: true,
-                parent: "root",
-                cards: [
-                  {
-                    id: `cc-${c.slug}`,
-                    pageId: `c-${c.slug}`,
-                    title: null,
-                    level: "standard",
-                    collapsed: false,
-                    revision: 1,
-                    blocks: [{ type: "paragraph", id: "b1", text: { standard: c.summary ?? "" }, citations: [] }],
-                    undoStack: [],
-                  },
-                ],
-              });
             }
           });
-          this.setStage(reviewId, "concepts", "done");
-          // Demo auto-fill: expand every stub to its full page (same path as
-          // on-demand `ensureConceptPage`, background priority).
-          if (this.opts.reviews.getSnapshot(reviewId)?.review.repoId === "demo") {
-            for (const c of concepts) {
-              if (!c.slug) continue;
-              try {
-                await this.ensureConceptPageInner(reviewId, c.slug);
-              } catch {
-                // best-effort; resume will retry
-              }
-            }
-          }
-          // #122: stubs changed the guide — rebuild the base ahead.
+          await this.updateRestatedMapping(reviewId);
+          await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
           this.warmBase(reviewId);
+          this.maybeMarkStageDone(reviewId, "critic", 1);
         } catch (err) {
           await this.reportPartialUsage(ctx, reviewId, err);
-          this.setStage(reviewId, "concepts", "error", (err as Error).message);
+          this.setStage(reviewId, "critic", "error", (err as Error).message);
           throw err;
         }
       },
     });
     return [job];
+  }
+
+  /**
+   * Issue #209: start a session inside the job's "session start" turn and
+   * attribute the runner's session-start (warm-up) usage to that turn —
+   * separately from the first real turn. The figures are exact
+   * adapter-reported counts, not computed. Job and review totals still sum
+   * both turns, so per-job figures are unchanged; only which turn shows
+   * them. Runners that report no session-start usage (fakes, Codex,
+   * non-empty system prompts) leave the turn without token counts, as
+   * before.
+   */
+  private async startSessionForJob(
+    ctx: {
+      beginTurn(label: string): void;
+      endTurn(): void;
+      reportUsage(usage: TokenUsage): void;
+      reportTurnUsage(usage: TokenUsage): void;
+    },
+    reviewId: string,
+    opts: Parameters<AgentRunner["start"]>[0],
+  ): Promise<Session> {
+    ctx.beginTurn("session start");
+    try {
+      const session = await this.opts.runner.start(opts);
+      const warm = this.opts.runner.takeSessionStartUsage?.(session.id);
+      if (warm !== undefined) {
+        const usage: TokenUsage = {
+          inputTokens: warm.inputTokens,
+          cachedReadTokens: warm.cachedReadTokens,
+          cachedWriteTokens: warm.cachedWriteTokens,
+          outputTokens: warm.outputTokens,
+        };
+        ctx.reportTurnUsage(usage);
+        ctx.reportUsage(usage);
+        await this.recordUsage(reviewId, usage);
+      }
+      return session;
+    } finally {
+      ctx.endTurn();
+    }
   }
 
   private async enqueueHunkPass(reviewId: string): Promise<Job[]> {
@@ -2288,7 +2346,12 @@ export class Pipeline {
       accessMode: access,
       run: async (ctx) => {
         ctx.setPromptSnapshot(prompt);
-        const session = await this.opts.runner.start({
+        // Issue #210 (#194): time the fresh-session start separately from
+        // the summary turn, so the Debug page can split setup from model
+        // time. For Claude the start includes the shared-cache warm-up
+        // turn, which runs inside `runner.start`; its usage lands on this
+        // turn (see startSessionForJob), not on the summary turn.
+        const session = await this.startSessionForJob(ctx, reviewId, {
           ...roleFields(small),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
@@ -2297,9 +2360,11 @@ export class Pipeline {
         });
         ctx.setSessionId(session.id);
         try {
-          const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-            (name, detail) => ctx.reportTool(name, detail),
+          const { text, usage } = await timedTurn(ctx, "first", () =>
+            collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
+              ctx.reportText(d),
+              (name, detail, extra) => ctx.reportTool(name, detail, extra),
+            turnHooks(ctx)),
           );
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
@@ -2434,8 +2499,7 @@ export class Pipeline {
         ctx.setSessionId(session.id);
         try {
           const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, session, prompt, ctx.signal, (d) =>
-            ctx.reportText(d),
-          );
+            ctx.reportText(d), undefined, turnHooks(ctx));
           ctx.reportUsage(usage);
           await this.recordUsage(reviewId, usage);
           // Malformed trailing JSON fails the job (visible on Debug);
@@ -2493,31 +2557,26 @@ export class Pipeline {
     return [job];
   }
 
-  private async enqueueDemoFill(reviewId: string): Promise<Job[]> {
+  private async enqueueAutoGoDeeper(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
-    const out: Job[] = [];
     const effective = await this.effectiveSettings();
+    if (!effective.autoGoDeeper) return [];
     const root = snapshot.pages.find((p) => p.id === "root");
-    // Pending cards may not exist yet (reader still running when this is
-    // called from enqueueAfterReader). Demo fill runs AFTER reader, so root
-    // should have placeholders; if not, skip (resume will pick them up).
     const pending = root?.cards.filter((c) => c.pending) ?? [];
-    for (const card of pending) {
-      out.push(
-        this.opts.jobs.enqueue({
-          reviewId,
-          kind: "go-deeper",
-          ...roleFields(effective.main),
-          priority: JOB_PRIORITY.background,
-          dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
-          run: async (ctx) => {
-            await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx);
-          },
-        }),
-      );
-    }
-    return out;
+    return pending.map((card) =>
+      this.opts.jobs.enqueue({
+        reviewId,
+        kind: "go-deeper",
+        ...roleFields(effective.main),
+        priority: JOB_PRIORITY.background,
+        dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
+        cardId: card.id,
+        run: async (ctx) => {
+          await this.fillGoDeeper(reviewId, card.id, ctx.signal, (d) => ctx.reportText(d), ctx, { collapseWhenFilled: true });
+        },
+      }),
+    );
   }
 
   async fillGoDeeper(
@@ -2529,8 +2588,11 @@ export class Pipeline {
       setPromptSnapshot: (s: string) => void;
       setSessionId: (s: string) => void;
       reportUsage: (u: TokenUsage) => void;
-      reportTool?: (name: string, detail?: string) => void;
+      reportTool?: ToolCallback;
+      setTurnPrompt?: (text: string) => void;
+      reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
     },
+    opts?: { collapseWhenFilled?: boolean },
   ): Promise<void> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
@@ -2547,9 +2609,9 @@ export class Pipeline {
     void base;
     const forked = await this.forkFor(reviewId);
     ctx?.setSessionId(forked.session.id);
-    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, signal, onText, (name, detail) =>
-      ctx?.reportTool?.(name, detail),
-    );
+    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, signal, onText, (name, detail, extra) =>
+      ctx?.reportTool?.(name, detail, extra),
+    turnHooks(ctx));
     ctx?.reportUsage(usage);
     await this.recordUsage(reviewId, usage);
     // Issue #50: match the placeholder label (the card's future title).
@@ -2570,6 +2632,7 @@ export class Pipeline {
       blocks,
       (u) => ctx?.reportUsage(u),
       reportToolFrom(ctx),
+      turnHooks(ctx),
     );
     const title = (data?.["title"] as string | undefined) ?? card.pending.label;
     await this.opts.reviews.mutate(reviewId, (draft) => {
@@ -2578,6 +2641,14 @@ export class Pipeline {
       if (!c) return;
       c.title = title;
       c.blocks = stored;
+      // #217: a card written automatically (not by a Generate click)
+      // stays collapsed — title and why-line, as the placeholder
+      // looked — until the reader opens it; opening is the ordinary
+      // expand, so the written content shows with no new job.
+      if (opts?.collapseWhenFilled) {
+        c.collapsed = true;
+        if (c.pending?.why) c.why = c.pending.why;
+      }
       delete c.pending;
       c.revision += 1;
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
@@ -2593,7 +2664,7 @@ export class Pipeline {
       if (r && !r.cards.some((x) => x.pending)) {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
@@ -2604,62 +2675,6 @@ export class Pipeline {
     await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
     this.warmBase(reviewId);
-  }
-
-  private async ensureConceptPageInner(reviewId: string, slug: string): Promise<void> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return;
-    const existing = snapshot.pages.find((p) => p.id === `c-${slug}`);
-    const prompt = withReplayMark(
-      this.render("concept_page", { concept: `${slug} — ${existing?.title ?? slug}`, mentions: this.mentionsOf(snapshot, slug) }),
-      isReplayRunner(this.opts.runner) ? { kind: "concept-page", key: slug } : undefined,
-    );
-    const base = await this.ensureBase(reviewId);
-    void base;
-    const forked = await this.forkFor(reviewId);
-    const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner, forked.session, prompt, undefined, () => {});
-    await this.recordUsage(reviewId, usage);
-    // Issue #50: match the page title (an echo of the concept name).
-    const { cards, data, validation } = this.parseAndValidate(reviewId, text, [
-      ...(existing?.title ? [existing.title] : []),
-      slug,
-    ]);
-    const title = (data?.["title"] as string | undefined) ?? existing?.title ?? slug;
-    const blocks = this.withValidation(
-      reviewId,
-      cards.flatMap((c) => c.blocks),
-      validation,
-    );
-    // Inline diagrams go through finalize + one repair turn on the fill's
-    // own session (#130), so stored blocks carry a real status.
-    const stored = await this.finalizeInlineBlocks(
-      reviewId,
-      forked.session,
-      undefined,
-      `Concept page: ${slug}`,
-      "standard",
-      blocks,
-    );
-    await this.opts.reviews.mutate(reviewId, (draft) => {
-      let page = draft.pages.find((p) => p.id === `c-${slug}`);
-      if (!page) {
-        page = { id: `c-${slug}`, kind: "concept", title, saved: true, parent: "root", cards: [] };
-        draft.pages.push(page);
-      }
-      page.title = title;
-      page.cards = [
-        {
-          id: `cc-${slug}`,
-          pageId: `c-${slug}`,
-          title: null,
-          level: "standard",
-          collapsed: false,
-          revision: (page.cards[0]?.revision ?? 0) + 1,
-          blocks: stored,
-          undoStack: [],
-        },
-      ];
-    });
   }
 
   // -- helpers --------------------------------------------------------
@@ -2928,7 +2943,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
       })
@@ -2942,7 +2957,6 @@ export class Pipeline {
       reader: stages.reader ?? "pending",
       base: stages.base ?? "pending",
       critic: stages.critic ?? "pending",
-      concepts: stages.concepts ?? "pending",
       "hunk-pass": stages["hunk-pass"] ?? "pending",
       "go-deeper": stages["go-deeper"] ?? "pending",
     };
@@ -2953,7 +2967,7 @@ export class Pipeline {
       .mutate(reviewId, (draft) => {
         if (!draft.pipeline) {
           draft.pipeline = {
-            stages: { reader: "pending", base: "pending", critic: "pending", concepts: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
+            stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending" },
           };
         }
         (draft.pipeline.stages as Record<string, string>)[stage] = state;
@@ -2992,8 +3006,10 @@ export class Pipeline {
         hooks?: {
           setSessionId(id: string): void;
           reportText(delta: string): void;
-          reportTool(name: string, detail?: string): void;
+          reportTool: ToolCallback;
           reportUsage(usage: TokenUsage): void;
+          setTurnPrompt?: (text: string) => void;
+          reportTurnUsage?: (usage: TokenUsage, raw?: unknown) => void;
         };
       },
     ) => Promise<string>;
@@ -3016,8 +3032,8 @@ export class Pipeline {
               prompt,
               opts.signal,
               (d) => opts.hooks?.reportText(d),
-              (name, detail) => opts.hooks?.reportTool(name, detail),
-            );
+              (name, detail, extra) => opts.hooks?.reportTool(name, detail, extra),
+            turnHooks(opts.hooks));
             opts.hooks?.reportUsage(usage);
             await this.recordUsage(opts.reviewId, usage);
             return text;

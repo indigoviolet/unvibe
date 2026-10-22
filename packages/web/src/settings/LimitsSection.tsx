@@ -7,21 +7,29 @@
 import { useState } from "react";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { Button, Card, Checkbox, Field as UiField, Input } from "../ui/index.js";
 
 export interface Field {
   key: keyof Settings;
   label: string;
   hint: string;
   step?: string;
+  /** Stored as ms, edited in minutes (#201). */
+  minutes?: boolean;
+  /** #225: input width sized for the value (px), not full-width. */
+  width?: number;
 }
+/** ms -> minutes for the control; minutes -> ms on save. */
+export const msToMinutes = (ms: number): number => ms / 60000;
+export const minutesToMs = (minutes: number): number => Math.round(minutes * 60000);
 
 const FIELDS: Field[] = [
-  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 4." },
-  { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000." },
-  { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01" },
-  { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000." },
-  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (ms)", hint: "Default 300,000 (5 minutes)." },
-  { key: "idleExitMinutes", label: "Stop the service when idle for (minutes)", hint: "0 means never. Default 10." },
+  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 16.", width: 96 },
+  { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000.", width: 140 },
+  { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01", width: 96 },
+  { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000.", width: 140 },
+  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (minutes)", hint: "Default 5 min.", minutes: true, width: 96 },
+  { key: "idleExitMinutes", label: "Stop the service when idle for (minutes)", hint: "0 means never. Default 10.", width: 96 },
 ];
 
 export function LimitsSection({
@@ -35,9 +43,13 @@ export function LimitsSection({
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
 
-  const value = (f: Field): string =>
-    draft[f.key] ?? String(settings[f.key] as number);
+  const value = (f: Field): string => {
+    if (draft[f.key] !== undefined) return draft[f.key];
+    const raw = settings[f.key] as number;
+    return String(f.minutes ? msToMinutes(raw) : raw);
+  };
 
   const save = async (): Promise<void> => {
     setSaving(true);
@@ -53,7 +65,7 @@ export function LimitsSection({
         setSaving(false);
         return;
       }
-      patch[f.key] = n;
+      patch[f.key] = f.minutes ? minutesToMs(n) : n;
     }
     try {
       const next = await api.saveSettings(patch);
@@ -67,30 +79,62 @@ export function LimitsSection({
     }
   };
 
+  const toggleAutoGoDeeper = async (): Promise<void> => {
+    setToggling(true);
+    setErrors([]);
+    try {
+      const next = await api.saveSettings({ autoGoDeeper: !settings.autoGoDeeper });
+      onSaved(next);
+    } catch (err) {
+      setErrors(putErrors(err));
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
     <section aria-label="Limits">
-      <div className="card" style={{ padding: "8px 14px" }}>
-        {FIELDS.map((f) => (
-          <div className="setgrid" key={f.key}>
-            <label htmlFor={`limit-${f.key}`}>{f.label}</label>
-            <div className="fld">
-              <input
-                id={`limit-${f.key}`}
-                type="number"
-                step={f.step ?? "1"}
-                value={value(f)}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+      <Card variant="raised">
+        <div className="ui-fields">
+          <UiField
+            label="Write go-deeper cards automatically"
+            htmlFor="auto-go-deeper-toggle"
+            help="When on, each go-deeper card is written in the background once the guide is ready. When off, a card is written only when you click Generate."
+          >
+            <span style={{ paddingTop: 2 }}>
+              <Checkbox
+                id="auto-go-deeper-toggle"
+                testId="auto-go-deeper-toggle"
+                ariaLabel="Write go-deeper cards automatically"
+                checked={settings.autoGoDeeper === true}
+                disabled={toggling}
+                onChange={() => void toggleAutoGoDeeper()}
               />
-              <span className="hint">{f.hint}</span>
-              {errors
-                .filter((m) => m.startsWith(String(f.key)) || m.startsWith(f.label))
-                .map((m) => (
-                  <span className="err" role="alert" key={m}>
-                    {labelError(f, m)}
-                  </span>
-                ))}
-            </div>
-          </div>
+            </span>
+          </UiField>
+        {FIELDS.map((f) => (
+          <UiField
+            key={f.key}
+            label={f.label}
+            htmlFor={`limit-${f.key}`}
+            help={f.hint}
+            status={errors
+              .filter((m) => m.startsWith(String(f.key)) || m.startsWith(f.label))
+              .map((m) => (
+                <span className="err" role="alert" key={m}>
+                  {labelError(f, m)}
+                </span>
+              ))}
+          >
+            <Input
+              id={`limit-${f.key}`}
+              type="number"
+              step={f.step ?? "1"}
+              style={{ width: f.width ?? 120, maxWidth: "100%" }}
+              value={value(f)}
+              onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+            />
+          </UiField>
         ))}
         {errors
           .filter((m) => !FIELDS.some((f) => m.startsWith(String(f.key)) || m.startsWith(f.label)))
@@ -99,13 +143,14 @@ export function LimitsSection({
               {m}
             </p>
           ))}
+        </div>
         <div className="frow" style={{ gap: 8, marginTop: 8 }}>
-          <button className="btn" type="button" disabled={saving} onClick={() => void save()}>
+          <Button variant="primary" type="button" disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save limits"}
-          </button>
+          </Button>
           {savedAt ? <span className="hint">{savedAt}</span> : null}
         </div>
-      </div>
+      </Card>
     </section>
   );
 }

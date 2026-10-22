@@ -4,7 +4,7 @@ No header value should contain a line break after parsing. The code also stays f
 
 ```json
 {
-  "title": "The central change",
+  "title": "The central idea",
   "depth": {"level": "simple", "cardId": "central"}
 }
 ```

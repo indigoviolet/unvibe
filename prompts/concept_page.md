@@ -6,7 +6,7 @@ variables: [concept, mentions]
 
 # Concept page
 
-Write the full concept page the reader opens from a stub or a concept link.
+Write the full concept page the reader opens from a concept link.
 Standard depth first: the page gains simple and deep versions later, one
 level at a time.
 

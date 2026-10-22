@@ -7,6 +7,7 @@
  * no-overflow.
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 
 const CONN = "src-urllib3-connection.py";
 const connFile = `[id="F-${CONN}"]`;
@@ -68,7 +69,7 @@ test("comments menu opens with the source pane closed", async ({ page }) => {
   await expect(page.locator("#right")).toHaveClass(/hide/);
   await page.locator('#reviewbar [data-cm=""]').click();
   await expect(page.locator("#reviewbar .cmenu")).toBeVisible();
-  await expect(page.locator("#reviewbar .cmenu")).toContainText("Already on GitHub");
+  await expect(page.locator("#reviewbar .cmenu")).toContainText("On GitHub");
 });
 
 test("review bar does not overflow at 800px", async ({ page }) => {
@@ -81,25 +82,28 @@ test("review bar does not overflow at 800px", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("older version annotates current and keeps the title at 800px (issue #120)", async ({ page }) => {
+test("older version annotates current and the bar fits at 800px (issue #120)", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto("/review/r-old?version=1");
   await expect(page.locator("#reviewbar")).toBeVisible();
-  // Rendered once, in the bar: the select shows the older version with
+  // Rendered once, in the bar: the trigger shows the older version with
   // the warning state, current is annotated in the dropdown, and there
   // is no notice and no back button in the bar.
   const switcher = page.locator('#reviewbar [data-testid="version-switcher"]');
   await expect(switcher).toHaveCount(1);
   await expect(switcher).toHaveAttribute("data-ro", "1");
-  await expect(page.locator("#version-pick option", { hasText: "current" })).toContainText("v2");
+  await expect(page.locator("#version-pick")).toContainText("v1");
+  await page.locator("#version-pick").click();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
-  // The title is no longer squeezed out entirely.
-  const titleBox = await page.locator("#reviewbar .rid b").boundingBox();
-  expect(titleBox?.width).toBeGreaterThan(0);
+  // #235: the PR title lives in the guide heading, not the bar; the bar
+  // still never overflows at this width.
   const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   // Choosing the annotated current version is the way back.
-  await page.locator("#version-pick").selectOption("2");
+  await page.locator("#version-pick").click();
+  await openPopup(page).getByRole("option", { name: /v2.*current/ }).click();
   await expect(page).not.toHaveURL(/version=1/);
 });
 

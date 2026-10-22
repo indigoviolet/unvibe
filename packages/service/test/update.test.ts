@@ -76,27 +76,25 @@ function installed(channel: string | null, version = "0.0.1"): InstalledBuild {
 }
 
 describe("channel names + install specs", () => {
-  it("accepts release, release-rc and preview/* only", () => {
+  it("accepts release and preview/* only", () => {
     expect(isChannelName("release")).toBe(true);
-    expect(isChannelName("release-rc")).toBe(true);
     expect(isChannelName("preview/feat-x")).toBe(true);
     expect(isChannelName("preview/a.b_c-d")).toBe(true);
-    for (const bad of ["", "main", "preview/", "preview/a/b", "preview/../x", "Release", "Preview/x"]) {
+    for (const bad of ["", "main", "release-rc", "preview/", "preview/a/b", "preview/../x", "Release", "Preview/x"]) {
       expect(isChannelName(bad), bad).toBe(false);
     }
   });
 
   it("maps refs to kinds", () => {
     expect(channelKind("release")).toBe("release");
-    expect(channelKind("release-rc")).toBe("release-rc");
     expect(channelKind("preview/feat-x")).toBe("preview");
   });
 
   it("builds the npm install spec for a channel", () => {
     expect(installSpec("release")).toBe("github:indigoviolet/unvibe#release");
-    expect(installSpec("release-rc")).toBe("github:indigoviolet/unvibe#release-rc");
     expect(installSpec("preview/feat-x")).toBe("github:indigoviolet/unvibe#preview/feat-x");
     expect(() => installSpec("main")).toThrow();
+    expect(() => installSpec("release-rc")).toThrow();
   });
 
   it("installs the channel ref globally through the runner", async () => {
@@ -141,18 +139,20 @@ describe("channel names + install specs", () => {
     const out = parseChannelList(
       ["release", "main", "preview/b", "release-rc", "preview/a", "preview/b", "", "  "].join("\n"),
     );
-    expect(out).toEqual(["release", "release-rc", "preview/a", "preview/b"]);
+    // A stale `release-rc` remote branch is not a channel: dropped like `main`.
+    expect(out).toEqual(["release", "preview/a", "preview/b"]);
   });
 });
 
 describe("inferChannelFromVersion", () => {
   it("maps hand-installed versions to their channels", () => {
     expect(inferChannelFromVersion("0.0.1")).toBe("release");
-    expect(inferChannelFromVersion("0.0.1-rc.2")).toBe("release-rc");
     expect(inferChannelFromVersion("0.0.1-preview.feat-x.abc1234")).toBe("preview/feat-x");
     expect(inferChannelFromVersion("0.0.1-preview.a.b")).toBe("preview/a");
     expect(inferChannelFromVersion("nope")).toBeNull();
     expect(inferChannelFromVersion("0.0.1-foo.2")).toBeNull();
+    // Old `-rc.N` builds predate the channel removal: unknown.
+    expect(inferChannelFromVersion("0.0.1-rc.2")).toBeNull();
   });
 
   it("shortens commits for display", () => {
@@ -405,7 +405,7 @@ describe("readInstalledBuild", () => {
     const old = makeInstall(tmpDir("unvibe-installed-old-"), { name: "unvibe", version: "0.0.1" });
     expect(readInstalledBuild(old.scriptPath, "fallback").channel).toBe("release");
     const rc = makeInstall(tmpDir("unvibe-installed-rc-"), { name: "unvibe", version: "0.0.1-rc.2" });
-    expect(readInstalledBuild(rc.scriptPath, "fallback").channel).toBe("release-rc");
+    expect(readInstalledBuild(rc.scriptPath, "fallback").channel).toBeNull();
     const prev = makeInstall(tmpDir("unvibe-installed-prev-"), {
       name: "unvibe",
       version: "0.0.1-preview.feat-x.abc1234",
@@ -549,7 +549,7 @@ class SwitchRunner implements CommandRunner {
   }
 }
 
-const BRANCHES = ["release", "release-rc", "preview/feat-x", "main"].join("\n");
+const BRANCHES = ["release", "preview/feat-x", "main"].join("\n");
 
 function enqueueContents(runner: FakeCommandRunner, ref: string, pkg: unknown): void {
   runner.enqueue({
@@ -577,7 +577,6 @@ describe("runUpdateListFlow", () => {
       code: 0,
     });
     enqueueContents(runner, "release", { name: "unvibe", version: "0.0.1" });
-    enqueueContents(runner, "release-rc", { name: "unvibe", version: "0.0.1-rc.2" });
     enqueueContents(runner, "preview/feat-x", {
       name: "unvibe",
       version: "0.0.1-preview.feat-x.abc1234",
@@ -592,7 +591,6 @@ describe("runUpdateListFlow", () => {
     expect(out.code).toBe(0);
     expect(out.lines).toContain("installed: release 0.0.1");
     expect(out.lines).toContain("* release (installed, 0.0.1)");
-    expect(out.lines).toContain("  release-rc (0.0.1-rc.2)");
     expect(out.lines).toContain("  preview/feat-x (0.0.1-preview.feat-x.abc1234)");
     expect(out.lines).toContain("    from feat/x @ abc1234, built 2026-10-12");
     expect(out.lines.some((l) => l.includes("main"))).toBe(false);
@@ -729,7 +727,7 @@ describe("runUpdateChannelFlow", () => {
     expect(runner.calls.filter((c) => c.cmd === "npm" && c.opts.args[0] === "install")).toHaveLength(1);
   });
 
-  it("runs the newly installed CLI's setup after a successful install (issue #42: install runs no setup)", async () => {
+  it("does not run setup after a successful install (issue #220: setup is manual)", async () => {
     const dataDir = tmpDir("unvibe-update-setup-");
     const { scriptPath, packagePath } = makeInstall(tmpDir("unvibe-update-setup-installed-"), {
       name: "unvibe",
@@ -756,12 +754,8 @@ describe("runUpdateChannelFlow", () => {
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
-    // The fake runner refuses the setup spawn (unexpected command); the
-    // flow treats setup as best-effort and still succeeds — but the
-    // attempt, via the installed CLI path, must be there.
-    const setupCall = runner.calls.find((c) => c.opts.args[1] === "setup");
-    expect(setupCall?.cmd).toBe(process.execPath);
-    expect(setupCall?.opts.args).toEqual([scriptPath, "setup"]);
+    // Issue #220: no automatic setup after update — no setup spawn at all.
+    expect(runner.calls.find((c) => c.opts.args[1] === "setup")).toBeUndefined();
   });
 
   it("reinstalls the same channel when the published commit is unreadable", async () => {
@@ -840,18 +834,18 @@ describe("runUpdateChannelFlow", () => {
     });
     const runner = new SwitchRunner(
       packagePath,
-      { name: "unvibe", version: "0.0.1-rc.2", unvibe: { channel: "release-rc" } },
-      { "release-rc": { name: "unvibe", version: "0.0.1-rc.2" } },
+      { name: "unvibe", version: "0.0.1-preview.feat-x.abc1234", unvibe: { channel: "preview/feat-x" } },
+      { "preview/feat-x": { name: "unvibe", version: "0.0.1-preview.feat-x.abc1234" } },
     );
     const out = await runUpdateChannelFlow(
       { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
-      "release-rc",
+      "preview/feat-x",
     );
     expect(out.code).toBe(0);
     expect(runner.calls.find((c) => c.cmd === "npm")?.opts.args).toEqual([
       "install",
       "-g",
-      "github:indigoviolet/unvibe#release-rc",
+      "github:indigoviolet/unvibe#preview/feat-x",
       "--prefix",
       prefix,
     ]);

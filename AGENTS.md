@@ -29,6 +29,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 
 ## Rules
 
+- Ask the owner before adding anything the issue doesn't ask for: extra agent calls or jobs, duplicate or speculative work, background passes, new mechanisms or settings. When a design choice changes cost, latency or behaviour the owner will see, put it to the owner first (comment on the issue and label it `waiting-for-user-response`) instead of choosing.
 - Nothing outside `packages/service/src/agent/acp/` may import ACP. Everything else uses the `AgentRunner` interface (PRD §6).
 - Nothing is posted to GitHub except by the Submit review path (crash-safe via in-flight leases in `src/submit/lease.ts`). That rule covers Unvibe's own code, and it stays true there. Under the full-access opt-in (issue #160) it does NOT cover what an agent session does with its own shell: the agent can run `gh` as the user, and only the system prompt forbids it from posting — nothing enforces it. Live checks therefore run with no real credentials available to the session (scratch HOME, fake `gh` that refuses writes, or a local fake endpoint) and assert on the attempt, never on a successful write. Tests never hit real GitHub or real agents: use the fake `AgentRunner` and stub `gh`/`git` through an injectable command runner. Only tasks named `test:live:*` may use real logins (and spend tokens). See `DEVELOPMENT.md` for the test rules and the full task list.
 - Run `gh` with `GITHUB_TOKEN` unset (PRD §15).

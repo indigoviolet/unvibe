@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
   secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
-  sessionsPerProvider: 4,
+  sessionsPerProvider: 16,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10_000,
@@ -30,10 +30,11 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheLifetimeMs: 5 * 60 * 1000,
   idleExitMinutes: 10,
   /**
-   * Version picker (issue #36, step 2): list installable update channels
-   * and switch builds from Settings → Version. Off by default; listing
-   * shells out through `gh` (the user's own login, like every other `gh`
-   * use — PRD §16), so it stays opt-in.
+   * Version picker (issue #36, step 2; toggle meaning #231): releases
+   * are always listed and switchable, and the update check always runs
+   * (listing shells out through `gh` under the user's own login, like
+   * every other `gh` use — PRD §16). Off by default; only preview
+   * channels stay hidden until it is on.
    */
   versionPickerEnabled: false,
   /**
@@ -43,6 +44,8 @@ export const DEFAULT_SETTINGS: Settings = {
    */
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
+  /** Issue #217: go-deeper cards write themselves after the guide. On by default. */
+  autoGoDeeper: true,
 };
 
 function isModelPick(v: unknown): v is ModelPick {
@@ -99,6 +102,10 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   // service refuses to enable without it (not only the web): enabling
   // requires the acknowledgement timestamp in the SAME update, and turning
   // the setting off clears the stored acknowledgement (see `update`).
+  const autoGoDeeper = patch["autoGoDeeper"];
+  if (autoGoDeeper !== undefined && typeof autoGoDeeper !== "boolean") {
+    errors.push("autoGoDeeper must be a boolean");
+  }
   const fullAccess = patch["fullAccess"];
   if (fullAccess !== undefined && typeof fullAccess !== "boolean") {
     errors.push("fullAccess must be a boolean");

@@ -57,6 +57,58 @@ export function isNewerAvailable(row: UpdateChannel, build: UpdateBuildInfo | nu
   return row.current && !!build?.commit && !!row.commit && build.commit !== row.commit;
 }
 
+/**
+ * Compare release versions (issue #231): numeric `major.minor.patch`
+ * first, then a missing pre-release beats a present one (`0.0.1` is
+ * newer than `0.0.1-preview.x.y`), two pre-releases compare lexically.
+ * Unparseable cores compare as 0. Returns -1 / 0 / 1.
+ */
+export function compareReleaseVersions(a: string, b: string): number {
+  const parse = (v: string): { nums: number[]; pre: string | null } => {
+    const m = /^(\d+(?:\.\d+)*)(?:-(.+))?$/.exec(v.trim());
+    if (!m) return { nums: [], pre: v };
+    return { nums: m[1].split(".").map(Number), pre: m[2] ?? null };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  for (let i = 0; i < Math.max(pa.nums.length, pb.nums.length); i++) {
+    const x = pa.nums[i] ?? 0;
+    const y = pb.nums[i] ?? 0;
+    if (x < y) return -1;
+    if (x > y) return 1;
+  }
+  if (pa.pre === pb.pre) return 0;
+  if (pa.pre === null) return 1;
+  if (pb.pre === null) return -1;
+  return pa.pre < pb.pre ? -1 : 1;
+}
+
+/**
+ * The release channel carrying an update for the running build
+ * (issue #231), or null when up to date or undeterminable:
+ * - release builds compare the release version against the running one;
+ * - preview builds compare by date: the release was published after
+ *   the running preview was built.
+ * Missing versions, build times or unparseable dates mean null — the
+ * caller shows no icon and no error.
+ */
+export function findUpdateAvailable(
+  build: UpdateBuildInfo | null,
+  channels: UpdateChannel[],
+): UpdateChannel | null {
+  if (!build?.channel || !build.version) return null;
+  const release = channels.find((c) => c.ref === "release" && c.kind === "release");
+  if (!release?.version) return null;
+  if (build.channel.startsWith("preview/")) {
+    if (!build.builtAt || !release.builtAt) return null;
+    const built = Date.parse(build.builtAt);
+    const published = Date.parse(release.builtAt);
+    if (!Number.isFinite(built) || !Number.isFinite(published)) return null;
+    return published > built ? release : null;
+  }
+  return compareReleaseVersions(release.version, build.version) > 0 ? release : null;
+}
+
 /** Display state of one channel row for the installed channel and the rest. */
 export type ChannelRowState = "update-available" | "installed" | "other";
 

@@ -55,7 +55,9 @@ Set `score` to one ordered level for how much the hunk matters to a
 reader: `mechanical` (renames, formatting, generated, imports),
 `routine` (ordinary code with no surprises), `substantive` (behaviour
 changes), or `needs attention` (risky: concurrency, security, data
-loss, public API). When unsure, pick `routine`.
+loss, public API). Judge "public API" by reach: only a change someone
+outside this module must know about or adapt to counts — a private
+signature change is `routine`. When unsure, pick `routine`.
 
 Citations: use `[[...]]` tokens only for IDs that appear in the hunk text
 above. Never invent one.

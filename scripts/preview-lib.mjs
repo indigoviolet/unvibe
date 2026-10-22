@@ -134,8 +134,8 @@ export function assertPreviewDeleteRef(ref) {
  * - `allBranches`: every local branch short name (`git for-each-ref`).
  * - `aheadBranches`: the subset with ≥1 commit not on the base
  *   (`git rev-list --count <base>..<branch>` > 0, computed by the caller).
- * - Publish artifacts (`preview/*`, `release`, `release-rc`) are never
- *   selected — they are orphan build refs, not sources.
+ * - Publish artifacts (`preview/*`, `release`) are never selected — they
+ *   are orphan build refs, not sources.
  */
 export function selectAllBranches(allBranches, aheadBranches, mainName = "main") {
   const all = (allBranches ?? []).map(String);
@@ -144,7 +144,7 @@ export function selectAllBranches(allBranches, aheadBranches, mainName = "main")
   const seen = new Set();
   for (const b of all) {
     if (b === mainName) continue;
-    if (b === "release" || b === "release-rc" || b.startsWith("preview/")) continue;
+    if (b === "release" || b.startsWith("preview/")) continue;
     if (!ahead.has(b)) continue;
     if (seen.has(b)) continue;
     seen.add(b);

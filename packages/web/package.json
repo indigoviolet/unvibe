@@ -16,6 +16,8 @@
     "test:slow": "VITE_MOCK=1 UNVIBE_TEST_SUITE=slow vitest run"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@floating-ui/dom": "^1.8.0",
     "@fontsource/dm-mono": "^5.3.0",
     "@fontsource/fira-code": "^5.3.0",
     "@fontsource/fira-sans": "^5.3.0",

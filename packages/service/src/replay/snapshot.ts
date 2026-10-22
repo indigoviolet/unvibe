@@ -201,6 +201,29 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   for (const entry of manifest.recordings.filter((e) => e.kind === "critic")) {
     const parsed = parseReply(textOf(entry.file));
+    // #215: one critic recording carries 1-3 findings (findings array).
+    const findings = (parsed.data?.findings as { id?: string; title?: string; confidence?: string; summary?: string; cardIds?: string[] }[] | undefined) ?? null;
+    if (findings) {
+      let cursor = 0;
+      for (const f of findings) {
+        const pageId = f.id ?? entry.key ?? "f-critic";
+        const cardIds = f.cardIds ?? [];
+        const take = cardIds.length > 0 ? cardIds.length : 2;
+        const slice = parsed.cards.slice(cursor, cursor + take);
+        cursor += take;
+        pages.push({
+          id: pageId,
+          kind: "finding",
+          title: f.title ?? "Finding",
+          saved: false,
+          parent: "root",
+          ...(f.confidence ? { confidence: f.confidence } : {}),
+          ...(f.summary ? { summary: f.summary } : {}),
+          cards: slice.map((c, i) => mkCard(cardIds[i] ?? `${pageId}-${i}`, pageId, c.title, canonBlocks(c.blocks))),
+        });
+      }
+      continue;
+    }
     const finding = (parsed.data?.finding ?? {}) as {
       confidence?: string;
       summary?: string;
@@ -242,20 +265,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
   }
 
-  const conceptTitles: Record<string, string> = {};
-  for (const entry of manifest.recordings.filter((e) => e.kind === "concept-page")) {
-    const parsed = parseReply(textOf(entry.file));
-    const title = (parsed.data?.title as string | undefined) ?? entry.key!;
-    conceptTitles[entry.key!] = title;
-    pages.push({
-      id: `c-${entry.key}`,
-      kind: "concept",
-      title,
-      saved: true,
-      parent: "root",
-      cards: [mkCard(`cc-${entry.key}`, `c-${entry.key}`, null, canonBlocks(parsed.blocks))],
-    });
-  }
+  // #216: no concept pages are seeded; a concept page is written when
+  // its link is opened (concept-page recordings stay for that on-demand fill).
 
   // "Restated →" mapping (PRD §4.11): description paragraph → guide block
   // ids whose citations restate it, derived from the root page's `desc:`.
@@ -455,8 +466,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
     jobs: [
       { id: "job-reader", kind: "reader", model: "fixture", effort: "", priority: 1, state: "done" },
-      { id: "job-critic-lf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
-      { id: "job-critic-perf", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
+      { id: "job-critic", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },
       { id: "job-hunk-pass", kind: "hunk-pass", model: "fixture", effort: "", priority: 3, state: "done" },
     ],
     contributions: [],
@@ -501,11 +511,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
   }
 
-  if (Object.keys(conceptTitles).length !== meta.concepts.length) {
-    throw new Error(
-      `snapshot build failed: concept pages cover [${Object.keys(conceptTitles).join(", ")}] but meta lists [${meta.concepts.join(", ")}]`,
-    );
-  }
   if (failures.length > 0) {
     throw new Error(
       `snapshot build failed: ${failures.length} problem(s):\n` +

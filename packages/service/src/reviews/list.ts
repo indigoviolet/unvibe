@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle } from "@unvibe/shared";
+import { isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -55,7 +55,7 @@ type GuideStatus = ReviewSummary["guideStatus"];
  * auto-fill aside), so a pending go-deeper never blocks readiness — live
  * `go-deeper` jobs still report as running through `liveJobs` above.
  */
-const CORE_STAGES = ["reader", "base", "critic", "concepts", "hunk-pass"] as const;
+const CORE_STAGES = ["reader", "base", "critic", "hunk-pass"] as const;
 
 function guideStatusFor(
   snapshot: ReviewSnapshot | null,
@@ -145,12 +145,21 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       (a) => a.type === "comment" && (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt,
     ).length;
     const stale = snapshot?.versionStatus?.stale ?? false;
-    const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
+    // #224: PR badges from the gh data stored on the description at
+    // ingest/refresh time (no gh call here, per this module's contract).
+    const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
+    const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
+    // Issue #222: document reviews have no guide pipeline; the document is ready.
+    const guide =
+      snapshot !== null && isDocumentReview(snapshot)
+        ? { status: "ready" as const, detail: undefined as string | undefined }
+        : guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
     // #92: ingest state rides the summary so Previous reviews marks loading/failed rows.
     const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
+      ...(snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
       repoId: row.repo_id,
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,
@@ -165,6 +174,8 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       totalHunks,
       reviewedHunks,
       pendingComments,
+      ...(prState !== undefined ? { prState } : {}),
+      ...(reviewDecision !== undefined ? { reviewDecision } : {}),
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
       ingestStatus,

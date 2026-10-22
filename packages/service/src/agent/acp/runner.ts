@@ -34,7 +34,7 @@ import {
 import { assertLiveAgentAllowed } from "../live-guard.js";
 import { friendlySessionStartError } from "../../exec/shim-resolve.js";
 import { toAcpMcpServers } from "./mcp.js";
-import { aggregateTurnUsage, deltaTurnUsage, type TurnUsage } from "./usage.js";
+import { aggregateTurnUsage, type TurnUsage } from "./usage.js";
 import { errorMessage, isCancelError, isRetryableError } from "./errors.js";
 import {
   normalizeProvider,
@@ -127,11 +127,9 @@ export class AcpAgentRunner implements AgentRunner {
   private known = new Map<string, AcpSessionRecord>();
   /** Canonical policies per transport, reapplied after restarts. */
   private policies = new Map<string, Map<string, SessionPolicy>>();
-  /** Last reported cumulative usage per session (Claude counters grow across
-   *  turns; per-turn usage is the delta — see usage.ts). */
-  private usageBaseline = new Map<string, TurnUsage>();
-  /** Usage of the shared first turn, folded into the session's first
-   *  real prompt so per-job reporting stays complete (see start()). */
+  /** Usage of the shared first (warm-up) turn, consumed once via
+   *  takeSessionStartUsage so the pipeline attributes it to the job's
+   *  "session start" turn (see start()). */
   private firstTurnUsage = new Map<string, TurnUsage>();
   private modelCache = new Map<ProviderId, { at: number; models: ModelInfo[]; defaultId?: string | null }>();
   private opts: AcpRunnerOptions;
@@ -205,33 +203,35 @@ export class AcpAgentRunner implements AgentRunner {
 
   private newSessionMeta(provider: ProviderId, systemPrompt: string, readOnly: boolean): Record<string, unknown> {
     if (provider === "claude") {
-      const meta: Record<string, unknown> = { systemPrompt };
+      // Issue #209 (owner decision: option (a)): Unvibe sessions load
+      // only Unvibe's own MCP servers (passed via `mcpServers`), never
+      // the user's or the repository's. Without `strictMcpConfig`, every
+      // configured MCP server's tools load eagerly into the first turn
+      // (~0.9k tokens each — ~790k for ~880 tools, plus ~28 s connecting
+      // them), instead of staying deferred as in interactive sessions.
+      const options: Record<string, unknown> = { strictMcpConfig: true };
       if (readOnly) {
         // Tightest lockdown verified by live tests (see docs/acp-runner.md):
         // built-ins reduced to file readers; everything else denied by the
         // permission handler. MCP tools are unaffected (separate channel).
-        (meta as Record<string, unknown>).claudeCode = {
-          options: {
-            tools: ["Read", "Glob", "Grep"],
-            disallowedTools: [
-              "Bash",
-              "Edit",
-              "Write",
-              "NotebookEdit",
-              "WebFetch",
-              "WebSearch",
-              "Task",
-              "TodoWrite",
-              "BashOutput",
-              "KillShell",
-            ],
-          },
-        };
+        options["tools"] = ["Read", "Glob", "Grep"];
+        options["disallowedTools"] = [
+          "Bash",
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "WebFetch",
+          "WebSearch",
+          "Task",
+          "TodoWrite",
+          "BashOutput",
+          "KillShell",
+        ];
       }
       // Full access (issue #160): no tool reduction — the adapter defaults
       // (the agent's full tool set) apply, and the permission handler
       // approves. The limits live only in the system prompt.
-      return meta;
+      return { systemPrompt, claudeCode: { options } };
     }
     // Codex: `_meta.systemPrompt` is silently ignored (spike 1a FAIL).
     // Developer/base instructions travel as AIR customInstructions, which
@@ -317,8 +317,10 @@ export class AcpAgentRunner implements AgentRunner {
     // per-job prompt lands after every cache-shared block (see
     // SHARED_CACHE_FIRST_TURN). Best-effort: a failed first turn must
     // not fail the job — the real prompt surfaces any real error. Its
-    // usage is folded into the first real prompt's usage event, and
-    // its notifications are drained by prompt() before that turn.
+    // usage is recorded here and consumed once via takeSessionStartUsage,
+    // so the pipeline can attribute it to the job's "session start" turn
+    // instead of the first real prompt; its notifications are drained by
+    // prompt() before that turn.
     if (provider === "claude" && opts.systemPrompt === "") {
       try {
         const warm = await caller.request("session/prompt", {
@@ -326,7 +328,6 @@ export class AcpAgentRunner implements AgentRunner {
           prompt: [{ type: "text", text: SHARED_CACHE_FIRST_TURN }],
         });
         const tu = aggregateTurnUsage(warm as { usage?: unknown; _meta?: unknown });
-        this.usageBaseline.set(rec.acpSessionId, tu);
         this.firstTurnUsage.set(rec.acpSessionId, tu);
       } catch {
         // ignore: caching optimisation only
@@ -610,6 +611,11 @@ export class AcpAgentRunner implements AgentRunner {
     else signal?.addEventListener("abort", onAbort, { once: true });
 
     const seenTools = new Set<string>();
+    // Adapters stream arguments: the opening `tool_call` carries `{}`
+    // and the real `rawInput` arrives on intermediate updates, while the
+    // terminal update often carries none. Remember the latest detail per
+    // call so the `end` event can carry it to the job record.
+    const toolDetails = new Map<string, string>();
     const flush = function* (): Generator<AgentEvent> {
       while (pending.length > 0) {
         const u = pending.shift() as {
@@ -624,6 +630,11 @@ export class AcpAgentRunner implements AgentRunner {
           input?: unknown;
         };
         const kind = u?.sessionUpdate;
+        if (process.env.UNVIBE_ACP_DEBUG === "2" && (kind === "tool_call" || kind === "tool_call_update")) {
+          try {
+            process.stderr.write(`[acp-tool] ${JSON.stringify(u).slice(0, 1500)}\n`);
+          } catch { /* debug only */ }
+        }
         if (kind === "agent_message_chunk" && u?.content?.type === "text" && typeof u.content.text === "string" && u.content.text !== "") {
           yield { type: "text", delta: u.content.text };
         } else if (kind === "tool_call") {
@@ -633,17 +644,46 @@ export class AcpAgentRunner implements AgentRunner {
           // (shell command, URL, …) when the adapter sends arguments with
           // the call. Adapters that send none record the name only.
           const detail = formatToolDetail(u.rawInput ?? u.input);
-          if (detail !== undefined) yield { type: "tool", name, status: "start", detail };
-          else yield { type: "tool", name, status: "start" };
+          if (detail !== undefined && u.toolCallId) toolDetails.set(u.toolCallId, detail);
+          const result = formatToolResult((u as { content?: unknown }).content);
+          yield {
+            type: "tool",
+            name,
+            status: "start",
+            ...(u.toolCallId ? { id: u.toolCallId } : {}),
+            ...(detail !== undefined ? { detail } : {}),
+            ...(result !== undefined ? { result } : {}),
+          };
         } else if (kind === "tool_call_update") {
           const status = (u.status ?? "") as string;
           const name = u.title || u.name || u.toolCallId || "tool";
+          const result = formatToolResult((u as { content?: unknown }).content);
+          const streamed = formatToolDetail(u.rawInput ?? u.input);
+          if (streamed !== undefined && u.toolCallId) toolDetails.set(u.toolCallId, streamed);
+          const detail = streamed ?? (u.toolCallId ? toolDetails.get(u.toolCallId) : undefined);
           if (status === "completed" || status === "failed") {
-            yield { type: "tool", name, status: "end" };
-            if (u.toolCallId) seenTools.delete(u.toolCallId);
+            yield {
+              type: "tool",
+              name,
+              status: "end",
+              ...(u.toolCallId ? { id: u.toolCallId } : {}),
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
+            if (u.toolCallId) {
+              seenTools.delete(u.toolCallId);
+              toolDetails.delete(u.toolCallId);
+            }
           } else if (u.toolCallId && !seenTools.has(u.toolCallId)) {
             seenTools.add(u.toolCallId);
-            yield { type: "tool", name, status: "start" };
+            yield {
+              type: "tool",
+              name,
+              status: "start",
+              id: u.toolCallId,
+              ...(detail !== undefined ? { detail } : {}),
+              ...(result !== undefined ? { result } : {}),
+            };
           }
         } else {
           // usage_update, plan, notices, etc.: not streamed; the final
@@ -756,35 +796,41 @@ export class AcpAgentRunner implements AgentRunner {
       return;
     }
     const tu = aggregateTurnUsage({ usage: r?.usage, _meta: r?._meta });
-    // Claude reports session-cumulative counters; Codex reports per-turn.
-    // Consumers sum per-turn usage, so delta-ize Claude against the session
-    // baseline (see usage.ts for the evidence).
-    let report = tu;
-    if (rec.provider === "claude") {
-      report = deltaTurnUsage(this.usageBaseline.get(rec.acpSessionId) ?? null, tu);
-      this.usageBaseline.set(rec.acpSessionId, tu);
-      // Fold in the shared first turn (start()) once, so the job's
-      // reported usage covers both turns.
-      const first = this.firstTurnUsage.get(rec.acpSessionId);
-      if (first) {
-        this.firstTurnUsage.delete(rec.acpSessionId);
-        report = {
-          ...report,
-          inputTokens: report.inputTokens + first.inputTokens,
-          cachedReadTokens: report.cachedReadTokens + first.cachedReadTokens,
-          cachedWriteTokens: report.cachedWriteTokens + first.cachedWriteTokens,
-          outputTokens: report.outputTokens + first.outputTokens,
-        };
-      }
-    }
+    // Both adapters report per-turn figures (#209; see usage.ts), so the
+    // aggregate IS this turn's usage — for Claude and Codex alike. Never
+    // diff it against an earlier turn of the session. The shared first
+    // (warm-up) turn's usage is NOT folded in here: the caller attributes
+    // it to the job's "session start" turn via takeSessionStartUsage, so
+    // the first real turn's usage is that turn alone.
+    const report = tu;
     yield {
       type: "usage",
       inputTokens: report.inputTokens,
       cachedReadTokens: report.cachedReadTokens,
       cachedWriteTokens: report.cachedWriteTokens,
       outputTokens: report.outputTokens,
+      // Issue #207: the adapter's payload verbatim (`usage` + `_meta`,
+      // quota figures included), for the Debug page's raw view. The
+      // derived counts above may be aggregated; this is not.
+      raw: { usage: r?.usage ?? null, _meta: r?._meta ?? null },
     };
     yield { type: "done", stopReason };
+  }
+
+  /**
+   * Issue #209: consume the shared first (warm-up) turn's usage for a
+   * session started with an empty system prompt, if one was recorded.
+   * The pipeline reports it on the job's "session start" turn record
+   * (which also carries the 28 s-class start wall time), separately from
+   * the first real turn. Exact adapter-reported figures, not computed.
+   */
+  takeSessionStartUsage(sessionId: string): TurnUsage | undefined {
+    const rec = this.known.get(sessionId);
+    if (!rec) return undefined;
+    const first = this.firstTurnUsage.get(rec.acpSessionId);
+    if (!first) return undefined;
+    this.firstTurnUsage.delete(rec.acpSessionId);
+    return first;
   }
 
   /** Models the adapter offers (from session/new configOptions). */
@@ -923,7 +969,7 @@ export class AcpAgentRunner implements AgentRunner {
     // dispose is terminal; clear everything.
     this.known.clear();
     this.policies.clear();
-    this.usageBaseline.clear();
+    this.firstTurnUsage.clear();
   }
 }
 
@@ -932,10 +978,48 @@ export class AcpAgentRunner implements AgentRunner {
  * pass through; objects stringify; anything else records nothing.
  * Truncated: the job record names the tool, it is not a transcript.
  */
+/**
+ * Issue #207: a tool call's result text from its `content` collection.
+ * Text blocks pass through; diffs contribute their new text; anything
+ * else contributes a short marker. Untruncated here — the job record
+ * truncates with the original length.
+ */
+export function formatToolResult(content: unknown): string | undefined {
+  if (!Array.isArray(content)) {
+    const single = content as { type?: string; text?: string } | null;
+    if (single?.type === "text" && typeof single.text === "string") return single.text;
+    return undefined;
+  }
+  const parts: string[] = [];
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (item.type === "content") {
+      const inner = item.content as { type?: string; text?: string } | undefined;
+      if (inner?.type === "text" && typeof inner.text === "string") parts.push(inner.text);
+      else if (inner) parts.push(`[${inner.type ?? "content"}]`);
+    } else if (item.type === "diff") {
+      const path = typeof item.path === "string" ? item.path : "file";
+      const newText = typeof item.newText === "string" ? item.newText : "";
+      parts.push(newText ? `diff ${path}:\n${newText}` : `diff ${path}`);
+    } else if (item.type === "terminal") {
+      parts.push(`[terminal ${typeof item.terminalId === "string" ? item.terminalId : ""}]`);
+    } else if (typeof item.type === "string") {
+      parts.push(`[${item.type}]`);
+    }
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join("\n");
+}
+
 export function formatToolDetail(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   const text = typeof input === "string" ? input : safeJson(input);
   if (!text || text.trim() === "") return undefined;
+  // Adapters stream tool calls: the first `tool_call` often carries an
+  // empty placeholder (`{}`) before the real arguments arrive on a later
+  // update. Treat empty containers as "no detail yet" so the later,
+  // real arguments can fill the record instead of sticking as `{}`.
+  const trimmed = text.trim();
+  if (trimmed === "{}" || trimmed === "[]") return undefined;
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }
 

@@ -92,7 +92,7 @@ describe("summarize busy dots (#63)", () => {
     );
     render(<DiffView reviewId="r63" />);
     await screen.findByText("Hunk 1 of 1");
-    fireEvent.click(screen.getByRole("button", { name: "Summarize with agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
     expect(await screen.findByLabelText("Summarizing")).toBeInTheDocument();
     // The request settles (202, job running) but the summary is not here
     // yet: the dots correctly stay until it lands by patch.
@@ -117,7 +117,7 @@ describe("summarize busy dots (#63)", () => {
     );
     render(<DiffView reviewId="r63" />);
     await screen.findByText("Hunk 1 of 1");
-    fireEvent.click(screen.getByRole("button", { name: "Summarize with agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
     expect(await screen.findByLabelText("Summarizing")).toBeInTheDocument();
     act(() => {
       resolveReq({ jobId: "job-1" });
@@ -141,12 +141,12 @@ describe("summarize busy dots (#63)", () => {
     );
     render(<DiffView reviewId="r63" />);
     await screen.findByText("Hunk 1 of 1");
-    fireEvent.click(screen.getByRole("button", { name: "Summarize with agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
     expect(await screen.findByLabelText("Summarizing")).toBeInTheDocument();
     act(() => {
       rejectReq(new Error("no agent configured"));
     });
-    expect(await screen.findByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Summarize" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Summarizing")).toBeNull();
   });
 });

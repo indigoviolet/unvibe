@@ -4,10 +4,12 @@
  * and dark): the guide with a pinned card, a card opened from inside
  * a pinned card in the guide and in the diff, the diff in unified
  * and split, a deep-anchored card, every toolbar/file-tree menu, the
- * comments menu, and Settings → Version. Screenshots land in the
+ * comments menu, every Settings tab, and the start page (Open-a-PR
+ * row, PR list, Reviews list). Screenshots land in the
  * git-ignored `visual-tour/` folder for the owner to look at.
  *
- * At every step, three generic checks (no per-feature asserts):
+ * At every step, generic checks (no per-feature asserts), including
+ * the #225 layout check (`layout-check.ts`) on every scene:
  * - every open menu/popover is fully inside the viewport and topmost
  *   at its corners and centre;
  * - every open card's FULL box is inside the viewport horizontally
@@ -17,7 +19,7 @@
  * Requires `mise run build` first. Run via `mise run visual-tour`.
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +28,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { checkLayout } from "./layout-check.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -48,6 +52,9 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
 }
 
 let dataDir = "";
+let tourBin = "";
+let tourLog = "";
+let tourShellPath = "";
 let svc: RunningService | null = null;
 let reviewId = "";
 
@@ -55,7 +62,25 @@ test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
-  svc = await startService(dataDir, { agent: "replay" });
+  // Hermetic service (AGENTS.md: tests never hit real GitHub): fake
+  // `gh` (authenticated as a fake login, empty PR lists) and a `git`
+  // wrapper that fails `ls-remote` instantly, so the GitHub-fetch
+  // probe reports a deterministic offline warning — no real network.
+  tourBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-bin-"));
+  tourLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-gh-"));
+  writeFakeGhTour(tourBin, tourLog);
+  writeFakeGitOffline(tourBin, realGitPath());
+  tourShellPath = path.join(tourBin, "fakeshell");
+  writeFileSync(tourShellPath, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${tourBin}:$PATH"\n`, { mode: 0o755 });
+  svc = await startService(dataDir, {
+    agent: "replay",
+    extraEnv: {
+      SHELL: tourShellPath,
+      PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}`,
+      // Fake updater so the Settings → Version scene lists channels (#229).
+      UNVIBE_UPDATER_BACKEND: "fake",
+    },
+  });
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
   };
@@ -75,17 +100,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await svc?.stop().catch(() => {});
   svc = null;
-  rmSync(dataDir, { recursive: true, force: true });
+  for (const d of [dataDir, tourBin, tourLog]) rmSync(d, { recursive: true, force: true });
 });
-
-/** Generic check: no horizontal page overflow. */
-async function checkNoPageOverflow(page: Page, step: string): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    return Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
-  });
-  expect(overflow, `${step}: horizontal page overflow ${overflow}px`).toBeLessThanOrEqual(1);
-}
-
 
 /**
  * Syntax-token contrast (issue #196 review): a string/comment token in
@@ -155,7 +171,7 @@ async function checkMenus(page: Page, step: string): Promise<void> {
 
 /** Generic check: open cards fully inside horizontally + topmost grid. */
 async function checkCards(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".card.child:visible");
+  const cards = page.locator(".ui-card.child:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const r = cardEl.getBoundingClientRect();
@@ -196,7 +212,7 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // its ancestor (a child above its parent). An ancestor — or
           // any part of it, such as its sticky reply footer — covering
           // a descendant, or an unrelated card covering this one, fails.
-          const hitCard = hit.closest(".card.child");
+          const hitCard = hit.closest(".ui-card.child");
           if (hitCard && cardEl.contains(hitCard)) continue;
           // A header may cover a card only while it is actually stuck
           // in its pinned slot at the top of the pane (its top equals
@@ -223,10 +239,10 @@ async function checkCards(page: Page, step: string): Promise<void> {
  * its parent is the one allowed cover, as in the grid check).
  */
 async function checkReplyBoxes(page: Page, step: string): Promise<void> {
-  const boxes = page.locator(".card.child textarea:visible");
+  const boxes = page.locator(".ui-card.child textarea:visible");
   for (let i = 0; i < (await boxes.count()); i++) {
     const bad = await boxes.nth(i).evaluate((ta: Element) => {
-      const card = ta.closest(".card.child");
+      const card = ta.closest(".ui-card.child");
       if (!card) return "reply input not inside a floating card";
       const r = ta.getBoundingClientRect();
       const c = card.getBoundingClientRect();
@@ -247,7 +263,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
             if (composer.contains(hit) || hit === card) continue;
             // A descendant card over the strip is allowed; this
             // card's own answer content showing there is the bug.
-            const hitCard: Element | null = hit.closest(".card.child");
+            const hitCard: Element | null = hit.closest(".ui-card.child");
             if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
             return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
           }
@@ -270,7 +286,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
         // Only a descendant card may cover this card's reply input;
         // an ancestor's footer (or anything else) over it fails.
-        const hitCard = hit.closest(".card.child");
+        const hitCard = hit.closest(".ui-card.child");
         if (hitCard && card.contains(hitCard)) continue;
         return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
       }
@@ -287,7 +303,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
  * allowed cover is a descendant card, as in the grid check.
  */
 async function checkCardHeaders(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".card.child:visible");
+  const cards = page.locator(".ui-card.child:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const header = cardEl.querySelector(":scope > .exp-h");
@@ -334,13 +350,13 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         const hit = document.elementFromPoint(x, y);
         if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
         if (cardEl.contains(hit)) {
-          const hitCard = hit.closest(".card.child");
+          const hitCard = hit.closest(".ui-card.child");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
         // The pinned top stack (and the app top bar) slides over
         // inline cards by design.
         if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
-        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".card.child")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".ui-card.child")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
     });
@@ -433,7 +449,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".card.child")) {
+        if (hit && hit.closest(".ui-card.child")) {
           return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
         }
       }
@@ -447,7 +463,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
-    const cards = [...pane.querySelectorAll(".card.child")].map((c) => c.getBoundingClientRect());
+    const cards = [...pane.querySelectorAll(".ui-card.child")].map((c) => c.getBoundingClientRect());
     let coveredTo = bandTop;
     for (const r of cover) {
       if (r.top > coveredTo + 0.2) {
@@ -475,7 +491,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       const y = (layers[i].bottom + layers[i + 1].top) / 2;
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".card.child")) {
+        if (hit && hit.closest(".ui-card.child")) {
           return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
         }
       }
@@ -530,7 +546,7 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       if (y < pv.top || y > pv.bottom) continue;
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
-      if (hit.closest(".card.child")) continue;
+      if (hit.closest(".ui-card.child")) continue;
       if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
@@ -684,7 +700,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   let last = "";
   for (let i = 0; i < 10; i++) {
     const now = await page.evaluate(() =>
-      [...document.querySelectorAll(".card.child")].map((c) => {
+      [...document.querySelectorAll(".ui-card.child")].map((c) => {
         const r = c.getBoundingClientRect();
         return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
       }).join("|"),
@@ -693,7 +709,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
     last = now;
     await page.waitForTimeout(300);
   }
-  await checkNoPageOverflow(page, step);
+  await checkLayout(page, step);
   await checkPinnedSlots(page, step);
   await checkPinnedBand(page, step);
   await checkGutters(page, step);
@@ -728,13 +744,13 @@ for (const combo of [
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
     await stepChecks(page, "guide-decisions");
-    await shot(page, "guide-decisions", suffix, "Decisions and alternatives");
+    await shot(page, "guide-decisions", suffix, "Decisions and questions");
     await page.locator("#C-problem").scrollIntoViewIfNeeded();
     // Open a pinned card the way a reader does: select guide text
     // and Explain it.
     await selectText(page, "#C-problem", "used to let a server continue");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedCard: Locator = page.locator("#page .card.child").first();
+    const seedCard: Locator = page.locator("#page .ui-card.child").first();
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
@@ -742,7 +758,7 @@ for (const combo of [
     await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
 
     // A card opened from inside the pinned card (guide).
-    await selectText(page, "#page .card.child [data-answer]", "fold");
+    await selectText(page, "#page .ui-card.child [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#page .ithread[data-pending-thread]");
     await expect(composer).toBeVisible();
@@ -765,8 +781,8 @@ for (const combo of [
     // Floating card + nested card in the diff.
     await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .card.child").first()).toBeVisible({ timeout: 15_000 });
-    await selectText(page, ".dhunk .card.child [data-answer]", "fold");
+    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, ".dhunk .ui-card.child [data-answer]", "fold");
     await page.locator('#selbar [data-act="ask"]').click();
     const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
     await expect(dComposer).toBeVisible();
@@ -777,10 +793,10 @@ for (const combo of [
     await stepChecks(page, "diff-nested");
     await shot(page, "diff-nested", suffix, "Why is this here?");
     await closeCard(page, diffChild);
-    await closeCard(page, page.locator(".dhunk .card.child").first());
+    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
     // No diff card may survive into the next step: the long
     // card below is read through `.first()`, by DOM order.
-    await expect(page.locator(".dhunk .card.child")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator(".dhunk .ui-card.child")).toHaveCount(0, { timeout: 15_000 });
 
     // Top-level diff card with a LONG answer (the dedicated replay
     // recording), scrolled to its middle and then its bottom inside
@@ -788,7 +804,7 @@ for (const combo of [
     // may show below its sticky reply footer.
     await selectText(page, "#right table.diff", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const longCard = page.locator(".dhunk .card.child").first();
+    const longCard = page.locator(".dhunk .ui-card.child").first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(longCard).toContainText("The tests around the helper mirror that split");
@@ -808,7 +824,7 @@ for (const combo of [
     await page.getByRole("button", { name: "Split" }).click();
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const splitCard = page.locator(".dhunk .card.child").first();
+    const splitCard = page.locator(".dhunk .ui-card.child").first();
     await expect(splitCard).toBeVisible({ timeout: 15_000 });
     await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -826,7 +842,7 @@ for (const combo of [
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
     await selectText(page, "#right", "_normalize_header_values(http");
     await page.locator('#selbar [data-act="explain"]').click();
-    const fileCard = page.locator(".dhunk .card.child").first();
+    const fileCard = page.locator(".dhunk .ui-card.child").first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(fileCard).toContainText("The tests around the helper mirror that split");
@@ -853,7 +869,7 @@ for (const combo of [
     await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
     await page.locator('#selbar [data-act="explain"]').click();
-    const mlCard = page.locator(".dhunk .card.child").first();
+    const mlCard = page.locator(".dhunk .ui-card.child").first();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click();
@@ -891,10 +907,10 @@ for (const combo of [
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .card.child").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
     await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
-    await closeCard(page, page.locator(".dhunk .card.child").first());
+    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();
@@ -915,24 +931,204 @@ for (const combo of [
     await shot(page, "menu-review-filter", suffix, "GitHub comments");
     await page.keyboard.press("Escape");
 
-    // Comments menu.
+    // File tree (#227): no horizontal overflow in the panel, and every
+    // row's change indicators sit inside its right edge.
+    const treeBad = await page.locator(".flist").evaluate((el) => {
+      if (el.scrollWidth > el.clientWidth + 1) return `tree scrolls sideways ${el.scrollWidth}>${el.clientWidth}`;
+      const box = el.getBoundingClientRect();
+      for (const ind of el.querySelectorAll(".fr.file .st, .fr.file .rv")) {
+        const r = ind.getBoundingClientRect();
+        if (r.left < box.left - 1 || r.right > box.right + 1) return "tree indicator outside the panel";
+      }
+      return null;
+    });
+    expect(treeBad, `file-tree: ${treeBad ?? ""}`).toBeNull();
+    await stepChecks(page, "file-tree");
+    await shot(page, "file-tree", suffix, "connection.py");
+
+    // Comments menu, Comments tab: This review and On GitHub (#226, #236).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmtab="comments"]')).toBeVisible();
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toContainText("On GitHub");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toHaveCount(0);
     await stepChecks(page, "menu-comments");
-    await shot(page, "menu-comments", suffix, "Already on GitHub");
+    await shot(page, "menu-comments", suffix, "On GitHub");
+    await page.keyboard.press("Escape");
+
+    // Outbox section with the Markdown export box (#223): mark one
+    // visible suggested comment, then open the menu — This review,
+    // Outbox (with drafts + Copy box) and On GitHub all populated.
+    // The four variants share one review, so an earlier variant may
+    // already have marked every rendered comment (no "Add to Outbox"
+    // left), and at 960 the diff threads can still be mounting when
+    // this step starts. Wait (bounded, with a clear message) for a
+    // toggle in either state, and only click when nothing is marked.
+    const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
+    const inOutbox = page.getByRole("button", { name: "Remove from the Outbox" }).first();
+    await expect
+      .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
+        timeout: 15_000,
+        message: "menu-outbox: no comment Outbox toggle rendered yet (diff threads not mounted)",
+      })
+      .toBeGreaterThan(0);
+    if ((await inOutbox.count()) === 0) {
+      await addToOutbox.click({ timeout: 10_000 });
+      await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
+    }
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
+    await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).not.toContainText("Nothing in the Outbox yet.");
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toHaveCount(0);
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await stepChecks(page, "menu-outbox");
+    await shot(page, "menu-outbox", suffix, "Copy");
     await page.keyboard.press("Escape");
 
     // Debug page (#194): job timings in local time with durations.
     await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
-    await checkNoPageOverflow(page, "debug");
+    await checkLayout(page, "debug");
     await shot(page, "debug", suffix, "Queued");
 
-    // Settings → Version.
-    await page.goto(`${svc!.origin}/settings?tab=version&token=${svc.token}`);
-    await expect(page.getByRole("tab", { name: "Version" })).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, "settings-version");
-    await shot(page, "settings-version", suffix, "Installed:");
+    // Debug Output (#207): one view per job (no Prompt button); the
+    // first job expanded, turn by turn, with its prompt, reply, tool
+    // calls as one expandable line each in a bounded list, and the raw
+    // usage payload. The row's Tools count expands the same way.
+    await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Output" }).first().click();
+    await expect(page.locator('[data-testid="job-output"]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read", { timeout: 15_000 });
+    await page.locator('[data-testid="job-turn-tool"]').first().locator("summary").click();
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Arguments", { timeout: 15_000 });
+    // Frame the whole job row, header (kind/state) above Turn 1.
+    await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
+    await checkLayout(page, "debug-output");
+    await shot(page, "debug-output", suffix, "Raw usage");
+
+    // Settings → every tab (#225): fields must fit the card at
+    // every width. One scene per tab so the failure names the tab.
+    for (const tab of [
+      { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
+      { id: "repositories", name: "Repos", marker: "Add by path" },
+      { id: "models", name: "Models", marker: "Writes the guide" },
+      { id: "environment", name: "Environment", marker: "Re-check" },
+      { id: "version", name: "Version", marker: "Installed:" },
+      { id: "appearance", name: "Appearance", marker: "Theme" },
+    ] as const) {
+      await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
+      await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
+      if (tab.id === "version") {
+        // #233 (with #229's horizontal alignment): enable the picker
+        // (fake backend) and assert compact single-line rows sharing
+        // the card's side padding with equal heights, and the Channels
+        // label bottom-aligned with Refresh above the divider.
+        const versionToggle = page.getByTestId("version-picker-toggle");
+        if (!(await versionToggle.isChecked())) {
+          await versionToggle.click();
+          await expect(versionToggle).toBeChecked({ timeout: 15_000 });
+        }
+        await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
+        const vToggleBox = await versionToggle.boundingBox();
+        const vLabelBox = await page.locator('.ver-toggle label[for="version-picker-toggle"]').boundingBox();
+        expect(
+          Math.abs(vToggleBox!.y + vToggleBox!.height / 2 - (vLabelBox!.y + vLabelBox!.height / 2)),
+          "version: checkbox and label share one line",
+        ).toBeLessThanOrEqual(2);
+        const vHelp = (await page.locator(".ver-toggle-hint").textContent()) ?? "";
+        expect(vHelp.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+        expect(vHelp).not.toMatch(/gh|login|restart/i);
+        const vRows = page.locator('[data-testid="update-channel"]');
+        expect(await vRows.locator(".ui-row-meta").count()).toBe(0);
+        const vHeights = await vRows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+        expect(Math.max(...vHeights) - Math.min(...vHeights)).toBeLessThanOrEqual(1.5);
+        const vHeadBox = await page.locator(".ver-listhead").boundingBox();
+        const vFirstBox = await vRows.first().boundingBox();
+        expect(Math.abs(vHeadBox!.x - vFirstBox!.x)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vHeadBox!.x + vHeadBox!.width - (vFirstBox!.x + vFirstBox!.width))).toBeLessThanOrEqual(2);
+        const vRefreshBox = await page.getByTestId("update-refresh").boundingBox();
+        const vChannelsBox = await page.locator(".ver-listhead .hint").boundingBox();
+        // Bottom-aligned (#233): the label's bottom and the button's
+        // bottom sit the same distance above the divider (the first
+        // row's top border), within 2px.
+        const vDividerY = vFirstBox!.y;
+        const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
+        const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
+        expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
+        const vActionBox = await vRows.locator("button").first().boundingBox();
+        expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
+        // Compact rows (#233): each row is at most the button height + 16px.
+        const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
+        for (const h of vHeights) {
+          expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
+        }
+      }
+      await checkLayout(page, `settings-${tab.id}`);
+      await shot(page, `settings-${tab.id}`, suffix, tab.marker);
+    }
+
+    // Start page (#225): the "Open a PR" row and the Reviews list
+    // share one width. (The PR list with its empty sub-groups needs
+    // gh-loaded lists, unreachable in the tour sandbox: no repos, no
+    // login. Rules 4b/4c cover it wherever it renders.)
+    // Issue #231: stage a newer release (fake backend: installed older
+    // than published on the same ref) so the top bar shows the update
+    // icon from here on; the Version scene above already ran on the seed.
+    {
+      const upd = path.join(dataDir, "update");
+      mkdirSync(upd, { recursive: true });
+      const now = Date.now();
+      writeFileSync(
+        path.join(upd, "fake-channels.json"),
+        JSON.stringify([
+          {
+            ref: "release",
+            version: "0.0.2",
+            commit: "tournew00000001",
+            builtAt: new Date(now).toISOString(),
+          },
+        ]),
+      );
+      writeFileSync(
+        path.join(upd, "fake-installed.json"),
+        JSON.stringify({
+          version: "0.0.1",
+          commit: "tourold00000001",
+          builtAt: new Date(now - 7 * 86400_000).toISOString(),
+        }),
+      );
+      await apiJson(svc.origin, svc.token, "GET", "/api/update/channels?refresh=1");
+    }
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start");
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-reviews");
+    await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");
+    // Issue #231: top bar with the update icon (tooltip names the release).
+    await expect(page.getByTestId("update-available-icon")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("update-available-icon")).toHaveAttribute("title", "Update available: v0.0.2");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-update-icon");
+    await shot(page, "start-update-icon", suffix, "Open a PR by URL or number");
+    // Issue #235: the full-access marker lives on the front-page top
+    // bar (turned on here through settings, back off right after so no
+    // later scene sees it).
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+      fullAccess: true,
+      fullAccessAcknowledgedAt: Date.now(),
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByTestId("full-access-marker")).toBeVisible({ timeout: 15_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-full-access");
+    await shot(page, "start-full-access", suffix, "full access");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
   });
 }
 
@@ -997,12 +1193,12 @@ for (const combo of [
     }, sansFamily);
     expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
     expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
-    await checkNoPageOverflow(page, `theme-${combo.theme}-guide`);
+    await checkLayout(page, `theme-${combo.theme}-guide`);
     await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
 
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-diff`);
+    await checkLayout(page, `theme-${combo.theme}-diff`);
     await checkTokenContrast(page, `theme-${combo.theme}-diff`);
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
@@ -1027,12 +1223,445 @@ for (const combo of [
 
     await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
     await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="ui-theme"]')).toHaveValue(combo.theme, { timeout: 15_000 });
-    await checkNoPageOverflow(page, `theme-${combo.theme}-settings`);
+    await expect(page.locator('[data-testid="ui-theme"]')).toContainText(combo.theme === "studio" ? "Studio" : "Console", { timeout: 15_000 });
+    await checkLayout(page, `theme-${combo.theme}-settings`);
     await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
 }
+
+// Issue #232 preparing states: while a review is being prepared both
+// panes share one modest loading state — the processing indicator plus a
+// short label at body size ("Building the guide" / "Loading the diff"),
+// inside the pane's normal content padding. Two scenes, every theme ×
+// scheme × width, each with checkLayout:
+// - ingest loading: the guide shows "Building the guide" and the diff
+//   shows "Loading the diff". The ingest is held open on a sleeping fake
+//   `gh pr view` (sleeper PIDs recorded for cleanup, so afterAll kills
+//   only what this test started);
+// - guide building after a finished ingest: the guide still shows
+//   "Building the guide" (a seeded running pipeline stage with no pages,
+//   stable under agent=none) while the diff is ready.
+test.describe("visual tour review preparing (#232)", () => {
+  let dir232 = "";
+  let bin232 = "";
+  let log232 = "";
+  let repo232 = "";
+  let svc232: RunningService | null = null;
+  let loadingId = "";
+  let buildingId = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-data-"));
+    bin232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-bin-"));
+    log232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-gh-"));
+    // Scratch repo (branch `feature` over `main`): the PR review hangs
+    // its ingest on the sleeping fake `gh`; the branch review ingests
+    // for real and is then seeded into the building state.
+    repo232 = path.join(os.tmpdir(), `unvibe-tour-232-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", repo232]);
+    const g = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo232 });
+    };
+    await g("config", "user.email", "t@example.com");
+    await g("config", "user.name", "T");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 1\n");
+    await g("add", ".");
+    await g("commit", "-m", "base");
+    await g("checkout", "-b", "feature");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 2\n");
+    await g("add", ".");
+    await g("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: repo232 });
+    const head = headOut.trim();
+    writeFileSync(
+      path.join(bin232, "gh"),
+      `#!/bin/sh
+LOG="${log232}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo "tour-host: Logged in to github.com account tour-reviewer (e2e stub)"
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  sleep 150 & echo $! >> "$LOG/sleep.pids"
+  wait
+  cat <<EOF
+{"title":"Tour preparing PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0
+fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(bin232, realGitPath());
+    const fakeShell = path.join(bin232, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${bin232}:$PATH"\n`, { mode: 0o755 });
+    const extraEnv = {
+      SHELL: fakeShell,
+      PATH: `${bin232}${path.delimiter}${process.env.PATH ?? ""}`,
+    };
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+    // PR review: ingest hangs on the sleeping `gh`, staying loading.
+    const repos = (await apiJson(svc232.origin, svc232.token, "POST", "/api/repos", { path: repo232 })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repo232);
+    if (!registered) throw new Error("scratch repo not registered");
+    const createdLoading = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      pr: 1,
+    })) as { review: { id: string } };
+    loadingId = createdLoading.review.id;
+    // Branch review: ingests for real, then seeded into building below.
+    const createdBuilding = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    buildingId = createdBuilding.review.id;
+    const readyDeadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc232.origin, svc232.token, "GET", `/api/reviews/${buildingId}`)) as {
+        ingest?: { status?: string };
+      };
+      if (snap.ingest?.status === "ready") break;
+      if (Date.now() > readyDeadline) throw new Error("branch ingest did not finish");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // Seed the building state: finished ingest with a real diff, no
+    // guide pages, one running pipeline stage. Stable under agent=none
+    // (no pipeline to mutate it); the loading review resumes its held
+    // ingest on the restart below and stays loading.
+    await svc232.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dir232, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(buildingId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as {
+        pages: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        jobs: unknown[];
+      };
+      seeded.pages = [];
+      seeded.pipeline = { stages: { reader: "running", base: "pending" } };
+      seeded.jobs = [];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        buildingId,
+      );
+    } finally {
+      db.close();
+    }
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+  });
+
+  test.afterAll(async () => {
+    // Wake the held ingests by killing only this test's recorded sleepers.
+    try {
+      const { readFileSync } = await import("node:fs");
+      const pids = readFileSync(path.join(log232, "sleep.pids"), "utf8").split(/\s+/).filter(Boolean);
+      for (const pid of pids) {
+        try {
+          process.kill(Number(pid), "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    } catch {
+      // No sleepers recorded.
+    }
+    await svc232?.stop().catch(() => {});
+    svc232 = null;
+    for (const d of [dir232, bin232, log232]) rmSync(d, { recursive: true, force: true });
+    rmSync(repo232, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { theme: "default", width: 1440, dark: false },
+    { theme: "default", width: 1440, dark: true },
+    { theme: "default", width: 960, dark: false },
+    { theme: "default", width: 960, dark: true },
+    { theme: "studio", width: 1440, dark: false },
+    { theme: "studio", width: 1440, dark: true },
+    { theme: "studio", width: 960, dark: false },
+    { theme: "studio", width: 960, dark: true },
+    { theme: "console", width: 1440, dark: false },
+    { theme: "console", width: 1440, dark: true },
+    { theme: "console", width: 960, dark: false },
+    { theme: "console", width: 960, dark: true },
+  ] as const) {
+    const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
+    test(`visual tour review preparing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      // Persist the theme server-side (the source of truth) and mirror
+      // it locally, exactly as Settings -> Appearance leaves the browser.
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("review-loading")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #232 nit: both panes share one padding, so the two labels sit
+      // at the same height — their vertical centres match within 2px.
+      const labelDy = await page.evaluate(() => {
+        const centres = ["review-loading", "diff-loading"].map((t) => {
+          const r = document.querySelector(`[data-testid="${t}"] .pane-loading`)?.getBoundingClientRect();
+          return r ? (r.top + r.bottom) / 2 : null;
+        });
+        if (centres[0] === null || centres[1] === null) return null;
+        return Math.abs((centres[0] as number) - (centres[1] as number));
+      });
+      expect(labelDy, `review-preparing-${suffix}: labels misaligned`).not.toBeNull();
+      expect(labelDy as number, `review-preparing-${suffix}: labels misaligned`).toBeLessThanOrEqual(2);
+      await checkLayout(page, `review-preparing-${suffix}`);
+      await shot(page, "review-preparing", suffix, "Loading the diff");
+    });
+    test(`visual tour guide building (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, `guide-building-${suffix}`);
+      await shot(page, "guide-building", suffix, "Building the guide");
+    });
+  }
+});
+// Issue #222: the start page's New document review form and a document
+// review (rendered blocks, an Explain answer, an Ask answer, a comment,
+// and a `code:` citation opening the second context repo's file) in the
+// default theme at 1440 light. The context repos are throwaway git
+// checkouts registered with the tour's own service.
+test("visual tour document review (#222)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-"));
+  const repo2Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-b-"));
+  try {
+    const git = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repoDir });
+    };
+    await git("init", "-b", "main");
+    await git("config", "user.email", "tour@example.com");
+    await git("config", "user.name", "Tour");
+    writeFileSync(path.join(repoDir, "README.md"), "# Widget\n\nA widget library.\n");
+    mkdirSync(path.join(repoDir, "src"));
+    writeFileSync(path.join(repoDir, "src", "widget.ts"), "export const widget = 1;\n");
+    await git("add", ".");
+    await git("commit", "-m", "init");
+    const added = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    expect(added.repos.some((r) => r.localPath === repoDir)).toBe(true);
+    const repoId = added.repos.find((r) => r.localPath === repoDir)!.id;
+    // Second context repo: same path, different line, so the cited sha
+    // decides whose bytes the file tab shows.
+    const git2 = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo2Dir });
+    };
+    await git2("init", "-b", "main");
+    await git2("config", "user.email", "tour@example.com");
+    await git2("config", "user.name", "Tour");
+    writeFileSync(path.join(repo2Dir, "README.md"), "# Widget two\n");
+    mkdirSync(path.join(repo2Dir, "src"));
+    writeFileSync(path.join(repo2Dir, "src", "widget.ts"), "export const widget = 2; // second repo\n");
+    await git2("add", ".");
+    await git2("commit", "-m", "init two");
+    await git2("remote", "add", "origin", "https://github.com/acme/widget-two.git");
+    const added2 = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repo2Dir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const repo2Id = added2.repos.find((r) => r.localPath === repo2Dir)!.id;
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Start page: the top bar carries the Documents icon (tooltip
+    // "Documents") next to the Unvibe home link; the page itself holds no
+    // Document section.
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("link", { name: "Documents" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toHaveCount(0);
+    await checkLayout(page, "start-topbar-documents");
+    await shot(page, "start-topbar-documents", "1440-light", "Reviews");
+
+    // Documents screen: the New document review form, filled in.
+    await page.getByRole("link", { name: "Documents" }).click();
+    await page.waitForURL(/\/documents/, { timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toBeVisible({ timeout: 15_000 });
+    await checkLayout(page, "documents-screen");
+    await shot(page, "documents-screen", "1440-light", "No documents yet");
+    await page.getByRole("button", { name: "New document review" }).click();
+    await page.getByTestId("doc-markdown").fill(
+      "# Design note\n\nThe widget folds obsolete headers before parsing.\n\nIt keeps the fast path for modern responses.\n\n## Details\n\n- Folding runs before parsing\n- The fast path skips folding\n",
+    );
+    await page.getByTestId("doc-repo-select-0").selectOption(repoId);
+    await page.getByRole("button", { name: "Add another context repo" }).click();
+    await page.getByTestId("doc-repo-select-1").selectOption(repo2Id);
+    await checkLayout(page, "start-document-form");
+    await shot(page, "start-document-form", "1440-light", "Paste the document's Markdown");
+
+    await page.getByRole("button", { name: "Create document review" }).click();
+    await page.waitForURL(/\/review\//, { timeout: 30_000 });
+    const docReviewId = page.url().split("/review/")[1].split(/[/?#]/)[0];
+
+    // The document, rendered with its blocks.
+    await expect(page.getByTestId("document-view")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("document-context")).toContainText("local copy");
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "document-review");
+    await shot(page, "document-review", "1440-light", "folds obsolete headers");
+
+    // An Explain answer on document text.
+    await selectText(page, "#C-document", "folds obsolete headers");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const exp = page.locator("#C-document [data-expansion]").first();
+    await expect(exp).toBeVisible({ timeout: 15_000 });
+    await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkLayout(page, "document-explain");
+    await shot(page, "document-explain", "1440-light", "folds obsolete headers");
+    await closeCard(page, exp);
+
+    // An Ask answer on document text.
+    await selectText(page, "#C-document", "fast path for modern responses");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(askComposer).toBeVisible({ timeout: 10_000 });
+    await askComposer.locator("textarea").fill("Why does it keep a fast path?");
+    await askComposer.getByRole("button", { name: "Ask" }).click();
+    const askCard = page.locator("#C-document [data-expansion]", { hasText: "Why does it keep a fast path?" });
+    await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
+    await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkLayout(page, "document-ask");
+    await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
+
+    // A local comment on document text.
+    await selectText(page, "#C-document", "Folding runs before parsing");
+    await page.locator('#selbar [data-act="note"]').click();
+    const composer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible({ timeout: 10_000 });
+    await composer.locator("textarea").fill("Please expand this part.");
+    await composer.getByRole("button", { name: /comment|save/i }).first().click();
+    await expect(page.locator("#C-document .ithread", { hasText: "Please expand this part." }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await checkLayout(page, "document-comment");
+    await shot(page, "document-comment", "1440-light", "Please expand this part.");
+
+    // A document answer citing the second repo's file (#81): seed the
+    // answer (the J81/J222 pattern), click its citation, and frame the
+    // file tab showing the second repo's bytes.
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${docReviewId}`)) as {
+      contextRepos: { repoId: string; sha?: string }[];
+    };
+    const sha2 = snap.contextRepos.find((c) => c.repoId === repo2Id)?.sha ?? "";
+    expect(sha2).toMatch(/^[0-9a-f]{40}$/);
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(docReviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
+      seeded.annotations.push({
+        id: "ann-doc-cite",
+        type: "conversation",
+        anchor: {
+          host: { kind: "block", blockId: "document#p2" },
+          quotedText: "folds obsolete headers",
+          prefix: "The widget ",
+          suffix: " before parsing.",
+          position: 11,
+          version: 1,
+        },
+        open: true,
+        pinned: true,
+        messages: [],
+        post: false,
+        turns: [
+          {
+            question: null,
+            blocks: [
+              {
+                type: "paragraph",
+                id: "b-cite",
+                text: { standard: "The widget constant lives in the second repo." },
+                citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
+              },
+            ],
+          },
+        ],
+      });
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        docReviewId,
+      );
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, {
+      agent: "replay",
+      extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+    await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
+    const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
+    await expect(cited.first()).toBeVisible({ timeout: 30_000 });
+    await cited.first().getByRole("button", { name: "Source" }).click();
+    await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".codefile")).toContainText("second repo");
+    await checkLayout(page, "document-citation");
+    await shot(page, "document-citation", "1440-light", "second repo");
+
+    // The document comment on the Outbox tab (#223, #226, #236), with
+    // its export box — and no GitHub side on a document, either tab.
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
+    await stepChecks(page, "document-outbox");
+    await shot(page, "document-outbox", "1440-light", "Please expand this part.");
+    await page.keyboard.press("Escape");
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(repo2Dir, { recursive: true, force: true });
+  }
+});
 
 // Issue #203 writing state, on a slow replay (like J6): the fast tour
 // replay answers before a writing frame can be captured, so this scene
@@ -1076,13 +1705,394 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await expect(card.locator("textarea")).toHaveCount(0);
     mkdirSync(SHOTS, { recursive: true });
     await card.scrollIntoViewIfNeeded().catch(() => {});
+    await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
     // Once the answer arrives, the toolbar and reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
+    await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
     await slow.stop().catch(() => {});
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #81 file tab. The demo review's commits resolve in no checkout,
+// so its files cannot be read; these frames use a scratch repo (three
+// small files written here, nothing external) on an agent-less service,
+// the same way the J81 journey reads real content. Seeded guide cards
+// cite files outside the diff; one seeded file-tab comment, marked for
+// posting, shows the Submit preview's review-body permalink.
+test.describe("visual tour file tab (#81)", () => {
+  let ftRepo = "";
+  let ftData = "";
+  let ftBin = "";
+  let ftLog = "";
+  let ftSvc: RunningService | null = null;
+  let ftReview = "";
+  let ftHead = "";
+
+  async function ftGit(...args: string[]): Promise<void> {
+    await exec("git", args, { cwd: ftRepo });
+  }
+
+  // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub): the
+  // fake answers `api user` as "author" and records every call.
+  async function ftStart(): Promise<RunningService> {
+    const fakeShell = path.join(ftBin, "fakeshell");
+    return startService(ftData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${ftBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+  }
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    // Name the checkout so its registered repo reads local/<name>.
+    ftRepo = path.join(os.tmpdir(), `unvibe-tour-ft-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", ftRepo]);
+    await ftGit("config", "user.email", "t@example.com");
+    await ftGit("config", "user.name", "T");
+    writeFileSync(path.join(ftRepo, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    writeFileSync(path.join(ftRepo, "other.py"), "red = 1\ngreen = 2\n");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 1\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "base");
+    await ftGit("checkout", "-b", "feature");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 2\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: ftRepo });
+    ftBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-bin-"));
+    ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
+    writeFakeGh(ftBin, ftLog, headOut.trim());
+    writeFileSync(
+      path.join(ftBin, "fakeshell"),
+      `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${ftBin}:$PATH"\n`,
+      { mode: 0o755 },
+    );
+    ftData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-data-"));
+    ftSvc = await ftStart();
+    const repos = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/repos", { path: ftRepo })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === ftRepo);
+    if (!registered) throw new Error("scratch repo not registered");
+    const created = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    ftReview = created.review.id;
+    // Let ingest settle before seeding: the head SHA must have landed
+    // (citations pin to it), and a job still queued at shutdown resumes
+    // on the next boot and would replace the seeded snapshot.
+    const settleDeadline = Date.now() + 90_000;
+    let before: { version: { headSha: string }; files: { path: string }[] } | null = null;
+    for (;;) {
+      const snap = (await apiJson(ftSvc.origin, ftSvc.token, "GET", `/api/reviews/${ftReview}`)) as {
+        version: { headSha: string };
+        files: { path: string }[];
+        jobs?: { state: string }[];
+      };
+      const active = (snap.jobs ?? []).some((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+      if (snap.version.headSha !== "" && !active) {
+        before = snap;
+        break;
+      }
+      if (Date.now() > settleDeadline) throw new Error("scratch ingest did not settle");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    ftHead = before.version.headSha;
+    if (before.files.some((f) => f.path === "helper.py")) throw new Error("helper.py must sit outside the diff");
+
+    await ftSvc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(ftData, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(ftReview) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as {
+        pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+        annotations: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        ingest?: { status: string };
+      };
+      // Mark the ingest ready and every stage done: a snapshot still
+      // saying "loading" is re-ingested on boot, which would replace
+      // the seeded guide with an empty one.
+      snap.ingest = { status: "ready" };
+      snap.pipeline = {
+        stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" },
+      };
+      let root = snap.pages.find((p) => p.id === "root");
+      if (!root) {
+        root = { id: "root", kind: "root", title: "Guide", saved: false, cards: [] };
+        snap.pages.unshift(root);
+      }
+      const card = (id: string, text: string, target: string): unknown => ({
+        id,
+        pageId: "root",
+        title: id,
+        level: "standard",
+        collapsed: false,
+        revision: 1,
+        blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+        undoStack: [],
+      });
+      root.cards.push(
+        card("c-beta", "Uses the helper beta value.", `code:helper.py:2@${ftHead}`),
+        card("c-past", "Cites past the end.", `code:helper.py:2-99@${ftHead}`),
+        card("c-other", "Also see the other file.", `code:other.py:1@${ftHead}`),
+      );
+      snap.annotations = [
+        ...(snap.annotations ?? []),
+        {
+          id: "ft-comment",
+          type: "comment",
+          anchor: {
+            host: { kind: "code", path: "helper.py", commit: ftHead, line: 2, endLine: 3 },
+            quotedText: "beta = 2\ngamma = 3",
+            prefix: "",
+            suffix: "",
+            position: 2,
+            version: 1,
+          },
+          open: true,
+          pinned: false,
+          messages: [{ who: "you", text: "Is beta still the right default?" }],
+          post: true,
+        },
+      ];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        ftReview,
+      );
+      // Give the review a PR number so the Submit preview lists the
+      // comments instead of the no-PR notice (preview is read-only;
+      // nothing posts).
+      db.prepare("UPDATE reviews SET pr_number = 7 WHERE id = ?").run(ftReview);
+    } finally {
+      db.close();
+    }
+    ftSvc = await ftStart();
+  });
+
+  test.afterAll(async () => {
+    await ftSvc?.stop().catch(() => {});
+    rmSync(ftRepo, { recursive: true, force: true });
+    rmSync(ftData, { recursive: true, force: true });
+    rmSync(ftBin, { recursive: true, force: true });
+    rmSync(ftLog, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    test(`visual tour file tab (${combo.name})`, async ({ page }) => {
+      if (!ftSvc) throw new Error("file-tab service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${ftSvc.origin}/review/${ftReview}?token=${ftSvc.token}`);
+      await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
+
+      // Hover preview of the cited lines at the cited commit.
+      await page.locator("#C-c-beta .lk[data-refs]").hover();
+      await expect(page.locator("#pop")).toContainText("beta = 2", { timeout: 30_000 });
+      await stepChecks(page, "file-hover");
+      await shot(page, "file-hover", suffix, "beta = 2");
+
+      // Open tab; a past-the-end citation reuses it, clamped to line 3.
+      await page.locator("#C-c-beta .lk[data-refs]").click();
+      await expect(page.locator("#right .codefile")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
+      await page.locator("#C-c-past .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "helper.py" })).toHaveCount(1);
+      await expect(page.locator('.codefile [data-code-line="3"]')).toHaveClass(/cited/);
+      await stepChecks(page, "file-tab");
+      await shot(page, "file-tab", suffix, "helper.py");
+
+      // A second file opens a second tab; both show close buttons.
+      await page.locator("#C-c-other .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "other.py" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: /^Close / })).toHaveCount(2);
+      await stepChecks(page, "file-tabs");
+      await shot(page, "file-tabs", suffix, "other.py");
+
+      // Submit preview: the file-tab comment sits in the review body
+      // with its permalink.
+      await page.locator("[data-submit]").click();
+      const panel = page.locator(".submit");
+      await expect(panel).toBeVisible({ timeout: 30_000 });
+      await expect(panel).toContainText("goes in the review body", { timeout: 30_000 });
+      await expect(panel).toContainText("github.com/local/", { timeout: 30_000 });
+      await expect(panel).toContainText("beta = 2", { timeout: 30_000 });
+      await expect(panel).toContainText("Is beta still the right default?", { timeout: 30_000 });
+      await expect(panel).toContainText("Submit as author", { timeout: 30_000 });
+      await stepChecks(page, "file-submit");
+      await shot(page, "file-submit", suffix, "review body");
+    });
+  }
+});
+
+/**
+ * Remove-confirm popover (#225, #234) on the worst-case Reviews row:
+ * decision + new commits (open has no icon). Own service (agent-less) with a scratch repo
+ * and a fake `gh` whose PR view resolves the branch head at call time,
+ * so a commit added after open is picked up by refresh and the row gains
+ * its new-commits tag. The popover is asserted not to move the row's title
+ * or meta and not to cover them, then cancelled with Escape.
+ */
+test.describe("visual tour remove-confirm (#225)", () => {
+  let rcRepo = "";
+  let rcData = "";
+  let rcBin = "";
+  let rcLog = "";
+  let rcSvc: RunningService | null = null;
+  let rcReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rcRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-repo-"));
+    await makeScratchRepo(rcRepo);
+    rcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-data-"));
+    rcLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-gh-"));
+    rcBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-bin-"));
+    writeFileSync(
+      path.join(rcBin, "gh"),
+      `#!/bin/sh
+mkdir -p "${rcLog}"
+printf '%s\\n' "$*" >> "${rcLog}/calls.log"
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  HEAD=$(git -C "${rcRepo}" rev-parse feature 2>/dev/null || echo none)
+  cat <<EOF
+{"title":"Tour remove PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","baseRefName":"main","headRefName":"feature","headRefOid":"$HEAD"}
+EOF
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'author'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as author"; exit 0; fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(rcBin, realGitPath());
+    const fakeShell = path.join(rcBin, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${rcBin}:$PATH"\n`, { mode: 0o755 });
+    rcSvc = await startService(rcData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${rcBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+    rcReview = await createJourneyReview(rcSvc, rcRepo, { pr: 1 });
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    writeFileSync(path.join(rcRepo, "src", "util.py"), "VALUE = 43\n");
+    await journeyGit(rcRepo, "add", ".");
+    await journeyGit(rcRepo, "commit", "-m", "bump value");
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    // The tour's apiJson always sends a JSON content-type, which Fastify
+    // rejects on a bodiless POST; the refresh route ignores its body.
+    const refreshed = (await apiJson(rcSvc.origin, rcSvc.token, "POST", `/api/reviews/${rcReview}/refresh`, {})) as {
+      newVersion?: boolean;
+    };
+    expect(refreshed.newVersion).toBe(true);
+    await expect
+      .poll(async () => {
+        const s = (await apiJson(rcSvc!.origin, rcSvc!.token, "GET", "/api/reviews")) as {
+          reviews: { id: string; stale?: boolean }[];
+        };
+        return s.reviews.find((r) => r.id === rcReview)?.stale;
+      }, { timeout: 60_000 })
+      .toBe(true);
+  });
+
+  test.afterAll(async () => {
+    await rcSvc?.stop().catch(() => {});
+    rcSvc = null;
+    for (const d of [rcRepo, rcData, rcBin, rcLog]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "960-light", width: 960, dark: false },
+  ] as const) {
+    test(`remove-confirm popover on the worst-case row (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${rcReview}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      // The most badges a row can have (#234: open has no icon):
+      // decision + new commits.
+      await expect(row.getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(row.getByRole("img", { name: "Open" })).toHaveCount(0);
+      await expect(row).toContainText("new commits");
+      const title = row.locator(".cx2");
+      const meta = row.locator(".cj > .hint");
+      // The row keeps its size and the title/meta keep their size and
+      // position relative to it; the popover covers neither. Relative
+      // boxes, so async callouts above the list can't flake the assert.
+      const rowBoxBefore = await row.boundingBox();
+      const titleBefore = await title.boundingBox();
+      const metaBefore = await meta.boundingBox();
+      expect(rowBoxBefore).not.toBeNull();
+      expect(titleBefore).not.toBeNull();
+      expect(metaBefore).not.toBeNull();
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      const pop = page.locator(".confirm-pop");
+      await expect(pop).toContainText("Remove this review?");
+      await expect(pop.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+      await expect(pop.getByRole("button", { name: "Cancel" })).toBeVisible();
+      const rowBoxAfter = await row.boundingBox();
+      const titleAfter = await title.boundingBox();
+      const metaAfter = await meta.boundingBox();
+      const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
+      const offsetOf = (
+        inner: { x: number; y: number },
+        outer: { x: number; y: number },
+      ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
+      expect(sizeOf(rowBoxAfter!)).toEqual(sizeOf(rowBoxBefore!));
+      expect(sizeOf(titleAfter!)).toEqual(sizeOf(titleBefore!));
+      expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
+      expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
+      expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
+      const popBox = await pop.boundingBox();
+      const overlaps = (
+        a: { x: number; y: number; width: number; height: number },
+        b: { x: number; y: number; width: number; height: number },
+      ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      expect(overlaps(popBox!, titleBefore!)).toBe(false);
+      expect(overlaps(popBox!, metaBefore!)).toBe(false);
+      await checkLayout(page, "start-remove-confirm");
+      await shot(page, "start-remove-confirm", suffix, "Remove this review?");
+      await page.keyboard.press("Escape");
+      await expect(pop).toHaveCount(0);
+      await expect(row).toBeVisible();
+    });
   }
 });

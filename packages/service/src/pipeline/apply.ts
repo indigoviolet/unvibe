@@ -28,7 +28,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
 export interface ReaderApply {
   cards: { id: string; title: string | null; blocks: Block[] }[];
   pendingCards: { id: string; label: string; why: string }[];
-  concepts: { slug: string; title: string; summary: string }[];
   /**
    * Issue #169: the reader's raw plotline payload (validated against the
    * review's hunk IDs by the caller — unknown IDs dropped, first
@@ -42,15 +41,31 @@ export interface ReaderApply {
  * final apply must agree on this, or the final apply stores each streamed
  * card a second time (#28).
  */
-export function readerCardId(index: number, cardIds: string[] = []): string {
-  // Issue #198: the reader's settled order is problem, central idea(s),
-  // "How it's built up", "Decisions and alternatives".
-  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : index === 2 ? "buildup" : index === 3 ? "decisions" : `reader-${index}`);
+export function readerCardId(index: number, cardIds: string[] = [], title?: string | null): string {
+  // Issue #198/#212: the reader's settled order is problem, the one
+  // central-idea card, per-plotline card(s) when there are several
+  // plotlines, "How it's built up", "Decisions and questions", "Names".
+  // Known titles win over position, so the per-plotline cards (any
+  // count) never steal the `buildup`/`decisions`/`names` ids. The
+  // `decisions` id is kept for the renamed card so existing anchors
+  // (`#C-decisions`, `card:decisions#…`) stay valid; `names` is the new
+  // card's stable id. No migration: card ids are assigned at apply time.
+  if (cardIds[index]) return cardIds[index];
+  const t = (title ?? "").trim().toLowerCase();
+  if (t === "the problem") return "problem";
+  if (t === "the central idea" || t === "the central change") return "central";
+  if (t === "how it's built up") return "buildup";
+  if (t === "decisions and questions") return "decisions";
+  if (t === "names") return "names";
+  // An unknown title at index 0/1 is still the problem / central card;
+  // anywhere else it is a per-plotline card, never the buildup,
+  // decisions or names card (those carry their known titles).
+  return index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`;
 }
 
 /** True for ids `readerCardId` hands out when the reply names none. */
 export function isDefaultReaderCardId(id: string): boolean {
-  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || /^reader-\d+$/.test(id);
+  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || id === "names" || /^reader-\d+$/.test(id);
 }
 
 /**
@@ -84,14 +99,14 @@ export function splitFinalizedBlocks<T extends { blocks: Block[] }>(cards: T[], 
   });
 }
 
-/** Split a reader reply into root cards + placeholders + concepts. */
+/** Split a reader reply into root cards + placeholders. */
 export function readerApply(
   parsedCards: { title: string | null; blocks: Block[] }[],
   data: Record<string, unknown> | null,
 ): ReaderApply {
   const cardIds = (data?.["cardIds"] as string[] | undefined) ?? [];
   const cards = dropReaderPreamble(parsedCards).map((c, i) => ({
-    id: readerCardId(i, cardIds),
+    id: readerCardId(i, cardIds, c.title),
     title: c.title,
     blocks: c.blocks,
   }));
@@ -102,13 +117,6 @@ export function readerApply(
       why: p.why ?? "",
     }),
   );
-  const concepts = ((data?.["concepts"] as { slug?: string; title?: string; summary?: string }[] | undefined) ?? []).map(
-    (c) => ({
-      slug: c.slug ?? "",
-      title: c.title ?? c.slug ?? "",
-      summary: c.summary ?? "",
-    }),
-  ).filter((c) => c.slug);
   const plotlines = (
     (data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
   ).map((p) => ({
@@ -118,7 +126,7 @@ export function readerApply(
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));
-  return { cards, pendingCards, concepts, plotlines };
+  return { cards, pendingCards, plotlines };
 }
 
 export interface CriticApply {
@@ -130,30 +138,122 @@ export interface CriticApply {
   suggestedComment?: { text: string; diff: string };
 }
 
+type FindingMeta = {
+  id?: string;
+  title?: string;
+  confidence?: string;
+  summary?: string;
+  suggestedComment?: { text?: string; diff?: string };
+  cardIds?: string[];
+};
+
+/** Group Evidence…Assessment card runs: an Assessment card closes a finding. */
+function groupFindingCards(
+  parsedCards: { title: string | null; blocks: Block[] }[],
+  count: number,
+): { title: string | null; blocks: Block[] }[][] {
+  if (count <= 0 || parsedCards.length === 0) return [];
+  if (count === 1) return [parsedCards];
+  const groups: { title: string | null; blocks: Block[] }[][] = [];
+  let cur: { title: string | null; blocks: Block[] }[] = [];
+  for (const c of parsedCards) {
+    cur.push(c);
+    if ((c.title ?? "").trim().toLowerCase() === "assessment") {
+      groups.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length > 0) {
+    if (groups.length > 0) groups[groups.length - 1].push(...cur);
+    else groups.push(cur);
+  }
+  if (groups.length === count) return groups;
+  // Fallback: even pairs (Evidence, Assessment) per finding.
+  if (parsedCards.length === count * 2) {
+    return Array.from({ length: count }, (_, i) => parsedCards.slice(i * 2, i * 2 + 2));
+  }
+  if (groups.length > count) {
+    const head = groups.slice(0, count - 1);
+    head.push(groups.slice(count - 1).flat());
+    return head;
+  }
+  while (groups.length < count) groups.push([]);
+  return groups;
+}
+
+/**
+ * One critic reply → one finding page per finding (#215, owner: keep
+ * all findings — no cap in the parser; the prompt asks for usually one
+ * to three). The trailing `findings` array carries each finding's
+ * metadata in card order; a lone `finding`/`title` trailer is one
+ * finding. Zero findings is valid (no cards, no entries).
+ * A finding with no blocks is dropped on its own (validated per finding).
+ */
+export function criticApplyAll(
+  parsedCards: { title: string | null; blocks: Block[] }[],
+  data: Record<string, unknown> | null,
+  fallbackPageId: string,
+): CriticApply[] {
+  const rawFindings = data?.["findings"] as FindingMeta[] | undefined;
+  let metas: FindingMeta[];
+  if (Array.isArray(rawFindings)) {
+    metas = rawFindings;
+  } else if (data?.["finding"] || data?.["title"] || parsedCards.length > 0) {
+    const finding = (data?.["finding"] as FindingMeta | undefined) ?? {};
+    metas = [{
+      ...finding,
+      ...(typeof data?.["title"] === "string" ? { title: data["title"] as string } : {}),
+      ...((data?.["cardIds"] as string[] | undefined) ? { cardIds: data?.["cardIds"] as string[] } : {}),
+    }];
+  } else {
+    metas = [];
+  }
+  if (metas.length === 0) return [];
+  const groups = groupFindingCards(parsedCards, metas.length);
+  const out: CriticApply[] = [];
+  metas.forEach((meta, idx) => {
+    const cardsIn = groups[idx] ?? [];
+    if (!cardsIn.some((c) => c.blocks.length > 0)) return;
+    const pageId =
+      typeof meta.id === "string" && /^[\w-]+$/.test(meta.id)
+        ? meta.id
+        : idx === 0
+          ? fallbackPageId
+          : `${fallbackPageId}-${idx + 1}`;
+    const cardIds = meta.cardIds ?? (data?.["cardIds"] as string[] | undefined) ?? [];
+    const suggested =
+      meta.suggestedComment?.text && meta.suggestedComment?.diff
+        ? { text: meta.suggestedComment.text, diff: meta.suggestedComment.diff }
+        : undefined;
+    out.push({
+      pageId,
+      title: meta.title ?? cardsIn[0]?.title ?? "Finding",
+      confidence: meta.confidence ?? "medium",
+      summary: meta.summary ?? "",
+      cards: cardsIn.map((c, i) => ({
+        id: cardIds[i] ?? `${pageId}-${i}`,
+        title: c.title,
+        blocks: c.blocks,
+      })),
+      ...(suggested ? { suggestedComment: suggested } : {}),
+    });
+  });
+  return out;
+}
+
 /** One critic reply → one finding page + optional suggested comment. */
 export function criticApply(
   parsedCards: { title: string | null; blocks: Block[] }[],
   data: Record<string, unknown> | null,
   fallbackPageId: string,
 ): CriticApply {
-  const finding = (data?.["finding"] as { confidence?: string; summary?: string; suggestedComment?: { text?: string; diff?: string } } | undefined) ?? {};
-  const cardIds = (data?.["cardIds"] as string[] | undefined) ?? [];
-  const title = (data?.["title"] as string | undefined) ?? parsedCards[0]?.title ?? "Finding";
-  const suggested =
-    finding.suggestedComment?.text && finding.suggestedComment?.diff
-      ? { text: finding.suggestedComment.text, diff: finding.suggestedComment.diff }
-      : undefined;
-  return {
+  const all = criticApplyAll(parsedCards, data, fallbackPageId);
+  return all[0] ?? {
     pageId: fallbackPageId,
-    title,
-    confidence: finding.confidence ?? "medium",
-    summary: finding.summary ?? "",
-    cards: parsedCards.map((c, i) => ({
-      id: cardIds[i] ?? `${fallbackPageId}-${i}`,
-      title: c.title,
-      blocks: c.blocks,
-    })),
-    ...(suggested ? { suggestedComment: suggested } : {}),
+    title: (data?.["title"] as string | undefined) ?? parsedCards[0]?.title ?? "Finding",
+    confidence: "medium",
+    summary: "",
+    cards: [],
   };
 }
 

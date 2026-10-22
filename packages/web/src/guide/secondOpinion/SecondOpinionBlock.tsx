@@ -12,6 +12,7 @@ import { Icon } from "../../components/Icon.js";
 import { useReview } from "../../state/store.js";
 import { BlockView } from "../BlockView.js";
 import { performAction } from "../actions.js";
+import { Button } from "../../ui/index.js";
 
 interface Props {
   reviewId: string;
@@ -50,8 +51,9 @@ export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenP
           {verdictLabel(result.verdict)}
         </span>
         <span className="sp" />
-        <button
-          className="mini"
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           data-tip="Re-run second opinion"
           aria-label={cardBusy ? "Working…" : `Re-run second opinion (${result.mode})`}
@@ -60,7 +62,7 @@ export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenP
           onClick={() => void performAction(reviewId, { kind: "second_opinion", cardId: card.id, mode: result.mode })}
         >
           {cardBusy ? "Working…" : "Re-run"}
-        </button>
+        </Button>
         <button
           className="ib"
           type="button"

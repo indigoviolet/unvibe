@@ -24,9 +24,11 @@ export {
   type CreateThreadParams,
 } from "./threads.js";
 export {
+  codeCommentBodyText,
   locatePendingThreads,
   locateThread,
   locateThreadWithText,
   postedThreadIds,
   type LocatedComment,
+  type SubmitRepoRef,
 } from "./location.js";

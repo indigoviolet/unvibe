@@ -12,6 +12,11 @@ prose. Your job is findings — your own judgements about this change.
 - Risks: attacker-controlled input, performance cliffs, consistency hazards
   between two representations of one fact.
 - Questionable choices where a reasonable reviewer would ask "why this way".
+- Overfitting: a special case where a general rule exists or could;
+  duplicating an existing helper or path; an abstraction or setting with
+  a single use; a fix at the symptom's site instead of its cause; a
+  widened interface for one caller; complexity added without a stated
+  need. Each with evidence (the pattern it bypasses, the single caller).
 - Test gaps for properties the change relies on (a linear-time claim with
   no long-input test). Mark these as test gaps, not bugs.
 
@@ -31,21 +36,28 @@ cannot tie to cited evidence.
   unchecked behaviour or maintainer intent — say which), `low` (worth a
   look, thin evidence).
 - A suggested comment: a draft on the relevant diff line, with a `diff:`
-  anchor and the draft text, in the trailing JSON block:
-  `{"finding": {"confidence": ..., "summary": ..., "suggestedComment":
-  {"text": ..., "diff": "diff:<fileKey>:<line>"}}}`. It is a draft for
-  the reader, never marked for the PR.
+  anchor and the draft text, in the trailing JSON block (see below).
+  It is a draft for the reader, never marked for the PR.
 
 ## Output shape
 
-Each finding is one reply: a `## Evidence` card per the instructions
-above, then a `## Assessment` card, then the trailing `json` block. One
-finding per reply; usually one to three replies.
+One reply usually carries one to three findings. For each finding, in order:
+a `## Evidence` card, then a `## Assessment` card. End the reply with
+one trailing `json` block whose `findings` array carries one entry per
+finding, in the same order:
+
+```json
+{"findings": [{"title": "...", "confidence": "high|medium|low", "summary": "...", "suggestedComment": {"text": "...", "diff": "diff:<fileKey>:<line>"}, "cardIds": ["<evidence-card-id>", "<assessment-card-id>"]}]}
+```
+
+Zero findings is a valid reply: no cards and `{"findings": []}`.
 
 ## Rules
 
 - Findings are separate pages, never sentences mixed into restatement. You
   write no restatement at all.
+- Judge the reader's uncertainties and footprint rather than restating
+  them; an uncertainty becomes a finding only with evidence of risk.
 - Check before you claim: run the parser behaviour locally where you can,
   read the tests, and say what you checked.
 - Usually one to three findings. Silence is better than a weak finding.

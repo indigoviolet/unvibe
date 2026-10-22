@@ -45,6 +45,10 @@ export function anchorKey(anchor: ActionAnchor): string {
       return `diff:${anchor.fileKey}:${anchor.line}`;
     case "hunk":
       return `h:${anchor.fileKey}:${anchor.contentHash}`;
+    case "comment":
+      return `comment:${anchor.commentId}`;
+    case "code":
+      return `code:${anchor.path}:${anchor.line}@${anchor.commit}`;
   }
 }
 
@@ -85,6 +89,24 @@ export function getSnapshotOrThrow(reviews: ReviewStore, reviewId: string): Revi
  */
 export async function revealedBlockText(ctx: ActionContext, anchor: Anchor): Promise<string | null> {
   const host = anchor.host;
+  if (host.kind === "code") {
+    // #81: the real cited lines at the anchor's commit, through the same
+    // `git show` source as `get_code`. Past-the-end ranges clamp to what
+    // exists. Null when unreadable — the caller keeps the quote.
+    try {
+      const cwd = path.join(ctx.pipeline.dataDir, "worktrees", ctx.reviewId);
+      const end = host.endLine ?? host.line;
+      const slice = await readCodeSlice(ctx.pipeline.commands, cwd, host.commit, host.path, host.line, end);
+      if ("text" in slice) return slice.text;
+      if (slice.error === "out-of-range" && slice.totalLines !== undefined && host.line <= slice.totalLines) {
+        const clamped = await readCodeSlice(ctx.pipeline.commands, cwd, host.commit, host.path, host.line, slice.totalLines);
+        if ("text" in clamped) return clamped.text;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
   if (host.kind !== "diff-line") return null;
   const line = host.line;
   const fileKey = host.fileKey;

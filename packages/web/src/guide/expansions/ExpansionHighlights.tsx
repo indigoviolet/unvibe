@@ -26,7 +26,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { anchorHostExists, anchorScope, highlightAnchorInRoot, probeAnchorInRoot, retryUntilSettled, withPreservedSelection, clearMarks, spotFromAnchor } from "../../comments/anchor.js";
+import { anchorHostExists, anchorScope, highlightAnchorInRoot, placeAnchorSpot, probeAnchorInRoot, retryUntilSettled, withPreservedSelection, clearMarks, spotFromAnchor } from "../../comments/anchor.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
@@ -132,6 +132,27 @@ export function ExpansionHighlights() {
         else desiredMarks.set(a.id, d.sig);
         pending.delete(a.id);
       }
+      // Issue #214: comment-hosted cards mark inside their comment.
+      for (const a of annotations ?? []) {
+        if (a.type !== "conversation" && a.type !== "link") continue;
+        if (a.anchor.host.kind !== "comment" || isAnchorStale(a) || !a.anchor.quotedText) continue;
+        const msgs = root.querySelectorAll(`[data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
+        let placed = false;
+        for (const msg of msgs) {
+          // Probe without DOM writes (probeAnchorSpot is imported for this).
+          const nodes: string[] = [];
+          const walker = document.createTreeWalker(msg, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push((n as Text).data);
+          if (nodes.join("").includes(a.anchor.quotedText)) placed = true;
+          if (placed) break;
+        }
+        if (!placed) continue;
+        if (a.type === "link" || a.promotedToPage) {
+          if (a.promotedToPage) desiredMarks.set(`pg:${a.promotedToPage}`, `pg:${a.promotedToPage}`);
+        } else {
+          desiredMarks.set(a.id, a.open ? "ex" : "exl");
+        }
+      }
       let same =
         desiredMarks.size === current.size &&
         [...desiredMarks].every(([k, v]) => current.get(k) === v);
@@ -195,6 +216,22 @@ export function ExpansionHighlights() {
             }
           }
         }
+        // Issue #214: cards on a comment mark their quote inside the
+        // comment itself (their cards render under the comment's block).
+        for (const a of annotations ?? []) {
+          if (a.type !== "conversation" && a.type !== "link") continue;
+          if (a.anchor.host.kind !== "comment" || isAnchorStale(a) || !a.anchor.quotedText) continue;
+          const msgs = root.querySelectorAll(`[data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
+          for (const msg of msgs) {
+            const placed =
+              a.type === "link" || a.promotedToPage
+                ? a.promotedToPage
+                  ? placeAnchorSpot(msg, spotFromAnchor(a.anchor), () => makePageLink(a.promotedToPage!)) > 0
+                  : false
+                : placeAnchorSpot(msg, spotFromAnchor(a.anchor), () => makeExpMark(a.id, !a.open)) > 0;
+            if (placed) break;
+          }
+        }
         // Closed expansions whose quote is gone: reveal the fallback stub.
         for (const el of root.querySelectorAll("[data-fallback]")) {
           const id = (el as HTMLElement).dataset.fallback ?? "";
@@ -238,14 +275,14 @@ export function ExpansionHighlights() {
       // Clear only the outlines this handler adds (marks + expansion
       // cards). A bare `#page .on` would also strip the depth stepper
       // pips (`.pips i.on`, issue #111), which React owns.
-      document.querySelectorAll("#page mark.on, #page .card.child.on").forEach((x) => x.classList.remove("on"));
+      document.querySelectorAll("#page mark.on, #page .ui-card.child.on").forEach((x) => x.classList.remove("on"));
       if (mark) {
         const id = (mark as HTMLElement).dataset.jump ?? "";
         mark.classList.add("on");
         document.getElementById(`B-${id}`)?.classList.add("on");
         return;
       }
-      const card = target.closest("#page .card.child");
+      const card = target.closest("#page .ui-card.child");
       if (card?.id) {
         card.classList.add("on");
         const id = card.id.replace(/^B-/, "");
@@ -276,10 +313,17 @@ export function expansionsForBlock(
   blockId: string,
 ): import("@unvibe/shared").Annotation[] {
   if (!annotations) return [];
-  return annotations.filter(
-    (a) =>
-      (a.type === "conversation" || a.type === "link") &&
-      a.anchor.host.kind === "block" &&
-      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
-  );
+  return annotations.filter((a) => {
+    if (a.type !== "conversation" && a.type !== "link") return false;
+    if (a.anchor.host.kind === "block") return anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId);
+    // Issue #214: a card on a comment renders under that comment's block.
+    if (a.anchor.host.kind === "comment") {
+      const commentId = a.anchor.host.commentId;
+      const comment = annotations.find((x) => x.id === commentId && x.type === "comment");
+      return (
+        comment?.anchor.host.kind === "block" && anchorMatchesBlock(comment.anchor.host.blockId, cardId, blockId)
+      );
+    }
+    return false;
+  });
 }

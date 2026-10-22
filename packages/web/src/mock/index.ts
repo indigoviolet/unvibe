@@ -20,6 +20,7 @@ import type {
   AddRepoResponse,
   ChangesFilter,
   Contribution,
+  CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   DiffFilter,
@@ -61,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { freshBlockId, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -675,7 +676,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
   secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
-  sessionsPerProvider: 4,
+  sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000,
@@ -685,6 +686,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   versionPickerEnabled: false,
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
+  autoGoDeeper: true,
 };
 
 function getMockSettings(): Settings {
@@ -704,6 +706,44 @@ function seedJobs(): Job[] {
       state: "done",
       sessionId: "sess-reader-1",
       promptSnapshot: "You are the reader: explore the repo and write the guided review.",
+      tools: [
+        {
+          name: "Read",
+          id: "mock-tool-1",
+          detail: "{\"path\": \"src/urllib3/response.py\"}",
+          result: "Returned the response module (212 lines).",
+          resultOriginalLength: 41,
+          startedAt: 1700000000000,
+          finishedAt: 1700000001000,
+        },
+      ],
+      turnRecords: [
+        {
+          label: "first",
+          prompt: "You are the reader: explore the repo and write the guided review.",
+          promptOriginalLength: 66,
+          output: "## The problem\n\nFolded headers are unfolded lazily.\n\n```json\n{\"cardIds\": [\"problem\", \"central\"]}\n```\n",
+          outputOriginalLength: 104,
+          tools: [
+            {
+              name: "Read",
+              id: "mock-tool-1",
+              detail: "{\"path\": \"src/urllib3/response.py\"}",
+              result: "Returned the response module (212 lines).",
+              resultOriginalLength: 41,
+              startedAt: 1700000000000,
+              finishedAt: 1700000001000,
+            },
+          ],
+          usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300 },
+          rawUsage: {
+            usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300, totalTokens: 54500 },
+            _meta: { quota: { token_count: { inputTokens: 48200, cachedInputTokens: 0, cachedWriteTokens: 0, outputTokens: 6300, totalTokens: 54500 } } },
+          },
+          startedAt: 1700000000000,
+          finishedAt: 1700000005000,
+        },
+      ],
       usage: { inputTokens: 48200, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 6300 },
       cacheHitRate: 0,
       progress: "Finished: 6 cards",
@@ -1448,10 +1488,21 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
       location = file
         ? { kind: "inline", path: file.path, line: host.line, side: "RIGHT" }
         : { kind: "general", reason: `unknown file ${host.fileKey}` };
+    } else if (host.kind === "code") {
+      // #81: review body with a permalink on the real service; the mock
+      // has no real repo to link to, so it shows the same slot plainly.
+      location = { kind: "general", reason: `${host.path}:${host.line} is outside the diff, so it goes in the review body with a link to the lines.` };
     } else {
       location = { kind: "general", reason: host.kind === "block" ? "Not tied to a line of the diff, so it posts as a general PR comment." : "A comment on the PR description posts as a general PR comment." };
     }
-    return { threadId: thread.id, location, text: mockPostText(thread) };
+    return {
+      threadId: thread.id,
+      location,
+      text: mockPostText(thread),
+      ...(host.kind === "code" && thread.anchor.quotedText !== ""
+        ? { quote: thread.anchor.quotedText }
+        : {}),
+    };
   });
   const general = comments.filter((c) => c.location.kind !== "inline").map((c) => c.text);
   return {
@@ -1591,7 +1642,7 @@ const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
 const UPDATE_INSTALLED_COMMIT_KEY = "unvibe.mock.update.installedCommit";
 
 // Distinct build times (issue #73): the picker sorts newest first, so the
-// list order is preview/feat-x, preview/fix-y, release-rc, release.
+// list order is preview/feat-x, preview/fix-y, release.
 const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
   {
     ref: "release",
@@ -1603,18 +1654,6 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
-    current: false,
-  },
-  {
-    ref: "release-rc",
-    kind: "release-rc",
-    version: "0.0.1-rc.1",
-    commit: "abc1234def5678",
-    sourceBranch: null,
-    sourceCommit: null,
-    baseBranch: null,
-    baseCommit: null,
-    builtAt: new Date(NOW - 86400_000).toISOString(),
     current: false,
   },
   {
@@ -2019,6 +2058,48 @@ export const mockApi = {
       const note = changesFetchError();
       return note ? { ...res, fetchError: note } : res;
     }
+  },
+
+  repoWorktrees: async (id: string) => {
+    const repo = getRepos().find((r) => r.id === id);
+    return { worktrees: repo ? [{ path: repo.localPath, branch: "main" }] : [] };
+  },
+
+  createDocument: async (body: CreateDocumentRequest): Promise<ReviewSnapshot> => {
+    const document = parseDocumentMarkdown(body.markdown);
+    if (typeof body.title === "string" && body.title.trim() !== "") document.title = body.title.trim();
+    const first = body.contextRepos[0];
+    const now = Date.now();
+    const id = `mock-doc-${now.toString(36)}`;
+    const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
+    return {
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
+      document,
+      contextRepos: body.contextRepos.map((pick) => {
+        const r = getRepos().find((x) => x.id === pick.repoId);
+        return {
+          repoId: pick.repoId,
+          owner: r?.owner ?? "local",
+          name: r?.name ?? pick.repoId,
+          source: pick.source,
+          repoPath: r?.localPath ?? "",
+          path: pick.worktreePath ?? r?.localPath ?? "",
+          label: `${r?.owner ?? "local"}/${r?.name ?? pick.repoId}`,
+        };
+      }),
+      version,
+      files: [],
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    };
   },
 
   createReview: async (body: CreateReviewRequest): Promise<CreateReviewResponse> => {
@@ -2595,7 +2676,11 @@ export const mockApi = {
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
             : anchor.where === "description"
               ? { kind: "description", paragraphId: anchor.paragraphId }
-              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+              : anchor.where === "comment"
+                ? { kind: "comment", commentId: anchor.commentId }
+                : anchor.where === "code"
+                  ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                  : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const turnId = newTurnId();
         const askJobId = `mock-ask-${id}`;
@@ -2719,7 +2804,11 @@ export const mockApi = {
           ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
           : anchor.where === "description"
             ? { kind: "description", paragraphId: anchor.paragraphId }
-            : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+            : anchor.where === "comment"
+              ? { kind: "comment", commentId: anchor.commentId }
+              : anchor.where === "code"
+                ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+                : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const turnId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
@@ -2909,7 +2998,11 @@ export const mockApi = {
         settleMockJob(jobId);
         const live = mockPages.find((p) => p.id === pageId);
         if (!live) return;
-        live.title = `${slug} (mock concept)`;
+        // The demo's obs-fold page is the one the specs read closely:
+        // give it its recorded title, its OWS/RWS link and an example
+        // aside, like the replayed recording (#216 on-demand fill).
+        const known = slug === "obs-fold";
+        live.title = known ? "Obsolete line folding (obs-fold)" : `${slug} (mock concept)`;
         live.cards = [
           {
             id: `cc-${slug}`,
@@ -2920,6 +3013,12 @@ export const mockApi = {
             revision: 2,
             blocks: [
               { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              ...(known
+                ? [
+                    { type: "paragraph", id: `cc-${slug}-b2`, text: { standard: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.' }, citations: [] },
+                    mockExampleAside(),
+                  ]
+                : []),
             ] as never,
             undoStack: [],
           },
@@ -3160,7 +3259,11 @@ export const mockApi = {
         ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
         : anchor.where === "description"
           ? { kind: "description", paragraphId: anchor.paragraphId }
-          : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
+          : anchor.where === "comment"
+            ? { kind: "comment", commentId: anchor.commentId }
+            : anchor.where === "code"
+              ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
+              : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
     const thread: import("@unvibe/shared").Annotation = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
       type: "comment",
@@ -3304,6 +3407,14 @@ export const mockApi = {
     return { comments: existingComments };
   },
 
+  outbox: async (id: string) => {
+    const snap = currentSnapshot(id);
+    return {
+      markdown: buildOutboxExportMarkdown(snap, { title: snap.review.branch || id }),
+      count: outboxThreads(snap).length,
+    };
+  },
+
   viewer: async () => ({ login: "you" }),
 
   settings: async (): Promise<Settings> => getMockSettings(),
@@ -3375,13 +3486,13 @@ export const mockApi = {
     return { job };
   },
 
-  jobPrompt: async (id: string) => {
+  jobOutput: async (id: string) => {
     const job = mockJobs.find((j) => j.id === id);
-    if (!job) throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"unknown job"}`);
-    if (job.promptSnapshot === undefined) {
-      throw new Error(`GET /api/jobs/${id}/prompt: 404 {"error":"no prompt snapshot for job"}`);
+    if (!job) throw new Error(`GET /api/jobs/${id}/output: 404 {"error":"unknown job"}`);
+    if (job.turnRecords === undefined) {
+      throw new Error(`GET /api/jobs/${id}/output: 404 {"error":"no output recorded for job"}`);
     }
-    return { jobId: job.id, promptSnapshot: job.promptSnapshot };
+    return { jobId: job.id, turnRecords: job.turnRecords };
   },
 
   jobReply: async (id: string) => {
@@ -3478,20 +3589,22 @@ export const mockApi = {
 
   updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
     await wait(80);
-    if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('GET /api/update/channels: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
-    }
-    return { channels: mockUpdateChannels() };
+    // Issue #231: releases are always listed; previews only with the toggle on.
+    const all = mockUpdateChannels();
+    const visible =
+      getMockSettings().versionPickerEnabled === true ? all : all.filter((c) => c.kind !== "preview");
+    return { channels: visible };
   },
 
   updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
     await wait(80);
-    if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('POST /api/update/switch: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
-    }
     const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
     if (!target) {
       throw new Error(`POST /api/update/switch: 404 {"error":"unknown update channel \\"${ref}\\""}`);
+    }
+    // Issue #231: releases always switch; previews need the toggle on.
+    if (target.kind === "preview" && getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('POST /api/update/switch: 404 {"error":"previews are hidden (show them in Settings → Version)"}');
     }
     if (mockUpdatePending) {
       throw new Error(

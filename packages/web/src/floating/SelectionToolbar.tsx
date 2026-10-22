@@ -55,6 +55,7 @@ import { performAction } from "../guide/actions.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
 import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
+import { computePosition, flip, offset, shift, type VirtualElement } from "@floating-ui/dom";
 import { toast } from "./Toast.js";
 import { useReview } from "../state/store.js";
 
@@ -109,6 +110,9 @@ export function isRevealedElement(el: HTMLElement): boolean {
  */
 export function selectionScopeElement(el: HTMLElement): Element | null {
   if (el.closest("[data-so]")) return null;
+  // Issue #214: offsets record within the comment text itself.
+  const commentScope = el.closest("[data-comment]");
+  if (commentScope) return commentScope as Element;
   // Issue #163: offsets record within the suggestion text (placement
   // falls back to text match on the comment's host — the quote comes
   // from the suggestion, not the host).
@@ -148,9 +152,41 @@ export function selectionScopeElement(el: HTMLElement): Element | null {
 export function inSelectionScope(el: Element): boolean {
   return (
     el.closest(
-      "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile",
+      "#page, #right .desc:not(.editing), #right table.diff, #right .dhunk, #right .ghfile, #right .codefile",
     ) !== null
   );
+}
+
+/** Lines a selection touches in a file tab (#81), or null outside one. */
+export function codeRangeForSelection(sel: Selection): { path: string; commit: string; start: number; end: number } | null {
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  const rows = document.querySelectorAll("#right .codefile [data-code-line]");
+  let path = "";
+  let commit = "";
+  const lines: number[] = [];
+  for (const row of rows) {
+    let intersects = false;
+    try {
+      intersects = range.intersectsNode(row);
+    } catch {
+      continue;
+    }
+    if (!intersects) continue;
+    const file = (row as HTMLElement).closest("[data-code-file]") as HTMLElement | null;
+    const p = file?.dataset.path ?? "";
+    const c = file?.dataset.commit ?? "";
+    if (!p || !c) continue;
+    if (!path) {
+      path = p;
+      commit = c;
+    }
+    if (p !== path || c !== commit) return null;
+    const n = Number((row as HTMLElement).dataset.codeLine);
+    if (Number.isSafeInteger(n) && n >= 1) lines.push(n);
+  }
+  if (!path || lines.length === 0) return null;
+  return { path, commit, start: Math.min(...lines), end: Math.max(...lines) };
 }
 
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
@@ -158,6 +194,30 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   // blocks live on the result, not on any card or answer, so the
   // service has no block to anchor to. No toolbar there.
   if (el.closest("[data-so]")) return null;
+  // #81: a selection in a file tab anchors to the cited file at its
+  // commit. The line comes from the row the selection starts in; the
+  // caller widens it to the touched range.
+  const codeLineEl = el.closest("[data-code-line]");
+  if (codeLineEl) {
+    const file = el.closest("[data-code-file]") as HTMLElement | null;
+    const filePath = file?.dataset.path ?? "";
+    const fileCommit = file?.dataset.commit ?? "";
+    const line = Number((codeLineEl as HTMLElement).dataset.codeLine);
+    if (filePath && fileCommit && Number.isSafeInteger(line) && line >= 1) {
+      return { anchor: { where: "code", path: filePath, commit: fileCommit, line } };
+    }
+    return null;
+  }
+  // Issue #214: a selection inside any comment card anchors to that
+  // comment (suggested question, AI review comment, or a person's
+  // comment), in the guide and the diff pane alike.
+  const commentEl = el.closest("[data-comment]");
+  if (commentEl) {
+    const id = (commentEl as HTMLElement).dataset.comment ?? "";
+    const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
+    if (!found || found.type !== "comment") return null;
+    return { anchor: { where: "comment", commentId: id } };
+  }
   // Issue #163: a selection inside an agent-suggested comment anchors to
   // the comment itself (its own anchor) — the suggestion text is agent
   // text, not a stable host. The toolbar's Ask/Explain/Comment then act
@@ -175,7 +235,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   }
   // Issue #136: inside a conversation answer the owning unit is the
   // answer, found from the answer wrapper's attribute — not from
-  // `section.card[id]`, which names the whole card.
+  // `section.ui-card[id]`, which names the whole card.
   const answer = el.closest("[data-answer]");
   if (answer) {
     const answerId = (answer as HTMLElement).dataset.answer ?? "";
@@ -198,7 +258,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     // the owning card, or conversation card, so the anchor addresses one
     // block. (Selections inside an answer return earlier, qualified with
     // the answer id.)
-    const owner = top.closest("section.card[id]")?.id ?? "";
+    const owner = top.closest("section.ui-card[id]")?.id ?? "";
     const cardId = /^[CB]-/.test(owner) ? owner.slice(2) : "";
     return { anchor: { where: "block", blockId: cardId && !id.includes("#") ? `${cardId}#${id}` : id } };
   }
@@ -410,6 +470,26 @@ export function blockquoteQuote(quote: string): string {
  * Issue #138: an answer on a hunk card comments on the hunk's first
  * changed line (never the hunk — comments live on lines).
  */
+/**
+ * Issue #214: where a Comment on text inside a comment belongs — the
+ * comment's own underlying host (guide block, description, or diff
+ * line), quoting the selection. Null when unresolvable.
+ */
+export function underlyingCommentAnchor(commentId: string): ActionAnchor | null {
+  const found = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+  if (!found || found.type !== "comment") return null;
+  const host = found.anchor.host;
+  if (host.kind === "block") return { where: "block", blockId: host.blockId };
+  if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+  if (host.kind === "code") return { where: "code", path: host.path, commit: host.commit, line: host.line, ...(host.endLine !== undefined ? { endLine: host.endLine } : {}) };
+  if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
+  if (host.kind === "hunk") {
+    return hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ?? null;
+  }
+  return null;
+}
+
 export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   if (anchor.where !== "block") return null;
   const hash = anchor.blockId.indexOf("#");
@@ -423,6 +503,8 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
+  if (host.kind === "comment") return underlyingCommentAnchor(host.commentId);
+  if (host.kind === "code") return { where: "code", path: host.path, commit: host.commit, line: host.line, ...(host.endLine !== undefined ? { endLine: host.endLine } : {}) };
   if (host.kind === "hunk") {
     return (
       hunkCommentAnchor(useReview.getState().snapshot, { fileKey: host.fileKey, contentHash: host.contentHash }) ??
@@ -527,11 +609,16 @@ export function SelectionToolbar() {
         // comment (a reply on GitHub is out of scope).
         const inGhThread =
           host.anchor.where === "diff-line" && anchorEl.closest?.("[data-gh-thread]") != null;
-        // Issue #163: a selection inside a suggested comment comments on
-        // the comment's own anchor (quoting the selection into the user's
-        // own comment) — the suggestion text is not a host.
+        // Issue #163/#214: Explain/Ask anchor to the comment itself; a
+        // Comment on text inside a comment quotes the selection into the
+        // reviewer's own comment on the comment's underlying host.
+        const inComment = host.anchor.where === "comment";
         const inSuggested = anchorEl.closest("[data-ai-comment]") !== null;
-        const commentAnchor = inSuggested ? host.anchor : cardAnchor;
+        const commentAnchor = inComment && host.anchor.where === "comment"
+          ? (underlyingCommentAnchor(host.anchor.commentId) ?? cardAnchor ?? undefined)
+          : inSuggested
+            ? host.anchor
+            : cardAnchor;
         // Issue #138: a hunk anchor needs the touched rows mapped from
         // the hunk itself (the summary is no table row): Comment lands on
         // the hunk's first changed line without activating the summary,
@@ -558,12 +645,16 @@ export function SelectionToolbar() {
           host.anchor.where === "diff-line" && diffRange && diffRange.newLines.length > 0
             ? Math.max(...diffRange.newLines)
             : undefined;
+        // #81: same widening for file-tab selections.
+        const codeRange = host.anchor.where === "code" ? codeRangeForSelection(sel) : null;
         setPending({
           quote,
           anchor:
             endLine !== undefined && host.anchor.where === "diff-line" && endLine > host.anchor.line
               ? { ...host.anchor, endLine }
-              : host.anchor,
+              : codeRange && host.anchor.where === "code" && codeRange.end > host.anchor.line
+                ? { ...host.anchor, endLine: codeRange.end }
+                : host.anchor,
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),
@@ -583,11 +674,29 @@ export function SelectionToolbar() {
       const b = bar();
       const sel = window.getSelection();
       if (!b || !sel || sel.rangeCount === 0) return;
-      const r = sel.getRangeAt(0).getBoundingClientRect();
-      b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
-      const preferBelow = r.top - b.offsetHeight - 8 < 56;
-      const rawTop = preferBelow ? r.bottom + 8 : r.top - b.offsetHeight - 8;
-      b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, rawTop))}px`;
+      const range = sel.getRangeAt(0);
+      // Floating UI (#218) positions the bar: the selection range is the
+      // reference (a virtual element reading its live rect, so the
+      // scroll-grace re-place follows it). Placement keeps the old rule
+      // — below when above would crowd the top bar (<56px), else above —
+      // and flip/shift keep the bar inside the viewport.
+      const r = range.getBoundingClientRect();
+      const placement = r.top - b.offsetHeight - 8 < 56 ? "bottom" : "top";
+      const reference: VirtualElement = {
+        getBoundingClientRect: () => range.getBoundingClientRect(),
+      };
+      void computePosition(reference, b, {
+        placement,
+        middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        if (!b.isConnected || b.hidden) return;
+        // Keep the old clamp as the final word: a selection rect partly
+        // past the viewport edge (a hunk at the pane's end) must still
+        // land the whole bar inside it — flip/shift alone do not clamp
+        // the placement's main axis.
+        b.style.left = `${Math.max(8, Math.min(window.innerWidth - b.offsetWidth - 8, x))}px`;
+        b.style.top = `${Math.max(8, Math.min(window.innerHeight - b.offsetHeight - 8, y))}px`;
+      });
     };
 
     const onSelectionChange = (): void => {

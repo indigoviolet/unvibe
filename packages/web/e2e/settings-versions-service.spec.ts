@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import { startService, type RunningService } from "./service-harness.js";
 import type { Page } from "@playwright/test";
 import { fileKeyForPath } from "@unvibe/shared";
@@ -104,7 +105,7 @@ test.describe("settings + versions on the real service", () => {
     // Wait for the repo state to settle: the selector or the empty state
     // (the repo may already exist in the service DB from an earlier test).
     await expect(
-      page.locator('select[aria-label="Repo"], [data-testid="no-repos"]').first(),
+      page.locator('button[aria-label="Repo"], [data-testid="no-repos"]').first(),
     ).toBeVisible();
     if (await page.locator('[data-testid="no-repos"]').isVisible()) {
       await page.getByRole("link", { name: "Add one in Settings" }).click();
@@ -115,7 +116,8 @@ test.describe("settings + versions on the real service", () => {
       await page.getByRole("link", { name: "Unvibe" }).click();
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
     }
-    await page.getByLabel("Repo").selectOption({ label: `local/${path.basename(repoDir)}` });
+    await page.getByLabel("Repo", { exact: true }).click();
+    await openPopup(page).getByRole("option", { name: `local/${path.basename(repoDir)}` }).click();
     const feature = page.locator("main .ci button").filter({ hasText: "feature" }).first();
     await expect(feature).toBeVisible({ timeout: 30_000 });
     await feature.click();
@@ -158,8 +160,11 @@ test.describe("settings + versions on the real service", () => {
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
     await page.getByRole("tab", { name: "Prompts" }).click();
-    // All 18 PRD §13 templates (17 + plotline_assign, #169), from the real prompts dir.
-    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(18);
+    // All 17 PRD §13 templates (16 + plotline_assign, #169; concept_stub
+    // was removed with the stub job, #216), from the real prompts dir.
+    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(17);
+    await expect(page.locator('[data-testid="prompt-concept_stub"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="prompt-concept_page"]')).toHaveCount(1);
     const reader = page.locator('[data-testid="prompt-reader"]');
     await reader.getByRole("button", { name: "Expand reader" }).click();
     await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");
@@ -236,7 +241,8 @@ test.describe("settings + versions on the real service", () => {
     await expect(appFile.getByText(/return 11\b/)).toHaveCount(0);
 
     // Older version stays viewable, read-only, with the pre-refresh code.
-    await page.locator("#version-pick").selectOption("1");
+    await page.locator("#version-pick").click();
+    await openPopup(page).getByRole("option", { name: /^v1 / }).click();
     await expect(page).toHaveURL(/version=1/);
     await expect(appFile.getByText(/return 11\b/)).toBeVisible();
     await expect(appFile.getByText("return 111")).toHaveCount(0);
@@ -245,9 +251,10 @@ test.describe("settings + versions on the real service", () => {
     // Update is not wired without the pipeline (no base runner): the button
     // reports that plainly instead of hanging.
     // Choosing the current version (annotated in the dropdown) is the way back.
-    const options = page.locator("#version-pick option");
+    await page.locator("#version-pick").click();
+    const options = openPopup(page).getByRole("option");
     await expect(options.last()).toContainText("current");
-    await page.locator("#version-pick").selectOption({ index: (await options.count()) - 1 });
+    await options.last().click();
     await expect(banner).toBeVisible();
     await banner.getByRole("button", { name: "Update" }).click();
   });

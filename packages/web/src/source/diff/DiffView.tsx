@@ -33,12 +33,14 @@ import {
 import { refreshErrorNotice } from "../../versions/versionUtils.js";
 import { useReviewVersion } from "../../versions/useReviewVersion.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
+import { Button, DiffStat } from "../../ui/index.js";
 import {
   buildFileTree,
   citedHunkHashes,
   filterFiles,
   hunkOverlaps,
   shouldHideHunk,
+  tailPathParts,
   type TreeRow,
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
@@ -248,10 +250,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
   // Skipped while viewing an older version, and a no-op for reviews with
   // no git source (demo). Counts come from the refresh `comparison`, or
-  // from `versionStatus` already on the snapshot.
+  // from `versionStatus` already on the snapshot. Check-only: new commits
+  // surface as the banner (never auto-applied, no jobs start); PR state
+  // and decision update silently through the snapshot WS patch (#230).
+  // No polling. The guard below keeps StrictMode/remounts to one call
+  // per review open.
   const sourceRepoId = snapshot?.review.repoId;
+  const autoRefreshKey = useRef<string | null>(null);
   useEffect(() => {
     if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
+    const key = `${reviewId}@${sourceRepoId}`;
+    if (autoRefreshKey.current === key) return;
+    autoRefreshKey.current = key;
     let cancelled = false;
     api
       .refresh(reviewId)
@@ -274,6 +284,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const doRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      const prevDesc = useReview.getState().snapshot?.description;
       const r = await api.refresh(reviewId);
       if (r.newVersion && r.comparison) {
         const snap = useReview.getState().snapshot;
@@ -281,8 +292,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         setBanner(comparisonToBanner(r.comparison, current));
         setSnapshot(await api.review(reviewId));
       } else {
+        // #230: same-head refresh still updates PR state/decision — refetch
+        // so the bar changes even if the WS patch is delayed. Silent when
+        // only the PR state moved; "Already up to date" only when truly
+        // unchanged.
+        const fresh = await api.review(reviewId);
+        setSnapshot(fresh);
         setBanner(null);
-        toast("Already up to date");
+        const nextDesc = fresh.description;
+        const stateSame =
+          (prevDesc?.state ?? null) === (nextDesc?.state ?? null) &&
+          (prevDesc?.isDraft ?? false) === (nextDesc?.isDraft ?? false) &&
+          (prevDesc?.reviewDecision ?? null) === (nextDesc?.reviewDecision ?? null);
+        if (stateSame) toast("Already up to date");
       }
     } catch (err) {
       toast(refreshErrorNotice(err));
@@ -770,21 +792,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
-  // Fold-all summarises per hunk only under the fan-out limit (issue
-  // #107): past it the button folds without requesting summaries.
-  const overFanoutLimit = snapshot.files.reduce((n, f) => n + f.hunks.length, 0) > HUNK_PASS_FANOUT_LIMIT;
-  // Fold-all wording (issue #162): only visible hunks still lacking a
-  // summary are summarized, so the tooltip promises just that — and stays
-  // quiet about summarizing when every visible hunk already has one.
-  const foldMissing = snapshot.files.reduce(
-    (n, f) => n + f.hunks.filter((h) => !isHidden(h) && states.get(h.contentHash)?.summary === undefined).length,
-    0,
-  );
-  const foldTip = overFanoutLimit
-    ? "Fold the code (this review is past the per-hunk summary limit; summaries stay on demand)"
-    : foldMissing > 0
-      ? "Fold the code; hunks still missing a summary are summarized with the agent"
-      : "Fold the code (every hunk already has a summary)";
+  // Tooltip is the action only (#225); `foldAll` still computes the
+  // fan-out/summary state itself for its behaviour and toast.
+  const foldTip = "Fold the code";
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
@@ -822,8 +832,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             </button>
           </span>
         ) : null}
-        <button
-          className="tbtn"
+        <Button
+          variant="secondary"
+          size="sm"
           type="button"
           aria-expanded={prefs.filesOpen}
           data-tip={prefs.filesOpen ? "Hide file list" : "Show file list"}
@@ -838,15 +849,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         >
           <Icon name={prefs.filesOpen ? "down" : "right"} />
           Files <span className="hint">{visible.length}/{snapshot.files.length}</span>
-        </button>
+        </Button>
         <FilterMenuButton
           label="Review filters"
-          tip={
-            prefs.hideReviewed || !snapshot.viewPrefs.showExistingComments
-              ? `Hiding: ${[prefs.hideReviewed ? "Reviewed" : null, !snapshot.viewPrefs.showExistingComments ? "GitHub comments" : null].filter(Boolean).join(", ")}`
-              : "Reviewed and GitHub comment filters"
-          }
-          icon="check"
+          tip="Reviewed and GitHub comment filters"
+          icon="filter"
           rows={[
             {
               key: "__reviewed",
@@ -888,7 +895,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           className="x"
           type="button"
           aria-pressed={prefs.hideUninteresting}
-          data-tip="Collapse generated, import-only, docs and config hunks to one line"
+          data-tip="Hide uninteresting"
           aria-label="Hide uninteresting"
           onClick={() =>
             setPrefs((p) => {
@@ -897,7 +904,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             })
           }
         >
-          <Icon name="hide" />
+          <Icon name="eyeOff" />
         </button>
         <button
           className="x"
@@ -906,21 +913,21 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           aria-label="Fold all"
           onClick={() => void foldAll()}
         >
-          <Icon name="spark" />
+          <Icon name="fold" />
         </button>
         <button
           className="x"
           type="button"
-          data-tip="Show code for every folded hunk; summaries stay"
+          data-tip="Unfold the code"
           aria-label="Unfold all"
           onClick={() => void unfoldAll()}
         >
-          <Icon name="downDown" />
+          <Icon name="unfold" />
         </button>
         <button
           className="x"
           type="button"
-          data-tip="Check the branch for new commits. Doesn't use the agent."
+          data-tip="Check the branch for new commits"
           aria-label="Refresh"
           disabled={refreshing || readOnly}
           onClick={() => void doRefresh()}
@@ -960,11 +967,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             />
             <FilterMenuButton
               label="File filters"
-              tip={
-                CATS.some((c) => !cats.has(c.k))
-                  ? `Hiding: ${CATS.filter((c) => !cats.has(c.k)).map((c) => c.l).join(", ")}`
-                  : "Filter files by type"
-              }
+              tip="Filter files by type"
               icon="filter"
               rows={CATS.map((c) => ({
                 key: c.k,
@@ -993,7 +996,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
                   >
                     <Icon name={dirOpen[row.path] ?? true ? "down" : "right"} />
                     <span className="nm" title={row.path}>
-                      {row.label}
+                      <PathTail text={row.label} />
                     </span>
                   </button>
                 ) : (
@@ -1111,9 +1114,9 @@ function FilterMenuButton({
   rows,
 }: {
   label: string;
-  /** Tooltip naming what is hidden when active (owner: no badge). */
+  /** Action-only tooltip (#225); the active state is the dot + accent. */
   tip: string;
-  icon: "filter" | "check";
+  icon: "filter";
   rows: FilterRow[];
 }): ReactNode {
   const [open, setOpen] = useState(false);
@@ -1231,9 +1234,10 @@ function FilterMenuButton({
 
   return (
     <span className="fctl" ref={ctlRef}>
-      <button
+      <Button
         ref={btnRef}
-        className="tbtn fbtn"
+        variant="secondary"
+        size="sm"
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1249,9 +1253,21 @@ function FilterMenuButton({
         }}
       >
         <Icon name={icon} />
-      </button>
+        {active ? <span className="fdot" data-filter-active="" aria-hidden="true" /> : null}
+      </Button>
       {menu ? createPortal(menu, document.body) : null}
     </span>
+  );
+}
+
+/** Middle-shortened path label (#227): head ellipsises, tail stays. */
+function PathTail({ text }: { text: string }): ReactNode {
+  const parts = tailPathParts(text);
+  return (
+    <>
+      {parts.pre ? <span className="nm-pre">{parts.pre}</span> : null}
+      <span className="nm-end">{parts.end}</span>
+    </>
   );
 }
 
@@ -1270,15 +1286,18 @@ function FileTreeRow({
   const added = file.hunks.reduce((s, h) => s + h.added, 0);
   const removed = file.hunks.reduce((s, h) => s + h.removed, 0);
   return (
-    <div className="fr" style={{ paddingLeft: 10 + depth * 14 + 20 }} title={file.path}>
-      <button className="fr-main" type="button" onClick={() => onJump(file.fileKey)}>
+    <div className="fr file" title={file.path}>
+      <button
+        className="fr-main"
+        type="button"
+        style={{ paddingLeft: depth * 14 + 20 }}
+        onClick={() => onJump(file.fileKey)}
+      >
         <span className="nm">{file.path.split("/").pop()}</span>
         {file.category === "generated" ? <span className="gtag">gen</span> : null}
-        <span className="st">
-          <span className="a">+{added}</span> <span className="d">−{removed}</span>
-        </span>
-        <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
       </button>
+      <DiffStat added={added} removed={removed} />
+      <span className={`rv${reviewed === total ? " done" : ""}`}>{reviewed === total ? "✓" : `${reviewed}/${total}`}</span>
     </div>
   );
 

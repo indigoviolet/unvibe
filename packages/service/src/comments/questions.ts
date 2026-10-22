@@ -99,6 +99,7 @@ export function resolveQuestionAnchor(
     if (host.kind === "block") return { where: "block", blockId: host.blockId };
     if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
     if (host.kind === "diff-line") return { where: "diff-line", fileKey: host.fileKey, line: host.line };
+    if (host.kind === "code") return { where: "code", path: host.path, commit: host.commit, line: host.line, ...(host.endLine !== undefined ? { endLine: host.endLine } : {}) };
     if (host.kind === "hunk") {
       const line = firstHunkLine(snapshot, host.fileKey, host.contentHash);
       return line === null ? null : { where: "diff-line", fileKey: host.fileKey, line };
@@ -116,6 +117,8 @@ export function questionHostKey(host: Annotation["anchor"]["host"]): string {
   if (host.kind === "block") return `block:${host.blockId}`;
   if (host.kind === "description") return `description:${host.paragraphId}`;
   if (host.kind === "diff-line") return `diff-line:${host.fileKey}:${host.line}`;
+  if (host.kind === "comment") return `comment:${host.commentId}`;
+  if (host.kind === "code") return `code:${host.path}:${host.line}@${host.commit}`;
   return `hunk:${host.fileKey}:${host.contentHash}`;
 }
 

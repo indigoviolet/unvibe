@@ -28,7 +28,12 @@ test.describe("J14 diagrams, debug, redo", () => {
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-    // The go-deeper flow card carries the fixture diagram (pipeline fills it).
+    // The go-deeper flow card carries the fixture diagram (pipeline fills it);
+    // auto-written cards stay collapsed until opened (#217), so open it first.
+    const flow = page.locator("#C-g-flow");
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
+    await flow.getByRole("button", { name: "Expand" }).click();
     const svg = page.locator(".dg-svg svg").first();
     const fallback = page.locator(".dg-fallback").first();
     await expect(svg.or(fallback)).toBeVisible({ timeout: 90_000 });
@@ -50,6 +55,46 @@ test.describe("J14 diagrams, debug, redo", () => {
     await expect(page.locator('[data-testid^="prompt-"]').first()).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Jobs" }).click();
     await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 15_000 });
+    // #207: one view per job — there is no separate Prompt button; the
+    // Output view already shows each turn's prompt.
+    await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Hide prompt" })).toHaveCount(0);
+    // #207: the job row shows a tool count, not an unbounded list.
+    // Expanding it shows one line per call; a line expands to the full
+    // arguments and result.
+    const toolsButton = page.getByRole("button", { name: /^Tools: \d+$/ }).first();
+    await expect(toolsButton).toBeVisible({ timeout: 30_000 });
+    await toolsButton.click();
+    const jobTools = page.locator('[data-testid="job-tools"]').first();
+    await expect(jobTools).toBeVisible({ timeout: 15_000 });
+    const jobToolLines = jobTools.locator('[data-testid="job-tool"]');
+    await expect(jobToolLines.first()).toContainText("Read", { timeout: 15_000 });
+    await expect(jobToolLines.first()).toContainText("recording");
+    await jobToolLines.first().locator("summary").click();
+    await expect(jobToolLines.first()).toContainText("Arguments");
+    await expect(jobToolLines.first()).toContainText("recording");
+    await expect(jobToolLines.first()).toContainText("Returned the");
+    // #207: a successful job's Output shows, per turn, its prompt, its
+    // reply, a tool call with its result, and the raw usage payload.
+    await page.getByRole("button", { name: "Output" }).first().click();
+    const output = page.locator('[data-testid="job-output"]').first();
+    await expect(output).toBeVisible({ timeout: 30_000 });
+    await expect(output).toContainText("Turn 1");
+    await expect(output).toContainText("Prompt");
+    await expect(output).toContainText("Output");
+    // Inside the view, tool calls are one line each in a bounded list;
+    // a line expands to the full arguments and result.
+    const turnTools = output.locator('[data-testid="job-turn-tools"]').first();
+    await expect(turnTools).toBeVisible({ timeout: 15_000 });
+    const turnToolLines = turnTools.locator('[data-testid="job-turn-tool"]');
+    await expect(turnToolLines.first()).toContainText("Read");
+    await expect(turnToolLines.first()).toContainText("recording");
+    await turnToolLines.first().locator("summary").click();
+    await expect(turnToolLines.first()).toContainText("Arguments");
+    await expect(turnToolLines.first()).toContainText("Returned the");
+    await expect(output).toContainText("Raw usage");
+    await expect(output).toContainText("quota");
+    await expect(output).toContainText("model_usage");
     // Back to the review itself.
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
@@ -114,7 +159,11 @@ test.describe("J14 diagrams, debug, redo", () => {
       const id = await createScratchReview(redoSvc, repoDir);
       await page.goto(`${redoSvc.origin}/review/${id}/debug?token=${redoSvc.token}`);
       await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 30_000 });
-      await page.getByRole("button", { name: "Re-do guide" }).click();
+      // #237: the caption lives on the button's tooltip, with no inline caption.
+      const redo = page.getByRole("button", { name: "Re-do guide" });
+      await expect(redo).toHaveAttribute("title", "Start the guide over from the same change.");
+      await expect(page.getByText("Start the guide over from the same change.")).toHaveCount(0);
+      await redo.click();
       await expect(page.getByText(/Anything already on GitHub stays there/)).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Re-do guide" }).last().click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);

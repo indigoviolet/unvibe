@@ -1,16 +1,18 @@
 /**
- * Version section (Settings → Version, issue #36 step 2, layout #73):
- * the version picker. Off by default behind `versionPickerEnabled` —
- * the enable checkbox sits above the card, top right of the section
- * header. When on, the card shows the current version on top, one
- * aligned row per version (name · short commit · built · action) under
- * a Versions/Refresh header, and the last switch outcome at the bottom.
- * Switch asks for confirmation inside the row itself (the service
- * restarts; switching keeps your database and backs it up first).
+ * Version section (Settings → Version, issue #36 step 2, layout #73,
+ * toggle meaning #231): the version picker. Releases are always listed
+ * and switchable; the `versionPickerEnabled` checkbox ("Show previews")
+ * gates preview channels only. The card shows the current version on
+ * top, one aligned row per version (name · short commit · built ·
+ * action) under a Versions/Refresh header, and the last switch outcome
+ * at the bottom. Switch asks for confirmation inside the row itself (the
+ * service restarts; switching keeps your database and backs it up first).
  *
  * Switching survives the service going away: after the 202 the page polls
  * health + status until the new build reports (then reloads) or the
- * helper records a rollback (then the reason shows in place).
+ * helper records a rollback (then the reason shows in place). Every
+ * successful listing feeds the top-bar update check (#231), so it
+ * refreshes without a reload.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -21,7 +23,9 @@ import type {
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
+import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
+import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
 import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
@@ -81,7 +85,7 @@ export function VersionSection({
   }, []);
 
   const loadChannels = useCallback(
-    async (refresh?: boolean): Promise<void> => {
+    async (build: UpdateBuildInfo | null, refresh?: boolean): Promise<void> => {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       try {
@@ -89,6 +93,8 @@ export function VersionSection({
         if (!cancelled.current) {
           setChannels(res.channels);
           setError(null);
+          // The top-bar update check (#231) follows this listing.
+          noteChannelsForUpdateCheck(build, res.channels);
         }
       } catch (err) {
         if (!cancelled.current) setError(friendlyError(err));
@@ -111,7 +117,8 @@ export function VersionSection({
       } catch {
         // Status already carries the build; health is a fallback.
       }
-      if ((st?.enabled ?? enabled) && !cancelled.current) void loadChannels();
+      // Releases are always listed (#231), regardless of the toggle.
+      if (!cancelled.current) void loadChannels(st?.build ?? null);
     })();
   }, []);
 
@@ -123,8 +130,8 @@ export function VersionSection({
       if (cancelled.current) return;
       onSaved(next);
       const st = await loadStatus();
-      if (st?.enabled) void loadChannels();
-      else setChannels(null);
+      // Releases stay listed either way; the toggle only hides/shows previews (#231).
+      void loadChannels(st?.build ?? null);
     } catch (err) {
       if (!cancelled.current) setError(putErrors(err).join("; "));
     } finally {
@@ -228,66 +235,57 @@ export function VersionSection({
   return (
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
       {/* No title here: the Settings tab names the section (#61). */}
-      <div className="ver-head">
-        <label
-          className="ver-toggle"
-          htmlFor="version-picker-toggle"
-          title="Listing channels uses gh with your GitHub login. Switching restarts the service."
-        >
-          <input
+      <Card variant="raised">
+        <div className="ver-toggle">
+          <Checkbox
             id="version-picker-toggle"
-            data-testid="version-picker-toggle"
-            type="checkbox"
+            testId="version-picker-toggle"
+            ariaLabel="Show previews"
             checked={enabled}
             disabled={toggling}
             onChange={() => void toggle()}
           />
-          Show channels and allow switching
-        </label>
-      </div>
-      <div className="card" style={{ padding: "8px 14px" }}>
+          <label htmlFor="version-picker-toggle">Show previews</label>
+        </div>
+        <p className="hint ver-toggle-hint">Releases always listed.</p>
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
         <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
-        {!enabled ? null : (
-          <>
-            {status && !status.build ? (
-              <p className="warnline" data-testid="update-not-installed">
-                Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
-              </p>
-            ) : null}
-            {loading && !channels ? <p className="hint">Loading channels…</p> : null}
-            {rows ? (
-              <VersionList
-                rows={rows}
-                build={status?.build ?? null}
-                confirmRef={confirmRef}
-                blocked={blocked}
-                switchingTo={switchingTo}
-                onSwitch={(ref) => {
-                  setBlocked(null);
-                  setConfirmRef(ref);
-                }}
+        {status && !status.build ? (
+          <p className="warnline" data-testid="update-not-installed">
+            Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
+          </p>
+        ) : null}
+        {loading && !channels ? <p className="hint">Loading channels…</p> : null}
+        {rows ? (
+          <VersionList
+            rows={rows}
+            build={status?.build ?? null}
+            confirmRef={confirmRef}
+            blocked={blocked}
+            switchingTo={switchingTo}
+            onSwitch={(ref) => {
+              setBlocked(null);
+              setConfirmRef(ref);
+            }}
                 onCancel={() => {
                   setConfirmRef(null);
                   setBlocked(null);
                 }}
-                onConfirm={(ref) => void commitSwitch(ref)}
-                onForceConfirm={(ref) => void commitSwitch(ref, true)}
-                onRefresh={() => void loadChannels(true)}
-                refreshing={refreshing}
-              />
-            ) : null}
-          </>
-        )}
+            onConfirm={(ref) => void commitSwitch(ref)}
+            onForceConfirm={(ref) => void commitSwitch(ref, true)}
+            onRefresh={() => void loadChannels(status?.build ?? null, true)}
+            refreshing={refreshing}
+          />
+        ) : null}
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}
             ).{" "}
-            <button className="btn ghost" type="button" onClick={() => {
+            <Button variant="secondary" size="sm" type="button" onClick={() => {
               const to = status.pending?.to;
               if (!to) return;
               const target = channels?.find((c) => c.ref === to)?.version ?? null;
@@ -296,7 +294,7 @@ export function VersionSection({
               void waitForSwitch(to, target, status.build?.version ?? healthVersion, status.pending?.startedAt ?? new Date().toISOString());
             }}>
               Wait for it
-            </button>
+            </Button>
           </p>
         ) : null}
         {switchingTo ? (
@@ -324,7 +322,7 @@ export function VersionSection({
             ) : null}
           </p>
         ) : null}
-      </div>
+      </Card>
     </section>
   );
 }
@@ -392,12 +390,12 @@ function VersionList({
   refreshing: boolean;
 }): React.JSX.Element {
   return (
-    <div className="ver-list">
+    <div className="ver-list ui-list">
       <div className="ver-listhead">
         <span className="hint">Channels</span>
-        <button className="btn ghost" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
+        <Button variant="secondary" size="sm" type="button" disabled={refreshing} onClick={onRefresh} data-testid="update-refresh">
           {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       </div>
       {rows.map((c) => (
         <VersionRow
@@ -418,9 +416,9 @@ function VersionList({
 }
 
 /**
- * One version as a grid row (name · sha · built · action). The note —
- * the confirm warning, the jobs refusal, the newer-build note — spans
- * the full row width inside this row, so it never touches the next row.
+ * One version as a shared ListRow (name · sha/built · action slot). The
+ * note — the confirm warning, the jobs refusal — renders below the row
+ * inside the list, so it never touches the next row.
  */
 function VersionRow({
   row: c,
@@ -452,66 +450,61 @@ function VersionRow({
   const isBlocked = blocked?.ref === c.ref;
   const verb = newerAvailable ? "update" : "switch";
   const built = c.builtAt ? (timeAgoIso(c.builtAt) ?? c.builtAt) : null;
-  return (
-    <div className="ver-row" data-testid="update-channel" data-ref={c.ref}>
-      <code className="ver-name" title={c.version ?? c.ref}>
-        {c.ref}
-      </code>
-      <span className="ver-sha" title={c.commit ?? undefined}>
-        {shortCommit(c.commit) ?? "—"}
-      </span>
-      <span className="ver-built">{built ? `built ${built}` : "—"}</span>
-      <span className="ver-action">
-        {rowState === "installed" ? (
-          <span className="st" data-testid="update-current">
-            installed
-          </span>
-        ) : rowState === "update-available" ? (
-          <span className="st" data-testid="update-available">
-            update available
-          </span>
-        ) : switchingTo ? (
-          <span className="hint">…</span>
-        ) : null}
-        {confirming ? (
-          <>
-            <button className="btn" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
-              Confirm
-            </button>
-            <button
-              className="btn ghost"
-              type="button"
-              aria-label={`Cancel ${verb} to ${c.ref}`}
-              onClick={onCancel}
-            >
-              Cancel
-            </button>
-          </>
-        ) : newerAvailable && build && c.current && !switchingTo ? (
-          <button className="btn ghost" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
-            Update
-          </button>
-        ) : !c.current && !switchingTo && !isBlocked ? (
-          <button
-            className="btn ghost"
-            type="button"
-            aria-label={`Switch to ${c.ref}`}
-            onClick={() => onSwitch(c.ref)}
-          >
-            Switch
-          </button>
-        ) : null}
-      </span>
-      {confirming ? (
-        <span className="ver-note warnline">
-          The service restarts. Your data is kept and backed up first.
-        </span>
-      ) : isBlocked && blocked ? (
-        <span className="ver-note">
-          <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
-        </span>
+  const trailing = (
+    <>
+      {rowState === "installed" ? (
+        <span data-testid="update-current"><Badge tone="ok">Installed</Badge></span>
+      ) : rowState === "update-available" ? (
+        <span data-testid="update-available"><Badge tone="warn">Update available</Badge></span>
+      ) : switchingTo ? (
+        <span className="hint">…</span>
       ) : null}
-    </div>
+      {confirming ? (
+        <>
+          <Button variant="primary" size="sm" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
+            Confirm
+          </Button>
+          <Button variant="secondary" size="sm" type="button" aria-label={`Cancel ${verb} to ${c.ref}`} onClick={onCancel}>
+            Cancel
+          </Button>
+        </>
+      ) : newerAvailable && build && c.current && !switchingTo ? (
+        <Button variant="secondary" size="sm" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
+          Update
+        </Button>
+      ) : !c.current && !switchingTo && !isBlocked ? (
+        <Button variant="secondary" size="sm" type="button" aria-label={`Switch to ${c.ref}`} onClick={() => onSwitch(c.ref)}>
+          Switch
+        </Button>
+      ) : null}
+    </>
+  );
+  return (
+    <>
+      <ListRow
+        data-testid="update-channel"
+        data-ref={c.ref}
+        primary={
+          <>
+            <code className="ver-name" title={c.version ?? c.ref}>
+              {c.ref}
+            </code>
+            {" · "}
+            <span className="ver-sha" title={c.commit ?? undefined}>{shortCommit(c.commit) ?? "—"}</span>
+            {" · "}
+            <span className="ver-built">{built ? `built ${built}` : "—"}</span>
+          </>
+        }
+        trailing={trailing}
+      />
+      {confirming ? (
+        <p className="ver-note warnline">The service restarts. Your data is kept and backed up first.</p>
+      ) : isBlocked && blocked ? (
+        <div className="ver-note">
+          <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -547,17 +540,17 @@ function BlockedPanel({
       ) : null}
       {/* Buttons stay together on one line when the panel wraps. */}
       <span style={{ display: "inline-flex", gap: 6 }}>
-        <button className="btn" type="button" onClick={() => onForceConfirm(blocked.ref)}>
+        <Button variant="primary" size="sm" type="button" onClick={() => onForceConfirm(blocked.ref)}>
           Switch anyway
-        </button>
-        <button
-          className="btn ghost"
+        </Button>
+        <Button
+          variant="secondary" size="sm"
           type="button"
           aria-label={`Cancel switch to ${blocked.ref}`}
           onClick={onCancel}
         >
           Cancel
-        </button>
+        </Button>
       </span>
     </span>
   );

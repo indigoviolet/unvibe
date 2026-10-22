@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
-import { githubPrUrl, isDefaultGuideTitle } from "@unvibe/shared";
+import { githubPrUrl, isDefaultGuideTitle, prStateFromGh } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 
@@ -20,6 +20,9 @@ export interface ReviewIdentity {
   /** Full title with the same fallbacks the top bar always used. */
   title: string;
   prUrl: string | null;
+  /** #224: PR state/decision from the summary (branch reviews: undefined). */
+  prState?: import("@unvibe/shared").PrState;
+  reviewDecision?: import("@unvibe/shared").PrReviewDecision;
 }
 
 export function useReviewIdentity(reviewId: string): ReviewIdentity {
@@ -65,5 +68,22 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
     prNumber !== undefined && owner && name && repoId !== "demo"
       ? githubPrUrl(owner, name, prNumber)
       : null;
-  return { short, title, prUrl };
+  // #230: badges read the live snapshot first (refresh updates it via the
+  // WS patch even when the head is steady), falling back to the summary
+  // fetched once on mount. Branch reviews carry no PR state.
+  const snapPrState =
+    snapshot?.description?.source === "pr"
+      ? prStateFromGh(snapshot.description.state, snapshot.description.isDraft)
+      : undefined;
+  const snapDecision =
+    snapshot?.description?.source === "pr" ? snapshot.description.reviewDecision : undefined;
+  const prState = snapPrState ?? summary?.prState;
+  const reviewDecision = snapDecision ?? summary?.reviewDecision;
+  return {
+    short,
+    title,
+    prUrl,
+    ...(prState !== undefined ? { prState } : {}),
+    ...(reviewDecision !== undefined ? { reviewDecision } : {}),
+  };
 }

@@ -11,8 +11,10 @@
  *                                            `ans_…` id for content
  *                                            inside a conversation, #136)
  * page:<pageId>                              a page
- * concept:<slug>                             a concept (may be a hidden candidate)
+ * concept:<slug>                             a concept (page written when opened)
  * ann:<id>                                   an annotation
+ * doc:<blockId>                              a document block (issue #222,
+ *                                            e.g. doc:p3)
  * ```
  *
  * Short forms: within one version the UI and prompts may drop the `@<sha>`
@@ -32,7 +34,8 @@ export type ParsedId =
   | { kind: "card"; cardId: string; blockId?: string }
   | { kind: "page"; pageId: string }
   | { kind: "concept"; slug: string }
-  | { kind: "ann"; id: string };
+  | { kind: "ann"; id: string }
+  | { kind: "doc"; blockId: string };
 
 const SHA = "[0-9a-fA-F]{4,64}";
 const LINE_RANGE = "(\\d+)(?:-(\\d+))?";
@@ -112,6 +115,10 @@ export function parseId(input: string): ParsedId | null {
       if (/[:#@]/.test(rest)) return null;
       return { kind: "ann", id: rest };
     }
+    case "doc": {
+      if (!/^p\d+$/.test(rest)) return null;
+      return { kind: "doc", blockId: rest };
+    }
     default:
       return null;
   }
@@ -164,5 +171,7 @@ export function formatId(id: ParsedId, opts?: { short?: boolean }): string {
       return `concept:${id.slug}`;
     case "ann":
       return `ann:${id.id}`;
+    case "doc":
+      return `doc:${id.blockId}`;
   }
 }

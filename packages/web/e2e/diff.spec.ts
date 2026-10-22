@@ -151,17 +151,17 @@ test("file filter dropdown filters by type with counts and an active state", asy
   await expect(reviewMenu.getByRole("menuitemcheckbox", { name: /GitHub comments/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await filter.click();
-  // Deselect Tests: its files hide and the button shows the active count.
+  // Deselect Tests: its files hide and the button shows its active state.
   await menu.getByRole("menuitemcheckbox", { name: /Tests/ }).click();
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
   await expect(filter).toHaveAttribute("aria-pressed", "true");
-  await expect(filter).toHaveAttribute("data-tip", "Hiding: Tests");
+  await expect(filter).toHaveAttribute("data-tip", "Filter files by type");
   // Stored prefs survive a reload.
   await page.reload();
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "File filters" })).toHaveAttribute("data-tip", "Hiding: Tests");
+  await expect(page.getByRole("button", { name: "File filters" })).toHaveAttribute("data-tip", "Filter files by type");
 });
 
 test("file filter dropdown is keyboard-usable and closes on Escape", async ({ page }) => {
@@ -237,7 +237,7 @@ test.skip("start page opens a review", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   // The page follows the selected repo; the remembered repo is selected.
-  await expect(page.getByLabel("Repo")).toHaveValue("urllib3");
+  await expect(page.getByLabel("Repo", { exact: true })).toContainText("urllib3/urllib3");
   await page.locator('[data-testid="session-demo"] button.cj-open').click();
   await expect(page).toHaveURL(/\/review\/demo/);
   await expect(page.locator(connFile)).toBeVisible();

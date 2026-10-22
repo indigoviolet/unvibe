@@ -3,7 +3,7 @@
  * or commit unmounted the whole tree and left a white page.
  *
  * - `ErrorBoundary` renders its children directly (no wrapper element), so
- *   prototype.css child selectors (`.doc > .card`, `.doc.finding > .card`)
+ *   prototype.css child selectors (`.doc > .ui-card`, `.doc.finding > .ui-card`)
  *   keep matching. Each placement passes its own fallback shaped like the
  *   thing it replaces (a card-sized section, a file-shaped div, …).
  * - `name` identifies the placement in the report; `resetKey` identifies
@@ -19,6 +19,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { reportWebError } from "../sentry.js";
+import { Button } from "../ui/index.js";
 
 export interface BoundaryReport {
   boundary: string;
@@ -110,13 +111,13 @@ export function ShellFallback({ onReload }: ShellFallbackProps): React.JSX.Eleme
       <div className="doc" role="alert">
         <h1 className="title">Something went wrong</h1>
         <p className="hint">Couldn&apos;t show this page: something went wrong — reload to try again.</p>
-        <button
-          className="btn"
+        <Button
+          variant="primary"
           type="button"
           onClick={() => (onReload ?? ((): void => window.location.reload()))()}
         >
           Reload
-        </button>
+        </Button>
       </div>
     </div>
   );

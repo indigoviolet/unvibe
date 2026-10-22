@@ -89,8 +89,8 @@ test.describe("J17 submit a mix", () => {
     const sugText = (await sugMsg.innerText()).trim().slice(0, 40);
     expect(sugText).not.toBe("");
     const sugThread = page.locator(".ithread[data-thread]", { has: sugMsg }).first();
-    await sugThread.getByRole("button", { name: "Mark for the PR" }).click();
-    await expect(sugThread.getByRole("button", { name: /Marked for the PR/ })).toBeVisible({ timeout: 10_000 });
+    await sugThread.getByRole("button", { name: "Add to Outbox" }).click();
+    await expect(sugThread.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible({ timeout: 10_000 });
 
     // Own comment on the connection file, with a reply.
     const connFile = page.locator(`[id="F-${CONN}"]`);

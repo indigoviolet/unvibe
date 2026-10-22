@@ -2,11 +2,11 @@
 # push the release branch (orphan, one commit with only the release tree),
 # and attach `unvibe-<version>.tgz` to the GitHub release.
 #
-# Version and branch come from the tag: v0.0.1 → version 0.0.1, branch
-# `release`; v0.0.1-rc.1 → version 0.0.1-rc.1, branch `release-rc` (marked
-# pre-release). Candidates never overwrite the `release` ref users install
-# from. The generated package.json version and the tarball name both come
-# from the tag, so they always agree.
+# Version comes from the tag (v0.0.1 → version 0.0.1, always branch
+# `release`, never a pre-release). Tags shaped like `-rc.N` are not a
+# supported release shape (candidates go out as `preview/main-rc`) and
+# are rejected below. The generated package.json version and the tarball
+# name both come from the tag, so they always agree.
 #
 # Users install with NO flags (no lifecycle scripts; setup runs on first start):
 #   npm install -g github:indigoviolet/unvibe#release
@@ -19,6 +19,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # Manual runs verify the install check on a branch (e.g. a spike/*
+  # copy) without publishing: the version comes from package.json and
+  # the push/release steps below are tag-push-only.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -86,14 +90,21 @@ jobs:
         id: rel
         run: |
           TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" != "push" ]]; then
+            VERSION="$(node -p "require('./package.json').version")"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "branch=release" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "dispatch verify: version=$VERSION branch=release"
+            exit 0
+          fi
           VERSION="${TAG#v}"
           if [[ "$VERSION" == *"-rc."* ]]; then
-            BRANCH="release-rc"
-            PRERELEASE="true"
-          else
-            BRANCH="release"
-            PRERELEASE="false"
+            echo "release: tags shaped like -rc.N are not supported (candidates go out as preview/main-rc)" >&2
+            exit 1
           fi
+          BRANCH="release"
+          PRERELEASE="false"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
@@ -122,15 +133,15 @@ jobs:
       # every publish is a non-fast-forward update by design (force-push is
       # confined to these refs; nothing else is force-pushed).
       - name: Push the release branch (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
         run: git push --force origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
 
       - name: Write release notes
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
         run: node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md
 
       - name: Attach the tarball to the GitHub release (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: unvibe-${{ steps.rel.outputs.version }}.tgz

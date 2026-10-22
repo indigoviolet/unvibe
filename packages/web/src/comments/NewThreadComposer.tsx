@@ -15,6 +15,7 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
 import { useReview } from "../state/store.js";
+import { Button } from "../ui/index.js";
 
 interface Props {
   reviewId: string;
@@ -133,12 +134,12 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
           }}
         />
         <div className="row">
-          <button className="btn ghost" type="button" onClick={onDiscard}>
+          <Button variant="secondary" size="sm" type="button" onClick={onDiscard}>
             Discard
-          </button>
-          <button className="btn" type="button" disabled={sending || text.trim() === ""} onClick={send}>
+          </Button>
+          <Button variant="primary" size="sm" type="button" disabled={sending || text.trim() === ""} onClick={send}>
             {ask ? "Ask" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -166,6 +167,12 @@ function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean 
   }
   if (anchor.where === "hunk" && host.kind === "hunk") {
     return anchor.fileKey === host.fileKey && anchor.contentHash === host.contentHash;
+  }
+  if (anchor.where === "comment" && host.kind === "comment") {
+    return anchor.commentId === host.commentId;
+  }
+  if (anchor.where === "code" && host.kind === "code") {
+    return anchor.path === host.path && anchor.commit === host.commit && anchor.line === host.line;
   }
   return false;
 }

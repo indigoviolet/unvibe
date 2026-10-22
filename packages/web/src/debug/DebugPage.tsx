@@ -85,6 +85,7 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
       />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
+          <RedoGuideSection reviewId={reviewId} />
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load shared context: {error}
@@ -103,7 +104,6 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
             {doc ? <SharedContext doc={doc} items={items} onDelete={(id) => void remove(id)} /> : null}
           </TabPanel>
           <UnplacedAnchorsSection />
-          <RedoGuideSection reviewId={reviewId} />
         </div>
       </main>
     </div>

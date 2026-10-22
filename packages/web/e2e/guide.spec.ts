@@ -141,7 +141,7 @@ test("root page renders cards, contents and generated go-deeper cards", async ({
   await gotoReview(page);
   await expect(page.locator("#page h1.title")).toBeVisible();
   await expect(page.locator("#C-problem h2")).toContainText("The problem");
-  await expect(page.locator("#C-central h2")).toContainText("The central change");
+  await expect(page.locator("#C-central h2")).toContainText("The central idea");
   await expect(page.locator('nav.toc [data-tocard="problem"]')).toBeVisible();
   // The fixture's go-deeper cards are already generated (no pendings).
   await expect(page.locator("#C-g-flow")).toContainText("getresponse");
@@ -165,6 +165,20 @@ test("dotted-link hover preview: timing and content", async ({ page }) => {
   await hoverFresh(page, link);
   // Not instant: opens after ~0.2 s.
   await expect(page.locator("#pop")).toBeHidden({ timeout: 100 }).catch(() => {});
+  await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
+  // #216: before the page is written, the preview is the link's own
+  // label and Click to open — no stored summary or content.
+  const label = (await link.innerText()).trim();
+  await expect(page.locator("#pop")).toContainText(label);
+  await expect(page.locator("#pop")).toContainText("Click to open");
+  await expect(page.locator("#pop")).not.toContainText("Mock concept page");
+  // Open it, let the (mock) concept job write it, come back: now the
+  // preview shows the written page's title and content.
+  await link.click();
+  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
+  await page.locator("#page nav.crumbs button").first().click();
+  await expect(page.locator("#page h1.title")).toContainText("Unfold obsolete folded", { timeout: 15_000 });
+  await hoverFresh(page, page.locator('#page a.cx[data-link="concept:obs-fold"]').first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
   await expect(page.locator("#pop")).toContainText("Obsolete line folding (obs-fold)");
   await expect(page.locator("#pop")).toContainText("Click to open");
@@ -240,7 +254,8 @@ test("navigation, trail and browser back", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
   await expect(page).toHaveURL(/\/review\/demo\/page\/c-obs-fold/);
-  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding");
+  // #216: written on open; the title arrives with the written page.
+  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
   const trail = page.locator("#page nav.crumbs");
   await expect(trail).toContainText("Unfold obsolete folded response headers");
   await trail.getByRole("button").first().click();
@@ -265,11 +280,16 @@ test("collapse chevron hides the card body; contents still lists it", async ({ p
   await expect(item).toBeVisible();
   await card.getByRole("button", { name: "Expand" }).click();
   await expect(card).not.toHaveClass(/collapsed/);
-  // Concept pages are saved: the bookmark is pressed.
-  await page.goto("/review/demo/page/c-ows-rws");
+  // Concept pages are saved: the bookmark is pressed. #216: open the
+  // OWS/RWS page on demand from the obs-fold page's concept link.
+  await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
+  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
+  await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
+  await expect(page).toHaveURL(/\/review\/demo\/page\/c-ows-rws/);
   await expect(page.locator('#page [data-save="c-ows-rws"]')).toHaveAttribute(
     "aria-pressed",
     "true",
+    { timeout: 15_000 },
   );
 });
 
@@ -298,9 +318,11 @@ test.skip("go-deeper card renders the D2 diagram and follow-ups", async ({ page 
 });
 
 test("concept page renders the example aside", async ({ page }) => {
-  await page.goto("/review/demo/page/c-obs-fold");
-  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding");
-  await expect(page.locator("#page .gen-aside")).toContainText("urllib3 now returns");
+  // #216: the page is written when its link is opened, example included.
+  await gotoReview(page);
+  await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
+  await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
+  await expect(page.locator("#page .gen-aside")).toContainText("urllib3 now returns", { timeout: 15_000 });
 });
 
 test("narrow width keeps controls visible", async ({ page }) => {

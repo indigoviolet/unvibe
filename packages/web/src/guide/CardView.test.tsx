@@ -328,7 +328,7 @@ describe("CardView immediate feedback", () => {
     act(() => {
       useReview.getState().beginInflight("followup:c1:b-f:0", "followup");
     });
-    expect(document.querySelector(".card.child.placeholder")).toBeNull();
+    expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
     // …the answer expansion itself shows Writing answer…, not the generic
     // server text.
     const exp = document.querySelector('[data-expansion="ann_ans"]');

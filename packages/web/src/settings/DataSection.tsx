@@ -36,16 +36,16 @@ export function DataSection(): React.JSX.Element {
         {confirming ? (
           <>
             <span className="hint">Remove all reviews? This cannot be undone.</span>
-            <button className="btn" type="button" disabled={busy} onClick={() => void reset()}>
+            <button className="ui-btn" data-variant="primary" type="button" disabled={busy} onClick={() => void reset()}>
               {busy ? "Resetting…" : "Reset"}
             </button>
-            <button className="btn ghost" type="button" disabled={busy} onClick={() => setConfirming(false)}>
+            <button className="ui-btn" data-variant="secondary" type="button" disabled={busy} onClick={() => setConfirming(false)}>
               Cancel
             </button>
           </>
         ) : (
           <button
-            className="btn ghost"
+            className="ui-btn" data-variant="secondary"
             type="button"
             onClick={() => {
               setRemoved(null);

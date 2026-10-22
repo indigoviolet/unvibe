@@ -32,6 +32,59 @@ export interface Repo {
   managed?: boolean;
 }
 
+/**
+ * Issue #222: what a review reviews. Never stored: the kind is derived
+ * from the snapshot's shape (`isDocumentReview` in `api.ts`) — a review
+ * whose snapshot carries the pasted document is a document review, and
+ * every other review is a change review. There is no stored `kind`
+ * field and no fallback read.
+ */
+export type ReviewKind = "change" | "document";
+
+/** Issue #222: where a document review's context repo is read from. */
+export type ContextRepoSource = "worktree" | "origin-main" | "local";
+
+/**
+ * Issue #222: one context repo of a document review, resolved at creation.
+ * `repoPath` is the registered checkout (where git runs); `path` is the
+ * effective reading location (the chosen worktree, or `repoPath` for
+ * `origin-main`/`local`); `sha` is the commit read for `origin-main`
+ * (absent for worktree/local, whose HEAD is read live).
+ */
+export interface ContextRepoRef {
+  repoId: string;
+  owner: string;
+  name: string;
+  source: ContextRepoSource;
+  repoPath: string;
+  path: string;
+  /** Chosen worktree path (`source: "worktree"` only). */
+  worktreePath?: string;
+  /** Resolved commit at creation (`origin-main`, else the reading HEAD). */
+  sha?: string;
+  /** Human label shown in the UI and the agent context. */
+  label: string;
+}
+
+/** One block of a pasted document (issue #222). Headings carry a level;
+ * content blocks wrap the shared `Block` whose id is this block's id. */
+export interface DocumentBlock {
+  /** Paragraph block ID: `p1`, `p2`, … in document order (cited as `doc:pN`). */
+  id: string;
+  kind: "heading" | "content";
+  /** Heading level 1–6 (`kind: "heading"` only). */
+  level?: number;
+  block: Block;
+}
+
+/** Issue #222: a pasted Markdown document (single version, no refresh). */
+export interface DocumentContent {
+  title: string;
+  /** Pasted Markdown, verbatim. */
+  markdown: string;
+  blocks: DocumentBlock[];
+}
+
 /** One review of a branch or PR. */
 export interface Review {
   id: string;
@@ -209,6 +262,12 @@ export interface Card extends ContentBody {
   collapsed: boolean;
   /** Placeholder ("Go deeper") cards that still need generation. */
   pending?: PendingCard;
+  /**
+   * Go-deeper only (#217): the direction's why-line, kept when the card
+   * is written automatically so the collapsed card still shows the
+   * title and why-line, the way the placeholder looked.
+   */
+  why?: string;
   /**
    * M5 (PRD §8): true when one or more cited hunks changed. `staleHunks`
    * lists the affected new-side `h:` IDs; `staleChangedHunks` is the count
@@ -422,13 +481,13 @@ export type AnnotationType = "conversation" | "comment" | "link";
 /**
  * Issue #136 slice 2: one comment message. Comments never carry agent
  * replies (those live on conversation turns as blocks); `ai` appears
- * only for agent-drafted suggested comments not yet marked for the PR.
+ * only for agent-drafted suggested comments not yet in the Outbox.
  */
 export interface ChatMessage {
   who: "you" | "ai";
   /** Plain text. */
   text?: string;
-  /** Agent-drafted suggested comment not yet marked for the PR. */
+  /** Agent-drafted suggested comment not yet in the Outbox. */
   suggested?: boolean;
   /**
    * Issue #181: this suggested message is an agent's open question,
@@ -477,9 +536,9 @@ export interface Annotation {
   pinned: boolean;
   /** Comments only: messages so far. */
   messages: ChatMessage[];
-  /** Comments only: include in the Submit review payload. */
+  /** Comments only: include in the Outbox (Submit review payload on PR reviews). */
   post: boolean;
-  /** Comments only: editable draft of the text to post (For PR view). */
+  /** Comments only: editable draft of the text to post (Outbox view). */
   draft?: string;
   /** Unsent reply-box content (survives re-renders; comments and conversations). */
   reply?: string;
@@ -572,11 +631,24 @@ export interface Annotation {
   | { kind: "description"; paragraphId: string }
   | { kind: "diff-line"; fileKey: string; line: number; endLine?: number; side?: "LEFT" | "RIGHT" }
   /**
+   * Issue #214: text inside a comment card (a suggested question, an
+   * AI-suggested review comment, or a person's comment). The host is that
+   * comment; its text is the host block for Ask/Explain.
+   */
+  | { kind: "comment"; commentId: string }
+  /**
    * Issue #138: a hunk, addressed `h:<fileKey>:<contentHash>` (stable
    * across versions while the hunk's content is). Hosts the conversation
    * card an idle hunk summary activates into.
    */
-  | { kind: "hunk"; fileKey: string; contentHash: string };
+  | { kind: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit, addressed `code:<path>:<lines>@<sha>`
+   * (the file tab). `line` is the first cited line; `endLine` the last
+   * when the selection spans lines. Remapped by content on a new version
+   * like every other code anchor (PRD §8).
+   */
+  | { kind: "code"; path: string; commit: string; line: number; endLine?: number };
 
 /**
  * Issue #166: a live text selection as character offsets within its host's
@@ -651,6 +723,147 @@ export interface Contribution {
   status: ContributionStatus;
 }
 
+/** #224: normalised PR state for badges. Draft is a state of its own. */
+export type PrState = "open" | "draft" | "merged" | "closed";
+
+/** #224: normalised GitHub review decision for badges. #230: only approved
+ * and changes_requested are ever shown — "review required" is dropped
+ * entirely (never stored as a decision, never rendered). */
+export type PrReviewDecision = "approved" | "changes_requested";
+
+/** Map gh's `state` + `isDraft` onto {@link PrState}; undefined when unknown. */
+export function prStateFromGh(state: unknown, isDraft: unknown): PrState | undefined {
+  if (isDraft === true) return "draft";
+  switch (typeof state === "string" ? state.toUpperCase() : "") {
+    case "OPEN":
+      return "open";
+    case "MERGED":
+      return "merged";
+    case "CLOSED":
+      return "closed";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Map gh's `reviewDecision` onto {@link PrReviewDecision}; undefined when
+ * none. #230: `REVIEW_REQUIRED` maps to undefined — it is never shown.
+ */
+export function prReviewDecisionFromGh(value: unknown): PrReviewDecision | undefined {
+  switch (typeof value === "string" ? value.toUpperCase() : "") {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes_requested";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * #230: the decision the UI shows for a PR.
+ *
+ * - `REVIEW_REQUIRED` (and empty/unknown) never shows — undefined.
+ * - `APPROVED` always shows.
+ * - `CHANGES_REQUESTED` shows unless the reviewer who requested changes
+ *   has since been re-requested: when any `CHANGES_REQUESTED` author in
+ *   `latestReviews` is currently in `reviewRequests` (user logins,
+ *   case-insensitive), the decision is hidden (undefined) — GitHub keeps
+ *   `reviewDecision: CHANGES_REQUESTED` after a re-request, but it reads
+ *   wrong, so we show no decision at all.
+ *
+ * All inputs are gh-shaped unknowns (robust to missing/extra fields):
+ * `reviewDecision` is gh's raw string, `reviewRequests` is gh's
+ * `reviewRequests` array (user entries carry `login`), and
+ * `latestReviews` is gh's `latestReviews` array (entries carry
+ * `author.login` + `state`). When `latestReviews` is absent or names no
+ * changes-requester, `CHANGES_REQUESTED` still shows.
+ */
+export function displayedReviewDecision(args: {
+  reviewDecision?: unknown;
+  reviewRequests?: unknown;
+  latestReviews?: unknown;
+}): PrReviewDecision | undefined {
+  const mapped = prReviewDecisionFromGh(args.reviewDecision);
+  if (mapped === undefined) return undefined;
+  if (mapped === "approved") return "approved";
+  const requested = new Set(reviewRequestLogins(args.reviewRequests).map((l) => l.toLowerCase()));
+  if (requested.size === 0) return "changes_requested";
+  for (const entry of latestReviewEntries(args.latestReviews)) {
+    if (entry.state.toUpperCase() === "CHANGES_REQUESTED" && requested.has(entry.login.toLowerCase())) {
+      return undefined;
+    }
+  }
+  return "changes_requested";
+}
+
+/**
+ * #230: user logins currently requesting review, from gh's
+ * `reviewRequests` array (team entries carry `slug`/`name`, not `login`,
+ * and are ignored). Accepts plain login strings too. Deduped
+ * case-insensitively, order-stable.
+ */
+export function reviewRequestLogins(requests: unknown): string[] {
+  const logins: string[] = [];
+  if (typeof requests === "string") {
+    if (requests !== "") logins.push(requests);
+  } else if (Array.isArray(requests)) {
+    for (const r of requests) {
+      if (typeof r === "string") {
+        if (r !== "") logins.push(r);
+        continue;
+      }
+      if (typeof r === "object" && r !== null) {
+        const login = (r as { login?: unknown }).login;
+        if (typeof login === "string" && login !== "") logins.push(login);
+      }
+    }
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const login of logins) {
+    const key = login.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(login);
+  }
+  return out;
+}
+
+/** #230: one parsed `latestReviews` entry (who + what they said). */
+export interface LatestReviewEntry {
+  login: string;
+  state: string;
+}
+
+/**
+ * #230: parse gh's `latestReviews` array into `{ login, state }` entries.
+ * Accepts `author.login` (gh shape) plus `login`/`authorLogin` fallbacks;
+ * entries missing either side are skipped.
+ */
+export function latestReviewEntries(reviews: unknown): LatestReviewEntry[] {
+  if (!Array.isArray(reviews)) return [];
+  const out: LatestReviewEntry[] = [];
+  for (const r of reviews) {
+    if (typeof r !== "object" || r === null) continue;
+    const obj = r as Record<string, unknown>;
+    let login = "";
+    const author = obj["author"];
+    if (typeof author === "string") login = author;
+    else if (typeof author === "object" && author !== null) {
+      const authorLogin = (author as { login?: unknown }).login;
+      if (typeof authorLogin === "string") login = authorLogin;
+    }
+    if (!login && typeof obj["login"] === "string") login = obj["login"] as string;
+    if (!login && typeof obj["authorLogin"] === "string") login = obj["authorLogin"] as string;
+    const state = typeof obj["state"] === "string" ? (obj["state"] as string) : "";
+    if (!login || !state) continue;
+    out.push({ login, state });
+  }
+  return out;
+}
+
 /** PR description (or branch commit messages) as rendered HTML (M1 addition). */
 export interface ReviewDescription {
   /** HTML with stable paragraph ids; `desc:<id>@<rev>` tokens resolve here. */
@@ -665,6 +878,10 @@ export interface ReviewDescription {
   author?: string;
   /** gh PR state (OPEN/CLOSED/MERGED) for the author line. Absent on branches. */
   state?: string;
+  /** #224: gh `isDraft` at ingest/refresh time. Absent on branches. */
+  isDraft?: boolean;
+  /** #224: normalised gh review decision at ingest/refresh time. Absent on branches. */
+  reviewDecision?: PrReviewDecision;
   /**
    * "Restated →" mapping (PRD §4.11): description paragraph id → ids of
    * the guide blocks whose citations restate it. Derived from guide
@@ -743,13 +960,56 @@ export type JobState = "queued" | "running" | "backing-off" | "done" | "error" |
 export interface JobToolCall {
   /** Tool name as reported by the adapter (e.g. "Bash", "Read", "WebFetch"). */
   name: string;
+  /** Adapter tool-call id, when it sent one (correlates start and end, #207). */
+  id?: string;
   /**
    * Best-effort argument detail (e.g. the shell command or URL), when the
-   * adapter sent it with the call. Truncated by the service.
+   * adapter sent it with the call. Truncated by the service (with a
+   * truncation marker naming the original length, #207).
    */
   detail?: string;
+  /**
+   * Issue #207: the tool's result text, truncated by the service with a
+   * marker naming the original length. Absent when the adapter sent no
+   * result (or the call has not ended yet).
+   */
+  result?: string;
+  /** Issue #207: full length of the tool result before truncation. */
+  resultOriginalLength?: number;
   /** Issue #194: epoch ms when the call started (Debug page timings). */
   startedAt?: number;
+  /** Issue #207: epoch ms when the call ended, when an end was seen. */
+  finishedAt?: number;
+}
+
+/**
+ * Issue #207: one agent turn of a job, as sent and as answered — the
+ * Debug page's Output view. Turns are in order (first, repair, retry,
+ * follow-up, …) and match the segments of the job's `promptSnapshot`.
+ * Text fields are capped by the service: a truncated value ends with a
+ * marker naming the original length, also kept in the matching
+ * `*OriginalLength` field. `rawUsage` is the adapter's usage payload
+ * stored verbatim, next to the derived `usage` counts.
+ */
+export interface JobTurnRecord {
+  /** Turn label from the pipeline ("first", "repair", …). */
+  label: string;
+  /** The exact prompt sent for this turn (capped; see above). */
+  prompt?: string;
+  /** Full length of this turn's prompt before truncation. */
+  promptOriginalLength?: number;
+  /** The reply text as streamed, before parsing (trailing JSON included). */
+  output: string;
+  /** Full length of the reply before truncation. */
+  outputOriginalLength: number;
+  /** Tool calls that ran during this turn, in the order they started. */
+  tools: JobToolCall[];
+  /** Derived per-turn token counts, when the runner reported usage. */
+  usage?: TokenUsage;
+  /** Raw usage payload exactly as the runner reported it (verbatim). */
+  rawUsage?: unknown;
+  startedAt: number;
+  finishedAt?: number;
 }
 
 /**
@@ -836,6 +1096,13 @@ export interface Job {
    * can be answered by reading it. Absent for successful jobs.
    */
   replySnapshot?: string;
+  /**
+   * Issue #207: per-turn records (prompt, streamed output, tool calls
+   * with truncated results, derived + raw usage) for every job, in every
+   * state — not only failures. Omitted from job lists; fetched per job
+   * at `GET /api/jobs/:id/output`. Absent on jobs from before #207.
+   */
+  turnRecords?: JobTurnRecord[];
   /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
   cardId?: string;
   /**

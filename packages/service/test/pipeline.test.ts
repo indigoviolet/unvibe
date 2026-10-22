@@ -94,8 +94,8 @@ describe("pipeline demo e2e (replay)", () => {
         if (ev.type === "patch") patches.push({ ops: ev.ops, headRev: ev.headRev });
       });
 
-      // Wait for the full demo (reader + critic×2 + stubs + 8 hunks +
-      // 4 go-deeper fills + 7 concept fills).
+      // Wait for the full demo (reader + one critic job (#215) +
+      // 8 hunks + 4 go-deeper fills; no concept pages before a click, #216).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
         if (!s) return false;
@@ -103,10 +103,6 @@ describe("pipeline demo e2e (replay)", () => {
         if (!root || root.cards.length < 6) return false;
         if (root.cards.some((c) => c.pending)) return false;
         if (s.pages.filter((p) => p.kind === "finding").length < 2) return false;
-        if (s.pages.filter((p) => p.kind === "concept").length < 7) return false;
-        // Concept pages filled (revision bumped past the one-line stub).
-        const concepts = s.pages.filter((p) => p.kind === "concept");
-        if (concepts.some((p) => (p.cards[0]?.revision ?? 1) < 2)) return false;
         if (s.hunkStates.filter((h) => h.summary).length < 8) return false;
         return true;
       }, 60000);
@@ -126,7 +122,7 @@ describe("pipeline demo e2e (replay)", () => {
         expect(got.confidence).toBe(want.confidence);
         expect(got.summary).toBe(want.summary);
       }
-      // Suggested comments (agent drafts, NOT marked for PR).
+      // Suggested comments (agent drafts, NOT in the Outbox).
       const sug = snap.annotations.filter((a) => a.messages.some((m) => m.suggested));
       expect(sug.length).toBeGreaterThanOrEqual(2);
       for (const a of sug) {
@@ -200,6 +196,12 @@ describe("pipeline demo e2e (replay)", () => {
       const jobs = await app.inject({ method: "GET", url: `/api/jobs?review=${id}`, headers: authed });
       expect(jobs.statusCode).toBe(200);
       expect((jobs.json() as { jobs: Job[] }).jobs.length).toBeGreaterThan(10);
+      // #215: exactly one critic job per review (its reply made 2 findings).
+      expect((jobs.json() as { jobs: Job[] }).jobs.filter((j) => j.kind === "critic")).toHaveLength(1);
+      expect(snap.pages.filter((p) => p.kind === "finding")).toHaveLength(2);
+      // #216: no concept-stub job, no concept pages before a reader opens one.
+      expect((jobs.json() as { jobs: Job[] }).jobs.filter((j) => j.kind === "concept")).toHaveLength(0);
+      expect(snap.pages.filter((p) => p.kind === "concept")).toHaveLength(0);
     } finally {
       await app.close();
     }
@@ -279,8 +281,9 @@ describe("pipeline failure paths (scripted fakes)", () => {
     return id;
   }
 
-  it("malformed trailing JSON is a job-visible error", async () => {
+  it("malformed trailing JSON keeps the guide cards (#213)", async () => {
     const agents = new FakeAgentRunner([
+      { match: "Resend just the data block", events: [{ type: "text", delta: "```json\n{bad\n```\n" }, { type: "done", stopReason: "end_turn" }] },
       { match: "Reader", events: [{ type: "text", delta: "## T\n\nBody.\n\n```json\n{bad\n```\n" }, { type: "done", stopReason: "end_turn" }] },
     ]);
     const { app, ctx } = await demoApp(agents);
@@ -290,8 +293,10 @@ describe("pipeline failure paths (scripted fakes)", () => {
       await ctx.jobs.drain(5000).catch(() => {});
       const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
       expect(readerJobs.length).toBeGreaterThan(0);
-      expect(readerJobs[0].state).toBe("error");
-      expect(readerJobs[0].error).toMatch(/trailing JSON/);
+      expect(readerJobs[0].state).toBe("done");
+      expect(readerJobs[0].degradedReason).toContain("no plotlines or go-deeper directions");
+      const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
+      expect(root.cards.map((c) => c.title)).toEqual(["T"]);
     } finally {
       await app.close();
     }

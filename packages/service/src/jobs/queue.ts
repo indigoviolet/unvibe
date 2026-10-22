@@ -1,7 +1,7 @@
 /**
  * Priority job queue (PRD §12).
  *
- * - Per-provider concurrency cap (default 4, injectable so it can follow
+ * - Per-provider concurrency cap (default 16, injectable so it can follow
  *   the `sessionsPerProvider` setting).
  * - Priority order: user-requested > visible > background
  *   (`JOB_PRIORITY` in `@unvibe/shared`); raisable while queued.
@@ -24,6 +24,7 @@ import {
   type Job,
   type JobDedupeKey,
   type JobKind,
+  type JobTurnRecord,
   type ReviewEvent,
   type TokenUsage,
 } from "@unvibe/shared";
@@ -33,7 +34,7 @@ import { isAbortError, partialUsageOf, RetryableError, type PartialUsageCarrier 
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
 
-export const DEFAULT_CONCURRENCY_CAP = 4;
+export const DEFAULT_CONCURRENCY_CAP = 16;
 export const DEFAULT_MAX_ATTEMPTS = 8;
 export const DEFAULT_BACKOFF_BASE_MS = 1000;
 export const DEFAULT_BACKOFF_MAX_MS = 60_000;
@@ -64,14 +65,31 @@ export interface JobContext {
   /**
    * Issue #160: record one agent tool call on the job (shown on the
    * Debug page). `detail` is best-effort argument text from the adapter.
+   * Issue #207: an `end` call (extra.status) attaches its truncated
+   * `result` to the matching call, on the flat list and on the turn.
    */
-  reportTool(name: string, detail?: string): void;
+  reportTool(
+    name: string,
+    detail?: string,
+    extra?: { id?: string; result?: string; status?: "start" | "end" },
+  ): void;
   /** Record the agent's `degraded` reason for a kept answer (Debug page). */
   setDegradedReason(reason: string): void;
   /** Issue #194: start a timed agent turn (e.g. "first", "repair"). */
-  beginTurn(label: string): void;
+  beginTurn(label: string, prompt?: string): void;
   /** Issue #194: finish the current timed turn started by `beginTurn`. */
   endTurn(): void;
+  /**
+   * Issue #207: record the exact prompt of the agent turn now starting
+   * (called by the streaming collectors, which know the prompt). Lands
+   * on the open turn record, or opens an implicit one.
+   */
+  setTurnPrompt(text: string): void;
+  /**
+   * Issue #207: record one turn's derived usage and, when the runner
+   * sent it, its raw usage payload (stored verbatim) on the open turn.
+   */
+  reportTurnUsage(usage: TokenUsage, raw?: unknown): void;
 }
 
 export type JobFn = (ctx: JobContext) => Promise<void>;
@@ -141,10 +159,35 @@ interface Entry {
   abort?: AbortController;
   /** Streamed reply text, accumulated for `replySnapshot` on failure (#180). */
   replyText?: string;
+  /** Issue #207: the open turn record (also the last of `job.turnRecords`). */
+  currentTurn?: JobTurnRecord;
+  /** Issue #207: prompt snapshot already consumed by earlier turns. */
+  snapshotBaseline?: string;
 }
 
 /** Cap on a stored failed reply: enough to read, bounded for the DB. */
 const REPLY_SNAPSHOT_CAP = 100_000;
+
+/** Issue #207: size caps for stored turn records. */
+export const TURN_PROMPT_CAP = 20_000;
+export const TURN_OUTPUT_CAP = 20_000;
+export const TOOL_RESULT_CAP = 2_000;
+export const TOOL_DETAIL_CAP = 2_000;
+
+/** Truncate with a marker naming the original length (#207). */
+export function truncateForRecord(text: string, cap: number): string {
+  if (text.length <= cap) return text;
+  return `${text.slice(0, cap)}\n… [truncated: showing ${cap} of ${text.length} chars]`;
+}
+
+function cloneRaw(raw: unknown): unknown {
+  if (raw === undefined) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(raw)) as unknown;
+  } catch {
+    return raw;
+  }
+}
 
 function copy(job: Job): Job {
   return {
@@ -153,6 +196,14 @@ function copy(job: Job): Job {
     tools: job.tools ? job.tools.map((t) => ({ ...t })) : undefined,
     attemptTimings: job.attemptTimings ? job.attemptTimings.map((t) => ({ ...t })) : undefined,
     turns: job.turns ? job.turns.map((t) => ({ ...t })) : undefined,
+    turnRecords: job.turnRecords
+      ? job.turnRecords.map((t) => ({
+          ...t,
+          tools: t.tools.map((x) => ({ ...x })),
+          usage: t.usage ? { ...t.usage } : undefined,
+          rawUsage: cloneRaw(t.rawUsage),
+        }))
+      : undefined,
   };
 }
 
@@ -232,9 +283,12 @@ export class JobQueue {
       ...(opts.annotationId ? { annotationId: opts.annotationId } : {}),
       seq: this.seq++,
     };
+    // #221: persist before registering in memory. If the store throws,
+    // the error surfaces to the caller and no orphan entry (queued,
+    // 0 attempts, never runnable) is left in entries/dedupe.
+    this.save(entry);
     this.entries.set(job.id, entry);
     if (dedupeKey) this.dedupe.set(dedupeKey, job.id);
-    this.save(entry);
     this.emit(entry);
     this.pump();
     return copy(job);
@@ -254,11 +308,12 @@ export class JobQueue {
       .map((e) => {
         const job = copy(e.job);
         // Prompt and reply snapshots ride separately
-        // (`GET /api/jobs/:id/prompt`, `GET /api/jobs/:id/reply`): lists
+        // (`GET /api/jobs/:id/output`, `GET /api/jobs/:id/reply`): lists
         // stay small after hundreds of jobs (PRD §16 snapshot size).
         // `get()` keeps the full job.
         delete job.promptSnapshot;
         delete job.replySnapshot;
+        delete job.turnRecords;
         return job;
       });
   }
@@ -383,6 +438,9 @@ export class JobQueue {
     entry.job.nextRetryAt = undefined;
     entry.job.replySnapshot = undefined;
     entry.replyText = undefined;
+    entry.job.turnRecords = undefined;
+    entry.currentTurn = undefined;
+    entry.snapshotBaseline = undefined;
     if (entry.job.dedupeKey) this.dedupe.set(entry.job.dedupeKey, entry.job.id);
     this.save(entry);
     this.emit(entry);
@@ -533,6 +591,49 @@ export class JobQueue {
     for (const turn of entry.job.turns ?? []) {
       if (turn.finishedAt === undefined) turn.finishedAt = now;
     }
+    this.closeTurnRecord(entry);
+  }
+
+  /** Issue #207: finish the open turn record, stamping its truncation marker. */
+  private closeTurnRecord(entry: Entry): void {
+    const turn = entry.currentTurn;
+    if (!turn) return;
+    if (turn.finishedAt === undefined) turn.finishedAt = this.clock.now();
+    if (turn.outputOriginalLength > TURN_OUTPUT_CAP && !turn.output.includes("[truncated:")) {
+      turn.output = `${turn.output.slice(0, TURN_OUTPUT_CAP)}\n… [truncated: showing ${TURN_OUTPUT_CAP} of ${turn.outputOriginalLength} chars]`;
+    }
+    entry.currentTurn = undefined;
+  }
+
+  /** Issue #207: store a turn prompt (capped, with its original length). */
+  private setRecordPrompt(turn: JobTurnRecord, text: string): void {
+    turn.prompt = truncateForRecord(text, TURN_PROMPT_CAP);
+    turn.promptOriginalLength = text.length;
+  }
+
+  /**
+   * Issue #207: the open turn record, opening an implicit one when a
+   * turn's events arrive without a `beginTurn` (diagram repairs and
+   * other untimed turns inside a job).
+   */
+  private openTurn(entry: Entry): JobTurnRecord {
+    if (entry.currentTurn) return entry.currentTurn;
+    const label = (entry.job.turnRecords?.length ?? 0) === 0 ? "first" : "follow-up";
+    const turn: JobTurnRecord = { label, output: "", outputOriginalLength: 0, tools: [], startedAt: this.clock.now() };
+    entry.job.turnRecords = [...(entry.job.turnRecords ?? []), turn];
+    entry.currentTurn = turn;
+    return turn;
+  }
+
+  /** Issue #207: per-turn prompt segment from the cumulative snapshot. */
+  private deriveTurnPrompt(entry: Entry): string | undefined {
+    const snapshot = entry.job.promptSnapshot;
+    if (!snapshot) return undefined;
+    const base = entry.snapshotBaseline ?? "";
+    const segment = snapshot.startsWith(base) ? snapshot.slice(base.length) : snapshot;
+    entry.snapshotBaseline = snapshot;
+    const stripped = segment.replace(/^\n\n--- [^\n]+ ---\n/, "");
+    return stripped === "" ? undefined : stripped;
   }
 
   private async execute(entry: Entry): Promise<void> {
@@ -666,6 +767,13 @@ export class JobQueue {
         if ((entry.replyText?.length ?? 0) < REPLY_SNAPSHOT_CAP) {
           entry.replyText = ((entry.replyText ?? "") + delta).slice(0, REPLY_SNAPSHOT_CAP);
         }
+        // Issue #207: the same stream lands on the open turn record, for
+        // every job (not only failures), capped per turn.
+        const turn = this.openTurn(entry);
+        turn.outputOriginalLength += delta.length;
+        if (turn.output.length < TURN_OUTPUT_CAP) {
+          turn.output = (turn.output + delta).slice(0, TURN_OUTPUT_CAP);
+        }
         this.onEvent(entry.reviewId, {
           type: "text",
           jobId: job.id,
@@ -684,16 +792,76 @@ export class JobQueue {
         this.save(entry);
         this.emit(entry);
       },
-      reportTool: (name, detail) => {
-        if ((job.tools?.length ?? 0) >= MAX_JOB_TOOLS) return;
-        const tools = [...(job.tools ?? [])];
-        tools.push({ name, ...(detail !== undefined ? { detail } : {}), startedAt: this.clock.now() });
-        job.tools = tools;
+      reportTool: (name, detail, extra) => {
+        const status = extra?.status ?? "start";
+        const turn = this.openTurn(entry);
+        if (status === "end") {
+          // Attach the truncated result to the matching call: by adapter
+          // id when present, else the last unfinished call of this name.
+          const match = (list: Job["tools"]) =>
+            list
+              ? [...list].reverse().find((t) => (extra?.id ? t.id === extra.id : t.name === name && t.finishedAt === undefined))
+              : undefined;
+          const flat = match(job.tools);
+          if (flat) {
+            flat.finishedAt = this.clock.now();
+            if (extra?.result !== undefined) {
+              flat.result = truncateForRecord(extra.result, TOOL_RESULT_CAP);
+              flat.resultOriginalLength = extra.result.length;
+            }
+            // The start event may carry no arguments yet (adapters stream
+            // them in on later updates); backfill from the end event.
+            if (detail !== undefined && (flat.detail === undefined || flat.detail === "{}")) {
+              flat.detail = truncateForRecord(detail, TOOL_DETAIL_CAP);
+            }
+          }
+          let rec = match(turn.tools);
+          if (!rec) {
+            rec = { name, ...(extra?.id ? { id: extra.id } : {}), startedAt: this.clock.now() };
+            turn.tools = [...turn.tools, rec];
+          }
+          rec.finishedAt = this.clock.now();
+          if (extra?.result !== undefined) {
+            rec.result = truncateForRecord(extra.result, TOOL_RESULT_CAP);
+            rec.resultOriginalLength = extra.result.length;
+          }
+          if (detail !== undefined && (rec.detail === undefined || rec.detail === "{}")) rec.detail = truncateForRecord(detail, TOOL_DETAIL_CAP);
+          this.save(entry);
+          this.emit(entry);
+          return;
+        }
+        if ((job.tools?.length ?? 0) < MAX_JOB_TOOLS) {
+          const tools = [...(job.tools ?? [])];
+          tools.push({
+            name,
+            ...(extra?.id ? { id: extra.id } : {}),
+            ...(detail !== undefined ? { detail: truncateForRecord(detail, TOOL_DETAIL_CAP) } : {}),
+            startedAt: this.clock.now(),
+          });
+          job.tools = tools;
+        }
+        if (turn.tools.length < MAX_JOB_TOOLS) {
+          turn.tools = [
+            ...turn.tools,
+            {
+              name,
+              ...(extra?.id ? { id: extra.id } : {}),
+              ...(detail !== undefined ? { detail: truncateForRecord(detail, TOOL_DETAIL_CAP) } : {}),
+              startedAt: this.clock.now(),
+            },
+          ];
+        }
         this.save(entry);
         this.emit(entry);
       },
-      beginTurn: (label) => {
+      beginTurn: (label, prompt) => {
         job.turns = [...(job.turns ?? []), { label, startedAt: this.clock.now() }];
+        this.closeTurnRecord(entry);
+        const turn: JobTurnRecord = { label, output: "", outputOriginalLength: 0, tools: [], startedAt: this.clock.now() };
+        const text = prompt ?? this.deriveTurnPrompt(entry);
+        if (text !== undefined) this.setRecordPrompt(turn, text);
+        job.turnRecords = [...(job.turnRecords ?? []), turn];
+        entry.currentTurn = turn;
         this.save(entry);
         this.emit(entry);
       },
@@ -702,9 +870,33 @@ export class JobQueue {
         const open = turns?.[turns.length - 1];
         if (open && open.finishedAt === undefined) {
           open.finishedAt = this.clock.now();
-          this.save(entry);
-          this.emit(entry);
         }
+        this.closeTurnRecord(entry);
+        this.save(entry);
+        this.emit(entry);
+      },
+      setTurnPrompt: (text) => {
+        const turn = entry.currentTurn;
+        if (turn && turn.prompt !== undefined && (turn.outputOriginalLength > 0 || turn.tools.length > 0 || turn.usage !== undefined)) {
+          // A new prompt on a turn that already answered: a new turn.
+          this.closeTurnRecord(entry);
+          const next = this.openTurn(entry);
+          this.setRecordPrompt(next, text);
+          return;
+        }
+        this.setRecordPrompt(this.openTurn(entry), text);
+      },
+      reportTurnUsage: (usage, raw) => {
+        const turn = this.openTurn(entry);
+        turn.usage = {
+          inputTokens: (turn.usage?.inputTokens ?? 0) + usage.inputTokens,
+          cachedReadTokens: (turn.usage?.cachedReadTokens ?? 0) + usage.cachedReadTokens,
+          cachedWriteTokens: (turn.usage?.cachedWriteTokens ?? 0) + usage.cachedWriteTokens,
+          outputTokens: (turn.usage?.outputTokens ?? 0) + usage.outputTokens,
+        };
+        if (raw !== undefined) turn.rawUsage = cloneRaw(raw);
+        this.save(entry);
+        this.emit(entry);
       },
       setDegradedReason: (reason) => {
         job.degradedReason = reason;
@@ -724,7 +916,11 @@ export class JobQueue {
   }
 
   private emit(entry: Entry): void {
-    this.onEvent(entry.reviewId, { type: "job", job: copy(entry.job) });
+    // Turn records ride the per-job output endpoint (#207), never the
+    // event stream: they are far too large for every state change.
+    const job = copy(entry.job);
+    delete job.turnRecords;
+    this.onEvent(entry.reviewId, { type: "job", job });
   }
 
   private isDrained(): boolean {

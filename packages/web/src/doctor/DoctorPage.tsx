@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import type { DiagnosticsResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
+import { Button, Card } from "../ui/index.js";
 
 function redactForCopy(text: string): string {
   // Token redaction (defense in depth; the API never sends the token) +
@@ -110,13 +111,13 @@ export function DoctorPage(): React.JSX.Element {
             What Unvibe found for each tool it needs, which copy it uses and why, the full error text, and the shell, PATH and start mode of the service. <code>unvibe doctor</code> in a terminal runs the same checks.
           </p>
           <div className="frow" style={{ gap: 8, marginBottom: 12 }}>
-            <button className="btn ghost" type="button" onClick={() => void load()} disabled={loading}>
+            <Button variant="secondary" size="sm" type="button" onClick={() => void load()} disabled={loading}>
               {loading ? "Checking…" : "Re-check"}
-            </button>
-            <button className="btn ghost" type="button" onClick={() => void copy()} disabled={!report}>
+            </Button>
+            <Button variant="secondary" size="sm" type="button" onClick={() => void copy()} disabled={!report}>
               {copied ? "Copied" : "Copy diagnostics"}
-            </button>
-            <Link className="tbtn" to="/settings?tab=environment">
+            </Button>
+            <Link className="ui-btn" data-variant="secondary" data-size="sm" to="/settings?tab=environment">
               Settings → Environment
             </Link>
           </div>
@@ -129,16 +130,16 @@ export function DoctorPage(): React.JSX.Element {
           {report ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }} data-testid="doctor-report">
               {report.warnings.length > 0 ? (
-                <div className="card" style={{ padding: "8px 14px" }} data-testid="doctor-warnings">
+                <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-warnings">
                   <b>Warnings</b>
                   {report.warnings.map((w, i) => (
                     <p key={i} className="warnline" role="status" style={{ margin: "4px 0" }}>
                       {w}
                     </p>
                   ))}
-                </div>
+                </Card>
               ) : null}
-              <div className="card" style={{ padding: "8px 14px" }} data-testid="doctor-service">
+              <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-service">
                 <div className="frow" style={{ gap: 8 }}>
                   <b style={{ minWidth: 140 }}>Service</b>
                   <span style={{ fontSize: 13 }}>
@@ -150,8 +151,8 @@ export function DoctorPage(): React.JSX.Element {
                 <div className="hint">dataDir: {report.service.dataDir}</div>
                 <div className="hint">port: {report.service.port}</div>
                 <div className="hint">started: {report.service.startedAt}</div>
-              </div>
-              <div className="card" style={{ padding: "8px 14px" }} data-testid="doctor-path">
+              </Card>
+              <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-path">
                 <div className="frow" style={{ gap: 8 }}>
                   <b style={{ minWidth: 140 }}>PATH</b>
                   <span style={{ fontSize: 13 }}>via {report.path.shell}</span>
@@ -171,9 +172,9 @@ export function DoctorPage(): React.JSX.Element {
                 {report.path.onlyInInherited.length > 0 ? (
                   <div className="hint">only inherited: {report.path.onlyInInherited.join(", ")}</div>
                 ) : null}
-              </div>
+              </Card>
               {report.tools.map((t) => (
-                <div key={t.tool} className="card" style={{ padding: "8px 14px" }} data-testid={`doctor-tool-${t.tool}`}>
+                <Card key={t.tool} variant="plain" style={{ padding: "8px 14px" }} data-testid={`doctor-tool-${t.tool}`}>
                   <div className="frow" style={{ gap: 8, alignItems: "baseline" }}>
                     <b style={{ minWidth: 140 }}>{t.tool}</b>
                     <span className="hint">
@@ -221,10 +222,10 @@ export function DoctorPage(): React.JSX.Element {
                     ))}
                     {t.candidates.length === 0 ? <div className="hint">No candidates found on PATH.</div> : null}
                   </div>
-                </div>
+                </Card>
               ))}
               {report.models ? (
-                <div className="card" style={{ padding: "8px 14px" }} data-testid="doctor-models">
+                <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-models">
                   <b>Models</b>
                   {Object.entries(report.models).map(([provider, models]) => (
                     <div key={provider} style={{ marginTop: 6 }}>
@@ -237,7 +238,7 @@ export function DoctorPage(): React.JSX.Element {
                       ))}
                     </div>
                   ))}
-                </div>
+                </Card>
               ) : null}
             </div>
           ) : null}

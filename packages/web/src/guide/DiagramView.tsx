@@ -27,6 +27,7 @@ import { naturalSize } from "./d2sanitize.js";
 import { IDENTITY_VIEW, ZOOM_STEP } from "./panZoom.js";
 import { usePanZoom } from "./usePanZoom.js";
 import { ZoomControls } from "./ZoomControls.js";
+import { Button } from "../ui/index.js";
 import { RichText } from "./RichText.js";
 
 interface Props {
@@ -142,15 +143,17 @@ export function DiagramView({ reviewId, block, onOpenPage, fetchSvg }: Props) {
               onZoomOut={() => pan.zoomBy(1 / ZOOM_STEP)}
               onReset={() => pan.applyView(IDENTITY_VIEW)}
             />
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               type="button"
-              className="tbtn dg-expand"
+              className="dg-expand"
               aria-label="Expand diagram"
               aria-haspopup="dialog"
               onClick={() => setExpanded(true)}
             >
               <Icon name="open" /> Expand
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>

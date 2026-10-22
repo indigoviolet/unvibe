@@ -3,8 +3,7 @@
  * interactions. Dotted page links (`a.cx` with `data-node` or `data-link`)
  * navigate in-app; source buttons (`.src[data-src]`) reveal.
  * Links to fully read pages render muted with the prototype's check mark.
- * Links to unknown concepts (hidden candidates) toast instead of
- * navigating; the page is written when first opened (later milestone).
+ * A concept link's page is written when first opened (#216).
  */
 import type { Page } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
@@ -109,16 +108,24 @@ export function openLinkTarget(
       return;
     }
     const stubId = `c-${slug}`;
+    // Navigate once, optimistically: repeated navigation to the same page
+    // would add duplicate browser-history entries and break Back.
+    let navigated = false;
+    const openStub = (pageId: string): void => {
+      if (navigated) return;
+      navigated = true;
+      onOpenPage(pageId);
+    };
     // If the stub already exists (empty or full), open it at once so the
     // working state is visible while the job fills it.
     if (pages?.some((p) => p.id === stubId)) {
-      onOpenPage(stubId);
+      openStub(stubId);
     }
     // The in-flight entry is set synchronously so the stub page shows its
     // working state immediately, before the request returns.
     void performAction(reviewId, { kind: "concept", slug }, { toast: false })
       .then((res) => {
-        if (res.accepted && res.pageId) onOpenPage(res.pageId);
+        if (res.accepted && res.pageId) openStub(res.pageId);
         else if (!res.accepted) toast("Not available with mock data");
       })
       .catch((err: unknown) => {
@@ -130,14 +137,14 @@ export function openLinkTarget(
         }
       });
     // Optimistic navigation so the working state shows immediately.
-    onOpenPage(stubId);
+    openStub(stubId);
     return;
   }
   toast("That link can't be opened");
 }
 
 /** Preview HTML for a dotted-link target (page title + first paragraph). */
-export function previewLinkTarget(target: string, pages: Page[] | undefined): string | null {
+export function previewLinkTarget(target: string, pages: Page[] | undefined, label?: string): string | null {
   if (!pages) return null;
   const pageId = resolvePageLink(target, pages);
   if (pageId) {
@@ -156,8 +163,10 @@ export function previewLinkTarget(target: string, pages: Page[] | undefined): st
     return `<b>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</b><span class="hint">Click to open</span>`;
   }
   if (target.startsWith("concept:")) {
-    const slug = target.slice("concept:".length).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    return `<b>${slug}</b><span class="hint">Concept · the page is written when you open it</span>`;
+    // #216: no stored summary before the page is written — the link's own
+    // label and Click to open.
+    const shown = (label?.trim() || target.slice("concept:".length)).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    return `<b>${shown}</b><span class="hint">Click to open</span>`;
   }
   return null;
 }

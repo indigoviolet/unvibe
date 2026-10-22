@@ -16,17 +16,18 @@ Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; loca
 
 ```sh
 npm install -g github:indigoviolet/unvibe#release
-unvibe open
+unvibe setup
+unvibe start
 ```
 
-Setup happens on first start: the first `unvibe start` (or `unvibe open`) creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). It runs once per installed version, quietly, and never blocks the start; `unvibe setup` runs it by hand at any time. (The package deliberately declares no npm install scripts.) `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
+`unvibe setup` is the one manual step after install: it creates the per-install token, places the `unvibe://` link handler (a helper app in `~/Applications` on macOS, a desktop file on Linux), registers the scheme, and installs the start-at-login unit (a launchd agent on macOS, a systemd user unit on Linux). (The package deliberately declares no npm install scripts, and nothing runs setup automatically.) Starting without setup still works — `unvibe start` prints a one-line reminder to run it. `unvibe open` prints a link with the token — open it once to connect the browser, then bookmark the plain URL:
 
 ```sh
 http://unvibe.localhost:4517
 ```
 
 After that the bookmark just works, across browser restarts. The same command updates (or `unvibe update <channel>` to switch between
-`release`, `release-rc` and `preview/*` builds — see `DEVELOPMENT.md`
+`release` and `preview/*` builds — see `DEVELOPMENT.md`
 "Preview builds"). From a checkout instead (`mise` supplies the Node toolchain; see `DEVELOPMENT.md`):
 
 ```sh
@@ -36,7 +37,7 @@ node packages/service/dist/index.js setup
 node packages/service/dist/index.js open
 ```
 
-`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. The global install already ran it; run it again any time to repair or move the install (it is idempotent), or after an install with `--ignore-scripts`. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. While the login unit is installed, `stop`/`start` go through the service manager (`status` says `starts at login`); updates refresh the unit with the new paths. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only) — run it before `npm uninstall -g unvibe`, since npm has no uninstall hook and the handler would otherwise be left behind. Details in `docs/unvibe-localhost.md`.
+`unvibe setup` registers the service to start at login plus the `unvibe://` handler that starts the service from the browser: a helper app on macOS, a desktop file on Linux. Run it once after install, and again any time to repair or move the install (it is idempotent), or after an install with `--ignore-scripts`. When the service is not running, the installed web app shows a start page that links to `unvibe://start`; the helper starts the service and the page reloads. The login-started service never idle-exits; a manually started one exits after 10 minutes with no open window and no running jobs. While the login unit is installed, `stop`/`start` go through the service manager (`status` says `starts at login`); updates refresh the unit with the new paths. `unvibe setup --uninstall` removes the handler and the login start (`--no-login` installs the handler only) — run it before `npm uninstall -g unvibe`, since npm has no uninstall hook and the handler would otherwise be left behind. Details in `docs/unvibe-localhost.md`.
 
 Other commands:
 
@@ -44,14 +45,14 @@ Other commands:
 - `stop` / `status` — stop it; report whether it runs.
 - `token` — print the app URL with the per-install token.
 - `doctor` — environment checks, each with a fix.
-- `update --list` — list install channels (`release`, `release-rc`, `preview/*`), marking the installed one.
+- `update --list` — list install channels (`release`, `preview/*`), marking the installed one.
 - `update <channel>` — install that channel globally (switching keeps your database and backs it up first).
 
 ## Using it
 
 The front screen lists prior reviews, your repos and PRs, and recent branches. Open a PR or branch and the guide fills in beside the diff.
 
-Select any text to explain it, ask about it, or leave a note. Cards have a depth stepper and undo; a second-opinion action asks a different model about a card or finding. Citations are marked `<>`: hover previews the cited lines, click jumps to them in the diff. The diff pane filters files, hides uninteresting hunks, folds and summarizes, and tracks what you marked reviewed. Comments can be marked For PR; Submit posts them as one GitHub review. If it is your PR, you can also edit the description, and the edit goes with the same submit.
+Select any text to explain it, ask about it, or leave a note. Cards have a depth stepper and undo; a second-opinion action asks a different model about a card or finding. Citations are marked `<>`: hover previews the cited lines, click jumps to them in the diff. The diff pane filters files, hides uninteresting hunks, folds and summarizes, and tracks what you marked reviewed. Comments sit in the Outbox; Submit posts them as one GitHub review on PR reviews, and the Comments menu exports them as Markdown (Copy) on any review. If it is your PR, you can also edit the description, and the edit goes with the same submit.
 
 When new commits arrive, a banner offers Update, which carries your comments and read state over to the new version. A branch with no PR works the same except Submit, which stays disabled. Nothing reaches GitHub until you submit.
 

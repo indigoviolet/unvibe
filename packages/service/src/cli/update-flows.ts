@@ -16,7 +16,6 @@ import {
 import { runSwitchCore } from "../update/switch.js";
 import { DB_RULE } from "../update/data-backup.js";
 import { refreshLoginUnitIfManaged } from "../update/service-manager.js";
-import { stableNpmCwd } from "../update/install.js";
 
 export const UPDATE_USAGE = [
   "unvibe update: install a different channel",
@@ -24,7 +23,7 @@ export const UPDATE_USAGE = [
   "Usage: unvibe update --list",
   "       unvibe update <channel>",
   "",
-  "  --list       list release, release-rc and preview/* channels, marking the installed one",
+  "  --list       list release and preview/* channels, marking the installed one",
   "  <channel>    install github:indigoviolet/unvibe#<channel> globally with npm",
   "",
   DB_RULE,
@@ -79,7 +78,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
+        "use release or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }
@@ -97,30 +96,13 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
+        "use release or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }
   const lines = [...result.lines];
   if (result.code === 0 && result.installed) {
-    // Issue #42: the release package declares no install scripts, so
-    // setup cannot run at install time. Run the newly
-    // installed CLI's setup now — same installed path, renewed in
-    // place, so this is the new version's setup. Idempotent and quiet:
-    // output is captured, failures are left to `unvibe start`'s
-    // first-run setup check, which warns properly.
-    const setupCli = deps.cliScriptPath;
-    if (setupCli) {
-      try {
-        await deps.runner.run(process.execPath, {
-          args: [setupCli, "setup"],
-          cwd: stableNpmCwd(),
-          env: deps.updateEnv,
-        });
-      } catch {
-        // Best effort only.
-      }
-    }
+    // No automatic setup (issue #220): `unvibe setup` is a manual step.
     lines.push("run `unvibe start` to launch the new build.");
     // The global install can move the installed files (and a Node upgrade
     // moves the node binary): refresh the login unit with the fresh paths

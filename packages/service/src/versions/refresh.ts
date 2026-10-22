@@ -26,7 +26,7 @@ import type {
   VersionComparison,
   VersionStatus,
 } from "@unvibe/shared";
-import { assertReadySnapshot, summarizeComparison } from "@unvibe/shared";
+import { assertReadySnapshot, displayedReviewDecision, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
   baseRefCandidates,
@@ -288,7 +288,32 @@ export async function refreshReview(
     ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
   });
   fetchStep.finishedAt = Date.now();
+  // #224: keep the stored PR state fresh from the same `gh pr view` call,
+  // even when the head is steady (a merge/approval moves no commits).
+  // #230: the stored decision is the displayed one (re-request hides
+  // changes_requested; review_required never shows).
+  const displayedDecision = displayedReviewDecision({
+    reviewDecision: head.reviewDecision,
+    reviewRequests: head.reviewRequests,
+    latestReviews: head.latestReviews,
+  });
+  const prChanged =
+    row.prNumber !== null &&
+    head.prState !== undefined &&
+    snapshot.description !== undefined &&
+    (snapshot.description.state !== head.prState ||
+      snapshot.description.isDraft !== (head.isDraft ?? false) ||
+      snapshot.description.reviewDecision !== displayedDecision);
   if (!head.headSha || head.headSha === snapshot.version.headSha) {
+    if (prChanged) {
+      await deps.reviews.mutate(reviewId, (draft) => {
+        if (!draft.description) return;
+        draft.description.state = head.prState;
+        draft.description.isDraft = head.isDraft ?? false;
+        if (displayedDecision !== undefined) draft.description.reviewDecision = displayedDecision;
+        else delete draft.description.reviewDecision;
+      });
+    }
     return { moved: false };
   }
   const buildStep: TimedStep = { label: "Building the new version", startedAt: Date.now() };
@@ -444,10 +469,39 @@ export async function refreshReview(
       }
     }
     for (const [oldPath, newPath] of citedPaths) {
-      if (newFiles.some((f) => f.path === newPath)) continue;
+      // #81: every cited file is re-anchored by content at the new head,
+      // in the diff or outside it. In-diff new lines come from the full
+      // contents already loaded; old lines always read at the old head.
+      const inDiff = newFiles.find((f) => f.path === newPath);
       const oldLines = await loadFileLinesAtHead(deps.runner, repoPath, oldVersion.headSha, oldPath);
-      const newLines = await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
+      const newLines = inDiff
+        ? (newContents.get(inDiff.fileKey) ?? null)
+        : await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
       codeFiles.set(oldPath, { oldLines, newLines, newPath });
+    }
+  }
+
+  // #81: `code:` anchors (file-tab Explain/Ask/Comment) remap by content
+  // like diff anchors. Preload each anchored file at the new head.
+  const codeAnchorContents = new Map<string, string[] | null>();
+  {
+    const live = deps.reviews.getSnapshot(reviewId) ?? snapshot;
+    for (const ann of live.annotations) {
+      if (ann.anchor.host.kind !== "code") continue;
+      const oldPath = ann.anchor.host.path;
+      let newPath = oldPath;
+      for (const r of comparison.renames) {
+        if (r.oldPath === oldPath) {
+          newPath = r.newPath;
+          break;
+        }
+      }
+      if (codeAnchorContents.has(oldPath)) continue;
+      const inDiff = newFiles.find((f) => f.path === newPath);
+      const lines = inDiff
+        ? (newContents.get(inDiff.fileKey) ?? null)
+        : await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
+      codeAnchorContents.set(oldPath, lines);
     }
   }
 
@@ -455,6 +509,13 @@ export async function refreshReview(
 
   // One mutate so the UI gets one patch (PRD §8.4).
   await deps.reviews.mutate(reviewId, (draft) => {
+    // #224: same PR-state refresh as the steady-head path above.
+    if (row.prNumber !== null && head.prState !== undefined && draft.description) {
+      draft.description.state = head.prState;
+      draft.description.isDraft = head.isDraft ?? false;
+      if (displayedDecision !== undefined) draft.description.reviewDecision = displayedDecision;
+      else delete draft.description.reviewDecision;
+    }
     draft.files = newFiles as ReviewSnapshot["files"];
     draft.commits = newCommits;
     draft.version = { ...version };
@@ -497,10 +558,21 @@ export async function refreshReview(
     remapSteps.push(anchorsStep);
     // Annotations on code: moved or outdated.
     for (const ann of draft.annotations) {
-      if (ann.anchor.host.kind !== "diff-line") continue;
-      const out = remapAnchor(ann.anchor, { comparison: cmp, newContents, newVersion: version.n });
+      if (ann.anchor.host.kind !== "diff-line" && ann.anchor.host.kind !== "code") continue;
+      const out = remapAnchor(ann.anchor, {
+        comparison: cmp,
+        newContents,
+        newVersion: version.n,
+        codeContents: codeAnchorContents,
+        newHeadSha: head.headSha,
+      });
       if (out.remap.status === "moved" && out.newAnchor) {
         ann.anchor = out.newAnchor;
+        if (ann.anchor.host.kind === "code") {
+          for (const r of comparison.renames) {
+            if (r.oldPath === ann.anchor.host.path) ann.anchor.host.path = r.newPath;
+          }
+        }
         ann.outdated = false;
         delete ann.outdatedReason;
         delete ann.originalSnippet;

@@ -6,6 +6,7 @@
  * filter by last commit date (Reviews stays unfiltered).
  */
 import { test, expect } from "./network-guard.js";
+import { pickOption, expectTriggerText } from "./select.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -16,21 +17,21 @@ test.beforeEach(async ({ page }) => {
 test("review requests split into direct and team, newest first", async ({ page }) => {
   await expect(page.getByText("Requested of you", { exact: true })).toBeVisible();
   await expect(page.getByText("Requested of your team")).toBeVisible();
-  // Asked of both you and your team: once, as direct, with its team name.
+  // Asked of both you and your team: once, as direct, with no team name (#224).
   await expect(page.getByText("Docs: clarify retry wording")).toHaveCount(1);
-  await expect(page.locator(".ci", { hasText: "Docs: clarify retry wording" })).toContainText("via docs");
+  await expect(page.locator(".ci", { hasText: "Docs: clarify retry wording" })).not.toContainText("via docs");
   // Newest first: the 30-minute-old ask sits above the 2-hour-old one.
   const newer = await page.getByText("Docs: clarify retry wording").boundingBox();
   const older = await page.getByText("Pool: reuse connections across redirects").boundingBox();
   expect(newer?.y).toBeLessThan(older?.y ?? 0);
-  // Relative time and team names on the rows.
+  // Relative time on the rows, still no team names.
   await expect(page.locator(".ci", { hasText: "Pool: reuse connections across redirects" })).toContainText("2h ago");
-  await expect(page.locator(".ci", { hasText: "CI: pin the lint action" })).toContainText("via core");
+  await expect(page.locator(".ci", { hasText: "CI: pin the lint action" })).not.toContainText("via core");
 });
 
 test("recency filter hides older rows in both groups and persists", async ({ page }) => {
   await expect(page.getByText("CI: pin the lint action")).toBeVisible();
-  await page.getByLabel("Updated within").selectOption("1d");
+  await pickOption(page, "Updated within", "Last day");
   // The 2-day-old team ask hides; the filtered-out group names its window.
   await expect(page.getByText("CI: pin the lint action")).toHaveCount(0);
   await expect(page.locator('[data-testid="requested-team-empty"]')).toContainText(
@@ -39,19 +40,20 @@ test("recency filter hides older rows in both groups and persists", async ({ pag
   // The recent direct asks stay.
   await expect(page.getByText("Pool: reuse connections across redirects")).toBeVisible();
   // All shows everything again, and the choice survives a reload.
-  await page.getByLabel("Updated within").selectOption("all");
+  await pickOption(page, "Updated within", "All");
   await expect(page.getByText("CI: pin the lint action")).toBeVisible();
-  await page.getByLabel("Updated within").selectOption("2w");
+  await pickOption(page, "Updated within", "Last 2 weeks");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
-  await expect(page.getByLabel("Updated within")).toHaveValue("2w");
+  await expectTriggerText(page, "Updated within", "Last 2 weeks");
   await expect(page.getByText("Changelog: backfill old entries")).toHaveCount(0);
 });
 
-test("PR rows show the diff size and omit it when unknown", async ({ page }) => {
+test("PR rows show the diff size without the file count, and omit it when unknown", async ({ page }) => {
   const row = page.locator(".ci", { hasText: "Pool: reuse connections across redirects" });
   await expect(row).toContainText("+545");
-  await expect(row).toContainText("30 files");
+  // #224: no "· N files" in the row meta.
+  await expect(row).not.toContainText("files");
   // The size-less row carries no size text.
   const unsized = page.locator(".ci", { hasText: "Changelog: backfill old entries" });
   await expect(unsized).not.toContainText("+");
@@ -80,7 +82,7 @@ test("the review-bar PR label links to the PR", async ({ page }) => {
 test("branches filter by last commit and show ages, Reviews stays unfiltered (#131)", async ({ page }) => {
   // Branch rows show the commit age, as PR rows do.
   await expect(page.locator(".ci", { hasText: "experiment/lazy-headers" })).toContainText("3d ago");
-  await page.getByLabel("Updated within").selectOption("1d");
+  await pickOption(page, "Updated within", "Last day");
   // The 3-day-old branch drops out; the fresh branch row stays.
   await expect(page.getByText("experiment/lazy-headers")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "fix-obs-fold", exact: true })).toBeVisible();

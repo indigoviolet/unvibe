@@ -1,5 +1,6 @@
 /**
- * Update channels (issue #36, step 1): `release`, `release-rc`, `preview/*`.
+ * Update channels (issue #36, step 1): `release`, `preview/*` (candidates
+ * go out as `preview/main-rc`; no `release-rc`).
  *
  * Pure listing logic with no local effects, so the later in-app picker
  * (step 2) can reuse it through a service route. The global install and
@@ -42,9 +43,9 @@ export interface InstalledBuild {
   packagePath: string | null;
 }
 
-/** Valid channel names: `release`, `release-rc`, or `preview/<slug>`. */
+/** Valid channel names: `release` or `preview/<slug>`. */
 export function isChannelName(name: string): boolean {
-  return name === "release" || name === "release-rc" || /^preview\/[A-Za-z0-9._-]+$/.test(name);
+  return name === "release" || /^preview\/[A-Za-z0-9._-]+$/.test(name);
 }
 
 export function isPreviewChannel(channel: string): boolean {
@@ -57,13 +58,13 @@ export function channelRef(channel: string): string {
 }
 
 export function channelKind(ref: string): UpdateChannel["kind"] {
-  return ref === "release" ? "release" : ref === "release-rc" ? "release-rc" : "preview";
+  return ref === "release" ? "release" : "preview";
 }
 
 /**
  * Parse `gh api repos/<slug>/branches --paginate -q '.[].name'` output
  * (one branch name per line) into sorted channel names. Unknown branches
- * are dropped; `release` and `release-rc` sort first.
+ * are dropped; `release` sorts first.
  */
 export function parseChannelList(stdout: string): string[] {
   const seen = new Set<string>();
@@ -72,8 +73,7 @@ export function parseChannelList(stdout: string): string[] {
     if (name && isChannelName(name)) seen.add(name);
   }
   const out = [...seen];
-  const rank = (c: string): number => (c === "release" ? 0 : c === "release-rc" ? 1 : 2);
-  out.sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+  out.sort((a, b) => (a === "release" ? -1 : b === "release" ? 1 : a < b ? -1 : a > b ? 1 : 0));
   return out;
 }
 
@@ -132,12 +132,12 @@ export function shortCommit(commit: string | null): string {
 
 /**
  * Channel for a hand-installed build that predates the `unvibe` field:
- * `X.Y.Z` -> `release`, `X.Y.Z-rc.N` -> `release-rc`,
- * `X.Y.Z-preview.<slug>.<sha>` -> `preview/<slug>`. Anything else -> null.
+ * `X.Y.Z` -> `release`, `X.Y.Z-preview.<slug>.<sha>` ->
+ * `preview/<slug>`. Anything else -> null (including old `-rc.N`
+ * builds: the `release-rc` channel is gone).
  */
 export function inferChannelFromVersion(version: string): string | null {
   if (/^\d+\.\d+\.\d+$/.test(version)) return "release";
-  if (/^\d+\.\d+\.\d+-rc\.\d+$/.test(version)) return "release-rc";
   const m = /^\d+\.\d+\.\d+-preview\.([A-Za-z0-9._-]+)\.[A-Za-z0-9-]+$/.exec(version);
   if (m) {
     const channel = `preview/${m[1]}`;

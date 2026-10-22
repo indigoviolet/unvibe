@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
+import { Button } from "../ui/index.js";
 
 interface Props {
   reviewId: string;
@@ -209,8 +210,9 @@ export function ReplyBox({
         }}
       />
       <div className="row">
-        <button
-          className="btn ghost"
+        <Button
+          variant="secondary"
+          size="sm"
           type="button"
           data-discard={annotationId}
           data-tip={discardLabel}
@@ -218,16 +220,17 @@ export function ReplyBox({
           onClick={handleDiscard}
         >
           {discardLabel}
-        </button>
-        <button
-          className="btn"
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
           type="button"
           data-send={annotationId}
           disabled={sending || draft.trim() === ""}
           onClick={handleSend}
         >
           {sendLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );

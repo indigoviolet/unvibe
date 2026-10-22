@@ -1,9 +1,10 @@
 /**
  * Comments + submit over mock mode (M6 web): selection toolbar, threads in
- * guide/diff/description, the Comments menu with For-PR drafts,
+ * guide/diff/description, the Comments menu with Outbox drafts,
  * description editing, and the Submit panel.
  */
 import { expect, test } from "./network-guard.js";
+import { openPopup } from "./select.js";
 import type { Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
 
@@ -38,7 +39,7 @@ test("selection snaps to whole words and Ask creates a working card", async ({ p
   await expect(card).toContainText("Mock explanation", { timeout: 8000 });
   // The question reads as the answer heading; the card never posts.
   await expect(card.locator(".ans-q").first()).toContainText("What does optional mean here?");
-  await expect(card.getByRole("button", { name: "Mark for the PR" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Add to Outbox" })).toHaveCount(0);
 });
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
@@ -131,7 +132,7 @@ test("diff line click starts a comment; close leaves an icon; reopen works", asy
   await expect(thread).toBeVisible({ timeout: 5000 });
   // A comment is for the PR by default: no agent reply, already marked.
   await expect(thread.locator(".working")).toHaveCount(0);
-  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
   // Close leaves a comment icon on the line number; clicking reopens.
   await thread.getByRole("button", { name: "Close" }).click();
   await expect(thread).toHaveCount(0);
@@ -181,8 +182,8 @@ test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #16
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
   await expect(sug.locator("textarea")).toHaveCount(0);
-  // "Ask the agent about this", as on user comments.
-  await sug.getByRole("button", { name: "Ask the agent about this" }).click();
+  // "Ask about this", as on user comments.
+  await sug.getByRole("button", { name: "Ask about this" }).click();
   const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
   await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   await card.getByRole("button", { name: "Close" }).click();
@@ -210,7 +211,7 @@ test("reply drafts survive unrelated re-renders; Discard clears", async ({ page 
   await expect(slot).toHaveCount(0);
 });
 
-test("For PR drafts live in the Comments menu and persist", async ({ page }) => {
+test("Outbox drafts live in the Comments menu and persist", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
   await line.click();
@@ -220,21 +221,21 @@ test("For PR drafts live in the Comments menu and persist", async ({ page }) => 
   const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
   await expect(thread).toContainText("Ship it?", { timeout: 5000 });
   // Comments are for the PR by default — no explicit mark needed.
-  await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
-  // The Comments menu lists it with a For-PR count; the draft is editable.
+  // The Comments menu lists it on its Outbox tab; the draft is editable.
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="pr"]').click();
+  await page.locator('.cmenu [data-cmtab="outbox"]').click();
   const draft = page.locator(".cmenu textarea[id^='ob-']").first();
   await expect(draft).toBeVisible();
   await draft.fill("Ship it? (edited draft)");
   // The draft survives an unrelated re-render (close + reopen the menu).
   await page.keyboard.press("Escape");
   await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmf="pr"]').click();
+  await page.locator('.cmenu [data-cmtab="outbox"]').click();
   await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
   // Jump back to the thread in the diff.
-  await page.locator(".cmenu .cj").first().click();
+  await page.locator(".cmenu [data-cjump]").first().click();
   await expect(page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last()).toBeVisible();
 });
 
@@ -244,7 +245,10 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
     "Unfold obsolete folded response headers",
   );
   await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-  await expect(page.locator('#version-pick option[value="2"]')).toContainText("current");
+  await expect(page.locator("#version-pick")).toContainText("v1");
+  await page.locator("#version-pick").click();
+  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   // Selecting guide text offers no toolbar. The selection is made inline
   // (range + mouseup, no waits — the toolbar hides synchronously on
   // read-only versions); the selected text is asserted first so a missing
@@ -284,8 +288,9 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
-  await expect(page.locator(".cmenu")).toContainText("Already on GitHub");
-  await expect(page.locator(".cmenu")).toContainText("Already on GitHub: consider covering bare LF");
+  await expect(page.locator(".cmenu")).toContainText("On GitHub");
+  await expect(page.locator(".cmenu")).toContainText("teammate · 2 comments");
+  await expect(page.locator(".cmenu")).toContainText("consider covering bare LF here too.");
 });
 
 test("GitHub thread in the diff expands at its line; the menu item jumps to it", async ({ page }) => {
@@ -316,11 +321,12 @@ test("outdated threads sit at their file; removed-file threads at the end; hidin
   await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
   await expect(page.locator("#gh-thread-101")).toHaveCount(0);
   await page.locator('#reviewbar [data-cm=""]').click();
-  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText(/On GitHub/);
+  await expect(page.locator(".cmenu [data-ghhead]")).toContainText("hidden");
   await expect(page.locator('.cmenu [data-ghjump="101"]')).toHaveCount(0);
 });
 
-test("comments dropdown is wide enough for tabs, paths and previews", async ({ page }) => {
+test("comments dropdown is wide enough for tabs, sections, paths and previews", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
@@ -328,12 +334,19 @@ test("comments dropdown is wide enough for tabs, paths and previews", async ({ p
   // Sensible min-width so content doesn't collapse to the button width.
   const width = await panel.evaluate((el) => el.getBoundingClientRect().width);
   expect(width).toBeGreaterThanOrEqual(340);
-  // The All / For PR segmented control fits on one line.
-  const all = await page.locator('.cmenu [data-cmf="all"]').boundingBox();
-  const pr = await page.locator('.cmenu [data-cmf="pr"]').boundingBox();
-  expect(all).not.toBeNull();
-  expect(pr).not.toBeNull();
-  expect(Math.abs((all as { y: number }).y - (pr as { y: number }).y)).toBeLessThan(2);
+  // Two tabs in the segmented control (#236): the Comments tab holds This
+  // review and On GitHub; the Outbox tab holds the Outbox section.
+  await expect(panel.locator('[data-cmtab="comments"]')).toBeVisible();
+  await expect(panel.locator('[data-cmtab="outbox"]')).toBeVisible();
+  await expect(panel.locator('[data-cmsec="review"]')).toContainText("This review");
+  await expect(panel.locator('[data-cmsec="github"]')).toContainText("On GitHub");
+  await expect(panel.locator('[data-cmsec="outbox"]')).toHaveCount(0);
+  await panel.locator('[data-cmtab="outbox"]').click();
+  await expect(panel.locator('[data-cmtab="outbox"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.locator('[data-cmsec="outbox"]')).toBeVisible();
+  await expect(panel.locator('[data-cmsec="review"]')).toHaveCount(0);
+  await expect(panel.locator('[data-cmsec="github"]')).toHaveCount(0);
+  await expect(panel.locator("[data-cmf]")).toHaveCount(0);
 });
 
 test("hide in the filter menu collapses the menu section to its count; its heading shows both again (#183)", async ({
@@ -349,7 +362,8 @@ test("hide in the filter menu collapses the menu section to its count; its headi
   // The comments menu's section collapses to its heading with a count.
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
-  await expect(panel.locator("[data-ghhead]")).toContainText(/Already on GitHub · \d+ hidden/);
+  await expect(panel.locator("[data-ghhead]")).toContainText(/On GitHub/);
+  await expect(panel.locator("[data-ghhead]")).toContainText("hidden");
   await expect(panel.locator("[data-ghjump]")).toHaveCount(0);
   // Clicking the heading shows them again, in the menu and in the diff.
   await panel.locator("[data-ghhead]").click();
@@ -372,7 +386,7 @@ test("existing GitHub list: no sideways overflow and clamped rows at minimum wid
   const overflow = await panel.evaluate((el) => el.scrollWidth <= el.clientWidth);
   expect(overflow).toBe(true);
   // Rows are clamped: the long made-up body shows at most a few lines.
-  const body = panel.locator('[data-ghjump="105"] .ghmenu');
+  const body = panel.locator('[data-ghjump="105"] .ui-row-primary');
   const lines = await body.evaluate((el) => {
     const h = el.getBoundingClientRect().height;
     const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 18;
@@ -413,7 +427,7 @@ test("description editing saves locally with revert, then submits", async ({ pag
   await expect(page.locator("#right")).toContainText("Edited · goes to GitHub when you submit the review");
 });
 
-test("submit panel previews and posts For-PR threads", async ({ page }) => {
+test("submit panel previews and posts Outbox threads", async ({ page }) => {
   await gotoReview(page);
   const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
   await line.click();

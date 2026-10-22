@@ -49,6 +49,8 @@ interface Pending {
    * on a summary arrives already mapped to a diff-line anchor.
    */
   hunkAnchor?: { where: "hunk"; fileKey: string; contentHash: string };
+  /** Issue #214: an Ask on a comment keeps its comment anchor for the send. */
+  commentAnchor?: { where: "comment"; commentId: string };
 }
 
 export function useDiffCommentBindings(reviewId: string): {
@@ -81,6 +83,23 @@ export function useDiffCommentBindings(reviewId: string): {
           ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
           ...(req.offsets !== undefined ? { offsets: req.offsets } : {}),
           hunkAnchor: req.anchor,
+        });
+        return;
+      }
+      if (req.anchor.where === "comment") {
+        // Issue #214: Ask on a comment; composer sits on the comment's line.
+        if (req.kind !== "ask" || isReadOnlyVersionNow()) return;
+        const commentId = req.anchor.commentId;
+        const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
+        if (!comment || comment.anchor.host.kind !== "diff-line") return;
+        setPending({
+          fileKey: comment.anchor.host.fileKey,
+          line: comment.anchor.host.line,
+          quote: req.quote,
+          kind: req.kind,
+          ...(req.initialText !== undefined ? { initialText: req.initialText } : {}),
+          ...(req.offsets !== undefined ? { offsets: req.offsets } : {}),
+          commentAnchor: req.anchor,
         });
         return;
       }
@@ -159,7 +178,7 @@ export function useDiffCommentBindings(reviewId: string): {
             <NewThreadComposer
               key="pending"
               reviewId={reviewId}
-              anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
+              anchor={pending.commentAnchor ?? pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
               quote={pending.quote}
               kind={pending.kind}
               initialText={pending.initialText}
@@ -176,7 +195,7 @@ export function useDiffCommentBindings(reviewId: string): {
         <NewThreadComposer
               key="pending"
           reviewId={reviewId}
-          anchor={pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
+          anchor={pending.commentAnchor ?? pending.hunkAnchor ?? { where: "diff-line", fileKey: pending.fileKey, line: pending.line, ...(pending.endLine !== undefined ? { endLine: pending.endLine } : {}) }}
           quote={pending.quote}
           kind={pending.kind}
           initialText={pending.initialText}

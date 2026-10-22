@@ -9,11 +9,17 @@
 import type {
   Annotation,
   Card,
+  ContextRepoRef,
+  ContextRepoSource,
   Contribution,
   DepthLevel,
+  DocumentContent,
   ExistingReviewComment,
   FileState,
   HunkState,
+  PrReviewDecision,
+  PrState,
+  ReviewKind,
   ReviewViewPrefs,
   Job,
   LogEntry,
@@ -148,6 +154,10 @@ export interface RepoChange {
    * ("team"). Absent on other rows and on rows stored before this change
    * (the start page shows those under "Requested of you").
    */
+  /** #224: normalised PR state from gh (`state` + `isDraft`). Absent on branch rows. */
+  prState?: PrState;
+  /** #224: normalised review decision from gh. Absent when none/unknown. */
+  reviewDecision?: PrReviewDecision;
   reviewScope?: "direct" | "team";
   /**
    * #95: team slugs (or names) from `gh`'s `reviewRequests` that asked for
@@ -183,6 +193,41 @@ export interface RepoChangesResponse {
 }
 
 // --- reviews -------------------------------------------------------------
+
+/**
+ * Issue #222: `POST /api/reviews` with `kind: "document"` — a pasted
+ * Markdown document plus any number of context repos. Each context repo names its
+ * registered repo and where to read it: a particular worktree
+ * (`source: "worktree"` with `worktreePath`), `origin/main`, or the
+ * local copy. Answered synchronously with the ready snapshot (201);
+ * nothing is generated up front.
+ */
+export interface CreateDocumentRequest {
+  kind: "document";
+  /** Pasted Markdown (required, non-empty). */
+  markdown: string;
+  /** Display title; defaults to the document's first heading. */
+  title?: string;
+  contextRepos: { repoId: string; source: ContextRepoSource; worktreePath?: string }[];
+}
+
+/** Issue #222: one worktree of a repo, for the context-repo picker. */
+export interface RepoWorktree {
+  path: string;
+  /** Branch checked out there, when any. */
+  branch?: string;
+  /** HEAD commit there. */
+  head?: string;
+}
+
+/** `GET /api/repos/:id/worktrees` (issue #222). */
+export interface RepoWorktreesResponse {
+  worktrees: RepoWorktree[];
+  /** `origin/main` commit, when the ref exists. */
+  originMainSha?: string;
+  /** The local copy's HEAD commit. */
+  localSha?: string;
+}
 
 export interface CreateReviewRequest {
   repoId: string;
@@ -242,7 +287,7 @@ export function assertReadySnapshot(snap: ReviewSnapshot): void {
   throw new Error("the review is still opening");
 }
 
-export interface ReviewSnapshot {
+interface ReviewSnapshotBase {
   review: Review;
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
@@ -323,6 +368,37 @@ export interface ReviewSnapshot {
   refreshTimings?: { at: number; steps: import("./entities.js").TimedStep[] };
 }
 
+/** Issue #222: a change (PR/branch) review — no document content. */
+export interface ChangeReviewSnapshot extends ReviewSnapshotBase {
+  document?: undefined;
+  contextRepos?: undefined;
+}
+
+/** Issue #222: a document review — the pasted document and its context repos. */
+export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
+  document: DocumentContent;
+  contextRepos: ContextRepoRef[];
+}
+
+/**
+ * Issue #222: a review snapshot, discriminated by shape. The kind is
+ * derived, never stored: a snapshot carrying the pasted document is a
+ * document review; every other snapshot is a change review.
+ */
+export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot;
+
+/** Issue #222: true when the snapshot is a document review's. */
+export function isDocumentReview(
+  snap: Pick<ReviewSnapshot, "document">,
+): snap is DocumentReviewSnapshot {
+  return snap.document !== undefined;
+}
+
+/** Issue #222: the derived review kind of a snapshot. */
+export function reviewKindOf(snap: Pick<ReviewSnapshot, "document">): ReviewKind {
+  return isDocumentReview(snap) ? "document" : "change";
+}
+
 export type ReviewResponse = ReviewSnapshot;
 
 /**
@@ -340,6 +416,8 @@ export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
  */
 export interface ReviewSummary {
   id: string;
+  /** Issue #222: `"document"` for a document review. */
+  kind?: ReviewKind;
   repoId: string;
   repoOwner: string;
   repoName: string;
@@ -356,8 +434,12 @@ export interface ReviewSummary {
   stale: boolean;
   totalHunks: number;
   reviewedHunks: number;
-  /** Threads marked For PR and not yet posted. */
+  /** Threads in the Outbox and not yet posted. */
   pendingComments: number;
+  /** #224: PR state from the snapshot's stored gh data. Absent for branch reviews. */
+  prState?: PrState;
+  /** #224: review decision from the snapshot's stored gh data. Absent when none. */
+  reviewDecision?: PrReviewDecision;
   /** Guide generation state (reader/base/critic pipeline). */
   guideStatus: "ready" | "running" | "error" | "idle" | "disabled";
   guideDetail?: string;
@@ -531,6 +613,8 @@ export type ActionAnchor =
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
+  /** Issue #214: a selection inside a comment card, hosted on that comment. */
+  | { where: "comment"; commentId: string }
   | {
       where: "diff-line";
       fileKey: string;
@@ -545,7 +629,13 @@ export type ActionAnchor =
    * real conversation card (no agent call), then run as a nested card on
    * the selected summary text.
    */
-  | { where: "hunk"; fileKey: string; contentHash: string };
+  | { where: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit (the source-pane file tab), addressed
+   * like a `code:` citation. Explain, Ask and Comment anchor here; the
+   * card or thread renders under the cited lines in that tab.
+   */
+  | { where: "code"; path: string; commit: string; line: number; endLine?: number };
 
 export interface ActionResponse {
   accepted: boolean;
@@ -745,8 +835,8 @@ export interface ResumeReviewResponse {
   pendingStages: PipelineStage[];
 }
 
-/** Pipeline stages (PRD §11): reader → base → critic/concepts → hunk pass. */
-export type PipelineStage = "reader" | "base" | "critic" | "concepts" | "hunk-pass" | "go-deeper";
+/** Pipeline stages (PRD §11): reader → base → critic → hunk pass. */
+export type PipelineStage = "reader" | "base" | "critic" | "hunk-pass" | "go-deeper";
 
 /**
  * M3 pipeline (PRD §16): per-review token totals + cache-hit rate.
@@ -798,7 +888,7 @@ export interface CreateCommentRequest {
   text?: string;
   /**
    * Create an agent-suggested comment: first message is the agent's
-   * suggestion (`suggested: true`), never marked for the PR initially.
+   * suggestion (`suggested: true`), never in the Outbox initially.
    * Only valid on diff-line anchors.
    */
   suggested?: boolean;
@@ -818,8 +908,14 @@ export interface ReplyCommentRequest {
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
-  /** M6: agent-drafted suggested comment (first message, not for PR). */
+  /** M6: agent-drafted suggested comment (first message, not in the Outbox). */
   suggested?: boolean;
+}
+
+/** GET /api/reviews/:id/outbox — Outbox export Markdown (#223). No download/filename: Copy only. */
+export interface OutboxResponse {
+  markdown: string;
+  count: number;
 }
 
 /** GET /api/reviews/:id/pr-comments — read-only existing PR comments (M6). */
@@ -841,7 +937,7 @@ export interface SubmitReviewRequest {
   dryRun?: boolean;
 }
 
-/** M6: where one For-PR thread lands on GitHub (PRD §4.8, §4.12). */
+/** M6: where one Outbox thread lands on GitHub (PRD §4.8, §4.12). */
 export type SubmitCommentLocation =
   | {
       kind: "inline";
@@ -861,11 +957,17 @@ export interface SubmitPreviewComment {
   location: SubmitCommentLocation;
   /** Exact text that will be posted (draft + fallback note). */
   text: string;
+  /**
+   * #81: quoted lines when the posted text carries them (a file-tab
+   * comment's review-body entry: permalink, quote, comment). Present
+   * so the preview can show the whole entry, not a truncated slice.
+   */
+  quote?: string;
 }
 
 /** M6: exactly what Submit will post (preview + dryRun response). */
 export interface SubmitPreview {
-  /** Threads marked For PR that are not yet posted. */
+  /** Threads in the Outbox that are not yet posted. */
   comments: SubmitPreviewComment[];
   /** Threads already posted (skipped on retry). */
   alreadyPosted: string[];
@@ -938,7 +1040,7 @@ export interface Settings {
   main: ModelPick;
   small: ModelPick;
   secondOpinion: ModelPick;
-  /** Max concurrent sessions per provider (default 4, PRD §12). */
+  /** Max concurrent sessions per provider (default 16, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */
   inlineBudgetTokens: number;
@@ -955,10 +1057,10 @@ export interface Settings {
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
   idleExitMinutes: number;
   /**
-   * Version picker (issue #36, step 2): list installable update channels
-   * and switch builds from Settings → Version. Off by default; listing
-   * shells out through `gh` under the user's own login, so it stays
-   * opt-in.
+   * Version picker (issue #36, step 2; toggle meaning #231): Settings →
+   * Version always lists releases (and the update check always runs —
+   * both shell out through `gh` under the user's own login); this flag
+   * only shows preview channels. Off by default.
    */
   versionPickerEnabled: boolean;
   /**
@@ -974,6 +1076,12 @@ export interface Settings {
    * off clears it, so turning it on again asks again.
    */
   fullAccessAcknowledgedAt: number | null;
+  /**
+   * Issue #217: write go-deeper placeholder cards automatically in the
+   * background once the guide lands. On by default; off means a card is
+   * written only when its Generate button is clicked.
+   */
+  autoGoDeeper: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -1143,16 +1251,16 @@ export interface JobResponse {
   job: Job;
 }
 
-/** GET /api/jobs/:id/prompt — the exact prompt the job sent. */
-export interface JobPromptResponse {
-  jobId: string;
-  promptSnapshot: string;
-}
-
 /** GET /api/jobs/:id/reply — the agent's reply for a failed job (#180). */
 export interface JobReplyResponse {
   jobId: string;
   replySnapshot: string;
+}
+
+/** GET /api/jobs/:id/output — per-turn output records for any job (#207). */
+export interface JobOutputResponse {
+  jobId: string;
+  turnRecords: import("./entities.js").JobTurnRecord[];
 }
 
 // --- contributions -------------------------------------------------------
@@ -1241,14 +1349,14 @@ export interface SharedContextBaseStats {
 // --- update channels (issue #36, step 2: version picker) -----------------
 
 /**
- * One installable build: `release`, `release-rc`, or a `preview/<slug>`
- * published from an in-flight branch. Served by
- * `GET /api/update/channels`; `current` marks the installed one.
+ * One installable build: `release` or a `preview/<slug>` published from
+ * an in-flight branch (candidates go out as `preview/main-rc`). Served
+ * by `GET /api/update/channels`; `current` marks the installed one.
  */
 export interface UpdateChannel {
-  /** "release" | "release-rc" | "preview/<slug>". */
+  /** "release" | "preview/<slug>". */
   ref: string;
-  kind: "release" | "release-rc" | "preview";
+  kind: "release" | "preview";
   /** e.g. "0.0.1-preview.feat-x.abc1234"; null when unknown. */
   version: string | null;
   /** Built tree's commit sha (for a merged preview, the merge result); null when unknown. */
@@ -1283,7 +1391,7 @@ export interface UpdateChannel {
  */
 export interface UpdateBuildInfo {
   version: string;
-  /** Installed channel ("release" | "release-rc" | "preview/<slug>") of the running build; null when unknown. */
+  /** Installed channel ("release" | "preview/<slug>") of the running build; null when unknown. */
   channel: string | null;
   sourceBranch: string | null;
   /** Branch-side commit (for a merged preview, the branch head — see `UpdateChannel.sourceCommit`); null when unknown. */

@@ -2,13 +2,15 @@
  * Jobs section (issue #32, PRD §4.14): running and queued jobs for the
  * review, live through the WebSocket `job` events. Each row shows kind,
  * model/provider, state (backing-off with the retry time), tokens,
- * cache-hit rate, and a toggle for the exact prompt it sent; cancel for
- * active jobs. A totals row sums tokens and the input-weighted cache-hit
- * rate. Relocated unchanged from Settings to the debug page; the
- * Markdown-only rule covers the shared-context parts, not this table.
+ * cache-hit rate, a tool-call count, and one button opening the job's
+ * turn-by-turn view (prompt, output, tool calls, usage per turn, #207);
+ * cancel for active jobs. A totals row sums tokens and the
+ * input-weighted cache-hit rate. Relocated unchanged from Settings to
+ * the debug page; the Markdown-only rule covers the shared-context
+ * parts, not this table.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Block, Job, ReviewSnapshot } from "@unvibe/shared";
+import type { Block, Job, JobToolCall, JobTurnRecord, ReviewSnapshot } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { connectEvents } from "../api/ws.js";
 import {
@@ -24,6 +26,7 @@ import {
   reduceJobs,
   stepDurationMs,
 } from "../versions/versionUtils.js";
+import { Card } from "../ui/index.js";
 
 export function JobsSection({ reviewId }: { reviewId: string | null }): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -91,7 +94,7 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
       ) : jobs.length === 0 ? (
         <p className="hint">No jobs for this review.</p>
       ) : (
-        <div className="card" style={{ padding: "4px 14px" }}>
+        <Card variant="plain" style={{ padding: "4px 14px" }}>
           {snapshot?.refreshTimings ? (
             <div style={{ padding: "8px 0" }} data-testid="refresh-steps">
               <div className="frow" style={{ gap: 8 }}>
@@ -123,14 +126,14 @@ export function JobsSection({ reviewId }: { reviewId: string | null }): React.JS
           <div className="frow" style={{ gap: 8, padding: "8px 0" }} data-testid="jobs-totals">
             <span className="hint">
               Totals: {formatTokens(totals.input)} in · {formatTokens(totals.output)} out ·{" "}
-              {formatCacheRate(rate)} hit · {formatTokens(totals.written)} written
+              {formatCacheRate(rate)} hit · {formatTokens(totals.read)} read · {formatTokens(totals.written)} written
             </span>
             <span className="sp" />
             <button className="x" type="button" onClick={() => void load()}>
               Refresh
             </button>
           </div>
-        </div>
+        </Card>
       )}
     </section>
   );
@@ -149,12 +152,10 @@ function JobRow({
   diagramErrors: string[];
   onCancel: () => void;
 }): React.JSX.Element {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [prompt, setPrompt] = useState<string | null>(job.promptSnapshot ?? null);
-  const [promptError, setPromptError] = useState<string | null>(null);
-  const [showReply, setShowReply] = useState(false);
-  const [replyText, setReplyText] = useState<string | null>(job.replySnapshot ?? null);
-  const [replyError, setReplyError] = useState<string | null>(null);
+  const [showTools, setShowTools] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const [outputTurns, setOutputTurns] = useState<JobTurnRecord[] | null>(job.turnRecords ?? null);
+  const [outputError, setOutputError] = useState<string | null>(null);
   const [modelName, setModelName] = useState<string | null>(null);
 
   // Same display as the pickers (#21): name beside the id when known.
@@ -176,34 +177,22 @@ function JobRow({
     };
   }, [job.provider, job.model]);
 
-  const togglePrompt = async (): Promise<void> => {
-    const next = !showPrompt;
-    setShowPrompt(next);
-    if (next && prompt === null) {
-      setPromptError(null);
+  const toggleOutput = async (): Promise<void> => {
+    const next = !showOutput;
+    setShowOutput(next);
+    if (next && outputTurns === null) {
+      setOutputError(null);
       try {
-        setPrompt((await api.jobPrompt(job.id)).promptSnapshot);
-      } catch (err) {
-        setPromptError(friendlyError(err));
-      }
-    }
-  };
-
-  const toggleReply = async (): Promise<void> => {
-    const next = !showReply;
-    setShowReply(next);
-    if (next && replyText === null) {
-      setReplyError(null);
-      try {
-        setReplyText((await api.jobReply(job.id)).replySnapshot);
-      } catch (err) {
-        setReplyError(friendlyError(err));
+        setOutputTurns((await api.jobOutput(job.id)).turnRecords);
+      } catch {
+        // Old jobs (and jobs that have not run a turn yet) have no
+        // records: say so in place instead of an error.
+        setOutputError("No output recorded for this job yet.");
       }
     }
   };
 
   const active = job.state === "queued" || job.state === "running" || job.state === "backing-off";
-  const failed = job.state === "error" || job.state === "cancelled";
 
   return (
     <div className="jobrow" data-testid={`job-${job.id}`}>
@@ -221,7 +210,8 @@ function JobRow({
         {job.usage ? (
           <span className="hint">
             {formatTokens(job.usage.inputTokens)} in · {formatTokens(job.usage.outputTokens)} out ·{" "}
-            {formatCacheRate(job.cacheHitRate)} hit · {formatTokens(job.usage.cachedWriteTokens ?? 0)} written
+            {formatCacheRate(job.cacheHitRate)} hit · {formatTokens(job.usage.cachedReadTokens ?? 0)} read ·{" "}
+            {formatTokens(job.usage.cachedWriteTokens ?? 0)} written
           </span>
         ) : (
           <span className="hint">no token counts yet</span>
@@ -265,14 +255,9 @@ function JobRow({
         {job.degradedReason ? <span className="hint">Degraded (answer kept): {job.degradedReason}</span> : null}
         {job.state === "backing-off" && job.error ? <span className="hint">{job.error}</span> : null}
         <span className="sp" />
-        <button className="x" type="button" aria-expanded={showPrompt} onClick={() => void togglePrompt()}>
-          {showPrompt ? "Hide prompt" : "Prompt"}
+        <button className="x" type="button" aria-expanded={showOutput} onClick={() => void toggleOutput()}>
+          {showOutput ? "Hide output" : "Output"}
         </button>
-        {failed ? (
-          <button className="x" type="button" aria-expanded={showReply} onClick={() => void toggleReply()}>
-            {showReply ? "Hide reply" : "Reply"}
-          </button>
-        ) : null}
         {active ? (
           <button className="x" type="button" onClick={onCancel}>
             Cancel
@@ -283,15 +268,27 @@ function JobRow({
         <div className="frow" style={{ gap: 8 }}>
           <span className="hint">
             {job.accessMode === "full" ? "Full access" : job.accessMode === "lockdown" ? "Read-only" : ""}
-            {job.accessMode && job.tools && job.tools.length > 0 ? " · " : ""}
-            {job.tools && job.tools.length > 0
-              ? `Tools: ${job.tools
-                  .map((t) => `${t.name}${t.detail ? ` (${t.detail})` : ""}${t.startedAt !== undefined ? ` ${formatLocalTime(t.startedAt)}` : ""}`)
-                  .join(", ")}`
-              : ""}
-            {(job.accessMode || (job.tools && job.tools.length > 0)) && job.checkoutReset ? " · " : ""}
+            {job.accessMode && job.checkoutReset ? " · " : ""}
             {job.checkoutReset ? "The checkout changed and was reset after this job" : ""}
           </span>
+          <span className="sp" />
+          {job.tools && job.tools.length > 0 ? (
+            <button
+              className="x"
+              type="button"
+              aria-expanded={showTools}
+              onClick={() => setShowTools((v) => !v)}
+            >
+              Tools: {job.tools.length}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {showTools && job.tools && job.tools.length > 0 ? (
+        <div className="toollist" data-testid="job-tools">
+          {job.tools.map((tool, i) => (
+            <ToolCallLine key={i} tool={tool} testId="job-tool" />
+          ))}
         </div>
       ) : null}
       {diagramErrors.map((detail, i) => (
@@ -299,25 +296,111 @@ function JobRow({
           <span className="hint">Diagram: {detail}</span>
         </div>
       ))}
-      {showPrompt ? (
-        promptError ? (
-          <p className="err">{promptError}</p>
-        ) : prompt !== null ? (
-          <pre className="code">{prompt}</pre>
+      {showOutput ? (
+        outputError ? (
+          <p className="hint">{outputError}</p>
+        ) : outputTurns !== null ? (
+          <div data-testid="job-output">
+            {outputTurns.length === 0 ? (
+              <p className="hint">No output recorded for this job yet.</p>
+            ) : (
+              outputTurns.map((turn, i) => <TurnRecord key={i} turn={turn} index={i} now={now} />)
+            )}
+          </div>
         ) : (
-          <p className="hint">Loading prompt…</p>
-        )
-      ) : null}
-      {showReply ? (
-        replyError ? (
-          <p className="err">{replyError}</p>
-        ) : replyText !== null ? (
-          <pre className="code">{replyText}</pre>
-        ) : (
-          <p className="hint">Loading reply…</p>
+          <p className="hint">Loading output…</p>
         )
       ) : null}
     </div>
+  );
+}
+
+/** Short one-line argument summary for a tool-call row (#207). */
+function shortToolSummary(detail: string | undefined): string {
+  if (!detail) return "";
+  const oneLine = detail.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 80)}…` : oneLine;
+}
+
+/**
+ * Issue #207: one tool call as a single line — name, a short truncated
+ * argument summary and the start time — expandable to the full
+ * arguments and result.
+ */
+function ToolCallLine({ tool, testId }: { tool: JobToolCall; testId: string }): React.JSX.Element {
+  const summary = shortToolSummary(tool.detail);
+  return (
+    <details className="toolcall" data-testid={testId}>
+      <summary>
+        <span className="kind">{tool.name}</span>
+        {summary ? <span className="hint toolargs">{summary}</span> : null}
+        {tool.startedAt !== undefined ? <span className="hint">{formatLocalTime(tool.startedAt)}</span> : null}
+      </summary>
+      <div className="toolcall-body">
+        {tool.startedAt !== undefined ? (
+          <p className="hint">
+            {formatLocalTime(tool.startedAt)} → {formatLocalTime(tool.finishedAt)}
+          </p>
+        ) : null}
+        <p className="hint">Arguments</p>
+        {tool.detail ? <pre className="code">{tool.detail}</pre> : <p className="hint">No arguments recorded.</p>}
+        <p className="hint">Result</p>
+        {tool.result ? <pre className="code">{tool.result}</pre> : <p className="hint">No result recorded.</p>}
+      </div>
+    </details>
+  );
+}
+
+/** Issue #207: one turn of a job's Output view — prompt, streamed output, tool calls, usage. */
+function TurnRecord({ turn, index, now }: { turn: JobTurnRecord; index: number; now: number }): React.JSX.Element {
+  return (
+    <details className="lay" open={index === 0} data-testid="job-turn">
+      <summary>
+        <span className="kind">
+          Turn {index + 1} · {turn.label}
+        </span>
+        <span className="hint">
+          started {formatLocalTime(turn.startedAt)} · {formatDurationMs(stepDurationMs(turn, now))}
+          {turn.finishedAt === undefined ? " · running" : ""}
+        </span>
+        {turn.usage ? (
+          <span className="hint">
+            {formatTokens(turn.usage.inputTokens)} in · {formatTokens(turn.usage.outputTokens)} out
+          </span>
+        ) : null}
+      </summary>
+      <div className="laypad">
+        <p className="hint">Prompt</p>
+        {turn.prompt ? <pre className="code">{turn.prompt}</pre> : <p className="hint">No prompt recorded for this turn.</p>}
+        <p className="hint">Output</p>
+        {turn.output ? <pre className="code">{turn.output}</pre> : <p className="hint">No output yet.</p>}
+        <p className="hint">Tools</p>
+        {turn.tools.length === 0 ? (
+          <p className="hint">No tool calls in this turn.</p>
+        ) : (
+          <div className="toollist" data-testid="job-turn-tools">
+            {turn.tools.map((tool, i) => (
+              <ToolCallLine key={i} tool={tool} testId="job-turn-tool" />
+            ))}
+          </div>
+        )}
+        <p className="hint">Usage</p>
+        {turn.usage ? (
+          <p className="hint">
+            {formatTokens(turn.usage.inputTokens)} in · {formatTokens(turn.usage.cachedReadTokens)} cached read ·{" "}
+            {formatTokens(turn.usage.cachedWriteTokens)} cached write · {formatTokens(turn.usage.outputTokens)} out
+          </p>
+        ) : (
+          <p className="hint">No token counts for this turn.</p>
+        )}
+        {turn.rawUsage !== undefined ? (
+          <>
+            <p className="hint">Raw usage</p>
+            <pre className="code">{JSON.stringify(turn.rawUsage, null, 2)}</pre>
+          </>
+        ) : null}
+      </div>
+    </details>
   );
 }
 

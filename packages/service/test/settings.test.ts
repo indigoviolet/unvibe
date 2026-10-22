@@ -190,7 +190,7 @@ describe("settings + jobs routes", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       expect(get.statusCode).toBe(200);
-      expect(get.json().sessionsPerProvider).toBe(4);
+      expect(get.json().sessionsPerProvider).toBe(16);
       expect(get.json().cacheLifetimeMs).toBe(DEFAULT_SETTINGS.cacheLifetimeMs);
 
       const put = await app.inject({
@@ -253,9 +253,10 @@ describe("settings + jobs routes", () => {
       expect(one.statusCode).toBe(200);
       expect(one.json().job.promptSnapshot).toBe("THE PROMPT");
 
+      // #207: the old per-job prompt endpoint is gone; the prompt lives
+      // in the turn records served by GET /api/jobs/:id/output.
       const prompt = await app.inject({ method: "GET", url: `/api/jobs/${job.id}/prompt`, headers: auth });
-      expect(prompt.statusCode).toBe(200);
-      expect(prompt.json()).toEqual({ jobId: job.id, promptSnapshot: "THE PROMPT" });
+      expect(prompt.statusCode).toBe(404);
 
       const missing = await app.inject({ method: "GET", url: "/api/jobs/nope", headers: auth });
       expect(missing.statusCode).toBe(404);

@@ -7,6 +7,7 @@ import { DebugPageRoute } from "./debug/DebugPage.js";
 import { ReviewRoute } from "./ReviewRoute.js";
 import { SettingsPage } from "./settings/SettingsPage.js";
 import { StartPage } from "./start/StartPage.js";
+import { DocumentsPage } from "./start/DocumentsPage.js";
 import { DoctorPage } from "./doctor/DoctorPage.js";
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
       <RouteShellBoundary>
         <Routes>
         <Route path="/" element={<StartPage />} />
+        <Route path="/documents" element={<DocumentsPage />} />
         {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
         {/* Static `debug` outranks the splat: the per-review debug page. */}
         <Route path="/review/:id/debug" element={<DebugPageRoute />} />

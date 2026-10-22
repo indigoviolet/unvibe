@@ -15,9 +15,19 @@ test("doctor breadcrumb trails back through Settings", async ({ page }) => {
     "/settings?tab=environment",
   );
   await expect(crumbs.getByText("Doctor")).toHaveAttribute("aria-current", "page");
-  const gear = page.locator("header.top > a.ib");
+  const gear = page.locator("header.top > a.ib[href=\"/settings\"]");
   await expect(gear).toHaveAttribute("aria-label", "Settings");
   await expect(gear).toHaveAttribute("title", "Settings");
+  // #238: the Documents icon sits next to the Unvibe home link on the
+  // left, before the breadcrumb, badge, update and Settings controls.
+  const barOrder = await page.evaluate(() =>
+    [...(document.querySelector("header.top")?.children ?? [])].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
+    ),
+  );
+  expect(barOrder[0]).toBe("Unvibe");
+  expect(barOrder[1]).toBe("Documents");
+  expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
 });
 
 test("doctor page shows service, PATH and tool detail with copy", async ({ page }) => {
@@ -28,14 +38,17 @@ test("doctor page shows service, PATH and tool detail with copy", async ({ page 
   await expect(page.getByRole("button", { name: "Copy diagnostics" })).toBeVisible();
 });
 
-test("model pickers show display name beside the id with description", async ({ page }) => {
+test("model pickers show display name beside the id, nothing underneath (#225)", async ({ page }) => {
   await page.goto("/settings");
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
   await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
-  // Mock models carry names (Mock Main) + descriptions.
-  await expect(main.locator("select").nth(1)).toContainText("Mock Main");
-  await expect(main.locator("select").nth(1)).toContainText("mock-main");
+  // Mock models carry names (Mock Main) + descriptions, but the picker
+  // shows only the label: no description or status/path line underneath.
+  await expect(main.locator("#model-main")).toContainText("Mock Main");
+  await expect(main.locator("#model-main")).toContainText("mock-main");
+  await expect(main.locator('[data-testid="model-main-desc"]')).toHaveCount(0);
+  await expect(main.locator('[data-testid="model-main-status"]')).toHaveCount(0);
 });
 
 test("reload everything reports in mock mode", async ({ page }) => {

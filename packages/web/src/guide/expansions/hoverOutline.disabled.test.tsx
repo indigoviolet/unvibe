@@ -16,13 +16,13 @@ function mountPage(): HTMLElement {
   const page = document.createElement("div");
   page.id = "page";
   page.innerHTML = `
-    <section class="card" id="C-c1">
+    <section class="ui-card" id="C-c1">
       <span class="depth">
         <span class="pips"><i class="on"></i><i class="on"></i><i class=""></i></span>
       </span>
       <mark class="anc ex on" data-jump="ann_old">Nav 2</mark>
     </section>
-    <section class="card child on" id="B-ann_old"></section>
+    <section class="ui-card child on" id="B-ann_old"></section>
     <div class="ithread on" id="thr_old"></div>
   `;
   document.body.appendChild(page);
@@ -53,7 +53,7 @@ describe("hover outline (#111)", () => {
     expect(pips[2].classList.contains("on")).toBe(false);
     // The handlers' own outlines are still cleared.
     expect(page.querySelector("mark.on")).toBeNull();
-    expect(page.querySelector(".card.child.on")).toBeNull();
+    expect(page.querySelector(".ui-card.child.on")).toBeNull();
     expect(page.querySelector(".ithread.on")).toBeNull();
   });
 });

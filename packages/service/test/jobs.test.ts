@@ -507,6 +507,60 @@ describe("card scope (#62)", () => {
 });
 
 describe("persistence and restart recovery", () => {
+  it("#221: an enqueue that fails to persist throws, leaves no orphan, and later enqueues work", async () => {
+    let fail = true;
+    const saved = new Map<string, Job>();
+    const persist = {
+      save(job: Job): void {
+        if (fail) throw new Error("persist failed");
+        saved.set(job.id, job);
+      },
+      get: (id: string) => saved.get(id),
+      listByReview: (reviewId: string) => [...saved.values()].filter((j) => j.reviewId === reviewId),
+      listOpen: () => [...saved.values()],
+      listAll: () => [...saved.values()],
+    };
+    const events: ReviewEvent[] = [];
+    const queue = new JobQueue({
+      clock: new ManualClock(),
+      random: new FakeRandom([0.5]),
+      onEvent: (_review, e) => events.push(e),
+      persist,
+    });
+    const dedupe = { anchor: "card:c1", requestKind: "explain", depth: "standard", baseVersion: "v1" };
+    let ran = false;
+    expect(() =>
+      queue.enqueue(spec({ dedupe, run: async () => void (ran = true) })),
+    ).toThrow("persist failed");
+    expect(queue.listByReview("r1")).toEqual([]);
+    expect(queue.activeCount()).toBe(0);
+    expect(events).toEqual([]);
+    await flush();
+    expect(ran).toBe(false);
+
+    fail = false;
+    const job = queue.enqueue(spec({ dedupe, run: async () => void (ran = true) }));
+    await queue.drain();
+    expect(ran).toBe(true);
+    expect(queue.get(job.id)?.state).toBe("done");
+    expect(queue.listByReview("r1").map((j) => j.id)).toEqual([job.id]);
+  });
+
+  it("#221: a real store insert failure (no review row) leaves no orphan", async () => {
+    const db = makeDb();
+    // No seedReview: the jobs FK on reviews(id) makes the insert fail.
+    const store = new JobStore(db);
+    const queue = new JobQueue({ clock: new ManualClock(), persist: store });
+    expect(() => queue.enqueue(spec({ reviewId: "missing-review", run: async () => {} }))).toThrow();
+    expect(queue.listByReview("missing-review")).toEqual([]);
+    expect(queue.activeCount()).toBe(0);
+    // Later enqueues still work once the review exists.
+    seedReview(db, "r1");
+    const job = queue.enqueue(spec({ reviewId: "r1", run: async () => {} }));
+    await queue.drain();
+    expect(queue.get(job.id)?.state).toBe("done");
+  });
+
   it("persists jobs so the view survives; open jobs come back interrupted, never blocking re-enqueue", async () => {
     const db = makeDb();
     seedReview(db, "r1");

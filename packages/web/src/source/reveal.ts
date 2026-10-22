@@ -10,10 +10,12 @@
  *   since the diff pane only handles diff locations.
  * - Anything else toasts instead of failing silently.
  */
+import { isDocumentReview } from "@unvibe/shared";
 import { toast } from "../floating/Toast.js";
 import { canonicalRevealTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
 import { REVEAL_EVENT, revealSource as diffReveal } from "./diff/revealSource.js";
+import { openFileForCitation } from "./file/openFile.js";
 
 export { REVEAL_EVENT };
 
@@ -37,9 +39,31 @@ function flashParagraph(paragraphId: string): void {
 export function revealSource(target: string, opts?: { keepFilters?: boolean }): void {
   const snapshot = useReview.getState().snapshot;
   const canonical = snapshot ? canonicalRevealTarget(snapshot, target) : target;
+  // Issue #222: a document citation scrolls to its block in the left pane.
+  if (target.startsWith("doc:")) {
+    flashParagraph(`B-${target.slice("doc:".length)}`);
+    return;
+  }
   if (target.startsWith("desc:")) {
     window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
     flashParagraph(target.slice("desc:".length).split("@")[0]);
+    return;
+  }
+  if (target.startsWith("code:")) {
+    // #81: a file outside the diff opens in its own tab at the cited
+    // commit. The diff pane has no rows for it, so this never falls
+    // through to the diff reveal.
+    // Issue #222: on a document review, a sha-less citation falls back to
+    // the first context repo's commit, never the document's own hash.
+    const fallback =
+      snapshot && isDocumentReview(snapshot)
+        ? (snapshot.contextRepos[0]?.sha ?? snapshot.version.headSha)
+        : snapshot?.version.headSha;
+    if (openFileForCitation(canonical, fallback)) {
+      window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { ref: target } }));
+      return;
+    }
+    toast("Couldn't open the cited file");
     return;
   }
   if (target.startsWith("diff:") || target.startsWith("h:") || target.startsWith("code:")) {
