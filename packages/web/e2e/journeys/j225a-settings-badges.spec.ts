@@ -90,7 +90,7 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(limitsCard.getByTestId("auto-go-deeper-toggle")).toHaveRole("checkbox");
     await noPageScroll(page);
 
-    // Version: the enable toggle lives inside the card as a Field.
+    // Version: the enable toggle lives inside the card on one line (#229).
     await page.getByRole("tab", { name: "Version" }).click();
     const versionPanel = page.getByRole("tabpanel", { name: "Version" });
     const versionCard = versionPanel.locator(".ui-card").first();

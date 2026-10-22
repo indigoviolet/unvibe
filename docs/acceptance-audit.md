@@ -2662,3 +2662,16 @@ hunk coverage) is reported for a separate issue, not fixed here.
   option counts, both-group filtering, persistence, `checkLayout` on
   the filter row), tour frames
   `packages/web/visual-tour/start-author-filter-*` (git-ignored).
+
+## Addendum: #229 (branch `fix/229-version-tab`)
+
+- **#229 (Settings → Version layout; §4.14):** the enable toggle is a
+  one-line checkbox + label (no shared Field two-column layout) with
+  short help ("Optional."); each channel row is a single line (name ·
+  sha · built · action, no ListRow secondary line); the Channels
+  heading, its divider and the rows share the card's one inner padding
+  on both sides with the label vertically centred on Refresh.
+  Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
+  service + fake updater: one-line toggle, short help, no `.ui-row-meta`
+  in channel rows, shared left/right edges, centred label), tour
+  frames `packages/web/visual-tour/settings-version-*` (git-ignored).
