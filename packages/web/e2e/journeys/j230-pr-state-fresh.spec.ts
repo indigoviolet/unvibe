@@ -75,21 +75,18 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
 
-    // Reviews list first: OPEN with no decision (REVIEW_REQUIRED never shows, #230).
+    // Reviews list first: OPEN with no decision shows no badges (#230:
+    // REVIEW_REQUIRED never shows; #234: open has no icon).
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     const row = page.locator(`[data-testid="session-${reviewId}"]`);
     await expect(row).toBeVisible({ timeout: 30_000 });
-    await expect(row.locator('[data-testid="pr-badges"]').getByRole("img", { name: "Open" })).toBeVisible();
-    await expect(row.locator('[data-testid="pr-badges"]').getByRole("img", { name: "Approved" })).toHaveCount(0);
-    await expect(row.locator('[data-testid="pr-badges"]').getByRole("img", { name: "Changes requested" })).toHaveCount(0);
-    await expect(row.locator('[data-testid="pr-badges"]').getByRole("img", { name: "Review required" })).toHaveCount(0);
+    await expect(row.locator('[data-testid="pr-badges"]')).toHaveCount(0);
 
     // Review bar starts the same way.
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
-    const bar = page.locator('#reviewbar [data-testid="pr-badges"]');
-    await expect(bar.getByRole("img", { name: "Open" })).toBeVisible();
-    await expect(bar.getByRole("img", { name: "Approved" })).toHaveCount(0);
+    await expect(page.locator('#reviewbar [data-testid="pr-badges"]')).toHaveCount(0);
+    const bar = page.locator("#reviewbar");
 
     // The refresh button: same head, new state — no new version, no banner.
     await page.getByRole("button", { name: "Refresh" }).first().click();

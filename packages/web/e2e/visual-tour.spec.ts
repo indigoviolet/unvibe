@@ -1115,6 +1115,20 @@ for (const combo of [
     await page.evaluate(() => window.scrollTo(0, 0));
     await checkLayout(page, "start-update-icon");
     await shot(page, "start-update-icon", suffix, "Open a PR by URL or number");
+    // Issue #235: the full-access marker lives on the front-page top
+    // bar (turned on here through settings, back off right after so no
+    // later scene sees it).
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+      fullAccess: true,
+      fullAccessAcknowledgedAt: Date.now(),
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByTestId("full-access-marker")).toBeVisible({ timeout: 15_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-full-access");
+    await shot(page, "start-full-access", suffix, "full access");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
   });
 }
 
@@ -1930,11 +1944,11 @@ test.describe("visual tour file tab (#81)", () => {
 });
 
 /**
- * Remove-confirm popover (#225) on the worst-case Reviews row: state +
- * decision + new commits. Own service (agent-less) with a scratch repo
+ * Remove-confirm popover (#225, #234) on the worst-case Reviews row:
+ * decision + new commits (open has no icon). Own service (agent-less) with a scratch repo
  * and a fake `gh` whose PR view resolves the branch head at call time,
  * so a commit added after open is picked up by refresh and the row gains
- * its third badge. The popover is asserted not to move the row's title
+ * its new-commits tag. The popover is asserted not to move the row's title
  * or meta and not to cover them, then cancelled with Escape.
  */
 test.describe("visual tour remove-confirm (#225)", () => {
@@ -2033,9 +2047,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
       const row = page.locator(`[data-testid="session-${rcReview}"]`);
       await expect(row).toBeVisible({ timeout: 30_000 });
-      // The most badges a row can have: state + decision + new commits.
-      await expect(row.getByRole("img", { name: "Open" })).toBeVisible();
+      // The most badges a row can have (#234: open has no icon):
+      // decision + new commits.
       await expect(row.getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(row.getByRole("img", { name: "Open" })).toHaveCount(0);
       await expect(row).toContainText("new commits");
       const title = row.locator(".cx2");
       const meta = row.locator(".cj > .hint");

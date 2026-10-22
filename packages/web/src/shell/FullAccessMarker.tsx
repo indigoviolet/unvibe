@@ -2,8 +2,8 @@
  * Full-access marker (issue #160): a quiet pill shown while the
  * full-access setting is on, so it is never on without the user knowing.
  * Renders nothing otherwise (and nothing while the setting is unreadable).
- * Used on the review bar (compact, next to the preview marker) and at the
- * top of the Debug page.
+ * Used on the front-page top bar (compact, next to the preview badge,
+ * issue #235) and at the top of the Debug page.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

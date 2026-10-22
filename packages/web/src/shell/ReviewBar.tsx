@@ -4,16 +4,16 @@
  * panes scroll.
  *
  * - Left: a home control back to the start page (first in focus order),
- *   then the review identity (`owner/name#N` + title, truncated with the
- *   full title on hover), the version selector next to it (issue #120;
+ *   then the review identity (`owner/name#N`, linking to GitHub for PR
+ *   reviews, #94, new tab) and the PR status icon when the PR has one
+ *   (#234: none when open), the version selector next to it (issue #120;
  *   hidden for single-version reviews, the current version annotated in
  *   the dropdown, an older shown version flagged with a warning border),
- *   the PR label linking to GitHub for PR reviews
- *   (#94, new tab) alongside the link-out icon, and Debug as
- *   an icon button (hidden until the review finishes opening, issue #92).
- *   A compact preview-build marker (full text on hover) shows while the
- *   running build is a preview. No Settings gear: Settings is reached
- *   from the start page.
+ *   and Debug as an icon button (hidden until the review finishes
+ *   opening, issue #92). #235: no PR title here (it lives as the guide
+ *   heading), no open-externally button (the GitHub link opens the PR),
+ *   no preview/full-access badges (front page only). No Settings gear:
+ *   Settings is reached from the start page.
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button,
@@ -27,8 +27,6 @@ import { useReview } from "../state/store.js";
 import { VersionSwitcher } from "../versions/VersionSwitcher.js";
 import { PrBadges } from "../ui/index.js";
 import { jobCounts } from "./jobCounts.js";
-import { FullAccessMarker } from "./FullAccessMarker.js";
-import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 
@@ -45,7 +43,7 @@ export function ReviewBar({
   onToggleGuide: () => void;
   onToggleSource: () => void;
 }): React.JSX.Element {
-  const { short, title, prUrl, prState, reviewDecision } = useReviewIdentity(reviewId);
+  const { short, prUrl, prState, reviewDecision } = useReviewIdentity(reviewId);
   // #92: the Debug page needs a finished open (its reads refuse earlier
   // states), so the icon waits until the review is ready. One snapshot
   // subscription (never behind a short-circuit) so the hook order is
@@ -80,14 +78,8 @@ export function ReviewBar({
         ) : (
           <span className="num">{short}</span>
         )}
-        <b title={title}>{title}</b>
         <PrBadges prState={prState} reviewDecision={reviewDecision} />
         <VersionSwitcher />
-        {prUrl ? (
-          <a className="ib bd" href={prUrl} target="_blank" rel="noreferrer" aria-label="Open PR on GitHub" title="Open PR on GitHub">
-            <Icon name="open" />
-          </a>
-        ) : null}
         {ingestReady ? (
           <Link
             className="ib bd"
@@ -98,8 +90,6 @@ export function ReviewBar({
             <Icon name="bug" />
           </Link>
         ) : null}
-        <PreviewBuildBadge compact />
-        <FullAccessMarker compact />
       </div>
       <span className="seg" role="group" aria-label="Panes">
         <button type="button" aria-pressed={guideOpen} onClick={onToggleGuide}>

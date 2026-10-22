@@ -2835,3 +2835,36 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (Default, Studio, Console) × scheme × width with `checkLayout`,
   frames `packages/web/visual-tour/review-preparing-*` and
   `guide-building-*` (git-ignored).
+
+## Addendum: #234 + #235 (branch `fix/234-235-status-icons-topbar`)
+
+- **#234 (PR status icon tooltips; no icon for open; §4.2, §4.1):**
+  every `PrBadges` icon carries the status-only tooltip via the shared
+  `data-tip` (`Draft`, `Merged`, `Closed`, `Approved`, `Changes
+  requested`) and `open` renders no state icon (decisions still show;
+  open with no decision renders nothing). Root cause of the missing
+  tooltips: `Tooltip` was mounted only in `ReviewRoute`, so the start
+  page (Reviews list + PR lists) had no tooltip layer — `StartPage`
+  now renders `<Tooltip/>`; the review bar already had it. Evidence:
+  `src/ui/PrBadges.test.tsx` (open cases + tooltip text), journey
+  `e2e/journeys/j225a-settings-badges.spec.ts` (Playwright hover on the
+  Changes-requested icon sees `#tip` "Changes requested"),
+  `e2e/journeys/j225-start-pr-list.spec.ts` (open rows show no badges),
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (open shows nothing, then
+  merged+approved after refresh), tour frames `start-remove-confirm-*`.
+- **#235 (review top bar slim-down; §4.1, §4.3):** the review bar keeps
+  home, the GitHub link (`owner/repo#N`, title "Open PR on GitHub"),
+  the PR status icon when there is one (none when open), the version
+  picker, Debug, Guide|Source, Comments + Submit; removed: the PR
+  title `<b>`, the open-externally icon button (the GitHub link already
+  opens the PR, per the owner's follow-up comment), and the compact
+  PREVIEW / FULL ACCESS badges (front page only). The PR title moved
+  to the left pane root heading (`PageView`: a default-stored root
+  "Guide" renders the review identity title — PR title, else branch —
+  in the same `h1.title` style; non-default roots unchanged; document
+  reviews keep their document title). Evidence: `src/shell/ReviewBar.test.tsx`
+  (no title/button/badges in the bar), `src/guide/PageView.test.tsx`
+  (default root shows the branch fallback), journeys J225a/J230 (bar
+  asserts), tour frames `theme-*-guide-*` (guide heading carries the
+  PR title, slim bar), `document-review-*` (document title kept) and
+  `start-*` (badges stay on the front page).

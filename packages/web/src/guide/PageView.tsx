@@ -21,6 +21,7 @@ import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
 import { Card as UiCard } from "../ui/index.js";
 import { inflightLabel } from "./inflight.js";
+import { useReviewIdentity } from "../shell/reviewIdentity.js";
 
 interface Props {
   reviewId: string;
@@ -176,8 +177,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
 
 export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard }: Props) {
   const [tocOpen, setTocOpen] = useState(true);
+  const { title: identityTitle } = useReviewIdentity(reviewId);
   const isFinding = page.kind === "finding";
   const saved = isSaved(page);
+  // #235: the PR title lives here on the root, using the heading's style.
+  // A default-stored root ("Guide") shows the review title (PR title, else
+  // branch); non-default roots and other pages keep today's display.
+  const rootTitle =
+    page.kind === "root" && isDefaultGuideTitle(page.title) ? identityTitle : displayTitle(page.title);
   const allPages = useReview((s) => s.snapshot?.pages);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
   const inflight = useReview((s) => s.inflight);
@@ -244,17 +251,20 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
     </Fragment>
   );
 
+  const titleFor = (p: Page): string =>
+    p.id === page.id ? rootTitle : p.kind === "root" && isDefaultGuideTitle(p.title) ? rootTitle : displayTitle(p.title);
+
   return (
     <div className={`doc${isFinding ? " finding" : ""}`}>
       {trail.length > 1 ? (
         <nav className="crumbs" aria-label="Trail">
           {trail.map((p, i) =>
             i === trail.length - 1 ? (
-              <span key={p.id}>{displayTitle(p.title)}</span>
+              <span key={p.id}>{titleFor(p)}</span>
             ) : (
               <span key={p.id}>
                 <button type="button" onClick={() => onOpenPage(p.id === "root" ? null : p.id)}>
-                  {displayTitle(p.title)}
+                  {titleFor(p)}
                 </button>
                 <span> › </span>
               </span>
@@ -264,7 +274,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       ) : null}
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
-        <h1 className="title">{displayTitle(page.title)}</h1>
+        <h1 className="title">{rootTitle}</h1>
         <button
           className="ib save"
           type="button"

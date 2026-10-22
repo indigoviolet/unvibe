@@ -61,9 +61,12 @@ const PR_DECISION_ICON: Record<PrReviewDecision, { icon: IconName; color: string
  * state's chip colour (the `ui-badge` tone variables), with the state's
  * name as the tooltip (the app's shared `data-tip`) and accessible
  * label. No text. Branch reviews pass neither and show nothing.
+ * #234: no icon when the PR is open — open is the normal case, so only
+ * other states get an icon (decisions still show).
  */
 export function PrBadges({ prState, reviewDecision }: { prState?: PrState; reviewDecision?: PrReviewDecision }): React.JSX.Element | null {
-  const state = prState ? PR_STATE_ICON[prState] : null;
+  // #234: open is the normal case — no state icon for it.
+  const state = prState && prState !== "open" ? PR_STATE_ICON[prState] : null;
   const decision = reviewDecision ? PR_DECISION_ICON[reviewDecision] : null;
   if (!state && !decision) return null;
   // A lookup miss (a stored value outside the type) is undefined, not

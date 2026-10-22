@@ -1,10 +1,11 @@
 /**
  * ReviewBar tests (issue #31 round 2): review identity, the GitHub
- * link-out (PR reviews only), the Debug icon button, the Guide|Source
- * selector, and Comments + primary Submit side by side. Issue #120: the
- * version selector lives here next to the identity (rendered once, also
- * with the guide pane hidden); the current version is annotated in the
- * dropdown and an older shown version flags the select.
+ * link (PR reviews only, #235: no separate open-externally button, no
+ * PR title, no preview/full-access badges), the Debug icon button, the
+ * Guide|Source selector, and Comments + primary Submit side by side.
+ * Issue #120: the version selector lives here next to the identity
+ * (rendered once, also with the guide pane hidden); the current version
+ * is annotated in the dropdown and an older shown version flags the select.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -63,11 +64,19 @@ describe("ReviewBar", () => {
     expect(home).toHaveAttribute("href", "/");
     expect(home).toHaveAttribute("title", "Back to the start page");
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
-    expect(bar).toHaveTextContent("Fix retry backoff on 429s");
-    const github = screen.getByRole("link", { name: "Open PR on GitHub" });
+    // #235: the PR title lives in the guide heading, not the bar.
+    expect(bar).not.toHaveTextContent("Fix retry backoff on 429s");
+    // #235: the GitHub link (owner/repo#N) opens the PR — no separate
+    // open-externally button — and preview/full-access badges live on
+    // the front page only.
+    const github = screen.getByRole("link", { name: "urllib3/urllib3#5011" });
     expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noreferrer");
+    expect(github).toHaveAttribute("title", "Open PR on GitHub");
+    expect(bar?.querySelector('a[aria-label="Open PR on GitHub"]')).toBeNull();
+    expect(screen.queryByTestId("preview-marker")).toBeNull();
+    expect(screen.queryByTestId("full-access-marker")).toBeNull();
     const debug = screen.getByRole("link", { name: "Debug" });
     expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");

@@ -159,20 +159,21 @@ test.describe("J225 start-page PR list", () => {
       await expect(page.getByText("Document header unfolding")).toBeVisible();
       await expect(page.getByText("Re-requested after changes")).toBeVisible();
       // #224: state + decision read as icons with accessible labels…
+      // #234: no icon for open — open PRs with no decision show no badges.
       const iconRow = (title: string): import("@playwright/test").Locator => page.locator(".ci", { hasText: title });
-      await expect(iconRow("Fix quadratic backtracking in OWS matching").getByRole("img", { name: "Open" })).toBeVisible();
+      await expect(iconRow("Fix quadratic backtracking in OWS matching").locator('[data-testid="pr-badges"]')).toHaveCount(0);
       await expect(iconRow("WIP: normalize folded headers on parse").getByRole("img", { name: "Draft" })).toBeVisible();
       await expect(iconRow("Drop the old compat shim").getByRole("img", { name: "Merged" })).toBeVisible();
       await expect(iconRow("Add OWS regression tests").getByRole("img", { name: "Changes requested" })).toBeVisible();
       await expect(iconRow("Document header unfolding").getByRole("img", { name: "Approved" })).toBeVisible();
-      // …and no text pill remains. #230: review_required never shows, and
-      // the re-requested PR shows Open with no decision.
+      // …and no text pill remains. #230: review_required never shows; #234:
+      // open rows (plain open, re-requested) show no badges at all.
       const badgeTexts = await page.locator('[data-testid="pr-badges"]').allTextContents();
       expect(badgeTexts.join(" ")).not.toMatch(/Open|Draft|Merged|Closed|Approved|Changes requested|Review required/);
       await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
-      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Open" })).toBeVisible();
-      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Changes requested" })).toHaveCount(0);
-      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Approved" })).toHaveCount(0);
+      await expect(page.getByRole("img", { name: "Open" })).toHaveCount(0);
+      await expect(iconRow("Bump minimum Python to 3.10").locator('[data-testid="pr-badges"]')).toHaveCount(0);
+      await expect(iconRow("Re-requested after changes").locator('[data-testid="pr-badges"]')).toHaveCount(0);
       await page.getByText("No PRs requested of you.").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-pr-list-${combo.name}`);
     });

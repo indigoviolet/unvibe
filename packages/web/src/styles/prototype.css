@@ -233,10 +233,11 @@ code { font-family: var(--mono); font-size: .86em; }
    the full build text on hover. Never shrinks (the title gives way first). */
 .rbar .preview-mini { font-size: 10px; padding: 1px 6px; flex: none; align-self: center; text-decoration: none; }
 .rbar .preview-mini:hover { color: var(--accent); }
-/* Compact full-access marker (issue #160): same quiet shape as the
-   preview marker, in the warning tone. Hidden at narrow widths like it. */
-.rbar .warn-mini { font-size: 10px; padding: 1px 6px; flex: none; align-self: center; text-decoration: none; color: var(--note); }
-.rbar .warn-mini:hover { color: var(--note); text-decoration: underline; }
+/* Compact full-access marker (issue #160, front-page top bar in #235):
+   same quiet shape as the preview marker, in the warning tone. Hidden
+   at narrow widths like it. */
+.rbar .warn-mini, .top .warn-mini { font-size: 10px; padding: 1px 6px; flex: none; align-self: center; text-decoration: none; color: var(--note); }
+.rbar .warn-mini:hover, .top .warn-mini:hover { color: var(--note); text-decoration: underline; }
 /* Narrow windows give the width to the title; the full build text stays
    on the start page and Settings → Version. */
 @media (max-width: 1000px) { .rbar .preview-mini { display: none; } }
