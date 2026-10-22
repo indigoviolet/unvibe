@@ -30,9 +30,8 @@ test("toggle is off by default: releases listed, previews hidden (#231)", async 
   await expect(page.getByTestId("version-picker-toggle")).not.toBeChecked();
   await expect(page.getByText("Show previews")).toBeVisible();
   // Releases are always listed and switchable; previews need the toggle.
-  await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
-  await expect(page.locator('[data-testid="update-channel"][data-ref="release-rc"]')).toBeVisible();
   await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
 });
 
@@ -53,7 +52,7 @@ test("enable lists one aligned row per version with the current one marked", asy
   const refs = await page
     .locator('[data-testid="update-channel"]')
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-ref")));
-  expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release-rc", "release"]);
+  expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release"]);
 });
 
 test("newer build on the installed channel: Update available, no INSTALLED pill, Installed shows the running build", async ({ page }) => {

@@ -1642,7 +1642,7 @@ const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
 const UPDATE_INSTALLED_COMMIT_KEY = "unvibe.mock.update.installedCommit";
 
 // Distinct build times (issue #73): the picker sorts newest first, so the
-// list order is preview/feat-x, preview/fix-y, release-rc, release.
+// list order is preview/feat-x, preview/fix-y, release.
 const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
   {
     ref: "release",
@@ -1654,18 +1654,6 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
-    current: false,
-  },
-  {
-    ref: "release-rc",
-    kind: "release-rc",
-    version: "0.0.1-rc.1",
-    commit: "abc1234def5678",
-    sourceBranch: null,
-    sourceCommit: null,
-    baseBranch: null,
-    baseCommit: null,
-    builtAt: new Date(NOW - 86400_000).toISOString(),
     current: false,
   },
   {

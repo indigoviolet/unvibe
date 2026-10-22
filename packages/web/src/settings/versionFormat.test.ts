@@ -30,13 +30,11 @@ describe("versionFormat", () => {
       channel("release", "release"),
       channel("preview/old", "preview", iso(86400_000)),
       channel("preview/new", "preview", iso(3600_000)),
-      channel("release-rc", "release-rc", iso(7200_000)),
       channel("preview/no-time", "preview"),
       channel("preview/bogus", "preview", "not-a-date"),
     ]);
     expect(rows.map((c) => c.ref)).toEqual([
       "preview/new",
-      "release-rc",
       "preview/old",
       "release",
       "preview/no-time",
@@ -186,9 +184,9 @@ describe("versionFormat", () => {
     expect(compareReleaseVersions("0.0.1", "0.0.2")).toBe(-1);
     expect(compareReleaseVersions("0.0.1", "0.0.1")).toBe(0);
     expect(compareReleaseVersions("0.0.10", "0.0.9")).toBe(1);
-    expect(compareReleaseVersions("0.0.1", "0.0.1-rc.1")).toBe(1);
-    expect(compareReleaseVersions("0.0.1-rc.1", "0.0.1")).toBe(-1);
-    expect(compareReleaseVersions("0.0.1-rc.2", "0.0.1-rc.1")).toBe(1);
+    expect(compareReleaseVersions("0.0.1", "0.0.1-preview.x.y")).toBe(1);
+    expect(compareReleaseVersions("0.0.1-preview.x.y", "0.0.1")).toBe(-1);
+    expect(compareReleaseVersions("0.0.1-preview.y.2", "0.0.1-preview.x.1")).toBe(1);
   });
 
   it("finds the update: release builds by version, previews by date", () => {
@@ -223,8 +221,9 @@ describe("versionFormat", () => {
     expect(findUpdateAvailable(build({}), channels("0.0.2", T1))).toEqual(release("0.0.2", T1));
     // Up to date: nothing.
     expect(findUpdateAvailable(build({}), channels("0.0.1", T1))).toBeNull();
-    // Release candidate build, final release out: newer by version.
-    expect(findUpdateAvailable(build({ version: "0.0.1-rc.1", channel: "release-rc" }), channels("0.0.1", T1))).toEqual(
+    // Stale release-candidate install (the channel is gone, but the
+    // installed record may still name it), final release out: newer.
+    expect(findUpdateAvailable(build({ version: "0.0.1-rc.3", channel: "release-rc" }), channels("0.0.1", T1))).toEqual(
       release("0.0.1", T1),
     );
     // Preview build, release published after the preview was built.

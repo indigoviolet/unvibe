@@ -60,7 +60,7 @@ export function isNewerAvailable(row: UpdateChannel, build: UpdateBuildInfo | nu
 /**
  * Compare release versions (issue #231): numeric `major.minor.patch`
  * first, then a missing pre-release beats a present one (`0.0.1` is
- * newer than `0.0.1-rc.1`), two pre-releases compare lexically.
+ * newer than `0.0.1-preview.x.y`), two pre-releases compare lexically.
  * Unparseable cores compare as 0. Returns -1 / 0 / 1.
  */
 export function compareReleaseVersions(a: string, b: string): number {
@@ -86,7 +86,7 @@ export function compareReleaseVersions(a: string, b: string): number {
 /**
  * The release channel carrying an update for the running build
  * (issue #231), or null when up to date or undeterminable:
- * - release builds (any non-preview channel) compare by version;
+ * - release builds compare the release version against the running one;
  * - preview builds compare by date: the release was published after
  *   the running preview was built.
  * Missing versions, build times or unparseable dates mean null — the

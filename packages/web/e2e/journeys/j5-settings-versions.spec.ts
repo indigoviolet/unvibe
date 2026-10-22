@@ -164,10 +164,7 @@ test.describe("J5 settings and versions", () => {
       if (!svc) throw new Error("no service");
       await stageChannels(
         svc,
-        [
-          { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
-          { ref: "release-rc", version: "0.0.2-rc.1", commit: "rc0000000000001", builtAt: iso(NOW - 3600_000) },
-        ],
+        [{ ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) }],
         "release",
       );
       await stageInstalled({ version: "0.0.1", commit: "oldcommit0000001", builtAt: iso(NOW - 7 * 86400_000) });
@@ -255,7 +252,6 @@ test.describe("J5 settings and versions", () => {
         svc,
         [
           { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
-          { ref: "release-rc", version: "0.0.2-rc.1", commit: "rc0000000000001", builtAt: iso(NOW - 3600_000) },
           {
             ref: "preview/feat-x",
             version: "0.0.2-preview.feat-x.abc1234",
@@ -276,16 +272,15 @@ test.describe("J5 settings and versions", () => {
         await toggle.click();
         await expect(toggle).not.toBeChecked({ timeout: 15_000 });
       }
-      // Toggle off: releases stay, previews hidden — the update check runs either way.
-      await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+      // Toggle off: the release stays, previews hidden — the update check runs either way.
+      await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
       await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
-      await expect(page.locator('[data-testid="update-channel"][data-ref="release-rc"]')).toBeVisible();
       await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
       await expect(page.getByTestId("update-available-icon")).toBeVisible();
 
       await toggle.click();
       await expect(toggle).toBeChecked({ timeout: 15_000 });
-      await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(3);
+      await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
       await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toBeVisible();
     });
   });

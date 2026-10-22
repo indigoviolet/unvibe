@@ -1349,14 +1349,14 @@ export interface SharedContextBaseStats {
 // --- update channels (issue #36, step 2: version picker) -----------------
 
 /**
- * One installable build: `release`, `release-rc`, or a `preview/<slug>`
- * published from an in-flight branch. Served by
- * `GET /api/update/channels`; `current` marks the installed one.
+ * One installable build: `release` or a `preview/<slug>` published from
+ * an in-flight branch (candidates go out as `preview/main-rc`). Served
+ * by `GET /api/update/channels`; `current` marks the installed one.
  */
 export interface UpdateChannel {
-  /** "release" | "release-rc" | "preview/<slug>". */
+  /** "release" | "preview/<slug>". */
   ref: string;
-  kind: "release" | "release-rc" | "preview";
+  kind: "release" | "preview";
   /** e.g. "0.0.1-preview.feat-x.abc1234"; null when unknown. */
   version: string | null;
   /** Built tree's commit sha (for a merged preview, the merge result); null when unknown. */
@@ -1391,7 +1391,7 @@ export interface UpdateChannel {
  */
 export interface UpdateBuildInfo {
   version: string;
-  /** Installed channel ("release" | "release-rc" | "preview/<slug>") of the running build; null when unknown. */
+  /** Installed channel ("release" | "preview/<slug>") of the running build; null when unknown. */
   channel: string | null;
   sourceBranch: string | null;
   /** Branch-side commit (for a merged preview, the branch head — see `UpdateChannel.sourceCommit`); null when unknown. */

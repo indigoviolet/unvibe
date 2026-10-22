@@ -42,7 +42,7 @@ export interface SwitchToOptions {
 }
 
 export interface Updater {
-  /** release, release-rc and every preview/* ref, with `current` set on the installed one. */
+  /** release and every preview/* ref, with `current` set on the installed one. */
   listChannels(): Promise<UpdateChannel[]>;
   /** Back up the DB, then install the ref globally. Call only with the service stopped. */
   switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
@@ -131,23 +131,13 @@ export interface FakeChannelSpec {
 }
 
 function kindOf(ref: string): UpdateChannel["kind"] {
-  if (ref === "release") return "release";
-  if (ref === "release-rc") return "release-rc";
-  return "preview";
+  return ref === "release" ? "release" : "preview";
 }
 
 /** Built-in fake channels (used when no `fake-channels.json` is present). */
 export function defaultFakeChannels(): FakeChannelSpec[] {
   return [
     { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null },
-    {
-      ref: "release-rc",
-      kind: "release-rc",
-      version: "0.0.1-rc.1",
-      commit: "abc1234def5678",
-      sourceBranch: null,
-      builtAt: new Date(Date.now() - 86400_000).toISOString(),
-    },
     {
       ref: "preview/feat-x",
       kind: "preview",

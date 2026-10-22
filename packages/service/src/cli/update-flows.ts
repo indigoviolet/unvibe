@@ -23,7 +23,7 @@ export const UPDATE_USAGE = [
   "Usage: unvibe update --list",
   "       unvibe update <channel>",
   "",
-  "  --list       list release, release-rc and preview/* channels, marking the installed one",
+  "  --list       list release and preview/* channels, marking the installed one",
   "  <channel>    install github:indigoviolet/unvibe#<channel> globally with npm",
   "",
   DB_RULE,
@@ -78,7 +78,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
+        "use release or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }
@@ -96,7 +96,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       code: 2,
       lines: [
         `unknown channel: ${JSON.stringify(channel)}`,
-        "use release, release-rc or preview/<name> (see `unvibe update --list`)",
+        "use release or preview/<name> (see `unvibe update --list`)",
       ],
     };
   }

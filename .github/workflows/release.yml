@@ -2,11 +2,11 @@
 # push the release branch (orphan, one commit with only the release tree),
 # and attach `unvibe-<version>.tgz` to the GitHub release.
 #
-# Version and branch come from the tag: v0.0.1 → version 0.0.1, branch
-# `release`; v0.0.1-rc.1 → version 0.0.1-rc.1, branch `release-rc` (marked
-# pre-release). Candidates never overwrite the `release` ref users install
-# from. The generated package.json version and the tarball name both come
-# from the tag, so they always agree.
+# Version comes from the tag (v0.0.1 → version 0.0.1, always branch
+# `release`, never a pre-release). Tags shaped like `-rc.N` are not a
+# supported release shape (candidates go out as `preview/main-rc`) and
+# are rejected below. The generated package.json version and the tarball
+# name both come from the tag, so they always agree.
 #
 # Users install with NO flags (no lifecycle scripts; setup runs on first start):
 #   npm install -g github:indigoviolet/unvibe#release
@@ -100,12 +100,11 @@ jobs:
           fi
           VERSION="${TAG#v}"
           if [[ "$VERSION" == *"-rc."* ]]; then
-            BRANCH="release-rc"
-            PRERELEASE="true"
-          else
-            BRANCH="release"
-            PRERELEASE="false"
+            echo "release: tags shaped like -rc.N are not supported (candidates go out as preview/main-rc)" >&2
+            exit 1
           fi
+          BRANCH="release"
+          PRERELEASE="false"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"

@@ -197,10 +197,7 @@ describe("update channels", () => {
     try {
       const res = await off.app.inject(auth("/api/update/channels"));
       expect(res.statusCode).toBe(200);
-      expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual([
-        "release",
-        "release-rc",
-      ]);
+      expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual(["release"]);
       expect((await off.app.inject({ method: "GET", url: "/api/update/channels" })).statusCode).toBe(401);
     } finally {
       await off.close();
@@ -211,7 +208,6 @@ describe("update channels", () => {
       expect(res.statusCode).toBe(200);
       expect((res.json() as { channels: UpdateChannel[] }).channels.map((c) => c.ref)).toEqual([
         "release",
-        "release-rc",
         "preview/feat-x",
       ]);
     } finally {
@@ -255,7 +251,7 @@ describe("update channels", () => {
       const first = await h.app.inject(auth("/api/update/channels"));
       expect(first.statusCode).toBe(200);
       const channels = (first.json() as { channels: UpdateChannel[] }).channels;
-      expect(channels.length).toBeGreaterThanOrEqual(3);
+      expect(channels.length).toBeGreaterThanOrEqual(2);
       expect(channels.filter((c) => c.current)).toHaveLength(1);
       const second = await h.app.inject(auth("/api/update/channels"));
       expect(second.statusCode).toBe(200);

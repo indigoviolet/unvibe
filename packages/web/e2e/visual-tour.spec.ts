@@ -1075,12 +1075,6 @@ for (const combo of [
             commit: "tournew00000001",
             builtAt: new Date(now).toISOString(),
           },
-          {
-            ref: "release-rc",
-            version: "0.0.2-rc.1",
-            commit: "tourrc000000001",
-            builtAt: new Date(now - 3600_000).toISOString(),
-          },
         ]),
       );
       writeFileSync(

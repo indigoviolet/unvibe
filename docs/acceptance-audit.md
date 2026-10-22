@@ -1473,10 +1473,12 @@ needed (that deviation is closed, not added).
    the isolated npm cache). Agents run the user's installed `claude`/`codex`
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
-   `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo has since gone public —
-   at the time it was private, so the git ref needed `gh auth setup-git`
-   and the tarball needed `gh release download`). Installing from the default branch (source
+   `gh release download` of the then-current tag + `npm install -g` on npm
+   10 and 11, doctor/start/demo/diagrams/stop green; the `-rc` release shape
+   that tag used is gone — candidates now ship as `preview/main-rc`; the
+   repo has since gone public — at the time it was private, so the git ref
+   needed `gh auth setup-git` and the tarball needed `gh release download`).
+   Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
@@ -1757,7 +1759,8 @@ when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
-In-app switching between `release`, `release-rc` and `preview/*` builds,
+In-app switching between `release` and `preview/*` builds (the `release-rc`
+channel is removed; candidates go out as `preview/main-rc`),
 merged with step 1: one shared switch core (`update/switch.ts`) serves
 the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
 moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass

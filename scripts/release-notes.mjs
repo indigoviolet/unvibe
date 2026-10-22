@@ -23,13 +23,13 @@ const flag = (name) => {
 
 const rawVersion = args.find((a) => !a.startsWith("-")) ?? process.env.UNVIBE_RELEASE_VERSION ?? process.env.GITHUB_REF_NAME ?? "";
 const version = rawVersion.startsWith("v") ? rawVersion.slice(1) : rawVersion;
-if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
-  console.error(`release-notes: bad version ${JSON.stringify(rawVersion)} — want X.Y.Z[-rc.N]`);
+if (!/^\d+\.\d+\.\d+$/.test(version)) {
+  console.error(`release-notes: bad version ${JSON.stringify(rawVersion)} — want X.Y.Z (no -rc.N: candidates ship as preview builds)`);
   process.exit(1);
 }
 const tag = flag("--tag") ?? (rawVersion.startsWith("v") ? rawVersion : `v${version}`);
 const out = flag("--output") ?? flag("-o") ?? null;
-const branch = version.includes("-rc.") ? "release-rc" : "release";
+const branch = "release";
 
 function sh(cmd, argv) {
   const r = spawnSync(cmd, argv, { cwd: ROOT, encoding: "utf8", timeout: 60_000 });

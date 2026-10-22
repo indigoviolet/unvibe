@@ -242,19 +242,16 @@ git push origin main v0.0.1      # the tag push triggers .github/workflows/relea
 The script bumps the version everywhere it lives (root + workspace
 `package.json`s, the `@unvibe/shared` cross-dep, `SERVICE_VERSION`,
 `MCP_SERVICE_VERSION`, `package-lock.json`), commits the bump, and creates
-tag `v<version>`. Candidates need no bump — tag the candidate commit
-directly (`git tag v0.0.1-rc.1 && git push origin v0.0.1-rc.1`); the workflow
-takes the version from the tag and patches the built bundle, so the source
-can stay at the base version.
+tag `v<version>`. Candidates ship as preview builds instead — publish the
+branch (`mise run preview:publish -- <branch> --push`) and install it with
+`unvibe update preview/<slug>`; nothing but finals ever touches the
+`release` ref users install from.
 
 Tag → branch → install command:
 
 | Tag | Version | Branch (pushed) | Pre-release | Install |
 |---|---|---|---|---|
 | `v0.0.1` | `0.0.1` | `release` | no | `npm install -g github:indigoviolet/unvibe#release` |
-| `v0.0.1-rc.1` | `0.0.1-rc.1` | `release-rc` | yes | `npm install -g github:indigoviolet/unvibe#release-rc` |
-
-Candidates never overwrite the `release` ref users install from.
 
 ### What the workflow does
 
@@ -270,8 +267,7 @@ then force-pushes the release branch (an orphan with one commit, so every
 publish is non-fast-forward by design — force is confined to these refs),
 writes notes with `scripts/release-notes.mjs` (commits since the previous
 tag, or a fixed text for the first release), and attaches the tarball to the
-GitHub release (`softprops/action-gh-release`, `prerelease: true` for
-`-rc.` tags).
+GitHub release (`softprops/action-gh-release`, never a pre-release).
 
 ### Install story
 
@@ -304,7 +300,8 @@ git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
 # Fix forward on main, then re-tag when CI is green.
 ```
 
-Deleting a candidate keeps the same shape (`release-rc`, `v0.0.1-rc.N`).
+Deleting a candidate preview means deleting its `preview/<slug>` ref (and the
+local branch once it is merged or abandoned).
 
 ### Preview builds (issue #36)
 
@@ -333,7 +330,7 @@ clearly and nothing is published. `--as-is` keeps the old behaviour
 — refusing a dirty tree there — else in this checkout, or in a
 throwaway at the branch when it has no worktree). `--all` publishes
 every local branch with commits not on `main`, plus `main` itself
-(publish artifacts `preview/*`, `release`, `release-rc` are never
+(publish artifacts `preview/*` and `release` are never
 selected); one branch failing does not stop the rest and a summary
 prints at the end (exit nonzero when anything failed). The version is
 `<base>-preview.<slug>.<shortsha>` of the built tree (base =
@@ -354,7 +351,7 @@ refspec `refs/heads/preview/<slug>:refs/heads/preview/<slug>` (guarded in
 code — no other ref can pass). Without `--push` it prints the push
 command and the install command. Like the release refs, `preview/*` refs
 are orphans with one commit, so every publish is non-fast-forward by
-design: **the only refs ever force-pushed are `release`, `release-rc`
+design: **the only refs ever force-pushed are `release`
 and `preview/*`** (agents otherwise never push; CI never pushes
 `preview/*` — only a human `--push` does).
 
@@ -362,7 +359,7 @@ On the test machine (needs the updater once — the first build with it is
 installed by hand):
 
 ```sh
-unvibe update --list              # release, release-rc, preview/* via gh; marks the installed one
+unvibe update --list              # release, preview/* via gh; marks the installed one
 unvibe stop
 unvibe update preview/feat-other  # npm install -g github:indigoviolet/unvibe#preview/feat-other
 unvibe start
@@ -376,8 +373,9 @@ reinstalls in place (same database, still backed up first), which is the
 normal publish → try → fix → publish → update loop; `--list` flags a
 newer build on the installed row with both short shas and the build
 time. Installs that predate the `unvibe` package field map to their real
-channel from the version (`X.Y.Z` → `release`, `-rc.N` → `release-rc`,
-`-preview.<slug>.<sha>` → `preview/<slug>`); source checkouts stay
+channel from the version (`X.Y.Z` → `release`,
+`-preview.<slug>.<sha>` → `preview/<slug>`; old `-rc.N` builds map to no
+channel); source checkouts stay
 unknown. The install is pinned with `npm --prefix` to the prefix this
 binary came from (derived from its own package path; npm defaults apply
 when the layout is unrecognised) and verified afterwards — a landing

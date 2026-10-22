@@ -1,19 +1,15 @@
 /*global console process */
 // `mise run release:tag -- <version>`: cut a release tag repeatably.
 //
-// Final (e.g. `0.0.1`): requires a clean tree on `main` with CI green for
-// HEAD, bumps the version everywhere it lives (root + workspace
-// package.jsons, the workspace cross-dep, SERVICE_VERSION,
-// MCP_SERVICE_VERSION, package-lock via npm), commits the bump, and creates
-// tag `v<version>`. Push with `git push origin main v<version>` (tag push
-// triggers .github/workflows/release.yml).
-//
-// Candidate (e.g. `0.0.1-rc.1`): no bump and no main requirement — just
-// verifies the tree is clean and creates tag `v<version>` on HEAD. The
-// release workflow takes the version from the tag and patches the built
-// bundle, so the source can stay at the base version. Push the tag to
-// exercise the workflow (`git push origin v<version>`); the candidate
-// publishes to the `release-rc` branch and a pre-release, never `release`.
+// Cuts tag `v<version>` for a final (e.g. `0.0.1`): requires a clean
+// tree on `main` with CI green for HEAD, bumps the version everywhere it
+// lives (root + workspace package.jsons, the workspace cross-dep,
+// SERVICE_VERSION, MCP_SERVICE_VERSION, package-lock via npm), commits
+// the bump, and creates the tag. Push with `git push origin main
+// v<version>` (tag push triggers .github/workflows/release.yml, which
+// publishes to `release`). Tags shaped like `-rc.N` are not a supported
+// release shape (candidates go out as `preview/main-rc` via
+// `mise run preview:publish -- --push`).
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -24,15 +20,14 @@ const args = process.argv.slice(2).filter((a) => a !== "--");
 const raw = args.find((a) => !a.startsWith("-"));
 const skipCi = args.includes("--skip-ci-check");
 if (!raw) {
-  console.error("usage: mise run release:tag -- <version> [--skip-ci-check]\n  e.g. mise run release:tag -- 0.0.1   (final)\n       mise run release:tag -- 0.0.1-rc.1 (candidate, no bump)");
+  console.error("usage: mise run release:tag -- <version> [--skip-ci-check]\n  e.g. mise run release:tag -- 0.0.1");
   process.exit(1);
 }
 const version = raw.startsWith("v") ? raw.slice(1) : raw;
-if (!/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(version)) {
-  console.error(`release-tag: bad version ${JSON.stringify(raw)} — want X.Y.Z or X.Y.Z-rc.N`);
+if (!/^\d+\.\d+\.\d+$/.test(version)) {
+  console.error(`release-tag: bad version ${JSON.stringify(raw)} — want X.Y.Z (no -rc.N: candidates ship as preview builds)`);
   process.exit(1);
 }
-const isRc = version.includes("-rc.");
 const tag = `v${version}`;
 
 function sh(cmd, argv, opts = {}) {
@@ -51,13 +46,13 @@ if (dirty) {
   process.exit(1);
 }
 
-// 2. Branch: finals must be on main; candidates may be anywhere.
+// 2. Branch: finals must be on main.
 const branch = sh("git", ["branch", "--show-current"]);
-if (!isRc && branch !== "main") {
+if (branch !== "main") {
   console.error(`release-tag: finals must be cut from main (here on ${JSON.stringify(branch)})`);
   process.exit(1);
 }
-console.log(`release-tag: on branch ${branch}, cutting ${tag}${isRc ? " (candidate: no version bump)" : ""}`);
+console.log(`release-tag: on branch ${branch}, cutting ${tag}`);
 
 // 3. Tag must not already exist (local or remote).
 if (sh("git", ["tag", "--list", tag])) {
@@ -93,13 +88,6 @@ if (!skipCi) {
   console.log("release-tag: skipping CI check (--skip-ci-check)");
 }
 
-if (isRc) {
-  sh("git", ["tag", tag]);
-  console.log(`release-tag: created ${tag} on ${head.slice(0, 12)} (no bump for candidates)`);
-  console.log(`next: git push origin ${tag}   # triggers the release workflow (publishes to release-rc + pre-release)`);
-  process.exit(0);
-}
-
 // 5. Bump the version everywhere it lives.
 const bumpJson = (rel) => {
   const p = path.join(ROOT, rel);
@@ -115,7 +103,7 @@ for (const f of ["package.json", "packages/service/package.json", "packages/shar
 const bumpConst = (rel, name) => {
   const p = path.join(ROOT, rel);
   const src = readFileSync(p, "utf8");
-  const re = new RegExp(`(export const ${name} = ")\\d+\\.\\d+\\.\\d+(?:-rc\\.\\d+)?(")`);
+  const re = new RegExp(`(export const ${name} = ")\\d+\\.\\d+\\.\\d+(")`);
   if (!re.test(src)) {
     console.error(`release-tag: cannot find ${name} in ${rel}`);
     process.exit(1);
