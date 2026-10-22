@@ -4,7 +4,10 @@
  * has no settings/debug icons), as are `person` (author avatar for the
  * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
  * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out) and
- * `eyeOff` are additions in the same stroke style. Usage: `<Icon name="check" />`.
+ * `eyeOff` are additions in the same stroke style. #224 adds the PR
+ * state/decision set (`pr-open`, `pr-draft`, `pr-merged`, `pr-closed`,
+ * `request-changes`, `eye`) in the same style; approved reuses `check`.
+ * Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
 
@@ -130,6 +133,57 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M8 2.5v11" />
       <path d="M2.5 5h3M2.5 8h3M2.5 11h3M10.5 5h3M10.5 8h3M10.5 11h3" />
+    </>
+  ),
+  /**
+   * #224 PR state/decision icons (same 16x16 stroke style). `pr-open` is
+   * the branch-and-merge shape; `pr-draft` the same shape dashed
+   * (incomplete); `pr-merged` two branches joining one node; `pr-closed`
+   * a circled X (mirroring `check`'s circled tick for approved);
+   * `request-changes` a circled `!`; `eye` the open counterpart of
+   * `eyeOff` for review required.
+   */
+  "pr-open": (
+    <>
+      <circle cx="4.5" cy="4" r="1.7" />
+      <circle cx="4.5" cy="12" r="1.7" />
+      <path d="M4.5 5.7v4.6" />
+      <path d="M4.5 8h4a2.5 2.5 0 012.5 2.5V12" />
+    </>
+  ),
+  "pr-draft": (
+    <>
+      <circle cx="4.5" cy="4" r="1.7" strokeDasharray="2.2 1.6" />
+      <circle cx="4.5" cy="12" r="1.7" strokeDasharray="2.2 1.6" />
+      <path d="M4.5 5.7v4.6" strokeDasharray="2.2 1.6" />
+      <path d="M4.5 8h4a2.5 2.5 0 012.5 2.5V12" strokeDasharray="2.2 1.6" />
+    </>
+  ),
+  "pr-merged": (
+    <>
+      <circle cx="4" cy="4" r="1.6" />
+      <circle cx="4" cy="12" r="1.6" />
+      <circle cx="12" cy="8" r="1.6" />
+      <path d="M5.5 4.6c2.2 0 2.2 1.8 4.7 2.6" />
+      <path d="M5.5 11.4c2.2 0 2.2-1.8 4.7-2.6" />
+    </>
+  ),
+  "pr-closed": (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M6.2 6.2l3.6 3.6M9.8 6.2l-3.6 3.6" />
+    </>
+  ),
+  "request-changes": (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.6v3.8M8 11.4v.2" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 8c1.6-3 3.6-4.5 6-4.5S12.4 5 14 8c-1.6 3-3.6 4.5-6 4.5S3.6 11 2 8z" />
+      <circle cx="8" cy="8" r="1.5" />
     </>
   ),
 };

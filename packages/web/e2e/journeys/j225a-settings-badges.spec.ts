@@ -1,6 +1,6 @@
 /**
  * J225a (#225 part A, #224): settings screens share one card each with
- * compact rows, the start page rows align, and PR state/decision badges
+ * compact rows, the start page rows align, and PR state/decision icons
  * show on PR reviews (nothing on branch reviews) — against the real
  * service. No screenshot baselines (owner direction).
  */
@@ -171,12 +171,15 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(Math.abs(openerRight - blockRight)).toBeLessThanOrEqual(1.5);
     await noPageScroll(page);
 
-    // Reviews list: the PR review carries Open + Approved badges…
+    // Reviews list: the PR review carries Open + Approved icons…
     const prRow = page.locator(`[data-testid="session-${prReviewId}"]`);
     await expect(prRow).toBeVisible({ timeout: 30_000 });
     const badges = prRow.locator('[data-testid="pr-badges"]');
-    await expect(badges).toContainText("Open");
-    await expect(badges).toContainText("Approved");
+    await expect(badges.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(badges.getByRole("img", { name: "Approved" })).toBeVisible();
+    // …with accessible labels and no text pills.
+    await expect(badges).not.toContainText("Open");
+    await expect(badges).not.toContainText("Approved");
     // …while branch reviews show none.
     const branchRows = page.locator('[data-testid^="session-"]');
     expect(await branchRows.count()).toBeGreaterThanOrEqual(2);
@@ -186,8 +189,10 @@ test.describe("J225a settings, start page and PR badges", () => {
     await page.goto(`${svc.origin}/review/${prReviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
     const barBadges = page.locator('#reviewbar [data-testid="pr-badges"]');
-    await expect(barBadges).toContainText("Open");
-    await expect(barBadges).toContainText("Approved");
+    await expect(barBadges.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(barBadges.getByRole("img", { name: "Approved" })).toBeVisible();
+    await expect(barBadges).not.toContainText("Open");
+    await expect(barBadges).not.toContainText("Approved");
     // The summary API carries the same state (no new polling: stored gh data).
     const summary = await apiJson(svc, "GET", "/api/reviews");
     const found = (summary.json as { reviews: { id: string; prState?: string; reviewDecision?: string }[] }).reviews.find(

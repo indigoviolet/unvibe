@@ -6,6 +6,7 @@ import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import type { PrReviewDecision, PrState } from "@unvibe/shared";
+import { Icon, type IconName } from "../components/Icon.js";
 import "./ui.css";
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }>(function Button({ variant = "secondary", size = "md", className, ...p }, ref): React.JSX.Element {
@@ -44,27 +45,42 @@ export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "ok" 
   return <span className="ui-badge" data-tone={tone}>{children}</span>;
 }
 
-const PR_STATE_BADGE: Record<PrState, { tone: "neutral" | "ok" | "warn" | "error" | "merged"; label: string }> = {
-  draft: { tone: "neutral", label: "Draft" },
-  open: { tone: "ok", label: "Open" },
-  merged: { tone: "merged", label: "Merged" },
-  closed: { tone: "error", label: "Closed" },
+const PR_STATE_ICON: Record<PrState, { icon: IconName; color: string; label: string }> = {
+  draft: { icon: "pr-draft", color: "var(--text-secondary)", label: "Draft" },
+  open: { icon: "pr-open", color: "var(--accent)", label: "Open" },
+  merged: { icon: "pr-merged", color: "var(--note)", label: "Merged" },
+  closed: { icon: "pr-closed", color: "var(--warn)", label: "Closed" },
 };
-const PR_DECISION_BADGE: Record<PrReviewDecision, { tone: "neutral" | "ok" | "warn" | "error" | "merged"; label: string }> = {
-  approved: { tone: "ok", label: "Approved" },
-  changes_requested: { tone: "error", label: "Changes requested" },
-  review_required: { tone: "warn", label: "Review required" },
+const PR_DECISION_ICON: Record<PrReviewDecision, { icon: IconName; color: string; label: string }> = {
+  approved: { icon: "check", color: "var(--accent)", label: "Approved" },
+  changes_requested: { icon: "request-changes", color: "var(--warn)", label: "Changes requested" },
+  review_required: { icon: "eye", color: "var(--note)", label: "Review required" },
 };
 
-/** #224: PR state + review-decision badges. Branch reviews pass neither and show nothing. */
+/**
+ * #224: PR state + review-decision icons. One small icon each, in the
+ * state's chip colour (the `ui-badge` tone variables), with the state's
+ * name as the tooltip (the app's shared `data-tip`) and accessible
+ * label. No text. Branch reviews pass neither and show nothing.
+ */
 export function PrBadges({ prState, reviewDecision }: { prState?: PrState; reviewDecision?: PrReviewDecision }): React.JSX.Element | null {
-  const state = prState ? PR_STATE_BADGE[prState] : null;
-  const decision = reviewDecision ? PR_DECISION_BADGE[reviewDecision] : null;
+  const state = prState ? PR_STATE_ICON[prState] : null;
+  const decision = reviewDecision ? PR_DECISION_ICON[reviewDecision] : null;
   if (!state && !decision) return null;
+  const icons = [state, decision].filter((i) => i !== null);
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", flex: "none" }} data-testid="pr-badges">
-      {state ? <Badge tone={state.tone}>{state.label}</Badge> : null}
-      {decision ? <Badge tone={decision.tone}>{decision.label}</Badge> : null}
+      {icons.map((i) => (
+        <span
+          key={i.label}
+          role="img"
+          aria-label={i.label}
+          data-tip={i.label}
+          style={{ color: i.color, display: "inline-flex", flex: "none" }}
+        >
+          <Icon name={i.icon} />
+        </span>
+      ))}
     </span>
   );
 }

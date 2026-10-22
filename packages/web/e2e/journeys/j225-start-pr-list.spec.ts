@@ -1,6 +1,6 @@
 /** J225 (#225): start page with PR lists — the fake `gh` returns Your
  * PRs, an empty Requested-of-you, and team PRs with mixed states (open,
- * draft, merged, approved, changes requested) so #224's badges show up
+ * draft, merged, approved, changes requested) so #224's icons show up
  * once part A merges. `checkLayout` runs on the list in every variant.
  * No real `gh`, no network: the fake answers `pr list` from canned
  * JSON, everything else exits 1 (best-effort listings). */
@@ -150,6 +150,16 @@ test.describe("J225 start-page PR list", () => {
       await expect(page.getByText("Drop the old compat shim")).toBeVisible();
       await expect(page.getByText("Add OWS regression tests")).toBeVisible();
       await expect(page.getByText("Document header unfolding")).toBeVisible();
+      // #224: state + decision read as icons with accessible labels…
+      const iconRow = (title: string): import("@playwright/test").Locator => page.locator(".ci", { hasText: title });
+      await expect(iconRow("Fix quadratic backtracking in OWS matching").getByRole("img", { name: "Open" })).toBeVisible();
+      await expect(iconRow("WIP: normalize folded headers on parse").getByRole("img", { name: "Draft" })).toBeVisible();
+      await expect(iconRow("Drop the old compat shim").getByRole("img", { name: "Merged" })).toBeVisible();
+      await expect(iconRow("Add OWS regression tests").getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(iconRow("Document header unfolding").getByRole("img", { name: "Approved" })).toBeVisible();
+      // …and no text pill remains.
+      const badgeTexts = await page.locator('[data-testid="pr-badges"]').allTextContents();
+      expect(badgeTexts.join(" ")).not.toMatch(/Open|Draft|Merged|Closed|Approved|Changes requested|Review required/);
       await page.getByText("No PRs requested of you.").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-pr-list-${combo.name}`);
     });
