@@ -463,7 +463,7 @@ export class McpRegistry {
     const review = await this.loadReview(state);
     // Issue #222: on a document review, the repo is resolved from the
     // cited sha — the first context repo containing that commit. A sha
-    // in neither repo fails here instead of reading the wrong repo.
+    // in no repo fails here instead of reading the wrong repo.
     const contextRepos = this.opts.reader.getContextRepos
       ? await this.opts.reader.getContextRepos(state.reviewId)
       : null;

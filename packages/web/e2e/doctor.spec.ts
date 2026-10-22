@@ -15,7 +15,7 @@ test("doctor breadcrumb trails back through Settings", async ({ page }) => {
     "/settings?tab=environment",
   );
   await expect(crumbs.getByText("Doctor")).toHaveAttribute("aria-current", "page");
-  const gear = page.locator("header.top > a.ib");
+  const gear = page.locator("header.top > a.ib[href=\"/settings\"]");
   await expect(gear).toHaveAttribute("aria-label", "Settings");
   await expect(gear).toHaveAttribute("title", "Settings");
 });

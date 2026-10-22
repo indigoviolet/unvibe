@@ -657,8 +657,8 @@ export async function registerReviews(
       if (markdown.trim() === "") return reply.code(400).send({ error: "paste the document's Markdown first" });
       if (markdown.length > 200_000) return reply.code(400).send({ error: "that document is too large (200,000 characters at most)" });
       const picks = Array.isArray(docBody.contextRepos) ? docBody.contextRepos : [];
-      if (picks.length < 1 || picks.length > 2) {
-        return reply.code(400).send({ error: "pick 1 or 2 context repos" });
+      if (picks.length < 1) {
+        return reply.code(400).send({ error: "pick at least one context repo" });
       }
       const document = parseDocumentMarkdown(markdown);
       if (document.blocks.length === 0) return reply.code(400).send({ error: "that document has no readable content" });

@@ -2691,6 +2691,40 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `packages/web/visual-tour/start-update-icon-*` and
   `settings-version-*` (git-ignored).
 
+## Addendum: #222 follow-ups (branch `feat/222-documents-screen`)
+
+- **Documents start screen (#222):** the PR start page no longer shows
+  the Document section and lists no document reviews; a new `/documents`
+  route holds the paste-Markdown form and the document-reviews list. The
+  top bar gains a note-icon link (tooltip "Documents") next to the
+  Settings gear; the home link still returns to the PR start page. The
+  form's behaviour is unchanged apart from the repo count below.
+- **Any number of context repos (#222):** "Add another context repo"
+  keeps adding removable rows with no cap (creation requires at least
+  one). Agent context, `code:` citation resolution by commit (validation
+  keyed by the exact `path@sha`, `get_code`, the file route, and now the
+  second-opinion reply check too) and the source pane handle N repos:
+  the repo always comes from the first context repo whose object store
+  contains the cited commit. Evidence:
+  `packages/service/test/document-222.test.ts` (three-repo create),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (documents screen,
+  three repos, remove-a-row, third-repo citation, start-page exclusion),
+  tour frames `start-topbar-documents-*` and `documents-screen-*`.
+- **Header-only context map (#222):** the document base pack carries no
+  file list and no README — one header line per context repo (name,
+  read-from source, commit, path) plus a single citation/`get_code`
+  instruction for the whole document. Measured base pack (the
+  ~4-chars-per-token estimator, unvibe's own checkout as context, sample
+  document): 1 repo 923 chars / ~231 tokens, 2 repos 1119 chars / ~280
+  tokens, 4 repos 1471 chars / ~368 tokens — far under any cap, so no
+  trimming rule was added. File finding stays with the existing tools:
+  `get_code` by path + sha across all context repos, the lockdown
+  allowlist's read-only Glob/Grep (session cwd is the first context
+  repo's reading location), and full-access direct reads; `search_review`
+  does not index context trees and no file-listing MCP tool exists, so
+  none was added.
+
+
 ## Addendum: #229 (branch `fix/229-version-tab`)
 
 - **#229 (Settings → Version layout; §4.14):** the enable toggle is a
