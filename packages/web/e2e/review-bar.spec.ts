@@ -82,7 +82,7 @@ test("review bar does not overflow at 800px", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("older version annotates current and keeps the title at 800px (issue #120)", async ({ page }) => {
+test("older version annotates current and the bar fits at 800px (issue #120)", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto("/review/r-old?version=1");
   await expect(page.locator("#reviewbar")).toBeVisible();
@@ -97,9 +97,8 @@ test("older version annotates current and keeps the title at 800px (issue #120)"
   await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
-  // The title is no longer squeezed out entirely.
-  const titleBox = await page.locator("#reviewbar .rid b").boundingBox();
-  expect(titleBox?.width).toBeGreaterThan(0);
+  // #235: the PR title lives in the guide heading, not the bar; the bar
+  // still never overflows at this width.
   const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   // Choosing the annotated current version is the way back.

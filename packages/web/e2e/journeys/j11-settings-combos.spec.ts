@@ -79,13 +79,17 @@ test.describe("J11 settings combos", () => {
     await expect(page.locator('[data-testid="access-warning"]')).toBeVisible();
     await page.getByRole("button", { name: "I understand, turn on full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Full access is on", { timeout: 15_000 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    // #235: the marker shows on the front page only, not in the review bar.
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.locator('[data-testid="full-access-marker"]')).toBeVisible({ timeout: 30_000 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0);
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Access" }).click();
     await page.getByRole("button", { name: "Turn off full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Read-only", { timeout: 15_000 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0, { timeout: 30_000 });
 
     // Appearance (issue #196): switch the UI theme, reload, and it is
