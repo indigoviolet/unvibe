@@ -25,13 +25,12 @@ import { Icon } from "../../components/Icon.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import {
-  comparisonToBanner,
   statusToBanner,
   VersionBanner,
   type BannerCounts,
 } from "../../versions/VersionBanner.js";
-import { refreshErrorNotice } from "../../versions/versionUtils.js";
 import { useReviewVersion } from "../../versions/useReviewVersion.js";
+import { useRefresh } from "../../versions/useRefresh.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
 import { Button, DiffStat } from "../../ui/index.js";
 import {
@@ -144,8 +143,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [fileHighlight, setFileHighlight] = useState<string | null>(null);
-  const [banner, setBanner] = useState<BannerCounts | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  // #241: the Refresh button lives in the review top bar now; its banner
+  // state is shared (see `versions/refreshStore.ts`) so the "new commits
+  // available" UI still renders here.
+  const { banner, clearBanner } = useRefresh(reviewId);
   const [eagerFiles, setEagerFiles] = useState<ReadonlySet<string>>(new Set());
   // Reviews without readable file content (issue #133: the service
   // answers `no-content`, e.g. the demo) hide every expansion control
@@ -247,81 +248,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     };
   }, [reviewId, probeHead, probePath]);
 
-  // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
-  // Skipped while viewing an older version, and a no-op for reviews with
-  // no git source (demo). Counts come from the refresh `comparison`, or
-  // from `versionStatus` already on the snapshot. Check-only: new commits
-  // surface as the banner (never auto-applied, no jobs start); PR state
-  // and decision update silently through the snapshot WS patch (#230).
-  // No polling. The guard below keeps StrictMode/remounts to one call
-  // per review open.
-  const sourceRepoId = snapshot?.review.repoId;
-  const autoRefreshKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
-    const key = `${reviewId}@${sourceRepoId}`;
-    if (autoRefreshKey.current === key) return;
-    autoRefreshKey.current = key;
-    let cancelled = false;
-    api
-      .refresh(reviewId)
-      .then((r) => {
-        if (cancelled) return;
-        if (r.newVersion && r.comparison) {
-          const snap = useReview.getState().snapshot;
-          const current = snap?.review.currentVersion ?? r.comparison.newVersion;
-          setBanner(comparisonToBanner(r.comparison, current));
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) toast(refreshErrorNotice(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reviewId, versionParam, sourceRepoId]);
-
-  const doRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const prevDesc = useReview.getState().snapshot?.description;
-      const r = await api.refresh(reviewId);
-      if (r.newVersion && r.comparison) {
-        const snap = useReview.getState().snapshot;
-        const current = snap?.review.currentVersion ?? r.comparison.newVersion;
-        setBanner(comparisonToBanner(r.comparison, current));
-        setSnapshot(await api.review(reviewId));
-      } else {
-        // #230: same-head refresh still updates PR state/decision — refetch
-        // so the bar changes even if the WS patch is delayed. Silent when
-        // only the PR state moved; "Already up to date" only when truly
-        // unchanged.
-        const fresh = await api.review(reviewId);
-        setSnapshot(fresh);
-        setBanner(null);
-        const nextDesc = fresh.description;
-        const stateSame =
-          (prevDesc?.state ?? null) === (nextDesc?.state ?? null) &&
-          (prevDesc?.isDraft ?? false) === (nextDesc?.isDraft ?? false) &&
-          (prevDesc?.reviewDecision ?? null) === (nextDesc?.reviewDecision ?? null);
-        if (stateSame) toast("Already up to date");
-      }
-    } catch (err) {
-      toast(refreshErrorNotice(err));
-    } finally {
-      setRefreshing(false);
-    }
-  }, [reviewId, setSnapshot]);
-
   const onUpdated = useCallback(async () => {
-    setBanner(null);
+    clearBanner();
     try {
       setSnapshot(await api.review(reviewId));
       toast("Review updated");
     } catch {
       toast("Updated. Reload the page to see it.");
     }
-  }, [reviewId, setSnapshot]);
+  }, [reviewId, setSnapshot, clearBanner]);
 
   // Mock-only hidden-row brief copy (prototype BRIEF; M2's hunk pass
   // produces these per hunk). Code-split so production never loads it.
@@ -923,16 +858,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           onClick={() => void unfoldAll()}
         >
           <Icon name="unfold" />
-        </button>
-        <button
-          className="x"
-          type="button"
-          data-tip="Check the branch for new commits"
-          aria-label="Refresh"
-          disabled={refreshing || readOnly}
-          onClick={() => void doRefresh()}
-        >
-          <Icon name="refresh" />
         </button>
         <span
           className="rprog"

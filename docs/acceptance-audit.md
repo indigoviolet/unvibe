@@ -2283,8 +2283,11 @@ or stacked PR), never a file type — tests, docs and config belong to
 the thread they serve. The reader prompt (`prompts/reader.md`, and
 `plotline_assign.md` for the fallback) defines this with a good and a
 bad example; each stored plotline carries an optional `buildsOn`
-and is listed in landing order. The guide Plotlines box shows the
-order and a short "Builds on" line. Toolbar and file tree (#184): the
+and is listed in landing order. The guide Plotlines box (#242)
+shows no numbering: each row is a shared ListRow with the title in
+full (wrapping, never truncated or underlined), the hunk count as a
+Badge chip in the trailing slot, and "Builds on" followed by a chip
+naming the earlier plotline that goes to that plotline when clicked. Toolbar and file tree (#184): the
 file list's filter is an icon menu of file types only; the reviewed
 progress line, score legend and per-file dots left the tree (progress
 is now the pinned toolbar's bottom border, counts only in its tooltip
@@ -2868,3 +2871,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   asserts), tour frames `theme-*-guide-*` (guide heading carries the
   PR title, slim bar), `document-review-*` (document title kept) and
   `start-*` (badges stay on the front page).
+
+## Addendum: #239 and #241 (branch `fix/239-241-topbar-refresh`)
+
+- **#239 (review top bar bottom alignment):** the review bar identity row
+  (`.rid`) aligns on the bottom (`align-items: flex-end`; buttons and the
+  version selector `align-self: flex-end`), so home, GitHub link, status
+  icon and Debug share one bottom edge. Evidence: J230 (merged icon:
+  bottoms within 2px + `checkLayout`).
+- **#241 (Refresh moves to the review top bar):** Refresh moved from the
+  diff toolbar to the review bar next to the status icon, bottom-aligned
+  (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
+  shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
+  hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
+  `review-bar.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
+  (Refresh in `#reviewbar`), J225 (tooltip "Refresh").

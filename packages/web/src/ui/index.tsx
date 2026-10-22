@@ -41,7 +41,7 @@ export const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
 export function ListRow({ primary, meta, trailing, ...rest }: { primary: ReactNode; meta?: ReactNode; trailing?: ReactNode; [k: string]: unknown }): React.JSX.Element {
   return <div className="ui-row" {...rest}><div style={{ minWidth: 0 }}><div className="ui-row-primary">{primary}</div>{meta ? <div className="ui-row-meta">{meta}</div> : null}</div><div style={{ display: "flex", gap: 6, alignItems: "center" }}>{trailing}</div></div>;
 }
-export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "ok" | "warn" | "error" | "merged"; children: ReactNode }): React.JSX.Element {
+export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "ok" | "warn" | "error" | "merged" | "outline"; children: ReactNode }): React.JSX.Element {
   return <span className="ui-badge" data-tone={tone}>{children}</span>;
 }
 

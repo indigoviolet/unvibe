@@ -40,6 +40,10 @@
 .ui-badge[data-tone="warn"]{background:var(--note-soft);color:var(--note)}
 .ui-badge[data-tone="error"]{background:var(--warn-soft);color:var(--warn)}
 .ui-badge[data-tone="merged"]{background:var(--note-soft);color:var(--note)}
+/* #242: neutral pill with its own border, so it reads as a chip on any
+   background — including a sunk (inset-card) one, where the borderless
+   neutral pill disappears. No semantic colour: for counts and names. */
+.ui-badge[data-tone="outline"]{background:var(--surface);border:var(--border-width) solid var(--line);color:var(--text-secondary)}
 /* #224: the one shared diff stat: plain coloured +N −M, no pill. */
 .ui-diffstat{display:inline-flex;gap:4px;align-items:baseline;font:11px var(--mono);white-space:nowrap;flex:none}
 .ui-diffstat .a{color:var(--add-ink)}

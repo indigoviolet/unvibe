@@ -154,7 +154,7 @@ test.describe("J18 empty diff (#179)", () => {
 
       await git(dir2, "checkout", "feature");
       await git(dir2, "reset", "--hard", "main");
-      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
       // Diff pane: the empty message appears once (the banner), not twice.
       await expect(page.getByTestId("empty-diff-message")).toContainText("No changes to review", { timeout: 60_000 });
       await expect(page.getByTestId("diff-empty")).toHaveCount(0);

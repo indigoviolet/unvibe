@@ -738,6 +738,12 @@ for (const combo of [
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // #242: the Plotlines card tops the guide root (two plotlines,
+    // one building on the other) — capture it before scrolling on.
+    await expect(page.locator(".plotlines")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".plotlines").scrollIntoViewIfNeeded();
+    await stepChecks(page, "guide-plotlines");
+    await shot(page, "guide-plotlines", suffix, "Plotlines");
     // Explain-first guide (#198): the build-up and decisions cards sit
     // after the central change in the settled reader order.
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
@@ -2054,6 +2060,24 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(row).toContainText("new commits");
       const title = row.locator(".cx2");
       const meta = row.locator(".cj > .hint");
+      // Settle the row before measuring (#225 flake: the "before" boxes
+      // were read while fonts/line metrics were still settling, so the
+      // meta sat 87px lower relative to the row). Fonts first, then the
+      // row+title+meta boxes identical across two animation frames.
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await expect
+        .poll(
+          async () => {
+            const first = await Promise.all([row.boundingBox(), title.boundingBox(), meta.boundingBox()]);
+            await page.evaluate(
+              () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+            );
+            const second = await Promise.all([row.boundingBox(), title.boundingBox(), meta.boundingBox()]);
+            return JSON.stringify(first) === JSON.stringify(second) ? "stable" : "settling";
+          },
+          { timeout: 15_000 },
+        )
+        .toBe("stable");
       // The row keeps its size and the title/meta keep their size and
       // position relative to it; the popover covers neither. Relative
       // boxes, so async callouts above the list can't flake the assert.
