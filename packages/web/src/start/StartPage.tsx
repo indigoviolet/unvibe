@@ -1564,12 +1564,12 @@ export function SessionRow({
           </>
         ) : (
           <Button
-            variant="quiet" size="sm"
+            variant="secondary" size="sm"
             type="button"
-            aria-label={`Remove ${s.title}`}
+            aria-label="Remove this review"
             disabled={deleting !== null}
             onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
+            title="Remove this review"
           >
             Remove
           </Button>

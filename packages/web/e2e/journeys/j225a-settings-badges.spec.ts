@@ -180,6 +180,10 @@ test.describe("J225a settings, start page and PR badges", () => {
     // …with accessible labels and no text pills.
     await expect(badges).not.toContainText("Open");
     await expect(badges).not.toContainText("Approved");
+    // The row's Remove is a real button with the action-only tooltip (#225).
+    const removeBtn = prRow.getByRole("button", { name: "Remove this review" });
+    await expect(removeBtn).toBeVisible();
+    await expect(removeBtn).toHaveAttribute("title", "Remove this review");
     // …while branch reviews show none.
     const branchRows = page.locator('[data-testid^="session-"]');
     expect(await branchRows.count()).toBeGreaterThanOrEqual(2);
