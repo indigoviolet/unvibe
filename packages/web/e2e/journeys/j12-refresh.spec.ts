@@ -67,7 +67,7 @@ test.describe("J12 refresh with new commits", () => {
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
 
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText(/1 changed/, { timeout: 60_000 });
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
@@ -159,7 +159,7 @@ test.describe("J12 refresh with new commits", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
 
     // The citation now points at beta's new line under the new head.
     const deadline = Date.now() + 60_000;

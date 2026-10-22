@@ -2871,3 +2871,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   asserts), tour frames `theme-*-guide-*` (guide heading carries the
   PR title, slim bar), `document-review-*` (document title kept) and
   `start-*` (badges stay on the front page).
+
+## Addendum: #239 and #241 (branch `fix/239-241-topbar-refresh`)
+
+- **#239 (review top bar bottom alignment):** the review bar identity row
+  (`.rid`) aligns on the bottom (`align-items: flex-end`; buttons and the
+  version selector `align-self: flex-end`), so home, GitHub link, status
+  icon and Debug share one bottom edge. Evidence: J230 (merged icon:
+  bottoms within 2px + `checkLayout`).
+- **#241 (Refresh moves to the review top bar):** Refresh moved from the
+  diff toolbar to the review bar next to the status icon, bottom-aligned
+  (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
+  shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
+  hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
+  `review-bar.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
+  (Refresh in `#reviewbar`), J225 (tooltip "Refresh").

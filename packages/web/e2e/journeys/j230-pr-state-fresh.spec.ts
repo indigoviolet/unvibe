@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createScratchReview, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
@@ -89,11 +90,41 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
     const bar = page.locator("#reviewbar");
 
     // The refresh button: same head, new state — no new version, no banner.
-    await page.getByRole("button", { name: "Refresh" }).first().click();
+    // #241: Refresh lives in the review top bar now, next to the status icon.
+    await page.locator("#reviewbar").getByRole("button", { name: "Refresh" }).click();
     await expect(bar.getByRole("img", { name: "Merged" })).toBeVisible({ timeout: 30_000 });
     await expect(bar.getByRole("img", { name: "Approved" })).toBeVisible();
     await expect(bar).not.toContainText("Merged");
     await expect(bar).not.toContainText("Approved");
+
+    // #239: home, GitHub link (when present), status icon, Refresh and
+    // Debug all line up on the bottom (within 1–2px) on a PR with a
+    // status icon (merged here, not open).
+    const bottoms = await page.evaluate(() => {
+      const barEl = document.getElementById("reviewbar");
+      if (!barEl) return null;
+      const pick = (sel: string): Element | null => barEl.querySelector(sel);
+      const els: Element[] = [
+        pick('a[aria-label="Back to the start page"]'),
+        pick('a.num'),
+        pick('[data-testid="pr-badges"]'),
+        pick('button[aria-label="Refresh"]'),
+        pick('a[aria-label="Debug"]'),
+      ].filter((el): el is Element => el !== null);
+      return els.map((el) => {
+        const r = el.getBoundingClientRect();
+        const label = el.getAttribute("aria-label") ?? el.textContent?.trim() ?? el.tagName;
+        return { label, bottom: r.bottom };
+      });
+    });
+    expect(bottoms).not.toBeNull();
+    expect(bottoms!.length).toBeGreaterThanOrEqual(4);
+    const bs = bottoms!.map((b) => b.bottom);
+    expect(
+      Math.max(...bs) - Math.min(...bs),
+      `review bar bottoms misaligned: ${JSON.stringify(bottoms)}`,
+    ).toBeLessThanOrEqual(2);
+    await checkLayout(page, "j230-bar");
 
     // The stored review moved too: the API summary carries the new state.
     const summary = await apiJson(svc, "GET", "/api/reviews");
