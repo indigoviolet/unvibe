@@ -1115,6 +1115,20 @@ for (const combo of [
     await page.evaluate(() => window.scrollTo(0, 0));
     await checkLayout(page, "start-update-icon");
     await shot(page, "start-update-icon", suffix, "Open a PR by URL or number");
+    // Issue #235: the full-access marker lives on the front-page top
+    // bar (turned on here through settings, back off right after so no
+    // later scene sees it).
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+      fullAccess: true,
+      fullAccessAcknowledgedAt: Date.now(),
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByTestId("full-access-marker")).toBeVisible({ timeout: 15_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-full-access");
+    await shot(page, "start-full-access", suffix, "full access");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
   });
 }
 
