@@ -39,7 +39,7 @@ import { READER_TOOL, toolsForRole } from "./tools.js";
 import { repoContainingSha } from "../document/resolve.js";
 
 export const MCP_SERVICE_NAME = "unvibe";
-export const MCP_SERVICE_VERSION = "0.0.8";
+export const MCP_SERVICE_VERSION = "0.0.9";
 
 /**
  * MCP session roles (PRD §10, §12).
