@@ -1,9 +1,9 @@
 /**
  * Version picker in mock mode (issue #36, step 2, PRD §4.14): the toggle
- * above the card, the current version line, one aligned row per version
- * with the current one marked, a simulated switch (the page reloads onto
- * the preview + badge), and a simulated rollback (the reason shows in
- * place, still on release).
+ * above the card, one aligned row per version with the current one
+ * marked by its Installed badge (#246: no separate Installed line), a
+ * simulated switch (the page reloads onto the preview + badge), and a
+ * simulated rollback (the reason shows in place, still on release).
  */
 import { expect, test } from "./network-guard.js";
 
@@ -37,7 +37,8 @@ test("toggle is off by default: releases listed, previews hidden (#231)", async 
 
 test("enable lists one aligned row per version with the current one marked", async ({ page }) => {
   await enablePicker(page);
-  await expect(page.getByTestId("update-current-version")).toContainText("Installed: release");
+  // #246: no separate Installed line — the installed channel carries the badge.
+  await expect(page.getByTestId("update-current-version")).toHaveCount(0);
   await expect(page.getByText("Channels", { exact: true })).toBeVisible();
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await expect(feat).toContainText("abc1234");
@@ -55,13 +56,13 @@ test("enable lists one aligned row per version with the current one marked", asy
   expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release"]);
 });
 
-test("newer build on the installed channel: Update available, no INSTALLED pill, Installed shows the running build", async ({ page }) => {
+test("newer build on the installed channel: Update available, no INSTALLED pill", async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem("unvibe.mock.update.installedCommit", "6818b23aaaaaaa");
   });
   await enablePicker(page);
-  await expect(page.getByTestId("update-current-version")).toContainText("6818b23");
-  await expect(page.getByTestId("update-current-version")).not.toContainText("b535a30");
+  // #246: no separate Installed line; the row shows the published head.
+  await expect(page.getByTestId("update-current-version")).toHaveCount(0);
   const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
   await expect(release.getByTestId("update-available")).toBeVisible();
   await expect(release.getByTestId("update-current")).toHaveCount(0);

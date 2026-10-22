@@ -263,19 +263,29 @@ code { font-family: var(--mono); font-size: .86em; }
    top bar — identity left (truncates first), Guide|Source selector, then
    Comments + Submit. Never wraps; the dropdowns anchor inside it. */
 .rbar { display: flex; align-items: center; gap: 8px; margin: var(--bar-margin); border-radius: var(--bar-radius); box-shadow: var(--bar-shadow); padding: 6px 12px; border-bottom: var(--border-width) solid var(--line); background: var(--surface); }
-.rbar .rid { display: flex; gap: 6px; align-items: flex-end; min-width: 0; flex: 1 1 auto; }
+.rbar .rid { display: flex; gap: 6px; align-items: center; min-width: 0; flex: 1 1 auto; }
 .rbar .rid .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
-/* Review bar (#244): the PR link uses the shared Button styling (an anchor
-   with the `ui-btn` secondary/sm classes, like the Comments button), so the
-   box itself needs no rule here — just the identity-row layout the icon
-   buttons share. Branch reviews (no PR) keep the plain `.num` span. */
-.rbar .rid .ui-btn { flex: none; align-self: flex-end; }
+/* Review bar (#244, #245): the PR link uses the shared Button styling (an
+   anchor with the `ui-btn` secondary/sm classes, like the Comments
+   button) with the status icon inside it, so the box itself needs no
+   rule here — just the identity-row layout the icon buttons share.
+   Branch reviews (no PR) keep the plain `.num` span. */
+.rbar .rid .ui-btn { flex: none; }
 .rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.rbar .rid .ib { flex: none; align-self: flex-end; }
+.rbar .rid .ib { flex: none; }
+/* Review bar (#245): every control is one height, the theme's small control
+   height (the same as the PR link, Comments and Submit buttons): icon
+   buttons, the version picker, Guide | Source and the jobs count. The row
+   is centred so the icon inside the link sits on the centre line. */
+.rbar .ib { width: var(--control-sm); height: var(--control-sm); box-sizing: border-box; }
+.rbar .ui-select { height: var(--control-sm); box-sizing: border-box; }
+.rbar .seg { height: var(--control-sm); box-sizing: border-box; }
+.rbar .seg button { height: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
+.rbar .jcount { height: var(--control-sm); box-sizing: border-box; display: inline-flex; align-items: center; }
 /* Review bar (#120): the version selector sits next to the identity. It
    never shrinks (the title gives way first); an older shown version flags
    it with the warning border. */
-.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; align-self: flex-end; min-width: 0; }
+.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; min-width: 0; }
 .rbar .rid .vs .ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
 .rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }

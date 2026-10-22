@@ -113,6 +113,64 @@ test("GitHub link is boxed like the Comments button (#244)", async ({ page }) =>
   expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(2);
 });
 
+for (const theme of ["default", "studio", "console"]) {
+  for (const dark of [false, true]) {
+    test(`every review-bar control is one height, centred on one line (${theme}, ${dark ? "dark" : "light"}, #244)`, async ({ page }) => {
+      if (dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto("/review/r-old");
+      await expect(page.locator(connFile)).toBeVisible();
+      // Mock settings always carry uiTheme default, which would overwrite
+      // the boot theme on load — apply the theme after load instead.
+      await page.evaluate((t) => {
+        document.documentElement.setAttribute("data-ui-theme", t);
+        try {
+          localStorage.setItem("unvibe:ui-theme", t);
+        } catch {
+          // Ignore.
+        }
+      }, theme);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", theme);
+      await page.evaluate(() => document.fonts.ready);
+      const boxes = await page.locator("#reviewbar").evaluate((bar) => {
+        const sels: [string, string][] = [
+          ["home", 'a[aria-label="Back to the start page"]'],
+          ["github", 'a[title="Open PR on GitHub"]'],
+          ["refresh", 'button[aria-label="Refresh"]'],
+          ["version", '[data-testid="version-switcher"] .ui-select'],
+          ["debug", 'a[aria-label="Debug"]'],
+          ["panes", ".seg"],
+          ["comments", '[data-cm=""]'],
+          ["submit", ".ra .ui-btn[data-variant='primary']"],
+        ];
+        return sels.flatMap(([name, sel]) => {
+          const n = bar.querySelector(sel);
+          if (!n) return [];
+          const r = n.getBoundingClientRect();
+          return r.height > 0 ? [{ name, height: r.height, mid: r.top + r.height / 2 }] : [];
+        });
+      });
+      expect(boxes.map((b) => b.name)).toEqual(expect.arrayContaining(["home", "github", "refresh", "panes", "comments", "submit"]));
+      const h = boxes[0].height;
+      for (const b of boxes) expect(Math.abs(b.height - h), `${b.name} height ${b.height} vs ${h}`).toBeLessThanOrEqual(1);
+      const mids = boxes.map((b) => b.mid);
+      expect(Math.max(...mids) - Math.min(...mids), JSON.stringify(boxes)).toBeLessThanOrEqual(1);
+      // #245: the status icon lives INSIDE the GitHub link box — never as
+      // a sibling in the row — and sits on the same centre line.
+      await expect(page.locator("#reviewbar > .rid > [data-testid='pr-badges']")).toHaveCount(0);
+      const iconMid = await page.locator("#reviewbar").evaluate((bar) => {
+        const link = bar.querySelector('a[title="Open PR on GitHub"]');
+        const icon = link?.querySelector('[data-testid="pr-badges"] [role="img"]');
+        if (!link || !icon) return null;
+        const lr = link.getBoundingClientRect();
+        const ir = icon.getBoundingClientRect();
+        if (lr.height === 0 || ir.height === 0) return null;
+        return { linkMid: lr.top + lr.height / 2, iconMid: ir.top + ir.height / 2 };
+      });
+      if (iconMid) expect(Math.abs(iconMid.iconMid - mids[0])).toBeLessThanOrEqual(1);
+    });
+  }
+}
+
 test("comments menu opens with the source pane closed", async ({ page }) => {
   await gotoDemo(page);
   await page.locator("#toggleRight").click();

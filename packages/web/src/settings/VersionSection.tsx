@@ -2,10 +2,11 @@
  * Version section (Settings → Version, issue #36 step 2, layout #73,
  * toggle meaning #231): the version picker. Releases are always listed
  * and switchable; the `versionPickerEnabled` checkbox ("Show previews")
- * gates preview channels only. The card shows the current version on
- * top, one aligned row per version (name · short commit · built ·
- * action) under a Versions/Refresh header, and the last switch outcome
- * at the bottom. Switch asks for confirmation inside the row itself (the
+ * gates preview channels only. The card shows one aligned row per
+ * version (name · short commit · built · action) under a
+ * Versions/Refresh header, the installed channel marked by its Installed
+ * badge, and the last switch outcome at the bottom. Switch asks for
+ * confirmation inside the row itself (the
  * service restarts; switching keeps your database and backs it up first).
  *
  * Switching survives the service going away: after the 202 the page polls
@@ -26,7 +27,7 @@ import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
 import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
-import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, channelRowState, isNewerAvailable, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -228,9 +229,9 @@ export function VersionSection({
   );
 
   // One flat list, newest build first — no per-group blocks, so every
-  // row shares the same columns.
+  // row shares the same columns. The installed channel is marked by its
+  // Installed badge in the list (#246: no separate Installed line).
   const rows = channels ? sortVersionsByRecency(channels) : null;
-  const currentRow = rows?.find((c) => c.current) ?? null;
 
   return (
     <section aria-label="Version" id="version" style={{ scrollMarginTop: 12 }}>
@@ -247,13 +248,11 @@ export function VersionSection({
           />
           <label htmlFor="version-picker-toggle">Show previews</label>
         </div>
-        <p className="hint ver-toggle-hint">Releases always listed.</p>
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
-        <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
         {status && !status.build ? (
           <p className="warnline" data-testid="update-not-installed">
             Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
@@ -324,43 +323,6 @@ export function VersionSection({
         ) : null}
       </Card>
     </section>
-  );
-}
-
-/**
- * The running version in one line, from the running build's own record:
- * channel, commit, built-at and its bases. The channel row only names
- * the channel when the build carries none; its commit and build time
- * are the published head and must never stand in for the running build.
- * The long version string rides on the name's `title`.
- */
-function CurrentVersion({
-  row,
-  build,
-  fallback,
-}: {
-  row: UpdateChannel | null;
-  build: UpdateBuildInfo | null;
-  fallback: string | null;
-}): React.JSX.Element | null {
-  const name = build?.channel ?? row?.ref ?? build?.version ?? fallback;
-  if (!name) return null;
-  const sha = shortCommit(build?.commit);
-  const builtAt = build?.builtAt;
-  const built = builtAt ? (timeAgoIso(builtAt) ?? builtAt) : null;
-  const branch = build?.sourceBranch;
-  // Merged previews name both sides; older builds keep the single side.
-  const merged = mergedProvenance(build);
-  return (
-    <p className="ver-current" data-testid="update-current-version">
-      Installed:{" "}
-      <code className="ver-name" title={build?.version ?? name}>
-        {name}
-      </code>
-      {sha ? <> · {sha}</> : null}
-      {built ? <> · built {built}</> : null}
-      {merged ? <> · from {merged}</> : branch ? <> · from {branch}</> : null}
-    </p>
   );
 }
 
