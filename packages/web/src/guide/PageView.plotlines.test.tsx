@@ -55,21 +55,39 @@ describe("PageView plotlines", () => {
     expect(box?.textContent).toContain("Unfold folded values");
     expect(box?.textContent).toContain("Prove the unfolding works");
     expect(box?.textContent).toContain("Other");
-    // Landing order and builds-on for each thread, with no explanation
-    // line and no why-separate text.
+    // Builds-on for each thread, with no explanation line and no
+    // why-separate text.
     expect(box?.textContent).toContain("Builds on Unfold folded values");
     expect(box?.querySelector(".plnote")).toBeNull();
-    const items = [...(box?.querySelectorAll("li") ?? [])].map((li) => li.textContent ?? "");
-    expect(items[0]).toMatch(/^1\. Unfold folded values/);
-    expect(items[1]).toMatch(/^2\. Prove the unfolding works/);
+    // #242: no numbering, titles in full; the hunk count rides a chip
+    // in the same trailing slot on every row.
+    expect(box?.querySelector(".plorder")).toBeNull();
+    const names = [...(box?.querySelectorAll(".plname") ?? [])].map((el) => el.textContent ?? "");
+    expect(names).toEqual(["Unfold folded values", "Prove the unfolding works", "Other"]);
+    const chips = [...(box?.querySelectorAll(".ui-row .ui-badge") ?? [])].map((el) => el.textContent ?? "");
+    expect(chips.filter((c) => /hunks?$/.test(c))).toHaveLength(3);
     // Two plotlines + Other.
     expect(box?.querySelectorAll("li")).toHaveLength(3);
+  });
+
+  it("builds-on chip goes to the earlier plotline", async () => {
+    await renderRoot();
+    const box = document.querySelector(".plotlines")!;
+    const chip = box.querySelector('[data-buildson="unfold"]')!;
+    expect(chip.textContent).toContain("Unfold folded values");
+    await fireEvent.click(chip);
+    await vi.waitFor(() => {
+      expect(useReview.getState().snapshot?.diffFilter?.plotline).toBe("unfold");
+    });
+    const pending = takePendingReveal();
+    expect(pending?.ref).toMatch(/^diff:src-urllib3-connection\.py:\d+$/);
+    expect(pending?.keepFilters).toBe(true);
   });
 
   it("jumps to the plotline's first hunk", async () => {
     await renderRoot();
     const box = document.querySelector(".plotlines")!;
-    const first = box.querySelectorAll("li button")[0];
+    const first = box.querySelector('[data-plotpick="unfold"]')!;
     expect(first.textContent).toContain("Unfold folded values");
     await fireEvent.click(first);
     const pending = takePendingReveal();
@@ -81,7 +99,7 @@ describe("PageView plotlines", () => {
   it("filters the diff to the plotline and reveals its first hunk", async () => {
     await renderRoot();
     const box = document.querySelector(".plotlines")!;
-    const first = box.querySelectorAll("li button")[0];
+    const first = box.querySelector('[data-plotpick="unfold"]')!;
     await fireEvent.click(first);
     // The stored filter is set (DiffView echoes it) and the reveal queued.
     await vi.waitFor(() => {
