@@ -9,6 +9,7 @@
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
+import { UpdateIcon } from "./UpdateIcon.js";
 
 export interface Crumb {
   label: string;
@@ -50,6 +51,7 @@ export function ScreenTopBar({
       ) : null}
       <span className="sp" />
       {showBadge ? <PreviewBuildBadge /> : null}
+      <UpdateIcon />
       {hideSettings ? null : (
         <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings">
           <Icon name="gear" />

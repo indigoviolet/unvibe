@@ -1,16 +1,18 @@
 /**
- * Version section (Settings → Version, issue #36 step 2, layout #73):
- * the version picker. Off by default behind `versionPickerEnabled` —
- * the enable checkbox sits above the card, top right of the section
- * header. When on, the card shows the current version on top, one
- * aligned row per version (name · short commit · built · action) under
- * a Versions/Refresh header, and the last switch outcome at the bottom.
- * Switch asks for confirmation inside the row itself (the service
- * restarts; switching keeps your database and backs it up first).
+ * Version section (Settings → Version, issue #36 step 2, layout #73,
+ * toggle meaning #231): the version picker. Releases are always listed
+ * and switchable; the `versionPickerEnabled` checkbox ("Show previews")
+ * gates preview channels only. The card shows the current version on
+ * top, one aligned row per version (name · short commit · built ·
+ * action) under a Versions/Refresh header, and the last switch outcome
+ * at the bottom. Switch asks for confirmation inside the row itself (the
+ * service restarts; switching keeps your database and backs it up first).
  *
  * Switching survives the service going away: after the 202 the page polls
  * health + status until the new build reports (then reloads) or the
- * helper records a rollback (then the reason shows in place).
+ * helper records a rollback (then the reason shows in place). Every
+ * successful listing feeds the top-bar update check (#231), so it
+ * refreshes without a reload.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -21,6 +23,7 @@ import type {
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
+import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
 import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
 import { blockedJobLine, channelRowState, isNewerAvailable, mergedProvenance, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
@@ -82,7 +85,7 @@ export function VersionSection({
   }, []);
 
   const loadChannels = useCallback(
-    async (refresh?: boolean): Promise<void> => {
+    async (build: UpdateBuildInfo | null, refresh?: boolean): Promise<void> => {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       try {
@@ -90,6 +93,8 @@ export function VersionSection({
         if (!cancelled.current) {
           setChannels(res.channels);
           setError(null);
+          // The top-bar update check (#231) follows this listing.
+          noteChannelsForUpdateCheck(build, res.channels);
         }
       } catch (err) {
         if (!cancelled.current) setError(friendlyError(err));
@@ -112,7 +117,8 @@ export function VersionSection({
       } catch {
         // Status already carries the build; health is a fallback.
       }
-      if ((st?.enabled ?? enabled) && !cancelled.current) void loadChannels();
+      // Releases are always listed (#231), regardless of the toggle.
+      if (!cancelled.current) void loadChannels(st?.build ?? null);
     })();
   }, []);
 
@@ -124,8 +130,8 @@ export function VersionSection({
       if (cancelled.current) return;
       onSaved(next);
       const st = await loadStatus();
-      if (st?.enabled) void loadChannels();
-      else setChannels(null);
+      // Releases stay listed either way; the toggle only hides/shows previews (#231).
+      void loadChannels(st?.build ?? null);
     } catch (err) {
       if (!cancelled.current) setError(putErrors(err).join("; "));
     } finally {
@@ -234,51 +240,47 @@ export function VersionSection({
           <Checkbox
             id="version-picker-toggle"
             testId="version-picker-toggle"
-            ariaLabel="Show channels and allow switching"
+            ariaLabel="Show previews"
             checked={enabled}
             disabled={toggling}
             onChange={() => void toggle()}
           />
-          <label htmlFor="version-picker-toggle">Show channels and allow switching</label>
+          <label htmlFor="version-picker-toggle">Show previews</label>
         </div>
-        <p className="hint ver-toggle-hint">Optional.</p>
+        <p className="hint ver-toggle-hint">Releases always listed.</p>
         {error ? (
           <p className="err" role="alert">
             Couldn&apos;t load version info: {error}
           </p>
         ) : null}
         <CurrentVersion row={currentRow} build={status?.build ?? null} fallback={healthVersion} />
-        {!enabled ? null : (
-          <>
-            {status && !status.build ? (
-              <p className="warnline" data-testid="update-not-installed">
-                Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
-              </p>
-            ) : null}
-            {loading && !channels ? <p className="hint">Loading channels…</p> : null}
-            {rows ? (
-              <VersionList
-                rows={rows}
-                build={status?.build ?? null}
-                confirmRef={confirmRef}
-                blocked={blocked}
-                switchingTo={switchingTo}
-                onSwitch={(ref) => {
-                  setBlocked(null);
-                  setConfirmRef(ref);
-                }}
+        {status && !status.build ? (
+          <p className="warnline" data-testid="update-not-installed">
+            Switching only works when Unvibe was installed with npm. This service runs from a source checkout or an older build, so you can only list channels here. To switch, run <code>unvibe update</code> in a terminal.
+          </p>
+        ) : null}
+        {loading && !channels ? <p className="hint">Loading channels…</p> : null}
+        {rows ? (
+          <VersionList
+            rows={rows}
+            build={status?.build ?? null}
+            confirmRef={confirmRef}
+            blocked={blocked}
+            switchingTo={switchingTo}
+            onSwitch={(ref) => {
+              setBlocked(null);
+              setConfirmRef(ref);
+            }}
                 onCancel={() => {
                   setConfirmRef(null);
                   setBlocked(null);
                 }}
-                onConfirm={(ref) => void commitSwitch(ref)}
-                onForceConfirm={(ref) => void commitSwitch(ref, true)}
-                onRefresh={() => void loadChannels(true)}
-                refreshing={refreshing}
-              />
-            ) : null}
-          </>
-        )}
+            onConfirm={(ref) => void commitSwitch(ref)}
+            onForceConfirm={(ref) => void commitSwitch(ref, true)}
+            onRefresh={() => void loadChannels(status?.build ?? null, true)}
+            refreshing={refreshing}
+          />
+        ) : null}
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}

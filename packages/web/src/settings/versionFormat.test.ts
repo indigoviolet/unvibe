@@ -6,6 +6,8 @@ import {
   blockedJobLine,
   buildLine,
   channelRowState,
+  compareReleaseVersions,
+  findUpdateAvailable,
   isNewerAvailable,
   mergedProvenance,
   outcomeLine,
@@ -13,7 +15,7 @@ import {
   sortVersionsByRecency,
   timeAgoIso,
 } from "./versionFormat.js";
-import type { UpdateChannel } from "@unvibe/shared";
+import type { UpdateBuildInfo, UpdateChannel } from "@unvibe/shared";
 
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
 
@@ -177,6 +179,82 @@ describe("versionFormat", () => {
     expect(title).toContain("0.0.1-preview.main-rc.6818b23");
     expect(title).toContain("main@c562ed1 + main-rc@6818b23");
     expect(title).toContain("built 3h ago");
+  });
+
+  it("compares release versions numerically, release beats pre-release", () => {
+    expect(compareReleaseVersions("0.0.2", "0.0.1")).toBe(1);
+    expect(compareReleaseVersions("0.0.1", "0.0.2")).toBe(-1);
+    expect(compareReleaseVersions("0.0.1", "0.0.1")).toBe(0);
+    expect(compareReleaseVersions("0.0.10", "0.0.9")).toBe(1);
+    expect(compareReleaseVersions("0.0.1", "0.0.1-rc.1")).toBe(1);
+    expect(compareReleaseVersions("0.0.1-rc.1", "0.0.1")).toBe(-1);
+    expect(compareReleaseVersions("0.0.1-rc.2", "0.0.1-rc.1")).toBe(1);
+  });
+
+  it("finds the update: release builds by version, previews by date", () => {
+    const T0 = new Date(NOW - 3 * 86400_000).toISOString();
+    const T1 = new Date(NOW - 86400_000).toISOString();
+    const release = (version: string | null, builtAt: string | null): UpdateChannel => ({
+      ref: "release",
+      kind: "release",
+      version,
+      commit: "b535a30ccccccc",
+      sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      builtAt,
+      current: false,
+    });
+    const channels = (version: string | null, builtAt: string | null): UpdateChannel[] => [release(version, builtAt)];
+    const build = (over: Partial<UpdateBuildInfo>): UpdateBuildInfo => ({
+      version: "0.0.1",
+      channel: "release",
+      sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      commit: "aaa1111",
+      builtAt: T0,
+      ...over,
+    });
+
+    // Release build, newer release published: the release channel.
+    expect(findUpdateAvailable(build({}), channels("0.0.2", T1))).toEqual(release("0.0.2", T1));
+    // Up to date: nothing.
+    expect(findUpdateAvailable(build({}), channels("0.0.1", T1))).toBeNull();
+    // Release candidate build, final release out: newer by version.
+    expect(findUpdateAvailable(build({ version: "0.0.1-rc.1", channel: "release-rc" }), channels("0.0.1", T1))).toEqual(
+      release("0.0.1", T1),
+    );
+    // Preview build, release published after the preview was built.
+    expect(
+      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T0 }), channels("0.0.1", T1)),
+    ).toEqual(release("0.0.1", T1));
+    // Preview build newer than the release: nothing.
+    expect(
+      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T1 }), channels("0.0.1", T0)),
+    ).toBeNull();
+    // Undeterminable: no icon, never an error.
+    expect(findUpdateAvailable(null, channels("0.0.2", T1))).toBeNull();
+    expect(findUpdateAvailable(build({ channel: null }), channels("0.0.2", T1))).toBeNull();
+    expect(findUpdateAvailable(build({}), channels(null, T1))).toBeNull();
+    expect(findUpdateAvailable(build({}), [])).toBeNull();
+    // Release builds compare by version alone: missing build times don't matter.
+    expect(findUpdateAvailable(build({ builtAt: null }), channels("0.0.2", null))).toEqual(release("0.0.2", null));
+    // Preview builds need both build times.
+    expect(
+      findUpdateAvailable(
+        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: null }),
+        channels("0.0.1", T1),
+      ),
+    ).toBeNull();
+    expect(
+      findUpdateAvailable(
+        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: "bogus" }),
+        channels("0.0.1", T1),
+      ),
+    ).toBeNull();
   });
 
   it("renders one blocked job as a quiet line", () => {
