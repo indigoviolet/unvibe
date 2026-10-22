@@ -2681,8 +2681,13 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `e2e/journeys/j230-pr-state-fresh.spec.ts` (fake `gh` flips with no
   new commits: refresh button flips the bar and the Reviews list).
 - **Displayed decision (§4.2, §4.1):** `review_required` is dropped
-  entirely (never stored, never rendered; `PrReviewDecision` is now
-  only `approved | changes_requested`). A `CHANGES_REQUESTED` whose
+  entirely (never stored, never rendered for fresh data;
+  `PrReviewDecision` is now only `approved | changes_requested`). No
+  backward compatibility: an old stored `review_required` is not mapped
+  to "no decision" — the next refresh or start-page PR-list sync
+  overwrites it with the displayed shape (or the owner resets); until
+  then a row carrying one reaches `PrBadges` with a missing icon key
+  and throws during render instead of showing a badge. A `CHANGES_REQUESTED` whose
   requester was re-requested shows no decision at all (GitHub keeps
   `reviewDecision: CHANGES_REQUESTED` after a re-request; the
   re-request only shows in `reviewRequests`). The rule is the pure

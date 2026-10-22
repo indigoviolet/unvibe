@@ -70,21 +70,15 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
       : null;
   // #230: badges read the live snapshot first (refresh updates it via the
   // WS patch even when the head is steady), falling back to the summary
-  // fetched once on mount. Branch reviews carry no PR state. A stored
-  // review_required (pre-#230 data) reads as no decision.
+  // fetched once on mount. Branch reviews carry no PR state.
   const snapPrState =
     snapshot?.description?.source === "pr"
       ? prStateFromGh(snapshot.description.state, snapshot.description.isDraft)
       : undefined;
-  const rawSnapDecision =
-    snapshot?.description?.source === "pr" ? snapshot.description.reviewDecision : undefined;
   const snapDecision =
-    rawSnapDecision === "approved" || rawSnapDecision === "changes_requested" ? rawSnapDecision : undefined;
+    snapshot?.description?.source === "pr" ? snapshot.description.reviewDecision : undefined;
   const prState = snapPrState ?? summary?.prState;
-  const summaryDecision = summary?.reviewDecision;
-  const validSummaryDecision =
-    summaryDecision === "approved" || summaryDecision === "changes_requested" ? summaryDecision : undefined;
-  const reviewDecision = snapDecision ?? validSummaryDecision;
+  const reviewDecision = snapDecision ?? summary?.reviewDecision;
   return {
     short,
     title,
