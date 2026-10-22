@@ -99,14 +99,16 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
 
     // #239: home, GitHub link (when present), status icon, Refresh and
     // Debug all line up on the bottom (within 1–2px) on a PR with a
-    // status icon (merged here, not open).
+    // status icon (merged here, not open). #244: the link is boxed with
+    // the shared Button styling, like the Comments button — same height,
+    // bottoms within 2px.
     const bottoms = await page.evaluate(() => {
       const barEl = document.getElementById("reviewbar");
       if (!barEl) return null;
       const pick = (sel: string): Element | null => barEl.querySelector(sel);
       const els: Element[] = [
         pick('a[aria-label="Back to the start page"]'),
-        pick('a.num'),
+        pick('a[title="Open PR on GitHub"]'),
         pick('[data-testid="pr-badges"]'),
         pick('button[aria-label="Refresh"]'),
         pick('a[aria-label="Debug"]'),
@@ -114,7 +116,7 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
       return els.map((el) => {
         const r = el.getBoundingClientRect();
         const label = el.getAttribute("aria-label") ?? el.textContent?.trim() ?? el.tagName;
-        return { label, bottom: r.bottom };
+        return { label, bottom: r.bottom, height: r.height };
       });
     });
     expect(bottoms).not.toBeNull();
@@ -124,6 +126,23 @@ test.describe("J230 refresh updates PR state with no new commits", () => {
       Math.max(...bs) - Math.min(...bs),
       `review bar bottoms misaligned: ${JSON.stringify(bottoms)}`,
     ).toBeLessThanOrEqual(2);
+    // #244: the boxed link matches the Comments button height.
+    const heights = await page.evaluate(() => {
+      const barEl = document.getElementById("reviewbar");
+      if (!barEl) return null;
+      const link = barEl.querySelector('a[title="Open PR on GitHub"]');
+      const comments = barEl.querySelector('[data-cm=""]');
+      if (!link || !comments) return null;
+      return {
+        link: link.getBoundingClientRect().height,
+        comments: comments.getBoundingClientRect().height,
+      };
+    });
+    expect(heights).not.toBeNull();
+    expect(
+      Math.abs(heights!.link - heights!.comments),
+      `boxed link height ${heights!.link} != Comments height ${heights!.comments}`,
+    ).toBeLessThanOrEqual(1);
     await checkLayout(page, "j230-bar");
 
     // The stored review moved too: the API summary carries the new state.

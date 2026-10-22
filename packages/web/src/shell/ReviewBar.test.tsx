@@ -68,12 +68,16 @@ describe("ReviewBar", () => {
     expect(bar).not.toHaveTextContent("Fix retry backoff on 429s");
     // #235: the GitHub link (owner/repo#N) opens the PR — no separate
     // open-externally button — and preview/full-access badges live on
-    // the front page only.
+    // the front page only. #244: the link is boxed with the shared
+    // Button styling, like the Comments button (secondary/sm).
     const github = screen.getByRole("link", { name: "urllib3/urllib3#5011" });
     expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noreferrer");
     expect(github).toHaveAttribute("title", "Open PR on GitHub");
+    expect(github.className).toContain("ui-btn");
+    expect(github).toHaveAttribute("data-variant", "secondary");
+    expect(github).toHaveAttribute("data-size", "sm");
     expect(bar?.querySelector('a[aria-label="Open PR on GitHub"]')).toBeNull();
     expect(screen.queryByTestId("preview-marker")).toBeNull();
     expect(screen.queryByTestId("full-access-marker")).toBeNull();

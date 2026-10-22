@@ -72,6 +72,47 @@ test("review bar carries Refresh, diff toolbar does not (#241)", async ({ page }
   await expect(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
 });
 
+test("GitHub link is boxed like the Comments button (#244)", async ({ page }) => {
+  // r-old is a PR review; the demo hides its GitHub link (mock snapshot
+  // carries repoId "demo" like the real demo), so the boxed case uses r-old.
+  await page.goto("/review/r-old");
+  await expect(page.locator(connFile)).toBeVisible();
+  const bar = page.locator("#reviewbar");
+  const github = bar.locator('a[title="Open PR on GitHub"]');
+  await expect(github).toBeVisible();
+  await expect(github).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
+  await expect(github).toHaveAttribute("target", "_blank");
+  // Shared Button styling, like the Comments button — not a one-off.
+  await expect(github).toHaveClass(/ui-btn/);
+  await expect(github).toHaveAttribute("data-variant", "secondary");
+  await expect(github).toHaveAttribute("data-size", "sm");
+  // Same height as the Comments button, bottoms within 2px of the bar.
+  const box = await bar.evaluate((el) => {
+    const q = (sel: string): Element | null => el.querySelector(sel);
+    const rect = (s: string): { bottom: number; height: number } | null => {
+      const n = q(s);
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return { bottom: r.bottom, height: r.height };
+    };
+    return {
+      github: rect('a[title="Open PR on GitHub"]'),
+      comments: rect('[data-cm=""]'),
+      home: rect('a[aria-label="Back to the start page"]'),
+      refresh: rect('button[aria-label="Refresh"]'),
+      debug: rect('a[aria-label="Debug"]'),
+    };
+  });
+  expect(box.github).not.toBeNull();
+  expect(box.comments).not.toBeNull();
+  expect(Math.abs(box.github!.height - box.comments!.height)).toBeLessThanOrEqual(1);
+  const bottoms = [box.home, box.github, box.refresh, box.debug]
+    .filter((b): b is { bottom: number; height: number } => b !== null)
+    .map((b) => b.bottom);
+  expect(bottoms.length).toBeGreaterThanOrEqual(3);
+  expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(2);
+});
+
 test("comments menu opens with the source pane closed", async ({ page }) => {
   await gotoDemo(page);
   await page.locator("#toggleRight").click();

@@ -2886,3 +2886,19 @@ hunk coverage) is reported for a separate issue, not fixed here.
   hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
   `review-bar.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
   (Refresh in `#reviewbar`), J225 (tooltip "Refresh").
+
+## Addendum: #244 (branch `fix/244-github-link-box`)
+
+- **#244 (GitHub link in a button-style box; §4.1):** the review bar PR
+  link (`owner/repo#N`, title "Open PR on GitHub") uses the shared Button
+  styling (an anchor with the `ui-btn` secondary/sm classes, like the
+  Comments button) instead of the small monospace `.num` look — same
+  height, border, radius and padding as the other buttons, button text
+  size. Same href/target (PR on GitHub, new tab); the status icon stays
+  after it; branch reviews (no PR) and document reviews keep the plain
+  `.num` span. Bottom alignment from #239 kept (`.rid` stays
+  `flex-end`; the link aligns like the icon buttons). Evidence:
+  `src/shell/ReviewBar.test.tsx` (boxed classes), `e2e/review-bar.spec.ts`
+  (boxed link: same height as Comments, bottoms within 2px),
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (title selector + Comments
+  height check), tour review-page frames (light + dark, 1440 + 960).
