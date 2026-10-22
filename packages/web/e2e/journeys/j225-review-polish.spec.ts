@@ -49,14 +49,15 @@ test.describe("J225 review polish", () => {
     const unfoldSvg = await unfold.locator("svg").innerHTML();
     expect(foldSvg).not.toBe(unfoldSvg);
 
-    await expect(page.getByRole("button", { name: "Refresh" })).toHaveAttribute(
-      "data-tip",
-      "Check the branch for new commits",
-    );
     await expect(page.getByRole("button", { name: "Hide uninteresting" })).toHaveAttribute(
       "data-tip",
       "Hide uninteresting",
     );
+    // #241: Refresh lives in the review top bar now (next to the status
+    // icon), tooltip exactly "Refresh" — and no longer in the diff toolbar.
+    const refresh = page.locator("#reviewbar").getByRole("button", { name: "Refresh" });
+    await expect(refresh).toHaveAttribute("data-tip", "Refresh");
+    await expect(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
 
     // Review filter: funnel icon, action-only tooltip, active dot.
     const reviewFilter = page.getByRole("button", { name: "Review filters" });

@@ -80,6 +80,11 @@ describe("ReviewBar", () => {
     const debug = screen.getByRole("link", { name: "Debug" });
     expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");
+    // #241: Refresh lives in the bar now (next to the status icon),
+    // tooltip exactly "Refresh".
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    expect(refresh).toHaveAttribute("data-tip", "Refresh");
+    expect(document.getElementById("reviewbar")).toContainElement(refresh);
     expect(screen.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
     expect(screen.getByRole("button", { name: /Comments/ })).toBeInTheDocument();
@@ -106,6 +111,26 @@ describe("ReviewBar", () => {
     // the PR link-out stays hidden even though the summary names the PR.
     await renderBar("demo", "urllib3/urllib3#5020");
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
+  });
+
+  it("shows Refresh in the bar, hidden for document reviews (#241)", async () => {
+    await renderBar("r-old", "urllib3/urllib3#5011");
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("data-tip", "Refresh");
+    cleanup();
+    useReview.getState().clear();
+    const snap = await api.review("demo");
+    useReview.getState().setSnapshot({
+      ...snap,
+      review: { ...snap.review, id: "doc-1", branch: "document" },
+      document: { title: "Doc", markdown: "# Doc", blocks: [] },
+    } as typeof snap);
+    render(
+      <MemoryRouter initialEntries={["/review/doc-1"]}>
+        <ReviewBar reviewId="doc-1" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("button", { name: "Guide" });
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
   it("hides the Debug icon while the review is still opening (#92)", async () => {
