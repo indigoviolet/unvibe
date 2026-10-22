@@ -19,7 +19,7 @@ import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
 import { askAction, explainAction, hunkCardAction, replyAction, retryAction } from "./conversation.js";
-import { bookmarkAction, collapseAction } from "./read.js";
+import { collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
 import { depthAction } from "./depth.js";
@@ -240,14 +240,6 @@ export async function dispatchAction(
         }
         const res = await collapseAction(ctx, action.cardId, action.collapsed);
         return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
-      }
-      case "bookmark": {
-        need(ctx);
-        if (typeof action.pageId !== "string" || typeof action.saved !== "boolean") {
-          return bad(reply, "pageId and saved are required");
-        }
-        const res = await bookmarkAction(ctx, action.pageId, action.saved);
-        return { accepted: true, pageId: res.pageId } satisfies ActionResponse;
       }
       case "promote": {
         need(ctx);

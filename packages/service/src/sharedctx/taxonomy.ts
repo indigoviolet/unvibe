@@ -3,7 +3,7 @@
  * log, with what kind, payload and scope.
  *
  * - never: read, collapse, depth-stepper state, open/close, Outbox marking,
- *   bookmark (and undo — UI state, not shared knowledge);
+ *   undo (and UI state, not shared knowledge);
  * - local to conversations anchored on that card: examples, diagrams, depth
  *   rewrites (card scope required);
  * - one line once a thread settles: `thread-summary`;
@@ -33,7 +33,6 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
     case "open":
     case "close":
     case "mark-for-pr":
-    case "bookmark":
     case "undo":
       return null;
     case "example-added":

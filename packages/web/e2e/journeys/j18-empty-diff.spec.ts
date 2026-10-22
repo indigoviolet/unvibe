@@ -116,14 +116,13 @@ test.describe("J18 empty diff (#179)", () => {
           | undefined;
         if (!row) throw new Error("no snapshot row to seed");
         const snap = JSON.parse(row.snapshot) as {
-          pages: { id: string; kind: string; title: string; saved: boolean; cards: unknown[] }[];
+          pages: { id: string; kind: string; title: string; cards: unknown[] }[];
         };
         snap.pages = [
           {
             id: "root",
             kind: "root",
             title: "Guide",
-            saved: false,
             cards: [
               {
                 id: "c-seed",

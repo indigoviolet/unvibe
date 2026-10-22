@@ -150,7 +150,7 @@ async function setupSharedCtx(
     description,
     ingest: { status: "ready" },
     pages: opts.pages ?? [
-      { id: "root", kind: "root", title: "Guide", saved: false, cards: [card("c-A", "Alpha body text."), card("c-B", "Beta body text.")] },
+      { id: "root", kind: "root", title: "Guide", cards: [card("c-A", "Alpha body text."), card("c-B", "Beta body text.")] },
     ],
     annotations: opts.annotations ?? [],
     hunkStates: [],
@@ -622,7 +622,6 @@ describe("corrections accept/dismiss + deletion entry (PRD §9.5, §9.3)", () =>
           id: "root",
           kind: "root",
           title: "Guide",
-          saved: false,
           cards: [card("c-central", "Central body text.")],
         },
       ],
@@ -860,7 +859,6 @@ describe("isolation (PRD §12)", () => {
           id: "root",
           kind: "root",
           title: "Guide",
-          saved: false,
           cards: [
             {
               id: "c1",

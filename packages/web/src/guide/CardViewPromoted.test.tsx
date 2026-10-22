@@ -66,7 +66,7 @@ function seed(cards: Card[], annotations: Annotation[], jobs: Job[] = []): void 
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
-    pages: [{ id: "p-mock-1", kind: "opened-expansion", title: "fast path", saved: false, parent: "root", cards }],
+    pages: [{ id: "p-mock-1", kind: "opened-expansion", title: "fast path", parent: "root", cards }],
     annotations,
     hunkStates: [],
     jobs,

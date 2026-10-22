@@ -73,7 +73,7 @@ export async function promoteAction(
       // they move to the page with the answer (issue #152).
       ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) as Card["secondOpinions"] } : {}),
     }));
-    draft.pages.push({ id: pageId, kind: "opened-expansion", title, saved: false, parent, cards });
+    draft.pages.push({ id: pageId, kind: "opened-expansion", title, parent, cards });
     // The anchor becomes a link to the new page (prototype `link` block).
     ann.type = "link";
     ann.open = false;

@@ -3,7 +3,7 @@
  * client (in-memory `mockApi` under `VITE_MOCK=1`, the real service
  * otherwise) as `POST /api/reviews/:id/actions`.
  *
- * Collapse / bookmark update the snapshot optimistically so the UI
+ * Collapse updates the snapshot optimistically so the UI
  * responds instantly; a failed request resyncs from the service and toasts.
  * Every action that starts an agent session sets an in-flight entry
  * synchronously at click time (issue #46), hands it over to the snapshot
@@ -120,7 +120,7 @@ function targetForAction(action: ReviewAction): { targetId: string; kind: InFlig
     case "concept":
       return { targetId: conceptKey(action.slug), kind: "concept" };
     default:
-      // collapse, bookmark, note, promote, close, delete, undo:
+      // collapse, note, promote, close, delete, undo:
       // purely local, no agent session.
       return null;
   }
@@ -293,12 +293,6 @@ export async function performAction(
       })),
     }));
   }
-  if (action.kind === "bookmark") {
-    optimistic((snap) => ({
-      ...snap,
-      pages: snap.pages.map((p) => (p.id === action.pageId ? { ...p, saved: action.saved } : p)),
-    }));
-  }
   // Set synchronously: `performAction` is called (not awaited) in click
   // handlers, so everything before the first await runs at click time.
   const target = targetForAction(action);
@@ -348,7 +342,7 @@ export async function performAction(
       st.attachInflightJob(finalId, res.jobId);
     }
   }
-  if ((action.kind === "collapse" || action.kind === "bookmark") && !res.accepted) {
+  if (action.kind === "collapse" && !res.accepted) {
     // Instant UI state (mock) or service rejection: converge on the server.
     await resync(reviewId);
     return res;

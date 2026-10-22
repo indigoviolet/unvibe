@@ -754,7 +754,6 @@ export async function registerReviews(
             id: "root",
             kind: "root",
             title: ingested.title,
-            saved: false,
             cards: [],
           },
         ],

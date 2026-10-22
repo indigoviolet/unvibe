@@ -280,17 +280,16 @@ test("collapse chevron hides the card body; contents still lists it", async ({ p
   await expect(item).toBeVisible();
   await card.getByRole("button", { name: "Expand" }).click();
   await expect(card).not.toHaveClass(/collapsed/);
-  // Concept pages are saved: the bookmark is pressed. #216: open the
-  // OWS/RWS page on demand from the obs-fold page's concept link.
+  // #216: open the OWS/RWS page on demand from the obs-fold page's
+  // concept link. #240: the title row carries no bookmark control.
   await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
   await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
   await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
   await expect(page).toHaveURL(/\/review\/demo\/page\/c-ows-rws/);
-  await expect(page.locator('#page [data-save="c-ows-rws"]')).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 15_000 },
-  );
+  // The on-demand concept page renders (mock and replay titles differ,
+  // so assert non-empty, not exact text) with no bookmark control.
+  await expect(page.locator("#page h1.title")).not.toBeEmpty({ timeout: 15_000 });
+  await expect(page.locator("#page .title-row button")).toHaveCount(0);
 });
 
 test("finding page carries its label and evidence", async ({ page }) => {

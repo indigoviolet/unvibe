@@ -380,7 +380,7 @@ describe("GET /api/reviews + DELETE /api/reviews/:id", () => {
         if (existing) {
           existing.title = rootTitle;
         } else {
-          snap!.pages.unshift({ id: "root", kind: "root", title: rootTitle, saved: false, cards: [] });
+          snap!.pages.unshift({ id: "root", kind: "root", title: rootTitle, cards: [] });
         }
         ctx.reviews.putSnapshot(id, snap!);
         return id;

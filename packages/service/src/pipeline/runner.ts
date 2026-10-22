@@ -998,7 +998,7 @@ export class Pipeline {
         await this.opts.reviews.mutate(reviewId, (draft) => {
           let page = draft.pages.find((p) => p.id === `c-${slug}`);
           if (!page) {
-            page = { id: `c-${slug}`, kind: "concept", title, saved: true, parent: "root", cards: [] };
+            page = { id: `c-${slug}`, kind: "concept", title, parent: "root", cards: [] };
             draft.pages.push(page);
           }
           page.title = title;
@@ -1963,7 +1963,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, cards: [] };
         draft.pages.unshift(root);
       }
       const existing = root.cards.find((c) => c.id === provisionalId);
@@ -2016,7 +2016,7 @@ export class Pipeline {
     await this.opts.reviews.mutate(reviewId, (draft) => {
       let root = draft.pages.find((p) => p.id === "root");
       if (!root) {
-        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, saved: false, cards: [] };
+        root = { id: "root", kind: "root", title: DEFAULT_GUIDE_TITLE, cards: [] };
         draft.pages.unshift(root);
       }
       for (const c of applied.cards) {
@@ -2163,7 +2163,6 @@ export class Pipeline {
                 id: applied.pageId,
                 kind: "finding",
                 title: applied.title,
-                saved: false,
                 parent: "root",
                 confidence: applied.confidence,
                 summary: applied.summary,

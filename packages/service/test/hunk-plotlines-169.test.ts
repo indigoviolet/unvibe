@@ -134,7 +134,7 @@ function smallSnapshot(id: string): ReviewSnapshot {
     files: [
       { fileKey: "a-py", path: "a.py", category: "source", hunks: [multiHunk("hmulti", 10), oneLineHunk("hone", 30), multiHunk("hcited", 50), multiHunk("hother", 70)] },
     ],
-    pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+    pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
     annotations: [],
     hunkStates: [],
     fileStates: [],
@@ -398,7 +398,7 @@ function bigSnapshot(id: string, normalFiles: number, importFiles: number): { sn
     review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files,
-    pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+    pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
     annotations: [],
     hunkStates: importStates,
     fileStates: [],

@@ -58,7 +58,6 @@ function cardSnapshot(): ReviewSnapshot["pages"] {
       id: "root",
       kind: "root",
       title: "Guide",
-      saved: false,
       cards: [
         {
           id: "central",
@@ -104,7 +103,6 @@ describe("blind topic (PRD §4.10)", () => {
           id: "f-lf",
           kind: "finding",
           title: "Folds that end in a bare LF are not unfolded",
-          saved: false,
           parent: "root",
           confidence: "medium",
           summary: "http.client accepts LF alone, but the new code only looks for CRLF.",
@@ -197,7 +195,6 @@ describe("context isolation (PRD §12)", () => {
           id: "root",
           kind: "root",
           title: "Guide",
-          saved: false,
           cards: [
             {
               id: "central",
@@ -222,7 +219,6 @@ describe("context isolation (PRD §12)", () => {
           id: "f-other",
           kind: "finding",
           title: "Other FINDING-PROBE-XYZ",
-          saved: false,
           parent: "root",
           confidence: "high",
           summary: "FINDING-PROBE-XYZ summary",

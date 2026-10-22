@@ -196,7 +196,7 @@ describe("#178 reader with code citations outside the hunks (fake runner)", () =
             ],
           },
         ],
-        pages: [{ id: "root", kind: "root", title: "Guide", saved: false, cards: [] }],
+        pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
         annotations: [],
         hunkStates: [],
         fileStates: [],

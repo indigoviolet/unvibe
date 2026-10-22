@@ -30,7 +30,7 @@ function snapshot(): ReviewSnapshot {
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     ingest: { status: "ready" },
-    pages: [{ id: "root", kind: "root", title: "Root", saved: false, cards: [] }],
+    pages: [{ id: "root", kind: "root", title: "Root", cards: [] }],
     annotations: [],
     hunkStates: [],
     jobs: [],

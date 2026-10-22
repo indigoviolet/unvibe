@@ -11,7 +11,7 @@
  * `packages/service/src/pipeline/actions/`): explain, ask, reply, retry,
  * depth, examples, diagram, generate, followup, concept, second_opinion,
  * plus the update pass (`POST …/update`). Local-only kinds — collapse,
- * bookmark, note, promote, close, delete, undo — need nothing.
+ * note, promote, close, delete, undo — need nothing.
  */
 import type { ActionAnchor, Annotation, Job, JobKind, ReviewSnapshot } from "@unvibe/shared";
 import { isLiveJobState, type InFlightAction, type InFlightKind } from "../state/store.js";

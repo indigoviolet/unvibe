@@ -116,11 +116,11 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an explanation card. The kinds behave the same; only the root and finding pages show a type label.
 - **Header:**
   - a label, but only where it matters: **"Guide"** on the root page, **"Agent finding · <confidence>"** on a finding page (no label row at all on pages with no label);
-  - the title, with the **bookmark** icon (save or unsave the page) on the title line, right-aligned.
+  - the title.
 - **Trail:** a breadcrumb back to the root, on every page except the root.
 - **Contents:** a collapsible box listing this page's cards (click to jump, expanding the card if needed) and the pages it links to. There are no other status labels.
 - **Go deeper:** the root page ends with placeholder cards for the directions the agent picked for this change. **Generate** shows progress and fills the card. A generated card may end with follow-up suggestions; clicking one adds its answer.
-- **Saving:** pages are scoped to the repo. Saving is deferred (§2), but the bookmark and its state must exist.
+- **Saving:** pages are scoped to the repo. Saving is deferred (§2).
 
 ### 4.4 Cards
 Every page card has the same controls. Explanation cards (§4.7) carry the same controls per answer:
@@ -367,7 +367,7 @@ A session started under one setting keeps it until it ends (the posture is part 
 | File / Hunk | file key, path, category, hunk **content hash**, header, line ranges, `hidden_reason` |
 | HunkState | content hash → folded, reviewed, summary (carried across versions by hash) |
 | FileState | file key → folded (file reviewed is derived from its hunks, never stored) |
-| Page | id, kind (root, concept, finding, opened-expansion), title, saved, parent, cards[] |
+| Page | id, kind (root, concept, finding, opened-expansion), title, parent, cards[] |
 | Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
 | Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
 | Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle. A conversation can host on a hunk (`h:…`), created from the hunk's summary text with no agent call. |
@@ -604,7 +604,7 @@ POST /api/reviews/:id/redo               re-do the guide: delete + create in one
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|depth|examples|diagram|undo|
-                                           collapse|generate|second_opinion|promote|close|delete|followup|concept|bookmark, … } (409 while loading/failed)
+                                            collapse|generate|second_opinion|promote|close|delete|followup|concept, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
 PATCH /api/reviews/:id/files/:fileKey    { folded? } (409 while loading/failed)
 PATCH /api/reviews/:id/view              { showExistingComments? } (409 while loading/failed)

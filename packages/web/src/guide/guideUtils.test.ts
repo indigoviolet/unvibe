@@ -44,7 +44,7 @@ function mkCard(id: string, pageId: string, opts?: Partial<Card>): Card {
 }
 
 function mkPage(id: string, cards: Card[], kind: Page["kind"] = "concept"): Page {
-  return { id, kind, title: `Title ${id}`, saved: false, parent: "root", cards };
+  return { id, kind, title: `Title ${id}`, parent: "root", cards };
 }
 
 describe("depth text selection (PRD §4.4)", () => {

@@ -125,7 +125,6 @@ describe("locateThread", () => {
         id: "p1",
         kind: "root",
         title: "G",
-        saved: false,
         cards: [
           {
             id: "c1",
@@ -161,7 +160,6 @@ describe("locateThread", () => {
         id: "p1",
         kind: "root",
         title: "G",
-        saved: false,
         cards: [
           {
             id: "c1",

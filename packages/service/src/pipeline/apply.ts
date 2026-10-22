@@ -293,12 +293,11 @@ export function suggestedAnnotation(
   };
 }
 
-export function conceptPage(id: string, title: string, blocks: Block[], saved = true): Page {
+export function conceptPage(id: string, title: string, blocks: Block[]): Page {
   return {
     id,
     kind: "concept",
     title,
-    saved,
     parent: "root",
     cards: [mkCard(`cc-${id.replace(/^c-/, "")}`, id, null, blocks)],
   };
@@ -315,7 +314,6 @@ export function findingPage(
     id: pageId,
     kind: "finding",
     title,
-    saved: false,
     parent: "root",
     confidence,
     summary,

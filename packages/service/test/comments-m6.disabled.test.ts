@@ -56,7 +56,6 @@ describe("comment threads", () => {
         id: "p1",
         kind: "root" as const,
         title: "Guide",
-        saved: false,
         cards: [
           {
             id: "c1",
@@ -99,7 +98,6 @@ describe("comment threads", () => {
         id: "p1",
         kind: "root" as const,
         title: "Guide",
-        saved: false,
         cards: [
           {
             id: "c1",
@@ -178,7 +176,6 @@ describe("comment threads", () => {
         id: "p1",
         kind: "root" as const,
         title: "Guide",
-        saved: false,
         cards: [card("c1", "first card mentions the receiver"), card("c2", "second card names the receiver too")],
       },
     ];

@@ -1,8 +1,7 @@
 /**
  * Guide page (M2, web-guide owner; PRD §4.3, §4.9).
  *
- * Header (type label only where it matters, then the title with the
- * bookmark right-aligned on its line — #118, deliberately off-prototype),
+ * Header (type label only where it matters, then the title),
  * trail, collapsible Contents box, cards, and the "Go deeper" divider
  * before pending cards. Finding pages get the rust-accent `.finding`
  * class.
@@ -16,7 +15,7 @@ import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
 import { isLiveJobState, useReview } from "../state/store.js";
 import { revealSource } from "../source/reveal.js";
-import { performAction, performFollowUp } from "./actions.js";
+import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel } from "./guideUtils.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
@@ -29,11 +28,6 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string | null) => void;
   onJumpToCard: (cardId: string) => void;
-}
-
-/** Bookmark state: explicit flag wins, concept pages default to saved. */
-export function isSaved(page: Page): boolean {
-  return page.saved || page.kind === "concept";
 }
 
 /** Finding recheck status line (PRD §8): set by refresh / the update pass. */
@@ -216,7 +210,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const [tocOpen, setTocOpen] = useState(true);
   const { title: identityTitle } = useReviewIdentity(reviewId);
   const isFinding = page.kind === "finding";
-  const saved = isSaved(page);
   // #235: the PR title lives here on the root, using the heading's style.
   // A default-stored root ("Guide") shows the review title (PR title, else
   // branch); non-default roots and other pages keep today's display.
@@ -312,19 +305,6 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
         <h1 className="title">{rootTitle}</h1>
-        <button
-          className="ib save"
-          type="button"
-          data-tip={saved ? "Unsave from this repo" : "Save to this repo"}
-          aria-label={saved ? "Unsave from this repo" : "Save to this repo"}
-          aria-pressed={saved}
-          data-save={page.id}
-          onClick={() =>
-            void performAction(reviewId, { kind: "bookmark", pageId: page.id, saved: !saved })
-          }
-        >
-          <Icon name="bookmark" />
-        </button>
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />

@@ -75,7 +75,7 @@ afterEach(() => {
 
 describe("default guide title display", () => {
   test("stored 'Guide' shows the review title (#235)", () => {
-    show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
+    show({ id: "root", kind: "root", title: "Guide", cards: [] } as Page);
     // No summary for page-test: falls back to the branch, like a branch review.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("b");
   });
@@ -85,7 +85,6 @@ describe("default guide title display", () => {
       id: "root",
       kind: "root",
       title: "Unfold obsolete folded response headers",
-      saved: false,
       cards: [],
     } as Page);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -108,7 +107,6 @@ describe("PageView card boundaries", () => {
       id: "root",
       kind: "root",
       title: "Root",
-      saved: false,
       cards: [good1, bad, good3],
     } as unknown as Page);
     // The good cards render as before (once in Contents, once as the
@@ -125,17 +123,14 @@ describe("PageView card boundaries", () => {
   });
 });
 
-describe("page header bookmark (#118)", () => {
-  test("a page with no type label has no eyebrow row; the bookmark sits on the title line", () => {
-    show({ id: "root", kind: "root", title: "Guide", saved: false, cards: [] } as Page);
+describe("page header title row (#240: no bookmark)", () => {
+  test("a page with no type label has no eyebrow row; the title sits on its own line", () => {
+    show({ id: "root", kind: "root", title: "Guide", cards: [] } as Page);
     expect(document.querySelector(".eyebrow")).toBeNull();
     const row = document.querySelector(".title-row");
     expect(row).not.toBeNull();
     expect(row?.querySelector("h1.title")).toHaveTextContent("b");
-    const save = screen.getByRole("button", { name: "Save to this repo" });
-    expect(row?.contains(save)).toBe(true);
-    expect(save).toHaveAttribute("aria-pressed", "false");
-    expect(save).toHaveAttribute("data-save", "root");
+    expect(row?.querySelector("button")).toBeNull();
   });
 
   test("a finding page keeps its type label above the title row", () => {
@@ -143,20 +138,19 @@ describe("page header bookmark (#118)", () => {
       id: "f-1",
       kind: "finding",
       title: "A finding",
-      saved: false,
       confidence: "medium",
       cards: [],
     } as unknown as Page);
     expect(document.querySelector(".eyebrow")).toHaveTextContent("Agent finding · medium confidence");
     const row = document.querySelector(".title-row");
     expect(row?.querySelector("h1.title")).toHaveTextContent("A finding");
-    expect(row?.contains(screen.getByRole("button", { name: "Save to this repo" }))).toBe(true);
+    expect(row?.querySelector("button")).toBeNull();
   });
 
-  test("a saved page keeps the pressed bookmark state and label", () => {
-    show({ id: "c-x", kind: "concept", title: "A concept", saved: false, cards: [] } as Page);
-    const save = screen.getByRole("button", { name: "Unsave from this repo" });
-    expect(save).toHaveAttribute("aria-pressed", "true");
-    expect(document.querySelector(".title-row")?.contains(save)).toBe(true);
+  test("a concept page carries no bookmark control either", () => {
+    show({ id: "c-x", kind: "concept", title: "A concept", cards: [] } as Page);
+    expect(document.querySelector(".title-row")?.querySelector("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save to this repo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unsave from this repo" })).toBeNull();
   });
 });

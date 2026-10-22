@@ -262,10 +262,9 @@ needed (that deviation is closed, not added).
 
 - Kinds (root/concept/finding/opened-expansion), root+finding labels only
   — met (walk shows “GUIDED REVIEW”; `reply-format.md` §7 finding refs).
-- Header (label only where it matters, bookmark right-aligned on the
-  title line — #118, deliberately off-prototype; no empty label row) —
-  met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header cases,
-  `guide.spec.ts` finding-label + saved-bookmark cases).
+- Header (label only where it matters on its own row; no empty label
+  row) — met (`PageView.tsx` `.title-row`, `PageView.test.tsx` header
+  cases, `guide.spec.ts` finding-label case).
 - Trail breadcrumb off-root — met (`guide.spec.ts` “pages navigate”).
 - Contents box (cards jump + linked pages, no other labels)
   — met (walk screenshot shows CONTENTS with linked pages;
@@ -276,8 +275,9 @@ needed (that deviation is closed, not added).
 - Go deeper placeholders + Generate fills + follow-ups — met
   (`pipeline/demo.ts` auto-fill, `actions/generate.ts`,
   `guide-service.spec.ts`).
-- Bookmark + state exists (sharing deferred) — met (`Page.saved`,
-  `reviews/list.ts` summaries).
+- Saved-pages sharing stays deferred (PRD §2, §19) — no page-saved state
+  (#240 removed the bookmark button, the `bookmark` action and
+  `Page.saved`).
 
 ### §4.4 Cards — all met (audit-10; #136 slice 1)
 
@@ -1980,7 +1980,7 @@ positives (the done event can precede the revision-bumping patch).
 Covered kinds (verified against `pipeline/actions/`): depth, examples,
 diagram, generate, followup, explain, ask, reply, retry, second_opinion,
 concept, and the update pass. Local-only kinds (read, collapse,
-bookmark, note, promote, close, delete, undo) need nothing.
+note, promote, close, delete, undo) need nothing.
 UI: the clicked control shows dots with `aria-busy` and conflicting
 controls go disabled; rewrites (depth/examples/diagram) get an accent
 left border plus a pale wash with the text readable (the wash is what

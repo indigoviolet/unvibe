@@ -53,7 +53,6 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
       id: "root",
       kind: "root",
       title: "Root",
-      saved: false,
       cards: [
         {
           id: "central",

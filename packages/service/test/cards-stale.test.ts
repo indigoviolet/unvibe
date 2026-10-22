@@ -19,7 +19,6 @@ function snapshot(level: "simple" | "standard" | "deep"): ReviewSnapshot {
         id: "root",
         kind: "root",
         title: "Root",
-        saved: false,
         cards: [
           {
             id: "central",
