@@ -2985,7 +2985,6 @@ export const mockApi = {
           id: pageId,
           kind: "concept",
           title: slug,
-          saved: true,
           parent: "root",
           cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", collapsed: false, revision: 1, blocks: [], undoStack: [] }],
         });
@@ -3051,7 +3050,6 @@ export const mockApi = {
         id: pageId,
         kind: "opened-expansion",
         title,
-        saved: false,
         parent: "root",
         cards: (found.turns as never[]).map((t, i) => {
           const turn = t as unknown as import("@unvibe/shared").Turn;
@@ -3103,18 +3101,11 @@ export const mockApi = {
       emitAnnotations();
       return { accepted: true, annotationId: annId };
     }
-    // Guide instant state (PRD §4.3/§4.4) applies locally through the patch
+    // Guide instant state (PRD §4.4) applies locally through the patch
     // path — page cards and conversation cards alike.
     // (Conversation retries are handled in the ask/reply/retry branch above.)
-    if (a.kind !== "collapse" && a.kind !== "bookmark") {
+    if (a.kind !== "collapse") {
       return { accepted: false };
-    }
-    if (a.kind === "bookmark") {
-      const page = mockPages.find((p) => p.id === (a as { pageId: string }).pageId);
-      if (!page) return { accepted: false };
-      page.saved = (a as { saved: boolean }).saved;
-      emitPages();
-      return { accepted: true };
     }
     // Collapse on page cards…
     if (a.kind === "collapse") {
