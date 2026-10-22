@@ -150,6 +150,56 @@ describe("remapAnchor", () => {
     expect(out.newAnchor?.host).toMatchObject({ kind: "diff-line", fileKey: "new-py" });
   });
 
+  it("code anchor follows its quote to the new commit (#81)", () => {
+    const cmp = compareHunks([], []);
+    const anchor: Anchor = {
+      host: { kind: "code", path: "helper.py", commit: "aaaa1111", line: 2, endLine: 3 },
+      quotedText: "beta = 2\ngamma = 3",
+      prefix: "alpha = 1",
+      suffix: "",
+      position: 2,
+      version: 1,
+    };
+    const out = remapAnchor(anchor, {
+      comparison: cmp,
+      newContents: new Map(),
+      newVersion: 2,
+      codeContents: new Map([["helper.py", ["x = 0", "alpha = 1", "beta = 2", "gamma = 3"]]]),
+      newHeadSha: "bbbb2222",
+    });
+    expect(out.remap).toMatchObject({ status: "moved", newLine: 3, lineShift: 1 });
+    expect(out.newAnchor?.host).toEqual({ kind: "code", path: "helper.py", commit: "bbbb2222", line: 3, endLine: 4 });
+    expect(out.newAnchor?.version).toBe(2);
+  });
+
+  it("code anchor with gone quote or missing file is outdated (#81)", () => {
+    const cmp = compareHunks([], []);
+    const anchor: Anchor = {
+      host: { kind: "code", path: "helper.py", commit: "aaaa1111", line: 2 },
+      quotedText: "beta = 2",
+      prefix: "",
+      suffix: "",
+      position: 2,
+      version: 1,
+    };
+    const gone = remapAnchor(anchor, {
+      comparison: cmp,
+      newContents: new Map(),
+      newVersion: 2,
+      codeContents: new Map([["helper.py", ["alpha = 1", "z = 9"]]]),
+      newHeadSha: "bbbb2222",
+    });
+    expect(gone.remap).toMatchObject({ status: "outdated", reason: "quote not found" });
+    const missing = remapAnchor(anchor, {
+      comparison: cmp,
+      newContents: new Map(),
+      newVersion: 2,
+      codeContents: new Map([["helper.py", null]]),
+      newHeadSha: "bbbb2222",
+    });
+    expect(missing.remap).toMatchObject({ status: "outdated", reason: "file removed" });
+  });
+
   it("non-diff anchors stay moved", () => {
     const cmp = compareHunks([], []);
     const anchor: Anchor = { host: { kind: "block", blockId: "b1" }, quotedText: "q", prefix: "", suffix: "", position: 7, version: 1 };

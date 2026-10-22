@@ -17,6 +17,7 @@ import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
+import { checkLayout } from "./layout-check.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour/218", import.meta.url));
@@ -121,6 +122,7 @@ for (const combo of COMBOS) {
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     const shot = async (name: string): Promise<void> => {
       await checkFloating(page, `${suffix}-${name}`);
+      await checkLayout(page, `${suffix}-${name}`);
       await page.screenshot({ path: path.join(SHOTS, `${name}-${suffix}.png`) });
     };
 

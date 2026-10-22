@@ -1,20 +1,25 @@
-/** J228 (#228): start-page author filter against the real service.
+/** J228 (#228, narrowed per owner decision): start-page author filter.
  *
- * Fake `gh` returns Your PRs and review requests with mixed authors, plus
- * one PR review (author from `pr view`) and one branch review (no author).
- * The shared Author select next to the time filter lists All plus each
- * author with counts, filters Reviews + PR lists with one pick, persists
- * like the time filter, and the filter row holds the layout rules (no
- * page overflow, both selects inside the PR block). No real `gh`, no
- * network: the fake answers `pr list`/`pr view`/`api user` from canned
- * JSON, everything else exits 1. Screenshots land in `visual-tour/` for
- * the owner to look at (git-ignored, no baselines).
+ * The filter applies ONLY to the requested-review PR groups ("Waiting on
+ * your review": requested of you / requested of your team) — not "Your
+ * PRs", branch rows, or the Reviews list. It sits with that section: the
+ * shared Base UI Select lists All plus the authors in those two groups
+ * with counts; one pick filters both groups; the choice persists like
+ * the time filter. `checkLayout` (#225) runs on the filter in place.
+ *
+ * Fake `gh` returns Your PRs and review requests with mixed authors,
+ * plus one PR review and one branch review (to prove Reviews ignores
+ * the filter). No real `gh`, no network: the fake answers `pr list`/
+ * `pr view`/`api user`/`auth status` from canned JSON, everything else
+ * exits 1. Screenshots land in `visual-tour/` for the owner to look at
+ * (git-ignored, no baselines).
  */
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
+import { checkLayout } from "../layout-check.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, git, makeScratchRepo } from "./journey-helpers.js";
@@ -57,8 +62,8 @@ function pr(n: number, title: string, author: string, branch: string, extra: Par
   };
 }
 
-// Your PRs: one by alice, one by bob. Requested of you: bob's ask;
-// requested of your team: alice's ask (via core-team).
+// Your PRs: one by alice, one by bob (the filter must ignore them).
+// Requested of you: bob's ask; requested of your team: alice's ask.
 const AUTHORING: FakePr[] = [
   pr(101, "Alice adds folded-header parsing", "alice", "alice-parse"),
   pr(102, "Bob fixes header unfolding", "bob", "bob-unfold"),
@@ -103,7 +108,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
 }
 
-/** Wait until a review's ingest is done (else its author is not in the summary yet). */
+/** Wait until a review's ingest is done. */
 async function awaitIngestReady(svc: RunningService, id: string): Promise<void> {
   const deadline = Date.now() + 30_000;
   for (;;) {
@@ -145,7 +150,7 @@ test.describe("J228 start-page author filter", () => {
     const registered = list.find((r) => r.localPath === repoDir);
     if (!registered) throw new Error(`repo not registered: ${JSON.stringify(list)}`);
     repoId = registered.id;
-    // One PR review (author alice via `pr view`) and one branch review (no author).
+    // One PR review and one branch review: both must ignore the filter.
     const created = await apiJson(svc, "POST", "/api/reviews", { repoId, pr: 101 });
     await awaitIngestReady(svc, (created.json as { review: { id: string } }).review.id);
     const branched = await apiJson(svc, "POST", "/api/reviews", { repoId, branch: "feature" });
@@ -156,33 +161,12 @@ test.describe("J228 start-page author filter", () => {
     for (const d of [repoDir, dataDir, logDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
-  /** No horizontal page overflow, and both filter selects sit inside the PR block. */
-  async function checkFilterRowLayout(page: import("@playwright/test").Page, scene: string): Promise<void> {
-    const bad = await page.evaluate(() => {
-      const over = Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) - window.innerWidth;
-      if (over > 1.5) return `page has horizontal scroll (${Math.round(over)}px too wide)`;
-      const block = document.querySelector('[data-testid="pr-block"]');
-      if (!block) return "pr-block missing";
-      const c = block.getBoundingClientRect();
-      for (const label of ["Updated within", "Author"]) {
-        const el = document.querySelector(`[aria-label="${label}"]`);
-        if (!el) return `${label} select missing`;
-        const r = el.getBoundingClientRect();
-        if (r.left < c.left - 1.5 || r.right > c.right + 1.5) {
-          return `${label} select outside the PR block (select ${Math.round(r.left)}-${Math.round(r.right)}, block ${Math.round(c.left)}-${Math.round(c.right)})`;
-        }
-      }
-      return null;
-    });
-    expect(bad, `${scene}: layout ${bad ?? ""}`).toBeNull();
-  }
-
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
   ] as const) {
-    test(`author filter lists, filters and persists (${combo.name})`, async ({ page }) => {
+    test(`author filter reads and filters the requested groups (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
       if (!svc) throw new Error("no service");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -202,47 +186,43 @@ test.describe("J228 start-page author filter", () => {
       await expect(prBlock.getByText("Bob fixes header unfolding")).toBeVisible();
       await expect(prBlock.getByText("Bob asks for your review")).toBeVisible();
       await expect(prBlock.getByText("Alice asks the team")).toBeVisible();
-      // Reviews: the PR review (alice, via `pr view`) and the branch review.
       await expect(reviews.getByText("Alice adds folded-header parsing")).toBeVisible({ timeout: 30_000 });
       await expect(reviews.locator('[data-testid^="session-"]')).toHaveCount(2);
-      await expect(reviews.getByText("feature").first()).toBeVisible();
 
-      // The Author select lists All plus each author with counts:
-      // alice = PR review + Your PR 101 + team ask; bob = Your PR 102 + direct ask.
+      // The Author select lists All plus the requested-group authors with
+      // counts (alice 1, bob 1) — nobody else's.
       await expectTrigger(page, "All");
       await page.getByLabel("Author", { exact: true }).click();
-      await expect(openPopup(page).getByRole("option", { name: "alice (3)" })).toBeVisible({ timeout: 15_000 });
-      await expect(openPopup(page).getByRole("option", { name: "bob (2)" })).toBeVisible();
+      await expect(openPopup(page).getByRole("option", { name: "alice (1)" })).toBeVisible({ timeout: 15_000 });
+      await expect(openPopup(page).getByRole("option", { name: "bob (1)" })).toBeVisible();
       await page.keyboard.press("Escape");
 
-      // Pick bob: alice's rows hide, bob's stay, the author-less branch
-      // review stays visible (no commit-author fetch — see #228).
-      await pickAuthor(page, "bob (2)");
-      await expectTrigger(page, "bob (2)");
-      await expect(prBlock.getByText("Bob fixes header unfolding")).toBeVisible();
+      // Pick bob: his direct ask stays, alice's team ask hides with the
+      // author note; Your PRs, Reviews and branches ignore the filter.
+      await pickAuthor(page, "bob (1)");
+      await expectTrigger(page, "bob (1)");
       await expect(prBlock.getByText("Bob asks for your review")).toBeVisible();
-      await expect(prBlock.getByText("Alice adds folded-header parsing")).toHaveCount(0);
       await expect(prBlock.getByText("Alice asks the team")).toHaveCount(0);
       await expect(page.getByTestId("requested-team-empty")).toContainText("No PRs by bob.");
-      // Reviews: alice's PR review hides; the branch review (no author) stays.
-      await expect(reviews.getByText("Alice adds folded-header parsing")).toHaveCount(0);
-      await expect(reviews.locator('[data-testid^="session-"]')).toHaveCount(1);
-      await expect(reviews.getByText("feature").first()).toBeVisible();
-      await checkFilterRowLayout(page, `start-author-filter-${combo.name}`);
+      await expect(prBlock.getByText("Alice adds folded-header parsing")).toBeVisible();
+      await expect(prBlock.getByText("Bob fixes header unfolding")).toBeVisible();
+      await expect(reviews.getByText("Alice adds folded-header parsing")).toBeVisible();
+      await expect(reviews.locator('[data-testid^="session-"]')).toHaveCount(2);
+      await expect(prBlock.getByText("feature").first()).toBeVisible();
+      await checkLayout(page, `start-author-filter-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-author-filter-bob-${combo.name}.png` });
 
       // The choice persists like the time filter.
       await page.reload();
-      await expectTrigger(page, "bob (2)");
-      await expect(page.getByTestId("pr-block").getByText("Bob fixes header unfolding")).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId("pr-block").getByText("Alice adds folded-header parsing")).toHaveCount(0);
+      await expectTrigger(page, "bob (1)");
+      await expect(page.getByTestId("pr-block").getByText("Bob asks for your review")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("pr-block").getByText("Alice asks the team")).toHaveCount(0);
 
       // The way back clears the filter.
       await page.getByTestId("requested-team-empty").getByRole("button", { name: "Show all" }).click();
       await expectTrigger(page, "All");
-      await expect(page.getByTestId("pr-block").getByText("Alice adds folded-header parsing")).toBeVisible();
       await expect(page.getByTestId("pr-block").getByText("Alice asks the team")).toBeVisible();
-      await checkFilterRowLayout(page, `start-author-filter-all-${combo.name}`);
+      await checkLayout(page, `start-author-filter-all-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-author-filter-all-${combo.name}.png` });
     });
   }

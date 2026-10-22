@@ -5,7 +5,7 @@
  * `gh` script first on `PATH` that records its invocations (tests never hit
  * real GitHub or real agents). Covers:
  * - create a note on a diff line → reload → still there;
- * - mark for PR → edit draft → submit → the fake `gh` received exactly one
+ * - add to Outbox → edit draft → submit → the fake `gh` received exactly one
  *   review call with that comment;
  * - description edit → submit → `gh pr edit` called.
  *
@@ -210,7 +210,7 @@ test.describe("comments over the real service", () => {
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Comments start no agent job and are for the PR by default.
     await expect(thread.locator(".working")).toHaveCount(0);
-    await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
     await expect(
@@ -218,7 +218,7 @@ test.describe("comments over the real service", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("mark for PR, edit the draft, submit posts exactly one review", async ({ page }) => {
+  test("add to Outbox, edit the draft, submit posts exactly one review", async ({ page }) => {
     test.setTimeout(120_000);
     rmSync(path.join(logDir, "review-stdin.json"), { force: true });
     await openReview(page);
@@ -227,10 +227,9 @@ test.describe("comments over the real service", () => {
     });
     await expect(thread).toBeVisible({ timeout: 10_000 });
     // Already marked for the PR by default (comments are for the PR).
-    await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
-    // Edit the For-PR draft in the Comments menu and let it save.
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
+    // Edit the Outbox draft in the Comments menu and let it save.
     await page.locator('#reviewbar [data-cm=""]').click();
-    await page.locator('.cmenu [data-cmf="pr"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     await draft.fill("Why 2 and not 3? Please explain.");
     // The draft autosaves through PATCH (debounced): wait for the save

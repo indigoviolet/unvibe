@@ -61,22 +61,20 @@ describe("author filter (#228)", () => {
   test("a specific author passes matching rows and author-less rows", () => {
     expect(matchesAuthor("alice", "alice")).toBe(true);
     expect(matchesAuthor("bob", "alice")).toBe(false);
-    // Branch rows/reviews carry no author (no commit-author fetch):
-    // they stay visible until the owner decides otherwise (see #228).
+    // Requested-review rows with no known author stay visible (unknown,
+    // not a mismatch — same rule as the recency window).
     expect(matchesAuthor(undefined, "alice")).toBe(true);
     expect(matchesAuthor("", "alice")).toBe(true);
   });
 
-  test("counts cover sessions + PR rows, skipping author-less rows", () => {
-    const counts = authorCounts(
-      [{ author: "alice" }, {}, { author: "bob" }],
-      [
-        { kind: "pr", title: "a", author: "alice" },
-        { kind: "pr", title: "b", author: "alice" },
-        { kind: "branch", title: "c", branch: "c" },
-      ] as RepoChange[],
-    );
-    expect(counts.get("alice")).toBe(3);
+  test("counts cover the requested-review rows, skipping author-less rows", () => {
+    const counts = authorCounts([
+      { kind: "pr", title: "a", author: "alice" },
+      { kind: "pr", title: "b", author: "alice" },
+      { kind: "pr", title: "c", author: "bob" },
+      { kind: "pr", title: "d" },
+    ] as RepoChange[]);
+    expect(counts.get("alice")).toBe(2);
     expect(counts.get("bob")).toBe(1);
     expect(counts.has("")).toBe(false);
     expect(counts.size).toBe(2);

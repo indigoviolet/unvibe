@@ -41,13 +41,26 @@ export interface ReaderApply {
  * final apply must agree on this, or the final apply stores each streamed
  * card a second time (#28).
  */
-export function readerCardId(index: number, cardIds: string[] = []): string {
-  // Issue #198/#212: the reader's settled order is problem, central
-  // idea(s), "How it's built up", "Decisions and questions", "Names".
-  // The `decisions` id is kept for the renamed card so existing anchors
+export function readerCardId(index: number, cardIds: string[] = [], title?: string | null): string {
+  // Issue #198/#212: the reader's settled order is problem, the one
+  // central-idea card, per-plotline card(s) when there are several
+  // plotlines, "How it's built up", "Decisions and questions", "Names".
+  // Known titles win over position, so the per-plotline cards (any
+  // count) never steal the `buildup`/`decisions`/`names` ids. The
+  // `decisions` id is kept for the renamed card so existing anchors
   // (`#C-decisions`, `card:decisions#…`) stay valid; `names` is the new
   // card's stable id. No migration: card ids are assigned at apply time.
-  return cardIds[index] ?? (index === 0 ? "problem" : index === 1 ? "central" : index === 2 ? "buildup" : index === 3 ? "decisions" : index === 4 ? "names" : `reader-${index}`);
+  if (cardIds[index]) return cardIds[index];
+  const t = (title ?? "").trim().toLowerCase();
+  if (t === "the problem") return "problem";
+  if (t === "the central idea" || t === "the central change") return "central";
+  if (t === "how it's built up") return "buildup";
+  if (t === "decisions and questions") return "decisions";
+  if (t === "names") return "names";
+  // An unknown title at index 0/1 is still the problem / central card;
+  // anywhere else it is a per-plotline card, never the buildup,
+  // decisions or names card (those carry their known titles).
+  return index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`;
 }
 
 /** True for ids `readerCardId` hands out when the reply names none. */
@@ -93,7 +106,7 @@ export function readerApply(
 ): ReaderApply {
   const cardIds = (data?.["cardIds"] as string[] | undefined) ?? [];
   const cards = dropReaderPreamble(parsedCards).map((c, i) => ({
-    id: readerCardId(i, cardIds),
+    id: readerCardId(i, cardIds, c.title),
     title: c.title,
     blocks: c.blocks,
   }));

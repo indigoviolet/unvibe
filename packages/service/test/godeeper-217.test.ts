@@ -103,6 +103,13 @@ describe("auto go-deeper (#217)", () => {
         const root = ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root");
         return !!root && root.cards.length >= 4 && root.cards.every((c) => !c.pending);
       });
+      // #217 follow-up: auto-written cards stay collapsed (title +
+      // why-line) until opened; opening needs no new job.
+      const filled = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.filter((c) => c.id.startsWith("g-"));
+      expect(filled).toHaveLength(3);
+      expect(filled.every((c) => c.collapsed)).toBe(true);
+      expect(filled.map((c) => c.why).sort()).toEqual(["check it", "check it too", "follow it"]);
+      expect(filled.every((c) => c.blocks.length > 0)).toBe(true);
       // Every placeholder (the reader writes 3-5 directions; here 3).
       const jobs = ctx.jobs.listByReview(id).filter((j: Job) => j.kind === "go-deeper");
       expect(jobs).toHaveLength(3);

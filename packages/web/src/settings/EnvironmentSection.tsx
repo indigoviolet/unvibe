@@ -16,10 +16,24 @@ import type { ReadinessCheck, ReadinessResponse, ReloadResponse } from "@unvibe/
 import { api, friendlyError } from "../api/client.js";
 import { Badge, Button, Card, ListRow } from "../ui/index.js";
 
+/**
+ * Row-length detail (#225): names and versions only — never paths or
+ * command lines (those ride the row's hover title and the Doctor page).
+ * Summaries carry them as "at <path>" tails (`d2 0.9.0 at …`) and fixes
+ * embed them (`run <path> --version`); both shapes are stripped here.
+ */
 function shortDetail(c: ReadinessCheck): string {
   const base = c.summary.split(" (")[0].trim();
   const text = c.status === "ok" ? base : c.fix ? `${base} ${c.fix}` : base;
-  return text.length > 90 ? `${text.slice(0, 89).trimEnd()}…` : text;
+  const scrubbed = text
+    .replace(/\s+at\s+(~\/|\/|\.[\\/]|[A-Za-z]:[\\/])\S*/g, "")
+    .split(/\s+/)
+    .filter((tok) => !/(^|[\s(`'"])~?\/|^[A-Za-z]:[\\/]/.test(tok))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const clean = scrubbed.length > 0 ? scrubbed : base;
+  return clean.length > 90 ? `${clean.slice(0, 89).trimEnd()}…` : clean;
 }
 
 function statusRank(c: ReadinessCheck): number {

@@ -3,9 +3,10 @@
  *
  * Behaviour ported from `prototype.html` (class names kept so
  * `styles/prototype.css` applies unchanged):
- * - header: collapse chevron, dir + always-visible file name, +/− counts,
- *   reviewed count, mark-file-reviewed checkbox (indeterminate while
- *   partial);
+ * - header: collapse chevron, dir (middle-shortened, #227) + file name
+ *   (truncates with an ellipsis), +/− counts, reviewed count,
+ *   mark-file-reviewed checkbox (indeterminate while partial) — the
+ *   counts and checkbox stay fixed at the header's right edge;
  * - hunks render through hidden-run grouping; hunk cards (the agent
  *   summary) exist independently of folding; folding only hides code;
  * - the hunk header's fold chevron is the single unfold control (issue
@@ -37,6 +38,7 @@ import {
   hiddenDetail,
   hiddenRunLabel,
   pairSplitRows,
+  tailPathParts,
   type SplitRow,
 } from "./diffLogic.js";
 import { slotKey, type LineSlots } from "./lineSlots.js";
@@ -657,8 +659,8 @@ function HunkBlock(
           <button
             className="ib"
             type="button"
-            data-tip="Summarize with agent"
-            aria-label="Summarize with agent"
+            data-tip="Summarize"
+            aria-label="Summarize"
             onClick={() => props.actions.summarize(h.contentHash)}
           >
             <Icon name="spark" />
@@ -717,6 +719,7 @@ export function FileSection(props: SectionProps): ReactNode {
   const stats = fileStats(file);
   const base = file.path.split("/").pop()!;
   const dir = file.path.slice(0, Math.max(0, file.path.length - base.length));
+  const dirParts = tailPathParts(dir);
   const done = props.reviewed === file.hunks.length;
   // Expand-by-lines state (issue #133): revealed context around hunks.
   // Binary files never expand (no text to show); reviews without file
@@ -995,10 +998,17 @@ export function FileSection(props: SectionProps): ReactNode {
           <Icon name={props.folded ? "right" : "down"} />
         </button>
         <span className="path" title={file.isRename && file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}>
-          <span className="dir">{dir}</span>
+          <span className="dir">
+            {dirParts.pre ? <span className="dir-pre">{dirParts.pre}</span> : null}
+            <span className="dir-end">{dirParts.end}</span>
+          </span>
           <b>{base}</b>
         </span>
-        {file.isRename && file.oldPath ? <span className="hint">← {file.oldPath.split("/").pop()}</span> : null}
+        {file.isRename && file.oldPath ? (
+          <span className="hint rename" title={file.oldPath}>
+            ← {file.oldPath.split("/").pop()}
+          </span>
+        ) : null}
         {file.isBinary ? <span className="gtag">binary</span> : null}
         {file.category === "generated" ? <span className="gtag">generated</span> : null}
         <span className="st">

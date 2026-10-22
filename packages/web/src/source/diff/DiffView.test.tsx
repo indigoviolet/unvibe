@@ -156,7 +156,7 @@ describe("DiffView", () => {
     // Hunk 0 already carries the seeded idle summary (#138), so the
     // first Summarize button belongs to hunk 1 and its canned text. The
     // matcher avoids "getresponse", which also names hunk 1's header.
-    await fireEvent.click(conn.getAllByRole("button", { name: "Summarize with agent" })[0]);
+    await fireEvent.click(conn.getAllByRole("button", { name: "Summarize" })[0]);
     expect(await conn.findByText(/now builds `HTTPHeaderDict`/, {}, { timeout: 3000 })).toBeInTheDocument();
   }, 10000);
 
@@ -184,7 +184,7 @@ describe("DiffView", () => {
     await fireEvent.click(src.getAllByRole("button", { name: "Fold code" })[0]);
     expect(await src.findByRole("button", { name: "Show code" })).toBeInTheDocument();
     expect(src.queryByText(/changed lines folded/)).not.toBeInTheDocument();
-    expect(src.getByRole("button", { name: "Summarize with agent" })).toBeInTheDocument();
+    expect(src.getByRole("button", { name: "Summarize" })).toBeInTheDocument();
     expect(src.queryByLabelText("Summarizing")).toBeNull();
   });
 
@@ -197,9 +197,7 @@ describe("DiffView", () => {
     const update = vi.spyOn(api, "updateHunk").mockResolvedValue({ ok: true });
     const summarize = vi.spyOn(api, "summarizeHunk").mockResolvedValue({ jobId: "j1" });
     try {
-      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
-        "still missing a summary",
-      );
+      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toBe("Fold the code");
       await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
       await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(summarize).toHaveBeenCalledTimes(1));
@@ -220,10 +218,8 @@ describe("DiffView", () => {
     render(<DiffView reviewId="nosum" />);
     await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
     // The generated hunks stay hidden and the one visible hunk already
-    // has a summary: folding promises nothing about summarizing.
-    expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
-      "already has a summary",
-    );
+    // has a summary: the tooltip is still the action only (#225).
+    expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toBe("Fold the code");
   });
 
   it("Fold all folds without summarizing past the fan-out limit (#107)", async () => {
@@ -243,9 +239,7 @@ describe("DiffView", () => {
       useReview.getState().setSnapshot(makeOverLimitSnapshot());
       render(<DiffView reviewId="over" />);
       await screen.findByText("over-0.ts", {}, { timeout: 5000 });
-      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toContain(
-        "past the per-hunk summary limit",
-      );
+      expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toBe("Fold the code");
       await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
       await waitFor(() => expect(update).toHaveBeenCalledTimes(525), { timeout: 10000 });
       expect(summarize).not.toHaveBeenCalled();

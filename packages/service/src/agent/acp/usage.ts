@@ -143,6 +143,12 @@ export function cacheReadShare(u: Pick<TurnUsage, "inputTokens" | "cachedReadTok
  * (see `runner.start`). Per-turn payloads from the adapters must never be
  * diffed against each other; summing distinct turns of one job is the
  * only combining this module does.
+ *
+ * Since #209 (session-start attribution) the runner no longer folds: the
+ * warm turn's tally is consumed once via `takeSessionStartUsage` and
+ * reported on the job's "session start" turn record, while each prompt's
+ * usage event carries that turn alone. Job and review totals still sum
+ * both, so per-job figures are unchanged — only which turn shows them.
  */
 export function addTurnUsage(a: TurnUsage, b: TurnUsage): TurnUsage {
   return {

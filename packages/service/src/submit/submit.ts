@@ -31,7 +31,7 @@ import type {
 import { ingestStatusOf, isReadySnapshot } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
-import { locatePendingThreads, postedThreadIds } from "../comments/location.js";
+import { locatePendingThreads, postedThreadIds, type SubmitRepoRef } from "../comments/location.js";
 import {
   SUBMIT_LEASE_GRACE_MS,
   clearSubmitLease,
@@ -72,8 +72,8 @@ async function fetchPrView(
 }
 
 /** Build the preview for a snapshot (no GitHub calls). */
-export function buildPreview(snapshot: ReviewSnapshot): SubmitPreview {
-  const pending = locatePendingThreads(snapshot);
+export function buildPreview(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): SubmitPreview {
+  const pending = locatePendingThreads(snapshot, repo);
   const alreadyPosted = postedThreadIds(snapshot);
   const inline: SubmitPreviewComment[] = [];
   const generalTexts: string[] = [];
@@ -91,7 +91,14 @@ export function buildPreview(snapshot: ReviewSnapshot): SubmitPreview {
     ...inline,
     ...pending
       .filter((p) => p.location.kind !== "inline")
-      .map((p) => ({ threadId: p.thread.id, location: p.location, text: p.text })),
+      .map((p) => ({
+        threadId: p.thread.id,
+        location: p.location,
+        text: p.text,
+        ...(p.thread.anchor.host.kind === "code" && (p.thread.anchor.quotedText ?? "") !== ""
+          ? { quote: p.thread.anchor.quotedText as string }
+          : {}),
+      })),
   ];
   const reviewBody = generalTexts.filter((t) => t.trim() !== "").join("\n\n---\n\n");
   const desc = snapshot.description;
@@ -140,19 +147,20 @@ export async function runSubmit(
   }
   const row = readReviewRow(ctx.db, reviewId);
   const prNumber = row?.prNumber ?? snapshot.review.prNumber;
+  const repo = row ? ctx.repos.get(row.repoId) : null;
+  const repoRef: SubmitRepoRef | undefined = repo ? { owner: repo.owner, name: repo.name } : undefined;
   if (prNumber === null || prNumber === undefined) {
     const reason = "This branch has no PR, so there is nothing to submit to.";
     if (opts.dryRun) {
-      const preview = buildPreview(snapshot);
+      const preview = buildPreview(snapshot, repoRef);
       return { status: 200, body: { posted: false, preview: { ...preview, disabledReason: reason }, reason } };
     }
     return { status: 400, body: { error: reason, reason } };
   }
-  const repo = row ? ctx.repos.get(row.repoId) : null;
   if (!repo) return { status: 404, body: { error: "unknown repo" } };
 
-  const pending = locatePendingThreads(snapshot);
-  const preview = buildPreview(snapshot);
+  const pending = locatePendingThreads(snapshot, repoRef);
+  const preview = buildPreview(snapshot, repoRef);
   const hasPendingDescription = snapshot.description?.pendingMarkdown !== undefined;
   const emptyText = pending.filter((p) => p.text.trim() === "");
   const inflight = readSubmitLease(ctx.db, reviewId);
@@ -180,7 +188,7 @@ export async function runSubmit(
     return {
       status: 400,
       body: {
-        error: `a comment marked for the PR is empty — write its text under Comments → For PR, then submit`,
+        error: `a comment in the Outbox is empty — write its text under Comments → Outbox, then submit`,
       },
     };
   }
@@ -196,7 +204,7 @@ export async function runSubmit(
         commentCount: 0,
         descriptionUpdated: false,
         alreadyPosted: already,
-        reason: already.length > 0 ? "Everything here is already on GitHub." : "Nothing is marked for the PR.",
+        reason: already.length > 0 ? "Everything here is already on GitHub." : "Nothing is in the Outbox.",
       },
     };
   }

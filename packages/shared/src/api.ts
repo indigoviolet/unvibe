@@ -9,13 +9,17 @@
 import type {
   Annotation,
   Card,
+  ContextRepoRef,
+  ContextRepoSource,
   Contribution,
   DepthLevel,
+  DocumentContent,
   ExistingReviewComment,
   FileState,
   HunkState,
   PrReviewDecision,
   PrState,
+  ReviewKind,
   ReviewViewPrefs,
   Job,
   LogEntry,
@@ -190,6 +194,41 @@ export interface RepoChangesResponse {
 
 // --- reviews -------------------------------------------------------------
 
+/**
+ * Issue #222: `POST /api/reviews` with `kind: "document"` — a pasted
+ * Markdown document plus 1–2 context repos. Each context repo names its
+ * registered repo and where to read it: a particular worktree
+ * (`source: "worktree"` with `worktreePath`), `origin/main`, or the
+ * local copy. Answered synchronously with the ready snapshot (201);
+ * nothing is generated up front.
+ */
+export interface CreateDocumentRequest {
+  kind: "document";
+  /** Pasted Markdown (required, non-empty). */
+  markdown: string;
+  /** Display title; defaults to the document's first heading. */
+  title?: string;
+  contextRepos: { repoId: string; source: ContextRepoSource; worktreePath?: string }[];
+}
+
+/** Issue #222: one worktree of a repo, for the context-repo picker. */
+export interface RepoWorktree {
+  path: string;
+  /** Branch checked out there, when any. */
+  branch?: string;
+  /** HEAD commit there. */
+  head?: string;
+}
+
+/** `GET /api/repos/:id/worktrees` (issue #222). */
+export interface RepoWorktreesResponse {
+  worktrees: RepoWorktree[];
+  /** `origin/main` commit, when the ref exists. */
+  originMainSha?: string;
+  /** The local copy's HEAD commit. */
+  localSha?: string;
+}
+
 export interface CreateReviewRequest {
   repoId: string;
   pr?: number;
@@ -248,7 +287,7 @@ export function assertReadySnapshot(snap: ReviewSnapshot): void {
   throw new Error("the review is still opening");
 }
 
-export interface ReviewSnapshot {
+interface ReviewSnapshotBase {
   review: Review;
   /**
    * #92: loading/failed reviews carry a placeholder (n: 0, empty SHAs) —
@@ -329,6 +368,37 @@ export interface ReviewSnapshot {
   refreshTimings?: { at: number; steps: import("./entities.js").TimedStep[] };
 }
 
+/** Issue #222: a change (PR/branch) review — no document content. */
+export interface ChangeReviewSnapshot extends ReviewSnapshotBase {
+  document?: undefined;
+  contextRepos?: undefined;
+}
+
+/** Issue #222: a document review — the pasted document and its context repos. */
+export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
+  document: DocumentContent;
+  contextRepos: ContextRepoRef[];
+}
+
+/**
+ * Issue #222: a review snapshot, discriminated by shape. The kind is
+ * derived, never stored: a snapshot carrying the pasted document is a
+ * document review; every other snapshot is a change review.
+ */
+export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot;
+
+/** Issue #222: true when the snapshot is a document review's. */
+export function isDocumentReview(
+  snap: Pick<ReviewSnapshot, "document">,
+): snap is DocumentReviewSnapshot {
+  return snap.document !== undefined;
+}
+
+/** Issue #222: the derived review kind of a snapshot. */
+export function reviewKindOf(snap: Pick<ReviewSnapshot, "document">): ReviewKind {
+  return isDocumentReview(snap) ? "document" : "change";
+}
+
 export type ReviewResponse = ReviewSnapshot;
 
 /**
@@ -346,6 +416,8 @@ export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
  */
 export interface ReviewSummary {
   id: string;
+  /** Issue #222: `"document"` for a document review. */
+  kind?: ReviewKind;
   repoId: string;
   repoOwner: string;
   repoName: string;
@@ -353,8 +425,6 @@ export interface ReviewSummary {
   title: string;
   branch: string;
   prNumber?: number;
-  /** #228: PR author login from the snapshot description; absent on branch reviews. */
-  author?: string;
   createdAt: number;
   /** Epoch ms the review was last opened (snapshot updated_at). */
   lastOpened: number;
@@ -364,7 +434,7 @@ export interface ReviewSummary {
   stale: boolean;
   totalHunks: number;
   reviewedHunks: number;
-  /** Threads marked For PR and not yet posted. */
+  /** Threads in the Outbox and not yet posted. */
   pendingComments: number;
   /** #224: PR state from the snapshot's stored gh data. Absent for branch reviews. */
   prState?: PrState;
@@ -559,7 +629,13 @@ export type ActionAnchor =
    * real conversation card (no agent call), then run as a nested card on
    * the selected summary text.
    */
-  | { where: "hunk"; fileKey: string; contentHash: string };
+  | { where: "hunk"; fileKey: string; contentHash: string }
+  /**
+   * Issue #81: a file at a commit (the source-pane file tab), addressed
+   * like a `code:` citation. Explain, Ask and Comment anchor here; the
+   * card or thread renders under the cited lines in that tab.
+   */
+  | { where: "code"; path: string; commit: string; line: number; endLine?: number };
 
 export interface ActionResponse {
   accepted: boolean;
@@ -812,7 +888,7 @@ export interface CreateCommentRequest {
   text?: string;
   /**
    * Create an agent-suggested comment: first message is the agent's
-   * suggestion (`suggested: true`), never marked for the PR initially.
+   * suggestion (`suggested: true`), never in the Outbox initially.
    * Only valid on diff-line anchors.
    */
   suggested?: boolean;
@@ -832,8 +908,14 @@ export interface ReplyCommentRequest {
 export interface ThreadMessage {
   who: "you" | "ai";
   text?: string;
-  /** M6: agent-drafted suggested comment (first message, not for PR). */
+  /** M6: agent-drafted suggested comment (first message, not in the Outbox). */
   suggested?: boolean;
+}
+
+/** GET /api/reviews/:id/outbox — Outbox export Markdown (#223). No download/filename: Copy only. */
+export interface OutboxResponse {
+  markdown: string;
+  count: number;
 }
 
 /** GET /api/reviews/:id/pr-comments — read-only existing PR comments (M6). */
@@ -855,7 +937,7 @@ export interface SubmitReviewRequest {
   dryRun?: boolean;
 }
 
-/** M6: where one For-PR thread lands on GitHub (PRD §4.8, §4.12). */
+/** M6: where one Outbox thread lands on GitHub (PRD §4.8, §4.12). */
 export type SubmitCommentLocation =
   | {
       kind: "inline";
@@ -875,11 +957,17 @@ export interface SubmitPreviewComment {
   location: SubmitCommentLocation;
   /** Exact text that will be posted (draft + fallback note). */
   text: string;
+  /**
+   * #81: quoted lines when the posted text carries them (a file-tab
+   * comment's review-body entry: permalink, quote, comment). Present
+   * so the preview can show the whole entry, not a truncated slice.
+   */
+  quote?: string;
 }
 
 /** M6: exactly what Submit will post (preview + dryRun response). */
 export interface SubmitPreview {
-  /** Threads marked For PR that are not yet posted. */
+  /** Threads in the Outbox that are not yet posted. */
   comments: SubmitPreviewComment[];
   /** Threads already posted (skipped on retry). */
   alreadyPosted: string[];

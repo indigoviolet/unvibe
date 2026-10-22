@@ -463,10 +463,39 @@ export async function refreshReview(
       }
     }
     for (const [oldPath, newPath] of citedPaths) {
-      if (newFiles.some((f) => f.path === newPath)) continue;
+      // #81: every cited file is re-anchored by content at the new head,
+      // in the diff or outside it. In-diff new lines come from the full
+      // contents already loaded; old lines always read at the old head.
+      const inDiff = newFiles.find((f) => f.path === newPath);
       const oldLines = await loadFileLinesAtHead(deps.runner, repoPath, oldVersion.headSha, oldPath);
-      const newLines = await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
+      const newLines = inDiff
+        ? (newContents.get(inDiff.fileKey) ?? null)
+        : await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
       codeFiles.set(oldPath, { oldLines, newLines, newPath });
+    }
+  }
+
+  // #81: `code:` anchors (file-tab Explain/Ask/Comment) remap by content
+  // like diff anchors. Preload each anchored file at the new head.
+  const codeAnchorContents = new Map<string, string[] | null>();
+  {
+    const live = deps.reviews.getSnapshot(reviewId) ?? snapshot;
+    for (const ann of live.annotations) {
+      if (ann.anchor.host.kind !== "code") continue;
+      const oldPath = ann.anchor.host.path;
+      let newPath = oldPath;
+      for (const r of comparison.renames) {
+        if (r.oldPath === oldPath) {
+          newPath = r.newPath;
+          break;
+        }
+      }
+      if (codeAnchorContents.has(oldPath)) continue;
+      const inDiff = newFiles.find((f) => f.path === newPath);
+      const lines = inDiff
+        ? (newContents.get(inDiff.fileKey) ?? null)
+        : await loadFileLinesAtHead(deps.runner, repoPath, head.headSha, newPath);
+      codeAnchorContents.set(oldPath, lines);
     }
   }
 
@@ -524,10 +553,21 @@ export async function refreshReview(
     remapSteps.push(anchorsStep);
     // Annotations on code: moved or outdated.
     for (const ann of draft.annotations) {
-      if (ann.anchor.host.kind !== "diff-line") continue;
-      const out = remapAnchor(ann.anchor, { comparison: cmp, newContents, newVersion: version.n });
+      if (ann.anchor.host.kind !== "diff-line" && ann.anchor.host.kind !== "code") continue;
+      const out = remapAnchor(ann.anchor, {
+        comparison: cmp,
+        newContents,
+        newVersion: version.n,
+        codeContents: codeAnchorContents,
+        newHeadSha: head.headSha,
+      });
       if (out.remap.status === "moved" && out.newAnchor) {
         ann.anchor = out.newAnchor;
+        if (ann.anchor.host.kind === "code") {
+          for (const r of comparison.renames) {
+            if (r.oldPath === ann.anchor.host.path) ann.anchor.host.path = r.newPath;
+          }
+        }
         ann.outdated = false;
         delete ann.outdatedReason;
         delete ann.originalSnippet;

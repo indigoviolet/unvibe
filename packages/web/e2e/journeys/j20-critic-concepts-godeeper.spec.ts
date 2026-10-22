@@ -9,7 +9,7 @@ import { apiJson, createDemoReview } from "./journey-helpers.js";
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 type Snap = {
-  pages: { id: string; kind: string; title: string; cards: { id: string; pending?: unknown; blocks: unknown[] }[] }[];
+  pages: { id: string; kind: string; title: string; cards: { id: string; pending?: unknown; blocks: unknown[]; collapsed?: boolean; why?: string }[] }[];
 };
 type JobRow = { kind: string; state: string; priority: number; cardId?: string };
 
@@ -64,12 +64,39 @@ test.describe("J20 critic, concepts and go-deeper", () => {
       expect(gd.every((j) => j.priority === 10)).toBe(true);
       expect(js.filter((j) => j.kind === "concept")).toHaveLength(0);
 
+      // #217 follow-up: auto-written go-deeper cards stay collapsed
+      // (title + why-line) until opened; opening shows the written
+      // content instantly and starts no new job.
+      const filledGd = root.cards.filter((c) => c.id.startsWith("g-"));
+      expect(filledGd.length).toBeGreaterThanOrEqual(4);
+      expect(filledGd.every((c) => c.collapsed)).toBe(true);
+      expect(filledGd.every((c) => !!c.why)).toBe(true);
+      const gdJobsBefore = (await jobs(svc, reviewId)).filter((j) => j.kind === "go-deeper").length;
+
       // Findings show in the guide; open the bare-LF finding page.
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      await page.locator('[data-top] a.cx[data-link^="page:f-"], a.cx[data-link^="page:f-"]').first().click().catch(() => {});
-      // (Finding pages are also reachable from Contents; the API shape
-      // above is the #215 contract either way.)
+      const gdCard = page.locator("#C-g-flow");
+      await gdCard.scrollIntoViewIfNeeded();
+      await expect(gdCard).toHaveClass(/collapsed/);
+      await expect(gdCard.locator(".why")).toContainText("Follows a folded header");
+      await expect(gdCard).not.toContainText("getresponse()");
+      await gdCard.getByRole("button", { name: "Expand" }).click();
+      await expect(gdCard).toContainText("getresponse()", { timeout: 10_000 });
+      await page.screenshot({ path: "test-results/j20-godeeper-opened.png", fullPage: true });
+      expect((await jobs(svc, reviewId)).filter((j) => j.kind === "go-deeper")).toHaveLength(gdJobsBefore);
+      // Findings show in the guide; open the bare-LF finding page. Its
+      // link lives in the "Review checklist" go-deeper card, which stays
+      // collapsed until opened (#217), so open that card first — its
+      // written content (including the finding links) shows instantly.
+      const gdCheck = page.locator("#C-g-check");
+      await gdCheck.scrollIntoViewIfNeeded();
+      await expect(gdCheck).toHaveClass(/collapsed/);
+      await gdCheck.getByRole("button", { name: "Expand" }).click();
+      const findingLink = gdCheck.locator('a.cx[data-link="page:f-lf"]');
+      await expect(findingLink).toBeVisible({ timeout: 30_000 });
+      await findingLink.click();
+      await expect(page.locator("#page .doc h1.title")).not.toHaveText("Guide", { timeout: 60_000 });
 
       // #216: a concept link writes its page on open, then shows it.
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -129,7 +156,7 @@ test.describe("J20 critic, concepts and go-deeper", () => {
       await expect(generate).toBeVisible({ timeout: 30_000 });
       const cardId = await generate.getAttribute("data-gen");
       await generate.click();
-      await poll(
+      const filledSnap = await poll(
         () => snapshot(svc!, reviewId),
         (s) => {
           const r = s.pages.find((p) => p.id === "root");
@@ -138,6 +165,9 @@ test.describe("J20 critic, concepts and go-deeper", () => {
         },
         60_000,
       );
+      // A Generate click is an explicit open: its card lands expanded.
+      const manual = filledSnap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === cardId)!;
+      expect(manual.collapsed).toBe(false);
       await page.screenshot({ path: "test-results/j20-godeeper-off-generate.png", fullPage: true });
     } finally {
       await svc?.stop().catch(() => {});

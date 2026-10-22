@@ -71,7 +71,7 @@ test.describe("J3 comments and submit", () => {
     await slot.getByRole("button", { name: "Save" }).click();
     const thread = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "Why 2 and not 3?" });
     await expect(thread).toBeVisible({ timeout: 10_000 });
-    await expect(thread.getByRole("button", { name: "Marked for the PR" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });

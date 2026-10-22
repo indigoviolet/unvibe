@@ -108,7 +108,7 @@ export function SecondOpinionControl({ reviewId, card, page, disabled, busy }: P
       <button
         className="ib"
         type="button"
-        data-tip={busy ? "Working…" : `Second opinion (${defLabel})`}
+        data-tip={busy ? "Working…" : "Second opinion"}
         aria-label={busy ? "Working…" : `Second opinion (${defLabel})`}
         aria-busy={busy || undefined}
         disabled={disabled || busy}

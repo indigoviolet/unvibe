@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle, prStateFromGh } from "@unvibe/shared";
+import { isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -149,15 +149,17 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     // ingest/refresh time (no gh call here, per this module's contract).
     const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
     const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
-    // #228: PR author for the start-page author filter (no gh call here;
-    // branch reviews carry no author in the snapshot).
-    const summaryAuthor = row.pr_number !== null ? snapshot?.description?.author : undefined;
-    const guide = guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
+    // Issue #222: document reviews have no guide pipeline; the document is ready.
+    const guide =
+      snapshot !== null && isDocumentReview(snapshot)
+        ? { status: "ready" as const, detail: undefined as string | undefined }
+        : guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
     // #92: ingest state rides the summary so Previous reviews marks loading/failed rows.
     const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
+      ...(snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
       repoId: row.repo_id,
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,
@@ -174,7 +176,6 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       pendingComments,
       ...(prState !== undefined ? { prState } : {}),
       ...(reviewDecision !== undefined ? { reviewDecision } : {}),
-      ...(typeof summaryAuthor === "string" && summaryAuthor !== "" ? { author: summaryAuthor } : {}),
       guideStatus: guide.status,
       ...(guide.detail ? { guideDetail: guide.detail } : {}),
       ingestStatus,

@@ -52,10 +52,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
+  ContextRepoSource,
   CreateReviewRequest,
   ReadinessCheck,
   Repo,
   RepoChange,
+  RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
@@ -110,10 +112,11 @@ export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
 
 /**
- * Author filter (#228): one shared single-select for the Reviews list
- * and the PR lists, next to the recency filter. `"all"` (the default)
- * shows everything; any other value is an author login. The choice
- * persists like the recency window.
+ * Author filter (#228, narrowed per owner decision): one single-select
+ * for the requested-review PR groups only ("Waiting on your review":
+ * requested of you / of your team). `"all"` (the default) shows
+ * everything; any other value is an author login. The choice persists
+ * like the recency window.
  */
 export const AUTHOR_KEY = "unvibe.start.author";
 export const AUTHOR_ALL = "all";
@@ -129,10 +132,9 @@ function readAuthor(): string {
 }
 
 /**
- * True when a row passes the author filter (#228). Rows with no known
- * author (branch rows, branch reviews — the app fetches no commit
- * author) stay visible under any specific author until the owner
- * decides otherwise (see #228).
+ * True when a row passes the author filter (#228). Requested-review
+ * rows with no known author stay visible (their age is unknown, not
+ * a mismatch — same rule as the recency window).
  */
 export function matchesAuthor(rowAuthor: string | undefined, filter: string): boolean {
   if (filter === AUTHOR_ALL) return true;
@@ -141,17 +143,12 @@ export function matchesAuthor(rowAuthor: string | undefined, filter: string): bo
 }
 
 /**
- * Author → row count across the counted lists (#228): the Reviews rows
- * for the selected repo plus the PR rows (Your PRs + both review
- * groups). Branch rows carry no author and are not counted. Each row
- * occurrence counts (a review and its PR row count separately).
+ * Author → row count across the requested-review groups (#228): the
+ * only lists the filter reads. Each row occurrence counts.
  */
-export function authorCounts(
-  sessions: Pick<ReviewSummary, "author">[],
-  changes: Pick<RepoChange, "author">[],
-): Map<string, number> {
+export function authorCounts(changes: Pick<RepoChange, "author">[]): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const row of [...sessions, ...changes]) {
+  for (const row of changes) {
     if (typeof row.author === "string" && row.author !== "") {
       counts.set(row.author, (counts.get(row.author) ?? 0) + 1);
     }
@@ -277,6 +274,166 @@ function parsePrInput(
   return { error: "Enter a PR number or a GitHub PR URL." };
 }
 
+interface DocRepoPick {
+  repoId: string;
+  source: ContextRepoSource;
+  worktreePath: string;
+  worktrees: RepoWorktree[];
+}
+
+/**
+ * New document review (issue #222): paste Markdown, pick 1–2 context
+ * repos, each read from a particular worktree, `origin/main`, or the
+ * local copy. Creates the review and navigates to it; nothing is
+ * generated up front.
+ */
+export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (id: string) => void }): React.JSX.Element {
+  const realRepos = repos.filter((r) => r.id !== "demo");
+  const [markdown, setMarkdown] = useState("");
+  const [picks, setPicks] = useState<DocRepoPick[]>([
+    { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadWorktrees = useCallback(async (index: number, repoId: string) => {
+    try {
+      const res = await api.repoWorktrees(repoId);
+      setPicks((prev) =>
+        prev.map((p, i) =>
+          i === index ? { ...p, worktrees: res.worktrees, worktreePath: res.worktrees[0]?.path ?? "" } : p,
+        ),
+      );
+    } catch {
+      // The create call surfaces the same failure with words.
+    }
+  }, []);
+
+  const setPick = (index: number, patch: Partial<DocRepoPick>): void => {
+    setPicks((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    if (patch.repoId) void loadWorktrees(index, patch.repoId);
+  };
+
+  const create = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const snap = await api.createDocument({
+        kind: "document",
+        markdown,
+        contextRepos: picks.map((p) => ({
+          repoId: p.repoId,
+          source: p.source,
+          ...(p.source === "worktree" ? { worktreePath: p.worktreePath } : {}),
+        })),
+      });
+      onCreated(snap.review.id);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="document-form" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <label className="hint" htmlFor="doc-markdown">
+        Paste the document&apos;s Markdown
+      </label>
+      <textarea
+        id="doc-markdown"
+        data-testid="doc-markdown"
+        rows={10}
+        value={markdown}
+        onChange={(e) => setMarkdown(e.target.value)}
+        placeholder={"# Title\n\nPaste Markdown here…"}
+        style={{ width: "100%", fontFamily: "monospace" }}
+      />
+      {picks.map((pick, i) => (
+        <div key={i} className="frow" style={{ gap: 6, flexWrap: "wrap" }} data-testid={`doc-repo-${i}`}>
+          <select
+            aria-label={`Context repo ${i + 1}`}
+            data-testid={`doc-repo-select-${i}`}
+            value={pick.repoId}
+            onChange={(e) => setPick(i, { repoId: e.target.value, worktreePath: "", worktrees: [] })}
+          >
+            <option value="">Pick a repo…</option>
+            {realRepos.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.owner}/{r.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={`Read repo ${i + 1} from`}
+            data-testid={`doc-repo-source-${i}`}
+            value={pick.source}
+            onChange={(e) => {
+              const source = e.target.value as ContextRepoSource;
+              setPick(i, { source });
+              if (source === "worktree" && pick.repoId) void loadWorktrees(i, pick.repoId);
+            }}
+          >
+            <option value="local">Local copy</option>
+            <option value="origin-main">origin/main</option>
+            <option value="worktree">A worktree</option>
+          </select>
+          {pick.source === "worktree" ? (
+            <select
+              aria-label={`Worktree ${i + 1}`}
+              data-testid={`doc-repo-worktree-${i}`}
+              value={pick.worktreePath}
+              onChange={(e) => setPick(i, { worktreePath: e.target.value })}
+            >
+              {pick.worktrees.length === 0 ? <option value="">No worktrees found</option> : null}
+              {pick.worktrees.map((w) => (
+                <option key={w.path} value={w.path}>
+                  {w.branch ? `${w.branch} · ` : ""}
+                  {w.path}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {picks.length > 1 ? (
+            <Button variant="quiet" size="sm" type="button" onClick={() => setPicks((p) => p.filter((_, j) => j !== i))}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {picks.length < 2 ? (
+        <div>
+          <Button
+            variant="quiet"
+            size="sm"
+            type="button"
+            onClick={() =>
+              setPicks((p) => [...p, { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] }])
+            }
+          >
+            Add another context repo
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="hint" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div>
+        <Button
+          variant="primary"
+          type="button"
+          disabled={busy || markdown.trim() === "" || picks.some((p) => !p.repoId)}
+          onClick={() => void create()}
+        >
+          {busy ? "Creating…" : "Create document review"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function StartPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -321,6 +478,7 @@ export function StartPage(): React.JSX.Element {
   // Prior sessions (front-screen list, filtered to the selected repo below).
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [docOpen, setDocOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -342,7 +500,7 @@ export function StartPage(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   // Review-request recency filter (#95): remembered like the repo choice.
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
-  // Author filter (#228): one shared single-select for Reviews + PR lists.
+  // Author filter (#228): one single-select for the requested-review groups.
   const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
 
   // Readiness (fills in after render; never blocks).
@@ -525,7 +683,7 @@ export function StartPage(): React.JSX.Element {
     }
   }, []);
 
-  /** Clear both list filters (#228 shares one author filter across lists). */
+  /** Clear both list filters (#228's way back clears the pair). */
   const showAllLists = useCallback(() => {
     selectRecency("all");
     selectAuthor(AUTHOR_ALL);
@@ -814,11 +972,9 @@ export function StartPage(): React.JSX.Element {
   // Sessions whose repo is neither demo nor known (a checkout that went
   // away, or repos failing to load) render in their own group below so
   // they stay openable and removable.
-  const repoSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
-  // #228: the shared author filter applies to Reviews (by PR author;
-  // branch reviews carry no author and stay visible — see matchesAuthor)
-  // as well as to the PR lists below. Recency still skips Reviews.
-  const visibleSessions = repoSessions.filter((s) => matchesAuthor(s.author, authorFilter));
+  // #228 leaves Reviews unfiltered (owner decision): only the
+  // requested-review groups below read the author filter.
+  const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
   const knownIds = new Set(repos.map((r) => r.id));
@@ -843,10 +999,12 @@ export function StartPage(): React.JSX.Element {
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
   const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
-  // #228: author options (with counts) from the unfiltered lists, so the
-  // options stay stable while either filter is active. Sorted by login.
+  // #228: author options (with counts) from the requested-review
+  // groups only — the only lists the filter reads. Computed from the
+  // unfiltered groups, so the options stay stable while either filter
+  // is active. Sorted by login.
   const authorOptions = (() => {
-    const counts = authorCounts(repoSessions, [...authoring, ...requested]);
+    const counts = authorCounts(requested);
     const logins = [...counts.keys()].sort((a, b) => a.localeCompare(b));
     return [
       { value: AUTHOR_ALL, label: "All" },
@@ -865,7 +1023,6 @@ export function StartPage(): React.JSX.Element {
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
     .sort(byUpdatedDesc)
-    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleBranches = [...branches]
     .sort(byUpdatedDesc)
@@ -977,14 +1134,7 @@ export function StartPage(): React.JSX.Element {
               ))}
               {visibleSessions.length === 0 && demoSessions.length === 0 && orphanSessions.length === 0 ? (
                 <p className="hint" data-testid="sessions-empty">
-                  {authorEmptyNote("reviews") && repoSessions.length > 0 ? (
-                    <>
-                      {authorEmptyNote("reviews")}{" "}
-                      <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
-                        Show all
-                      </Button>
-                    </>
-                  ) : reposLoaded && realRepos.length === 0 ? (
+                  {reposLoaded && realRepos.length === 0 ? (
                     <>
                       No reviews yet. <Link to="/settings?tab=repositories">Add a repo in Settings</Link>{" "}
                       to open your first review — or try the demo below.
@@ -1034,6 +1184,19 @@ export function StartPage(): React.JSX.Element {
                 </div>
               ) : null}
             </div>
+          )}
+
+          {/* New document review (issue #222). */}
+          <h1 className="divider">Document</h1>
+          {docOpen ? (
+            <DocumentForm repos={repos} onCreated={(id) => navigate(`/review/${id}`)} />
+          ) : (
+            <p className="hint">
+              Review a pasted Markdown document with 1–2 repos as context.{" "}
+              <Button variant="quiet" size="sm" type="button" onClick={() => setDocOpen(true)}>
+                New document review
+              </Button>
+            </p>
           )}
 
           {/* PRs and branches for the selected repo. The PR input never
@@ -1108,9 +1271,10 @@ export function StartPage(): React.JSX.Element {
                       {/* Recency filter (#95, #131, #148): one compact
                           control for everything in this block — "Your
                           PRs", both review groups and Recent branches (by
-                          last commit date). Recency never filters Reviews
-                          above. The author filter (#228) beside it is the
-                          one shared control: it filters Reviews too. */}
+                          last commit date). Reviews above stays
+                          unfiltered. The author filter (#228) lives with
+                          the "Waiting on your review" section below: it
+                          reads and filters only those two groups. */}
                       <span style={{ width: 150, flex: "none" }}>
                         <Select
                           aria-label="Updated within"
@@ -1119,14 +1283,6 @@ export function StartPage(): React.JSX.Element {
                             if (isRecencyWindow(v)) selectRecency(v);
                           }}
                           options={RECENCY_WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
-                        />
-                      </span>
-                      <span style={{ width: 170, flex: "none" }}>
-                        <Select
-                          aria-label="Author"
-                          value={effectiveAuthor}
-                          onValueChange={(v) => selectAuthor(v)}
-                          options={authorOptions}
                         />
                       </span>
                     </div>
@@ -1153,11 +1309,9 @@ export function StartPage(): React.JSX.Element {
                     empty="No open PRs."
                     emptyTestId="authoring-empty"
                     filteredNote={
-                      authoring.length > 0 && visibleAuthoring.length === 0
-                        ? (authorEmptyNote("PRs") ?? windowEmptyNote)
-                        : null
+                      authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null
                     }
-                    onShowAll={showAllLists}
+                    onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) =>
@@ -1176,6 +1330,22 @@ export function StartPage(): React.JSX.Element {
                       {listErrors.requested}
                     </p>
                   ) : null}
+                  {/* Author filter (#228): one single-select for these
+                      two groups only ("Your PRs", branches and Reviews
+                      stay unfiltered). Authors with counts come from the
+                      two groups; the choice persists like the time
+                      filter. Right-aligned like the block tools above, so
+                      the trailing control shares the rows' right edge. */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                    <span style={{ width: 170, flex: "none" }}>
+                      <Select
+                        aria-label="Author"
+                        value={effectiveAuthor}
+                        onValueChange={(v) => selectAuthor(v)}
+                        options={authorOptions}
+                      />
+                    </span>
+                  </div>
                   <div className="subhead">Requested of you</div>
                   {visibleDirect.length === 0 ? (
                     <p className="hint subempty" data-testid="requested-direct-empty">
@@ -1255,7 +1425,7 @@ export function StartPage(): React.JSX.Element {
                     empty="No branches."
                     emptyTestId="branches-empty"
                     filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
-                    onShowAll={showAllLists}
+                    onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
@@ -1344,7 +1514,7 @@ export function SessionRow({
           ) : (
             <>
               {s.reviewedHunks}/{s.totalHunks} hunks reviewed
-              {s.pendingComments > 0 ? ` · ${s.pendingComments} for PR` : ""}
+              {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {s.guideStatus === "running" ? (
                 <>
                   {" · "}

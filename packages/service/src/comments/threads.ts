@@ -8,15 +8,15 @@
  *
  * - `createThreadInDraft` / `createThread`: a reviewer comment anchored
  *   on a guide block, a description paragraph, or a diff line, with
- *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are for the PR
- *   by default.
+ *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are in the
+ *   Outbox by default.
  * - `createSuggestedCommentInDraft` / `createSuggestedComment`: agent
  *   findings' suggested comments — a comment on a diff line whose first
- *   message is flagged `suggested` and is NOT marked for the PR (PRD §4.9).
+ *   message is flagged `suggested` and is NOT in the Outbox (PRD §4.9).
  * - `replyInDraft` / `replyToThread`: user reply.
  * - `setOpenInDraft` / `setThreadOpen`, `setPostInDraft` / `setThreadPost`,
  *   `setDraftInDraft` / `updateThreadDraft`, `deleteInDraft` /
- *   `deleteAnnotation`: open/close, mark for PR, edit For-PR draft, delete.
+ *   `deleteAnnotation`: open/close, mark Outbox, edit the Outbox draft, delete.
  *
  * The `POST /api/reviews/:id/actions` union (`note`, `close`, `delete`)
  * overlaps this module. The actions route (another agent) should call
@@ -87,6 +87,13 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
       return { kind: "hunk", fileKey: anchor.fileKey, contentHash: anchor.contentHash };
     case "comment":
       return { kind: "comment", commentId: anchor.commentId };
+    case "code": {
+      const host: AnchorHost = { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line };
+      if (anchor.endLine !== undefined) {
+        (host as { endLine?: number }).endLine = anchor.endLine;
+      }
+      return host;
+    }
   }
 }
 
@@ -228,6 +235,35 @@ export function buildAnchor(
       ...recorded,
     };
   }
+  if (host.kind === "code") {
+    // #81: a file-tab anchor. The file lives outside the snapshot's diff
+    // files, so there is nothing to look the quote up in here; the client
+    // sends the quote (and any prefix/suffix it recorded). Lines are
+    // 1-based; a range past the end is kept as cited.
+    if (!host.path || host.path.includes("\0") || host.path.startsWith("/") || host.path.split(/[\\/]/).includes("..")) {
+      throw new Error(`invalid code path ${host.path}`);
+    }
+    if (!host.commit || !/^[0-9a-fA-F]{4,64}$/.test(host.commit)) {
+      throw new Error(`invalid code commit ${host.commit}`);
+    }
+    if (!Number.isSafeInteger(host.line) || host.line < 1) {
+      throw new Error(`invalid code line ${String(host.line)}`);
+    }
+    if (host.endLine !== undefined) {
+      if (!Number.isSafeInteger(host.endLine) || host.endLine < host.line) {
+        throw new Error(`invalid code endLine ${String(host.endLine)}`);
+      }
+    }
+    return {
+      host,
+      quotedText: quote,
+      prefix: opts.prefix ?? "",
+      suffix: opts.suffix ?? "",
+      position: opts.position ?? host.line,
+      version,
+      ...recorded,
+    };
+  }
   // diff-line: the file must exist; the line should be a real new/old-side
   // number, but we accept any positive line (location computation falls
   // back to the nearest commentable line or the review body).
@@ -293,7 +329,7 @@ export function createThreadInDraft(
   }
   // Guide comments start closed; diff + description comments start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
-  // A Comment is for the PR by default (issue #135).
+  // A Comment is in the Outbox by default (issue #135).
   const open = anchor.host.kind === "block" ? false : true;
   const thread: Annotation = {
     id: newAnnotationId(),
@@ -369,7 +405,7 @@ export function setOpenInDraft(
   findThread(draft, commentId).open = open;
 }
 
-/** Draft helper: mark for PR. */
+/** Draft helper: mark Outbox membership (stored `post`). */
 export function setPostInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   commentId: string,
@@ -380,7 +416,7 @@ export function setPostInDraft(
   if (post) thread.open = true;
 }
 
-/** Draft helper: edit the For-PR draft text (null clears it). */
+/** Draft helper: edit the Outbox draft text (null clears it). */
 export function setDraftInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   commentId: string,
@@ -435,7 +471,7 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: s
 }
 
 /**
- * Exact text that will be posted for a thread: the For-PR draft when set,
+ * Exact text that will be posted for a thread: the Outbox draft when set,
  * else the first user message, else the suggested message (prototype
  * `Comments menu` draft fallback).
  */
@@ -543,7 +579,7 @@ export async function closeAnnotation(
   return setThreadOpen(store, reviewId, annotationId, false);
 }
 
-/** Mark/unmark a thread For PR. */
+/** Mark/unmark a thread's Outbox membership. */
 export async function setThreadPost(
   store: ReviewStore,
   reviewId: string,
@@ -555,7 +591,7 @@ export async function setThreadPost(
   });
 }
 
-/** Edit the For-PR draft text (null clears it). */
+/** Edit the Outbox draft text (null clears it). */
 export async function updateThreadDraft(
   store: ReviewStore,
   reviewId: string,

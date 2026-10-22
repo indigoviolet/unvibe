@@ -4,8 +4,8 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`, `msg`, `av`, `who`,
  * `composer`) so `styles/prototype.css` applies unchanged.
  *
- * - Header: quoted text (or `file:line` in the diff), Mark for PR (send
- *   icon, filled when on), "Ask the agent about this" (opens the usual
+ * - Header: quoted text (or `file:line` in the diff), Outbox (send
+ *   icon, filled when on), "Ask about this" (opens the usual
  *   Ask card on the comment's anchor, quoting the comment — the only way
  *   a comment leads to an agent reply), Delete, Close.
  * - Reply box always visible with Discard and Reply/Save; typed text
@@ -15,7 +15,7 @@
  *   Replies are reviewer-written only — never agent answers. Issue #163:
  *   agent-suggested comments carry no reply box (a reply could never be
  *   answered); selecting in the suggestion summons the toolbar instead,
- *   and "Ask the agent about this" answers.
+ *   and "Ask about this" answers.
  * - Outdated comments show the original snippet + a link to the new code.
  * - Posted comments show their posted state and are never pending.
  */
@@ -127,7 +127,7 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
 
   const togglePost = (): void => {
     api.updateComment(reviewId, thread.id, { post: !thread.post }).catch((err: unknown) => {
-      toast(`Couldn't mark the comment: ${friendlyError(err)}`);
+      toast(`Couldn't update the Outbox: ${friendlyError(err)}`);
     });
   };
 
@@ -158,10 +158,10 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
               readOnly
                 ? "Viewing an older version · read-only"
                 : thread.post
-                  ? "Marked for the PR · click to unmark"
-                  : "Mark for the PR"
+                  ? "Remove from the Outbox"
+                  : "Add to Outbox"
             }
-            aria-label={thread.post ? "Marked for the PR · click to unmark" : "Mark for the PR"}
+            aria-label={thread.post ? "Remove from the Outbox" : "Add to Outbox"}
             aria-pressed={thread.post}
             data-post={thread.id}
             disabled={readOnly}
@@ -174,8 +174,8 @@ export function ThreadView({ reviewId, thread, readOnly }: Props) {
           <button
             className="ib"
             type="button"
-            data-tip="Ask the agent about this"
-            aria-label="Ask the agent about this"
+            data-tip="Ask about this"
+            aria-label="Ask about this"
             data-ask-about={thread.id}
             onClick={onAskAbout}
           >
