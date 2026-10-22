@@ -2709,3 +2709,35 @@ hunk coverage) is reported for a separate issue, not fixed here.
   service + fake updater: one-line toggle, short help, no `.ui-row-meta`
   in channel rows, shared left/right edges, centred label), tour
   frames `packages/web/visual-tour/settings-version-*` (git-ignored).
+
+## Addendum: #232 (branch `fix/232-loading-states`)
+
+- **#232 (review-page loading states):** while a review is being
+  prepared both panes share one modest loading state — the app's
+  processing indicator (`PaneLoading` in `ui/index.tsx`, next to
+  `ProcessingDots`) plus a short label at body size ("Building the
+  guide" / "Loading the diff"), inside the pane's normal content
+  padding (the diff pane's placeholder carries its own 16px 20px
+  padding, matching the description pane, instead of sitting
+  unpadded against the pane edge). Dropped: the serif title-size
+  "Building the guide…" heading, the stage label ("Reading the
+  change…"), and the commentary sentences ("The diff is ready to
+  read while you wait.", "The diff appears here once the review
+  opens."). The indicator is the only working signal (no trailing
+  ellipses, no stacked dots). Both panes use the one shared
+  `.pane-loading-pad` padding (16px 20px); `#page`'s own top padding
+  is neutralised exactly while the guide shows only loading
+  (`#page:has(> .pane-loading-pad)`), so the two labels sit at the
+  same height in every theme (their vertical centres match within
+  2px, asserted in the tour). The ingest "Opening PR…" heading and
+  its step label go the same way (the review bar already names the
+  review); the start page's Reviews-row step text is untouched, as
+  are the failed/empty terminal states. Evidence: updated
+  `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
+  asserts "Building the guide", no step), new tour scenes
+  `review-preparing-*` (ingest loading: both panes) and
+  `guide-building-*` (seeded running pipeline stage under
+  agent=none: guide loading, diff ready) in every theme
+  (Default, Studio, Console) × scheme × width with `checkLayout`,
+  frames `packages/web/visual-tour/review-preparing-*` and
+  `guide-building-*` (git-ignored).

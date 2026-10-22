@@ -69,3 +69,7 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 
 .ui-fields{display:grid;grid-template-columns:minmax(140px,max-content) minmax(0,1fr);gap:var(--space-2) var(--space-4)}
 .ui-fields>.ui-field{display:grid;grid-template-columns:subgrid;grid-column:1/-1;margin:0}
+/* Shared review-pane loading state (issue #232): processing indicator +
+   short label at body size, inside the pane's normal content padding. */
+.pane-loading{display:flex;align-items:center;gap:var(--space-2);margin:0;font-size:var(--text-base);color:var(--muted)}
+.pane-loading-pad{padding:16px 20px}

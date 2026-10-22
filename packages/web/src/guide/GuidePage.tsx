@@ -20,10 +20,9 @@ import { useReview } from "../state/store.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
-import { ingestStepLabel, stageLabel } from "./stageLabels.js";
 import { DocumentView } from "./DocumentView.js";
 import { PageView } from "./PageView.js";
-import { Button } from "../ui/index.js";
+import { Button, PaneLoading } from "../ui/index.js";
 import "./guide-m2.css";
 
 function pageIdFromSplat(splat: string | undefined): string | null {
@@ -164,31 +163,20 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   if (!snapshot || !pages) {
     return (
-      <div className="doc">
-        <p className="hint">Loading the guide…</p>
+      <div className="doc pane-loading-pad">
+        <PaneLoading label="Building the guide" />
       </div>
     );
   }
 
-  // #92: async open — loading shows the step, failed shows the error + Retry.
+  // #92: async open — loading shows the shared preparing state; failed shows the error + Retry.
   // The PR title/number/author rode the create request (TopBar shows them
-  // from the summary); here the step is what matters until the ingest lands
-  // through patch events.
+  // from the summary); the loading state itself carries no step label (#232).
   const ingestStatus = snapshot.ingest.status;
   if (ingestStatus === "loading") {
-    const stepLabel = ingestStepLabel(snapshot.ingest.step);
-    const pr = snapshot.review.prNumber !== undefined ? `PR #${snapshot.review.prNumber}` : snapshot.review.branch;
     return (
-      <div className="doc" data-testid="review-loading">
-        <h1 className="title">Opening {pr}…</h1>
-        <p className="hint" data-testid="review-loading-step">
-          <span className="dots" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>{" "}
-          {stepLabel}
-        </p>
+      <div className="doc pane-loading-pad" data-testid="review-loading">
+        <PaneLoading label="Building the guide" />
       </div>
     );
   }
@@ -230,25 +218,20 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // selector lives in the review bar, so it still switches here.
   if (!current && pageId === null) {
     const empty = emptyGuideState(snapshot.pipeline, snapshot.jobs ?? []);
-    // Plain-words label for whatever is running (shared with the start
-    // page); omitted when the detail names nothing in the map.
-    const emptyLabel = empty.kind === "building" ? stageLabel(empty.detail?.split(",")[0]) : undefined;
+    // #232: while the guide builds, both panes share one modest loading
+    // state (indicator + short label) — no title-size heading, no stage
+    // label, no commentary sentences.
+    if (empty.kind === "building") {
+      return (
+        <div className="doc pane-loading-pad" data-testid="guide-empty" data-state="building">
+          <PaneLoading label="Building the guide" />
+        </div>
+      );
+    }
     return (
       <>
         <div className="doc" data-testid="guide-empty" data-state={empty.kind}>
-          {empty.kind === "building" ? (
-            <>
-              <h1 className="title">Building the guide…</h1>
-              <p className="hint">
-                <span className="dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>{" "}
-                {emptyLabel ? `${emptyLabel} ` : ""}The diff is ready to read while you wait.
-              </p>
-            </>
-          ) : empty.kind === "error" ? (
+          {empty.kind === "error" ? (
             <>
               <h1 className="title">Couldn't build the guide</h1>
               <p className="hint">{empty.detail}</p>
