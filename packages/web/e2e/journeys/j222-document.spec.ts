@@ -234,11 +234,14 @@ test.describe("J222 document review", () => {
 
     // The earlier document comment is in the Outbox (#223, #226),
     // exported under its document block with a Copy-able Markdown box.
+    // A document has no GitHub side on either tab (#236): no
+    // "On GitHub" section, no Submit-drafts line, and a short entry
+    // meta (the guide pattern).
     await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator(".cmenu")).not.toContainText("On GitHub");
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Please expand this part.");
     await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toContainText("Design note");
-    // A document has no GitHub side: no "On GitHub" section, no
-    // Submit-drafts line, and a short entry meta (the guide pattern).
     await expect(page.locator(".cmenu")).not.toContainText("On GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("Nothing reaches GitHub");
     await expect(page.locator(".cmenu")).not.toContainText("stays in the Outbox");

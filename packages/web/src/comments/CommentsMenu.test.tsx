@@ -1,10 +1,11 @@
 /**
- * Comments menu sections (issue #226): one scrolling list with three
- * disjoint sections — This review (unmarked threads; posted ones return
- * here), Outbox (marked, unposted, with drafts and the #223 export box),
- * On GitHub (read-only threads, keeping the #183 fold and show/hide
- * behaviour under its strong heading). Each heading carries its count;
- * each thread appears once. Document reviews show no GitHub side (#222).
+ * Comments menu tabs (issues #226, #236): the Comments tab holds This
+ * review (unmarked threads; posted ones return here) and On GitHub
+ * (read-only threads, keeping the #183 fold and show/hide behaviour
+ * under its strong heading); the Outbox tab holds the marked, unposted
+ * threads with drafts and the #223 export box. Each tab and heading
+ * carries its count; each thread appears once. Document reviews show no
+ * GitHub side (#222).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -108,7 +109,7 @@ afterEach(() => {
   useReview.getState().clear();
 });
 
-describe("three disjoint sections", () => {
+describe("two tabs", () => {
   const prefs = { showExistingComments: true, existingCommentsCollapsed: false } as ReviewSnapshot["viewPrefs"];
   const annotations = [
     thread("t-plain", "Plain review thought"),
@@ -117,22 +118,40 @@ describe("three disjoint sections", () => {
     thread("t-ai", "Suggested tweak", { messages: [{ who: "ai", text: "Suggested tweak", suggested: true }] }),
   ];
 
-  it("This review holds unmarked and posted threads, the Outbox the marked unposted one", () => {
+  it("opening shows the Comments tab; the Outbox lives on its own tab", () => {
     renderMenu(snapshot(prefs, annotations));
+    // The segmented control carries both counts; the first tab is active.
+    expect(screen.getByRole("button", { name: "Comments 3" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Outbox 1" })).toHaveAttribute("aria-pressed", "false");
     const review = screen.getByLabelText(/This review, 3 comments/);
     expect(review).toBeVisible();
-    expect(screen.getByLabelText(/Outbox, 1 comment/)).toBeVisible();
     expect(screen.getByLabelText(/On GitHub, 1 thread/)).toBeVisible();
-    // Posted threads return to This review; each thread appears once as
-    // an entry (the export box also quotes the Outbox post text).
+    expect(screen.queryByLabelText(/Outbox, 1 comment/)).not.toBeInTheDocument();
+    // Posted threads return to This review.
     expect(review).toHaveTextContent("Posted thought");
     for (const text of ["Plain review thought", "Posted thought"]) {
       expect(screen.getAllByText(text)).toHaveLength(1);
     }
+    // The Outbox tab holds the marked unposted thread alone, with the
+    // file group showing only the line (the export box below quotes the
+    // full anchor by design, #223).
+    fireEvent.click(screen.getByRole("button", { name: "Outbox 1" }));
+    const box = screen.getByLabelText(/Outbox, 1 comment/);
+    expect(box).toBeVisible();
+    expect(screen.queryByLabelText(/This review/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/On GitHub/)).not.toBeInTheDocument();
     expect(screen.getAllByText("Outbox thought").filter((el) => el.closest("[data-cjump]"))).toHaveLength(1);
-    // Entries under the file group show only their line, not the file again.
-    expect(screen.getAllByText(":2")).not.toHaveLength(0);
-    expect(review).not.toHaveTextContent("src/app.py:2");
+    expect(box).not.toHaveTextContent("src/app.py:2");
+  });
+
+  it("the Outbox pill opens the Outbox tab; the button opens Comments", () => {
+    renderMenu(snapshot(prefs, annotations));
+    expect(screen.getByLabelText(/This review, 3 comments/)).toBeVisible();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("1 in Outbox"));
+    expect(screen.getByRole("button", { name: "Outbox 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText(/Outbox, 1 comment/)).toBeVisible();
   });
 
   it("AI-suggested threads carry their tag at a glance", () => {
@@ -147,10 +166,11 @@ describe("three disjoint sections", () => {
     expect(review).not.toHaveTextContent("Unfold obsolete folded response headers");
   });
 
-  it("the Outbox section shows drafts and the export box with Copy", async () => {
+  it("the Outbox tab shows drafts and the export box with Copy", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     renderMenu(snapshot(prefs, annotations));
+    fireEvent.click(screen.getByRole("button", { name: "Outbox 1" }));
     const box = screen.getByLabelText(/Outbox, 1 comment/);
     expect(box).toHaveTextContent("Nothing reaches GitHub until you use Submit review.");
     // The entry carries its editable draft; the export box quotes the post text.
@@ -162,6 +182,7 @@ describe("three disjoint sections", () => {
 
   it("an empty Outbox hides the export box", () => {
     renderMenu(snapshot(prefs, [thread("t-plain", "Plain review thought")]));
+    fireEvent.click(screen.getByRole("button", { name: "Outbox 0" }));
     expect(screen.getByText(/Nothing in the Outbox yet/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
   });
@@ -203,5 +224,10 @@ describe("On GitHub section", () => {
     );
     expect(screen.queryByText("On GitHub")).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing reaches GitHub/)).not.toBeInTheDocument();
+    // Neither tab grows a GitHub side: the Outbox tab holds the empty
+    // state only.
+    fireEvent.click(screen.getByRole("button", { name: "Outbox 0" }));
+    expect(screen.queryByText("On GitHub")).not.toBeInTheDocument();
+    expect(screen.getByText(/Nothing in the Outbox yet/)).toBeVisible();
   });
 });

@@ -66,8 +66,9 @@ test.describe("J10 suggested comments and questions", () => {
       await expect(thread.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible({ timeout: 10_000 });
     }
 
-    // Edit its draft in the Comments menu's Outbox section.
+    // Edit its draft on the Comments menu's Outbox tab.
     await page.locator('#reviewbar [data-cm=""]').click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
     const draft = page.locator(".cmenu textarea[id^='ob-']").first();
     if ((await draft.count()) > 0) {
       await draft.fill("Edited suggestion for the PR.");
