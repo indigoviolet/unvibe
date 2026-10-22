@@ -18,6 +18,16 @@ test("doctor breadcrumb trails back through Settings", async ({ page }) => {
   const gear = page.locator("header.top > a.ib[href=\"/settings\"]");
   await expect(gear).toHaveAttribute("aria-label", "Settings");
   await expect(gear).toHaveAttribute("title", "Settings");
+  // #238: the Documents icon sits next to the Unvibe home link on the
+  // left, before the breadcrumb, badge, update and Settings controls.
+  const barOrder = await page.evaluate(() =>
+    [...(document.querySelector("header.top")?.children ?? [])].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
+    ),
+  );
+  expect(barOrder[0]).toBe("Unvibe");
+  expect(barOrder[1]).toBe("Documents");
+  expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
 });
 
 test("doctor page shows service, PATH and tool detail with copy", async ({ page }) => {

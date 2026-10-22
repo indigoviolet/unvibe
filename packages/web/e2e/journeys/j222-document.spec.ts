@@ -84,6 +84,17 @@ test.describe("J222 document review", () => {
     await expect(page.getByRole("button", { name: "New document review" })).toHaveCount(0);
     await expect(page.getByTestId("document-form")).toHaveCount(0);
 
+    // #238: the Documents icon sits next to the Unvibe home link on the
+    // left, before the breadcrumb, badge, update and Settings controls.
+    const barOrder = await page.evaluate(() =>
+      [...(document.querySelector("header.top")?.children ?? [])].map(
+        (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
+      ),
+    );
+    expect(barOrder[0]).toBe("Unvibe");
+    expect(barOrder[1]).toBe("Documents");
+    expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
+
     // The top-bar icon opens the documents screen.
     await page.getByRole("link", { name: "Documents" }).click();
     await page.waitForURL(/\/documents/, { timeout: 30_000 });

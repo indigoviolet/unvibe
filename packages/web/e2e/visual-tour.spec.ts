@@ -1479,7 +1479,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // Start page: the top bar carries the Documents icon (tooltip
-    // "Documents") next to the Settings gear; the page itself holds no
+    // "Documents") next to the Unvibe home link; the page itself holds no
     // Document section.
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("link", { name: "Documents" })).toBeVisible({ timeout: 15_000 });
