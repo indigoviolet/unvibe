@@ -286,7 +286,9 @@ test("collapse chevron hides the card body; contents still lists it", async ({ p
   await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
   await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
   await expect(page).toHaveURL(/\/review\/demo\/page\/c-ows-rws/);
-  await expect(page.locator("#page h1.title")).toContainText("OWS", { timeout: 15_000 });
+  // The on-demand concept page renders (mock and replay titles differ,
+  // so assert non-empty, not exact text) with no bookmark control.
+  await expect(page.locator("#page h1.title")).not.toBeEmpty({ timeout: 15_000 });
   await expect(page.locator("#page .title-row button")).toHaveCount(0);
 });
 
