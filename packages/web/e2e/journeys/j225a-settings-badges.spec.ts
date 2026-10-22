@@ -212,11 +212,12 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(barBadges).not.toContainText("Open");
     await expect(barBadges).not.toContainText("Changes requested");
     await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
-    // #235: the bar keeps the GitHub link and status icon, but no PR title
-    // and no preview/full-access badges. (Agent is none here, so the left
-    // pane keeps today's "No guide yet" empty state; the title move is
-    // covered by the guide heading in reviews with a guide.)
+    // #235: the bar keeps the GitHub link and status icon, but no PR title,
+    // no open-externally button, no preview/full-access badges. (Agent is
+    // none here, so the left pane keeps today's "No guide yet" empty state;
+    // the title move is covered by the guide heading in reviews with a guide.)
     await expect(page.locator("#reviewbar")).not.toContainText("Journey PR");
+    await expect(page.locator('#reviewbar a[aria-label="Open PR on GitHub"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="preview-marker"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="full-access-marker"]')).toHaveCount(0);
     await expect(page.locator("#page .doc h1.title")).toContainText("No guide yet", { timeout: 30_000 });

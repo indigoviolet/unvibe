@@ -2838,13 +2838,14 @@ hunk coverage) is reported for a separate issue, not fixed here.
   home, the GitHub link (`owner/repo#N`, title "Open PR on GitHub"),
   the PR status icon when there is one (none when open), the version
   picker, Debug, Guide|Source, Comments + Submit; removed: the PR
-  title `<b>` and the compact PREVIEW / FULL ACCESS badges (front page
-  only). The PR title moved
+  title `<b>`, the open-externally icon button (the GitHub link already
+  opens the PR, per the owner's follow-up comment), and the compact
+  PREVIEW / FULL ACCESS badges (front page only). The PR title moved
   to the left pane root heading (`PageView`: a default-stored root
   "Guide" renders the review identity title — PR title, else branch —
   in the same `h1.title` style; non-default roots unchanged; document
   reviews keep their document title). Evidence: `src/shell/ReviewBar.test.tsx`
-  (no title/badges in the bar), `src/guide/PageView.test.tsx`
+  (no title/button/badges in the bar), `src/guide/PageView.test.tsx`
   (default root shows the branch fallback), journeys J225a/J230 (bar
   asserts), tour frames `theme-*-guide-*` (guide heading carries the
   PR title, slim bar), `document-review-*` (document title kept) and

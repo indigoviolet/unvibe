@@ -11,9 +11,9 @@
  *   the dropdown, an older shown version flagged with a warning border),
  *   and Debug as an icon button (hidden until the review finishes
  *   opening, issue #92). #235: no PR title here (it lives as the guide
- *   heading) and no preview/full-access badges (front page only). The
- *   PR label links out alongside the link-out icon (#94). No Settings
- *   gear: Settings is reached from the start page.
+ *   heading), no open-externally button (the GitHub link opens the PR),
+ *   no preview/full-access badges (front page only). No Settings gear:
+ *   Settings is reached from the start page.
  * - Middle: the `[ Guide | Source ]` pane selector. Each segment toggles
  *   its pane (issue #83); `#toggleRight` stays on the Source segment.
  * - Right: Comments and Submit side by side, Submit as the primary button,
@@ -80,11 +80,6 @@ export function ReviewBar({
         )}
         <PrBadges prState={prState} reviewDecision={reviewDecision} />
         <VersionSwitcher />
-        {prUrl ? (
-          <a className="ib bd" href={prUrl} target="_blank" rel="noreferrer" aria-label="Open PR on GitHub" title="Open PR on GitHub">
-            <Icon name="open" />
-          </a>
-        ) : null}
         {ingestReady ? (
           <Link
             className="ib bd"
