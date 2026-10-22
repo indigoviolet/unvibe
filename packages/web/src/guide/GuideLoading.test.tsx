@@ -87,7 +87,7 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
     );
     expect(screen.getByText("Couldn't open this review: the PR wasn't found")).toBeInTheDocument();
     expect(screen.getByText("couldn't open")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Remove PR title/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove this review" })).toBeInTheDocument();
   });
 });
 
