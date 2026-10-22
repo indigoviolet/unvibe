@@ -111,7 +111,7 @@ describe("reviewScopeOf / inRecencyWindow (#95)", () => {
 });
 
 describe("StartPage requested split and filter (#95)", () => {
-  it("splits direct and team, newest first, with time and team names", async () => {
+  it("splits direct and team, newest first, with time and no team names", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     // The service returns both groups newest-first; the page keeps that order.
     mockLists([DIRECT_NEW, DIRECT_OLD, TEAM_MID, TEAM_OLD]);
@@ -124,9 +124,9 @@ describe("StartPage requested split and filter (#95)", () => {
     // Newest first within the direct group.
     const titles = screen.getAllByText(/Asked of you/).map((el) => el.textContent);
     expect(titles[0]).toBe("Asked of you and your team");
-    // Relative time and team names on the rows.
+    // Relative time on the rows; the team name is not shown (#224).
     expect(screen.getByText(/1h ago/)).toBeInTheDocument();
-    expect(screen.getAllByText(/via core/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/via core/)).not.toBeInTheDocument();
   });
 
   it("shows rows stored before scopes under direct", async () => {
@@ -186,7 +186,8 @@ describe("StartPage requested split and filter (#95)", () => {
     const sizedMeta = screen.getByText("Sized PR").closest(".ci")?.querySelector(".cw");
     expect(sizedMeta?.textContent).toContain("+1,200");
     expect(sizedMeta?.textContent).toContain("−34");
-    expect(sizedMeta?.textContent).toContain("6 files");
+    // #224: the file count is not shown.
+    expect(sizedMeta?.textContent).not.toContain("files");
     expect(sizedMeta?.querySelector(".a")?.textContent).toBe("+1,200");
     expect(sizedMeta?.querySelector(".d")?.textContent).toBe("−34");
     // The unsized row carries no size text in its meta line.

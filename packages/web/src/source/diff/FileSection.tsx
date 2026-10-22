@@ -26,7 +26,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
-import { Button, Card } from "../../ui/index.js";
+import { Button, Card, DiffStat } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
@@ -622,10 +622,7 @@ function HunkBlock(
               {" ~"}
             </span>
           ) : null}{" "}
-          ·{" "}
-          <span className="st">
-            <span className="a">+{h.added}</span> <span className="d">−{h.removed}</span>
-          </span>
+          · <DiffStat added={h.added} removed={h.removed} />
           {changedSinceReviewed ? <span className="prtag">changed since reviewed</span> : null}
           {plotName ? (
             <button
@@ -1011,9 +1008,7 @@ export function FileSection(props: SectionProps): ReactNode {
         ) : null}
         {file.isBinary ? <span className="gtag">binary</span> : null}
         {file.category === "generated" ? <span className="gtag">generated</span> : null}
-        <span className="st">
-          <span className="a">+{stats.added}</span> <span className="d">−{stats.removed}</span>
-        </span>
+        <DiffStat added={stats.added} removed={stats.removed} />
         <span className="revc">
           {props.reviewed}/{file.hunks.length}
         </span>

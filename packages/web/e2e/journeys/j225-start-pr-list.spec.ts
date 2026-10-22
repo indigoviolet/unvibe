@@ -1,6 +1,6 @@
 /** J225 (#225): start page with PR lists — the fake `gh` returns Your
  * PRs, an empty Requested-of-you, and team PRs with mixed states (open,
- * draft, merged, approved, changes requested) so #224's badges show up
+ * draft, merged, approved, changes requested) so #224's icons show up
  * once part A merges. `checkLayout` runs on the list in every variant.
  * No real `gh`, no network: the fake answers `pr list` from canned
  * JSON, everything else exits 1 (best-effort listings). */
@@ -26,6 +26,7 @@ interface FakePr {
   changedFiles: number;
   url: string;
   reviewRequests: { login?: string; slug?: string }[];
+  latestReviews?: { author: { login: string }; state: string }[];
   state: string;
   isDraft: boolean;
   reviewDecision?: string;
@@ -50,7 +51,8 @@ function pr(n: number, title: string, branch: string, extra: Partial<FakePr> = {
 }
 
 // Your PRs: open + draft. Requested-of-you stays empty; the team group
-// carries the rest of the state mix.
+// carries the rest of the state mix. #230: PR 205 was changes_requested
+// but the requester was re-requested — it shows Open with no decision.
 const AUTHORING: FakePr[] = [
   pr(101, "Fix quadratic backtracking in OWS matching", "fix-quadratic"),
   pr(102, "WIP: normalize folded headers on parse", "wip-normalize", { isDraft: true }),
@@ -60,6 +62,11 @@ const TEAM: FakePr[] = [
   pr(202, "Drop the old compat shim", "drop-shim", { state: "MERGED" }),
   pr(203, "Add OWS regression tests", "ows-tests", { reviewDecision: "CHANGES_REQUESTED" }),
   pr(204, "Document header unfolding", "docs-unfold", { reviewDecision: "APPROVED" }),
+  pr(205, "Re-requested after changes", "re-requested", {
+    reviewDecision: "CHANGES_REQUESTED",
+    reviewRequests: [{ login: "reviewer" }],
+    latestReviews: [{ author: { login: "reviewer" }, state: "CHANGES_REQUESTED" }],
+  }),
 ];
 
 function writeFakeGhPrLists(binDir: string, logDir: string): void {
@@ -150,6 +157,22 @@ test.describe("J225 start-page PR list", () => {
       await expect(page.getByText("Drop the old compat shim")).toBeVisible();
       await expect(page.getByText("Add OWS regression tests")).toBeVisible();
       await expect(page.getByText("Document header unfolding")).toBeVisible();
+      await expect(page.getByText("Re-requested after changes")).toBeVisible();
+      // #224: state + decision read as icons with accessible labels…
+      const iconRow = (title: string): import("@playwright/test").Locator => page.locator(".ci", { hasText: title });
+      await expect(iconRow("Fix quadratic backtracking in OWS matching").getByRole("img", { name: "Open" })).toBeVisible();
+      await expect(iconRow("WIP: normalize folded headers on parse").getByRole("img", { name: "Draft" })).toBeVisible();
+      await expect(iconRow("Drop the old compat shim").getByRole("img", { name: "Merged" })).toBeVisible();
+      await expect(iconRow("Add OWS regression tests").getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(iconRow("Document header unfolding").getByRole("img", { name: "Approved" })).toBeVisible();
+      // …and no text pill remains. #230: review_required never shows, and
+      // the re-requested PR shows Open with no decision.
+      const badgeTexts = await page.locator('[data-testid="pr-badges"]').allTextContents();
+      expect(badgeTexts.join(" ")).not.toMatch(/Open|Draft|Merged|Closed|Approved|Changes requested|Review required/);
+      await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
+      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Open" })).toBeVisible();
+      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Changes requested" })).toHaveCount(0);
+      await expect(iconRow("Re-requested after changes").getByRole("img", { name: "Approved" })).toHaveCount(0);
       await page.getByText("No PRs requested of you.").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-pr-list-${combo.name}`);
     });

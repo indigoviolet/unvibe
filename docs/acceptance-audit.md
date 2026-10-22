@@ -2666,6 +2666,51 @@ hunk coverage) is reported for a separate issue, not fixed here.
   the filter row), tour frames
   `packages/web/visual-tour/start-author-filter-*` (git-ignored).
 
+## Addendum: #230 (branch `fix/230-pr-state-fresh`)
+
+- **Refresh keeps PR state fresh (§4.2, §4.1):** the steady-head
+  `prChanged` path in `versions/refresh.ts` already mutated the stored
+  description when only state/decision moved — the bar stayed stale
+  because it read the once-fetched summary. The bar now reads the live
+  snapshot first (WS patch) with the summary as fallback, and manual
+  refresh refetches the snapshot even when no new version is created
+  (silent when only PR state moved; "Already up to date" only when
+  truly unchanged). Opening a review still runs the same check-only
+  refresh in the background (no auto-apply, no jobs, no polling) with a
+  one-per-open guard against StrictMode/remount double-fires.
+  Evidence: service `test/refresh-pr-state-230.test.ts` (OPEN +
+  REVIEW_REQUIRED → MERGED + APPROVED, same head: snapshot + summary
+  flip, `newVersion: false`), journey
+  `e2e/journeys/j230-pr-state-fresh.spec.ts` (fake `gh` flips with no
+  new commits: refresh button flips the bar and the Reviews list).
+- **Displayed decision (§4.2, §4.1):** `review_required` is dropped
+  entirely (never stored, never rendered for fresh data;
+  `PrReviewDecision` is now only `approved | changes_requested`). No
+  backward compatibility: an old stored `review_required` is not mapped
+  to "no decision" — the next refresh or start-page PR-list sync
+  overwrites it with the displayed shape (or the owner resets); until
+  then `PrBadges` drops the missing icon key and renders the remaining
+  badges (a lookup miss filters out like `null`, covered by
+  `src/ui/PrBadges.test.tsx`). A `CHANGES_REQUESTED` whose
+  requester was re-requested shows no decision at all (GitHub keeps
+  `reviewDecision: CHANGES_REQUESTED` after a re-request; the
+  re-request only shows in `reviewRequests`). The rule is the pure
+  `displayedReviewDecision` in `packages/shared` (`reviewRequests` user
+  logins + `latestReviews` author/state, case-insensitive). Data rides
+  the existing calls as extra JSON fields — `gh pr view` at ingest
+  and refresh (`reviewRequests,latestReviews`) and `gh pr list` for the
+  start page (same) — no new gh calls. The Reviews list reuses the
+  start page's PR-list result: `GET /api/repos/:id/changes` syncs any
+  review whose PR appears there (state + displayed decision) into the
+  stored review; PRs not in the result keep stored state. The start
+  page reloads its Reviews list after the PR lists land so the fresh
+  states show. Evidence: shared `test/pr-decision-230.test.ts`, service
+  re-requested case in `test/refresh-pr-state-230.test.ts`, journeys
+  J225a + start-PR-list (no "Review required" icon; re-requested row
+  shows Open with no decision), visual tour (start/review frames:
+  no regressions).
+
+
 ## Addendum: #231 (branch `feat/231-update-icon`)
 
 - **#231 (top-bar update icon + previews toggle; §4.1, §4.14):** when a

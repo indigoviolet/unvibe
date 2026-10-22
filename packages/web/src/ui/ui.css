@@ -40,6 +40,10 @@
 .ui-badge[data-tone="warn"]{background:var(--note-soft);color:var(--note)}
 .ui-badge[data-tone="error"]{background:var(--warn-soft);color:var(--warn)}
 .ui-badge[data-tone="merged"]{background:var(--note-soft);color:var(--note)}
+/* #224: the one shared diff stat: plain coloured +N −M, no pill. */
+.ui-diffstat{display:inline-flex;gap:4px;align-items:baseline;font:11px var(--mono);white-space:nowrap;flex:none}
+.ui-diffstat .a{color:var(--add-ink)}
+.ui-diffstat .d{color:var(--del-ink)}
 .ui-select,.ui-input{height:var(--control-md);border:var(--border-width) solid var(--field-border);border-radius:var(--radius-control);padding:0 var(--space-3);font:var(--text-sm) var(--sans);background:var(--field-surface);color:var(--ink);min-width:0;max-width:420px;width:100%}
 button.ui-select{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);text-align:left;cursor:pointer}
 button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

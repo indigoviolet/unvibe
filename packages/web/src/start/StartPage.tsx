@@ -49,7 +49,9 @@
  *   the lists they concern (`newreview-agent-hint` by Reviews,
  *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   ContextRepoSource,
@@ -62,7 +64,7 @@ import type {
 } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button, Card, PrBadges, ProcessingDots, Select } from "../ui/index.js";
+import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
@@ -625,7 +627,11 @@ export function StartPage(): React.JSX.Element {
     }
     setListsFor(id);
     setRefreshing(false);
-  }, []);
+    // #230: the PR lists just synced stored reviews server-side (same gh
+    // result, no extra calls) — reload the Reviews list so it shows the
+    // fresh states. Best effort; list errors above already describe gh.
+    if (fulfilled > 0) void loadSessions();
+  }, [loadSessions]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes
@@ -1463,6 +1469,57 @@ export function SessionRow({
       : null;
   const canOpen = opening === null && deleting === null;
   const faded = s.prState === "merged" || s.prState === "closed";
+  // #225: the Remove confirmation is a small popover anchored to the
+  // Remove button (a portal overlay like the other popovers and menus,
+  // positioned from the button with Floating UI and clamped into the
+  // viewport), so the row never reflows, open or closed.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [popPos, setPopPos] = useState<{ x: number; y: number } | null>(null);
+  const confirmOpen = confirmDelete === s.id;
+  useLayoutEffect(() => {
+    if (!confirmOpen) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const pop = popRef.current;
+      if (!btn || !pop) return;
+      void computePosition(btn, pop, {
+        placement: "bottom-end",
+        middleware: [offset(4), flip(), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        setPopPos((prev) => (prev && prev.x === x && prev.y === y ? prev : { x, y }));
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [confirmOpen]);
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onPointer = (e: PointerEvent): void => {
+      const n = e.target as Node;
+      if (!btnRef.current?.contains(n) && !popRef.current?.contains(n)) setConfirmDelete(null);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setConfirmDelete(null);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmOpen, setConfirmDelete]);
+  useEffect(() => {
+    if (confirmOpen && popPos) popRef.current?.querySelector("button")?.focus();
+  }, [confirmOpen, popPos]);
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
@@ -1530,38 +1587,54 @@ export function SessionRow({
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
           <span className="prtag">new commits</span>
         ) : null}
-        {confirmDelete === s.id ? (
-          <>
-            <span className="hint">Remove this review from Unvibe? Nothing changes on GitHub.</span>
-            <Button
-              variant="primary"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => void removeSession(s.id)}
+        {confirmOpen ? (
+          createPortal(
+            <div
+              ref={popRef}
+              className="confirm-pop"
+              role="dialog"
+              aria-label="Remove this review?"
+              style={popPos ? { left: popPos.x, top: popPos.y } : { visibility: "hidden" }}
             >
-              {deleting === s.id ? "Removing…" : "Remove"}
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={deleting === s.id}
-              onClick={() => setConfirmDelete(null)}
-            >
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button
-            variant="quiet" size="sm"
-            type="button"
-            aria-label={`Remove ${s.title}`}
-            disabled={deleting !== null}
-            onClick={() => setConfirmDelete(s.id)}
-            title="Remove this review from Unvibe. GitHub and your own folder are not touched; the working copy Unvibe made is deleted."
-          >
-            Remove
-          </Button>
-        )}
+              <span className="q">Remove this review?</span>
+              <span className="row">
+                <Button
+                  variant="primary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => void removeSession(s.id)}
+                >
+                  {deleting === s.id ? "Removing…" : "Remove"}
+                </Button>
+                <Button
+                  variant="secondary" size="sm"
+                  type="button"
+                  disabled={deleting === s.id}
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    btnRef.current?.focus();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </span>
+            </div>,
+            document.body,
+          )
+        ) : null}
+        <Button
+          ref={btnRef}
+          variant="secondary" size="sm"
+          type="button"
+          aria-label="Remove this review"
+          aria-haspopup="dialog"
+          aria-expanded={confirmOpen}
+          disabled={deleting !== null}
+          onClick={() => setConfirmDelete(confirmOpen ? null : s.id)}
+          title="Remove this review"
+        >
+          Remove
+        </Button>
       </div>
     </div>
   );
@@ -1582,41 +1655,12 @@ export function changeHead(c: RepoChange): string {
 }
 
 /**
- * Diff size for a PR row (#100): formatted add/delete/file parts, or null
- * when the row carries no size data (the row omits the size then).
- * Thousands separators per the glossary; "1 file" stays singular.
- */
-export interface DiffSizeParts {
-  additions: string | null;
-  deletions: string | null;
-  files: string | null;
-}
-
-export function diffSizeParts(
-  c: Pick<RepoChange, "additions" | "deletions" | "changedFiles">,
-): DiffSizeParts | null {
-  const num = (n: number | undefined): string | null =>
-    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
-  const additions = num(c.additions);
-  const deletions = num(c.deletions);
-  const changed = num(c.changedFiles);
-  if (additions === null && deletions === null && changed === null) return null;
-  return {
-    additions: additions === null ? null : `+${additions}`,
-    // U+2212 minus, as in the diff pane.
-    deletions: deletions === null ? null : `−${deletions}`,
-    files: changed === null ? null : `${changed} ${c.changedFiles === 1 ? "file" : "files"}`,
-  };
-}
-
-/**
  * One PR/branch list row (#95, #100, #94): the head line carries the PR
- * number and branch, author, relative update time, diff size and team
- * names — each omitted when unknown — above the title that opens the
- * review. Where the row names a GitHub PR, the number is a link to the PR
- * page (new tab); the title button (and the row around it) opens the
- * review, so the link never triggers the row and both stay
- * keyboard-reachable.
+ * number and branch, author, relative update time and diff size — each
+ * omitted when unknown — above the title that opens the review. Where
+ * the row names a GitHub PR, the number is a link to the PR page (new
+ * tab); the title button (and the row around it) opens the review, so
+ * the link never triggers the row and both stay keyboard-reachable.
  */
 function ChangeRow({
   c,
@@ -1633,7 +1677,7 @@ function ChangeRow({
   owner: string | null;
   name: string | null;
 }): React.JSX.Element {
-  const size = diffSizeParts(c);
+  const hasSize = typeof c.additions === "number" || typeof c.deletions === "number";
   const prLabel = c.kind === "pr" ? (c.prNumber !== undefined ? `#${c.prNumber}` : "PR") : null;
   const prUrl = prLabel !== null && owner !== null && name !== null ? changePrUrl(c, owner, name) : null;
   const open = opening === null ? (): void => onOpen(c, i) : undefined;
@@ -1665,18 +1709,13 @@ function ChangeRow({
           {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
             ? ` · ${timeAgo(c.updatedAt)}`
             : ""}
-          {size !== null ? (
+          {hasSize ? (
             <>
               {" · "}
-              {size.additions !== null ? <span className="a">{size.additions}</span> : null}
-              {size.additions !== null && size.deletions !== null ? " " : null}
-              {size.deletions !== null ? <span className="d">{size.deletions}</span> : null}
-              {size.files !== null ? (
-                <>{size.additions !== null || size.deletions !== null ? " · " : ""}{size.files}</>
-              ) : null}
+              {/* #224: the shared diff stat; the file count is not shown. */}
+              <DiffStat added={c.additions} removed={c.deletions} />
             </>
           ) : null}
-          {c.requestedTeams && c.requestedTeams.length > 0 ? ` · via ${c.requestedTeams.join(", ")}` : ""}
         </span>
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>

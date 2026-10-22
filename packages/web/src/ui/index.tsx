@@ -6,6 +6,7 @@ import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import type { PrReviewDecision, PrState } from "@unvibe/shared";
+import { Icon, type IconName } from "../components/Icon.js";
 import "./ui.css";
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }>(function Button({ variant = "secondary", size = "md", className, ...p }, ref): React.JSX.Element {
@@ -44,27 +45,68 @@ export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "ok" 
   return <span className="ui-badge" data-tone={tone}>{children}</span>;
 }
 
-const PR_STATE_BADGE: Record<PrState, { tone: "neutral" | "ok" | "warn" | "error" | "merged"; label: string }> = {
-  draft: { tone: "neutral", label: "Draft" },
-  open: { tone: "ok", label: "Open" },
-  merged: { tone: "merged", label: "Merged" },
-  closed: { tone: "error", label: "Closed" },
+const PR_STATE_ICON: Record<PrState, { icon: IconName; color: string; label: string }> = {
+  draft: { icon: "pr-draft", color: "var(--text-secondary)", label: "Draft" },
+  open: { icon: "pr-open", color: "var(--accent)", label: "Open" },
+  merged: { icon: "pr-merged", color: "var(--note)", label: "Merged" },
+  closed: { icon: "pr-closed", color: "var(--warn)", label: "Closed" },
 };
-const PR_DECISION_BADGE: Record<PrReviewDecision, { tone: "neutral" | "ok" | "warn" | "error" | "merged"; label: string }> = {
-  approved: { tone: "ok", label: "Approved" },
-  changes_requested: { tone: "error", label: "Changes requested" },
-  review_required: { tone: "warn", label: "Review required" },
+const PR_DECISION_ICON: Record<PrReviewDecision, { icon: IconName; color: string; label: string }> = {
+  approved: { icon: "check", color: "var(--accent)", label: "Approved" },
+  changes_requested: { icon: "request-changes", color: "var(--warn)", label: "Changes requested" },
 };
 
-/** #224: PR state + review-decision badges. Branch reviews pass neither and show nothing. */
+/**
+ * #224: PR state + review-decision icons. One small icon each, in the
+ * state's chip colour (the `ui-badge` tone variables), with the state's
+ * name as the tooltip (the app's shared `data-tip`) and accessible
+ * label. No text. Branch reviews pass neither and show nothing.
+ */
 export function PrBadges({ prState, reviewDecision }: { prState?: PrState; reviewDecision?: PrReviewDecision }): React.JSX.Element | null {
-  const state = prState ? PR_STATE_BADGE[prState] : null;
-  const decision = reviewDecision ? PR_DECISION_BADGE[reviewDecision] : null;
+  const state = prState ? PR_STATE_ICON[prState] : null;
+  const decision = reviewDecision ? PR_DECISION_ICON[reviewDecision] : null;
   if (!state && !decision) return null;
+  // A lookup miss (a stored value outside the type) is undefined, not
+  // null — filter both out so it renders nothing instead of crashing.
+  // A lookup miss (a stored value outside the type) is undefined, not
+  // null — filter both out so it renders nothing instead of crashing.
+  const icons = [state, decision].filter((i): i is NonNullable<typeof i> => i != null);
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", flex: "none" }} data-testid="pr-badges">
-      {state ? <Badge tone={state.tone}>{state.label}</Badge> : null}
-      {decision ? <Badge tone={decision.tone}>{decision.label}</Badge> : null}
+      {icons.map((i) => (
+        <span
+          key={i.label}
+          role="img"
+          aria-label={i.label}
+          data-tip={i.label}
+          style={{ color: i.color, display: "inline-flex", flex: "none" }}
+        >
+          <Icon name={i.icon} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * #224: one shared diff stat (`+N −M`) for the PR list, diff file
+ * headers, hunk headers and the file tree. Plain coloured text, no
+ * pill; thousands separators per the glossary; zero sides stay
+ * (`+N −0`); null when neither side is known. The style lives in
+ * `ui.css` (`.ui-diffstat`), so a restyle is a one-line edit.
+ */
+export function DiffStat({ added, removed }: { added?: number | null; removed?: number | null }): React.JSX.Element | null {
+  const num = (n: number | null | undefined): string | null =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toLocaleString("en-US") : null;
+  const a = num(added);
+  const r = num(removed);
+  if (a === null && r === null) return null;
+  return (
+    <span className="ui-diffstat">
+      {a !== null ? <span className="a">+{a}</span> : null}
+      {a !== null && r !== null ? " " : null}
+      {/* U+2212 minus, as in the diff pane. */}
+      {r !== null ? <span className="d">−{r}</span> : null}
     </span>
   );
 }

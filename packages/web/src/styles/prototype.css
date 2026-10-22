@@ -384,6 +384,12 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    their button, clamped into the viewport), never clipped by the
    toolbar's sideways scroller. */
 .fmenu.portal { z-index: 30; width: 240px; }
+/* Remove-confirm popover (#225): a small dialog anchored to the row's
+   Remove button (positioned from it like the other popovers, clamped
+   into the viewport). A portal overlay, so the row never reflows. */
+.confirm-pop { position: fixed; z-index: 30; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-width: min(280px, calc(100vw - 16px)); }
+.confirm-pop .q { font-size: var(--text-sm); color: var(--text-primary); }
+.confirm-pop .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 /* File tree (#227): never a horizontal scrollbar — rows fit the panel,
    names and directory chains truncate, and the change indicators sit in
@@ -404,9 +410,8 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    pushed or scrolled out of the panel; indentation lives inside the
    name cell so the indicator columns align across depths. */
 .fr.file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-columns: subgrid; column-gap: 8px; }
-.fr .st, .fr .rv { font: 11px var(--mono); color: var(--muted); flex: none; text-align: right; }
+.fr .rv { font: 11px var(--mono); color: var(--muted); flex: none; text-align: right; }
 .fr .rv.done { color: var(--ok); }
-.st .a { color: var(--add-ink); } .st .d { color: var(--del-ink); }
 .gtag { font-size: 9.5px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; flex: none; }
 .cmenu { position: absolute; right: 12px; top: calc(100% - 4px); width: min(380px, calc(100% - 24px)); max-height: 60vh; overflow: auto; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-2); z-index: 6; display: flex; flex-direction: column; gap: var(--space-2); }
 /* Comments menu (issue #56): the panel lives in a narrow relative wrapper
@@ -520,8 +525,6 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .dfile-h .path .dir-end { flex: none; }
 .dfile-h .path b { font-weight: 500; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dfile-h > :not(.path) { flex: none; }
-.dfile-h > .hint.rename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
-.dfile-h .st { flex: none; }
 .revc { font: 11px var(--mono); color: var(--muted); flex: none; }
 /* Diff tables scroll sideways per hunk; in-table `.pin` rows stay the
    pane's width so their controls never scroll out of view. */

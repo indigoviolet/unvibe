@@ -1,27 +1,36 @@
 /**
  * J225a (#225 part A, #224): settings screens share one card each with
- * compact rows, the start page rows align, and PR state/decision badges
- * show on PR reviews (nothing on branch reviews) — against the real
- * service. No screenshot baselines (owner direction).
+ * compact rows, the start page rows align, PR state/decision icons show
+ * on PR reviews (nothing on branch reviews), and the Remove popover
+ * keeps the worst-case row (state + decision + new commits) still —
+ * against the real service. No screenshot baselines (owner direction).
  */
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
+import { checkLayout } from "../layout-check.js";
+import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
-/** Fake `gh`: PR view carries state + reviewDecision (#224); pr list stays unimplemented. */
-function writeFakeGhDecision(binDir: string, logDir: string, headSha: string): void {
+/**
+ * Fake `gh`: PR view carries state + reviewDecision (#224, #230); pr list
+ * stays unimplemented. The head SHA is resolved from the repo at call
+ * time, so a commit added mid-test is picked up by the next refresh (the
+ * stale path). Empty reviewRequests/latestReviews: a changes-requested
+ * reviewer who has not been re-requested still shows changes requested.
+ */
+function writeFakeGhDecision(binDir: string, logDir: string, repoDir: string, headSha: string): void {
   const script = `#!/bin/sh
 LOG="${logDir}"
 mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  HEAD=$(git -C "${repoDir}" rev-parse feature 2>/dev/null || echo "${headSha}")
   cat <<EOF
-{"title":"Journey PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"APPROVED","baseRefName":"main","headRefName":"feature","headRefOid":"${headSha}"}
+{"title":"Journey PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","reviewRequests":[],"latestReviews":[],"baseRefName":"main","headRefName":"feature","headRefOid":"$HEAD"}
 EOF
   exit 0
 fi
@@ -54,7 +63,7 @@ test.describe("J225a settings, start page and PR badges", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225a-data-"));
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225a-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225a-bin-"));
-    writeFakeGhDecision(fakeBin, logDir, repo.headSha);
+    writeFakeGhDecision(fakeBin, logDir, repoDir, repo.headSha);
     writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
@@ -62,7 +71,7 @@ test.describe("J225a settings, start page and PR badges", () => {
       agent: "none",
       extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
     });
-    // A PR review (fake gh: OPEN + APPROVED) and a branch review (no badges).
+    // A PR review (fake gh: OPEN + CHANGES_REQUESTED) and a branch review (no badges).
     prReviewId = await createScratchReview(svc, repoDir, { pr: 1 });
     await createScratchReview(svc, repoDir);
   });
@@ -157,7 +166,7 @@ test.describe("J225a settings, start page and PR badges", () => {
     await noPageScroll(page);
   });
 
-  test("start page rows align; PR badges on the PR review, none on branch reviews", async ({ page }) => {
+  test("start page rows align; PR icons on the PR review, Remove popover keeps the row still", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
@@ -171,12 +180,20 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(Math.abs(openerRight - blockRight)).toBeLessThanOrEqual(1.5);
     await noPageScroll(page);
 
-    // Reviews list: the PR review carries Open + Approved badges…
+    // Reviews list: the PR review carries Open + Changes requested icons…
     const prRow = page.locator(`[data-testid="session-${prReviewId}"]`);
     await expect(prRow).toBeVisible({ timeout: 30_000 });
     const badges = prRow.locator('[data-testid="pr-badges"]');
-    await expect(badges).toContainText("Open");
-    await expect(badges).toContainText("Approved");
+    await expect(badges.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(badges.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    // …with accessible labels and no text pills. #230: review_required never shows.
+    await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
+    await expect(badges).not.toContainText("Open");
+    await expect(badges).not.toContainText("Changes requested");
+    // The row's Remove is a real button with the action-only tooltip (#225).
+    const removeBtn = prRow.getByRole("button", { name: "Remove this review" });
+    await expect(removeBtn).toBeVisible();
+    await expect(removeBtn).toHaveAttribute("title", "Remove this review");
     // …while branch reviews show none.
     const branchRows = page.locator('[data-testid^="session-"]');
     expect(await branchRows.count()).toBeGreaterThanOrEqual(2);
@@ -186,14 +203,105 @@ test.describe("J225a settings, start page and PR badges", () => {
     await page.goto(`${svc.origin}/review/${prReviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
     const barBadges = page.locator('#reviewbar [data-testid="pr-badges"]');
-    await expect(barBadges).toContainText("Open");
-    await expect(barBadges).toContainText("Approved");
+    await expect(barBadges.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(barBadges.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    await expect(barBadges).not.toContainText("Open");
+    await expect(barBadges).not.toContainText("Changes requested");
+    await expect(page.getByRole("img", { name: "Review required" })).toHaveCount(0);
     // The summary API carries the same state (no new polling: stored gh data).
     const summary = await apiJson(svc, "GET", "/api/reviews");
     const found = (summary.json as { reviews: { id: string; prState?: string; reviewDecision?: string }[] }).reviews.find(
       (r) => r.id === prReviewId,
     );
     expect(found?.prState).toBe("open");
-    expect(found?.reviewDecision).toBe("approved");
+    expect(found?.reviewDecision).toBe("changes_requested");
+
+    // Worst case (#225): state + decision + new commits on one row. One
+    // more commit on the watched branch, then refresh: the row gains the
+    // "new commits" tag next to its two icons.
+    writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 43\n");
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "bump value");
+    const refreshed = await apiJson(svc, "POST", `/api/reviews/${prReviewId}/refresh`);
+    expect(refreshed.status).toBe(200);
+    expect((refreshed.json as { newVersion?: boolean }).newVersion).toBe(true);
+    await expect
+      .poll(async () => {
+        const s = await apiJson(svc!, "GET", "/api/reviews");
+        return (s.json as { reviews: { id: string; stale?: boolean }[] }).reviews.find((r) => r.id === prReviewId)
+          ?.stale;
+      }, { timeout: 60_000 })
+      .toBe(true);
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    const staleRow = page.locator(`[data-testid="session-${prReviewId}"]`);
+    await expect(staleRow.locator('[data-testid="pr-badges"]')).toBeVisible();
+    await expect(staleRow.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(staleRow.getByRole("img", { name: "Changes requested" })).toBeVisible();
+    await expect(staleRow).toContainText("new commits");
+
+    // The row's title and meta keep their size and position with the
+    // popover open; the popover covers neither. Boxes are compared
+    // relative to the row so async callouts above the list can't flake
+    // the assert; the overlap check uses the same-moment boxes.
+    const rowTitle = staleRow.locator(".cx2");
+    const rowMeta = staleRow.locator(".cj > .hint");
+    const rowBoxBefore = await staleRow.boundingBox();
+    const titleBefore = await rowTitle.boundingBox();
+    const metaBefore = await rowMeta.boundingBox();
+    expect(rowBoxBefore).not.toBeNull();
+    expect(titleBefore).not.toBeNull();
+    expect(metaBefore).not.toBeNull();
+    await staleRow.getByRole("button", { name: "Remove this review" }).click();
+    const pop = page.locator(".confirm-pop");
+    await expect(pop).toContainText("Remove this review?");
+    const confirmBtn = pop.getByRole("button", { name: "Remove", exact: true });
+    const cancelBtn = pop.getByRole("button", { name: "Cancel" });
+    await expect(confirmBtn).toBeVisible();
+    await expect(cancelBtn).toBeVisible();
+    await expect(confirmBtn).toHaveAttribute("data-size", "sm");
+    await expect(cancelBtn).toHaveAttribute("data-size", "sm");
+    const rowBoxAfter = await staleRow.boundingBox();
+    const titleAfter = await rowTitle.boundingBox();
+    const metaAfter = await rowMeta.boundingBox();
+    const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
+    const offsetOf = (
+      inner: { x: number; y: number },
+      outer: { x: number; y: number },
+    ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
+    expect(sizeOf(rowBoxAfter!)).toEqual(sizeOf(rowBoxBefore!));
+    expect(sizeOf(titleAfter!)).toEqual(sizeOf(titleBefore!));
+    expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
+    expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
+    expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
+    const popBox = await pop.boundingBox();
+    const overlaps = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    expect(overlaps(popBox!, titleBefore!)).toBe(false);
+    expect(overlaps(popBox!, metaBefore!)).toBe(false);
+    await checkLayout(page, "j225a-remove-confirm");
+
+    // Escape cancels without touching the row…
+    await page.keyboard.press("Escape");
+    await expect(pop).toHaveCount(0);
+    await expect(staleRow).toBeVisible();
+    // …and so does an outside click.
+    await staleRow.getByRole("button", { name: "Remove this review" }).click();
+    await expect(pop).toBeVisible();
+    await page.getByRole("heading", { name: "Reviews" }).click();
+    await expect(pop).toHaveCount(0);
+    await expect(staleRow).toBeVisible();
+    // Confirming removes the review; the branch review stays.
+    await staleRow.getByRole("button", { name: "Remove this review" }).click();
+    await expect(pop).toContainText("Remove this review?");
+    await pop.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(staleRow).toHaveCount(0);
+    await expect(page.locator('[data-testid^="session-"]')).toHaveCount(1);
+    const after = await apiJson(svc, "GET", "/api/reviews");
+    expect(
+      (after.json as { reviews: { id: string }[] }).reviews.some((r) => r.id === prReviewId),
+    ).toBe(false);
   });
 });

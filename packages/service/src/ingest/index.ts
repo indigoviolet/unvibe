@@ -17,7 +17,7 @@ import type {
 } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
-import { buildReviewFiles, prReviewDecisionFromGh } from "@unvibe/shared";
+import { buildReviewFiles, displayedReviewDecision } from "@unvibe/shared";
 import { renderCommitMessages, renderMarkdownBlocks } from "./description.js";
 import { parseUnifiedDiff } from "./diff.js";
 import { buildReviewCommits, readCommitDiffs } from "./commits.js";
@@ -190,8 +190,18 @@ export async function ingestReview(
       ...(resolved.descriptionAuthor !== undefined ? { author: resolved.descriptionAuthor } : {}),
       ...(resolved.descriptionState !== undefined ? { state: resolved.descriptionState } : {}),
       ...(resolved.descriptionIsDraft !== undefined ? { isDraft: resolved.descriptionIsDraft } : {}),
-      ...(prReviewDecisionFromGh(resolved.descriptionReviewDecision) !== undefined
-        ? { reviewDecision: prReviewDecisionFromGh(resolved.descriptionReviewDecision) }
+      ...(displayedReviewDecision({
+        reviewDecision: resolved.descriptionReviewDecision,
+        reviewRequests: resolved.descriptionReviewRequests,
+        latestReviews: resolved.descriptionLatestReviews,
+      }) !== undefined
+        ? {
+            reviewDecision: displayedReviewDecision({
+              reviewDecision: resolved.descriptionReviewDecision,
+              reviewRequests: resolved.descriptionReviewRequests,
+              latestReviews: resolved.descriptionLatestReviews,
+            }),
+          }
         : {}),
       baseMarkdown: resolved.descriptionMarkdown,
       paragraphSources,

@@ -17,16 +17,16 @@ test.beforeEach(async ({ page }) => {
 test("review requests split into direct and team, newest first", async ({ page }) => {
   await expect(page.getByText("Requested of you", { exact: true })).toBeVisible();
   await expect(page.getByText("Requested of your team")).toBeVisible();
-  // Asked of both you and your team: once, as direct, with its team name.
+  // Asked of both you and your team: once, as direct, with no team name (#224).
   await expect(page.getByText("Docs: clarify retry wording")).toHaveCount(1);
-  await expect(page.locator(".ci", { hasText: "Docs: clarify retry wording" })).toContainText("via docs");
+  await expect(page.locator(".ci", { hasText: "Docs: clarify retry wording" })).not.toContainText("via docs");
   // Newest first: the 30-minute-old ask sits above the 2-hour-old one.
   const newer = await page.getByText("Docs: clarify retry wording").boundingBox();
   const older = await page.getByText("Pool: reuse connections across redirects").boundingBox();
   expect(newer?.y).toBeLessThan(older?.y ?? 0);
-  // Relative time and team names on the rows.
+  // Relative time on the rows, still no team names.
   await expect(page.locator(".ci", { hasText: "Pool: reuse connections across redirects" })).toContainText("2h ago");
-  await expect(page.locator(".ci", { hasText: "CI: pin the lint action" })).toContainText("via core");
+  await expect(page.locator(".ci", { hasText: "CI: pin the lint action" })).not.toContainText("via core");
 });
 
 test("recency filter hides older rows in both groups and persists", async ({ page }) => {
@@ -49,10 +49,11 @@ test("recency filter hides older rows in both groups and persists", async ({ pag
   await expect(page.getByText("Changelog: backfill old entries")).toHaveCount(0);
 });
 
-test("PR rows show the diff size and omit it when unknown", async ({ page }) => {
+test("PR rows show the diff size without the file count, and omit it when unknown", async ({ page }) => {
   const row = page.locator(".ci", { hasText: "Pool: reuse connections across redirects" });
   await expect(row).toContainText("+545");
-  await expect(row).toContainText("30 files");
+  // #224: no "· N files" in the row meta.
+  await expect(row).not.toContainText("files");
   // The size-less row carries no size text.
   const unsized = page.locator(".ci", { hasText: "Changelog: backfill old entries" });
   await expect(unsized).not.toContainText("+");
