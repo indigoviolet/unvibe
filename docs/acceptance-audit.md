@@ -2643,3 +2643,22 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `api user` with the bare login, as `--jq .login` would.) A DOM-text
   grep over every Settings tab and the start page finds no real login
   and no home-directory paths.
+
+## Addendum: #228 (branch `feat/228-author-filter`)
+
+- **#228 (start-page author filter; §4.2, narrowed per owner decision):**
+  the filter applies only to the requested-review PR groups ("Waiting
+  on your review": requested of you / of your team) — not "Your PRs",
+  branch rows, or the Reviews list. The shared Base UI Select sits
+  with that section, listing All plus the authors in those two groups
+  with counts; one pick filters both groups. The choice persists in
+  `localStorage` like the recency window; a filtered-empty group names
+  the author with a Show-all way back (clearing both filters). Data is
+  only what the app already fetches (authors from the same `gh pr
+  list` calls; no new agent/gh calls, no polling, no new contract
+  fields). Evidence: unit `src/start/StartPage.test.tsx`
+  (matchesAuthor/authorCounts), journey
+  `e2e/journeys/j228-author-filter.spec.ts` (real service + fake `gh`:
+  option counts, both-group filtering, persistence, `checkLayout` on
+  the filter row), tour frames
+  `packages/web/visual-tour/start-author-filter-*` (git-ignored).
