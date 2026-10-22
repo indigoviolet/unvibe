@@ -30,6 +30,20 @@ describe("ScreenTopBar", () => {
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
   });
 
+  it("puts the Documents icon next to the home link, before the breadcrumb and Settings (#238)", () => {
+    renderBar({ crumbs: [{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }] });
+    const docs = screen.getByRole("link", { name: "Documents" });
+    expect(docs).toHaveAttribute("href", "/documents");
+    expect(docs).toHaveAttribute("title", "Documents");
+    const order = [...(document.querySelector("header.top")?.children ?? [])].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
+    );
+    expect(order[0]).toBe("Unvibe");
+    expect(order[1]).toBe("Documents");
+    expect(order.indexOf("Documents")).toBeLessThan(order.indexOf("Breadcrumb"));
+    expect(order.indexOf("Documents")).toBeLessThan(order.indexOf("Settings"));
+  });
+
   it("renders the breadcrumb trail with the current page marked", () => {
     renderBar({ crumbs: [{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }] });
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
