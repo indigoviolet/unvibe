@@ -69,6 +69,7 @@ import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
+import { Tooltip } from "../floating/Tooltip.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
   clearAllKeptLists,
@@ -1041,6 +1042,7 @@ export function StartPage(): React.JSX.Element {
   return (
     <div className="app">
       <Toast />
+      <Tooltip />
       <ScreenTopBar showBadge />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
