@@ -53,6 +53,15 @@ mark.tm {
   gap: 8px;
   margin: 6px 0 2px;
 }
+/* Channel rows share the card's one inner padding on both sides (#229):
+   no extra row inset, so row content starts where the heading starts
+   and the Switch buttons end at Refresh's right edge. Rows are compact
+   (#233): the Switch button's height plus ~7px above and below;
+   min-height keeps Switch and Installed rows equal. */
+.ver-list > .ui-row {
+  min-height: var(--control-sm);
+  padding: 7px 0;
+}
 .ver-name {
   font-family: var(--mono);
   font-size: 12.5px;
