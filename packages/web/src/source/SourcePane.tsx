@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { performFollowUp } from "../guide/actions.js";
+import { PaneLoading } from "../ui/index.js";
 import { useDiffExpansionBindings } from "../guide/expansions/DiffExpansions.js";
 import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
@@ -125,16 +126,22 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   const isDocument = snapshot ? isDocumentReview(snapshot) : false;
 
   // #92: no diff/description/comments while loading or failed (service also
-  // 409s). After all hooks so the hook order never changes.
-  if (ingestStatus === "loading" || ingestStatus === "failed" || ingestStatus === "empty") {
+  // 409s). After all hooks so the hook order never changes. #232: while
+  // the review opens, the diff pane shares the guide pane's modest loading
+  // state (indicator + short label) inside the pane's normal content
+  // padding — the placeholder used to sit unpadded against the left edge.
+  if (ingestStatus === "loading") {
+    return (
+      <div className="pane-loading-pad" data-testid="diff-loading">
+        <PaneLoading label="Loading the diff" />
+      </div>
+    );
+  }
+  if (ingestStatus === "failed" || ingestStatus === "empty") {
     return (
       <div className="doc">
         <p className="hint">
-          {ingestStatus === "loading"
-            ? "The diff appears here once the review opens."
-            : ingestStatus === "empty"
-              ? "No diff — there are no changes to review."
-              : "No diff — the review couldn't be opened."}
+          {ingestStatus === "empty" ? "No diff — there are no changes to review." : "No diff — the review couldn't be opened."}
         </p>
       </div>
     );

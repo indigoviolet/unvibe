@@ -1202,6 +1202,234 @@ for (const combo of [
   });
 }
 
+// Issue #232 preparing states: while a review is being prepared both
+// panes share one modest loading state — the processing indicator plus a
+// short label at body size ("Building the guide" / "Loading the diff"),
+// inside the pane's normal content padding. Two scenes, every theme ×
+// scheme × width, each with checkLayout:
+// - ingest loading: the guide shows "Building the guide" and the diff
+//   shows "Loading the diff". The ingest is held open on a sleeping fake
+//   `gh pr view` (sleeper PIDs recorded for cleanup, so afterAll kills
+//   only what this test started);
+// - guide building after a finished ingest: the guide still shows
+//   "Building the guide" (a seeded running pipeline stage with no pages,
+//   stable under agent=none) while the diff is ready.
+test.describe("visual tour review preparing (#232)", () => {
+  let dir232 = "";
+  let bin232 = "";
+  let log232 = "";
+  let repo232 = "";
+  let svc232: RunningService | null = null;
+  let loadingId = "";
+  let buildingId = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-data-"));
+    bin232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-bin-"));
+    log232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-gh-"));
+    // Scratch repo (branch `feature` over `main`): the PR review hangs
+    // its ingest on the sleeping fake `gh`; the branch review ingests
+    // for real and is then seeded into the building state.
+    repo232 = path.join(os.tmpdir(), `unvibe-tour-232-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", repo232]);
+    const g = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo232 });
+    };
+    await g("config", "user.email", "t@example.com");
+    await g("config", "user.name", "T");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 1\n");
+    await g("add", ".");
+    await g("commit", "-m", "base");
+    await g("checkout", "-b", "feature");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 2\n");
+    await g("add", ".");
+    await g("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: repo232 });
+    const head = headOut.trim();
+    writeFileSync(
+      path.join(bin232, "gh"),
+      `#!/bin/sh
+LOG="${log232}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo "tour-host: Logged in to github.com account tour-reviewer (e2e stub)"
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  sleep 150 & echo $! >> "$LOG/sleep.pids"
+  wait
+  cat <<EOF
+{"title":"Tour preparing PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0
+fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(bin232, realGitPath());
+    const fakeShell = path.join(bin232, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${bin232}:$PATH"\n`, { mode: 0o755 });
+    const extraEnv = {
+      SHELL: fakeShell,
+      PATH: `${bin232}${path.delimiter}${process.env.PATH ?? ""}`,
+    };
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+    // PR review: ingest hangs on the sleeping `gh`, staying loading.
+    const repos = (await apiJson(svc232.origin, svc232.token, "POST", "/api/repos", { path: repo232 })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repo232);
+    if (!registered) throw new Error("scratch repo not registered");
+    const createdLoading = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      pr: 1,
+    })) as { review: { id: string } };
+    loadingId = createdLoading.review.id;
+    // Branch review: ingests for real, then seeded into building below.
+    const createdBuilding = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    buildingId = createdBuilding.review.id;
+    const readyDeadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc232.origin, svc232.token, "GET", `/api/reviews/${buildingId}`)) as {
+        ingest?: { status?: string };
+      };
+      if (snap.ingest?.status === "ready") break;
+      if (Date.now() > readyDeadline) throw new Error("branch ingest did not finish");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // Seed the building state: finished ingest with a real diff, no
+    // guide pages, one running pipeline stage. Stable under agent=none
+    // (no pipeline to mutate it); the loading review resumes its held
+    // ingest on the restart below and stays loading.
+    await svc232.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dir232, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(buildingId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as {
+        pages: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        jobs: unknown[];
+      };
+      seeded.pages = [];
+      seeded.pipeline = { stages: { reader: "running", base: "pending" } };
+      seeded.jobs = [];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        buildingId,
+      );
+    } finally {
+      db.close();
+    }
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+  });
+
+  test.afterAll(async () => {
+    // Wake the held ingests by killing only this test's recorded sleepers.
+    try {
+      const { readFileSync } = await import("node:fs");
+      const pids = readFileSync(path.join(log232, "sleep.pids"), "utf8").split(/\s+/).filter(Boolean);
+      for (const pid of pids) {
+        try {
+          process.kill(Number(pid), "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    } catch {
+      // No sleepers recorded.
+    }
+    await svc232?.stop().catch(() => {});
+    svc232 = null;
+    for (const d of [dir232, bin232, log232]) rmSync(d, { recursive: true, force: true });
+    rmSync(repo232, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { theme: "default", width: 1440, dark: false },
+    { theme: "default", width: 1440, dark: true },
+    { theme: "default", width: 960, dark: false },
+    { theme: "default", width: 960, dark: true },
+    { theme: "studio", width: 1440, dark: false },
+    { theme: "studio", width: 1440, dark: true },
+    { theme: "studio", width: 960, dark: false },
+    { theme: "studio", width: 960, dark: true },
+    { theme: "console", width: 1440, dark: false },
+    { theme: "console", width: 1440, dark: true },
+    { theme: "console", width: 960, dark: false },
+    { theme: "console", width: 960, dark: true },
+  ] as const) {
+    const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
+    test(`visual tour review preparing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      // Persist the theme server-side (the source of truth) and mirror
+      // it locally, exactly as Settings -> Appearance leaves the browser.
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("review-loading")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #232 nit: both panes share one padding, so the two labels sit
+      // at the same height — their vertical centres match within 2px.
+      const labelDy = await page.evaluate(() => {
+        const centres = ["review-loading", "diff-loading"].map((t) => {
+          const r = document.querySelector(`[data-testid="${t}"] .pane-loading`)?.getBoundingClientRect();
+          return r ? (r.top + r.bottom) / 2 : null;
+        });
+        if (centres[0] === null || centres[1] === null) return null;
+        return Math.abs((centres[0] as number) - (centres[1] as number));
+      });
+      expect(labelDy, `review-preparing-${suffix}: labels misaligned`).not.toBeNull();
+      expect(labelDy as number, `review-preparing-${suffix}: labels misaligned`).toBeLessThanOrEqual(2);
+      await checkLayout(page, `review-preparing-${suffix}`);
+      await shot(page, "review-preparing", suffix, "Loading the diff");
+    });
+    test(`visual tour guide building (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, `guide-building-${suffix}`);
+      await shot(page, "guide-building", suffix, "Building the guide");
+    });
+  }
+});
 // Issue #222: the start page's New document review form and a document
 // review (rendered blocks, an Explain answer, an Ask answer, a comment,
 // and a `code:` citation opening the second context repo's file) in the
