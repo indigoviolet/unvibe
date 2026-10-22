@@ -239,10 +239,13 @@ export type EmptyGuideState =
   | { kind: "idle" };
 
 /**
- * Why a review has no guide pages (issue #44): the pipeline is still
+ * Why a review has no guide pages yet (issue #44): the pipeline is still
  * running, a stage failed, or it never started. Mirrors the service's
  * front-screen `guideStatusFor` (`reviews/list.ts`): live jobs first,
- * then the recorded stage states.
+ * then the recorded stage states. Building is reported from live jobs
+ * only (#247): a stored `running` stage with no live job is stuck
+ * (cancelled while queued), not work — and the review bar counts live
+ * jobs, so the empty state must too.
  */
 export function emptyGuideState(
   pipeline: { stages: Record<string, string>; errors?: Record<string, string | undefined> } | undefined,
@@ -253,8 +256,8 @@ export function emptyGuideState(
     return { kind: "building", detail: [...new Set(live.map((j) => j.kind))].slice(0, 3).join(", ") };
   }
   const stages = Object.entries(pipeline?.stages ?? {});
-  const running = stages.filter(([, v]) => v === "running").map(([k]) => k);
-  if (running.length > 0) return { kind: "building", detail: running.slice(0, 3).join(", ") };
+  // #247: no building from `running` stages. A stored `running` stage
+  // with no live job is stuck (cancelled while queued), not work.
   const failed = stages.find(([, v]) => v === "error");
   const failedJob = jobs.find((j) => j.state === "error");
   if (failed || failedJob) {
