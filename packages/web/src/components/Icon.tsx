@@ -3,8 +3,9 @@
  * `gear` and `bug` are additions in the same stroke style (the prototype
  * has no settings/debug icons), as are `person` (author avatar for the
  * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
- * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out) and
- * `eyeOff` are additions in the same stroke style. #224 adds the PR
+ * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out),
+ * `eyeOff`, and `doc` (a page with a folded corner for the documents
+ * screen) are additions in the same stroke style. #224 adds the PR
  * state/decision set (`pr-open`, `pr-draft`, `pr-merged`, `pr-closed`,
  * `request-changes`, `eye`) in the same style; approved reuses `check`.
  * Usage: `<Icon name="check" />`.
@@ -184,6 +185,13 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M2 8c1.6-3 3.6-4.5 6-4.5S12.4 5 14 8c-1.6 3-3.6 4.5-6 4.5S3.6 11 2 8z" />
       <circle cx="8" cy="8" r="1.5" />
+    </>
+  ),
+  doc: (
+    <>
+      <path d="M4 2h5.5L12 4.5V14H4z" />
+      <path d="M9.5 2v2.5H12" />
+      <path d="M6 7.5h4M6 10h2.8" />
     </>
   ),
 };

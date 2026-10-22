@@ -284,9 +284,9 @@ interface DocRepoPick {
 }
 
 /**
- * New document review (issue #222): paste Markdown, pick 1–2 context
- * repos, each read from a particular worktree, `origin/main`, or the
- * local copy. Creates the review and navigates to it; nothing is
+ * New document review (issue #222): paste Markdown, pick any number of
+ * context repos, each read from a particular worktree, `origin/main`, or
+ * the local copy. Creates the review and navigates to it; nothing is
  * generated up front.
  */
 export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (id: string) => void }): React.JSX.Element {
@@ -403,20 +403,18 @@ export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (
           ) : null}
         </div>
       ))}
-      {picks.length < 2 ? (
-        <div>
-          <Button
-            variant="quiet"
-            size="sm"
-            type="button"
-            onClick={() =>
-              setPicks((p) => [...p, { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] }])
-            }
-          >
-            Add another context repo
-          </Button>
-        </div>
-      ) : null}
+      <div>
+        <Button
+          variant="quiet"
+          size="sm"
+          type="button"
+          onClick={() =>
+            setPicks((p) => [...p, { repoId: realRepos[0]?.id ?? "", source: "local", worktreePath: "", worktrees: [] }])
+          }
+        >
+          Add another context repo
+        </Button>
+      </div>
       {error ? (
         <p className="hint" role="alert">
           {error}
@@ -477,10 +475,10 @@ export function StartPage(): React.JSX.Element {
   const [demo, setDemo] = useState<RepoChange[]>([]);
   const [opening, setOpening] = useState<string | null>(null);
 
-  // Prior sessions (front-screen list, filtered to the selected repo below).
+  // Prior sessions (front-screen list, filtered to the selected repo
+  // and to change reviews below — document reviews live on /documents).
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [docOpen, setDocOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -973,19 +971,21 @@ export function StartPage(): React.JSX.Element {
 
   // Reviews for the selected repo only (`ReviewSummary.repoId` comes from
   // the service's review row, so this stays correct for remembered and
-  // detected repos alike). Demo sessions (`repoId: "demo"`) never match a
+  // detected repos alike). Demo sessions (`repoId: "demo") never match a
   // real selection; they render as the demo row instead (no duplicates).
-  // Sessions whose repo is neither demo nor known (a checkout that went
-  // away, or repos failing to load) render in their own group below so
-  // they stay openable and removable.
+  // Document reviews (`kind: "document"`) live on the documents screen,
+  // never here. Sessions whose repo is neither demo nor known (a checkout
+  // that went away, or repos failing to load) render in their own group
+  // below so they stay openable and removable.
   // #228 leaves Reviews unfiltered (owner decision): only the
   // requested-review groups below read the author filter.
-  const visibleSessions = (sessions ?? []).filter((s) => s.repoId === selectedId);
+  const changeSessions = (sessions ?? []).filter((s) => s.kind !== "document");
+  const visibleSessions = changeSessions.filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
   const knownIds = new Set(repos.map((r) => r.id));
   const orphanSessions = reposLoaded
-    ? (sessions ?? []).filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
+    ? changeSessions.filter((s) => s.repoId !== "demo" && !knownIds.has(s.repoId))
     : [];
   // Quiet kept-lists sign (#90, #148): how old the shown rows are, plus a
   // refresh marker while the background fetch is in flight. Short plain
@@ -1192,22 +1192,10 @@ export function StartPage(): React.JSX.Element {
             </div>
           )}
 
-          {/* New document review (issue #222). */}
-          <h1 className="divider">Document</h1>
-          {docOpen ? (
-            <DocumentForm repos={repos} onCreated={(id) => navigate(`/review/${id}`)} />
-          ) : (
-            <p className="hint">
-              Review a pasted Markdown document with 1–2 repos as context.{" "}
-              <Button variant="quiet" size="sm" type="button" onClick={() => setDocOpen(true)}>
-                New document review
-              </Button>
-            </p>
-          )}
-
           {/* PRs and branches for the selected repo. The PR input never
               waits on the lists; the lists track loading / loaded / failed
-              per selection below it. */}
+              per selection below it. Document reviews live on the
+              documents screen (the top-bar icon). */}
           {!reposLoaded || realRepos.length === 0 ? (
             reposLoaded ? (
               <div data-testid="no-repos">

@@ -1,22 +1,25 @@
 /**
- * Version-picker routes (issue #36, step 2).
+ * Version-picker routes (issue #36, step 2; toggle meaning #231).
  *
- * - `GET /api/update/status` — always available (even gated off): gate
- *   state, running build, pending switch, last helper outcome.
+ * - `GET /api/update/status` — always available: gate state, running
+ *   build, pending switch, last helper outcome.
  * - `GET /api/update/channels[?refresh=1]` — installable channels from the
  *   `Updater` seam, cached briefly (listing shells out in the real
- *   backend, so concurrent requests share one in-flight call). Gated.
+ *   backend, so concurrent requests share one in-flight call). Always
+ *   available: releases are always listed (and the top-bar update check
+ *   in #231 needs the release row regardless of the toggle); preview
+ *   channels are listed only when the toggle is on.
  * - `POST /api/update/switch { ref, force? }` — validate, refuse while
  *   jobs run (structured 409 with a short job list; skipped with
  *   `force: true`, recording how many jobs the shutdown path stops) or
  *   while a submit is in flight, record the pending switch, spawn the
  *   detached helper, reply 202, then shut down through the normal shutdown
- *   path. Gated. `force` never bypasses the submit lease, a pending
- *   switch, the gate, or the installed-build check.
+ *   path. Releases are always switchable; previews need the toggle on
+ *   (404 otherwise). `force` never bypasses the submit lease, a pending
+ *   switch, the preview gate, or the installed-build check.
  *
- * Gate: `versionPickerEnabled` in settings (off by default). Gated-off
- * channels/switch answer 404 "not available"; status keeps working so the
- * UI can show the toggle. Auth + loopback Host/Origin checks apply via the
+ * Gate: `versionPickerEnabled` in settings (off by default) now means
+ * "show previews". Auth + loopback Host/Origin checks apply via the
  * global `onRequest` hook in `server.ts` like every other route.
  *
  * Without wired stores/updater/hooks the endpoints stay 501 stubs
@@ -69,8 +72,9 @@ export const UPDATE_BLOCKED_JOBS_CAP = 5;
 /** Delay between the 202 reply and the shutdown trigger (lets the reply flush). */
 export const UPDATE_SHUTDOWN_DELAY_MS = 500;
 
-export const UPDATE_DISABLED_MESSAGE =
-  "channel switching is turned off (turn it on in Settings → Version)";
+/** Previews stay hidden until the toggle is on (issue #231); releases are always available. */
+export const UPDATE_PREVIEWS_DISABLED_MESSAGE =
+  "previews are hidden (show them in Settings → Version)";
 
 /** Switching needs a global install with a channel record — not a source checkout. */
 export const UPDATE_NOT_INSTALLED_MESSAGE =
@@ -198,13 +202,15 @@ export async function registerUpdate(
 
   app.get("/api/update/channels", async (req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
-    if (!gateEnabled(deps)) return reply.code(404).send({ error: UPDATE_DISABLED_MESSAGE });
     const updater = deps.updater;
     if (!updater) return reply.code(501).send({ error: "not available in this build" });
     const q = req.query as Record<string, string | undefined>;
     try {
       const list = await channels(q["refresh"] === "1", updater);
-      const res: UpdateChannelsResponse = { channels: list };
+      // Issue #231: releases are always listed; previews only with the
+      // toggle on. The top-bar update check (release row) works either way.
+      const visible = gateEnabled(deps) ? list : list.filter((c) => c.kind !== "preview");
+      const res: UpdateChannelsResponse = { channels: visible };
       return res;
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
@@ -213,7 +219,6 @@ export async function registerUpdate(
 
   app.post("/api/update/switch", async (req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
-    if (!gateEnabled(deps)) return reply.code(404).send({ error: UPDATE_DISABLED_MESSAGE });
     const body = ((req.body ?? {}) as Partial<UpdateSwitchRequest>) ?? {};
     if (typeof body.ref !== "string" || body.ref.trim() === "") {
       return reply.code(400).send({ error: "missing ref: POST /api/update/switch { ref }" });
@@ -242,6 +247,12 @@ export async function registerUpdate(
     }
     const target = list.find((c) => c.ref === ref);
     if (!target) return reply.code(404).send({ error: `unknown update channel "${ref}"` });
+
+    // Issue #231: releases are always switchable; previews need the
+    // toggle on (the list above is unfiltered, so hidden previews land here).
+    if (target.kind === "preview" && !gateEnabled(deps)) {
+      return reply.code(404).send({ error: UPDATE_PREVIEWS_DISABLED_MESSAGE });
+    }
 
     const pending = readPendingSwitch(ctx.dataDir);
     if (pending) {

@@ -123,6 +123,21 @@ export function ProcessingDots(): React.JSX.Element {
     </span>
   );
 }
+
+/**
+ * Shared modest loading state for the review panes while a review is
+ * being prepared (issue #232): the processing indicator plus a short
+ * label at body size. The indicator is the only "working" signal — no
+ * trailing ellipses, no commentary sentences.
+ */
+export function PaneLoading({ label }: { label: string }): React.JSX.Element {
+  return (
+    <p className="pane-loading">
+      <ProcessingDots />
+      <span>{label}</span>
+    </p>
+  );
+}
 export function Checkbox({ checked, onChange, ariaLabel, id, testId, disabled }: { checked: boolean; onChange: (v: boolean) => void; ariaLabel?: string; id?: string; testId?: string; disabled?: boolean }): React.JSX.Element {
   return <BaseCheckbox.Root id={id} data-testid={testId} disabled={disabled} checked={checked} onCheckedChange={(v) => onChange(v === true)} className="ui-checkbox" aria-label={ariaLabel}><BaseCheckbox.Indicator>{checked ? "✓" : ""}</BaseCheckbox.Indicator></BaseCheckbox.Root>;
 }

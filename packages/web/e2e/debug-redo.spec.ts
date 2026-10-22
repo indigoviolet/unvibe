@@ -31,7 +31,7 @@ test("re-do confirms and lands on the new loading review", async ({ page }) => {
   // The old id is gone; the new review opens in its loading state.
   await expect(page).toHaveURL(/\/review\/mock-loading-/, { timeout: 15000 });
   await expect(page.getByTestId("review-loading")).toBeVisible();
-  await expect(page.getByTestId("review-loading-step")).toContainText("Fetching");
+  await expect(page.getByTestId("review-loading")).toContainText("Building the guide");
   // Release the hold → the ingest lands → the guide opens after reload.
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.createReviewHold"));
   await page.reload();

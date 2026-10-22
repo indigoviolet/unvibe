@@ -1642,7 +1642,7 @@ const UPDATE_BLOCK_JOBS_KEY = "unvibe.mock.update.blockJobs";
 const UPDATE_INSTALLED_COMMIT_KEY = "unvibe.mock.update.installedCommit";
 
 // Distinct build times (issue #73): the picker sorts newest first, so the
-// list order is preview/feat-x, preview/fix-y, release-rc, release.
+// list order is preview/feat-x, preview/fix-y, release.
 const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
   {
     ref: "release",
@@ -1654,18 +1654,6 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
-    current: false,
-  },
-  {
-    ref: "release-rc",
-    kind: "release-rc",
-    version: "0.0.1-rc.1",
-    commit: "abc1234def5678",
-    sourceBranch: null,
-    sourceCommit: null,
-    baseBranch: null,
-    baseCommit: null,
-    builtAt: new Date(NOW - 86400_000).toISOString(),
     current: false,
   },
   {
@@ -3601,20 +3589,22 @@ export const mockApi = {
 
   updateChannels: async (): Promise<{ channels: UpdateChannel[] }> => {
     await wait(80);
-    if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('GET /api/update/channels: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
-    }
-    return { channels: mockUpdateChannels() };
+    // Issue #231: releases are always listed; previews only with the toggle on.
+    const all = mockUpdateChannels();
+    const visible =
+      getMockSettings().versionPickerEnabled === true ? all : all.filter((c) => c.kind !== "preview");
+    return { channels: visible };
   },
 
   updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
     await wait(80);
-    if (getMockSettings().versionPickerEnabled !== true) {
-      throw new Error('POST /api/update/switch: 404 {"error":"channel switching is turned off (turn it on in Settings → Version)"}');
-    }
     const target = MOCK_UPDATE_CHANNELS.find((c) => c.ref === ref);
     if (!target) {
       throw new Error(`POST /api/update/switch: 404 {"error":"unknown update channel \\"${ref}\\""}`);
+    }
+    // Issue #231: releases always switch; previews need the toggle on.
+    if (target.kind === "preview" && getMockSettings().versionPickerEnabled !== true) {
+      throw new Error('POST /api/update/switch: 404 {"error":"previews are hidden (show them in Settings → Version)"}');
     }
     if (mockUpdatePending) {
       throw new Error(

@@ -6,7 +6,6 @@
 // LITERAL command from the README, with no extra flags:
 //
 //   npm install -g github:<org>/unvibe#release      (git ref; git+file://<bare>#<ref> stands in locally)
-//   npm install -g github:<org>/unvibe#release-rc   (release-candidate ref; same mechanism)
 //   npm install -g https://…/unvibe-<v>.tgz          (tarball file)
 //
 // --release-ref <name> (or UNVIBE_RELEASE_REF) selects the git ref under test
@@ -59,8 +58,8 @@ const PHASES = String(flag("--phases", process.env.UNVIBE_GLOBAL_CHECK_PHASES ??
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-// Which local release branch the git phase installs (release for finals,
-// release-rc for candidates). Set by the release workflow to the ref it pushed.
+// Which local release branch the git phase installs (always `release`).
+// Set by the release workflow to the ref it pushed.
 const RELEASE_REF = flag("--release-ref", process.env.UNVIBE_RELEASE_REF ?? process.env.UNVIBE_RELEASE_BRANCH ?? "release");
 // Explicit tarball path (the release workflow passes the versioned file);
 // otherwise resolved from UNVIBE_RELEASE_VERSION or package.json.

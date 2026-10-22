@@ -91,7 +91,6 @@ describe("preview push guard", () => {
     );
     for (const bad of [
       "refs/heads/release:refs/heads/release",
-      "refs/heads/release-rc:refs/heads/release-rc",
       "refs/heads/main:refs/heads/main",
       "refs/heads/preview/feat-x:refs/heads/preview/other",
       "refs/heads/preview/feat-x:refs/heads/release",
@@ -158,7 +157,7 @@ describe("selectAllBranches (--all)", () => {
   it("drops branches fully on main and publish artifacts", () => {
     expect(
       selectAllBranches(
-        ["main", "feat/a", "merged-c", "preview/feat-a", "release", "release-rc"],
+        ["main", "feat/a", "merged-c", "preview/feat-a", "release"],
         ["feat/a"],
       ),
     ).toEqual(["main", "feat/a"]);
@@ -250,7 +249,7 @@ describe("selectPruneRefs (--prune)", () => {
 describe("assertPreviewDeleteRef", () => {
   it("accepts only preview/* refs", () => {
     expect(assertPreviewDeleteRef("preview/feat-x")).toBe("preview/feat-x");
-    for (const bad of ["release", "release-rc", "main", "preview/", "preview/a/b", "", "../x"]) {
+    for (const bad of ["release", "main", "preview/", "preview/a/b", "", "../x"]) {
       expect(() => assertPreviewDeleteRef(bad), bad).toThrow();
     }
   });

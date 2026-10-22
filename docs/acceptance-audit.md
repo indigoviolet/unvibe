@@ -1473,10 +1473,12 @@ needed (that deviation is closed, not added).
    the isolated npm cache). Agents run the user's installed `claude`/`codex`
    (readiness/doctor report path + version). Tarballs attached to GitHub
    releases install identically (verified 2026-10-11 from GitHub itself:
-   `gh release download v0.0.1-rc.3` + `npm install -g` on npm 10 and 11,
-   doctor/start/demo/diagrams/stop green; the repo has since gone public —
-   at the time it was private, so the git ref needed `gh auth setup-git`
-   and the tarball needed `gh release download`). Installing from the default branch (source
+   `gh release download` of the then-current tag + `npm install -g` on npm
+   10 and 11, doctor/start/demo/diagrams/stop green; the `-rc` release shape
+   that tag used is gone — candidates now ship as `preview/main-rc`; the
+   repo has since gone public — at the time it was private, so the git ref
+   needed `gh auth setup-git` and the tarball needed `gh release download`).
+   Installing from the default branch (source
    tree, needs devDependencies + build) is unsupported and undocumented.
 - Stable default port 4517; foreign occupant diagnosed — met
   (`config.ts`, doctor port check distinguishes ours/foreign — this branch).
@@ -1757,7 +1759,8 @@ when it lands.
 
 ### Preview builds, step 2: version picker (branch `feat/version-picker`, issue #36)
 
-In-app switching between `release`, `release-rc` and `preview/*` builds,
+In-app switching between `release` and `preview/*` builds (the `release-rc`
+channel is removed; candidates go out as `preview/main-rc`),
 merged with step 1: one shared switch core (`update/switch.ts`) serves
 the `unvibe update` CLI and the in-app `RealUpdater` (step-1 flow logic
 moved, CLI keeps its output; step-1's 49 `update.test.ts` tests pass
@@ -2706,3 +2709,111 @@ hunk coverage) is reported for a separate issue, not fixed here.
   J225a + start-PR-list (no "Review required" icon; re-requested row
   shows Open with no decision), visual tour (start/review frames:
   no regressions).
+
+
+## Addendum: #231 (branch `feat/231-update-icon`)
+
+- **#231 (top-bar update icon + previews toggle; §4.1, §4.14):** when a
+  newer release than the running build exists, a small icon (`upUp`
+  from the app set, tooltip "Update available: vX.Y.Z") sits next to
+  the Settings icon in the top bar and links to Settings → Version.
+  Release builds compare by version, preview builds by date (release
+  published after the preview was built); up to date or a check that
+  cannot run shows nothing with no error UI. The check runs on app load
+  and when Settings → Version refreshes, session-cached, no polling,
+  reusing the Version panel's listing (no new `gh` calls: the existing
+  per-ref package metadata already carries version + published date).
+  Settings → Version's toggle is now "Show previews" ("Releases always
+  listed."): releases are always listed and switchable, preview channels
+  only with the toggle on; the update check runs either way. #229's
+  layout (one-line toggle, short help, one-line rows, aligned padding)
+  is unchanged. Test-only fake-backend additions: `fake-installed.json`
+  (stage an installed build older than published on the same ref) and
+  `UNVIBE_UPDATE_FAKE_FAIL=list` (stage a failing check). Evidence:
+  `versionFormat.test.ts` (version/date comparison), journey
+  `e2e/journeys/j5-settings-versions.spec.ts` (real service + fake
+  updater: release-newer shows, up to date hides, preview-date shows,
+  failing check hides with the panel naming the failure, toggle hides
+  previews while releases stay), mock `e2e/update-picker.spec.ts`
+  (toggle off lists releases, hides previews), tour frames
+  `packages/web/visual-tour/start-update-icon-*` and
+  `settings-version-*` (git-ignored).
+
+## Addendum: #222 follow-ups (branch `feat/222-documents-screen`)
+
+- **Documents start screen (#222):** the PR start page no longer shows
+  the Document section and lists no document reviews; a new `/documents`
+  route holds the paste-Markdown form and the document-reviews list. The
+  top bar gains a note-icon link (tooltip "Documents") next to the
+  Settings gear; the home link still returns to the PR start page. The
+  form's behaviour is unchanged apart from the repo count below.
+- **Any number of context repos (#222):** "Add another context repo"
+  keeps adding removable rows with no cap (creation requires at least
+  one). Agent context, `code:` citation resolution by commit (validation
+  keyed by the exact `path@sha`, `get_code`, the file route, and now the
+  second-opinion reply check too) and the source pane handle N repos:
+  the repo always comes from the first context repo whose object store
+  contains the cited commit. Evidence:
+  `packages/service/test/document-222.test.ts` (three-repo create),
+  `packages/web/e2e/journeys/j222-document.spec.ts` (documents screen,
+  three repos, remove-a-row, third-repo citation, start-page exclusion),
+  tour frames `start-topbar-documents-*` and `documents-screen-*`.
+- **Header-only context map (#222):** the document base pack carries no
+  file list and no README — one header line per context repo (name,
+  read-from source, commit, path) plus a single citation/`get_code`
+  instruction for the whole document. Measured base pack (the
+  ~4-chars-per-token estimator, unvibe's own checkout as context, sample
+  document): 1 repo 923 chars / ~231 tokens, 2 repos 1119 chars / ~280
+  tokens, 4 repos 1471 chars / ~368 tokens — far under any cap, so no
+  trimming rule was added. File finding stays with the existing tools:
+  `get_code` by path + sha across all context repos, the lockdown
+  allowlist's read-only Glob/Grep (session cwd is the first context
+  repo's reading location), and full-access direct reads; `search_review`
+  does not index context trees and no file-listing MCP tool exists, so
+  none was added.
+
+
+## Addendum: #229 (branch `fix/229-version-tab`)
+
+- **#229 (Settings → Version layout; §4.14):** the enable toggle is a
+  one-line checkbox + label (no shared Field two-column layout) with
+  short help ("Optional."); each channel row is a single line (name ·
+  sha · built · action, no ListRow secondary line); the Channels
+  heading, its divider and the rows share the card's one inner padding
+  on both sides with the label vertically centred on Refresh.
+  Evidence: journey `e2e/journeys/j5-settings-versions.spec.ts` (real
+  service + fake updater: one-line toggle, short help, no `.ui-row-meta`
+  in channel rows, shared left/right edges, centred label), tour
+  frames `packages/web/visual-tour/settings-version-*` (git-ignored).
+
+## Addendum: #232 (branch `fix/232-loading-states`)
+
+- **#232 (review-page loading states):** while a review is being
+  prepared both panes share one modest loading state — the app's
+  processing indicator (`PaneLoading` in `ui/index.tsx`, next to
+  `ProcessingDots`) plus a short label at body size ("Building the
+  guide" / "Loading the diff"), inside the pane's normal content
+  padding (the diff pane's placeholder carries its own 16px 20px
+  padding, matching the description pane, instead of sitting
+  unpadded against the pane edge). Dropped: the serif title-size
+  "Building the guide…" heading, the stage label ("Reading the
+  change…"), and the commentary sentences ("The diff is ready to
+  read while you wait.", "The diff appears here once the review
+  opens."). The indicator is the only working signal (no trailing
+  ellipses, no stacked dots). Both panes use the one shared
+  `.pane-loading-pad` padding (16px 20px); `#page`'s own top padding
+  is neutralised exactly while the guide shows only loading
+  (`#page:has(> .pane-loading-pad)`), so the two labels sit at the
+  same height in every theme (their vertical centres match within
+  2px, asserted in the tour). The ingest "Opening PR…" heading and
+  its step label go the same way (the review bar already names the
+  review); the start page's Reviews-row step text is untouched, as
+  are the failed/empty terminal states. Evidence: updated
+  `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
+  asserts "Building the guide", no step), new tour scenes
+  `review-preparing-*` (ingest loading: both panes) and
+  `guide-building-*` (seeded running pipeline stage under
+  agent=none: guide loading, diff ready) in every theme
+  (Default, Studio, Console) × scheme × width with `checkLayout`,
+  frames `packages/web/visual-tour/review-preparing-*` and
+  `guide-building-*` (git-ignored).
