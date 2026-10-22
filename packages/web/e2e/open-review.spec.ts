@@ -19,7 +19,7 @@ test("opening a PR navigates at once to a loading page, then the guide appears",
   // Immediate navigation (POST answers 202 before the ingest).
   await expect(page).toHaveURL(/\/review\/mock-loading-/, { timeout: 15000 });
   await expect(page.getByTestId("review-loading")).toBeVisible();
-  await expect(page.getByTestId("review-loading-step")).toContainText("Fetching");
+  await expect(page.getByTestId("review-loading")).toContainText("Building the guide");
   // Release the hold → the ingest lands → guide appears after reload (mock
   // has no WS patches; the real-service path is covered in vitest).
   await page.evaluate(() => localStorage.removeItem("unvibe.mock.createReviewHold"));
