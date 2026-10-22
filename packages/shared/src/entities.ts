@@ -726,8 +726,10 @@ export interface Contribution {
 /** #224: normalised PR state for badges. Draft is a state of its own. */
 export type PrState = "open" | "draft" | "merged" | "closed";
 
-/** #224: normalised GitHub review decision for badges. */
-export type PrReviewDecision = "approved" | "changes_requested" | "review_required";
+/** #224: normalised GitHub review decision for badges. #230: only approved
+ * and changes_requested are ever shown — "review required" is dropped
+ * entirely (never stored as a decision, never rendered). */
+export type PrReviewDecision = "approved" | "changes_requested";
 
 /** Map gh's `state` + `isDraft` onto {@link PrState}; undefined when unknown. */
 export function prStateFromGh(state: unknown, isDraft: unknown): PrState | undefined {
@@ -744,18 +746,122 @@ export function prStateFromGh(state: unknown, isDraft: unknown): PrState | undef
   }
 }
 
-/** Map gh's `reviewDecision` onto {@link PrReviewDecision}; undefined when none. */
+/**
+ * Map gh's `reviewDecision` onto {@link PrReviewDecision}; undefined when
+ * none. #230: `REVIEW_REQUIRED` maps to undefined — it is never shown.
+ */
 export function prReviewDecisionFromGh(value: unknown): PrReviewDecision | undefined {
   switch (typeof value === "string" ? value.toUpperCase() : "") {
     case "APPROVED":
       return "approved";
     case "CHANGES_REQUESTED":
       return "changes_requested";
-    case "REVIEW_REQUIRED":
-      return "review_required";
     default:
       return undefined;
   }
+}
+
+/**
+ * #230: the decision the UI shows for a PR.
+ *
+ * - `REVIEW_REQUIRED` (and empty/unknown) never shows — undefined.
+ * - `APPROVED` always shows.
+ * - `CHANGES_REQUESTED` shows unless the reviewer who requested changes
+ *   has since been re-requested: when any `CHANGES_REQUESTED` author in
+ *   `latestReviews` is currently in `reviewRequests` (user logins,
+ *   case-insensitive), the decision is hidden (undefined) — GitHub keeps
+ *   `reviewDecision: CHANGES_REQUESTED` after a re-request, but it reads
+ *   wrong, so we show no decision at all.
+ *
+ * All inputs are gh-shaped unknowns (robust to missing/extra fields):
+ * `reviewDecision` is gh's raw string, `reviewRequests` is gh's
+ * `reviewRequests` array (user entries carry `login`), and
+ * `latestReviews` is gh's `latestReviews` array (entries carry
+ * `author.login` + `state`). When `latestReviews` is absent or names no
+ * changes-requester, `CHANGES_REQUESTED` still shows.
+ */
+export function displayedReviewDecision(args: {
+  reviewDecision?: unknown;
+  reviewRequests?: unknown;
+  latestReviews?: unknown;
+}): PrReviewDecision | undefined {
+  const mapped = prReviewDecisionFromGh(args.reviewDecision);
+  if (mapped === undefined) return undefined;
+  if (mapped === "approved") return "approved";
+  const requested = new Set(reviewRequestLogins(args.reviewRequests).map((l) => l.toLowerCase()));
+  if (requested.size === 0) return "changes_requested";
+  for (const entry of latestReviewEntries(args.latestReviews)) {
+    if (entry.state.toUpperCase() === "CHANGES_REQUESTED" && requested.has(entry.login.toLowerCase())) {
+      return undefined;
+    }
+  }
+  return "changes_requested";
+}
+
+/**
+ * #230: user logins currently requesting review, from gh's
+ * `reviewRequests` array (team entries carry `slug`/`name`, not `login`,
+ * and are ignored). Accepts plain login strings too. Deduped
+ * case-insensitively, order-stable.
+ */
+export function reviewRequestLogins(requests: unknown): string[] {
+  const logins: string[] = [];
+  if (typeof requests === "string") {
+    if (requests !== "") logins.push(requests);
+  } else if (Array.isArray(requests)) {
+    for (const r of requests) {
+      if (typeof r === "string") {
+        if (r !== "") logins.push(r);
+        continue;
+      }
+      if (typeof r === "object" && r !== null) {
+        const login = (r as { login?: unknown }).login;
+        if (typeof login === "string" && login !== "") logins.push(login);
+      }
+    }
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const login of logins) {
+    const key = login.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(login);
+  }
+  return out;
+}
+
+/** #230: one parsed `latestReviews` entry (who + what they said). */
+export interface LatestReviewEntry {
+  login: string;
+  state: string;
+}
+
+/**
+ * #230: parse gh's `latestReviews` array into `{ login, state }` entries.
+ * Accepts `author.login` (gh shape) plus `login`/`authorLogin` fallbacks;
+ * entries missing either side are skipped.
+ */
+export function latestReviewEntries(reviews: unknown): LatestReviewEntry[] {
+  if (!Array.isArray(reviews)) return [];
+  const out: LatestReviewEntry[] = [];
+  for (const r of reviews) {
+    if (typeof r !== "object" || r === null) continue;
+    const obj = r as Record<string, unknown>;
+    let login = "";
+    const author = obj["author"];
+    if (typeof author === "string") login = author;
+    else if (typeof author === "object" && author !== null) {
+      const authorLogin = (author as { login?: unknown }).login;
+      if (typeof authorLogin === "string") login = authorLogin;
+    }
+    if (!login && typeof obj["login"] === "string") login = obj["login"] as string;
+    if (!login && typeof obj["authorLogin"] === "string") login = obj["authorLogin"] as string;
+    const state = typeof obj["state"] === "string" ? (obj["state"] as string) : "";
+    if (!login || !state) continue;
+    out.push({ login, state });
+  }
+  return out;
 }
 
 /** PR description (or branch commit messages) as rendered HTML (M1 addition). */
