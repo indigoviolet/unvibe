@@ -5,7 +5,8 @@
  *
  * - Left: a home control back to the start page (first in focus order),
  *   then the review identity (`owner/name#N`, linking to GitHub for PR
- *   reviews, #94, new tab) and the PR status icon when the PR has one
+ *   reviews, #94, new tab, #244: boxed with the shared Button styling
+ *   like the Comments button) and the PR status icon when the PR has one
  *   (#234: none when open), the Refresh button next to the status icon
  *   (#241: same handler/check/banner as the diff toolbar owned, tooltip
  *   "Refresh", hidden for document reviews which never had it),
@@ -127,7 +128,15 @@ export function ReviewBar({
           <Icon name="home" />
         </Link>
         {prUrl ? (
-          <a className="num" href={prUrl} target="_blank" rel="noreferrer" title="Open PR on GitHub">
+          <a
+            className="ui-btn"
+            data-variant="secondary"
+            data-size="sm"
+            href={prUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open PR on GitHub"
+          >
             {short}
           </a>
         ) : (

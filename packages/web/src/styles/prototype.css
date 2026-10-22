@@ -265,9 +265,11 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar { display: flex; align-items: center; gap: 8px; margin: var(--bar-margin); border-radius: var(--bar-radius); box-shadow: var(--bar-shadow); padding: 6px 12px; border-bottom: var(--border-width) solid var(--line); background: var(--surface); }
 .rbar .rid { display: flex; gap: 6px; align-items: flex-end; min-width: 0; flex: 1 1 auto; }
 .rbar .rid .num { font-family: var(--mono); color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
-/* Review bar (#94): the PR label links out but keeps its quiet meta look. */
-.rbar .rid a.num { color: inherit; text-decoration: none; }
-.rbar .rid a.num:hover { text-decoration: underline; }
+/* Review bar (#244): the PR link uses the shared Button styling (an anchor
+   with the `ui-btn` secondary/sm classes, like the Comments button), so the
+   box itself needs no rule here — just the identity-row layout the icon
+   buttons share. Branch reviews (no PR) keep the plain `.num` span. */
+.rbar .rid .ui-btn { flex: none; align-self: flex-end; }
 .rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rbar .rid .ib { flex: none; align-self: flex-end; }
 /* Review bar (#120): the version selector sits next to the identity. It
