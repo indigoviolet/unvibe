@@ -208,8 +208,6 @@ export interface Page {
   id: string;
   kind: PageKind;
   title: string;
-  /** Bookmark state. Concept pages default to saved (see prototype). */
-  saved: boolean;
   /** Parent page id for the breadcrumb trail; absent on root. */
   parent?: string;
   /** Finding-only: confidence label shown as "Agent finding · <confidence>". */

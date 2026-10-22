@@ -194,7 +194,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: "root",
       kind: "root",
       title: meta.title,
-      saved: false,
       cards: rootCards,
     },
   ];
@@ -215,7 +214,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
           id: pageId,
           kind: "finding",
           title: f.title ?? "Finding",
-          saved: false,
           parent: "root",
           ...(f.confidence ? { confidence: f.confidence } : {}),
           ...(f.summary ? { summary: f.summary } : {}),
@@ -234,7 +232,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: entry.key!,
       kind: "finding",
       title,
-      saved: false,
       parent: "root",
       ...(finding.confidence ? { confidence: finding.confidence } : {}),
       ...(finding.summary ? { summary: finding.summary } : {}),

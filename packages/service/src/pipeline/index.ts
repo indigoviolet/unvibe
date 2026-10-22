@@ -19,7 +19,7 @@ export { depthAction } from "./actions/depth.js";
 export { examplesAction } from "./actions/examples.js";
 export { diagramAction } from "./actions/diagram.js";
 export { undoAction } from "./actions/undo.js";
-export { collapseAction, bookmarkAction } from "./actions/read.js";
+export { collapseAction } from "./actions/read.js";
 export { closeAction, deleteAction } from "./actions/close.js";
 export { promoteAction } from "./actions/promote.js";
 export { followupAction } from "./actions/followup.js";

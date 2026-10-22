@@ -11,7 +11,7 @@
  *   L1) → `out-of-base-answer` in full; threads themselves settle later
  *   via `maybeSettleThread` (one line on close/idle);
  * - deleted items that had shared agent content → `item-deleted`;
- * - collapse / bookmark / undo / close → UI-state kinds (accepted,
+ * - collapse / undo / close → UI-state kinds (accepted,
  *   never logged).
  */
 import { parseId, renderMarkdown, type Annotation, type Block, type ReviewSnapshot } from "@unvibe/shared";
