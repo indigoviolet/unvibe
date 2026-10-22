@@ -66,7 +66,11 @@ export function PrBadges({ prState, reviewDecision }: { prState?: PrState; revie
   const state = prState ? PR_STATE_ICON[prState] : null;
   const decision = reviewDecision ? PR_DECISION_ICON[reviewDecision] : null;
   if (!state && !decision) return null;
-  const icons = [state, decision].filter((i) => i !== null);
+  // A lookup miss (a stored value outside the type) is undefined, not
+  // null — filter both out so it renders nothing instead of crashing.
+  // A lookup miss (a stored value outside the type) is undefined, not
+  // null — filter both out so it renders nothing instead of crashing.
+  const icons = [state, decision].filter((i): i is NonNullable<typeof i> => i != null);
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", flex: "none" }} data-testid="pr-badges">
       {icons.map((i) => (

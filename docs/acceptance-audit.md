@@ -2686,8 +2686,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   backward compatibility: an old stored `review_required` is not mapped
   to "no decision" — the next refresh or start-page PR-list sync
   overwrites it with the displayed shape (or the owner resets); until
-  then a row carrying one reaches `PrBadges` with a missing icon key
-  and throws during render instead of showing a badge. A `CHANGES_REQUESTED` whose
+  then `PrBadges` drops the missing icon key and renders the remaining
+  badges (a lookup miss filters out like `null`, covered by
+  `src/ui/PrBadges.test.tsx`). A `CHANGES_REQUESTED` whose
   requester was re-requested shows no decision at all (GitHub keeps
   `reviewDecision: CHANGES_REQUESTED` after a re-request; the
   re-request only shows in `reviewRequests`). The rule is the pure
