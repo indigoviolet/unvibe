@@ -30,10 +30,11 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheLifetimeMs: 5 * 60 * 1000,
   idleExitMinutes: 10,
   /**
-   * Version picker (issue #36, step 2): list installable update channels
-   * and switch builds from Settings → Version. Off by default; listing
-   * shells out through `gh` (the user's own login, like every other `gh`
-   * use — PRD §16), so it stays opt-in.
+   * Version picker (issue #36, step 2; toggle meaning #231): releases
+   * are always listed and switchable, and the update check always runs
+   * (listing shells out through `gh` under the user's own login, like
+   * every other `gh` use — PRD §16). Off by default; only preview
+   * channels stay hidden until it is on.
    */
   versionPickerEnabled: false,
   /**

@@ -20,6 +20,18 @@ import { listChannels as listRealChannels, readInstalledBuild } from "./channels
 import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
 
+/** Test-only installed-build override (issue #231): partial build fields. */
+export interface FakeInstalledOverride {
+  version?: unknown;
+  channel?: unknown;
+  commit?: unknown;
+  sourceBranch?: unknown;
+  sourceCommit?: unknown;
+  baseBranch?: unknown;
+  baseCommit?: unknown;
+  builtAt?: unknown;
+}
+
 export interface SwitchToOptions {
   /**
    * Rollback only: after the install verifies, restore this channel's
@@ -147,6 +159,10 @@ export function defaultFakeChannels(): FakeChannelSpec[] {
   ];
 }
 
+export type FakeFailMode =
+  | { mode: "install" | "health"; ref: string }
+  | { mode: "list" };
+
 /**
  * Test-only failure injection, read from `UNVIBE_UPDATE_FAKE_FAIL`:
  * - `install:<ref>` — `switchTo(ref)` throws (new build never installs).
@@ -155,10 +171,13 @@ export function defaultFakeChannels(): FakeChannelSpec[] {
  *   version and the helper times out waiting for the target (simulates a
  *   build that installs yet never comes up healthy). Rollback to any other
  *   ref behaves normally.
+ * - `list` — `listChannels()` throws (issue #231: stages an update check
+ *   that cannot run, so the top-bar icon must stay hidden with no error).
  */
-export function fakeFailMode(env: NodeJS.ProcessEnv = process.env): { mode: "install" | "health"; ref: string } | null {
+export function fakeFailMode(env: NodeJS.ProcessEnv = process.env): FakeFailMode | null {
   const raw = env.UNVIBE_UPDATE_FAKE_FAIL;
   if (!raw) return null;
+  if (raw === "list") return { mode: "list" };
   const m = raw.match(/^(install|health):(.+)$/);
   if (!m) return null;
   return { mode: m[1] as "install" | "health", ref: m[2] };
@@ -210,6 +229,7 @@ export class FakeUpdater implements Updater {
   }
 
   async listChannels(): Promise<UpdateChannel[]> {
+    if (fakeFailMode()?.mode === "list") throw new Error("fake channel listing failed (UNVIBE_UPDATE_FAKE_FAIL=list)");
     const current = this.current();
     return this.specs().map((c) => ({
       ref: c.ref,
@@ -233,7 +253,7 @@ export class FakeUpdater implements Updater {
     const from = channels.find((c) => c.current)?.ref ?? "release";
     if (from === ref) return { from, to: ref };
     const fail = fakeFailMode();
-    if (fail && fail.ref === ref) {
+    if (fail && fail.mode !== "list" && fail.ref === ref) {
       if (fail.mode === "install") {
         throw new Error(`fake install of "${ref}" failed (UNVIBE_UPDATE_FAKE_FAIL)`);
       }

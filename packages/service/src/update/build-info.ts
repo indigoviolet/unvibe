@@ -14,10 +14,11 @@
  * current fake channel instead, so a fake switch visibly changes the
  * reported version.
  */
+import fs from "node:fs";
 import type { UpdateBuildInfo } from "@unvibe/shared";
 import { readInstalledBuild } from "./channels.js";
-import { defaultFakeChannels, loadFakeSpecs } from "./updater.js";
-import { readCurrentRef } from "./state.js";
+import { defaultFakeChannels, type FakeInstalledOverride, loadFakeSpecs } from "./updater.js";
+import { fakeInstalledPath, readCurrentRef } from "./state.js";
 
 export interface BuildInfoInputs {
   dataDir: string;
@@ -27,21 +28,48 @@ export interface BuildInfoInputs {
   env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * Test-only installed-build override (issue #231): partial fields from
+ * `<dataDir>/update/fake-installed.json`, so the installed build can read
+ * older than the published spec on the same ref. Unknown shape (or an
+ * unreadable file) means no override.
+ */
+export function readFakeInstalledOverride(dataDir: string): FakeInstalledOverride | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(fakeInstalledPath(dataDir), "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as FakeInstalledOverride;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
 /** Test-only: resolve the fake backend's current channel without an Updater instance (health path). */
 export function fakeBuildInfo(dataDir: string): UpdateBuildInfo | null {
   const specs = loadFakeSpecs(dataDir, defaultFakeChannels());
   const current = readCurrentRef(dataDir) ?? "release";
   const found = specs.find((c) => c?.ref === current);
   if (!found || typeof found.version !== "string" || found.version === "") return null;
+  const over = readFakeInstalledOverride(dataDir);
   return {
-    version: found.version,
-    channel: current,
-    sourceBranch: typeof found.sourceBranch === "string" ? found.sourceBranch : null,
-    sourceCommit: typeof found.sourceCommit === "string" ? found.sourceCommit : null,
-    baseBranch: typeof found.baseBranch === "string" ? found.baseBranch : null,
-    baseCommit: typeof found.baseCommit === "string" ? found.baseCommit : null,
-    commit: typeof found.commit === "string" ? found.commit : null,
-    builtAt: typeof found.builtAt === "string" ? found.builtAt : null,
+    version: strOrNull(over?.version) ?? found.version,
+    channel: strOrNull(over?.channel) ?? current,
+    sourceBranch: strOrNull(over?.sourceBranch) ?? (typeof found.sourceBranch === "string" ? found.sourceBranch : null),
+    sourceCommit: strOrNull(over?.sourceCommit) ?? (typeof found.sourceCommit === "string" ? found.sourceCommit : null),
+    baseBranch: strOrNull(over?.baseBranch) ?? (typeof found.baseBranch === "string" ? found.baseBranch : null),
+    baseCommit: strOrNull(over?.baseCommit) ?? (typeof found.baseCommit === "string" ? found.baseCommit : null),
+    commit: strOrNull(over?.commit) ?? (typeof found.commit === "string" ? found.commit : null),
+    builtAt: strOrNull(over?.builtAt) ?? (typeof found.builtAt === "string" ? found.builtAt : null),
   };
 }
 

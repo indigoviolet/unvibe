@@ -1057,10 +1057,10 @@ export interface Settings {
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
   idleExitMinutes: number;
   /**
-   * Version picker (issue #36, step 2): list installable update channels
-   * and switch builds from Settings → Version. Off by default; listing
-   * shells out through `gh` under the user's own login, so it stays
-   * opt-in.
+   * Version picker (issue #36, step 2; toggle meaning #231): Settings →
+   * Version always lists releases (and the update check always runs —
+   * both shell out through `gh` under the user's own login); this flag
+   * only shows preview channels. Off by default.
    */
   versionPickerEnabled: boolean;
   /**
