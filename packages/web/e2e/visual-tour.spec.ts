@@ -1358,6 +1358,18 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.getByTestId("review-loading")).toContainText("Building the guide", { timeout: 30_000 });
       await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #232 nit: both panes share one padding, so the two labels sit
+      // at the same height — their vertical centres match within 2px.
+      const labelDy = await page.evaluate(() => {
+        const centres = ["review-loading", "diff-loading"].map((t) => {
+          const r = document.querySelector(`[data-testid="${t}"] .pane-loading`)?.getBoundingClientRect();
+          return r ? (r.top + r.bottom) / 2 : null;
+        });
+        if (centres[0] === null || centres[1] === null) return null;
+        return Math.abs((centres[0] as number) - (centres[1] as number));
+      });
+      expect(labelDy, `review-preparing-${suffix}: labels misaligned`).not.toBeNull();
+      expect(labelDy as number, `review-preparing-${suffix}: labels misaligned`).toBeLessThanOrEqual(2);
       await checkLayout(page, `review-preparing-${suffix}`);
       await shot(page, "review-preparing", suffix, "Loading the diff");
     });

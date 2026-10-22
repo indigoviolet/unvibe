@@ -615,6 +615,11 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 
 /* ---------- guided page ---------- */
 #page { padding: var(--pad-page); }
+/* #232: the preparing-state loading carries its own shared padding
+   (`.pane-loading-pad`, one rule for both panes), so the page padding
+   would stack on top of it and misalign the guide label with the diff
+   pane's — neutralised exactly when the pane shows only loading. */
+#page:has(> .pane-loading-pad) { padding-top: 0; }
 .doc { max-width: 760px; margin: 0 auto; }
 .crumbs { display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--label-font); font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
 .crumbs button { border: 0; background: none; padding: 0; color: var(--muted); }

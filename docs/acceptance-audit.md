@@ -2690,7 +2690,12 @@ hunk coverage) is reported for a separate issue, not fixed here.
   change…"), and the commentary sentences ("The diff is ready to
   read while you wait.", "The diff appears here once the review
   opens."). The indicator is the only working signal (no trailing
-  ellipses, no stacked dots). The ingest "Opening PR…" heading and
+  ellipses, no stacked dots). Both panes use the one shared
+  `.pane-loading-pad` padding (16px 20px); `#page`'s own top padding
+  is neutralised exactly while the guide shows only loading
+  (`#page:has(> .pane-loading-pad)`), so the two labels sit at the
+  same height in every theme (their vertical centres match within
+  2px, asserted in the tour). The ingest "Opening PR…" heading and
   its step label go the same way (the review bar already names the
   review); the start page's Reviews-row step text is untouched, as
   are the failed/empty terminal states. Evidence: updated

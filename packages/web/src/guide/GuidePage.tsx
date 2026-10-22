@@ -163,7 +163,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   if (!snapshot || !pages) {
     return (
-      <div className="doc">
+      <div className="doc pane-loading-pad">
         <PaneLoading label="Building the guide" />
       </div>
     );
@@ -175,7 +175,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   const ingestStatus = snapshot.ingest.status;
   if (ingestStatus === "loading") {
     return (
-      <div className="doc" data-testid="review-loading">
+      <div className="doc pane-loading-pad" data-testid="review-loading">
         <PaneLoading label="Building the guide" />
       </div>
     );
@@ -223,7 +223,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     // label, no commentary sentences.
     if (empty.kind === "building") {
       return (
-        <div className="doc" data-testid="guide-empty" data-state="building">
+        <div className="doc pane-loading-pad" data-testid="guide-empty" data-state="building">
           <PaneLoading label="Building the guide" />
         </div>
       );
