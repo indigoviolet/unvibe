@@ -147,8 +147,12 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const stale = snapshot?.versionStatus?.stale ?? false;
     // #224: PR badges from the gh data stored on the description at
     // ingest/refresh time (no gh call here, per this module's contract).
+    // #230: only approved/changes_requested ever show — a stored
+    // review_required (pre-#230 data) reads as no decision.
     const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
-    const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
+    const storedDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
+    const reviewDecision =
+      storedDecision === "approved" || storedDecision === "changes_requested" ? storedDecision : undefined;
     // Issue #222: document reviews have no guide pipeline; the document is ready.
     const guide =
       snapshot !== null && isDocumentReview(snapshot)

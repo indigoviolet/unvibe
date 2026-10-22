@@ -232,9 +232,73 @@ export async function registerRepos(
     // fetched implicitly.
     const fetchError = await refreshManagedCheckout(ctx.runner, repo);
     const changes = await repoChanges({ runner: ctx.runner, db: ctx.db }, repo, filter);
+    // #230: the Reviews list reuses this same `gh pr list` result — no
+    // extra gh calls. Any review whose PR appears here takes its current
+    // state/decision, and the stored review is updated. PRs not in the
+    // result keep their stored state. Best effort: never fails the listing.
+    await syncReviewsWithPrLists(ctx, changes);
     if (fetchError) return { changes, fetchError } satisfies RepoChangesResponse;
     return { changes } satisfies RepoChangesResponse;
   });
+}
+
+/**
+ * #230: apply the start page's PR-list states to the stored reviews.
+ * Only PR rows that already carry a `reviewId` (same repo + PR number)
+ * are touched, and only when something would actually change (no empty
+ * mutates, no rev bumps). Failures are swallowed — the listing wins.
+ */
+async function syncReviewsWithPrLists(
+  ctx: ServiceContext,
+  changes: import("@unvibe/shared").RepoChange[],
+): Promise<void> {
+  for (const c of changes) {
+    if (c.kind !== "pr" || c.prNumber === undefined || !c.reviewId) continue;
+    if (c.prState === undefined && c.reviewDecision === undefined) continue;
+    try {
+      const snap = ctx.reviews.getSnapshot(c.reviewId);
+      if (!snap || !snap.description || snap.description.source !== "pr") continue;
+      let rawState: string | undefined;
+      let isDraft = false;
+      if (c.prState !== undefined) {
+        switch (c.prState) {
+          case "draft":
+            rawState = "OPEN";
+            isDraft = true;
+            break;
+          case "open":
+            rawState = "OPEN";
+            isDraft = false;
+            break;
+          case "merged":
+            rawState = "MERGED";
+            isDraft = false;
+            break;
+          case "closed":
+            rawState = "CLOSED";
+            isDraft = false;
+            break;
+        }
+      }
+      const curState = snap.description.state;
+      const curDraft = snap.description.isDraft ?? false;
+      const curDecision = snap.description.reviewDecision;
+      const wantDecision = c.reviewDecision;
+      const stateSame = rawState === undefined || (curState === rawState && curDraft === isDraft);
+      if (stateSame && curDecision === wantDecision) continue;
+      await ctx.reviews.mutate(c.reviewId, (draft) => {
+        if (!draft.description) return;
+        if (rawState !== undefined) {
+          draft.description.state = rawState;
+          draft.description.isDraft = isDraft;
+        }
+        if (wantDecision !== undefined) draft.description.reviewDecision = wantDecision;
+        else delete draft.description.reviewDecision;
+      });
+    } catch {
+      // One review failing to sync never fails the listing.
+    }
+  }
 }
 
 /**

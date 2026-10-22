@@ -26,7 +26,7 @@ import type {
   VersionComparison,
   VersionStatus,
 } from "@unvibe/shared";
-import { assertReadySnapshot, prReviewDecisionFromGh, summarizeComparison } from "@unvibe/shared";
+import { assertReadySnapshot, displayedReviewDecision, summarizeComparison } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import {
   baseRefCandidates,
@@ -290,21 +290,27 @@ export async function refreshReview(
   fetchStep.finishedAt = Date.now();
   // #224: keep the stored PR state fresh from the same `gh pr view` call,
   // even when the head is steady (a merge/approval moves no commits).
+  // #230: the stored decision is the displayed one (re-request hides
+  // changes_requested; review_required never shows).
+  const displayedDecision = displayedReviewDecision({
+    reviewDecision: head.reviewDecision,
+    reviewRequests: head.reviewRequests,
+    latestReviews: head.latestReviews,
+  });
   const prChanged =
     row.prNumber !== null &&
     head.prState !== undefined &&
     snapshot.description !== undefined &&
     (snapshot.description.state !== head.prState ||
       snapshot.description.isDraft !== (head.isDraft ?? false) ||
-      snapshot.description.reviewDecision !== prReviewDecisionFromGh(head.reviewDecision));
+      snapshot.description.reviewDecision !== displayedDecision);
   if (!head.headSha || head.headSha === snapshot.version.headSha) {
     if (prChanged) {
       await deps.reviews.mutate(reviewId, (draft) => {
         if (!draft.description) return;
         draft.description.state = head.prState;
         draft.description.isDraft = head.isDraft ?? false;
-        const decision = prReviewDecisionFromGh(head.reviewDecision);
-        if (decision !== undefined) draft.description.reviewDecision = decision;
+        if (displayedDecision !== undefined) draft.description.reviewDecision = displayedDecision;
         else delete draft.description.reviewDecision;
       });
     }
@@ -507,8 +513,7 @@ export async function refreshReview(
     if (row.prNumber !== null && head.prState !== undefined && draft.description) {
       draft.description.state = head.prState;
       draft.description.isDraft = head.isDraft ?? false;
-      const decision = prReviewDecisionFromGh(head.reviewDecision);
-      if (decision !== undefined) draft.description.reviewDecision = decision;
+      if (displayedDecision !== undefined) draft.description.reviewDecision = displayedDecision;
       else delete draft.description.reviewDecision;
     }
     draft.files = newFiles as ReviewSnapshot["files"];

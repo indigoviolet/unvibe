@@ -184,7 +184,15 @@ describe("resolveHead (stubbed)", () => {
       code: 0,
     });
     const out = await resolveHead(fake, "/repo", { pr: 7 });
-    expect(out).toEqual({ headSha: "abc123", baseRef: "main", prState: "OPEN", isDraft: false });
+    expect(out).toEqual({
+      headSha: "abc123",
+      baseRef: "main",
+      prState: "OPEN",
+      isDraft: false,
+      reviewDecision: undefined,
+      reviewRequests: [],
+      latestReviews: [],
+    });
     expect(fake.calls.map((c) => `${c.cmd} ${c.opts.args.join(" ")}`)).toContain(
       "git -c credential.https://github.com.helper=!gh auth git-credential fetch origin refs/pull/7/head",
     );
