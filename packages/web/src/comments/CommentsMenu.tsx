@@ -650,9 +650,6 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
           ) : null}
           {tab === "outbox" ? (
           <section data-cmsec="outbox" aria-label={`Outbox, ${outbox.length} comments`}>
-            <div className="cmsec-head">
-              <strong>Outbox</strong> <Badge tone="warn">{outbox.length}</Badge>
-            </div>
             {outboxGroups.map((g) => (
               <div key={g.label}>
                 <span className="cmgroup" title={g.title}>{g.label}</span>

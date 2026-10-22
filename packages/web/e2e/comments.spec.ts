@@ -342,7 +342,8 @@ test("comments dropdown is wide enough for tabs, sections, paths and previews", 
   await expect(panel.locator('[data-cmsec="github"]')).toContainText("On GitHub");
   await expect(panel.locator('[data-cmsec="outbox"]')).toHaveCount(0);
   await panel.locator('[data-cmtab="outbox"]').click();
-  await expect(panel.locator('[data-cmsec="outbox"]')).toContainText("Outbox");
+  await expect(panel.locator('[data-cmtab="outbox"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.locator('[data-cmsec="outbox"]')).toBeVisible();
   await expect(panel.locator('[data-cmsec="review"]')).toHaveCount(0);
   await expect(panel.locator('[data-cmsec="github"]')).toHaveCount(0);
   await expect(panel.locator("[data-cmf]")).toHaveCount(0);
