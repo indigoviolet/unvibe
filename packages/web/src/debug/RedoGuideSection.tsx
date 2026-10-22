@@ -60,7 +60,7 @@ export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.
   };
 
   return (
-    <section aria-label="Re-do guide" style={{ marginTop: 24 }}>
+    <section aria-label="Re-do guide" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
       {ingestStatus === "loading" ? (
         <div className="frow" style={{ gap: 8, alignItems: "center" }}>
           <Button variant="primary" size="sm" type="button" disabled title="The review is still opening.">
@@ -89,8 +89,13 @@ export function RedoGuideSection({ reviewId }: { reviewId: string }): React.JSX.
         </div>
       ) : (
         <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-          <span className="hint">Start the guide over from the same change.</span>
-          <Button variant="primary" size="sm" type="button" onClick={() => setConfirming(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            title="Start the guide over from the same change."
+            onClick={() => setConfirming(true)}
+          >
             Re-do guide
           </Button>
         </div>

@@ -159,7 +159,11 @@ test.describe("J14 diagrams, debug, redo", () => {
       const id = await createScratchReview(redoSvc, repoDir);
       await page.goto(`${redoSvc.origin}/review/${id}/debug?token=${redoSvc.token}`);
       await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 30_000 });
-      await page.getByRole("button", { name: "Re-do guide" }).click();
+      // #237: the caption lives on the button's tooltip, with no inline caption.
+      const redo = page.getByRole("button", { name: "Re-do guide" });
+      await expect(redo).toHaveAttribute("title", "Start the guide over from the same change.");
+      await expect(page.getByText("Start the guide over from the same change.")).toHaveCount(0);
+      await redo.click();
       await expect(page.getByText(/Anything already on GitHub stays there/)).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Re-do guide" }).last().click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);
