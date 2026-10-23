@@ -562,17 +562,25 @@ table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select
    `--lnw`, digit count, on `.dfile`), so code columns start at the same x
    in every hunk instead of sizing per hunk. The widths are floors
    (border-box): the old column also reserves the reopen marker's slot
-   (#189) and the new column the comment icon's, so neither a marker nor
+   (#189, ~18px: the "↪" mark + its padding/margin) and the new column
+   the comment icon's (11px + 3px margin), so neither a marker nor
    an icon can push one hunk's code column sideways. The floors are the
    column widths, which makes the second column's sticky offset exact.
-   Split tables are fixed-layout with identical colgroups already;
-   their old gutter sticks at the edge and the new-side gutter sticks
-   beside it if the table ever scrolls sideways. No `opacity` on these
-   cells: it would blend the whole cell — background included — with
-   the code sliding underneath the sticky gutter. */
-table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 36px); left: 0; }
-table.diff:not(.split) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 36px); }
-table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 46px); }
+   (Issue #261: tightened from +36/+46px to digits + 16px cell padding
+   + exactly the affordance room.) Split tables are fixed-layout with
+   identical colgroups already; their old gutter sticks at the edge and
+   the new-side gutter sticks beside it if the table ever scrolls
+   sideways. No `opacity` on these cells: it would blend the whole
+   cell — background included — with the code sliding underneath the
+   sticky gutter. */
+table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 16px); left: 0; }
+/* Old column (first child when present): digits + padding + the reopen
+   marker's room (~18px). Hidden-old tables have no old column — their
+   first child is the new column, sized by the `.new` rule below. */
+table.diff:not(.split):not(.hide-old) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 34px); }
+table.diff.hide-old:not(.split) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 30px); }
+table.diff:not(.split):not(.hide-old):not(.hide-new) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 34px); }
+table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 30px); }
 table.diff.split td.n:first-child { left: 0; }
 table.diff.split td.n:nth-child(3) { left: 3.6em; }
 table.diff td.n.new { cursor: pointer; }
