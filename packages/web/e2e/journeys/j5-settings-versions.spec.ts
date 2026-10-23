@@ -186,6 +186,8 @@ test.describe("J5 settings and versions", () => {
       await expect(icon).toBeVisible();
       await expect(icon).toHaveAttribute("title", "Update available: v0.0.2");
       await expect(icon).toHaveAttribute("href", "/settings?tab=version");
+      // #250: the update icon is a gift (rect box + lid), not chevrons.
+      await expect(icon.locator("svg rect")).toHaveCount(1);
     });
 
     test("up to date: no icon", async ({ page }) => {

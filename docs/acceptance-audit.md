@@ -2952,6 +2952,12 @@ hunk coverage) is reported for a separate issue, not fixed here.
   test),   `e2e/update-picker.spec.ts` (release `v0.0.1`, no sha;
   preview sha unchanged), J5 (seed + staged fake channels), tour
   Version frames.
+- **#250 (update-available icon is a gift; §4.14):** the top-bar
+  update icon (`UpdateIcon`, next to Settings) renders the new `gift`
+  path in `Icon.tsx` (same 16×16 stroke style) instead of the `upUp`
+  chevrons. Behaviour, tooltip ("Update available: vX.Y.Z") and link
+  (Settings → Version) are unchanged. Evidence: J5 (gift rect in the
+  icon link), tour `start-update-icon-*` frames.
 
 
 ## Addendum: #247 (branch `fix/247-running-indicator`)

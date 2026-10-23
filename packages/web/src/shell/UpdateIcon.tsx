@@ -39,7 +39,7 @@ export function UpdateIcon(): React.JSX.Element | null {
       title={label}
       data-testid="update-available-icon"
     >
-      <Icon name="upUp" />
+      <Icon name="gift" />
     </Link>
   );
 }
