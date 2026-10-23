@@ -225,8 +225,8 @@ export function buildCommitsSection(snapshot: PromptReviewSnapshot): string {
   const commits = snapshot.commits ?? [];
   if (commits.length === 0) return "";
   const rows: string[] = ["## Commits", "", COMMITS_FRAMING, ""];
-  commits.forEach((c, i) => {
-    rows.push(`${i + 1}. \`${c.sha.slice(0, 7)}\` ${oneLine(c.subject) || "(no subject)"}`);
+  commits.forEach((c) => {
+    rows.push(`- \`${c.sha.slice(0, 7)}\` ${oneLine(c.subject) || "(no subject)"}`);
     if (c.body.trim() !== "") {
       for (const line of c.body.replace(/\r\n/g, "\n").split("\n")) {
         rows.push(line === "" ? "" : `   ${line}`);
