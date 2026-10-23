@@ -82,14 +82,27 @@ test.describe("J247 start dots and review pill agree", () => {
 
     // Sample the agreement from creation until the pipeline drains: the
     // list says running exactly when the snapshot carries live jobs.
+    // Snapshot and list are two separate API calls, so a job finishing
+    // between them can straddle the reads (list=ready with N live jobs).
+    // Bracket the list read with a snapshot before and after, and only
+    // assert when liveness was stable across the three reads; otherwise
+    // re-sample. Intent unchanged: whenever work is live the list says
+    // running, and vice versa.
     let sawLive = false;
     const start = Date.now();
     for (;;) {
-      const live = await snapshotLive(svc, reviewId);
+      const before = await snapshotLive(svc, reviewId);
       const status = await listStatus(svc, reviewId);
-      expect(status === "running", `list=${status} with ${live.length} live jobs`).toBe(live.length > 0);
-      if (live.length > 0) sawLive = true;
-      else if (sawLive && Date.now() - start > 2000) break;
+      const after = await snapshotLive(svc, reviewId);
+      const stable = (before.length > 0) === (after.length > 0);
+      if (!stable) {
+        if (before.length > 0 || after.length > 0) sawLive = true;
+      } else {
+        const live = before;
+        expect(status === "running", `list=${status} with ${live.length} live jobs`).toBe(live.length > 0);
+        if (live.length > 0) sawLive = true;
+        else if (sawLive && Date.now() - start > 2000) break;
+      }
       if (Date.now() - start > 90_000) throw new Error("pipeline never drained");
       await new Promise((r) => setTimeout(r, 100));
     }
