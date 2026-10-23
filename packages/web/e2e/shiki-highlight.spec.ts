@@ -91,7 +91,10 @@ async function selectSpanning(page: Page, rootSelector: string, anchor: string):
     { rootSelector, anchor },
   );
   expect(ok).toBe(true);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  // Wait on the real condition (toolbar visible), not a fixed sleep: the
+  // slower CI runner needs longer than 3s for the selection to settle and
+  // the bar to render (#251). 10s matches the other specs' settle waits.
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
   return (await page.evaluate(() => (getSelection()?.toString() ?? "").trim().replace(/\s+/g, " "))) ?? "";
 }
 

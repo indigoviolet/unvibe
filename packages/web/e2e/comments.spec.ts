@@ -95,7 +95,8 @@ test("GitHub action links diff lines at the review commit; hidden on the demo", 
     getSelection()?.addRange(range);
     cell2.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   }, CONN);
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  // #251: the slower CI runner needs longer than 3s for the bar to render.
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
   const acts = await page.locator("#selbar [data-act]").evaluateAll((els) =>
     els.map((el) => el.getAttribute("data-act")),
   );
