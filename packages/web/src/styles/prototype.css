@@ -776,6 +776,10 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 a.cx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.cx:hover { color: var(--accent); }
 a.cx.pg { text-decoration-style: solid; color: var(--accent); }
+/* Issue #252: glossary term links read like dotted concept links. */
+a.gx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
+a.gx:hover { color: var(--accent); }
+#pop .xdef { max-width: 400px; font-size: 13px; margin: 4px 0; }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: var(--radius-4); padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */

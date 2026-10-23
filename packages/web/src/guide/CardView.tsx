@@ -27,6 +27,7 @@ import { useReview } from "../state/store.js";
 import { performAction, performInsertAction, performUpdate } from "./actions.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
+import { linkCardBlocks } from "./glossary.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { ExpansionCard } from "./expansions/ExpansionCard.js";
@@ -177,7 +178,11 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const threadsFor = (blockId: string): Annotation[] =>
     blockThreads(annotations, card.id, blockId);
 
-  const blocks = card.blocks.map((block) => {
+  // Issue #252: glossary terms link in card text (first mention per card).
+  const glossary = snapshot?.glossary ?? [];
+  const linkedBlocks = linkCardBlocks(card.blocks, glossary, card.level);
+
+  const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
     const open = exps.filter(isOpenExpansion);
     // Closed expansions + promoted links whose quote is gone become footnote
