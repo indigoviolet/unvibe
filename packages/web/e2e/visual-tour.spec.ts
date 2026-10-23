@@ -790,6 +790,12 @@ for (const combo of [
     await stepChecks(page, "desc-full");
     await shot(page, "desc-full", suffix, "Review checklist");
 
+    // Scrolled to the end of the numbered list: two-digit numbers sit
+    // inside the content padding like the single-digit ones.
+    await page.locator("#right ol#d-p6 li").nth(11).scrollIntoViewIfNeeded();
+    await stepChecks(page, "desc-checklist-end");
+    await shot(page, "desc-checklist-end", suffix, "next request");
+
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });

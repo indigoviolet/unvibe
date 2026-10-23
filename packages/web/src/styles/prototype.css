@@ -511,7 +511,7 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 #right .ui-card.desc { margin: 14px 16px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: var(--radius-10); background: var(--surface); }
 .dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
-.desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+.desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; padding: 2px 6px; }
 .desc p, .desc li { margin: 6px 0; }
 /* #263: one consistent content inset. Paragraphs, lists and headings share
    the same left edge (no negative outdent); list markers sit inside the

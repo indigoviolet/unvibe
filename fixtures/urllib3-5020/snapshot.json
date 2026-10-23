@@ -1090,18 +1090,7 @@
     "html": "<div class=\"desc\"><h3>Unfold obsolete folded response headers</h3><p class=\"para\" id=\"d-p1\">Addresses the original obs-fold response-header case discussed in #1362. Python's <code>http.client</code> preserves obsolete folded response header lines in <code>HTTPMessage</code> values. This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a single space before urllib3 or downstream consumers interpret the value.</p><h3>The normalization</h3><ul class=\"para\" id=\"d-p2\"><li>keeps urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized, preventing cookie consumers such as Requests from re-emitting raw CRLF;</li><li>preserves header names, ordering, duplicate fields, and parser state;</li><li>uses a common-case fast path and a linear-time pattern for long field values.</li></ul><h3>Tests</h3><p class=\"para\" id=\"d-p3\">The socket regression covers the original folded <code>Set-Cookie</code>, duplicate cookies, every SP/HTAB combination around CRLF, mixed and repeated whitespace, multiple folds, and ordinary headers. Focused unit coverage also verifies adjacent folds and preservation of the original message's order, duplicates, payload, policy, and defects.</p><p class=\"para\" id=\"d-p4\">This intentionally does not address the separate whitespace-before-colon/header name validation scope discussed on #1362.</p><h3>Validation performed</h3><ul class=\"para\" id=\"d-p5\"><li>full local suite: 2,279 passed, 333 skipped, 4 xfailed;</li><li>focused strict nox sessions on Python 3.12, 3.13, and 3.14;</li><li>pyupgrade, Black, isort, and flake8;</li><li>towncrier changelog validation;</li><li>source distribution and wheel builds;</li><li>end-to-end Requests cookie extraction and subsequent request serialization.</li></ul><h3>Review checklist</h3><ol class=\"para\" id=\"d-p6\"><li>confirm <code>HTTPMessage</code> no longer carries a raw <code>CRLF</code> after unfolding;</li><li>confirm <code>HTTPHeaderDict</code> matches the message on <code>Set-Cookie</code> pairs;</li><li>check duplicate headers keep their order and <code>defects</code> list;</li><li>check adjacent folds collapse to one <code>space</code>, not zero;</li><li>check mixed <code>SP</code> and <code>HTAB</code> runs around <code>CRLF</code> unfold cleanly;</li><li>check repeated folds produce one space per fold;</li><li>check ordinary header values pass through unchanged;</li><li>run the socket-level test with <code>fold-mixed-repeated</code> payloads;</li><li>run the unit suite for <code>test_connection.py</code> on Python 3.12;</li><li>run <code>towncrier</code> validation for the changelog fragment;</li><li>build the source distribution and the <code>wheel</code> artifacts;</li><li>verify Requests cookie extraction on the next request.</li></ol></div>",
     "rev": "1",
     "source": "pr",
-    "editable": false,
-    "restated": {
-      "d-p1": [
-        "b1",
-        "b2"
-      ],
-      "d-p2": [
-        "b2",
-        "b5",
-        "b1"
-      ]
-    }
+    "editable": false
   },
   "ingest": {
     "status": "ready"

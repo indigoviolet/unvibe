@@ -42,32 +42,56 @@ test.describe("J263 PR description tab", () => {
     await expect(page.locator("#right .desc")).not.toContainText("Restated →");
 
     // The shared Card carries normal margins, so the box never runs into
-    // the pane edges; paragraphs and headings share one left edge; list
-    // markers sit inside the content padding.
+    // the pane edges; headings and paragraphs start at exactly the same
+    // text x; list blocks share the same left edge with markers inside
+    // the content padding.
     const box = await page.locator("#right .ui-card.desc").evaluate((el) => {
+      const textX = (node: Element | null): number | null => {
+        if (!node) return null;
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let text: Node | null = null;
+        while ((text = walker.nextNode())) {
+          if (text.nodeValue && text.nodeValue.trim() !== "") break;
+          text = null;
+        }
+        if (!text || !text.nodeValue) return null;
+        const range = document.createRange();
+        range.setStart(text, 0);
+        range.setEnd(text, 1);
+        return Math.round(range.getBoundingClientRect().left);
+      };
+      const rectLeft = (node: Element | null): number | null =>
+        node ? Math.round(node.getBoundingClientRect().left) : null;
       const cs = getComputedStyle(el);
       const h3 = el.querySelector("h3");
       const p = el.querySelector("p.para");
       const ul = el.querySelector("ul.para");
       const ol = el.querySelector("ol.para");
-      const left = (node: Element | null): number | null =>
-        node ? Math.round(node.getBoundingClientRect().left) : null;
       return {
         marginLeft: cs.marginLeft,
-        h3: left(h3),
-        p: left(p),
-        ul: left(ul),
-        ol: left(ol),
+        h3Text: textX(h3),
+        pText: textX(p),
+        pBox: rectLeft(p),
+        ulBox: rectLeft(ul),
+        olBox: rectLeft(ol),
+        firstLiText: textX(ul?.querySelector("li") ?? null),
+        tenthLiText: textX(ol?.querySelectorAll("li")?.[9] ?? null),
         ulPad: ul ? getComputedStyle(ul).paddingLeft : null,
         olPad: ol ? getComputedStyle(ol).paddingLeft : null,
       };
     });
     expect(parseFloat(box.marginLeft)).toBeGreaterThanOrEqual(14);
-    expect(box.h3).not.toBeNull();
-    expect(box.p).not.toBeNull();
-    expect(box.h3).toBe(box.p);
-    expect(box.ul).toBe(box.p);
-    expect(box.ol).toBe(box.p);
+    expect(box.h3Text).not.toBeNull();
+    expect(box.pText).not.toBeNull();
+    // Headings and paragraphs start at exactly the same x (±1px for
+    // subpixel rounding); list blocks share the same box edge.
+    expect(Math.abs(box.h3Text! - box.pText!)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.ulBox! - box.pBox!)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.olBox! - box.pBox!)).toBeLessThanOrEqual(1);
+    // Bullets and numbers sit inside the content padding: item text is
+    // indented from the paragraph edge, with room for two-digit numbers.
+    expect(box.firstLiText! - box.pText!).toBeGreaterThanOrEqual(16);
+    expect(box.tenthLiText! - box.pText!).toBeGreaterThanOrEqual(16);
     expect(parseFloat(box.ulPad ?? "0")).toBeGreaterThanOrEqual(22);
     expect(parseFloat(box.olPad ?? "0")).toBeGreaterThanOrEqual(22);
   });

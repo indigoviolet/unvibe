@@ -24,7 +24,7 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
+import { canonicalizeTarget, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
@@ -265,39 +265,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // #216: no concept pages are seeded; a concept page is written when
   // its link is opened (concept-page recordings stay for that on-demand fill).
 
-  // "Restated →" mapping (PRD §4.11): description paragraph → guide block
-  // ids whose citations restate it, derived from the root page's `desc:`.
-  const restated: Record<string, string[]> = {};
-  const rootPage = pages.find((p) => p.id === "root")!;
-  const scanTargets = (b: Block): string[] => {
-    switch (b.type) {
-      case "paragraph":
-        return b.citations.map((c) => c.target);
-      case "list":
-        return [...b.citations.map((c) => c.target), ...b.items.flatMap((it) => it.citations.map((c) => c.target))];
-      case "aside":
-        return [...b.citations.map((c) => c.target), ...b.inner.flatMap(scanTargets)];
-      case "table":
-      case "code":
-      case "diagram":
-      case "finding-link":
-      case "comment-link":
-      case "follow-up":
-        return b.citations.map((c) => c.target);
-    }
-  };
-  for (const card of rootPage.cards) {
-    for (const block of card.blocks) {
-      for (const t of scanTargets(block)) {
-        const parsed = parseId(t);
-        if (parsed?.kind === "desc") {
-          restated[parsed.paragraph] ??= [];
-          if (!restated[parsed.paragraph].includes(block.id)) restated[parsed.paragraph].push(block.id);
-        }
-      }
-    }
-  }
-
   // --- annotations (prototype seed()) ----------------------------------
   // Annotation anchors use real file keys; card anchors use card#block IDs.
   // Issue #136: the seed conversation carries its turns (`Annotation.turns`)
@@ -453,7 +420,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       rev: "1",
       source: "pr",
       editable: false,
-      restated,
     },
     ingest: { status: "ready" },
     pages,

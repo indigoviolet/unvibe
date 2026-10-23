@@ -96,8 +96,7 @@ opens a concept link (#216).
 Stored citation targets are canonical (real file keys): alias-form tokens
 (`diff:conn:…`) resolve through the lookup at parse/validate time, so the
 web needs no alias table. Ingest records the PR author/state on the
-description, and the pipeline maintains its `restated` mapping (paragraph
-→ guide block ids from `desc:` citations) as the guide grows.
+description.
 4. **Hunk pass** (small model, no fork, one prompt per hunk, background;
    starts at ingest in its own queue bucket — #123). Summary +
    `hiddenReason` per hunk, replacing the rule-based pre-classification.

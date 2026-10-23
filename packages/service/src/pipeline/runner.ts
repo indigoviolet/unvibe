@@ -2057,7 +2057,6 @@ export class Pipeline {
       });
     });
     await this.persistPins(reviewId);
-    await this.updateRestatedMapping(reviewId);
   }
 
   // -- after reader ---------------------------------------------------
@@ -2203,7 +2202,6 @@ export class Pipeline {
               });
             }
           });
-          await this.updateRestatedMapping(reviewId);
           await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
           this.warmBase(reviewId);
           this.maybeMarkStageDone(reviewId, "critic", 1);
@@ -2639,7 +2637,6 @@ export class Pipeline {
         (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
       }
     });
-    await this.updateRestatedMapping(reviewId);
     // #122: the fill is applied above; bookkeeping joins the chain.
     await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
@@ -2800,36 +2797,6 @@ export class Pipeline {
         byKey.set(key, entry);
       }
     });
-  }
-
-  /**
-   * Recompute the description's "Restated →" mapping (PRD §4.11): paragraph
-   * id → guide block ids whose citations restate it. Derived from the root
-   * page's `desc:` citations; rerun as the guide grows (reader, critic
-   * findings cite description too, go-deeper fills).
-   */
-  private async updateRestatedMapping(reviewId: string): Promise<void> {
-    try {
-      await this.opts.reviews.mutate(reviewId, (draft) => {
-        if (!draft.description) return;
-        const map: Record<string, string[]> = {};
-        const root = draft.pages.find((p) => p.id === "root");
-        for (const card of root?.cards ?? []) {
-          for (const b of card.blocks) {
-            for (const t of citationsOf(b)) {
-              const parsed = parseId(t);
-              if (parsed?.kind === "desc") {
-                (map[parsed.paragraph] ??= []).push(b.id);
-              }
-            }
-          }
-        }
-        for (const k of Object.keys(map)) map[k] = [...new Set(map[k])];
-        draft.description!.restated = map;
-      });
-    } catch {
-      // best-effort
-    }
   }
 
   /**
