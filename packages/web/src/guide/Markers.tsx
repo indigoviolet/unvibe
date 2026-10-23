@@ -21,7 +21,7 @@
 import type { Annotation } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
-import { openBlockThreads } from "./annotations.js";
+import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
 
@@ -40,6 +40,16 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
   // Threads that never had a quote keep the bare bubble marker (PRD §4.6);
   // quoted threads get footnote chips when their highlight is lost.
   const unquoted = threads.filter((t) => !t.anchor.quotedText);
+  // Issue #262: the marker is a toggle. When every one of its threads
+  // is already open a click collapses all of them; otherwise (none open,
+  // or a mix) a click opens all of them. The tooltip states the action.
+  const unquotedIds = unquoted.map((t) => t.id);
+  const allOpen = unquoted.length > 0 && unquoted.every((t) => t.open);
+  const markerTip = allOpen ? "Hide comments" : "Show comments";
+  const toggleThreads = (): void => {
+    if (allOpen) closeBlockThreads(unquotedIds, blockId);
+    else openBlockThreads(unquotedIds, blockId);
+  };
   const quotedThreads = threads.filter((t) => !!t.anchor.quotedText);
   const notes = footnotes ?? [];
   if (!citations.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
@@ -79,8 +89,8 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           type="button"
           data-threads={unquoted.map((t) => t.id).join("|")}
           aria-label={`${unquoted.length} comments`}
-          data-tip="Show comments"
-          onClick={() => openBlockThreads(unquoted.map((t) => t.id), blockId)}
+          data-tip={markerTip}
+          onClick={toggleThreads}
         >
           <Icon name="comment" />
           {unquoted.length}
