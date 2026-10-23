@@ -53,7 +53,7 @@ import { lookupForSnapshot, resolveCodeFileExistence } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { buildDocumentBaseText } from "../document/map.js";
 import { resolveDocumentCodeExistence } from "../document/resolve.js";
-import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
+import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, requestedReaderFields, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -1738,6 +1738,10 @@ export class Pipeline {
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
+    const readerTemplateBody = lib.get("reader")?.body ?? "";
+    // Issue #252: the reader-result parser stores only trailing-JSON
+    // fields this prompt requested (see `requestedReaderFields`).
+    const requestedKeys = requestedReaderFields(readerTemplateBody);
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
@@ -1846,11 +1850,14 @@ export class Pipeline {
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             if (brokenDataError !== undefined) {
               // #213: one repair turn, same session, just the data block.
-              // Issue #252: the data block includes the glossary; no new mechanism.
+              // Issue #252: the field list mirrors what the prompt
+              // requested (see `requestedReaderFields`) — an unrequested
+              // field is never named here, so the repair turn cannot leak
+              // it; no new mechanism.
               const repairPrompt =
                 `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
                 `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
-                `(cardIds, pendingCards, plotlines, glossary and any contribute block), with no cards and no prose.`;
+                `(${[...requestedKeys, "any contribute block"].join(", ")}), with no cards and no prose.`;
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
@@ -1868,8 +1875,15 @@ export class Pipeline {
               if (repaired.ok) {
                 finalData = repaired.data as ReplyData;
               } else {
+                // Name only what the prompt requested (see above).
+                const missing = [
+                  ...(requestedKeys.includes("plotlines") ? ["plotlines"] : []),
+                  ...(requestedKeys.includes("glossary") ? ["glossary"] : []),
+                  ...(requestedKeys.includes("pendingCards") ? ["go-deeper directions"] : []),
+                ];
                 degradedReason =
-                  "The reader's trailing data block did not parse and the repair reply did not parse either, so the guide has no plotlines, glossary or go-deeper directions.";
+                  "The reader's trailing data block did not parse and the repair reply did not parse either, " +
+                  `so the guide has no ${missing.join(", ").replace(/, ([^,]*)$/, " or $1")}.`;
               }
             } else if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
@@ -2033,6 +2047,15 @@ export class Pipeline {
     });
   }
 
+  /** Reader template text the reply answers (keys off `requestedReaderFields`). */
+  private readerTemplateBody(): string {
+    try {
+      return loadTemplatesDirSync(this.promptsDir).get("reader")?.body ?? "";
+    } catch {
+      return "";
+    }
+  }
+
   private async applyReaderResult(
     reviewId: string,
     cards: ParsedCard[],
@@ -2042,6 +2065,7 @@ export class Pipeline {
     const applied = readerApply(
       cards.map((c) => ({ title: c.title, blocks: c.blocks })),
       (data ?? null) as Record<string, unknown> | null,
+      this.readerTemplateBody(),
     );
     // Issue #169: validate the reader's plotline hunk IDs like any other
     // ID before storing. Unknown IDs are dropped, a twice-claimed hunk
