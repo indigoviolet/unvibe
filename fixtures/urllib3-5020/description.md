@@ -22,3 +22,18 @@ This intentionally does not address the separate whitespace-before-colon/header 
 - towncrier changelog validation;
 - source distribution and wheel builds;
 - end-to-end Requests cookie extraction and subsequent request serialization.
+
+### Review checklist
+
+1. confirm `HTTPMessage` no longer carries a raw `CRLF` after unfolding;
+2. confirm `HTTPHeaderDict` matches the message on `Set-Cookie` pairs;
+3. check duplicate headers keep their order and `defects` list;
+4. check adjacent folds collapse to one `space`, not zero;
+5. check mixed `SP` and `HTAB` runs around `CRLF` unfold cleanly;
+6. check repeated folds produce one space per fold;
+7. check ordinary header values pass through unchanged;
+8. run the socket-level test with `fold-mixed-repeated` payloads;
+9. run the unit suite for `test_connection.py` on Python 3.12;
+10. run `towncrier` validation for the changelog fragment;
+11. build the source distribution and the `wheel` artifacts;
+12. verify Requests cookie extraction on the next request.

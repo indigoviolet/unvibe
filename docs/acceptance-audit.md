@@ -703,8 +703,14 @@ needed (that deviation is closed, not added).
 
 ### §4.11 PR description — all met
 
-- Restated → links; branch tab shows commit messages read-only — met
-  (`pipeline` restated mapping, `ingest/description.ts`).
+- Guide-card layout, no Restated links (issue #263); branch tab shows
+  commit messages read-only — met: the description renders in the
+  shared Card with normal margins, paragraphs/bullet/numbered lists and
+  headings share one content inset with markers inside it (guide `.lst`
+  styling), nested lists indent from it; the "Restated →" links and
+  their `button.back` code are removed while card links and the
+  comments-menu jump keep working (journey J263, visual-tour
+  `desc-full` frames; `ingest/description.ts`).
 - Author + open-PR gate; in-place edit with Discard/Save; local pending
   (“Edited · goes to GitHub…”, Revert); paragraph identity preserved —
   met (`routes/description.ts:61` viewer check, `description-m6.test.ts`).
