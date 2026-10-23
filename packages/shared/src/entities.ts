@@ -881,12 +881,6 @@ export interface ReviewDescription {
   /** #224: normalised gh review decision at ingest/refresh time. Absent on branches. */
   reviewDecision?: PrReviewDecision;
   /**
-   * "Restated →" mapping (PRD §4.11): description paragraph id → ids of
-   * the guide blocks whose citations restate it. Derived from guide
-   * citations of `desc:` ids; recomputed as the guide grows.
-   */
-  restated?: Record<string, string[]>;
-  /**
    * M6: original PR body verbatim (for byte-for-byte round-trip of
    * unedited paragraphs, PRD §15). Absent on pre-M6 snapshots.
    */
@@ -1083,8 +1077,8 @@ export interface Job {
   error?: string;
   /**
    * The agent's `degraded` reason for a turn whose usable answer was kept
-   * anyway (the answer carries a plain-words note; the raw reason lives
-   * here for the Debug page, never on the card).
+   * anyway (the answer shows as written with no appended note; the raw
+   * reason lives here for the Debug page, never on the card).
    */
   degradedReason?: string;
   /**

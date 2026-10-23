@@ -3,7 +3,8 @@
  *
  * `runInFork` validates every reply (one repair turn on failure); the
  * report's `repaired` tokens are stored at their corrected target and
- * `unverified` ones are stored flagged (the UI dims them, PRD §4.5).
+ * `unverified` ones are stored flagged (the UI shows no marker for them,
+ * issue #264; the raw reason stays on the job for the Debug page).
  */
 import fs from "node:fs";
 import path from "node:path";

@@ -36,7 +36,7 @@ export interface GuideBlockRequest {
   blockId: string;
 }
 
-/** Ask the guide to show a block (used by "Restated →" links and card links). */
+/** Ask the guide to show a block (used by card links). */
 export function requestGuideBlock(cardId: string, blockId: string): void {
   window.dispatchEvent(
     new CustomEvent<GuideBlockRequest>(GUIDE_BLOCK_EVENT, { detail: { cardId, blockId } }),

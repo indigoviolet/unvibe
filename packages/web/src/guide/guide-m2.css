@@ -26,17 +26,6 @@
   text-underline-offset: 2px;
 }
 
-/* Unverified citations (PRD §4.5): dimmed, with a native tooltip. */
-.lk.unverified {
-  opacity: 0.38;
-}
-
-.lk.unverified:hover {
-  opacity: 0.9;
-  color: var(--muted);
-  background: var(--sunk);
-}
-
 /* Stale card banner (PRD §8): cited hunks changed, update available. */
 .stale {
   display: flex;

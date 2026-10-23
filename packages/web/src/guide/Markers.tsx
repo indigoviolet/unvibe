@@ -3,8 +3,9 @@
  * (issue #72, PRD §4.7).
  *
  * - `<>` citation marker per verified group (count when >1); hover previews
- *   the cited lines, click reveals the source. Each *unverified* citation
- *   gets its own dimmed marker with an explanatory tooltip.
+ *   the cited lines, click reveals the source. Unverified citations get
+ *   no marker at all (issue #264): the surrounding text stays plain text
+ *   and the failure stays on the job for the Debug page.
  * - Speech-bubble comment marker with a count, only for threads that never
  *   had a quote (PRD §4.6). Threads whose quote is lost get a footnote chip
  *   instead (same row, with their quote).
@@ -36,7 +37,6 @@ interface Props {
 
 export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPage }: Props) {
   const verified = citations.filter((c) => !c.unverified);
-  const unverified = citations.filter((c) => c.unverified);
   // Threads that never had a quote keep the bare bubble marker (PRD §4.6);
   // quoted threads get footnote chips when their highlight is lost.
   const unquoted = threads.filter((t) => !t.anchor.quotedText);
@@ -52,7 +52,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
   };
   const quotedThreads = threads.filter((t) => !!t.anchor.quotedText);
   const notes = footnotes ?? [];
-  if (!citations.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
+  if (!verified.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
   return (
     <span className="lo">
       {verified.length > 0 && (
@@ -69,20 +69,6 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           {verified.length > 1 ? verified.length : ""}
         </button>
       )}
-      {unverified.map((c) => (
-        <button
-          key={c.target}
-          className="lk unverified"
-          type="button"
-          data-refs={c.target}
-          data-src={c.target}
-          aria-label="Unverified source"
-          data-tip="Unvibe couldn't confirm this points at the right code."
-          onClick={() => revealSource(c.target)}
-        >
-          <Icon name="code" />
-        </button>
-      ))}
       {unquoted.length > 0 && (
         <button
           className="lk cm"

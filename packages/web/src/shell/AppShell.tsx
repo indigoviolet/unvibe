@@ -95,7 +95,7 @@ export function AppShell({ reviewId }: { reviewId: string }) {
   }, []);
 
   // Navigation to guide content from the source pane ("Open as page",
-  // "Restated →", the comments menu jumping to a guide thread) while only
+  // the comments menu jumping to a guide thread) while only
   // the source pane is showing: bring the guide back without hiding the
   // source pane.
   useEffect(() => {
