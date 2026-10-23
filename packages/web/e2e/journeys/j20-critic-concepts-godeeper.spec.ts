@@ -132,11 +132,15 @@ test.describe("J20 critic, concepts and go-deeper", () => {
       await page.getByRole("tab", { name: "Limits" }).click();
       const toggle = page.locator('[data-testid="auto-go-deeper-toggle"]');
       await expect(toggle).toBeChecked({ timeout: 30_000 });
-      await toggle.click();
-      await page.waitForResponse(
+      // Subscribe before clicking: the localhost save can answer before
+      // the click resolves, so a wait started after the click can miss it
+      // and time out (#251; same race #225A fixed in J11).
+      const saved = page.waitForResponse(
         (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
         { timeout: 15_000 },
       );
+      await toggle.click();
+      await saved;
       await expect(toggle).not.toBeChecked();
 
       const reviewId = await createDemoReview(svc);
