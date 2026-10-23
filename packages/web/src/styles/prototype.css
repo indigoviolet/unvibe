@@ -269,9 +269,13 @@ code { font-family: var(--mono); font-size: .86em; }
    anchor with the `ui-btn` secondary/sm classes, like the Comments
    button) with the status icon inside it, so the box itself needs no
    rule here — just the identity-row layout the icon buttons share.
-   Branch reviews (no PR) keep the plain `.num` span. */
+   Branch reviews (no PR) keep the plain `.num` span. #254: document
+   reviews show a document icon plus the document's short name. */
 .rbar .rid .ui-btn { flex: none; }
 .rbar .rid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rbar .rid .docid { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; max-width: 100%; height: var(--control-sm); box-sizing: border-box; color: inherit; }
+.rbar .rid .docid .ic { flex: none; }
+.rbar .rid .docid .docname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rbar .rid .ib { flex: none; }
 /* Review bar (#245): every control is one height, the theme's small control
    height (the same as the PR link, Comments and Submit buttons): icon

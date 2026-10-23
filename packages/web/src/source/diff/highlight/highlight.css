@@ -84,3 +84,14 @@ table.diff td.c .shk-param { color: var(--shk-param); }
 table.diff td.c .shk-link { color: var(--shk-link); }
 table.diff td.c .shk-b { font-weight: 600; }
 table.diff td.c .shk-i { font-style: italic; }
+/* Guide/document code blocks (issue #255): same palette as diff rows, so
+   light/dark and every ui-theme restyle without re-tokenising. */
+pre.code .shk-kw { color: var(--shk-kw); }
+pre.code .shk-str { color: var(--shk-str); }
+pre.code .shk-com { color: var(--shk-com); }
+pre.code .shk-fn { color: var(--shk-fn); }
+pre.code .shk-const { color: var(--shk-const); }
+pre.code .shk-param { color: var(--shk-param); }
+pre.code .shk-link { color: var(--shk-link); }
+pre.code .shk-b { font-weight: 600; }
+pre.code .shk-i { font-style: italic; }

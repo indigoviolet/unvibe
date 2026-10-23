@@ -3,6 +3,10 @@
  * debug page: the short `owner/name#N` (or branch) label, the full title,
  * and the GitHub PR URL when the review has a PR.
  *
+ * Issue #254: document reviews show the document's short name (its
+ * `DocumentContent.title`, the H1 or first heading) with the document
+ * icon, instead of the first context repo.
+ *
  * The snapshot and summaries carry no PR URL field, so the URL is the
  * canonical `github.com` pull URL built from the owner/name/number the
  * service already reports. Branch reviews and the demo (`repoId: "demo"`)
@@ -10,12 +14,12 @@
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
-import { githubPrUrl, isDefaultGuideTitle, prStateFromGh } from "@unvibe/shared";
+import { githubPrUrl, isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 
 export interface ReviewIdentity {
-  /** `owner/name#N`, `owner/name`, the branch, or the review id. */
+  /** `owner/name#N`, `owner/name`, the branch, the review id, or the document title. */
   short: string;
   /** Full title with the same fallbacks the top bar always used. */
   title: string;
@@ -51,12 +55,22 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
   const branch = summary?.branch ?? snapshot?.review.branch ?? "";
   const owner = summary?.repoOwner ?? (repoId === "demo" ? "demo" : null);
   const name = summary?.repoName ?? (repoId === "demo" ? "urllib3-5020" : null);
+  // #254: a document review is named by its document, never by one of its
+  // context repos. No filename is stored, so the short name is the
+  // document's own title (the H1/first heading `DocumentContent.title`
+  // already holds). While the snapshot loads, the summary carries the same
+  // title for document rows.
+  const docTitle =
+    (snapshot && isDocumentReview(snapshot) ? snapshot.document.title : null) ??
+    (summary?.kind === "document" ? summary.title : null);
   const short =
-    owner && name
-      ? prNumber !== undefined
-        ? `${owner}/${name}#${prNumber}`
-        : `${owner}/${name}`
-      : branch || reviewId;
+    docTitle && docTitle.trim() !== ""
+      ? docTitle
+      : owner && name
+        ? prNumber !== undefined
+          ? `${owner}/${name}#${prNumber}`
+          : `${owner}/${name}`
+        : branch || reviewId;
   const rootTitle = snapshot?.pages.find((p) => p.kind === "root")?.title;
   const title =
     summary?.title && !isDefaultGuideTitle(summary.title)
