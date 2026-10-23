@@ -3,15 +3,21 @@
  * documents screen, read, Explain, Ask, Comment, and a `code:` citation in
  * an answer opening the cited file (from the repo its sha names, the
  * third repo) in a source-pane tab. The PR start page shows no Document
- * section and no document reviews.
+ * section and no document reviews. #254: the review bar names the
+ * document (icon + short name), the Documents list shows the same name,
+ * and the browser tab titles the document.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
+import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import { apiJson, git, makeScratchRepo } from "./journey-helpers.js";
+
+const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -119,14 +125,25 @@ test.describe("J222 document review", () => {
     await page.waitForURL(/\/review\//, { timeout: 30_000 });
     reviewId = page.url().split("/review/")[1].split(/[/?#]/)[0];
 
-    // The documents screen lists the new review.
+    // The documents screen lists the new review (#254: same document
+    // name with the document icon).
     await page.goto(`${svc.origin}/documents?token=${svc.token}`);
     await expect(page.getByTestId(`session-${reviewId}`)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId(`session-${reviewId}`)).toContainText("Design note");
     // The PR start page lists no document reviews.
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByTestId(`session-${reviewId}`)).toHaveCount(0);
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    // #254: the review bar names the document (icon + short name), never
+    // the first context repo; the browser tab titles the document too.
+    const bar = page.locator("#reviewbar");
+    await expect(bar).toBeVisible({ timeout: 30_000 });
+    await expect(bar.locator(".docid")).toContainText("Design note", { timeout: 15_000 });
+    await expect(bar.locator(".docid")).toHaveAttribute("title", "Design note");
+    await expect(bar.locator(".docid svg.ic")).toHaveCount(1);
+    await expect(bar).not.toContainText("acme/");
+    await expect(page).toHaveTitle(/Design note/, { timeout: 15_000 });
     // The document renders in the left pane with all three repos as
     // context; the source pane holds no Diff tab on a document (file
     // tabs only).
@@ -249,5 +266,59 @@ test.describe("J222 document review", () => {
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p3");
     await expect(page.locator("[data-outbox-md]")).toContainText("Please expand this part.");
     await page.keyboard.press("Escape");
+
+    // #254: tour frames of the document review's bar (Default, Studio and
+    // Console) with layout checks. The bar keeps #245's one height and
+    // centre line with the icon + name.
+    for (const combo of [
+      { theme: "default", scheme: "light", dark: false },
+      { theme: "studio", scheme: "light", dark: false },
+      { theme: "console", scheme: "dark", dark: true },
+    ] as const) {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      else await page.emulateMedia({ colorScheme: "light" });
+      const staged = await apiJson(svc, "PUT", "/api/settings", { uiTheme: combo.theme });
+      expect(staged.status).toBe(200);
+      await page.addInitScript((t) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", t);
+        } catch {
+          // Boot falls back; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      const docBar = page.locator("#reviewbar");
+      await expect(docBar.locator(".docid")).toContainText("Design note", { timeout: 15_000 });
+      // One height, centred on one line (#245 applies to the doc identity too).
+      const boxes = await docBar.evaluate((el) => {
+        const sels: [string, string][] = [
+          ["home", 'a[aria-label="Back to the start page"]'],
+          ["doc", ".docid"],
+          ["debug", 'a[aria-label="Debug"]'],
+          ["panes", ".seg"],
+          ["comments", '[data-cm=""]'],
+          ["submit", ".ra .ui-btn[data-variant='primary']"],
+        ];
+        return sels.flatMap(([name, sel]) => {
+          const n = el.querySelector(sel);
+          if (!n) return [];
+          const r = n.getBoundingClientRect();
+          return r.height > 0 ? [{ name, height: r.height, mid: r.top + r.height / 2 }] : [];
+        });
+      });
+      expect(boxes.map((b) => b.name)).toEqual(
+        expect.arrayContaining(["home", "doc", "panes", "comments", "submit"]),
+      );
+      const h = boxes[0].height;
+      for (const b of boxes) expect(Math.abs(b.height - h), `${b.name} height ${b.height} vs ${h}`).toBeLessThanOrEqual(1);
+      const mids = boxes.map((b) => b.mid);
+      expect(Math.max(...mids) - Math.min(...mids), JSON.stringify(boxes)).toBeLessThanOrEqual(1);
+      await checkLayout(page, `reviewbar-doc-${combo.theme}-${combo.scheme}`);
+      await docBar.screenshot({ path: path.join(SHOTS, `reviewbar-doc-${combo.theme}-${combo.scheme}.png`) });
+    }
   });
 });

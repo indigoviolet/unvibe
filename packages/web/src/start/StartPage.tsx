@@ -1553,7 +1553,16 @@ export function SessionRow({
           onClick={onOpen}
           title={`${s.title} (${s.branch})`}
         >
-          <span className="cx2">{s.title}</span>
+          {s.kind === "document" ? (
+            <span className="cx2" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="doc" />
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.title}
+              </span>
+            </span>
+          ) : (
+            <span className="cx2">{s.title}</span>
+          )}
         </button>
         <span className="hint">
           {s.ingestStatus === "loading" ? (
