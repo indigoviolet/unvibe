@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { parseBlocks, type DiagramBlock, type ReviewSnapshot } from "@unvibe/shared";
 import { BlockView } from "./BlockView.js";
 import { REVEAL_EVENT } from "../source/reveal.js";

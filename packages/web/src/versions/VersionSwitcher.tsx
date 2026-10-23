@@ -8,7 +8,7 @@
  * with the warning border (the page's other read-only signs stay as they
  * are).
  */
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { useReview } from "../state/store.js";
 import { Select } from "../ui/index.js";
 import { useReviewVersion } from "./useReviewVersion.js";

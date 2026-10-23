@@ -17,7 +17,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import type { Anchor, Annotation, Page } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";

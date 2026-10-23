@@ -30,7 +30,7 @@
  *   is open and at least one job is live — a link to the Debug jobs list.
  */
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { isDocumentReview } from "@unvibe/shared";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";

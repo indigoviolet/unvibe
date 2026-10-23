@@ -29,8 +29,7 @@ export function suiteOptions(include: string[]) {
     passWithNoTests: suite === "slow",
     pool: "forks" as const,
     maxWorkers: workers,
-    minWorkers: 1,
-    poolOptions: { forks: { execArgv: ["--max-old-space-size=1024"] } },
+    execArgv: ["--max-old-space-size=1024"],
     testTimeout: suite === "slow" ? 30_000 : 10_000,
     hookTimeout: 10_000,
   };

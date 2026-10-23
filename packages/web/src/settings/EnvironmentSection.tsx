@@ -11,7 +11,7 @@
  * Actions sit in the card footer as shared buttons.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { ReadinessCheck, ReadinessResponse, ReloadResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Badge, Button, Card, ListRow } from "../ui/index.js";

@@ -7,7 +7,7 @@
  * different one).
  */
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { ModelInfo, ModelPick, ReadinessCheck, Settings, ThinkingResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Card, Field, Select } from "../ui/index.js";

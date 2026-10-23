@@ -21,7 +21,7 @@
  * before leaving would never come back.
  */
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";

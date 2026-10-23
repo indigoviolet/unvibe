@@ -5,7 +5,7 @@
  * page; the top bar's home link returns there.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import type { Repo, ReviewSummary } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button } from "../ui/index.js";

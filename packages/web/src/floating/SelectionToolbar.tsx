@@ -43,7 +43,7 @@
  * interaction agent's Explain/expansion cards (`resolveSelectionHost`).
  */
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import type { ActionAnchor, ReviewSnapshot } from "@unvibe/shared";
 import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
