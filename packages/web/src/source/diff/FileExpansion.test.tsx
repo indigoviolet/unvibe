@@ -79,14 +79,26 @@ describe("DiffView expansion", () => {
     await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
     await screen.findByText("Hunk 1 of 3");
     const tconn = within(document.getElementById(`F-${TCONN}`)!);
-    await fireEvent.click(tconn.getByRole("button", { name: "Show all 4 lines" }));
+    // Issue #265: the gap's show-all rides both ends — down from the
+    // upper hunk, up (to the previous hunk) from the lower one.
+    const showAlls = tconn.getAllByRole("button", { name: "Show all 4 lines" });
+    expect(showAlls).toHaveLength(2);
+    await fireEvent.click(showAlls[1]);
     const section = document.getElementById(`F-${TCONN}`)!;
     // Lines 10-13 sit between the two import hunks (highlighting may
-    // split the text across spans, so assert rows + ids, not text).
+    // split the text across spans, so assert rows + ids, not text) —
+    // atop the clicked hunk, not under the previous one.
     await waitForRevealed(section, 4);
     for (let n = 10; n <= 13; n++) {
       expect(document.getElementById(`L-${TCONN}-${n}`)).not.toBeNull();
     }
+    const [d0, d1] = section.querySelectorAll(".dhunk");
+    expect(revealedRows(d0)).toHaveLength(0);
+    const rows1 = [...d1.querySelectorAll("table.diff tbody tr")];
+    expect(rows1.slice(0, 4).map((tr) => (tr as HTMLElement).id)).toEqual(
+      [10, 11, 12, 13].map((n) => `L-${TCONN}-${n}`),
+    );
+    expect((rows1[4] as HTMLElement).id).toBe(`L-${TCONN}-14`);
     // Fully revealed: this gap's show-all is gone; the quiet Hide icon
     // sits on the run's first row instead.
     expect(tconn.queryByRole("button", { name: "Show all 4 lines" })).toBeNull();
@@ -211,14 +223,18 @@ describe("DiffView unit expansion", () => {
     // From below (the lower hunk's step): the 4-line gap finishes at once.
     await fireEvent.click(steps[1]);
     await waitForRevealed(section, 4);
-    // No separator between the two hunks: hunk 1's table ends on
-    // revealed line 13, hunk 2's table starts on its code line 14.
+    // No separator rows at the revealed boundary: hunk 1's table holds
+    // only its top-region control (above its code, ending on code line
+    // 9); hunk 2's table starts on the revealed gap lines (10-13, atop
+    // the clicked hunk per #265) and then its code, with only the next
+    // gap's control below.
     const [d0, d1] = section.querySelectorAll(".dhunk");
     const rows0 = [...d0.querySelectorAll("table.diff tbody tr")];
-    expect(rows0[rows0.length - 1].id).toBe(`L-${TCONN}-13`);
+    expect(rows0[rows0.length - 1].id).toBe(`L-${TCONN}-9`);
     const rows1 = [...d1.querySelectorAll("table.diff tbody tr")];
     expect(rows1[0].classList.contains("xsep")).toBe(false);
-    expect(rows1[0].id).toBe(`L-${TCONN}-14`);
+    expect(rows1[0].id).toBe(`L-${TCONN}-10`);
+    expect(rows1[4].id).toBe(`L-${TCONN}-14`);
     // The hover Hide sits on the run's first row instead.
     expect(section.querySelectorAll("button[aria-label='Hide 4 lines']")).toHaveLength(1);
   });
@@ -233,21 +249,30 @@ describe("DiffView unit expansion", () => {
     // chevron so its lower step renders — the upper side alone still
     // reaches the whole gap.
     await fireEvent.click(tconn.getByRole("button", { name: "Show code" }));
-    // Big gap (22-210, 189 lines): expand up from the lower hunk.
+    // Big gap (22-210, 189 lines): expand up from the lower hunk. The
+    // revealed tail reads atop the clicked hunk (issue #265), not under
+    // the previous one.
     const up = tconn.getAllByRole("button", { name: "Show 20 more lines" });
     await fireEvent.click(up[up.length - 1]);
     await waitForRevealed(section, 20);
-    // Both ends share the run's remaining count (189 - 20 = 169).
+    const dhunks = section.querySelectorAll(".dhunk");
+    expect(revealedRows(dhunks[2])).toHaveLength(20);
+    expect(revealedRows(dhunks[1])).toHaveLength(0);
+    // Both ends share the run's remaining count (189 - 20 = 169): the
+    // upper side's show-all and the lower side's show-all-to-previous
+    // name the same count.
     // (The first fetch also teaches the file total, so the bottom
     // control below the last hunk appears with its own 20-line step.)
-    expect(tconn.getByRole("button", { name: "Show all 169 lines" })).toBeInTheDocument();
+    expect(tconn.getAllByRole("button", { name: "Show all 169 lines" })).toHaveLength(2);
     expect(tconn.getAllByRole("button", { name: "Show 20 more lines" })).toHaveLength(3);
     // One more step from below shrinks the same run again: the gap's
-    // lower step sits right above the last hunk's code.
+    // lower step sits right above the last hunk's code, and the new
+    // lines join the tail there.
     const upAgain = tconn.getAllByRole("button", { name: "Show 20 more lines" });
     await fireEvent.click(upAgain[1]);
     await waitForRevealed(section, 40);
-    expect(tconn.getByRole("button", { name: "Show all 149 lines" })).toBeInTheDocument();
+    expect(revealedRows(dhunks[2])).toHaveLength(40);
+    expect(tconn.getAllByRole("button", { name: "Show all 149 lines" })).toHaveLength(2);
   });
 });
 
