@@ -1083,8 +1083,8 @@ export interface Job {
   error?: string;
   /**
    * The agent's `degraded` reason for a turn whose usable answer was kept
-   * anyway (the answer carries a plain-words note; the raw reason lives
-   * here for the Debug page, never on the card).
+   * anyway (the answer shows as written with no appended note; the raw
+   * reason lives here for the Debug page, never on the card).
    */
   degradedReason?: string;
   /**

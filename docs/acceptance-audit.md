@@ -305,10 +305,9 @@ needed (that deviation is closed, not added).
    shown. A turn fails only on facts the service observes itself — the
    turn errored or was cancelled, the answer is empty, or a review-tool
    call failed to connect. A trailing `degraded` field with a usable body
-   (it parses and has at least one block) keeps the answer: it shows
-   with the plain-words note "Some references in this answer could not
-   be linked to the code." and the raw reason lands on the job
-   (`degradedReason`) for the Debug page; it is never a failure when
+   (it parses and has at least one block) keeps the answer: it shows as
+   written with no appended note (issue #264) and the raw reason lands on
+   the job (`degradedReason`) for the Debug page; it is never a failure when
    there is content, and only an empty degraded answer fails the turn.
    Connection failures retry once on a fresh session (fork jobs since
    #51, the reader since #146: fresh per-run secret + session,
@@ -429,9 +428,12 @@ needed (that deviation is closed, not added).
   (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
-- Unverified citations dimmed + tooltip — met (`validate/validate.ts`
-  `unverified` flag, snapshot tests; live pipeline: 0 unverified of
-  37+14 — `docs/live-pipeline-results.md`).
+- Unverified citations get no marker (issue #264) — met: the service
+  still flags them (`validate/validate.ts` `unverified` flag, recorded
+  in job debug data) and the raw reason stays on the job for the Debug
+  page, but card text shows no `<>` chip, no tooltip and no popover —
+  the surrounding text stays plain text (`guide/Markers.test.tsx`
+  “renders no marker”, journey J81 missing-file case).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`

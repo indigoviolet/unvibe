@@ -230,39 +230,11 @@ function reportToolFrom(ctx?: {
   return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
 }
 
-/**
- * Plain-words note appended to a kept degraded answer (never the agent's
- * internal reason — that lives on the job for the Debug page).
- */
-export const DEGRADED_ANSWER_NOTE = "Some references in this answer could not be linked to the code.";
-
-/** Id for the appended degraded note (deduped, never anchored). */
-export const DEGRADED_NOTE_BLOCK_ID = "b-degraded-note";
-
 export type TurnDisposition =
   | { kind: "ok" }
   | { kind: "fail-conn"; message: string }
   | { kind: "fail-empty"; message: string }
   | { kind: "keep"; reason: string };
-
-/**
- * Append the quiet degraded note to a kept answer's last card (once —
- * keyed by its stable block id). The note is plain words; the agent's
- * internal reason lives on the job for the Debug page.
- */
-function attachDegradedNote(cards: { blocks: { id: string }[] }[]): void {
-  const last = cards[cards.length - 1];
-  if (!last) return;
-  if (last.blocks.some((b) => b.id === DEGRADED_NOTE_BLOCK_ID || b.id.startsWith(`${DEGRADED_NOTE_BLOCK_ID}-`))) {
-    return;
-  }
-  (last.blocks as unknown[]).push({
-    type: "paragraph",
-    id: DEGRADED_NOTE_BLOCK_ID,
-    text: { standard: DEGRADED_ANSWER_NOTE },
-    citations: [],
-  });
-}
 
 /**
  * Fence-tag language for a pinned path. No shared helper exists (pin
@@ -626,7 +598,6 @@ export class Pipeline {
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
-              attachDegradedNote(finalCards);
               ctx.setDegradedReason(degradedReason);
             }
             ctx.reportUsage(usage);
@@ -1278,10 +1249,10 @@ export class Pipeline {
   /**
    * Decide a finished turn's fate from facts the service observes, never
    * from the reply's wording (#180; the phrase matching from #51 is gone):
-   * - the trailing `degraded` field is present with a usable body (it
-   *   parses and has at least one block): keep the answer as written,
-   *   record the raw reason on the job and add the quiet note. Never a
-   *   failure when there is content;
+    * - the trailing `degraded` field is present with a usable body (it
+    *   parses and has at least one block): keep the answer as written,
+    *   record the raw reason on the job for the Debug page. Never a
+    *   failure when there is content;
    * - a review-tool call observably failed to connect this turn (a hit
    *   on an unknown/revoked MCP secret): fail as a connection error,
    *   which the caller retries once on a fresh session;
@@ -1785,7 +1756,7 @@ export class Pipeline {
             let finalValidation = validation;
             // Facts only (#180), same as fork turns: wording never fails
             // the guide. An explicit degraded field with usable cards is
-            // kept (reason on the job, quiet note on the last card) and
+            // kept (reason on the job, no appended note) and
             // skips the repair turn; a connection failure retries once
             // on a fresh session; an empty reply fails.
             let degradedReason: string | undefined;
@@ -1868,7 +1839,6 @@ export class Pipeline {
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
-              attachDegradedNote(finalCards);
               ctx.setDegradedReason(degradedReason);
             }
             // #145: diagrams the reader wrote inline in guide cards go
