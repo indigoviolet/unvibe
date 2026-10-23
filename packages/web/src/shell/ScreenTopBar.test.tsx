@@ -5,7 +5,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { ScreenTopBar } from "./ScreenTopBar.js";
 
 afterEach(() => {

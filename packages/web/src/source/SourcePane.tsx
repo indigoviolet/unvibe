@@ -11,7 +11,7 @@
  */
 import { isDocumentReview } from "@unvibe/shared";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useDiffCommentBindings } from "../comments/DiffComments.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { performFollowUp } from "../guide/actions.js";

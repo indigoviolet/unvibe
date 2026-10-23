@@ -10,7 +10,7 @@
  * explains that and links to Settings.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { Card, Page, SecondOpinionMode, Settings } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { api } from "../../api/client.js";

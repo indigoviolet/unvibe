@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { api } from "../api/client.js";
 import { resetMockState } from "../mock/index.js";
 import { useReview } from "../state/store.js";
@@ -178,6 +178,37 @@ describe("ReviewBar", () => {
     );
     await screen.findByRole("button", { name: "Guide" });
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("document reviews show a document icon plus the short name, not the first context repo (#254)", async () => {
+    const snap = await api.review("demo");
+    useReview.getState().setSnapshot({
+      ...snap,
+      review: { ...snap.review, id: "doc-1", branch: "document", repoId: "urllib3" },
+      document: { title: "Design note", markdown: "# Design note", blocks: [] },
+    } as typeof snap);
+    render(
+      <MemoryRouter initialEntries={["/review/doc-1"]}>
+        <ReviewBar reviewId="doc-1" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("button", { name: "Guide" });
+    const bar = document.getElementById("reviewbar");
+    expect(bar).not.toBeNull();
+    // Icon plus name, full name on hover, truncated by CSS.
+    const docid = bar!.querySelector(".docid");
+    expect(docid).not.toBeNull();
+    expect(docid).toHaveAttribute("title", "Design note");
+    expect(docid!.querySelector(".docname")).toHaveTextContent("Design note");
+    // The document icon renders inside the identity (not a PR badge row).
+    expect(docid!.querySelector("svg.ic")).not.toBeNull();
+    expect(bar).not.toHaveTextContent("urllib3/urllib3");
+    expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    // The browser tab names the document.
+    expect(document.title).toBe("Design note");
+    cleanup();
+    useReview.getState().clear();
   });
 
   it("hides the Debug icon while the review is still opening (#92)", async () => {

@@ -7,7 +7,7 @@
  * marker in the review bar carries the full text as its hover title.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { UpdateBuildInfo } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { badgeLabel, badgeTitle } from "../settings/versionFormat.js";

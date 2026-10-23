@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import type { HealthResponse } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";

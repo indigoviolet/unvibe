@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router";
 import { Tabs, TabPanel, parseTabId, tabIdFromHash, useQueryTab } from "./Tabs.js";
 
 const DEBUG_IDS = ["jobs", "prompts", "context"];

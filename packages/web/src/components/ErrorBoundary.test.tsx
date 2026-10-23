@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router";
 import { ErrorBoundary, InlineFallback, RouteShellBoundary, ShellFallback } from "./ErrorBoundary.js";
 import { reportWebError } from "../sentry.js";
 
