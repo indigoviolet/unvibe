@@ -10,6 +10,7 @@ import {
   mapNewToOld,
   maxLineDigits,
   mergeRanges,
+  partitionGap,
   planExpandAll,
   planExpandDown,
   planExpandUp,
@@ -104,6 +105,32 @@ describe("hidden/revealed math", () => {
 
   it("hides nothing outside the region", () => {
     expect(hiddenIn(region, [{ start: 1, end: 1000 }])).toEqual([]);
+  });
+});
+
+describe("partitionGap", () => {
+  const lines = (ns: number[]): { line: number }[] => ns.map((line) => ({ line }));
+  const nums = (ls: { line: number }[]): number[] => ls.map((l) => l.line);
+
+  it("reads the head under the earlier hunk and the tail atop the later one", () => {
+    const { upper, lower } = partitionGap(lines([114, 115, 644, 645, 646]), 627);
+    expect(nums(upper)).toEqual([114, 115]);
+    expect(nums(lower)).toEqual([644, 645, 646]);
+  });
+
+  it("shows a fully revealed gap once: all upper or all lower", () => {
+    const all = lines([10, 11, 12, 13]);
+    expect(nums(partitionGap(all, 14).upper)).toEqual([10, 11, 12, 13]);
+    expect(partitionGap(all, 14).lower).toEqual([]);
+    expect(partitionGap(all, 10).upper).toEqual([]);
+    expect(nums(partitionGap(all, 10).lower)).toEqual([10, 11, 12, 13]);
+  });
+
+  it("defaults past the end (everything reads under the earlier hunk)", () => {
+    const region = { key: "gap-0", start: 114, end: 646 };
+    const { upper, lower } = partitionGap(lines([114, 646]), region.end + 1);
+    expect(nums(upper)).toEqual([114, 646]);
+    expect(lower).toEqual([]);
   });
 });
 

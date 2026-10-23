@@ -88,7 +88,9 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
   await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
   await expect(page.getByText("Hunk 1 of 3")).toBeVisible();
   const tconn = page.locator(tconnFile);
-  await tconn.getByRole("button", { name: "Show all 4 lines" }).click();
+  // Issue #265: the gap's show-all rides both ends; the upper side's
+  // (first in DOM order) keeps the old path here.
+  await tconn.getByRole("button", { name: "Show all 4 lines" }).first().click();
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
   for (const n of [10, 11, 12, 13]) {
     await expect(page.locator(`[id="L-${TCONN}-${n}"]`)).toBeVisible();
@@ -184,7 +186,9 @@ test("headers still pin and code columns line up with expansion revealed", async
   await scrollDiffToBottom(page);
   await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
   const tconn = page.locator(tconnFile);
-  await tconn.getByRole("button", { name: "Show all 4 lines" }).click();
+  // Issue #265: the gap's show-all rides both ends; the upper side's
+  // (first in DOM order) keeps the old path here.
+  await tconn.getByRole("button", { name: "Show all 4 lines" }).first().click();
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
   // A revealed row scrolls under the pinned file + hunk headers. Scroll
   // to a line deep enough in the hunk that its header is genuinely stuck
