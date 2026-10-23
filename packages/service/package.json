@@ -26,7 +26,7 @@
     "@agentclientprotocol/claude-agent-acp": "0.89.0",
     "@agentclientprotocol/codex-acp": "2.2.2",
     "@agentclientprotocol/sdk": "1.8.0",
-    "@fastify/static": "^8.0.0",
+    "@fastify/static": "^10.1.7",
     "@fastify/websocket": "^11.0.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@unvibe/shared": "0.0.10",
