@@ -62,23 +62,48 @@ test.describe("J12 refresh with new commits", () => {
     }
     await expect(page.locator(appFile).locator(".revc")).toContainText("2/2", { timeout: 30_000 });
 
-    // One new commit touching only the alpha hunk.
+    // A new commit touching only the alpha hunk, plus a commit adding a file
+    // that is then amended (merged from settings-versions-service, #256).
     writeFileSync(path.join(repoDir, "src-app.py"), V1.replace("    return 1", "    return 111").replace("    return 2", "    return 22"));
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "-m", "add d");
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\nD2 = 2\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "--amend", "--no-edit");
 
     await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/1 changed/, { timeout: 60_000 });
+    await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks", { timeout: 60_000 });
+    await banner.getByText("range-diff").click();
+    await expect(page.locator('[data-testid="range-diff"]')).not.toBeEmpty();
+
+    // Reviewed cleared only on the changed hunk: alpha carries the stale
+    // marker with the new code, beta keeps its reviewed state.
+    await expect(page.locator(appFile).getByText("changed since reviewed")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(appFile).getByText(/return 11\b/)).toHaveCount(0);
 
-    // Older version: pre-refresh code, no description editing.
+    // Older version stays viewable, read-only, with the pre-refresh code.
     await page.locator("#version-pick").click();
     await openPopup(page).getByRole("option", { name: /^v1 / }).click();
     await expect(page).toHaveURL(/version=1/);
     await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(appFile).getByText("return 111")).toHaveCount(0);
     await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });
+
+    // Choosing the current version (annotated in the dropdown) is the way
+    // back; the banner returns, and Update reports plainly without the
+    // pipeline (no base runner) instead of hanging.
+    await page.locator("#version-pick").click();
+    const options = openPopup(page).getByRole("option");
+    await expect(options.last()).toContainText("current");
+    await options.last().click();
+    await expect(banner).toBeVisible();
+    await banner.getByRole("button", { name: "Update" }).click();
   });
 
   test("#112 a code citation outside the diff is re-anchored after refresh", async ({ page }) => {
