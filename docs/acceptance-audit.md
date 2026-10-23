@@ -437,11 +437,18 @@ needed (that deviation is closed, not added).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
-  chip on the citations row). Clicking the marker opens every comment
-  on the block, stacked; clicking one item of its hover preview opens
-  just that comment (issue #205, guide and PR description alike) — met
-  (`guide/Markers.test.tsx` “opens every comment”, journey J9 “marker
-  opens all”). Highlight passes retry placement with an overall bound
+  chip on the citations row). The marker is a toggle: clicking it opens
+  every comment on the block, stacked, unless all of them are already
+  open — then one click collapses them all; a mix opens all
+  (issue #262, guide and PR description alike). Its tooltip states the
+  action ("Show comments" / "Hide comments"). Per-thread Close still
+  works and the marker's state follows it. Clicking one item of its
+  hover preview opens just that comment (issue #205, guide and PR
+  description alike) — met (`guide/Markers.test.tsx` “opens every
+  comment”, journey J9 “marker opens all”, journey J262 “marker is a
+  toggle”). The `<>` code marker has no such asymmetry — it navigates
+  (reveals the source), so a second click idempotently re-reveals;
+  unchanged. Highlight passes retry placement with an overall bound
   per change and leave the DOM alone when a pass would change nothing,
   so one unplaceable anchor no longer re-marks the page every 250 ms
   (issue #206); anchors that stay unplaced are listed with the reason
@@ -847,7 +854,10 @@ needed (that deviation is closed, not added).
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
-  — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
+  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #261 tightens
+  the unified gutter to digits + padding + exactly the affordance room
+  (old +34px with the reopen marker, new +30px with the comment icon)
+  and drops the empty number column on added/deleted files/hunks.
 - Syntax highlighting (issue #23): plain rows first, token colours after
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met

@@ -26,7 +26,7 @@ import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
 import { anchorMatchesBlock } from "../guide/guideUtils.js";
-import { onOpenBlockThread } from "../guide/annotations.js";
+import { onCloseBlockThread, onOpenBlockThread } from "../guide/annotations.js";
 import { inflightForBlock, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
 import { anchorHostExists, anchorScope, clearMarks, highlightAnchorInRoot, probeAnchorInRoot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "./anchor.js";
@@ -69,6 +69,24 @@ export function GuideThreadHooks() {
         window.setTimeout(() => {
           document.getElementById(commentId)?.scrollIntoView({ block: "nearest" });
         }, 60);
+      }),
+    [],
+  );
+
+  // Issue #262: the marker toggles — closing every thread it shows goes
+  // through the same seam (no scroll: the marker stays where it is).
+  useEffect(
+    () =>
+      onCloseBlockThread((commentId) => {
+        const reviewId = useReview.getState().snapshot?.review.id;
+        if (!reviewId) return;
+        if (isReadOnlyVersionNow()) {
+          toast("Viewing an older version · read-only");
+          return;
+        }
+        api.updateComment(reviewId, commentId, { open: false }).catch((err: unknown) => {
+          toast(`Couldn't close the comment: ${friendlyError(err)}`);
+        });
       }),
     [],
   );

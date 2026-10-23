@@ -354,6 +354,16 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     });
   };
 
+  const closeThread = (id: string): void => {
+    if (readOnly) {
+      toast("Viewing an older version · read-only");
+      return;
+    }
+    api.updateComment(reviewId, id, { open: false }).catch((err: unknown) => {
+      toast(`Couldn't close the comment: ${friendlyError(err)}`);
+    });
+  };
+
   const setRefs = (node: HTMLDivElement | null): void => {
     innerRef.current = node;
     if (typeof ref === "function") ref(node);
@@ -382,7 +392,13 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
         const open = threads.filter((t) => t.open);
-        const markers = threads.filter((t) => t.messages.length > 0 && !t.open && !highlighted.has(t.id));
+        // Issue #262: the marker is a toggle over the paragraph's
+        // unhighlighted threads (quoted threads that placed keep their
+        // inline mark instead). When all of them are open a click
+        // collapses them; otherwise a click opens the closed ones. The
+        // tooltip states the action.
+        const markerThreads = threads.filter((t) => t.messages.length > 0 && !highlighted.has(t.id));
+        const allOpen = markerThreads.length > 0 && markerThreads.every((t) => t.open);
         const showPending =
           pending &&
           ((pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id) ||
@@ -391,17 +407,23 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         return (
           <div key={seg.id ?? `seg-${i}`} data-top={seg.id ?? undefined}>
             <div className="dseg-body" dangerouslySetInnerHTML={{ __html: seg.html }} />
-            {markers.length > 0 ? (
+            {markerThreads.length > 0 ? (
               <button
                 className="lk cm"
                 type="button"
-                data-threads={markers.map((t) => t.id).join("|")}
-                aria-label={`${markers.length} comments`}
-                data-tip="Show comments"
-                onClick={() => markers.forEach((t) => openThread(t.id))}
+                data-threads={markerThreads.map((t) => t.id).join("|")}
+                aria-label={`${markerThreads.length} comments`}
+                data-tip={allOpen ? "Hide comments" : "Show comments"}
+                onClick={() => {
+                  if (allOpen) markerThreads.forEach((t) => closeThread(t.id));
+                  else
+                    markerThreads
+                      .filter((t) => !t.open)
+                      .forEach((t) => openThread(t.id));
+                }}
               >
                 <Icon name="comment" />
-                {markers.length}
+                {markerThreads.length}
               </button>
             ) : null}
             {open.map((t) => (
