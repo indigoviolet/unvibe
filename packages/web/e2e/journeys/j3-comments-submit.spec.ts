@@ -71,6 +71,8 @@ test.describe("J3 comments and submit", () => {
     await slot.getByRole("button", { name: "Save" }).click();
     const thread = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "Why 2 and not 3?" });
     await expect(thread).toBeVisible({ timeout: 10_000 });
+    // Comments start no agent job (#256 comments-service) and are for the PR by default.
+    await expect(thread.locator(".working")).toHaveCount(0);
     await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
 
     await page.reload();
@@ -91,8 +93,14 @@ test.describe("J3 comments and submit", () => {
     await panel.locator("[data-submitgo]").click();
     await expect(panel).toContainText("Review posted", { timeout: 30_000 });
 
-    const posted = JSON.parse(readFileSync(path.join(logDir, "review-stdin.json"), "utf8")) as { comments: { body: string }[] };
+    const posted = JSON.parse(readFileSync(path.join(logDir, "review-stdin.json"), "utf8")) as {
+      event: string;
+      commit_id: string;
+      comments: { path: string; body: string }[];
+    };
+    expect(posted.event).toBe("COMMENT");
     expect(posted.comments).toHaveLength(1);
+    expect(posted.comments[0].path).toBe("src/app.py");
     expect(posted.comments[0].body).toContain("Why 2 and not 3?");
     expect(readFileSync(path.join(logDir, "body.md"), "utf8")).toContain("Edited by the reviewer.");
     const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
