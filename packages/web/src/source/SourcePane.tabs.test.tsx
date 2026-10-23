@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import type { ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { SourcePane } from "./SourcePane.js";

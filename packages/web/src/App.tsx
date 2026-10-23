@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { api } from "./api/client.js";
 import { syncUiThemeFromSettings } from "./theme/theme.js";
 import { RouteShellBoundary } from "./components/ErrorBoundary.js";
@@ -29,7 +29,7 @@ export function App() {
     };
   }, []);
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <RouteShellBoundary>
         <Routes>
         <Route path="/" element={<StartPage />} />

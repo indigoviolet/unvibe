@@ -14,7 +14,7 @@
  * so the document itself stays pure Markdown.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import type { Contribution, SharedContextResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";

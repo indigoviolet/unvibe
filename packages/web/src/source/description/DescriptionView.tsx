@@ -24,7 +24,7 @@
  */
 import type { MutableRefObject, ReactNode } from "react";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";

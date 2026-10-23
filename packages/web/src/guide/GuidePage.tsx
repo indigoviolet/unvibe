@@ -11,7 +11,7 @@
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { isDocumentReview } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";

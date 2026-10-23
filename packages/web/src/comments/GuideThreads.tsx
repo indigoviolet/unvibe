@@ -19,7 +19,7 @@
  *   newly created ones are opened so the author sees the working state.
  */
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
