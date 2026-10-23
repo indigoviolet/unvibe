@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
     "typescript": "^5.6.3",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "markdown-it": "^14.3.3"
