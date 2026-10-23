@@ -45,6 +45,9 @@ test("enable lists one aligned row per version with the current one marked", asy
   await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
   const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
   await expect(release.getByTestId("update-current")).toBeVisible();
+  // #249: the release row shows the version, never the sha.
+  await expect(release).toContainText("v0.0.1");
+  await expect(release).not.toContainText("b535a30");
   await expect(release.getByRole("button", { name: "Update release" })).toHaveCount(0);
   await expect(feat.getByTestId("update-current")).toHaveCount(0);
   await expect(feat.getByTestId("update-available")).toHaveCount(0);
@@ -66,7 +69,9 @@ test("newer build on the installed channel: Update available, no INSTALLED pill"
   const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
   await expect(release.getByTestId("update-available")).toBeVisible();
   await expect(release.getByTestId("update-current")).toHaveCount(0);
-  await expect(release).toContainText("b535a30");
+  // #249: the release row shows the version, never the sha.
+  await expect(release).toContainText("v0.0.1");
+  await expect(release).not.toContainText("b535a30");
   await expect(release.getByRole("button", { name: "Update release" })).toHaveText("Update");
   const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
   await expect(feat.getByTestId("update-current")).toHaveCount(0);

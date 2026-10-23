@@ -2939,6 +2939,21 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (Installed badge / absent line), tour Version frames.
 
 
+## Addendum: #249 (Version tab: release row shows the version)
+
+- **#249 (Settings → Version release row shows `v<version>`; §4.14):**
+  the release channel row reads `release · v<version> · built …`,
+  using the version the channel listing already carries
+  (`UpdateChannel.version`, no new fetching). Preview rows keep their
+  short sha; a release row with no version falls back to today's output
+  (sha, then "—"). The row tooltip names the full version on release
+  rows, the full commit elsewhere. Evidence: new
+  `channelRowMiddle` in `web/src/settings/versionFormat.ts` (+ unit
+  test),   `e2e/update-picker.spec.ts` (release `v0.0.1`, no sha;
+  preview sha unchanged), J5 (seed + staged fake channels), tour
+  Version frames.
+
+
 ## Addendum: #247 (branch `fix/247-running-indicator`)
 
 - **#247 (start dots and review pill agree; §4.2, §4.1):** the start

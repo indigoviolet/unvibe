@@ -5,6 +5,7 @@ import {
   badgeTitle,
   blockedJobLine,
   buildLine,
+  channelRowMiddle,
   channelRowState,
   compareReleaseVersions,
   findUpdateAvailable,
@@ -254,6 +255,39 @@ describe("versionFormat", () => {
         channels("0.0.1", T1),
       ),
     ).toBeNull();
+  });
+
+  it("release row shows the version, previews keep the sha (#249)", () => {
+    const release = (version: string | null, commit: string | null): UpdateChannel => ({
+      ref: "release",
+      kind: "release",
+      version,
+      commit,
+      sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      builtAt: null,
+      current: false,
+    });
+    const preview = (commit: string | null): UpdateChannel => ({
+      ref: "preview/feat-x",
+      kind: "preview",
+      version: "0.0.1-preview.feat-x.abc1234",
+      commit,
+      sourceBranch: "feat/x",
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      builtAt: null,
+      current: false,
+    });
+    expect(channelRowMiddle(release("0.0.10", "b535a30ccccccc"))).toBe("v0.0.10");
+    expect(channelRowMiddle(release("0.0.10", "b535a30ccccccc"))).not.toContain("b535a30");
+    expect(channelRowMiddle(preview("abc1234def5678"))).toBe("abc1234");
+    // No version on the release row: today's output (sha, then "—").
+    expect(channelRowMiddle(release(null, "b535a30ccccccc"))).toBe("b535a30");
+    expect(channelRowMiddle(release(null, null))).toBe("—");
   });
 
   it("renders one blocked job as a quiet line", () => {
