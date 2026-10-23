@@ -61,7 +61,8 @@ async function selectInDiff(page: Page, text: string): Promise<void> {
     },
     { connFile, text },
   );
-  await expect(page.locator("#selbar")).toBeVisible({ timeout: 3000 });
+  // #251: the slower CI runner needs longer than 3s for the bar to render.
+  await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
 }
 
 test("highlight upgrade onto marked diff cells shows no page error", async ({ page }) => {
