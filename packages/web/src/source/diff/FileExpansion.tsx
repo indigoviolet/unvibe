@@ -529,16 +529,25 @@ export function ControlSeparator({
   controls,
   cols,
   pending,
+  hideOld,
+  hideNew,
 }: {
   controls: GutterControl[];
   cols: number;
   pending: boolean;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
   if (controls.length === 0) return null;
   const icon = (c: GutterControl): IconName => {
     if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
     return c.dir === "up" ? "upUp" : "downDown";
   };
+  // Unified with a hidden number column: the icon cell + code only (2
+  // cols). The icons spill via `.xicons` (width 0, visible overflow),
+  // so the narrow gutter still shows them without reserving number width.
+  const unifiedHidden = cols !== 4 && (hideOld === true || hideNew === true);
   return (
     <tr className="xsep">
       <td className="n xgutter">
@@ -564,6 +573,8 @@ export function ControlSeparator({
           <td className="n" />
           <td className="c" />
         </>
+      ) : unifiedHidden ? (
+        <td className="c" />
       ) : (
         <>
           <td className="n" />
@@ -579,15 +590,48 @@ function RevealedCells({
   view,
   segs,
   hide,
+  hideOld,
+  hideNew,
 }: {
   line: RevealedLine;
   view: "unified" | "split";
   segs: LineTokens | null;
   /** Hide control for the block's first row, overlaid on its gutter number. */
   hide: ReactNode;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
   const html = escapeHtml(" ") + codeLineHtml(line.text, segs);
   if (view === "unified") {
+    // With a hidden column the Hide overlay rides the remaining number
+    // cell, so collapsing never needs the empty column back.
+    if (hideOld === true) {
+      return (
+        <>
+          <td className="n xhide-cell">
+            {line.newLine ?? ""}
+            {hide}
+          </td>
+          <td className="c">
+            <span dangerouslySetInnerHTML={{ __html: html }} />
+          </td>
+        </>
+      );
+    }
+    if (hideNew === true) {
+      return (
+        <>
+          <td className="n xhide-cell">
+            {line.oldLine ?? ""}
+            {hide}
+          </td>
+          <td className="c">
+            <span dangerouslySetInnerHTML={{ __html: html }} />
+          </td>
+        </>
+      );
+    }
     return (
       <>
         <td className="n xhide-cell">
@@ -654,6 +698,8 @@ export function RevealedRows({
   slots,
   highlight,
   onHideBlock,
+  hideOld,
+  hideNew,
 }: {
   fileKey: string;
   lines: RevealedLine[];
@@ -662,8 +708,12 @@ export function RevealedRows({
   slots: LineSlots;
   highlight: LineRange | null;
   onHideBlock: (start: number, end: number) => void;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
-  const cols = view === "split" ? 4 : 3;
+  const hidden = view !== "split" && (hideOld === true || hideNew === true);
+  const cols = view === "split" ? 4 : hidden ? 2 : 3;
   const blocks: RevealedLine[][] = [];
   for (const l of lines) {
     const last = blocks[blocks.length - 1];
@@ -696,7 +746,7 @@ export function RevealedRows({
           return (
             <Fragment key={`rev-${l.line}`}>
               <tr className={hl ? "hl" : undefined} data-revealed="1" id={rowId}>
-                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} />
+                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} hideOld={hideOld} hideNew={hideNew} />
               </tr>
               {num !== null && num !== undefined && slots[slotKey(fileKey, num)] != null ? (
                 <tr className="pr">

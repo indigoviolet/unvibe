@@ -305,10 +305,9 @@ needed (that deviation is closed, not added).
    shown. A turn fails only on facts the service observes itself — the
    turn errored or was cancelled, the answer is empty, or a review-tool
    call failed to connect. A trailing `degraded` field with a usable body
-   (it parses and has at least one block) keeps the answer: it shows
-   with the plain-words note "Some references in this answer could not
-   be linked to the code." and the raw reason lands on the job
-   (`degradedReason`) for the Debug page; it is never a failure when
+   (it parses and has at least one block) keeps the answer: it shows as
+   written with no appended note (issue #264) and the raw reason lands on
+   the job (`degradedReason`) for the Debug page; it is never a failure when
    there is content, and only an empty degraded answer fails the turn.
    Connection failures retry once on a fresh session (fork jobs since
    #51, the reader since #146: fresh per-run secret + session,
@@ -429,17 +428,27 @@ needed (that deviation is closed, not added).
   (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
-- Unverified citations dimmed + tooltip — met (`validate/validate.ts`
-  `unverified` flag, snapshot tests; live pipeline: 0 unverified of
-  37+14 — `docs/live-pipeline-results.md`).
+- Unverified citations get no marker (issue #264) — met: the service
+  still flags them (`validate/validate.ts` `unverified` flag, recorded
+  in job debug data) and the raw reason stays on the job for the Debug
+  page, but card text shows no `<>` chip, no tooltip and no popover —
+  the surrounding text stays plain text (`guide/Markers.test.tsx`
+  “renders no marker”, journey J81 missing-file case).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
-  chip on the citations row). Clicking the marker opens every comment
-  on the block, stacked; clicking one item of its hover preview opens
-  just that comment (issue #205, guide and PR description alike) — met
-  (`guide/Markers.test.tsx` “opens every comment”, journey J9 “marker
-  opens all”). Highlight passes retry placement with an overall bound
+  chip on the citations row). The marker is a toggle: clicking it opens
+  every comment on the block, stacked, unless all of them are already
+  open — then one click collapses them all; a mix opens all
+  (issue #262, guide and PR description alike). Its tooltip states the
+  action ("Show comments" / "Hide comments"). Per-thread Close still
+  works and the marker's state follows it. Clicking one item of its
+  hover preview opens just that comment (issue #205, guide and PR
+  description alike) — met (`guide/Markers.test.tsx` “opens every
+  comment”, journey J9 “marker opens all”, journey J262 “marker is a
+  toggle”). The `<>` code marker has no such asymmetry — it navigates
+  (reveals the source), so a second click idempotently re-reveals;
+  unchanged. Highlight passes retry placement with an overall bound
   per change and leave the DOM alone when a pass would change nothing,
   so one unplaceable anchor no longer re-marks the page every 250 ms
   (issue #206); anchors that stay unplaced are listed with the reason
@@ -703,8 +712,14 @@ needed (that deviation is closed, not added).
 
 ### §4.11 PR description — all met
 
-- Restated → links; branch tab shows commit messages read-only — met
-  (`pipeline` restated mapping, `ingest/description.ts`).
+- Guide-card layout, no Restated links (issue #263); branch tab shows
+  commit messages read-only — met: the description renders in the
+  shared Card with normal margins, paragraphs/bullet/numbered lists and
+  headings share one content inset with markers inside it (guide `.lst`
+  styling), nested lists indent from it; the "Restated →" links and
+  their `button.back` code are removed while card links and the
+  comments-menu jump keep working (journey J263, visual-tour
+  `desc-full` frames; `ingest/description.ts`).
 - Author + open-PR gate; in-place edit with Discard/Save; local pending
   (“Edited · goes to GitHub…”, Revert); paragraph identity preserved —
   met (`routes/description.ts:61` viewer check, `description-m6.test.ts`).
@@ -839,7 +854,10 @@ needed (that deviation is closed, not added).
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
-  — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
+  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #261 tightens
+  the unified gutter to digits + padding + exactly the affordance room
+  (old +34px with the reopen marker, new +30px with the comment icon)
+  and drops the empty number column on added/deleted files/hunks.
 - Syntax highlighting (issue #23): plain rows first, token colours after
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met

@@ -1,7 +1,7 @@
 /**
  * Rendering tests for citation markers and counts (PRD §4.5) + footnote
  * chips (issue #72, PRD §4.7): grouped `<>` marker with a count when >1,
- * separate dimmed markers for unverified citations, the speech-bubble
+ * no marker at all for unverified citations (issue #264), the speech-bubble
  * comment marker (only for threads that never had a quote), and footnote
  * chips for closed expansions / links / quoted threads sharing the
  * citations line.
@@ -46,7 +46,7 @@ describe("BlockMarkers", () => {
     expect(marker.textContent).toContain("3");
   });
 
-  it("dims each unverified citation separately with a tooltip", () => {
+  it("renders no marker for unverified citations", () => {
     const { container } = render(
       <BlockMarkers
         citations={[rc("diff:conn:82"), rc("diff:conn:99", true)]}
@@ -56,9 +56,8 @@ describe("BlockMarkers", () => {
     );
     const verified = container.querySelector("button.lk:not(.unverified):not(.cm)");
     expect(verified).toHaveAttribute("data-refs", "diff:conn:82");
-    const unverified = container.querySelector("button.lk.unverified");
-    expect(unverified).toHaveAttribute("data-refs", "diff:conn:99");
-    expect(unverified?.getAttribute("data-tip")).toMatch(/couldn't confirm/i);
+    expect(container.querySelector("button.lk.unverified")).toBeNull();
+    expect(container.querySelector('[data-tip*="confirm"]')).toBeNull();
   });
 
   it("renders the comment marker with a count", () => {

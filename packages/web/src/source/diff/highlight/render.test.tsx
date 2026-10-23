@@ -289,14 +289,18 @@ describe("hostile code text (issue #101)", () => {
         expect(cell.querySelectorAll("td").length).toBe(0);
       }
       // The injected `</td><td>` smuggled in no rows or cells: the hunk's
-      // code table holds exactly the one code row (3 cells unified — old
-      // number, new number, code — 4 split, a pair with an empty left)…
+      // code table holds exactly the one code row (2 cells unified — the
+      // pure-add hunk drops the empty old column per #261, leaving new
+      // number + code — 4 split, a pair with an empty left)…
       // (control rows carry `.pr`, so the count excludes the expand
       // control below the hunk — an injected row would still show up as
       // an extra non-control row or a third row overall).
       const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr)");
       expect(codeRows.length).toBe(1);
-      expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 3);
+      expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 2);
+      if (view === "unified") {
+        expect(codeRows[0].closest("table")?.classList.contains("hide-old")).toBe(true);
+      }
       // …the hunk header renders exactly once, outside any table…
       const headers = section.querySelectorAll(".dhunk-h");
       expect(headers.length).toBe(1);

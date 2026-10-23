@@ -193,8 +193,8 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   `secondOpinion`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
-    the reply is weaker for. A usable answer is still shown, with a note
-    saying some references could not be linked; only an empty answer
+    the reply is weaker for. A usable answer is still shown as written
+    with no appended note; only an empty answer
     fails the turn. The body never mentions tools,
     connections, refusals or what could not be looked up.
   - `finding`: `confidence` (`low`, `medium` or `high`), a one-line

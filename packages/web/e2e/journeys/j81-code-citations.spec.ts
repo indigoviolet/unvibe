@@ -154,9 +154,12 @@ test.describe("J81 code citations outside the diff", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
-    // Past-the-end is verified now; only the missing file is dimmed.
+    // Past-the-end is verified now; a missing file gets no marker at all
+    // (#264): the surrounding text stays plain text.
     await expect(page.locator("#C-c-past .lk.unverified")).toHaveCount(0);
-    await expect(page.locator("#C-c-missing .lk.unverified")).toHaveCount(1);
+    await expect(page.locator("#C-c-missing .lk.unverified")).toHaveCount(0);
+    await expect(page.locator("#C-c-missing .lk")).toHaveCount(0);
+    await expect(page.locator("#C-c-missing")).toContainText("Cites a missing file.");
 
     // Hover previews the cited lines at the commit.
     await page.locator("#C-c-beta .lk[data-refs]").hover();

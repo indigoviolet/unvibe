@@ -227,7 +227,7 @@ export function HoverPopover() {
       content =
         ids
           .map((id) => previewThread(snap.annotations.find((a) => a.id === id), true))
-          .join("") + `<span class="hint">Click an item to open it, or the marker to open all</span>`;
+          .join("") + `<span class="hint">Click an item to open it, or the marker to toggle all</span>`;
     } else if (ds.cprev || ds.cjump) {
       const id = ds.cprev ?? ds.cjump ?? "";
       content =

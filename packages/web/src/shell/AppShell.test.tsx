@@ -150,7 +150,7 @@ describe("AppShell pane toggles", () => {
     await renderShell();
     await fireEvent.click(guideSeg());
     expect(guide().classList.contains("hide")).toBe(true);
-    // Fired by "Open as page" (SourcePane), "Restated →" and promoted
+    // Fired by "Open as page" (SourcePane) and promoted
     // page links (DescriptionView), and the comments menu jumping to a
     // guide thread (CommentsMenu).
     window.dispatchEvent(new CustomEvent(SHOW_GUIDE_EVENT));
