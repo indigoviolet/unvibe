@@ -3077,9 +3077,26 @@ hunk coverage) is reported for a separate issue, not fixed here.
   the theme's small control height, centred like #245). PR and branch
   reviews are unchanged. The same name appears in the Documents screen
   list (document icon + title in `SessionRow`) and the browser tab
-  (`document.title` set to the document name on document reviews).
-  Evidence: `src/shell/ReviewBar.test.tsx` (icon + name, no PR link,
-  no Refresh, tab title), `e2e/journeys/j222-document.spec.ts` (bar
-  icon + name, list entry, `toHaveTitle`, plus `reviewbar-doc-*`
-  theme frames with `checkLayout` in Default/Studio/Console).
-  Full gates not yet run.
+   (`document.title` set to the document name on document reviews).
+   Evidence: `src/shell/ReviewBar.test.tsx` (icon + name, no PR link,
+   no Refresh, tab title), `e2e/journeys/j222-document.spec.ts` (bar
+   icon + name, list entry, `toHaveTitle`, plus `reviewbar-doc-*`
+   theme frames with `checkLayout` in Default/Studio/Console).
+   Full gates not yet run.
+
+## Addendum: #267 (cite hunks, never "commit N"; branch `fix/267-commit-refs`)
+
+- **#267 (commit refs; §13 prompts, §9 context):** option 1, prompt
+  only. L0 `prompts/instructions.md` gains the shared rule (cite the
+  hunks themselves with their `h:`/`diff:` links, never a commit by
+  position; name a commit by its subject only when the commit itself is
+  the point). `prompts/reader.md` repeats a short line where the commit
+  list is presented. The model's commit list itself is no longer
+  numbered: `buildCommitsSection` (`service/src/context/layers.ts`)
+  renders plain bullets (`- <sha> <subject>`) in the same landing
+  order. No data-shape change, no new mechanism, no new ID kind, no UI.
+  Evidence: `service/test/prompts.test.ts` ("cards cite hunks, never
+  commit positions"), `service/test/commits-193.test.ts` (bullets, never
+  numbered), prompt goldens (`reader.md`, `base_pack.md`,
+  `instructions.md`). No journey or tour (no UI change). Full gates not
+  yet run.

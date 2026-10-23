@@ -118,6 +118,14 @@ describe("commits section (#193)", () => {
     expect(text).toContain("evidence for the plotlines, not the answer");
   });
 
+  it("lists commits as bullets in landing order, never numbered (#267)", () => {
+    const text = buildL1Source(fixtureSnapshot()).text;
+    expect(text).toContain("- `aaa1114` Unfold obsolete folded header values");
+    expect(text).toContain("- `bbb2224` Add unfold tests");
+    expect(text).not.toContain("1. `aaa1114`");
+    expect(text).not.toContain("2. `bbb2224`");
+  });
+
   it("is absent when the snapshot carries no commits", () => {
     const snap = fixtureSnapshot();
     delete snap.commits;
