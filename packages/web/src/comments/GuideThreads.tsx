@@ -18,8 +18,9 @@
  *   composer the selection toolbar requests. Guide threads start closed;
  *   newly created ones are opened so the author sees the working state.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { subscribeHighlight } from "../source/diff/highlight/shiki.js";
 import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -71,6 +72,12 @@ export function GuideThreadHooks() {
       }),
     [],
   );
+
+  // Code-block highlighting (issue #255) swaps a block's text nodes for
+  // spans after first paint, wiping DOM marks — so this also re-runs on
+  // highlight completions (the diff-expansion pattern).
+  const [hlTick, bumpHlTick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => subscribeHighlight(() => bumpHlTick()), []);
 
   // Anchor highlights. Re-runs when threads or guide content change
   // (depth rewrites re-render blocks and drop DOM marks).
@@ -196,7 +203,7 @@ export function GuideThreadHooks() {
       window.clearTimeout(timer);
       retry.cancel();
     };
-  }, [annotations, pages, pathname]);
+  }, [annotations, pages, pathname, hlTick]);
 
   // Mark clicks toggle; hovering outlines anchors <-> threads.
   useEffect(() => {

@@ -95,6 +95,52 @@ export function detectLanguage(path: string): ShikiLangId | null {
 }
 
 /**
+ * Fence language tag (issue #255: `CodeBlock.language`, already lowercased
+ * by the parser) to a shipped Shiki language. Aliases cover the tags
+ * writers actually use (`py`, `js`, `sh`, `md`, …). Anything else —
+ * missing, `text`, or an unshipped grammar (`go`, `rust`, `diff`, …) —
+ * returns null: the block stays plain text.
+ */
+const CODE_ALIASES: Record<string, ShikiLangId> = {
+  py: "python",
+  pyw: "python",
+  pyi: "python",
+  python: "python",
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  typescript: "typescript",
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  javascript: "javascript",
+  tsx: "tsx",
+  jsx: "jsx",
+  json: "json",
+  jsonc: "jsonc",
+  md: "markdown",
+  markdown: "markdown",
+  sh: "bash",
+  bash: "bash",
+  shell: "bash",
+  zsh: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  css: "css",
+  html: "html",
+  htm: "html",
+  toml: "toml",
+};
+
+/** Shipped language for a fenced code block, or null (plain render). */
+export function normalizeCodeLanguage(raw: string | undefined): ShikiLangId | null {
+  if (!raw) return null;
+  const tag = raw.trim().toLowerCase();
+  if (!tag) return null;
+  return CODE_ALIASES[tag] ?? null;
+}
+
+/**
  * Dynamic importer for a shipped language. One `import()` per language so
  * Vite emits one lazy chunk per grammar, loaded on first use: nothing for
  * that language is in the initial bundle.

@@ -8,7 +8,6 @@
  * comment on a diff line).
  */
 import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
-import { escapeHtml } from "../components/escapeHtml.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
@@ -19,6 +18,7 @@ import { anchorMatchesBlock, depthText } from "./guideUtils.js";
 import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
+import { HighlightedCode } from "./CodeBlock.js";
 
 export interface BlockCallbacks {
   onOpenPage: (pageId: string) => void;
@@ -89,9 +89,8 @@ function AsideInner({
       // Opaque by design (issue #101): the code text is an HTML string, so
       // anchor marks may wrap it freely — the same rule as every other
       // marked host (RichText, list items, tables, description bodies).
-      return (
-        <pre className="code sel" data-top={top} dangerouslySetInnerHTML={{ __html: escapeHtml(inner.code) }} />
-      );
+      // Highlighted in place (issue #255); text content is unchanged.
+      return <HighlightedCode language={inner.language} code={inner.code} top={top} />;
     case "diagram":
       return <DiagramView reviewId={reviewId} block={inner} onOpenPage={onOpenPage} />;
     case "list":
@@ -211,11 +210,7 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
     case "code":
       return (
         <div className="blk" id={id}>
-          <pre
-            className="code sel"
-            data-top={block.id}
-            dangerouslySetInnerHTML={{ __html: escapeHtml(block.code) }}
-          />
+          <HighlightedCode language={block.language} code={block.code} top={block.id} />
           {(resolved.length > 0 || threads.length > 0 || (footnotes?.length ?? 0) > 0) && (
             <div className="lo-row">
               <BlockMarkers
