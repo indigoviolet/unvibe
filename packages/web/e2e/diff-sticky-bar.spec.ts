@@ -490,3 +490,67 @@ test("code columns start at the same x in every hunk of a file", async ({ page }
     expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(1.5);
   }
 });
+
+test("gutter is digits + padding; added files drop the empty column (#261)", async ({ page }) => {
+  // The demo's changelog file is a new file hidden by Hide-uninteresting:
+  // reveal it first (the toggle persists only in this test's context).
+  await page.getByRole("button", { name: "Hide uninteresting" }).click();
+  await expect(page.locator('[id="F-changelog-1362.bugfix.rst"]')).toBeVisible();
+  // Hunk bodies render lazily: scroll the added file into view so its
+  // tables mount before measuring.
+  await page.locator('[id="F-changelog-1362.bugfix.rst"]').scrollIntoViewIfNeeded();
+  await expect(page.locator('[id="F-changelog-1362.bugfix.rst"] table.diff')).toBeVisible();
+  // Modified file: two number columns, each at most digits + padding +
+  // exactly its affordance room (marker ~18px old, icon 14px new).
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  const mod = await page.evaluate((key) => {
+    const file = document.getElementById(`F-${key}`)!;
+    const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
+    const sample = (file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n"))!;
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
+    const fcs = getComputedStyle(sample);
+    probe.style.fontFamily = fcs.fontFamily;
+    probe.style.fontSize = fcs.fontSize;
+    probe.style.fontStyle = fcs.fontStyle;
+    probe.style.fontWeight = fcs.fontWeight;
+    probe.style.letterSpacing = fcs.letterSpacing;
+    probe.textContent = "0123456789";
+    document.body.appendChild(probe);
+    const digitW = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    const cs = getComputedStyle(sample);
+    const pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+    let oldMax = 0;
+    let nwMax = 0;
+    for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+      if (tr.classList.contains("xsep")) continue;
+      const cells = [...tr.querySelectorAll(":scope > td.n")];
+      if (cells.length === 2) {
+        oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
+        nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
+      }
+    }
+    return { digits, digitW, pad, oldMax, nwMax };
+  }, CONN);
+  expect(mod.oldMax).toBeGreaterThan(0);
+  expect(mod.nwMax).toBeGreaterThan(0);
+  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
+  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+  // Added file: the empty old column is gone (one number cell per row).
+  const added = await page.evaluate(() => {
+    const file = document.getElementById("F-changelog-1362.bugfix.rst");
+    if (!file) return null;
+    const tables = [...file.querySelectorAll("table.diff:not(.split)")];
+    const hideOld = tables.length > 0 && tables.every((t) => t.classList.contains("hide-old"));
+    const counts: number[] = [];
+    for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+      if (tr.classList.contains("xsep")) continue;
+      counts.push(tr.querySelectorAll(":scope > td.n").length);
+    }
+    return { hideOld, counts: [...new Set(counts)] };
+  });
+  expect(added).not.toBeNull();
+  expect(added!.hideOld).toBe(true);
+  expect(added!.counts).toEqual([1]);
+});
