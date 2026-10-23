@@ -41,6 +41,7 @@ import {
 } from "@unvibe/shared";
 import {
   buildConceptsSection,
+  buildGlossarySection,
   buildGuideSection,
   buildHunkSummaries,
   buildL1bPinned,
@@ -133,7 +134,10 @@ export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
       c.blocks.map((b) => [b.id, b.type]),
     ]),
   ]);
-  return `guide-${fnv1aHex(JSON.stringify(shape))}-${descriptionRevisionForSnapshot(snap)}`;
+  // Issue #252: the glossary rides the base (L2), so it keys the base
+  // like guide content does. Absent = no glossary yet.
+  const glossaryShape = (snap.glossary ?? []).map((g) => [g.name, g.definition, g.citation]);
+  return `guide-${fnv1aHex(JSON.stringify([shape, glossaryShape]))}-${descriptionRevisionForSnapshot(snap)}`;
 }
 
 /**
@@ -318,6 +322,9 @@ export function toPromptSnapshot(
     cards,
     findings,
     concepts,
+    // Issue #252: the reader's glossary rides the snapshot so later turns
+    // receive it in their context. Absent = none named yet.
+    ...((snap.glossary ?? []).length > 0 ? { glossary: (snap.glossary ?? []).map((g) => ({ ...g })) } : {}),
     // Issue #168: absent until first fetched (menu or refresh); the agents
     // see every fetched comment whether or not the diff shows them.
     existingComments: (snap.existingComments ?? []).map((c) => ({
@@ -475,12 +482,13 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
   const l1b = buildL1bPinned(snapshot.pinnedCode);
   const guide = buildGuideSection(snapshot);
   const concepts = buildConceptsSection(snapshot);
+  const glossary = buildGlossarySection(snapshot);
   // Same leftover budgeting as the base pack (issue #107): the preview's
-  // L2 span assembles guide + concepts + summaries into one message.
+  // L2 span assembles guide + concepts + glossary + summaries into one message.
   const previewUsed =
     charTokenEstimator.estimateTokens(ladder.text) +
     charTokenEstimator.estimateTokens(l1b) +
-    charTokenEstimator.estimateTokens(`${guide}\n${concepts}`);
+    charTokenEstimator.estimateTokens(`${guide}\n${concepts}\n${glossary}`);
   const hunkSummaries = buildHunkSummaries(snapshot, {
     baseCapTokens: Math.max(DEFAULT_LEFTOVER_FLOOR_TOKENS, DEFAULT_BASE_PROMPT_CAP_TOKENS - previewUsed),
   });
@@ -519,7 +527,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     { layer: "L0", label: "instructions", text: l0, cached },
     { layer: "L1", label: "source", text: l1full.text, cached },
     { layer: "L1b", label: "pinned", text: l1b, cached },
-    { layer: "L2", label: "guide", text: `${guide}\n${concepts}\n${hunkSummaries}`, cached },
+    { layer: "L2", label: "guide", text: `${guide}\n${concepts}\n${glossary}\n${hunkSummaries}`, cached },
   ];
 
   const l3span = (cached: boolean): Span => ({
@@ -548,7 +556,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     { layer: "L0", label: "instructions", text: l0, cached: true },
     { layer: "L1", label: "source", text: l1full.text, cached: true },
     { layer: "L1b", label: "pinned", text: l1b, cached: true },
-    { layer: "L2", label: "guide", text: `${guide}\n${concepts}\n${hunkSummaries}`, cached: true },
+    { layer: "L2", label: "guide", text: `${guide}\n${concepts}\n${glossary}\n${hunkSummaries}`, cached: true },
     {
       layer: "L4",
       label: "base_pack",
@@ -566,20 +574,22 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
   const forked = (name: string, l4values: RenderValues): void =>
     push(name, [...baseSpans(true), l3span(true), { layer: "L4", label: name, text: render(name, l4values), cached: false }]);
 
+  const glossaryForPreview = glossary === "" ? "(no glossary yet)" : glossary;
   forked("critic", {});
-  forked("concept_page", { concept: conceptText, mentions: PH.mentions });
+  forked("concept_page", { concept: conceptText, mentions: PH.mentions, glossary: glossaryForPreview });
   forked("ask", {
     anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },
     card: cardText,
     thread: PH.thread,
     change_list: changeList,
     message: PH.message,
+    glossary: glossaryForPreview,
   });
   forked("ask_turn", { change_list: changeList, message: PH.message });
   forked("depth", { card: cardText, level: PH.level });
   forked("examples", { card: cardText, level: PH.level });
   forked("diagram", { card: cardText, level: PH.level });
-  forked("go_deeper", { direction: PH.direction });
+  forked("go_deeper", { direction: PH.direction, glossary: glossaryForPreview });
   forked("update_pass", {
     changed_hunks: PH.changedHunks,
     stale_cards: PH.staleCards,
@@ -590,7 +600,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     {
       layer: "L1",
       label: hunkLabel,
-      text: render("hunk_pass", { hunk: hunkText, path: hunkPath, plotline: "(none assigned yet)" }),
+      text: render("hunk_pass", { hunk: hunkText, path: hunkPath, plotline: "(none assigned yet)", glossary: glossaryForPreview }),
       cached: false,
     },
   ]);

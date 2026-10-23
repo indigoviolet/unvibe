@@ -7,6 +7,7 @@
  * templates through `runInFork`.
  */
 import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
+import { formatGlossaryForPrompt } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 
 function blockPlainText(block: Block): string {
@@ -355,6 +356,7 @@ export function l4Variables(
   anchor: Annotation["anchor"],
   opts: { thread?: Annotation; message: string; excludeId?: string },
 ): Record<string, unknown> {
+  const formatted = formatGlossaryForPrompt(snapshot.glossary ?? []);
   return {
     anchor: {
       quote: quoteForPrompt(anchor),
@@ -363,6 +365,8 @@ export function l4Variables(
     card: cardTextFor(snapshot, anchor),
     thread: opts.thread ? threadTextFor(opts.thread) : "(none)",
     message: opts.message,
+    // Issue #252: Ask turns receive the glossary in their context.
+    glossary: formatted === "" ? "(no glossary yet)" : formatted,
   };
 }
 

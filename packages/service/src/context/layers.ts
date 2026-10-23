@@ -823,10 +823,30 @@ export function buildConceptsSection(snapshot: PromptReviewSnapshot): string {
 
 /**
  * Build L2 Reader output: guide cards at standard depth, findings, the
- * one-line concept index (PRD §9.1).
+ * one-line concept index (PRD §9.1), plus the glossary (issue #252).
  */
 export function buildL2Guide(snapshot: PromptReviewSnapshot): string {
-  return [buildGuideSection(snapshot), buildConceptsSection(snapshot)].join("\n");
+  return [buildGuideSection(snapshot), buildConceptsSection(snapshot), buildGlossarySection(snapshot)].join("\n");
+}
+
+/**
+ * The `{{glossary}}` section (issue #252): the guide's shared term list.
+ * Compact by design: names + one-line definitions + the instruction to
+ * use those exact terms. Empty when the reader named none, so prompts
+ * without a glossary are byte-identical to before.
+ */
+export function buildGlossarySection(snapshot: PromptReviewSnapshot): string {
+  const terms = snapshot.glossary ?? [];
+  if (terms.length === 0) return "";
+  const rows = terms.map((t) => `- \`${t.name}\` — ${t.definition}`);
+  return [
+    "## Glossary",
+    "",
+    "Use these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.",
+    "",
+    ...rows,
+    "",
+  ].join("\n");
 }
 
 /**

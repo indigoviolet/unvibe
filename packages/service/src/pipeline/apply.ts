@@ -34,6 +34,12 @@ export interface ReaderApply {
    * plotline wins a hunk claimed twice).
    */
   plotlines: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
+  /**
+   * Issue #252: the reader's raw glossary payload (validated by the
+   * caller — shape, exact-name dedupe, citation grammar, then existence
+   * via the lookup like any other citation).
+   */
+  glossary: { name?: string; definition?: string; citation?: string }[];
 }
 
 /**
@@ -126,7 +132,14 @@ export function readerApply(
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));
-  return { cards, pendingCards, plotlines };
+  const glossary = (
+    (data?.["glossary"] as { name?: string; definition?: string; citation?: string }[] | undefined) ?? []
+  ).map((g) => ({
+    ...(g.name !== undefined ? { name: g.name } : {}),
+    ...(g.definition !== undefined ? { definition: g.definition } : {}),
+    ...(g.citation !== undefined ? { citation: g.citation } : {}),
+  }));
+  return { cards, pendingCards, plotlines, glossary };
 }
 
 export interface CriticApply {
