@@ -43,7 +43,8 @@ export default defineConfig({
   testIgnore: "**/*.disabled.spec.ts",
   timeout: 30_000,
   workers: e2eWorkers,
-  globalTimeout: 10 * 60_000,
+  // The suite takes 8-10 min on the GitHub runner; 20 min leaves headroom.
+  globalTimeout: 20 * 60_000,
   retries: 0,
   forbidOnly: !!process.env.CI,
   use: {
