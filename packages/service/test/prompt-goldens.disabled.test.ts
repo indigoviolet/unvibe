@@ -46,6 +46,7 @@ function goldenValues(): Record<string, RenderValues> {
   };
   const thread = "you: What is a fold?\nai: A header value continued on the next line. [[desc:d-intro]]";
   const changeList = "- [1 thread-summary global] Reader settled the cookie question";
+  const glossary = "## Glossary\n\nUse these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.\n\n- `HTTPHeaderDict` — Headers view.\n";
   return {
     instructions: {},
     reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch" },
@@ -55,6 +56,7 @@ function goldenValues(): Record<string, RenderValues> {
       hunk: formatHunk(firstHunk),
       path: snap.files[0].path,
       plotline: "Unfold folded values — normalize folded values before the headers are read",
+      glossary,
     },
     plotline_assign: {
       plotlines: "- retry-logic: Retry failed uploads — retries with backoff",
@@ -64,13 +66,14 @@ function goldenValues(): Record<string, RenderValues> {
     concept_page: {
       concept: "obs-fold — Obsolete line folding: a header value continued on the next line.",
       mentions: "- problem card [[card:c-problem]]\n- diff [[diff:conn:650-651]]",
+      glossary,
     },
-    ask: { anchor, card, thread, change_list: changeList, message: "Does Requests see the raw value?" },
+    ask: { anchor, card, thread, change_list: changeList, message: "Does Requests see the raw value?", glossary },
     ask_turn: { change_list: changeList, message: "What about ordering?" },
     depth: { card, level: "deep" },
     examples: { card, level: "standard" },
     diagram: { card, level: "standard" },
-    go_deeper: { direction: "Data flow: from the socket to HTTPHeaderDict — follows a folded header to both views." },
+    go_deeper: { direction: "Data flow: from the socket to HTTPHeaderDict — follows a folded header to both views.", glossary },
     update_pass: {
       changed_hunks: "### [[h:conn:h111]] reflowed: +1 −1",
       stale_cards: "### The central change [[card:c-central]] (2 cited hunks changed)",

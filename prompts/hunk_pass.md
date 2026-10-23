@@ -1,7 +1,7 @@
 ---
 role: user
 tier: small
-variables: [hunk, path, plotline]
+variables: [hunk, path, plotline, glossary]
 ---
 
 # Hunk pass
@@ -21,6 +21,13 @@ change.
 When a plotline is named, let the summary say the hunk's role in that
 step of the progression where that fits in one line; when none is named
 yet, summarise the hunk on its own.
+
+## Glossary
+
+{{glossary}}
+
+Use these exact terms when they apply to this hunk. The hunk's one-line
+summary is not the place to define them; just name them exactly.
 
 ## Hunk
 
