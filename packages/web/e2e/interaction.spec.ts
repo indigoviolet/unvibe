@@ -15,7 +15,14 @@
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
+import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { selectText } from "./select-text.js";
+
+// Opt-in CPU throttling for reproducing timing races locally (issue #266):
+// set UNVIBE_E2E_CPU_THROTTLE=4 (or higher); unset, this is a no-op.
+test.beforeEach(async ({ page }) => {
+  await cpuThrottleFromEnv(page);
+});
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -269,11 +276,37 @@ test("7. reader state: scroll restore, contents lists opened pages, trail", asyn
   const link = page.locator(`nav.toc [data-node="${pageId}"]`);
   await expect(link).toBeVisible({ timeout: 5000 });
   // Scroll restore: scroll, navigate away and back, position returns.
-  // Let the scroll event fire (a frame later) before navigating, as a reader's would.
-  await page.locator("#page").evaluate(async (el) => {
-    el.scrollTo(0, 300);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  });
+  // Wait until the scroll sticks before navigating: under a loaded frame
+  // budget the commit can lag (the page on screen may still be the short
+  // one being left, which clamps the offset to 0) and the save only counts
+  // once the position has applied (#266). Re-issue until it reads back.
+  // The offset keeps the clicked Contents link on screen (the guide's
+  // linked-pages entry sits near the top): clicking an off-screen link
+  // auto-scrolls it into view first, so the restored position would
+  // legitimately be the revealed one, not the intended one.
+  await expect
+    .poll(
+      () =>
+        page.locator("#page").evaluate((el) => {
+          el.scrollTo(0, 200);
+          return el.scrollTop;
+        }),
+      { timeout: 5000 },
+    )
+    .toBe(200);
+  // Loud premise: the click below must not move the scroll itself. The
+  // link must already sit inside #page's visible area (viewport
+  // coordinates would ignore the review bar above the pane).
+  const vis = await page.evaluate((sel) => {
+    const pane = document.getElementById("page");
+    const target = pane?.querySelector(sel);
+    if (!pane || !target) return null;
+    const p = pane.getBoundingClientRect();
+    const b = target.getBoundingClientRect();
+    return { top: b.y - p.y, bottom: b.y + b.height - p.y, height: p.height };
+  }, `nav.toc [data-node="${pageId}"]`);
+  expect(vis?.top).toBeGreaterThanOrEqual(0);
+  expect(vis?.bottom).toBeLessThanOrEqual(vis?.height ?? 0);
   await link.click();
   await expect(page).toHaveURL(new RegExp(`page/${pageId}`));
   await page.goBack();

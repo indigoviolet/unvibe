@@ -1376,7 +1376,8 @@ for (const combo of [
 // panes share one modest loading state — the processing indicator plus a
 // short label at body size ("Building the guide" / "Loading the diff"),
 // inside the pane's normal content padding. Two scenes, every theme ×
-// scheme × width, each with checkLayout:
+// scheme (the default theme at both widths, Studio/Console at 1440px per
+// #259), each with checkLayout:
 // - ingest loading: the guide shows "Building the guide" and the diff
 //   shows "Loading the diff". The ingest is held open on a sleeping fake
 //   `gh pr view` (sleeper PIDs recorded for cleanup, so afterAll kills
@@ -1530,6 +1531,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     rmSync(repo232, { recursive: true, force: true });
   });
 
+// Issue #259: non-default themes keep one representative width. The
+// loading scenes below assert label alignment and pane padding — not
+// narrow-layout behaviour — so the keeper is the widest (1440px).
+// Narrow-viewport coverage stays via the default theme's 960px passes.
   for (const combo of [
     { theme: "default", width: 1440, dark: false },
     { theme: "default", width: 1440, dark: true },
@@ -1537,12 +1542,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     { theme: "default", width: 960, dark: true },
     { theme: "studio", width: 1440, dark: false },
     { theme: "studio", width: 1440, dark: true },
-    { theme: "studio", width: 960, dark: false },
-    { theme: "studio", width: 960, dark: true },
     { theme: "console", width: 1440, dark: false },
     { theme: "console", width: 1440, dark: true },
-    { theme: "console", width: 960, dark: false },
-    { theme: "console", width: 960, dark: true },
   ] as const) {
     const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
     test(`visual tour review preparing (${suffix})`, async ({ page }) => {
