@@ -126,7 +126,7 @@ function previewExpansion(expansion: Annotation | undefined): string {
 }
 
 const ANCHOR_SELECTOR =
-  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], [data-cprev], [data-cjump], mark.anc[data-jump]";
+  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], a.gx[data-glossary], [data-cprev], [data-cjump], mark.anc[data-jump]";
 
 export function HoverPopover() {
   const [html, setHtml] = useState<string | null>(null);
@@ -250,6 +250,22 @@ export function HoverPopover() {
             previewExpansion(found) +
             `<span class="hint">Click to pin here</span></button>`;
         }
+      }
+    } else if ((anchor as HTMLElement).dataset.glossary) {
+      // Issue #252: glossary term hover shows the definition and its
+      // citation, styled like the existing citation hover popover.
+      const name = (anchor as HTMLElement).dataset.glossary ?? "";
+      const term = snap.glossary?.find((g) => g.name === name);
+      if (term) {
+        const cite = resolveBlockCitations(snap, [{ target: term.citation }])[0];
+        const label = cite?.label ?? term.citation;
+        const snippet = cite?.snippet ?? "";
+        content =
+          `<b>${esc(term.name)}</b><div class="xdef">${esc(term.definition)}</div>` +
+          (cite
+            ? `<button class="cite" data-src="${esc(term.citation)}"><span class="loc">${esc(label)}${cite.unverified ? " · unverified" : ""}</span>${snippet ? `<span class="snip">${esc(snippet)}</span>` : ""}</button>`
+            : "") +
+          `<span class="hint">Click to go to source</span>`;
       }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {
       const target =

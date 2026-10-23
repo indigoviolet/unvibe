@@ -24,14 +24,14 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
+import { canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
 import { hashHunkLines } from "../ingest/hash.js";
 import { uninterestingReason } from "../ingest/uninteresting.js";
 import type { ManifestEntry } from "./runner.js";
-import { createSnapshotLookup, validateReply } from "../validate/index.js";
+import { createSnapshotLookup, validateReply, validateTarget } from "../validate/index.js";
 
 export interface FixtureMeta {
   repo: string;
@@ -180,6 +180,15 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   const rootCards: Card[] = reader.cards.map((c, i) =>
     mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, canonBlocks(c.blocks)),
   );
+
+  // Issue #252: the reader's glossary rides the snapshot (shared term list).
+  const glossaryNormalized = normalizeGlossary(
+    (reader.data?.glossary as { name?: string; definition?: string; citation?: string }[] | undefined) ?? [],
+  );
+  const glossary = glossaryNormalized.terms.map((t) => ({
+    ...t,
+    citation: canonicalizeTarget(t.citation, resolveKey),
+  }));
 
   for (const key of ["flow", "design", "regex", "check"]) {
     const entry = manifest.recordings.find((e) => e.kind === "go-deeper" && e.key === key)!;
@@ -414,6 +423,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       createdAt: 1760000000000,
     },
     version,
+    ...(glossary.length > 0 ? { glossary } : {}),
     files,
     description: {
       html: rendered.html,
@@ -471,6 +481,28 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
     if (report.anchor && !report.anchor.ok) {
       failures.push({ file: entry.file, detail: `bad anchor on ${report.anchor.host}: ${report.anchor.reason}` });
+    }
+  }
+
+  // Issue #252: the reader's glossary citations validate like any other
+  // citation (the stored snapshot carries the canonical targets above).
+  if (glossaryNormalized.dropped.empty > 0 || glossaryNormalized.dropped.invalidCitation > 0) {
+    failures.push({
+      file: "reader.md",
+      detail: `glossary dropped ${glossaryNormalized.dropped.empty} empty, ${glossaryNormalized.dropped.invalidCitation} invalid citations`,
+    });
+  }
+  for (const term of glossary) {
+    const parsed = parseId(term.citation);
+    if (!parsed) {
+      failures.push({ file: "reader.md", detail: `glossary citation does not parse: ${term.citation}` });
+      continue;
+    }
+    const rep = validateTarget(term.citation, lookup);
+    if (rep.status === "unverified") {
+      failures.push({ file: "reader.md", detail: `glossary unverified ${term.citation}: ${rep.reason}` });
+    } else if (rep.status === "repaired") {
+      failures.push({ file: "reader.md", detail: `glossary needs repair ${term.citation} → ${rep.repairedTo}` });
     }
   }
 

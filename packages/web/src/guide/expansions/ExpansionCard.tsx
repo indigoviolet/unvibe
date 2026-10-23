@@ -31,6 +31,7 @@ import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
 import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
+import { linkCardBlocks } from "../glossary.js";
 import { DepthControl } from "../DepthControl.js";
 import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
@@ -286,7 +287,7 @@ function AnswerView({
             <span>Still writing…</span>
           </div>
         ) : null}
-        {turn.blocks.map((block) => {
+        {linkCardBlocks(turn.blocks, snapshot?.glossary ?? [], turn.level).map((block) => {
           // Annotations on text inside this answer render under their
           // block exactly like page-card annotations do: threads (open
           // ones plus the pending Ask/Comment composer) via

@@ -49,6 +49,16 @@ export function templateExpectsChangeList(promptsDir: string, template: string):
   }
 }
 
+/** True when the template declares a `glossary` variable (issue #252). */
+export function templateExpectsGlossary(promptsDir: string, template: string): boolean {
+  try {
+    const tpl = loadTemplatesDirSync(promptsDir).get(template);
+    return tpl?.variables.includes("glossary") ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Inject the filtered change list into L4 variables when the template wants
  * one and the caller did not supply it.

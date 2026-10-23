@@ -139,6 +139,8 @@ export interface PromptReviewSnapshot {
   concepts: ConceptIndexEntry[];
   /** Existing GitHub review comments, oldest first (issue #168). */
   existingComments: ExistingCommentInput[];
+  /** Issue #252: the review's glossary (empty/absent = none named yet). */
+  glossary?: import("@unvibe/shared").GlossaryEntry[];
   /** Append-only log, ascending seq (PRD §9.3). */
   log: LogEntry[];
   /**

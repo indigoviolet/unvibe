@@ -98,6 +98,12 @@ Each choice trades a local simplicity for a global property: one normalization p
     {"id": "unfold-tests", "name": "Prove the unfolding works", "description": "Adds unit and socket-level coverage, so the no-line-break rule can be checked against real responses.", "buildsOn": "unfold", "hunks": ["h:test-test_connection.py:6cfb09ec98cba6ba", "h:test-test_connection.py:92cf4ca541bdb0f2", "h:test-test_connection.py:b33779988cee5f8a", "h:test-with_dummyserver-test_socketlevel.py:949dda852e448b55"]}
   ],
   "cardIds": ["problem", "central", "buildup", "decisions"],
+  "glossary": [
+    {"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "diff:src-urllib3-connection.py:650-651"},
+    {"name": "_OBSOLETE_FOLD_RE", "definition": "Pattern replacing each obsolete fold with a single space.", "citation": "diff:src-urllib3-connection.py:80-82"},
+    {"name": "_normalize_header_values", "definition": "Helper unfolding all folded values while keeping message identity.", "citation": "diff:src-urllib3-connection.py:91-110"},
+    {"name": "obsolete line folding", "definition": "A header value split across lines with CRLF plus space or tab.", "citation": "diff:src-urllib3-connection.py:80-88"}
+  ],
   "contribute": {"open_questions": ["Whether folded values that end in LF alone occur in real responses, and what traffic data would show it."]}
 }
 ```

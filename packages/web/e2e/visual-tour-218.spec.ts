@@ -1,11 +1,14 @@
 /**
  * #218 tour: review toolbars, menus (comments, filters, review via
  * Submit), popovers, the selection toolbar and tooltips — every theme
- * (Default/Studio/Console), light and dark, at 1440px and ~960px.
- * Demo data only (the bundled fixture + replay agent). Screenshots land
- * in the git-ignored `visual-tour/218/` folder; generic checks assert
- * menus/popovers stay inside the viewport with no page overflow and no
- * overlap with card headers.
+ * (Default/Studio/Console), light and dark; the default theme at 1440px
+ * and ~960px, Studio/Console at 1440px only (#259: non-default themes
+ * keep one representative width, and these scenes assert
+ * viewport containment rather than narrow-layout behaviour, so the
+ * keeper is the widest). Demo data only (the bundled fixture + replay
+ * agent). Screenshots land in the git-ignored `visual-tour/218/` folder;
+ * generic checks assert menus/popovers stay inside the viewport with no
+ * page overflow and no overlap with card headers.
  * Requires `mise run build` first.
  */
 import { execFile } from "node:child_process";
@@ -97,12 +100,8 @@ const COMBOS = [
   { theme: "default", scheme: "dark", width: 960 },
   { theme: "studio", scheme: "light", width: 1440 },
   { theme: "studio", scheme: "dark", width: 1440 },
-  { theme: "studio", scheme: "light", width: 960 },
-  { theme: "studio", scheme: "dark", width: 960 },
   { theme: "console", scheme: "light", width: 1440 },
   { theme: "console", scheme: "dark", width: 1440 },
-  { theme: "console", scheme: "light", width: 960 },
-  { theme: "console", scheme: "dark", width: 960 },
 ] as const;
 
 for (const combo of COMBOS) {

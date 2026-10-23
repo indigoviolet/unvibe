@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson } from "./journey-helpers.js";
+import { openPopup } from "../select.js";
+import { apiJson, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -35,7 +36,9 @@ test.describe("J5 settings and versions", () => {
     const input = page.locator("#limit-sessionsPerProvider");
     await input.fill("99");
     await page.getByRole("button", { name: "Save limits" }).click();
-    await expect(page.getByText(/must be an integer/)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText("Agent sessions at once, per provider: must be an integer in [1, 32]"),
+    ).toBeVisible({ timeout: 15_000 });
     await input.fill("5");
     await page.getByRole("button", { name: "Save limits" }).click();
     await expect(page.getByText("Saved")).toBeVisible({ timeout: 15_000 });
@@ -339,5 +342,158 @@ test.describe("J5 update icon when the check fails (#231)", () => {
     await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert")).toContainText("Couldn't load version info", { timeout: 15_000 });
     expect(await page.getByTestId("update-available-icon").count()).toBe(0);
+  });
+});
+
+// Merged from settings-versions-service.spec.ts (#256): the Prompts tab
+// lists every template and the debug page expands them for the review.
+// (Limits persistence is already proven by the J5 test above; the
+// versions-refresh flow lives in J12.)
+test.describe("J5 prompts list and debug expansion", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let repoDir = "";
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-prompts-repo-"));
+    await makeScratchRepo(repoDir);
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-prompts-data-"));
+    svc = await startService(dataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+    reviewId = await createScratchReview(svc, repoDir);
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("prompts list all templates; the debug page expands them for the review", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
+    await page.getByRole("tab", { name: "Prompts" }).click();
+    // All 17 PRD §13 templates (16 + plotline_assign, #169; concept_stub
+    // was removed with the stub job, #216), from the real prompts dir.
+    await expect(page.locator('[data-testid^="prompt-"]')).toHaveCount(17);
+    await expect(page.locator('[data-testid="prompt-concept_stub"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="prompt-concept_page"]')).toHaveCount(1);
+    const reader = page.locator('[data-testid="prompt-reader"]');
+    await reader.getByRole("button", { name: "Expand reader" }).click();
+    await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");
+    // The debug page expands them for the review. Forked templates
+    // (ask) serve L0–L3 from the warm base: cached.
+    await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    await page.getByRole("tab", { name: "Prompts" }).click();
+    const ask = page.locator('section[aria-label="Prompts"]').locator('[data-testid="prompt-ask"]');
+    await ask.getByRole("button", { name: "Expand ask" }).click();
+    await expect(ask.locator('details.lay[data-layer="L0"]')).toBeVisible();
+    await expect(ask.locator('details.lay[data-layer="L1"]')).toContainText("cached");
+    await expect(ask.locator('details.lay[data-layer="L4"]')).not.toContainText("cached");
+    // Model pickers list the adapter's models.
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await page.getByRole("tab", { name: "Models" }).click();
+    await expect(page.locator('[data-testid="model-main"]').getByText("claude-opus-5-5", { exact: false }).first()).toBeAttached();
+  });
+});
+
+// Merged from real-service.spec.ts (#256): Settings rejects a bad repo
+// URL inline and removing a path checkout forgets it without touching it.
+test.describe("J5 repo add and remove", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-repos-data-"));
+    svc = await startService(dataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("settings rejects a bad repo URL inline and removes a path checkout without touching it", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    // Client-side verdict first: no request, no toast, control stays live.
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
+    const section = page.locator('[data-testid="repositories-section"]');
+    await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
+    await section.getByRole("button", { name: "Clone and add" }).click();
+    await expect(section.getByText(/not a GitHub repo URL or owner\/name/)).toBeVisible();
+
+    // A second scratch checkout, added through the API, removed through
+    // the Settings UI: the row goes, the folder stays.
+    const extraDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-extra-repo-"));
+    await makeScratchRepo(extraDir);
+    const base = path.basename(extraDir);
+    try {
+      await apiJson(svc, "POST", "/api/repos", { path: extraDir });
+      await page.reload();
+      await expect(section.locator('[data-testid^="repo-"]', { hasText: base }).first()).toBeVisible();
+      const row = section.locator('[data-testid^="repo-"]', { hasText: base }).first();
+      await row.getByRole("button", { name: `Remove local/${base}` }).click();
+      await expect(row).toContainText("Remove this repo from the list? ");
+      await expect(row).toContainText("is not touched.");
+      await row.getByRole("button", { name: "Remove", exact: true }).click();
+      await expect(row).toHaveCount(0);
+      const listed = await apiJson(svc, "GET", "/api/repos");
+      expect(((listed.json as { repos: { localPath: string }[] }).repos ?? []).some((r) => r.localPath === extraDir)).toBe(false);
+      // Forgotten, not deleted: the checkout is intact on disk.
+      expect(existsSync(path.join(extraDir, ".git"))).toBe(true);
+    } finally {
+      rmSync(extraDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// Merged from doctor-service.spec.ts (#256): the Doctor page renders
+// real diagnostics with service identity, and model pickers show display
+// names on the real service. (The reload API half is DISABLED(#119) and
+// covered by diagnostics-api.test.ts; the UI Reload button stays covered
+// in doctor.spec.ts mock mode.)
+test.describe("J5 doctor page on the real service", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-doctor-data-"));
+    svc = await startService(dataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("doctor page shows real diagnostics with service identity", async ({ page }) => {
+    test.setTimeout(60000);
+    if (!svc) throw new Error("service not running");
+    await page.goto(`${svc.origin}/doctor?token=${svc.token}`);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("doctor-report")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("doctor-service")).toContainText("pid");
+    await expect(page.getByTestId("doctor-path")).toContainText("effective");
+  });
+
+  test("model pickers show display names on the real service", async ({ page }) => {
+    test.setTimeout(60000);
+    if (!svc) throw new Error("service not running");
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 20000 });
+    await page.getByRole("tab", { name: "Models" }).click();
+    // Static fallback carries names (Sonnet/Opus/GPT) even with no agent.
+    const main = page.locator('[data-testid="model-main"]');
+    await main.locator("#model-main").click();
+    await expect(openPopup(page).getByRole("option", { name: "Sonnet" })).toBeVisible();
   });
 });

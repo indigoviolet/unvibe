@@ -25,6 +25,28 @@
     "fetchedAt": 1760000000000,
     "idMapping": {}
   },
+  "glossary": [
+    {
+      "name": "HTTPHeaderDict",
+      "definition": "The headers view urllib3 builds from the parsed response.",
+      "citation": "diff:src-urllib3-connection.py:650-651"
+    },
+    {
+      "name": "_OBSOLETE_FOLD_RE",
+      "definition": "Pattern replacing each obsolete fold with a single space.",
+      "citation": "diff:src-urllib3-connection.py:80-82"
+    },
+    {
+      "name": "_normalize_header_values",
+      "definition": "Helper unfolding all folded values while keeping message identity.",
+      "citation": "diff:src-urllib3-connection.py:91-110"
+    },
+    {
+      "name": "obsolete line folding",
+      "definition": "A header value split across lines with CRLF plus space or tab.",
+      "citation": "diff:src-urllib3-connection.py:80-88"
+    }
+  ],
   "files": [
     {
       "fileKey": "src-urllib3-connection.py",

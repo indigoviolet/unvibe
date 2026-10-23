@@ -28,6 +28,7 @@ export {
   buildHiddenHunksSection,
   buildHunkSummaries,
   buildL1bPinned,
+  buildGlossarySection,
   buildL1Source,
   buildL2Guide,
   buildLadder,
