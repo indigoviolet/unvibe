@@ -111,6 +111,22 @@ export function isRegionFull(region: ExpandRegion, revealed: RevealedRange[]): b
 }
 
 /**
+ * Split a gap's revealed lines between the two hunk sections around it
+ * (issue #265): lines below `split` read under the earlier hunk, lines
+ * at/above it atop the later hunk. The hook moves `split` with every
+ * step (up-steps claim from their range's start, down-steps to their
+ * range's end, show-all to the region's edge), so lines always land in
+ * the section whose control revealed them, and a fully revealed gap
+ * shows once — never in both sections.
+ */
+export function partitionGap<T extends { line: number }>(lines: T[], split: number): { upper: T[]; lower: T[] } {
+  const upper: T[] = [];
+  const lower: T[] = [];
+  for (const l of lines) (l.line < split ? upper : lower).push(l);
+  return { upper, lower };
+}
+
+/**
  * Up-to-`step` hidden lines immediately above `line` (a hunk edge)
  * inside `region`: the next step click's fetch range, or null when
  * nothing above is hidden.

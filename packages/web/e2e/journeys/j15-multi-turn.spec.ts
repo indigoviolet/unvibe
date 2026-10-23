@@ -110,4 +110,45 @@ test.describe("J15 multi-turn conversation", () => {
     // Turn 4: the same card still answers.
     await followUp("And does the regex stay fast?");
   });
+
+  // Merged from reply-draft-service.spec.ts (#256): sending a follow-up
+  // clears the stored draft, so after a reload the box is still empty and
+  // both answers are intact — no resurrected draft.
+  test("a sent follow-up stays sent across a reload", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+    await selectText(page, "#C-central", "fast path");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const composer = page.locator("#C-central .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible();
+    await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
+    await composer.getByRole("button", { name: "Ask" }).click();
+    const card = page.locator("#C-central .ui-card.child[data-expansion]", {
+      hasText: "Does the fast path still catch a fold",
+    });
+    await expect(card.first()).toBeVisible({ timeout: 30_000 });
+    await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 30_000 });
+
+    // The follow-up matches the bare-LF recording, so it fills with
+    // blocks; the box empties on send and stays empty.
+    const box = card.locator("textarea");
+    await box.fill("And a bare LF?");
+    await card.getByRole("button", { name: "Reply" }).click();
+    await expect(box).toHaveValue("", { timeout: 5000 });
+    await expect(card.locator(".ans").nth(1)).toContainText("bare LF", { timeout: 30_000 });
+    await expect(box).toHaveValue("");
+
+    // Across a reload: no resurrected draft, both answers intact (the
+    // stored draft cleared with the turn).
+    await page.reload();
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete", { timeout: 30_000 });
+    const again = page.locator("#C-central .ui-card.child[data-expansion]", {
+      hasText: "Does the fast path still catch a fold",
+    });
+    await expect(again.first()).toBeVisible({ timeout: 30_000 });
+    await expect(again.locator(".ans").nth(1)).toContainText("bare LF", { timeout: 30_000 });
+    await expect(again.locator("textarea")).toHaveValue("");
+  });
 });
