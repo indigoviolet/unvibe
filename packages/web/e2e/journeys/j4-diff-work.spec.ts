@@ -169,6 +169,13 @@ test.describe("J4 diff work", () => {
     const marker = page.locator("mark.anc.range[data-jump]").first();
     await expect(marker).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`[id="L-${CONN}-87"]`)).toHaveClass(/rng/);
+    // Issue #261: the tightening keeps the gutter affordances — the
+    // reopen marker still lives in the first gutter cell, and the new
+    // numbers keep their comment tooltip.
+    const markerCell = await marker.evaluate((el) => (el.closest("td.n") as HTMLTableCellElement | null)?.cellIndex ?? -1);
+    expect(markerCell).toBe(0);
+    const tip = await page.locator(`[id="L-${CONN}-87"] td.n.new`).getAttribute("data-tip");
+    expect(tip).toMatch(/Comment on line 87|Show comment/);
     // The marker reopens the card.
     await marker.click();
     await expect(page.locator(".dhunk .ui-card.child[data-expansion]").first()).toBeVisible({ timeout: 15_000 });

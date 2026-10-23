@@ -846,7 +846,10 @@ needed (that deviation is closed, not added).
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
-  — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
+  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #261 tightens
+  the unified gutter to digits + padding + exactly the affordance room
+  (old +34px with the reopen marker, new +30px with the comment icon)
+  and drops the empty number column on added/deleted files/hunks.
 - Syntax highlighting (issue #23): plain rows first, token colours after
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met

@@ -556,6 +556,92 @@ async function checkGutters(page: Page, step: string): Promise<void> {
 }
 
 /**
+ * Issue #261: the unified gutter is at most digits + padding (+ exactly
+ * the affordance room: 11px comment icon + 3px margin on the new side,
+ * ~18px reopen marker on the old side). Added files drop the empty old
+ * column; deleted files drop the new one. Returns the measured widths
+ * (px) so the run logs before/after numbers.
+ */
+async function checkGutterWidth(page: Page, fileKey: string, step: string): Promise<{ old: number; nw: number; digits: number }> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  const info = await page.evaluate((key) => {
+    const file = document.getElementById(`F-${key}`);
+    if (!file) return null;
+    const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
+    // Measure padding on a code-row number cell, not the `xsep` icon
+    // cell (its left padding is 2px, code rows use 8px + 8px).
+    const sample = file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n");
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.fontSize = cs.fontSize;
+      probe.style.fontStyle = cs.fontStyle;
+      probe.style.fontWeight = cs.fontWeight;
+      probe.style.letterSpacing = cs.letterSpacing;
+    }
+    probe.textContent = "0123456789";
+    document.body.appendChild(probe);
+    const digitW = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    let pad = 16;
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+    }
+    let oldMax = 0;
+    let nwMax = 0;
+    for (const t of file.querySelectorAll("table.diff:not(.split)")) {
+      const hideOld = t.classList.contains("hide-old");
+      const hideNew = t.classList.contains("hide-new");
+      for (const tr of t.querySelectorAll("tbody > tr")) {
+        if (tr.classList.contains("xsep")) continue;
+        if ((tr as HTMLElement).dataset.revealed !== undefined) continue;
+        const cells = [...tr.querySelectorAll(":scope > td.n")];
+        if (cells.length === 2 && !hideOld && !hideNew) {
+          oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
+          nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
+        } else if (cells.length === 1 && (hideOld || hideNew)) {
+          const w = cells[0].getBoundingClientRect().width;
+          if (hideOld) nwMax = Math.max(nwMax, w);
+          else oldMax = Math.max(oldMax, w);
+        }
+      }
+    }
+    return {
+      digits,
+      digitW,
+      pad,
+      oldMax,
+      nwMax,
+      hideOld: !!file.querySelector("table.diff.hide-old"),
+      hideNew: !!file.querySelector("table.diff.hide-new"),
+      isNew: file.classList.contains("is-new"),
+      isDeleted: file.classList.contains("is-deleted"),
+    };
+  }, fileKey);
+  expect(info, `${step}: missing #F-${fileKey}`).not.toBeNull();
+  const { digits, digitW, pad, oldMax, nwMax, hideOld, hideNew, isNew } = info!;
+  // Deleted files keep only the old column (no comment affordance there);
+  // added files keep only the new one.
+  if (isNew) expect(hideOld, `${step}: added file must hide the empty old column`).toBe(true);
+  else expect(hideOld, `${step}: modified file must keep both number columns`).toBe(false);
+  expect(hideNew, `${step}: this review has no deleted files`).toBe(false);
+  const tol = 3;
+  if (!hideOld) {
+    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding + marker`).toBeLessThanOrEqual(digits * digitW + pad + 18 + tol);
+    expect(oldMax, `${step}: no old number cells measured`).toBeGreaterThan(0);
+  } else {
+    expect(oldMax, `${step}: hidden old column must measure 0`).toBe(0);
+  }
+  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding + icon`).toBeLessThanOrEqual(digits * digitW + pad + 14 + tol);
+  expect(nwMax, `${step}: no new number cells measured`).toBeGreaterThan(0);
+  console.log(`gutter-261 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
+  return { old: oldMax, nw: nwMax, digits };
+}
+
+/**
  * Generic check (diff scenes, issue #191): on a settled pane nothing
  * animates forever. Any running infinite animation inside the diff
  * pane fails — unless a working indicator (the dots or a spinner) is
@@ -923,6 +1009,37 @@ for (const combo of [
     await stepChecks(page, "diff-split");
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
+
+    // Issue #261 gutter tour: a modified file and an added file in the
+    // narrow pane (the 960 combos run the guide beside the diff, so the
+    // diff pane is narrow with the source pane open), before and after a
+    // sideways scroll (the sticky gutter must hold). Each frame runs the
+    // generic layout checks plus the gutter-width assert.
+    const MOD = "src-urllib3-connection.py";
+    const ADDED = "changelog-1362.bugfix.rst";
+    await page.locator(`[id="F-${MOD}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${MOD}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-modified");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified");
+    await shot(page, "diff-gutter-modified", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-modified-hscroll");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified-hscroll");
+    await shot(page, "diff-gutter-modified-hscroll", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
+    // The added changelog file hides under Hide-uninteresting: reveal it
+    // (later steps assert no hidden counts, so this is safe here).
+    await page.getByRole("button", { name: "Hide uninteresting" }).click();
+    await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-added");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added");
+    await shot(page, "diff-gutter-added", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-added-hscroll");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added-hscroll");
+    await shot(page, "diff-gutter-added-hscroll", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
 
     // Menus: file-type filter, then Reviewed/GitHub filter.
     await page.getByRole("button", { name: "Show file list" }).click({ timeout: 5_000 }).catch(() => {});

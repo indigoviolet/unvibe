@@ -470,4 +470,58 @@ describe("FileSection number width", () => {
       slice.mockRestore();
     }
   });
+
+  it("drops the empty new-number column on deleted files (#261)", async () => {
+    const delHunk: Hunk = {
+      contentHash: "del-h",
+      header: "@@ -1,3 +0,0 @@",
+      newStart: 0,
+      newEnd: 0,
+      oldStart: 1,
+      oldEnd: 3,
+      added: 0,
+      removed: 3,
+      lines: [
+        { kind: "del", oldLine: 1, text: "a" },
+        { kind: "del", oldLine: 2, text: "b" },
+        { kind: "del", oldLine: 3, text: "c" },
+      ],
+    };
+    const delFile: ReviewFile = { fileKey: "gone", path: "gone.py", category: "source", hunks: [delHunk], isDeleted: true };
+    render(
+      <FileSection
+        file={delFile}
+        view="unified"
+        reviewed={0}
+        folded={false}
+        eager
+        busy={{}}
+        slots={{}}
+        commentedLines={new Set()}
+        highlight={null}
+        fileHighlighted={false}
+        reviewId="demo"
+        headCommit="abc1234"
+        baseCommit="def5678"
+        contentAvailable={false}
+        briefs={null}
+        states={new Map()}
+        isHidden={() => false}
+        actions={actions}
+        onLineClick={undefined}
+        onToggleFileFold={() => {}}
+        onMarkFileReviewed={() => {}}
+        onUnhide={() => {}}
+      />,
+    );
+    const section = document.getElementById("F-gone")!;
+    expect(section.classList.contains("is-deleted")).toBe(true);
+    const tables = [...section.querySelectorAll("table.diff:not(.split)")];
+    expect(tables.length).toBeGreaterThan(0);
+    for (const t of tables) expect(t.classList.contains("hide-new")).toBe(true);
+    for (const tr of section.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+      if (tr.classList.contains("xsep")) continue;
+      expect(tr.querySelectorAll(":scope > td.n").length).toBe(1);
+    }
+  });
 });

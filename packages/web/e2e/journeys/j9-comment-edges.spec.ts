@@ -85,6 +85,67 @@ test.describe("J9 comment edges", () => {
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "First version" })).toHaveCount(0);
   });
+
+  test("gutter is digits + padding; added file drops the empty column (#261)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
+    const utilKey = fileKeyForPath("src/util.py");
+    // Modified file keeps both columns, tightened; the new numbers keep
+    // the comment affordance (click still opens the composer).
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    const mod = await page.evaluate((key) => {
+      const file = document.getElementById(`F-${key}`)!;
+      const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
+      const sample = (file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n"))!;
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
+      const fcs = getComputedStyle(sample);
+      probe.style.fontFamily = fcs.fontFamily;
+      probe.style.fontSize = fcs.fontSize;
+      probe.style.fontStyle = fcs.fontStyle;
+      probe.style.fontWeight = fcs.fontWeight;
+      probe.style.letterSpacing = fcs.letterSpacing;
+      probe.textContent = "0123456789";
+      document.body.appendChild(probe);
+      const digitW = probe.getBoundingClientRect().width / 10;
+      probe.remove();
+      const cs = getComputedStyle(sample);
+      const pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+      let oldMax = 0;
+      let nwMax = 0;
+      for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+        if (tr.classList.contains("xsep")) continue;
+        const cells = [...tr.querySelectorAll(":scope > td.n")];
+        if (cells.length === 2) {
+          oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
+          nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
+        }
+      }
+      return { digits, digitW, pad, oldMax, nwMax };
+    }, appKey);
+    expect(mod.oldMax).toBeGreaterThan(0);
+    expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
+    expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+    await expect(page.locator(`[id="L-${appKey}-2"] td.n.new`)).toHaveAttribute("data-tip", /Comment on line 2/);
+    // Added file: single number column.
+    const added = await page.evaluate((key) => {
+      const file = document.getElementById(`F-${key}`);
+      if (!file) return null;
+      const tables = [...file.querySelectorAll("table.diff:not(.split)")];
+      const hideOld = tables.length > 0 && tables.every((t) => t.classList.contains("hide-old"));
+      const counts: number[] = [];
+      for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+        if (tr.classList.contains("xsep")) continue;
+        counts.push(tr.querySelectorAll(":scope > td.n").length);
+      }
+      return { hideOld, counts: [...new Set(counts)] };
+    }, utilKey);
+    expect(added).not.toBeNull();
+    expect(added!.hideOld).toBe(true);
+    expect(added!.counts).toEqual([1]);
+  });
 });
 
 async function hoverFresh(page: Page, locator: Locator): Promise<void> {

@@ -283,6 +283,30 @@ describe("DiffView", () => {
     expect(table!.querySelector("colgroup")).not.toBeNull();
   });
 
+  it("drops the empty old-number column on added files (#261)", async () => {
+    await renderDiff();
+    // The demo's changelog file is a new file hidden by Hide-uninteresting:
+    // reveal it first, then assert. Every unified table hides the old
+    // column, so code rows carry exactly one number cell, while the
+    // modified conn file keeps both.
+    await fireEvent.click(screen.getByRole("button", { name: "Hide uninteresting" }));
+    const added = document.getElementById("F-changelog-1362.bugfix.rst")!;
+    const addedTables = [...added.querySelectorAll("table.diff:not(.split)")];
+    expect(addedTables.length).toBeGreaterThan(0);
+    for (const t of addedTables) expect(t.classList.contains("hide-old")).toBe(true);
+    for (const tr of added.querySelectorAll("table.diff:not(.split) tbody > tr")) {
+      if (tr.classList.contains("xsep")) continue;
+      expect(tr.querySelectorAll(":scope > td.n").length).toBe(1);
+    }
+    expect(added.classList.contains("is-new")).toBe(true);
+    const modTables = [...connSection().querySelectorAll("table.diff:not(.split)")];
+    expect(modTables.length).toBeGreaterThan(0);
+    for (const t of modTables) {
+      expect(t.classList.contains("hide-old")).toBe(false);
+      expect(t.classList.contains("hide-new")).toBe(false);
+    }
+  });
+
 });
 
 /** Review with deterministic hidden reasons and zero model summaries (#107). */
