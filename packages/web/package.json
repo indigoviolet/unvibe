@@ -1,6 +1,6 @@
 {
   "name": "@unvibe/web",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,7 +26,7 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/nunito-sans": "^5.3.0",
     "@fontsource/source-serif-4": "^5.3.0",
-    "@unvibe/shared": "0.0.10",
+    "@unvibe/shared": "0.0.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
