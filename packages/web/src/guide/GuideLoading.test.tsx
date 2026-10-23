@@ -4,7 +4,7 @@
 import { describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { afterEach } from "vitest";
 import type { ReviewSummary } from "@unvibe/shared";
 import { EmptyOpen, EmptyVersionGuide, FailedOpen } from "./GuidePage.js";

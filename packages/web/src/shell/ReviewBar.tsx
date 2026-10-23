@@ -7,7 +7,10 @@
  *   then the review identity (`owner/name#N`, linking to GitHub for PR
  *   reviews, #94, new tab, #244: boxed with the shared Button styling
  *   like the Comments button; #245: the PR status icon sits INSIDE the
- *   link box after owner/repo#N, #234: none when open) and the Refresh
+ *   link box after owner/repo#N, #234: none when open) — #254: document
+ *   reviews show a document icon plus the document's short name (its
+ *   `DocumentContent.title`; no filename is stored) with an ellipsis and
+ *   the full name on hover — and the Refresh
  *   button next to the link (#241: same handler/check/banner as the diff
  *   toolbar owned, tooltip "Refresh", hidden for document reviews which
  *   never had it),
@@ -27,7 +30,7 @@
  *   is open and at least one job is live — a link to the Debug jobs list.
  */
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { isDocumentReview } from "@unvibe/shared";
 import { CommentsMenu } from "../comments/CommentsMenu.js";
 import { Icon } from "../components/Icon.js";
@@ -117,6 +120,18 @@ export function ReviewBar({
     };
   }, [reviewId, versionParam, sourceRepoId, snapshot]);
   useEffect(() => () => useRefreshState.getState().clearReview(reviewId), [reviewId]);
+  // #254: the browser tab names the document on a document review. PR and
+  // branch reviews keep today's title ("Unvibe").
+  useEffect(() => {
+    if (!snapshot) return;
+    if (!isDocumentReview(snapshot)) return;
+    const name = snapshot.document.title;
+    const prev = document.title;
+    document.title = name;
+    return () => {
+      document.title = prev;
+    };
+  }, [snapshot]);
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
@@ -128,7 +143,12 @@ export function ReviewBar({
         >
           <Icon name="home" />
         </Link>
-        {prUrl ? (
+        {isDocument ? (
+          <span className="docid" title={short}>
+            <Icon name="doc" />
+            <span className="docname">{short}</span>
+          </span>
+        ) : prUrl ? (
           <a
             className="ui-btn"
             data-variant="secondary"

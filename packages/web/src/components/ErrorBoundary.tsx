@@ -17,7 +17,7 @@
  * - `report` is injectable so tests can assert reporting without Sentry.
  */
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { reportWebError } from "../sentry.js";
 import { Button } from "../ui/index.js";
 

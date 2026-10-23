@@ -23,7 +23,7 @@
  *   neutral working state, never a claim about `d2`.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { api, DiagramStatusError, friendlyError } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
