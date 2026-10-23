@@ -27,7 +27,7 @@ import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
 import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
-import { blockedJobLine, channelRowState, isNewerAvailable, outcomeLine, shortCommit, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
+import { blockedJobLine, channelRowMiddle, channelRowState, isNewerAvailable, outcomeLine, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
 const SWITCH_POLL_MS = 1000;
@@ -452,7 +452,7 @@ function VersionRow({
               {c.ref}
             </code>
             {" · "}
-            <span className="ver-sha" title={c.commit ?? undefined}>{shortCommit(c.commit) ?? "—"}</span>
+            <span className="ver-sha" title={c.kind === "release" && c.version ? c.version : (c.commit ?? undefined)}>{channelRowMiddle(c)}</span>
             {" · "}
             <span className="ver-built">{built ? `built ${built}` : "—"}</span>
           </>

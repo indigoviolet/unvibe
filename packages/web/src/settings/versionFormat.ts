@@ -10,6 +10,16 @@ export function shortCommit(commit: string | null | undefined): string | null {
   return commit.slice(0, 7);
 }
 
+/**
+ * Middle segment of a channel row (#249): the release row shows its
+ * version (`v<version>`); previews keep the short sha. When the release
+ * row has no version, fall back to today's output (short sha or "—").
+ */
+export function channelRowMiddle(row: UpdateChannel): string {
+  if (row.kind === "release" && row.version) return `v${row.version}`;
+  return shortCommit(row.commit) ?? "—";
+}
+
 /** Relative time for an ISO stamp ("3h ago"); null when missing/unparsable. */
 export function timeAgoIso(iso: string | null | undefined, now: number = Date.now()): string | null {
   if (!iso) return null;
