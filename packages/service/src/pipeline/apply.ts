@@ -31,9 +31,36 @@ export interface ReaderApply {
   /**
    * Issue #169: the reader's raw plotline payload (validated against the
    * review's hunk IDs by the caller — unknown IDs dropped, first
-   * plotline wins a hunk claimed twice).
+   * plotline wins a hunk claimed twice). Kept only when requested (see
+   * `requestedReaderFields`).
    */
   plotlines: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
+  /**
+   * Issue #252: the reader's raw glossary payload (validated by the
+   * caller — shape, exact-name dedupe, citation grammar, then existence
+   * via the lookup like any other citation). Kept only when requested
+   * (see `requestedReaderFields`).
+   */
+  glossary: { name?: string; definition?: string; citation?: string }[];
+}
+
+/**
+ * Optional trailing-JSON fields the reader-result parser reads. A reply
+ * carrying any other key is ignored for that key (unknown fields were
+ * always ignored by the split layer; these are the known ones).
+ */
+export const READER_RESULT_FIELDS = ["cardIds", "pendingCards", "plotlines", "glossary"] as const;
+
+/**
+ * Issue #252: which optional trailing-JSON fields the prompt requested —
+ * read off the prompt text itself. A field counts as requested when the
+ * template names it quoted, as the output-shape JSON example does.
+ * Unrequested fields in a reply are ignored, never stored. Generic over
+ * the field list: adding a field to `READER_RESULT_FIELDS` picks it up
+ * with no per-field code.
+ */
+export function requestedReaderFields(templateBody: string): string[] {
+  return (READER_RESULT_FIELDS as readonly string[]).filter((f) => templateBody.includes(`"${f}"`));
 }
 
 /**
@@ -99,26 +126,40 @@ export function splitFinalizedBlocks<T extends { blocks: Block[] }>(cards: T[], 
   });
 }
 
-/** Split a reader reply into root cards + placeholders. */
+/**
+ * Split a reader reply into root cards + placeholders. `templateBody` is
+ * the reader prompt text the reply answers (see `requestedReaderFields`):
+ * only requested optional fields are kept — anything unrequested in the
+ * reply is ignored, never stored.
+ */
 export function readerApply(
   parsedCards: { title: string | null; blocks: Block[] }[],
   data: Record<string, unknown> | null,
+  templateBody: string,
 ): ReaderApply {
-  const cardIds = (data?.["cardIds"] as string[] | undefined) ?? [];
+  const requested = new Set(requestedReaderFields(templateBody));
+  const keep = <T>(key: string, value: T[] | undefined): T[] => (requested.has(key) ? (value ?? []) : []);
+  const cardIds = keep<string>("cardIds", data?.["cardIds"] as string[] | undefined);
   const cards = dropReaderPreamble(parsedCards).map((c, i) => ({
     id: readerCardId(i, cardIds, c.title),
     title: c.title,
     blocks: c.blocks,
   }));
-  const pendingCards = ((data?.["pendingCards"] as { id?: string; label?: string; why?: string }[] | undefined) ?? []).map(
-    (p) => ({
-      id: p.id ?? `g-${Math.random().toString(36).slice(2, 8)}`,
-      label: p.label ?? "(untitled)",
-      why: p.why ?? "",
-    }),
-  );
+  const pendingCards = (
+    keep<{ id?: string; label?: string; why?: string }>(
+      "pendingCards",
+      data?.["pendingCards"] as { id?: string; label?: string; why?: string }[] | undefined,
+    )
+  ).map((p) => ({
+    id: p.id ?? `g-${Math.random().toString(36).slice(2, 8)}`,
+    label: p.label ?? "(untitled)",
+    why: p.why ?? "",
+  }));
   const plotlines = (
-    (data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined) ?? []
+    keep<{ id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }>(
+      "plotlines",
+      data?.["plotlines"] as { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[] | undefined,
+    )
   ).map((p) => ({
     ...(p.id !== undefined ? { id: p.id } : {}),
     ...(p.name !== undefined ? { name: p.name } : {}),
@@ -126,7 +167,17 @@ export function readerApply(
     ...(p.buildsOn !== undefined ? { buildsOn: p.buildsOn } : {}),
     ...(p.hunks !== undefined ? { hunks: p.hunks } : {}),
   }));
-  return { cards, pendingCards, plotlines };
+  const glossary = (
+    keep<{ name?: string; definition?: string; citation?: string }>(
+      "glossary",
+      data?.["glossary"] as { name?: string; definition?: string; citation?: string }[] | undefined,
+    )
+  ).map((g) => ({
+    ...(g.name !== undefined ? { name: g.name } : {}),
+    ...(g.definition !== undefined ? { definition: g.definition } : {}),
+    ...(g.citation !== undefined ? { citation: g.citation } : {}),
+  }));
+  return { cards, pendingCards, plotlines, glossary };
 }
 
 export interface CriticApply {

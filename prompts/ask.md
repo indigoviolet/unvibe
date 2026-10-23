@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [anchor.quote, anchor.block, card, thread, change_list, message]
+variables: [anchor.quote, anchor.block, card, thread, change_list, message, glossary]
 ---
 
 # Ask
@@ -34,8 +34,14 @@ conversation card that appears right under the block the text came from.
 
 {{message}}
 
+## Glossary
+
+{{glossary}}
+
 ## Rules
 
+- Use the glossary's exact terms for the things they name, never a
+  synonym, abbreviation or paraphrase.
 - Answer the question about the selected text, directly first, then the
   supporting detail — no longer than the question needs. Do not quote
   the selection or the question back — the app already shows both on

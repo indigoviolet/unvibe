@@ -67,6 +67,15 @@ export function handleHtmlLinkClick(
     );
     return;
   }
+  // Issue #252: clicking a glossary term reveals its citation source.
+  const gx = el.closest?.("a.gx[data-glossary]");
+  if (gx) {
+    e.preventDefault();
+    const name = gx.getAttribute("data-glossary") ?? "";
+    const term = useReview.getState().snapshot?.glossary?.find((g) => g.name === name);
+    if (term) revealSource(term.citation);
+    return;
+  }
   const src = el.closest?.("[data-src]");
   if (src) {
     revealSource(src.getAttribute("data-src") ?? "");

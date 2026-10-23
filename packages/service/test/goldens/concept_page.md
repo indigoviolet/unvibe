@@ -6,11 +6,21 @@ level at a time.
 
 ## Concept
 
-{{concept}}
+obs-fold — Obsolete line folding: a header value continued on the next line.
 
 ## Where it is mentioned
 
-{{mentions}}
+- problem card [[card:c-problem]]
+- diff [[diff:conn:650-651]]
+
+## Glossary
+
+## Glossary
+
+Use these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.
+
+- `HTTPHeaderDict` — Headers view.
+
 
 ## Structure
 
@@ -27,7 +37,7 @@ level at a time.
    instructions (deepen understanding or test the change, with a
    pre-baked question; never a restatement).
 
-Keep it to what this review needs. If a diagram helps, use a fenced `d2`
+Keep it to what this review needs. Use the glossary's exact terms for the things they name, never a synonym, abbreviation or paraphrase. If a diagram helps, use a fenced `d2`
 block per the D2 convention (prompts/includes/d2-convention.md):
 short labels (at most two lines), `direction:` to suit the flow,
 link: "diff:…" cites inline on each code-mapped shape/connection (at

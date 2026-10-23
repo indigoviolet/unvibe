@@ -16,6 +16,18 @@ When a plotline is named, let the summary say the hunk's role in that
 step of the progression where that fits in one line; when none is named
 yet, summarise the hunk on its own.
 
+## Glossary
+
+## Glossary
+
+Use these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.
+
+- `HTTPHeaderDict` — Headers view.
+
+
+Use these exact terms when they apply to this hunk. The hunk's one-line
+summary is not the place to define them; just name them exactly.
+
 ## Hunk
 
 ### [[h:conn:h111]] `@@ -640,7 +650,7 @@ def getresponse(self):` in getresponse · lines 650–652 · +1 −1

@@ -294,7 +294,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
       const readerJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "reader");
       expect(readerJobs.length).toBeGreaterThan(0);
       expect(readerJobs[0].state).toBe("done");
-      expect(readerJobs[0].degradedReason).toContain("no plotlines or go-deeper directions");
+      expect(readerJobs[0].degradedReason).toContain("no plotlines, glossary or go-deeper directions");
       const root = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!;
       expect(root.cards.map((c) => c.title)).toEqual(["T"]);
     } finally {

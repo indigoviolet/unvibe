@@ -41,6 +41,7 @@ the reader would expect, rely on, or push back on.
 - Three depth levels exist for every card: simple, standard, deep (first
   principles). Rewrites move one level at a time.
 - Hunk summaries are one line: what the hunk does, not how it does it.
+- **Names.** Use the codebase's own nomenclature: call each thing by the name the code, the change or its description already uses (the exact identifier, file, setting, flag or term, in code formatting when it is one), and prefer the precise name to a general description. Do not invent names for things the code already names. Use one term per thing across the whole guide: when a card, plotline or earlier answer has already named something, every later mention uses that same term, never a synonym, abbreviation or paraphrase. When something has no name in the code, describe it plainly, and keep using that description consistently.
 
 ## IDs and link tokens
 

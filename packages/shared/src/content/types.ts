@@ -64,7 +64,9 @@ export interface ReplyData {
   /** Hunk-pass result for one hunk (issue #169 adds the score level). */
   hunk?: { summary?: string; hiddenReason?: string | null; score?: string };
   /** Reader plotlines (issue #169): named threads with hunk IDs each. */
-  plotlines?: { id?: string; name?: string; description?: string; hunks?: string[] }[];
+  plotlines?: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
+  /** Reader glossary (issue #252): the guide's shared term list. */
+  glossary?: { name?: string; definition?: string; citation?: string }[];
   /** Second-opinion verdict. */
   secondOpinion?: { verdict?: string; reasoning?: string; missed?: string | string[]; model?: string };
   /** Quoted anchor for explain/ask replies (validated as a substring). */

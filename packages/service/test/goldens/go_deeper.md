@@ -10,8 +10,18 @@ Data flow: from the socket to HTTPHeaderDict — follows a folded header to both
 The direction is the title plus the why-line the reader wrote when planning
 the review. It tells you what the card must cover and why it matters.
 
+## Glossary
+
+## Glossary
+
+Use these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.
+
+- `HTTPHeaderDict` — Headers view.
+
+
 ## Rules
 
+- Use the glossary's exact terms for the things they name, never a synonym, abbreviation or paraphrase.
 - One card: two to five paragraphs, then a `### Follow-ups` section with
   at most three follow-up suggestions, each following the shared
   follow-up rule in the instructions (deepen understanding or test the

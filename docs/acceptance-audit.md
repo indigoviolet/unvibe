@@ -3009,6 +3009,35 @@ hunk coverage) is reported for a separate issue, not fixed here.
   service `test/reviews-list.test.ts` (unchanged behaviour).
   Full gates not yet run.
 
+
+## Addendum: #252 (glossary: naming discipline across turns)
+
+- **#252 (glossary; §13 prompts, §7 data model, §4.5 links):**
+  L0 `prompts/instructions.md` gains the owner’s Names bullet (codebase’s
+  own nomenclature, one term per thing across the guide). `prompts/reader.md`
+  builds plotline names and card titles from the code’s own names, keeps the
+  Names card as commentary on newly introduced names, and writes the shared
+  term list in its existing trailing-data turn (`glossary`: exact name,
+  one-line definition, `code:`/`diff:`/`h:` citation, validated like other
+  citations with the existing #213 repair turn on a malformed block; no
+  extra agent call). The shared type lands in `packages/shared` first
+  (`GlossaryEntry`, `normalizeGlossary`, `formatGlossaryForPrompt`,
+  `linkGlossaryInHtml`) and the glossary is stored on the review snapshot
+  (no backward compatibility: existing reviews simply have no glossary
+  until regenerated; no shim). Later turns receive a compact context block
+  (names + one-line definitions + use-exact-terms instruction) in per-hunk
+  jobs, Ask, Go deeper and concept pages (no new calls/jobs). Card text
+  links exact matches in code (web `linkCardBlocks`, first mention per
+  card; skips existing links; fenced code blocks and headings untouched;
+  inline code spans link); hover shows the definition + citation via
+  `HoverPopover`, styled like the citation hover, click reveals the source.
+  No check agent. Evidence: `shared/test/glossary.test.ts`,
+  `service/test/glossary-252.test.ts` (stored + prompts via fake runner),
+  `web/src/guide/glossary.test.ts`, `e2e/journeys/j252-glossary.spec.ts`
+  (hover shows definition + citation), `e2e/glossary-tour.spec.ts`
+  (links + hover open, 1440/960 light/dark, `checkLayout`).
+  Full gates not yet run.
+
 ## Addendum: #255 (branch `feat/255-code-highlight`)
 
 - **#255 (syntax highlighting for code blocks in documents and guide
