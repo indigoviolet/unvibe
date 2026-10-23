@@ -25,6 +25,6 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
-    "markdown-it": "^14.3.2"
+    "markdown-it": "^14.3.3"
   }
 }

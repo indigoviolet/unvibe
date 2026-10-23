@@ -82,6 +82,10 @@ test.describe("J5 settings and versions", () => {
 
     const rows = page.locator('[data-testid="update-channel"]');
     expect(await rows.count()).toBeGreaterThan(0);
+    // #249: the release row shows its version, never the sha; preview
+    // rows keep their short sha.
+    await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toContainText("v0.0.1");
+    await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toContainText("abc1234");
     expect(await rows.locator(".ui-row-meta").count()).toBe(0);
     for (const text of await rows.evaluateAll((els) => els.map((el) => el.textContent ?? ""))) {
       expect(text).toMatch(/·.*·/);
@@ -182,6 +186,8 @@ test.describe("J5 settings and versions", () => {
       await expect(icon).toBeVisible();
       await expect(icon).toHaveAttribute("title", "Update available: v0.0.2");
       await expect(icon).toHaveAttribute("href", "/settings?tab=version");
+      // #250: the update icon is a gift (rect box + lid), not chevrons.
+      await expect(icon.locator("svg rect")).toHaveCount(1);
     });
 
     test("up to date: no icon", async ({ page }) => {
@@ -282,6 +288,9 @@ test.describe("J5 settings and versions", () => {
       // Toggle off: the release stays, previews hidden — the update check runs either way.
       await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
       await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
+      // #249: the release row shows its version, never the sha.
+      await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toContainText("v0.0.2");
+      await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).not.toContainText("newcommit");
       await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
       await expect(page.getByTestId("update-available-icon")).toBeVisible();
 
@@ -289,6 +298,8 @@ test.describe("J5 settings and versions", () => {
       await expect(toggle).toBeChecked({ timeout: 15_000 });
       await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
       await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toBeVisible();
+      // #249: preview rows keep their short sha.
+      await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toContainText("abc1234");
     });
   });
 });
