@@ -88,19 +88,25 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   };
 
   // Reader state (M4): per-page scroll position restored on back/forward.
-  // Saved continuously on scroll; restored after the new page renders. The
-  // page never scrolls on its own while the user reads (no scroll on
-  // patches — only here, on navigation).
+  // Saved continuously on scroll and synchronously when leaving a page;
+  // restored once the new page has laid out. The page never scrolls on its
+  // own while the user reads (no scroll on patches — only here, on navigation).
   const scrollPos = useRef(new Map<string, number>());
   // The page being rendered now. Leaving a page swaps its content before the
   // old listener is removed, and the browser's clamp to the new content can
   // fire one last scroll event; it must not overwrite the old page's position.
   const currentPageKey = useRef(pageKey);
   currentPageKey.current = pageKey;
+  // The page whose scroll events are noise right now: the page being left
+  // (from navigation start until the next page commits) and the page being
+  // entered (until its restore has applied). A page-switch clamp to 0 must
+  // not overwrite the saved position on either side (#266).
+  const quietKey = useRef<string | null>(null);
   useEffect(() => {
     const el = document.getElementById("page");
     if (!el) return;
     const onScroll = (): void => {
+      if (quietKey.current === pageKey) return;
       if (currentPageKey.current !== pageKey) return;
       // The address bar leads the committed render under transitions: once
       // it shows another page, this page is being left — ignore the scroll.
@@ -111,22 +117,67 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return () => el.removeEventListener("scroll", onScroll);
   }, [pageKey, reviewId]);
   useEffect(() => {
-    const saved = scrollPos.current.get(pageKey);
     const el = document.getElementById("page");
     if (!el) return;
-    // Restore after paint so the new page's height is committed.
-    const timer = window.setTimeout(() => {
-      el.scrollTop = saved ?? 0;
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [pageKey]);
+    // This page committed: its own scroll events count again (the leaving
+    // page's clamp, if still queued, is refused by the guards above).
+    quietKey.current = pageKey;
+    const saved = scrollPos.current.get(pageKey) ?? 0;
+    let frames = 0;
+    let raf = 0;
+    const apply = (): void => {
+      // A navigation since this effect ran — or a still-lagging commit
+      // whose URL already shows another page — must not write here (#266).
+      if (currentPageKey.current !== pageKey) return;
+      if (addressBarPageKey(reviewId) !== pageKey) return;
+      // Wait until the content can hold the offset: under a slow frame
+      // budget the first layout may be short (fonts, highlight) and an
+      // early write clamps to 0 and stays there. Bounded: a page that
+      // shrank still restores to its (clamped) top. A zero offset needs
+      // no wait.
+      if (saved > 0 && el.scrollHeight < saved + el.clientHeight && frames < 30) {
+        frames += 1;
+        raf = window.requestAnimationFrame(apply);
+        return;
+      }
+      el.scrollTop = saved;
+      quietKey.current = null;
+    };
+    raf = window.requestAnimationFrame(apply);
+    return () => window.cancelAnimationFrame(raf);
+  }, [pageKey, reviewId]);
 
   const onOpenPage = useCallback(
     (next: string | null) => {
+      // Capture the position being left synchronously: the scroll event for
+      // it may not have been dispatched yet (fast click, throttled frame),
+      // and events after navigation starts are ignored by the guards above.
+      // Mark it quiet so the page-switch clamp can't overwrite it (#266).
+      const leaving = currentPageKey.current;
+      if ((next ?? "root") !== leaving) {
+        const el = document.getElementById("page");
+        if (el) scrollPos.current.set(leaving, el.scrollTop);
+        quietKey.current = leaving;
+      }
       navigate(next === null ? `/review/${reviewId}` : `/review/${reviewId}/page/${encodeURIComponent(next)}`);
     },
     [navigate, reviewId],
   );
+
+  // Browser back/forward: `popstate` fires after the URL changes but before
+  // the transition commits, so capture the position being left here too.
+  // `navigate()` (above) uses `pushState`, which never fires `popstate`.
+  useEffect(() => {
+    const onPopState = (): void => {
+      const next = addressBarPageKey(reviewId);
+      if (!next || next === currentPageKey.current) return;
+      const el = document.getElementById("page");
+      if (el) scrollPos.current.set(currentPageKey.current, el.scrollTop);
+      quietKey.current = currentPageKey.current;
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [reviewId]);
 
   const onJumpToCard = useCallback(
     (cardId: string) => {
