@@ -14,10 +14,7 @@
  * - Threads sit under their paragraph (open ones render, closing leaves
  *   the highlight or a marker); selection in the description anchors to
  *   the paragraph id.
- * - "Restated →" links (`button.back[data-back]`): present in the HTML
- *   when the pipeline emits them, otherwise added here from
- *   `description.restated` (paragraph → guide block ids). They jump back
- *   to the guide block that restates the paragraph.
+ * - Card links (`a.cx.pg[data-node]`) open the guide page in-app.
  *
  * The `editor` seam is kept: pass a custom `DescriptionEditor` to replace
  * the built-in contenteditable body.
@@ -38,7 +35,7 @@ import { toast } from "../../floating/Toast.js";
 import { Icon } from "../../components/Icon.js";
 import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
 import { Button, Card } from "../../ui/index.js";
-import { requestGuideBlock, performFollowUp } from "../../guide/actions.js";
+import { performFollowUp } from "../../guide/actions.js";
 import { DescriptionExpansions } from "../../guide/expansions/DescriptionExpansions.js";
 import { inflightForAnchor, inflightLabel } from "../../guide/inflight.js";
 import { useReview } from "../../state/store.js";
@@ -120,8 +117,6 @@ export function DescriptionView({ reviewId, editor }: Props) {
       }),
     [descThreads, knownIds],
   );
-
-  const restated = useMemo(() => description?.restated ?? {}, [description]);
 
   useEffect(() => {
     const onRequest = (e: Event): void => {
@@ -255,7 +250,6 @@ export function DescriptionView({ reviewId, editor }: Props) {
           setHighlighted={setHighlighted}
           pending={pending}
           setPending={setPending}
-          restated={restated}
           readOnly={readOnlyVersion}
         />
       )}
@@ -272,13 +266,11 @@ interface BodyProps {
   setHighlighted: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   pending: NewThreadRequest | null;
   setPending: (req: NewThreadRequest | null) => void;
-  /** Paragraph → guide block ids for "Restated →" links. */
-  restated: Record<string, string[]>;
   readOnly: boolean;
 }
 
 const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function DescriptionBody(
-  { reviewId, segments, byPara, orphans, highlighted, setHighlighted, pending, setPending, restated, readOnly },
+  { reviewId, segments, byPara, orphans, highlighted, setHighlighted, pending, setPending, readOnly },
   ref,
 ) {
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -294,32 +286,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   const onFollowUp = (cardId: string, blockId: string, index: number): void => {
     performFollowUp(reviewId, cardId, blockId, index);
   };
-
-  // "Restated →" links from the snapshot mapping (paragraph → guide block
-  // ids). Appended after the matching paragraph element; the click
-  // delegation below jumps to the guide block. Re-applied whenever the
-  // segments or the mapping change (re-renders wipe manual DOM).
-  useEffect(() => {
-    const root = innerRef.current;
-    if (!root) return;
-    for (const [paragraphId, blockIds] of Object.entries(restated)) {
-      if (blockIds.length === 0) continue;
-      let el: Element | null = null;
-      try {
-        el = root.querySelector(`#${CSS.escape(paragraphId)}`);
-      } catch {
-        continue;
-      }
-      if (!el || el.querySelector("button.back[data-back]")) continue;
-      const btn = document.createElement("button");
-      btn.className = "back";
-      btn.type = "button";
-      btn.setAttribute("data-back", blockIds[0]);
-      btn.textContent = blockIds.length > 1 ? `Restated → (${blockIds.length})` : "Restated →";
-      btn.title = "Show where the guide restates this paragraph";
-      el.appendChild(btn);
-    }
-  }, [segments, restated]);
 
   // Anchor highlights: wrap each thread quote inside its paragraph body.
   // Threads whose quote is gone (or empty) fall back to the marker.
@@ -420,19 +386,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         if (pg) {
           const target = (pg as HTMLElement).dataset.node ?? "";
           if (target) onOpenPage(target);
-          return;
         }
-        const back = (e.target as HTMLElement).closest?.("button.back[data-back]");
-        if (!back) return;
-        const blockId = back.getAttribute("data-back") ?? "";
-        const snap = useReview.getState().snapshot;
-        const card = snap?.pages
-          .flatMap((p) => p.cards)
-          .find((c) => c.id === blockId || c.blocks.some((b) => b.id === blockId));
-        // "Restated →" jumps to the guide: bring the guide pane back when
-        // only the source pane is showing (#83).
-        if (card) showGuidePane();
-        if (card) requestGuideBlock(card.id, blockId);
       }}
     >
       {segments.map((seg, i) => {

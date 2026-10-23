@@ -201,7 +201,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Result:** a "Second opinion" block attached to the card, labelled with the model, giving a verdict (agrees / partly / disagrees), reasoning with citations, and anything the card missed. A disagreement is shown prominently.
 
 ### 4.11 PR description
-- Shows the author's description. Paragraphs the guide restates have "Restated →" links back to the guide.
+- Shows the author's description in the shared Card with normal margins. Paragraphs, lists and headings share one content inset with list markers inside it. (Removed per #263: the "Restated →" links back to the guide.)
 - **Editable only when the user is the PR author and the PR isn't merged.**
   - **Edit description** makes the text editable in place, with Discard and Save.
   - **Save** keeps the edit locally and shows "Edited · goes to GitHub when you submit the review", with **Revert edits**.

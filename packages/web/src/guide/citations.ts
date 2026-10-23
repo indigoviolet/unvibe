@@ -43,7 +43,7 @@ function descText(snapshot: ReviewSnapshot, paragraph: string): string | null {
   const el = doc.getElementById(paragraph);
   if (!el) return null;
   return (
-    el.textContent?.replace(/Restated →/g, "").replace(/\s+/g, " ").trim().slice(0, 200) ??
+    el.textContent?.replace(/\s+/g, " ").trim().slice(0, 200) ??
     null
   );
 }

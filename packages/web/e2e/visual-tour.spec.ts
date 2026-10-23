@@ -863,6 +863,25 @@ for (const combo of [
     await closeCard(page, guideChild);
     await closeCard(page, seedCard);
 
+    // PR description tab (#263): paragraphs, a bullet list, a numbered
+    // list past 9 items and inline code, in the shared Card. No
+    // "Restated →" links remain.
+    await page.locator('#right [role="tab"]').getByText("PR description").click();
+    await expect(page.locator("#right #d-p1")).toContainText("obs-fold response-header case", { timeout: 15_000 });
+    await expect(page.locator("#right #d-p2")).toContainText("HTTPHeaderDict", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li").nth(9)).toContainText("towncrier", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li")).toHaveCount(12);
+    await expect(page.locator("#right .desc button.back")).toHaveCount(0);
+    await expect(page.locator("#right .desc")).not.toContainText("Restated →");
+    await stepChecks(page, "desc-full");
+    await shot(page, "desc-full", suffix, "Review checklist");
+
+    // Scrolled to the end of the numbered list: two-digit numbers sit
+    // inside the content padding like the single-digit ones.
+    await page.locator("#right ol#d-p6 li").nth(11).scrollIntoViewIfNeeded();
+    await stepChecks(page, "desc-checklist-end");
+    await shot(page, "desc-checklist-end", suffix, "next request");
+
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
