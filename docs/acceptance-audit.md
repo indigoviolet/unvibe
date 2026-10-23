@@ -2990,3 +2990,20 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `src/shell/ReviewBar.test.tsx` + `src/shell/jobCounts.test.ts` +
   service `test/reviews-list.test.ts` (unchanged behaviour).
   Full gates not yet run.
+
+## Addendum: #254 (document name in the review bar; branch `fix/254-document-name`)
+
+- **#254 (document reviews named by the document; §4.1):** the review
+  bar shows a document icon plus the document's short name
+  (`DocumentContent.title`, the H1/first heading — no filename is
+  stored, so the title is the name) instead of the first context repo,
+  with an ellipsis and the full name on hover (`.docid`/`.docname` at
+  the theme's small control height, centred like #245). PR and branch
+  reviews are unchanged. The same name appears in the Documents screen
+  list (document icon + title in `SessionRow`) and the browser tab
+  (`document.title` set to the document name on document reviews).
+  Evidence: `src/shell/ReviewBar.test.tsx` (icon + name, no PR link,
+  no Refresh, tab title), `e2e/journeys/j222-document.spec.ts` (bar
+  icon + name, list entry, `toHaveTitle`, plus `reviewbar-doc-*`
+  theme frames with `checkLayout` in Default/Studio/Console).
+  Full gates not yet run.
