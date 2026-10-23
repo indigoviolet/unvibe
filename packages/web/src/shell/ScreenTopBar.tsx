@@ -9,7 +9,7 @@
  * button in the same place on every screen. The Settings screen itself
  * renders no Settings button.
  */
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Icon } from "../components/Icon.js";
 import { FullAccessMarker } from "./FullAccessMarker.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";

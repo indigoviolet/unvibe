@@ -6,7 +6,7 @@
  * issue #235) and at the top of the Debug page.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { api } from "../api/client.js";
 
 export function FullAccessMarker({ compact }: { compact?: boolean }): React.JSX.Element | null {

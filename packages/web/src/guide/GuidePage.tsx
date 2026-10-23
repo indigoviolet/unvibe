@@ -11,7 +11,7 @@
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { isDocumentReview } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -29,6 +29,22 @@ function pageIdFromSplat(splat: string | undefined): string | null {
   if (!splat) return null;
   const m = splat.match(/^page\/([^/]+)$/);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Page key from the address bar. History updates the URL synchronously on
+ * navigation while the committed render lags behind under transitions
+ * (`v7_startTransition` / v7 wrap the router state update in
+ * `startTransition`), so a scroll that fires after leaving started — e.g.
+ * the browser revealing the clicked link — must not overwrite the page
+ * being left (#248). Returns "" off review routes so it never matches.
+ */
+function addressBarPageKey(reviewId: string): string {
+  const prefix = `/review/${reviewId}`;
+  const { pathname } = window.location;
+  if (pathname === prefix || pathname === `${prefix}/`) return "root";
+  if (!pathname.startsWith(`${prefix}/`)) return "";
+  return pageIdFromSplat(pathname.slice(prefix.length + 1)) ?? "root";
 }
 
 export function GuidePage({ reviewId }: { reviewId: string }) {
@@ -86,11 +102,14 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     if (!el) return;
     const onScroll = (): void => {
       if (currentPageKey.current !== pageKey) return;
+      // The address bar leads the committed render under transitions: once
+      // it shows another page, this page is being left — ignore the scroll.
+      if (addressBarPageKey(reviewId) !== pageKey) return;
       scrollPos.current.set(pageKey, el.scrollTop);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [pageKey]);
+  }, [pageKey, reviewId]);
   useEffect(() => {
     const saved = scrollPos.current.get(pageKey);
     const el = document.getElementById("page");

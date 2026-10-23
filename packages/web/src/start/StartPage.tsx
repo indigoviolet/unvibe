@@ -52,7 +52,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import type {
   ContextRepoSource,
   CreateReviewRequest,

@@ -3,15 +3,18 @@
  * Dev-only Sentry reporting (issue #29): off without a DSN, never loads the
  * SDK in that case, and `reportError` is a safe no-op until it is on.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { createApp } from "../src/server.js";
 import { initSentry, reportError, type SentrySdk } from "../src/telemetry/sentry.js";
 
-function fakeSdk(): SentrySdk & { init: ReturnType<typeof vi.fn>; captureException: ReturnType<typeof vi.fn> } {
+function fakeSdk(): SentrySdk & {
+  init: Mock<SentrySdk["init"]>;
+  captureException: Mock<SentrySdk["captureException"]>;
+} {
   return {
-    init: vi.fn(),
+    init: vi.fn<SentrySdk["init"]>(),
     onUnhandledRejectionIntegration: vi.fn((options: { mode: "strict" }) => ({ name: "OnUnhandledRejection", ...options })),
-    captureException: vi.fn(),
+    captureException: vi.fn<SentrySdk["captureException"]>(),
     close: vi.fn(async () => true),
   };
 }

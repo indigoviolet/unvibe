@@ -9,7 +9,7 @@
  * with a reason while the review is still opening.
  */
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { Button } from "../ui/index.js";
 

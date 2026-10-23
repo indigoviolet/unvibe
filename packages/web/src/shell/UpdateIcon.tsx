@@ -7,7 +7,7 @@
  * refreshes; never polls, never errors.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Icon } from "../components/Icon.js";
 import { getUpdateAvailable, subscribeUpdateCheck, type UpdateCheckState } from "./updateCheck.js";
 

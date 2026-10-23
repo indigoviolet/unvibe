@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { GuideThreadHooks } from "../../comments/GuideThreads.js";
 import { useReview } from "../../state/store.js";
 import { ExpansionHighlights } from "./ExpansionHighlights.js";
