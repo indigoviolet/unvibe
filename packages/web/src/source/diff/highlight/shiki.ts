@@ -16,7 +16,7 @@
 
 import type { HighlighterCore } from "shiki/core";
 import { sha256HexUtf8 } from "@unvibe/shared";
-import { detectLanguage, importLanguage, type ShikiLangId } from "./language.js";
+import { detectLanguage, importLanguage, normalizeCodeLanguage, type ShikiLangId } from "./language.js";
 import { cacheKey, tokenizeHunk, toSegments, MAX_LINE_CHARS, MAX_SIDE_CHARS, type LineTokens, type RawToken } from "./tokenize.js";
 import type { Hunk } from "@unvibe/shared";
 
@@ -67,7 +67,7 @@ export function highlightDisabled(): boolean {
 }
 
 /** Re-export for the render hook. */
-export { detectLanguage };
+export { detectLanguage, normalizeCodeLanguage };
 export type { ShikiLangId };
 
 async function getHighlighter(): Promise<HighlighterCore | null> {
@@ -212,15 +212,63 @@ export function cachedLines(path: string, texts: string[]): (LineTokens | null)[
   return lineCache.get(cacheKey(sha256HexUtf8(texts.join("\n")).slice(0, 16), lang));
 }
 
+/**
+ * Tokenise a fenced code block (issue #255) with its fence language's
+ * grammar, one row per line, in order. Same never-throw contract as
+ * `highlightLines`: missing/unknown languages, failures and over-cap
+ * inputs resolve null (plain render). Results cache by `lang:sha(code)`
+ * so re-renders never recompute.
+ */
+const codeCache = new Map<string, (LineTokens | null)[] | null>();
+
+export async function highlightCodeBlock(
+  language: string | undefined,
+  code: string,
+): Promise<(LineTokens | null)[] | null> {
+  const lang = normalizeCodeLanguage(language);
+  if (!lang || code.length === 0) return null;
+  if (code.length > MAX_SIDE_CHARS) return null;
+  const key = cacheKey(sha256HexUtf8(code).slice(0, 16), `code:${lang}`);
+  const cached = codeCache.get(key);
+  if (cached !== undefined) return cached;
+  const hl = await ensureLang(lang);
+  if (!hl) {
+    codeCache.set(key, null);
+    return null;
+  }
+  try {
+    const texts = code.split("\n");
+    const rows = await tokenizeSide(hl, lang, texts);
+    const out = rows.map((row, i) => (texts[i].length > MAX_LINE_CHARS ? null : toSegments(row)));
+    codeCache.set(key, out);
+    if (out.some((r) => r !== null)) bump();
+    return out;
+  } catch {
+    codeCache.set(key, null);
+    return null;
+  }
+}
+
+/** Synchronous cache read for a code block (null = unknown or plain). */
+export function cachedCodeBlock(
+  language: string | undefined,
+  code: string,
+): (LineTokens | null)[] | null | undefined {
+  const lang = normalizeCodeLanguage(language);
+  if (!lang || code.length === 0) return null;
+  return codeCache.get(cacheKey(sha256HexUtf8(code).slice(0, 16), `code:${lang}`));
+}
+
 /** Test introspection: cache size and loaded languages. */
 export function highlightStats(): { cached: number; langs: string[] } {
-  return { cached: hunkCache.size + lineCache.size, langs: [...loadedLangs] };
+  return { cached: hunkCache.size + lineCache.size + codeCache.size, langs: [...loadedLangs] };
 }
 
 /** Clear caches (tests only). */
 export function resetHighlightForTests(): void {
   hunkCache.clear();
   lineCache.clear();
+  codeCache.clear();
   loadedLangs.clear();
   loadingLangs.clear();
   highlighter = null;

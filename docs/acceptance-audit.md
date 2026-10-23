@@ -2990,3 +2990,31 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `src/shell/ReviewBar.test.tsx` + `src/shell/jobCounts.test.ts` +
   service `test/reviews-list.test.ts` (unchanged behaviour).
   Full gates not yet run.
+
+## Addendum: #255 (branch `feat/255-code-highlight`)
+
+- **#255 (syntax highlighting for code blocks in documents and guide
+  cards):** `BlockView`'s `<pre class="code">` rendered
+  `escapeHtml(code)` and ignored `CodeBlock.language`. Code blocks now
+  highlight with the same Shiki setup, themes and language loader as
+  the diff (`source/diff/highlight/shiki.ts`): first paint is the plain
+  escaped text, then token spans swap in (same `shk-*` classes, plain
+  runs spanless, lines joined with `\n` — colours alone change, so no
+  layout shift). Fence tags map through `normalizeCodeLanguage`
+  (`language.ts`); missing or unshipped languages stay plain text.
+  The highlighted DOM keeps the same text content, so selection
+  offsets for anchoring are unchanged; guide anchor passes
+  (`GuideThreads`, `ExpansionHighlights`) re-run on highlight
+  completions like the diff pass, and the code swap waits for an
+  active code selection to clear (bounded). Code blocks stay excluded
+  from glossary-term links (untouched path for #252); the review top
+  bar is untouched (#254).
+  Evidence: `source/diff/highlight/codeBlock.test.ts` (alias mapping +
+  unknown/missing fallback, real Shiki),
+  `e2e/journeys/j255-code-highlight.spec.ts` (python block upgrades
+  with identical text, unknown block stays plain, selecting inside the
+  highlighted block and commenting places `mark.anc[data-thr]` in the
+  `pre`), `e2e/visual-tour-255.spec.ts` (guide card with code +
+  document with python/unknown blocks, 1440/960 light/dark, with
+  `checkLayout`; screenshots in `packages/web/visual-tour/255/`).
+  Full gates not yet run.

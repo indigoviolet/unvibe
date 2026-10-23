@@ -20,8 +20,9 @@
  * component stays mounted, so without the route trigger a mark drawn
  * before leaving would never come back.
  */
-import { useEffect } from "react";
+import { useEffect, useReducer } from "react";
 import { useLocation } from "react-router";
+import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
@@ -49,6 +50,11 @@ export function ExpansionHighlights() {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const pages = useReview((s) => s.snapshot?.pages);
   const pathname = useLocation().pathname;
+
+  // Code-block highlighting (issue #255) swaps text nodes post-paint, as
+  // diff rows do — re-run the pass when it lands.
+  const [hlTick, bumpHlTick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => subscribeHighlight(() => bumpHlTick()), []);
 
   useEffect(() => {
     const root = document.getElementById("page");
@@ -248,7 +254,7 @@ export function ExpansionHighlights() {
       window.clearTimeout(timer);
       retry.cancel();
     };
-  }, [annotations, pages, pathname]);
+  }, [annotations, pages, pathname, hlTick]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent): void => {
