@@ -867,10 +867,15 @@ needed (that deviation is closed, not added).
   file edges; the total is probed up front for single-hunk files), and a
   quiet fold icon on each revealed block's first gutter number instead
   of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 10 tests, `FileExpansion.test.tsx` 14 tests,
-  `e2e/diff-expand.spec.ts` 8 tests); revealed rows are tinted context
+  `expandLines.test.ts` 13 tests, `FileExpansion.test.tsx` 15 tests,
+  `e2e/diff-expand.spec.ts` 8 tests, journey `j265-expand-up.spec.ts` 3
+  tests against the real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
-  (`expand.css`, `highlightLines`); deleted files expand on the old
+  (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
+  `diff-expand-full-gap`); revealed lines read in the section whose
+  control revealed them (issue #265: up-steps and show-all-up atop the
+  clicked hunk, down-steps below it, a fully revealed gap once in
+  exactly one section); deleted files expand on the old
   side, new files on the new side, binary files offer nothing, renames
   read the new path at head — nothing throws; revealed lines offer
   Explain, Ask and GitHub on the diff-line anchor (read as

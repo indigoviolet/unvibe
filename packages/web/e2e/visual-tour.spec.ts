@@ -29,7 +29,7 @@ import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1254,6 +1254,76 @@ for (const combo of [
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
   });
 }
+
+// Issue #265: expanding up lands in the clicked hunk. The demo's worktree
+// pads every line outside the hunks blank, so expansion cannot run there;
+// these frames use a scratch repo with one two-hunk file over a real gap
+// (the J265 journey asserts the placement against the same shape).
+test.describe("visual tour diff expansion up (#265)", () => {
+  let dir265 = "";
+  let data265 = "";
+  let svc265: RunningService | null = null;
+  let review265 = "";
+  let gapLen265 = 0;
+  let gapEnd265 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-repo-"));
+    await makeGapRepo(dir265);
+    data265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-data-"));
+    svc265 = await startService(data265, { agent: "none" });
+    review265 = await createJourneyReview(svc265, dir265);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc265.origin, svc265.token, "GET", `/api/reviews/${review265}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const file = snap.files?.find((f) => f.path === "src/big.py");
+      if (file && file.hunks.length === 2) {
+        gapEnd265 = file.hunks[1].newStart - 1;
+        gapLen265 = gapEnd265 - file.hunks[0].newEnd;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gap review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc265?.stop().catch(() => {});
+    svc265 = null;
+    for (const d of [dir265, data265]) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("visual tour diff expansion up (#265)", async ({ page }) => {
+    if (!svc265) throw new Error("expansion service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const suffix = "1440-light";
+    const BIG = "src-big.py";
+    await page.goto(`${svc265.origin}/review/${review265}?token=${svc265.token}`);
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    const file = page.locator(`[id="F-${BIG}"]`);
+    await expect(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+    const second = file.locator(".dhunk").nth(1);
+    // ^ on the second hunk: the tail reads atop its own code.
+    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
+    await page.mouse.move(20, 400);
+    await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-up");
+    await shot(page, "diff-expand-up", suffix, "Hunk 2 of 2");
+    // ⇞ to the previous hunk: the whole gap reads once, into the
+    // hunk's first line (20 lines already revealed above).
+    await second.getByRole("button", { name: `Show all ${gapLen265 - 20} lines` }).click();
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen265, { timeout: 60_000 });
+    await page.mouse.move(20, 400);
+    await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-full-gap");
+    await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
+  });
+});
 
 // Studio and Console themes (issues #196/#164): one scene set per
 // theme in light and dark at 1440px, applied before first paint
