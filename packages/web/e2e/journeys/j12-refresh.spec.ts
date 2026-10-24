@@ -94,6 +94,12 @@ test.describe("J12 refresh with new commits", () => {
     await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).getByText("return 111")).toHaveCount(0);
     await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });
+    // Moved from settings.spec.ts (#258): the switcher flags the older
+    // version read-only (trigger names it, no back button, read-only hint).
+    await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
+    await expect(page.locator("#version-pick")).toContainText("v1");
+    await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
+    await expect(page.getByText("read-only", { exact: false }).first()).toBeVisible();
 
     // Choosing the current version (annotated in the dropdown) is the way
     // back; the banner returns, and Update reports plainly without the

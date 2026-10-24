@@ -72,6 +72,12 @@ test.describe("J223 outbox export (branch review)", () => {
     await expect(menu.locator('[data-cmsec="outbox"] .cmgroup')).toHaveText("src/app.py");
     await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).toContainText(":2");
     await expect(menu.locator('[data-cmsec="outbox"] [data-cjump]')).not.toContainText("src/app.py:2");
+    // Moved from comments.spec.ts (#258): the jump link returns to the
+    // thread in the diff.
+    await menu.locator("[data-cjump]").first().click();
+    await expect(thread).toBeVisible({ timeout: 10_000 });
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await menu.locator('[data-cmtab="outbox"]').click();
     const box = menu.locator("[data-outbox-md]");
     await expect(box).toBeVisible({ timeout: 10_000 });
     await expect(box).toContainText("Branch-only thought");

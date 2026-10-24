@@ -33,6 +33,12 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
+    // Moved from comments.spec.ts (#258): a partial selection snaps to
+    // whole words (the toolbar quotes "optional", not "ptional").
+    const snapped = await selectText(page, "#C-central", "ptional", 0, 7);
+    expect(snapped).toBe("optional");
+    await page.keyboard.press("Escape");
+
     // Explain selected guide text; exactly one working indicator while it streams.
     await selectText(page, "#C-central", "fast path");
     await page.locator('#selbar [data-act="explain"]').click();
@@ -501,6 +507,81 @@ test.describe("J2 blind second opinion on a finding (seeded)", () => {
     await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}/page/f-lf?token=${svc.token}`);
     await expect(page.locator("#page .eyebrow")).toContainText("Agent finding", { timeout: 30_000 });
     await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 30_000 });
+
+    // Moved from second-opinion.spec.ts (#258): the finding control
+    // defaults to blind; the mode menu closes on Escape.
+    const findingCtl = page.locator('[data-so-ctl="flf-ev"]');
+    await expect(findingCtl).toBeVisible({ timeout: 15_000 });
+    await expect(findingCtl.getByRole("button", { name: "Second opinion (blind)" })).toBeVisible();
+    await findingCtl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
+    await expect(findingCtl.getByRole("menu", { name: "Second-opinion mode" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(findingCtl.getByRole("menu", { name: "Second-opinion mode" })).toHaveCount(0);
+
+    // Re-run keeps one per mode; remove clears it.
+    const chip = page.locator('[data-so][data-verdict="partly"]');
+    const jobsBefore = await apiJson(svc, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
+    const soBefore = ((jobsBefore.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
+      (j) => j.kind === "second-opinion" && j.state === "done",
+    ).length;
+    expect(soBefore).toBeGreaterThanOrEqual(1);
+    await chip.getByRole("button", { name: /Re-run second opinion/ }).click();
+    // PRD §12 reuse (unlike the mock, which always re-runs): the identical
+    // request reuses the stored result — no new run, still exactly one chip.
+    await page.waitForTimeout(3000);
+    const jobsAfter = await apiJson(svc, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
+    expect(
+      ((jobsAfter.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
+        (j) => j.kind === "second-opinion" && j.state === "done",
+      ).length,
+    ).toBe(soBefore);
+    await expect(page.locator('[data-so][data-verdict="partly"]')).toHaveCount(1);
+    await chip.getByRole("button", { name: "Remove second opinion" }).click();
+    await expect(page.locator('[data-so]')).toHaveCount(0);
+
+    // The mode menu runs blind on the finding (again via the UI this time).
+    await findingCtl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
+    await findingCtl.getByRole("menu", { name: "Second-opinion mode" }).getByRole("menuitemradio", { name: /Blind/ }).click();
+    await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 60_000 });
+  });
+
+  // Moved from second-opinion.spec.ts (#258): check on the guide card
+  // disagrees with citations, then re-run keeps one and remove clears it.
+  test("check second opinion on the guide card disagrees, re-runs, removes", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("service not running");
+    await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText(
+      "Unfold obsolete folded response headers",
+      { timeout: 30_000 },
+    );
+    const ctl = page.locator('#C-central [data-so-ctl="central"]');
+    await expect(ctl).toBeVisible({ timeout: 30_000 });
+    // One icon button (check is the guide-card default) plus a mode caret.
+    await expect(ctl.getByRole("button", { name: "Second opinion (check this claim)" })).toBeVisible();
+    await expect(ctl.getByRole("button", { name: "Choose a second-opinion mode" })).toBeVisible();
+    await ctl.getByRole("button", { name: "Second opinion (check this claim)" }).click();
+    const block = page.locator('#C-central [data-so][data-verdict="disagrees"]');
+    await expect(block).toBeVisible({ timeout: 60_000 });
+    await expect(block).toContainText("Disagrees");
+    await expect(block).toContainText("Missed:");
+    await expect(block.locator(".lk[data-refs]").first()).toBeVisible();
+    // Re-run keeps one per mode; remove clears it.
+    const checkDone = async (): Promise<number> => {
+      const r = await apiJson(svc!, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
+      return ((r.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
+        (j) => j.kind === "second-opinion" && j.state === "done",
+      ).length;
+    };
+    const checkCount = await checkDone();
+    await block.getByRole("button", { name: /Re-run second opinion/ }).click();
+    // PRD §12 reuse (unlike the mock, which always re-runs): the identical
+    // request reuses the stored result — no new run, still exactly one chip.
+    await page.waitForTimeout(3000);
+    expect(await checkDone()).toBe(checkCount);
+    expect(await page.locator('#C-central [data-so][data-verdict="disagrees"]').count()).toBe(1);
+    await block.getByRole("button", { name: "Remove second opinion" }).click();
+    await expect(page.locator('#C-central [data-so]')).toHaveCount(0);
   });
 });
 

@@ -134,6 +134,11 @@ test.describe("J15 multi-turn conversation", () => {
     // The follow-up matches the bare-LF recording, so it fills with
     // blocks; the box empties on send and stays empty.
     const box = card.locator("textarea");
+    // Moved from reply-draft.spec.ts (#258): Discard clears a
+    // typed-but-unsent draft.
+    await box.fill("never mind");
+    await card.getByRole("button", { name: "Discard" }).click();
+    await expect(box).toHaveValue("");
     await box.fill("And a bare LF?");
     await card.getByRole("button", { name: "Reply" }).click();
     await expect(box).toHaveValue("", { timeout: 5000 });
