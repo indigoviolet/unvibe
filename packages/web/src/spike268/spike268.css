@@ -1,0 +1,237 @@
+/* Spike #268 styles: everything else comes from prototype.css variables. */
+
+.spike268 .spike-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--label-font);
+  font-size: var(--text-label);
+}
+
+.spike-topbar-title {
+  font-weight: var(--weight-label);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spike-badge {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  color: var(--muted);
+}
+
+.spike-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.spike-guidehead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.spike-guidehead .title {
+  margin: 0;
+}
+
+.ib.spike-collapse-all {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: max-content;
+  flex: none;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-button);
+  font-size: var(--text-label);
+  color: var(--ink);
+}
+
+.spike-collapse-label {
+  font-weight: var(--weight-label);
+}
+
+.spike-lede {
+  margin: 4px 0 16px;
+}
+
+.spike-h2 {
+  font-family: var(--label-font);
+  font-size: var(--text-label);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 22px 0 8px;
+}
+
+/* Unified thread: the prototype .ithread shell, flat replies inside. */
+.spike-thread {
+  margin-left: 0;
+}
+
+.spike-reply {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.spike-reply:first-of-type {
+  border-top: none;
+}
+
+.spike-reply .av {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-avatar);
+  border: 1px solid var(--line);
+}
+
+.spike-reply .av.you {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.spike-reply .av.ai {
+  background: var(--note-soft);
+  color: var(--note);
+}
+
+.spike-reply-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.spike-reply-main p {
+  margin: 4px 0 0;
+}
+
+.spike-reply-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kind {
+  flex: none;
+  font-family: var(--label-font);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  text-transform: lowercase;
+}
+
+.kind-ask {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.kind-explain {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.kind-comment {
+  background: var(--note-soft);
+  color: var(--note);
+  border-color: transparent;
+}
+
+/* In-thread reply link: hyperlinked text that jumps to its reply. */
+.rlink {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Reply-link target highlight (set on click, cleared after ~2s). */
+.spike-reply.flash {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-4);
+  background: var(--accent-soft);
+}
+
+/* Collapsed one-line rows. */
+.spike-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-6);
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.spike-row-q {
+  flex: none;
+  max-width: 32%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.spike-row-first {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-label);
+}
+
+.spike-row-sep {
+  color: var(--muted);
+}
+
+.spike-row-snip {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.spike-row-count {
+  flex: none;
+  font-family: var(--label-font);
+  font-size: var(--text-label);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+}

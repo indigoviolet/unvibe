@@ -9,6 +9,7 @@ import { SettingsPage } from "./settings/SettingsPage.js";
 import { StartPage } from "./start/StartPage.js";
 import { DocumentsPage } from "./start/DocumentsPage.js";
 import { DoctorPage } from "./doctor/DoctorPage.js";
+import { ThreadsSpikePage } from "./spike268/ThreadsSpikePage.js";
 
 export function App() {
   // UI theme (issue #196): the boot script applied the mirrored theme
@@ -40,6 +41,8 @@ export function App() {
         <Route path="/review/:id/*" element={<ReviewRoute />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/doctor" element={<DoctorPage />} />
+        {/* Spike #268 mock-up (branch-only, never merged). */}
+        <Route path="/spike/268-threads" element={<ThreadsSpikePage />} />
         </Routes>
       </RouteShellBoundary>
     </BrowserRouter>
