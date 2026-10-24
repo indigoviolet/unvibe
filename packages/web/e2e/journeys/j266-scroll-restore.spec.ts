@@ -6,7 +6,7 @@ import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { selectText } from "../select-text.js";
-import { createDemoReview } from "./journey-helpers.js";
+import { createSeededDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -17,8 +17,8 @@ test.describe("J266 scroll restore", () => {
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j266-data-"));
+    reviewId = createSeededDemoReview(dataDir, "j266-seed");
     svc = await startService(dataDir, { agent: "replay" });
-    reviewId = await createDemoReview(svc);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
