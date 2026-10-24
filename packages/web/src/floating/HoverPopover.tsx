@@ -121,7 +121,7 @@ function previewExpansion(expansion: Annotation | undefined): string {
     ? `<div class="xprev">${first}</div>`
     : working
       ? `<span class="hint">${esc(working)}</span>`
-      : `<span class="hint">Writing explanation…</span>`;
+      : `<span class="hint">Writing explanation</span>`;
   return `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`;
 }
 

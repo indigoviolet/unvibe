@@ -54,6 +54,7 @@ import { SharedContextService, setInteractionHandler } from "./sharedctx/index.j
 import { SharedContextStore } from "./sharedctx/store.js";
 import { createUpdaterFromEnv, type Updater } from "./update/index.js";
 import { createAgentRunner, resolveFixturesDir } from "./agent/factory.js";
+import { mirrorPromotedAnswer } from "./interaction/index.js";
 import { FakeAgentRunner } from "./agent/fake.js";
 import { verifyCheckoutAfterJob } from "./fullaccess/verify.js";
 import { Pipeline } from "./pipeline/index.js";
@@ -311,13 +312,20 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     // finished jobs stay on the Debug page's jobs list after a restart.
     const saved = jobStore.listAll();
     if (saved.length > 0) {
-      const { interrupted } = jobs.recover(saved);
+      const { interrupted, cancelled } = jobs.recover(saved);
       // Issue #203: an interrupted conversation job is a failed turn.
       // Its job is terminal, so settle the turn it was filling —
-      // working cleared, error set — or the card would show "Writing…"
+      // working cleared, error set — or the card would show "Writing"
       // forever with no Retry. Fire-and-forget like the ingest resume;
       // the mutation lands before any reader can act on the card.
-      for (const job of interrupted) {
+      //
+      // Issue #272: the same holds for a persisted `cancelled` job whose
+      // turn still owns work. A graceful shutdown cancels every open
+      // fill, so those turns died mid-fill — mark them interrupted too.
+      // An explicit Debug cancel already settled its turn (working
+      // cleared, #272), so the working-check below skips it. Like any
+      // failed turn (#270), no partial blocks stay behind.
+      for (const job of [...interrupted, ...cancelled]) {
         if (!job.reviewId || !job.annotationId) continue;
         const reviewId = job.reviewId;
         const annotationId = job.annotationId;
@@ -338,6 +346,8 @@ export function buildApp(opts: BuildAppOptions): AppContext {
                 turn.working = null;
                 turn.error = INTERRUPTED_MESSAGE;
                 turn.jobId = undefined;
+                turn.blocks = [];
+                mirrorPromotedAnswer(draft, turn.id);
               }
             }
           })
