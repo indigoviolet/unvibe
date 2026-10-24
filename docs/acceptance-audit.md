@@ -520,16 +520,17 @@ needed (that deviation is closed, not added).
    their own (prompt rule in `ask_turn.md` + L0 reply hygiene) — met
    (`conversation-retry-270.test.ts`, journey J270, visual tour
    ask-failed/ask-retried frames). Issue #271: the reply box stays
-   visible and editable while a follow-up answer is pending, with Send
-   disabled and the reason as its tooltip ("Wait for the answer"); the
-   kept draft sends once the answer lands. On a failure the box stays
-   hidden and Retry governs (a draft typed while pending is kept in
-   the server draft and is back after the retry lands). In-progress
+   visible and editable while a *follow-up* answer is pending, with
+   Send disabled and the reason as its tooltip ("Wait for the
+   answer"); the kept draft sends once the answer lands (first answers
+   keep the #203 header-only writing state). On a failure the box
+   stays hidden and Retry governs (a draft typed while pending is kept
+   in the server draft and is back after the retry lands). In-progress
    labels in Ask/Explain and follow-ups carry no stacked ellipsis
    beside the dots ("Writing answer", "Thinking", "Asking",
    "Retrying"; reply-path fills unified on "Writing answer") — met
    (`ConversationCard.test.tsx` #271 cases, journey J271, visual tour
-   ask-pending frames).
+   ask-pending frames, J6 + tour writing-state scene).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with

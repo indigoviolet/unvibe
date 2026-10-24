@@ -432,11 +432,14 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   }
 
   const below = [...(ancestorIds ?? []), expansion.id];
-  // Issue #271: the reply box stays visible while the latest turn's
+  // Issue #271: the reply box stays visible while a *follow-up* turn's
   // answer is being written (editable, Send disabled with the reason as
-  // its tooltip, draft kept). On a failure the box stays hidden — that
-  // turn shows Retry instead (#203, #270: Retry is the source of truth,
-  // and a draft typed while pending is kept through it).
+  // its tooltip, draft kept). The #203/#204 rule stands for the first
+  // answer: while it is being written the card shows only its header
+  // and the writing state (no toolbar, no reply box). On a failure the
+  // box stays hidden — that turn shows Retry instead (#270: Retry is
+  // the source of truth, and a draft typed while pending is kept
+  // through it).
   const latest = turns[turns.length - 1];
   const latestFailed = !!latest && (!!latest.error || !!expansion.error);
   const latestPending =
@@ -444,6 +447,8 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
     !latestFailed &&
     (((latest.working ?? "") !== "" && latest.working !== null) ||
       (latest.blocks.length === 0 && (!!expansion.working || !!cardBusy)));
+  const latestIsFirst = !!latest && turns[0] === latest;
+  const hideBox = latestFailed || (latestPending && latestIsFirst);
   return (
     <Card
       as="section"
@@ -476,7 +481,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           ancestorIds={below}
         />
       ))}
-      {latestFailed ? null : (
+      {hideBox ? null : (
         <CardFooter>
         <ReplyBox
           reviewId={reviewId}

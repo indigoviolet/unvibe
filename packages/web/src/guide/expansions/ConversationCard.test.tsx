@@ -193,31 +193,23 @@ describe("conversation card", () => {
     });
   });
 
-  test("while the first answer is being written: header + writing state, toolbar hidden, reply box kept with Send disabled (#271)", () => {
+  test("while the first answer is being written: header + writing state only, no toolbar or reply box (#203)", () => {
     const c = card({
       working: "Writing explanation",
       turns: [turn("ans_1", { blocks: [], working: "Writing explanation" })],
     });
     seedSnapshot([c]);
-    const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: c.id });
     show(c);
     const answer = document.querySelector('[data-answer="ans_1"]')!;
     // Header (quote + close) and the writing state stay.
     expect(document.getElementById("B-ann_conv")).toHaveTextContent("Some text.");
     expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
     expect(answer.querySelector(".working")).not.toBeNull();
-    // No per-answer toolbar until the answer arrives…
+    // No per-answer toolbar and no reply box until the answer arrives.
+    // (#271 keeps the box only while a follow-up turn is pending.)
     expect(answer.querySelector(".ctl")).toBeNull();
-    // …but the reply box stays: editable, with the draft kept, Send
-    // disabled with the reason as its tooltip.
-    const box = screen.getByLabelText("Ask a follow-up") as HTMLTextAreaElement;
-    fireEvent.change(box, { target: { value: "And then?" } });
-    expect(box.value).toBe("And then?");
-    const send = screen.getByRole("button", { name: "Reply" });
-    expect(send).toBeDisabled();
-    expect(send).toHaveAttribute("data-tip", "Wait for the answer");
-    fireEvent.click(send);
-    expect(spy).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
   });
 
   test("a follow-up turn being written keeps the earlier toolbar but hides its own; the reply box stays with Send disabled (#271)", () => {
