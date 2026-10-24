@@ -530,7 +530,13 @@ needed (that deviation is closed, not added).
    beside the dots ("Writing answer", "Thinking", "Asking",
    "Retrying"; reply-path fills unified on "Writing answer") — met
    (`ConversationCard.test.tsx` #271 cases, journey J271, visual tour
-   ask-pending frames, J6 + tour writing-state scene).
+   ask-pending frames, J6 + tour writing-state scene). Issue #272: a
+   fill that fails while its card is closed records the failure anyway
+   (banner plus Retry on reopen); an explicitly cancelled fill settles
+   quietly with no working flag, job link or partials left; a
+   graceful-shutdown-cancelled fill still marked working is settled as
+   interrupted on the next boot — met (`conversation-stuck-272.test.ts`,
+   journey J272).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with

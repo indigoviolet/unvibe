@@ -477,11 +477,18 @@ export class JobQueue {
    * carry no `run`, so they never execute, never count as active, and
    * never block idle exit.
    */
-  recover(savedJobs: Job[]): { interrupted: Job[]; orphaned: Job[] } {
+  recover(savedJobs: Job[]): { interrupted: Job[]; orphaned: Job[]; cancelled: Job[] } {
     const interrupted: Job[] = [];
     const orphaned: Job[] = [];
+    // Persisted `cancelled` jobs (#272): a graceful shutdown cancels
+    // every open fill, so a cancelled job with a turn still marked
+    // working died mid-fill — the app settles those like interrupted
+    // ones. (Explicit Debug cancels already settled their turns, so the
+    // app's working-check skips them.)
+    const cancelled: Job[] = [];
     for (const saved of savedJobs) {
       if (this.entries.has(saved.id)) continue;
+      if (saved.state === "cancelled") cancelled.push(copy(saved));
       const open = !isTerminal(saved.state);
       const job: Job = open
         ? {
@@ -505,7 +512,7 @@ export class JobQueue {
       this.emit(entry);
       if (open) interrupted.push(copy(job));
     }
-    return { interrupted, orphaned };
+    return { interrupted, orphaned, cancelled };
   }
 
   /** Abort everything; used on service shutdown. */
