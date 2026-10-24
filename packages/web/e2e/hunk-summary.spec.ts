@@ -1,9 +1,11 @@
 /**
- * Hunk summaries as content cards (issue #138) over mock mode: an idle
- * summary is plain text; selecting in it and choosing Explain activates
- * it into a card under the hunk and answers nested; clicking the summary
- * activates it with no agent call; a Comment lands on the hunk's first
- * changed line and never activates the summary.
+ * Hunk summaries as content cards (issue #138) over mock mode: selecting
+ * in a summary and choosing Explain activates it under the hunk; a
+ * Comment lands on the hunk's first changed line and never activates the
+ * summary; a promoted hunk keeps its summary plus chip.
+ *
+ * (Click-to-activate, delete and on-demand summarize now live in J13
+ * against the real service — #258.)
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
@@ -32,29 +34,6 @@ test("select summary text, Explain: the card appears under the hunk", async ({ p
   await expect(page.locator("p[data-hunksum]")).toHaveCount(0);
 });
 
-test("clicking the idle summary opens it as a card with no agent call", async ({ page }) => {
-  await gotoDiff(page);
-  const idle = page.locator("p[data-hunksum]").first();
-  await expect(idle).toBeVisible({ timeout: 8000 });
-  await idle.click();
-  const card = page.locator(".dhunk [data-expansion]").first();
-  await expect(card).toBeVisible({ timeout: 5000 });
-  await expect(card.locator(".exp-b")).toContainText("Unfolds folded header values", { timeout: 5000 });
-});
-
-test("deleting the activated hunk card leaves no summary (#161)", async ({ page }) => {
-  await gotoDiff(page);
-  const idle = page.locator("p[data-hunksum]").first();
-  await expect(idle).toBeVisible({ timeout: 8000 });
-  await idle.click();
-  const card = page.locator(".dhunk [data-expansion]").first();
-  await expect(card).toBeVisible({ timeout: 5000 });
-  await card.getByRole("button", { name: "Delete" }).click();
-  // The card and its collapsed state — the idle summary — are both gone.
-  await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
-  await expect(page.locator("p[data-hunksum]")).toHaveCount(0);
-});
-
 test("a Comment on a summary lands on the line and never activates", async ({ page }) => {
   await gotoDiff(page);
   await selectText(page, "p[data-hunksum]", "folded header values");
@@ -63,19 +42,6 @@ test("a Comment on a summary lands on the line and never activates", async ({ pa
   await expect(composer).toBeVisible({ timeout: 5000 });
   // No card was activated under any hunk.
   await expect(page.locator(".dhunk [data-expansion]")).toHaveCount(0);
-});
-
-test("an on-demand summary arrives as ordinary idle text and activates", async ({ page }) => {
-  await gotoDiff(page);
-  // One seeded idle summary; summarize the next unsummarized hunk in
-  // the connection file.
-  await expect(page.locator("p[data-hunksum]")).toHaveCount(1);
-  const file = page.locator('[id="F-src-urllib3-connection.py"]');
-  await file.getByRole("button", { name: "Summarize" }).first().click();
-  await expect(page.locator("p[data-hunksum]")).toHaveCount(2, { timeout: 8000 });
-  // The newcomer activates like any idle summary.
-  await page.locator("p[data-hunksum]").nth(1).click();
-  await expect(page.locator(".dhunk [data-expansion]").first()).toBeVisible({ timeout: 5000 });
 });
 
 async function backToDiff(page: Page): Promise<void> {

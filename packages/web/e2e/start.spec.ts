@@ -107,12 +107,6 @@ test("reviews list follows the selected repo; demo row always shows", async ({ p
   await expect(page).toHaveURL(/\/review\/demo/);
 });
 
-test("demo row opens the fixture review", async ({ page }) => {
-  await gotoStart(page);
-  await page.locator('[data-testid="demo-entry"] button').click();
-  await expect(page).toHaveURL(/\/review\/demo/);
-});
-
 test("failing lists keep the PR input, show an error with Retry, and recover", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(

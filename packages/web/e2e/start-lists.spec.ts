@@ -2,8 +2,11 @@
  * Start page PR lists (#95, #100, #94, #131) in mock mode: the
  * review-request split with its recency filter (persisted), the diff size
  * on PR rows, the PR label link to GitHub (present on PR rows, never
- * triggering the row; the review-bar label links too), and the branches
- * filter by last commit date (Reviews stays unfiltered).
+ * triggering the row), and the branches filter by last commit date
+ * (Reviews stays unfiltered).
+ *
+ * (The review-bar PR label link now lives in J245 against the real
+ * service — #258.)
  */
 import { test, expect } from "./network-guard.js";
 import { pickOption, expectTriggerText } from "./select.js";
@@ -69,14 +72,6 @@ test("the PR label links to GitHub without opening the review", async ({ page })
   // the review and following the link stay separate actions.
   expect(await link.evaluate((el) => el.closest("button"))).toBeNull();
   // (Not clicked: a new-tab GitHub navigation must never fire in tests.)
-});
-
-test("the review-bar PR label links to the PR", async ({ page }) => {
-  await page.goto("/review/r-old");
-  await expect(page.locator("#reviewbar")).toBeVisible();
-  const label = page.locator("#reviewbar").getByRole("link", { name: "urllib3/urllib3#5011" });
-  await expect(label).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5011");
-  await expect(label).toHaveAttribute("target", "_blank");
 });
 
 test("branches filter by last commit and show ages, Reviews stays unfiltered (#131)", async ({ page }) => {

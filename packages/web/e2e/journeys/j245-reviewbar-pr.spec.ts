@@ -109,6 +109,13 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
       const bar = page.locator("#reviewbar");
       const link = bar.locator('a[title="Open PR on GitHub"]');
       await expect(link).toContainText(SHORT, { timeout: 15_000 });
+      // Moved from start-lists.spec.ts (#258): the label links to the PR
+      // without opening the review.
+      await expect(link).toHaveAttribute(
+        "href",
+        `https://github.com/${LONG_OWNER}/${LONG_NAME}/pull/${PR_NUMBER}`,
+      );
+      await expect(link).toHaveAttribute("target", "_blank");
       const badges = link.locator('[data-testid="pr-badges"]');
       await expect(badges.getByRole("img", { name: "Approved" })).toBeVisible();
       await expect(badges.getByRole("img", { name: "Open" })).toHaveCount(0);

@@ -163,6 +163,10 @@ test.describe("J11 settings combos", () => {
     // Data reset: removes the review, keeps settings and repos.
     await page.getByRole("tab", { name: "Data" }).click();
     await page.getByRole("button", { name: "Reset data…" }).click();
+    // Moved from settings.spec.ts (#258): Cancel first — nothing is removed.
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText(/Removed \d+ reviews?\./)).toHaveCount(0);
+    await page.getByRole("button", { name: "Reset data…" }).click();
     await page.getByRole("button", { name: "Reset", exact: true }).click();
     await expect(page.getByText(/Removed \d+ reviews?\./)).toBeVisible({ timeout: 30_000 });
     await page.goto(`${svc.origin}/?token=${svc.token}`);
