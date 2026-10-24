@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, createDemoReview } from "./journey-helpers.js";
+import { apiJson, createSeededDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -16,8 +16,8 @@ test.describe("J206 anchor blink", () => {
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j206-data-"));
+    reviewId = createSeededDemoReview(dataDir, "j206-seed");
     svc = await startService(dataDir, { agent: "replay" });
-    reviewId = await createDemoReview(svc);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
