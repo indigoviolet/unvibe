@@ -57,7 +57,9 @@ docs that serve that purpose inside it.
 Use the commit list in the source above as evidence, not as the
 answer. Each commit names the hunks it touched: when the commits are
 clean and single-purpose, they may map one-to-one onto plotlines.
-When the change is squashed into one commit, or the subjects say
+Cite those hunks with their `h:`/`diff:` links, never as "commit N" or
+"commits N–M"; name a commit by its subject only when the commit itself
+is the point. When the change is squashed into one commit, or the subjects say
 little ("wip", "fix", "address review"), ignore the commit threading
 and split by the content instead. A fixup or fix commit folds into
 the thread it fixes — same files and hunks, a subject that only

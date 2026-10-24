@@ -65,6 +65,9 @@ the reader would expect, rely on, or push back on.
   page yet is fine — its page is written when the reader opens the link.
   Only do this deliberately, when the concept genuinely needs its own page.
 - Keep ranges tight: cite the lines that show the claim, not the whole file.
+- Cite the hunks themselves with their `h:`/`diff:` links, never a commit
+  by position ("commit 1", "commits 1–15"). Name a commit by its subject
+  only when the commit itself is the point (for example the rename commit).
 
 ## MCP tools
 

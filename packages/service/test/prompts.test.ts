@@ -204,4 +204,17 @@ describe("repo prompts/ directory", () => {
     const serviceDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(resolvePromptsDir(serviceDir)).toBe(REPO_PROMPTS);
   });
+
+  it("cards cite hunks, never commit positions (#267)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const instructions = lib.get("instructions")?.body ?? "";
+    const reader = lib.get("reader")?.body ?? "";
+    // Shared rule lives once in L0.
+    expect(instructions).toContain('never a commit\n  by position ("commit 1", "commits 1–15")');
+    expect(instructions).toContain("Name a commit by its subject");
+    expect(instructions).toContain("only when the commit itself is the point");
+    // Reader repeats a short line where the commit list is presented.
+    expect(reader).toContain('never as "commit N" or');
+    expect(reader).toContain('"commits N–M"');
+  });
 });
