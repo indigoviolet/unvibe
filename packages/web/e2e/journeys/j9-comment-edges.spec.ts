@@ -72,6 +72,9 @@ test.describe("J9 comment edges", () => {
     await expect(openThread).toBeVisible({ timeout: 10_000 });
     await openThread.getByRole("button", { name: "Close" }).click();
     await expect(openThread).toHaveCount(0, { timeout: 10_000 });
+    // Moved from comments.spec.ts (#258): closing leaves a comment icon
+    // on the line number; clicking the line reopens the thread.
+    await expect(page.locator(`[id="L-${appKey}-2"] td.n.hc`)).toBeVisible({ timeout: 10_000 });
     await page.locator(`[id="L-${appKey}-2"] td.n.new`).click();
     await expect(openThread).toBeVisible({ timeout: 10_000 });
 

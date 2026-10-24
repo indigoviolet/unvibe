@@ -291,6 +291,11 @@ test.describe("J5 settings and versions", () => {
       // Toggle off: the release stays, previews hidden — the update check runs either way.
       await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
       await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
+      // Moved from update-picker.spec.ts (#258): installed older than the
+      // published release, the release row offers the update.
+      const stagedRelease = page.locator('[data-testid="update-channel"][data-ref="release"]');
+      await expect(stagedRelease.getByTestId("update-available")).toBeVisible();
+      await expect(stagedRelease.getByRole("button", { name: "Update release" })).toBeVisible();
       // #249: the release row shows its version, never the sha.
       await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toContainText("v0.0.2");
       await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).not.toContainText("newcommit");
