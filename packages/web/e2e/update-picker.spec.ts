@@ -1,9 +1,12 @@
 /**
- * Version picker in mock mode (issue #36, step 2, PRD §4.14): the toggle
- * above the card, one aligned row per version with the current one
- * marked by its Installed badge (#246: no separate Installed line), a
- * simulated switch (the page reloads onto the preview + badge), and a
- * simulated rollback (the reason shows in place, still on release).
+ * Version picker in mock mode (issue #36, step 2, PRD §4.14): a simulated
+ * switch (the page reloads onto the preview + badge), running jobs
+ * refusing the switch, and a simulated rollback.
+ *
+ * (The toggle, the channel list and the update-available row now live in
+ * J5 against the real service with the fake updater — #258. The switch
+ * itself can only be simulated in mock mode: from a source checkout the
+ * real service refuses with 409, as J5 asserts.)
  */
 import { expect, test } from "./network-guard.js";
 
@@ -24,59 +27,6 @@ async function enablePicker(page: import("@playwright/test").Page): Promise<void
 
 test.beforeEach(async ({ page }) => {
   await freshSettings(page);
-});
-
-test("toggle is off by default: releases listed, previews hidden (#231)", async ({ page }) => {
-  await expect(page.getByTestId("version-picker-toggle")).not.toBeChecked();
-  await expect(page.getByText("Show previews")).toBeVisible();
-  // Releases are always listed and switchable; previews need the toggle.
-  await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="update-channel"][data-ref="release"]')).toBeVisible();
-  await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
-});
-
-test("enable lists one aligned row per version with the current one marked", async ({ page }) => {
-  await enablePicker(page);
-  // #246: no separate Installed line — the installed channel carries the badge.
-  await expect(page.getByTestId("update-current-version")).toHaveCount(0);
-  await expect(page.getByText("Channels", { exact: true })).toBeVisible();
-  const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
-  await expect(feat).toContainText("abc1234");
-  await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
-  const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
-  await expect(release.getByTestId("update-current")).toBeVisible();
-  // #249: the release row shows the version, never the sha.
-  await expect(release).toContainText("v0.0.1");
-  await expect(release).not.toContainText("b535a30");
-  await expect(release.getByRole("button", { name: "Update release" })).toHaveCount(0);
-  await expect(feat.getByTestId("update-current")).toHaveCount(0);
-  await expect(feat.getByTestId("update-available")).toHaveCount(0);
-  await expect(page.getByTestId("update-refresh")).toHaveText("Refresh");
-  // Newest build first (issue #73).
-  const refs = await page
-    .locator('[data-testid="update-channel"]')
-    .evaluateAll((els) => els.map((el) => el.getAttribute("data-ref")));
-  expect(refs).toEqual(["preview/feat-x", "preview/fix-y", "release"]);
-});
-
-test("newer build on the installed channel: Update available, no INSTALLED pill", async ({ page }) => {
-  await page.evaluate(() => {
-    localStorage.setItem("unvibe.mock.update.installedCommit", "6818b23aaaaaaa");
-  });
-  await enablePicker(page);
-  // #246: no separate Installed line; the row shows the published head.
-  await expect(page.getByTestId("update-current-version")).toHaveCount(0);
-  const release = page.locator('[data-testid="update-channel"][data-ref="release"]');
-  await expect(release.getByTestId("update-available")).toBeVisible();
-  await expect(release.getByTestId("update-current")).toHaveCount(0);
-  // #249: the release row shows the version, never the sha.
-  await expect(release).toContainText("v0.0.1");
-  await expect(release).not.toContainText("b535a30");
-  await expect(release.getByRole("button", { name: "Update release" })).toHaveText("Update");
-  const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
-  await expect(feat.getByTestId("update-current")).toHaveCount(0);
-  await expect(feat.getByTestId("update-available")).toHaveCount(0);
-  await expect(feat.getByRole("button", { name: "Switch to preview/feat-x" })).toHaveText("Switch");
 });
 
 test("switch moves to the preview: confirm, restart wait, reload, badge", async ({ page }) => {

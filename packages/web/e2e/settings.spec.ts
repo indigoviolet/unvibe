@@ -7,6 +7,10 @@
  * stale-review banner with range-diff + version switching. (Jobs, prompt
  * expansions and shared context live on the per-review debug page now:
  * `debug.spec.ts`.)
+ *
+ * (Data reset, path-checkout remove, the stale banner, the version
+ * switcher and the access toggle now live in J5/J11/J12 against the
+ * real service — #258.)
  */
 import { expect, test } from "./network-guard.js";
 import { openPopup } from "./select.js";
@@ -29,19 +33,6 @@ test("settings default to the Repos tab; tabs switch panels", async ({ page }) =
   await expect(page).toHaveURL("/settings?tab=models");
   await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
   await expect(page.getByRole("tabpanel", { name: "Repos" })).toBeHidden();
-});
-
-test("data tab resets after a confirm step", async ({ page }) => {
-  await page.goto("/settings?tab=data");
-  const panel = page.getByRole("tabpanel", { name: "Data" });
-  await panel.getByRole("button", { name: "Reset data…" }).click();
-  await panel.getByRole("button", { name: "Cancel" }).click();
-  await expect(panel.getByRole("status")).toHaveCount(0);
-  await panel.getByRole("button", { name: "Reset data…" }).click();
-  await panel.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText(/Removed \d+ reviews?\./);
-  await page.getByRole("link", { name: "Unvibe" }).click();
-  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
 });
 
 test("?tab= deep link survives reload", async ({ page }) => {
@@ -176,20 +167,6 @@ test("repositories remove deletes a managed clone with clear confirm copy", asyn
   await expect(row).toHaveCount(0);
 });
 
-test("repositories remove only forgets a path checkout", async ({ page }) => {
-  await gotoSettings(page);
-  const section = page.locator('[data-testid="repositories-section"]');
-  await section.getByLabel("Add a repo by path").fill("/tmp/fake-checkout");
-  await section.getByRole("button", { name: "Add by path" }).click();
-  const row = section.locator('[data-testid="repo-local-fake-checkout"]');
-  await expect(row).toBeVisible();
-  await expect(row).not.toContainText("Cloned by Unvibe");
-  await row.getByRole("button", { name: "Remove local/fake-checkout" }).click();
-  await expect(row).toContainText("Remove this repo from the list? /tmp/fake-checkout is not touched.");
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
-  await expect(row).toHaveCount(0);
-});
-
 test("repositories remove is refused while reviews exist", async ({ page }) => {
   await gotoSettings(page);
   // The seed urllib3 repo has mock sessions: removing it 409s as is.
@@ -311,49 +288,4 @@ test("settings gear sits only in the start top bar; the review bar has home and 
   await expect(startGear).toBeVisible();
   await expect(startGear).toHaveAttribute("title", "Settings");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
-});
-
-test("stale review shows banner counts, range-diff and stale hunks", async ({ page }) => {
-  await page.goto("/review/r-old");
-  const banner = page.locator('[data-testid="stale-banner"]');
-  await expect(banner).toContainText("New commits on this branch · v1 → v2 (1 changed · 2 new · 0 removed hunks)");
-  await banner.getByText("range-diff").click();
-  await expect(page.locator('[data-testid="range-diff"]')).toContainText("add socket-level test");
-  // Reviewed flag cleared only on the changed hunk.
-  await expect(page.getByText("changed since reviewed")).toBeVisible();
-});
-
-test("version switcher views the older version read-only", async ({ page }) => {
-  await page.goto("/review/r-old");
-  await expect(page.locator('[data-testid="version-switcher"]')).toBeVisible();
-  await page.locator("#version-pick").click();
-  await openPopup(page).getByRole("option", { name: /^v1 / }).click();
-  await expect(page).toHaveURL(/version=1/);
-  // Current is annotated in the dropdown; the trigger flags the older
-  // version and the bar itself carries no notice and no back button.
-  await page.locator("#version-pick").click();
-  await expect(openPopup(page).getByRole("option", { name: /v2.*current/ })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-  await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
-  // The page still signals read-only elsewhere (the diff hint).
-  await expect(page.getByText("Viewing v1 · read-only", { exact: false }).first()).toBeVisible();
-  await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0);
-  // Choosing the annotated current version is the way back.
-  await page.locator("#version-pick").click();
-  await openPopup(page).getByRole("option", { name: /v2.*current/ }).click();
-  await expect(page).not.toHaveURL(/version=1/);
-  await expect(page.locator('[data-testid="stale-banner"]')).toBeVisible();
-});
-
-test("access tab: read-only by default; the warning confirm enables and disables", async ({ page }) => {
-  await page.goto("/settings?tab=access");
-  const panel = page.getByRole("tabpanel", { name: "Access" });
-  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
-  await panel.getByRole("button", { name: "Turn on full access…" }).click();
-  await expect(panel.getByTestId("access-warning")).toContainText("nothing here is sandboxed");
-  await panel.getByRole("button", { name: "I understand, turn on full access" }).click();
-  await expect(panel.getByTestId("access-state")).toContainText("Full access is on.");
-  await panel.getByRole("button", { name: "Turn off full access" }).click();
-  await expect(panel.getByTestId("access-state")).toContainText("Read-only.");
 });

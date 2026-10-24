@@ -1,17 +1,18 @@
 /**
  * Guide e2e against mock mode (the generated urllib3#5020 snapshot):
  * hover-preview timing + dismissal rules, scroll-then-no-hover, citation
- * click → revealSource (canonicalized) with diff highlight, navigation +
- * trail + back, mark read, description tab, findings, D2 diagrams.
+ * hover previews, navigation + trail + back, findings, description tab,
+ * D2 diagrams.
+ *
+ * (Pinned cards, Ask-in-pinned, the root page, citation click-to-reveal,
+ * collapse and the description tab now live in J1/J2 against the real
+ * service — #258.)
  *
  * File keys are service-canonical path slugs, so element ids contain dots:
  * select them with `[id="…"]`.
  */
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
-import { selectText } from "./select-text.js";
-
-const CONN = "src-urllib3-connection.py";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -101,61 +102,6 @@ async function openPopover(page: Page): Promise<void> {
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
 }
 
-test("a card is pinned inline and stays so across a reload; there is no pin or unpin control (#204)", async ({ page }) => {
-  await gotoReview(page);
-  const card = page.locator("#C-problem [data-expansion]").first();
-  await expect(card).not.toHaveClass(/floating/);
-  await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers");
-  const after = page.locator("#C-problem [data-expansion]").first();
-  await expect(after).toBeVisible({ timeout: 8000 });
-  await expect(after).not.toHaveClass(/floating/);
-  await expect(after.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-});
-
-test("Ask inside a pinned card opens a pinned child inline inside it (#204)", async ({ page }) => {
-  await gotoReview(page);
-  const parent = page.locator("#B-x-seed");
-  await expect(parent).not.toHaveClass(/floating/);
-  // Select answer text inside the pinned card: the toolbar appears.
-  await selectText(page, "#B-x-seed [data-answer]", "HTTP/1.1 originally let a server continue");
-  await page.locator('#selbar [data-act="ask"]').click();
-  const composer = page.locator("#B-x-seed .ithread[data-pending-thread]");
-  await expect(composer).toBeVisible();
-  await composer.locator("textarea").fill("Why does this matter?");
-  await composer.getByRole("button", { name: "Ask" }).click();
-  const child = page.locator("#B-x-seed [data-expansion]", { hasText: "Why does this matter?" });
-  await expect(child).toContainText("Mock explanation", { timeout: 8000 });
-  await expect(child).not.toHaveClass(/floating/);
-  await expect(parent).not.toHaveClass(/floating/);
-  // Closing the child leaves the parent pinned in place.
-  await child.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
-  await child.getByRole("button", { name: "Close" }).click();
-  await expect(child).toBeHidden();
-  await expect(parent).toBeVisible();
-  await expect(parent).not.toHaveClass(/floating/);
-});
-
-test("root page renders cards, contents and generated go-deeper cards", async ({ page }) => {
-  await gotoReview(page);
-  await expect(page.locator("#page h1.title")).toBeVisible();
-  await expect(page.locator("#C-problem h2")).toContainText("The problem");
-  await expect(page.locator("#C-central h2")).toContainText("The central idea");
-  await expect(page.locator('nav.toc [data-tocard="problem"]')).toBeVisible();
-  // The fixture's go-deeper cards are already generated (no pendings).
-  await expect(page.locator("#C-g-flow")).toContainText("getresponse");
-  await expect(page.locator("#C-g-flow")).toContainText("Follow up:");
-  // Citation marker with a count on the central-change card.
-  const marker = page.locator("#C-central .lk[data-refs]").first();
-  await expect(marker).toContainText("2");
-  // Contents box collapses and re-opens.
-  await page.locator("nav.toc [data-toc]").click();
-  await expect(page.locator("nav.toc .toc-g")).toHaveCount(0);
-  await page.locator("nav.toc [data-toc]").click();
-  await expect(page.locator("nav.toc .toc-g")).toBeVisible();
-});
-
 test("dotted-link hover preview: timing and content", async ({ page }) => {
   await gotoReview(page);
   const link = page.locator('#page a.cx[data-link="concept:obs-fold"]').first();
@@ -220,27 +166,6 @@ test("after a scroll, hover is ignored until the pointer moves", async ({ page }
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
 });
 
-test("citation click reveals the canonical diff location", async ({ page }) => {
-  await gotoReview(page);
-  await closeSeedCard(page);
-  const seen = page.evaluate(
-    () =>
-      new Promise<string>((resolve) => {
-        window.addEventListener(
-          "unvibe:reveal-source",
-          (e) => resolve((e as CustomEvent).detail.ref as string),
-          { once: true },
-        );
-      }),
-  );
-  // The citation uses the fixture's short key; the event carries the
-  // canonical file key the diff pane renders.
-  await page.locator("#C-central .lk[data-refs]").first().click();
-  await expect.poll(() => seen, { timeout: 3000 }).toBe(`diff:${CONN}:91-110`);
-  await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff");
-  await expect(page.locator(`[id="L-${CONN}-91"].hl`)).toBeVisible({ timeout: 3000 });
-});
-
 test("citation hover previews real cited lines", async ({ page }) => {
   await gotoReview(page);
   await closeSeedCard(page);
@@ -269,19 +194,8 @@ test("navigation, trail and browser back", async ({ page }) => {
   await expect(page.locator("#page h1.title")).toContainText("Unfold obsolete folded");
 });
 
-test("collapse chevron hides the card body; contents still lists it", async ({ page }) => {
+test("on-demand concept page renders with no bookmark control (#216, #240)", async ({ page }) => {
   await gotoReview(page);
-  await closeSeedCard(page);
-  const card = page.locator("#C-central");
-  await card.locator("> .chead").getByRole("button", { name: "Collapse" }).click();
-  await expect(card).toHaveClass(/collapsed/);
-  // Contents still lists the card.
-  const item = page.locator("nav.toc li", { has: page.locator('[data-tocard="central"]') });
-  await expect(item).toBeVisible();
-  await card.getByRole("button", { name: "Expand" }).click();
-  await expect(card).not.toHaveClass(/collapsed/);
-  // #216: open the OWS/RWS page on demand from the obs-fold page's
-  // concept link. #240: the title row carries no bookmark control.
   await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
   await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 15_000 });
   await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
@@ -300,20 +214,6 @@ test("finding page carries its label and evidence", async ({ page }) => {
   await expect(page.locator("#page .doc")).toHaveClass(/finding/);
   await expect(page.locator("#page .doc")).toContainText("Folds that end in a bare LF");
   await expect(page.locator("#page .doc")).toContainText("Follow up:");
-});
-
-test("description tab shows paragraphs with stable ids", async ({ page }) => {
-  await gotoReview(page);
-  await page.locator('#right [role="tab"]').getByText("PR description").click();
-  await expect(page.locator("#right #d-p1")).toContainText("obs-fold response-header case");
-  await expect(page.locator("#right #d-p5")).toContainText("2,279 passed");
-});
-
-// DISABLED(#119): exact duplicate of d2-diagrams.spec.ts render assertions and the guide.spec.ts root-page test
-test.skip("go-deeper card renders the D2 diagram and follow-ups", async ({ page }) => {
-  await gotoReview(page);
-  await expect(page.locator("#C-g-flow #B-b1 .dg-svg > svg")).toBeVisible({ timeout: 15000 });
-  await expect(page.locator("#C-g-flow")).toContainText("Follow up:");
 });
 
 test("concept page renders the example aside", async ({ page }) => {

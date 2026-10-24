@@ -2,6 +2,10 @@
  * Comments + submit over mock mode (M6 web): selection toolbar, threads in
  * guide/diff/description, the Comments menu with Outbox drafts,
  * description editing, and the Submit panel.
+ *
+ * (Word-snap + Ask card, diff-line comment create/close/reopen, the
+ * Outbox menu flow and the submit preview now live in J2/J3/J9/J223
+ * against the real service — #258.)
  */
 import { expect, test } from "./network-guard.js";
 import { openPopup } from "./select.js";
@@ -19,28 +23,6 @@ async function gotoReview(page: Page): Promise<void> {
 }
 
 
-
-test("selection snaps to whole words and Ask creates a working card", async ({ page }) => {
-  await gotoReview(page);
-  // Partial selection inside "optional" snaps to the whole word.
-  const quote = await selectText(page, "#C-central", "ptional", 0, 7);
-  expect(quote).toBe("optional");
-  await page.locator('#selbar [data-act="ask"]').click();
-  const composer = page.locator("#C-central .ithread[data-pending-thread]");
-  await expect(composer).toBeVisible();
-  await expect(composer.locator(".mq")).toContainText("optional");
-  await composer.locator("textarea").fill("What does optional mean here?");
-  await composer.getByRole("button", { name: "Ask" }).click();
-  // The card shows the agent as working until the canned answer lands.
-  const card = page.locator("#C-central [data-expansion]", {
-    hasText: "What does optional mean here?",
-  });
-  await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
-  await expect(card).toContainText("Mock explanation", { timeout: 8000 });
-  // The question reads as the answer heading; the card never posts.
-  await expect(card.locator(".ans-q").first()).toContainText("What does optional mean here?");
-  await expect(card.getByRole("button", { name: "Add to Outbox" })).toHaveCount(0);
-});
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
   await gotoReview(page);
@@ -119,29 +101,6 @@ test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await expect(page.locator('#C-central [data-expansion]').first()).toBeVisible({ timeout: 5000 });
 });
 
-test("diff line click starts a comment; close leaves an icon; reopen works", async ({ page }) => {
-  await gotoReview(page);
-  const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
-  await line.click();
-  const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
-  await expect(slot).toBeVisible();
-  await slot.locator("textarea").fill("A diff comment");
-  await slot.getByRole("button", { name: "Save" }).click();
-  // Scope to the created thread: the fixture already has open threads on
-  // nearby lines in this file.
-  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`, { hasText: "A diff comment" });
-  await expect(thread).toBeVisible({ timeout: 5000 });
-  // A comment is for the PR by default: no agent reply, already marked.
-  await expect(thread.locator(".working")).toHaveCount(0);
-  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
-  // Close leaves a comment icon on the line number; clicking reopens.
-  await thread.getByRole("button", { name: "Close" }).click();
-  await expect(thread).toHaveCount(0);
-  await expect(page.locator(`[id="L-${CONN}-91"] td.n.hc`)).toBeVisible();
-  await page.locator(`[id="L-${CONN}-91"] td.n.new`).click();
-  await expect(thread).toBeVisible();
-});
-
 test("an Ask card and a comment share one diff line", async ({ page }) => {
   // Plain first paint (?nohl=1) keeps code text in whole nodes so the
   // single-range selection helper works on diff code.
@@ -210,34 +169,6 @@ test("reply drafts survive unrelated re-renders; Discard clears", async ({ page 
   // Discard on a new thread removes it without posting.
   await slot.getByRole("button", { name: "Discard" }).click();
   await expect(slot).toHaveCount(0);
-});
-
-test("Outbox drafts live in the Comments menu and persist", async ({ page }) => {
-  await gotoReview(page);
-  const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
-  await line.click();
-  const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
-  await slot.locator("textarea").fill("Ship it?");
-  await slot.getByRole("button", { name: "Save" }).click();
-  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
-  await expect(thread).toContainText("Ship it?", { timeout: 5000 });
-  // Comments are for the PR by default — no explicit mark needed.
-  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible();
-
-  // The Comments menu lists it on its Outbox tab; the draft is editable.
-  await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmtab="outbox"]').click();
-  const draft = page.locator(".cmenu textarea[id^='ob-']").first();
-  await expect(draft).toBeVisible();
-  await draft.fill("Ship it? (edited draft)");
-  // The draft survives an unrelated re-render (close + reopen the menu).
-  await page.keyboard.press("Escape");
-  await page.locator('#reviewbar [data-cm=""]').click();
-  await page.locator('.cmenu [data-cmtab="outbox"]').click();
-  await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Ship it? (edited draft)");
-  // Jump back to the thread in the diff.
-  await page.locator(".cmenu [data-cjump]").first().click();
-  await expect(page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last()).toBeVisible();
 });
 
 test("older versions are read-only: no toolbar, threads, drafts or submit", async ({ page }) => {
@@ -426,26 +357,4 @@ test("description editing saves locally with revert, then submits", async ({ pag
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   await page.locator('#right [role="tab"]').getByText("PR description").click();
   await expect(page.locator("#right")).toContainText("Edited · goes to GitHub when you submit the review");
-});
-
-test("submit panel previews and posts Outbox threads", async ({ page }) => {
-  await gotoReview(page);
-  const line = page.locator(`[id="L-${CONN}-91"] td.n.new`);
-  await line.click();
-  const slot = page.locator(`[id="F-${CONN}"] .ithread[data-pending-thread]`);
-  await slot.locator("textarea").fill("Please add a test");
-  await slot.getByRole("button", { name: "Save" }).click();
-  const thread = page.locator(`[id="F-${CONN}"] .ithread[data-thread]`).last();
-  await expect(thread).toContainText("Please add a test", { timeout: 5000 });
-  // Already marked for the PR by default.
-
-  await page.locator("#submitSlot [data-submit]").click();
-  const panel = page.locator("#submitSlot .submit");
-  await expect(panel).toContainText("connection.py:91", { timeout: 5000 });
-  await expect(panel).toContainText("Please add a test");
-  await expect(panel.locator("[data-submitgo]")).toContainText("Submit as you");
-  await panel.locator("[data-submitgo]").click();
-  await expect(panel).toContainText("Review posted", { timeout: 5000 });
-  // Posted threads show their posted state and leave the pending count.
-  await expect(page.locator("#submitSlot [data-submit] .count")).toHaveCount(0);
 });
