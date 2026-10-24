@@ -31,7 +31,6 @@ import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
-import { DegradedTurnError } from "../../jobs/errors.js";
 import {
   anchorKey,
   baseVersionOf,
@@ -250,7 +249,7 @@ export async function pushConversationTurn(
     if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
     const last = (found.turns ?? [])[(found.turns ?? []).length - 1];
     if (last?.error) {
-      throw new Error(`conversation ${annotationId} has a failed turn; retry it first`);
+      throw new Error(`this conversation has a failed turn; retry it first`);
     }
     (found.turns ?? []).push({
       id: turnId,
@@ -321,7 +320,10 @@ export async function runConversationTurn(
     if (active) return { jobId: active.id, deduplicated: true };
   }
 
-  // Reset to the working state (retry clears a visible error here).
+  // Reset to the working state (retry clears a visible error here). The
+  // turn's blocks are cleared too: a failed attempt's streamed partials
+  // are not a finished answer (#270), so the refill starts clean and can
+  // never concatenate the failed output with the new one.
   // Promoted links still holding turns fill the same way (issue #152).
   await reviews.mutate(reviewId, (draft) => {
     const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
@@ -332,6 +334,7 @@ export async function runConversationTurn(
     if (found.type === "conversation") found.open = true;
     turn.working = opts.workingLabel;
     turn.error = null;
+    turn.blocks = [];
     mirrorPromotedAnswer(draft, turnId);
   });
 
@@ -530,9 +533,11 @@ export async function runConversationTurn(
         turn.working = null;
         found.error = message;
         turn.error = message;
-        // A failed turn must leave no card behind: streamed partials
-        // are not a finished answer (#51).
-        if (err instanceof DegradedTurnError) turn.blocks = [];
+        // A failed turn must leave no answer behind: streamed partials
+        // (a cut-off citation, a partial trailing block) are not a
+        // finished answer (#51, #270). The raw output stays on the job
+        // for the Debug page; the card shows the banner plus Retry.
+        turn.blocks = [];
         // A failed promoted turn stays retryable from the page: its
         // (emptied) blocks still mirror (issue #152).
         mirrorPromotedAnswer(draft, turnId);
@@ -846,9 +851,11 @@ export async function replyAction(
 
 /**
  * `retry`: rebuild the failed fill on the *same* annotation id (the last
- * turn). The queue's own retry can't re-trigger the completion applier,
- * so a rebuild (same anchor/message, same session when live) is the
- * correct retry; the visible error clears when the new attempt starts.
+ * failed turn — usually the last turn, but a turn pushed while an
+ * earlier one still filled can leave the failure behind it, #270). The
+ * queue's own retry can't re-trigger the completion applier, so a
+ * rebuild (same anchor/message, same session when live) is the correct
+ * retry; the visible error clears when the new attempt starts.
  * Promoted links still holding turns retry the same way (issue #152):
  * the refill mirrors onto the page card.
  */
@@ -861,12 +868,18 @@ export async function retryAction(
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!holdsFillableTurns(found)) throw new Error(`unknown conversation ${annotationId}`);
   const turns = found.turns ?? [];
-  const last = turns[turns.length - 1];
-  if (!last) throw new Error(`conversation ${annotationId} has no turn to retry`);
-  if (!last.error && !found.error) throw new Error(`conversation ${annotationId} has no failed turn to retry`);
+  if (turns.length === 0) throw new Error(`nothing to retry: this conversation has no turn to retry`);
+  // The banner shows on every failed turn, so Retry must work from any
+  // of them: refill the last failed turn, not just the last one (#270).
+  const last = [...turns].reverse().find((t) => t.error) ?? turns[turns.length - 1];
+  if (!last.error && !found.error) throw new Error(`nothing to retry: this conversation has no failed turn`);
   const firstTurn = last.question === null;
   const probe = await probeConversationSessionFor(ctx, found);
-  const live = probe.continueSessionId !== undefined && !firstTurn && !probe.rebuilt;
+  // A retry behind a later turn never continues the live session: its
+  // history already holds the later turns, so the refill forks fresh
+  // with the stored turns as the transcript (#270).
+  const isLatest = last.id === turns[turns.length - 1].id;
+  const live = probe.continueSessionId !== undefined && !firstTurn && !probe.rebuilt && isLatest;
   const message = last.question ?? DEFAULT_QUESTION;
   const res = await runConversationTurn(ctx, annotationId, last.id, {
     anchor: found.anchor,

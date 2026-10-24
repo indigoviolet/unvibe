@@ -2736,7 +2736,7 @@ export const mockApi = {
         if (found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
         const lastTurn = (found.turns ?? [])[(found.turns ?? []).length - 1];
         // Mirrors the service: a failed turn must be retried explicitly.
-        if (lastTurn?.error) throw new Error(`conversation ${found.id} has a failed turn; retry it first`);
+        if (lastTurn?.error) throw new Error(`this conversation has a failed turn; retry it first`);
         const turnId = newTurnId();
         (found.turns ?? []).push({
           id: turnId,
@@ -2760,14 +2760,22 @@ export const mockApi = {
         return { accepted: true, annotationId: found.id, turnId, jobId: replyJobId };
       }
       const turns = found.turns ?? [];
-      const last = turns[turns.length - 1];
+      if (turns.length === 0) {
+        throw new Error(`nothing to retry: this conversation has no turn to retry`);
+      }
+      // Mirrors the service (#270): refill the last failed turn, not
+      // just the last one, and never leak the internal id.
+      const last = [...turns].reverse().find((t) => t.error) ?? turns[turns.length - 1];
       if (!last || (!last.error && !found.error)) {
-        throw new Error(`conversation ${found.id} has no failed turn to retry`);
+        throw new Error(`nothing to retry: this conversation has no failed turn`);
       }
       last.error = null;
       found.error = null;
       last.working = "Thinking…";
       found.working = "Thinking…";
+      // Mirrors the service: a retry starts from empty blocks, never the
+      // failed attempt's partials (#270).
+      last.blocks = [];
       if (found.type === "conversation") found.open = true;
       const retryJobId = `mock-retry-${found.id}`;
       last.jobId = retryJobId;
