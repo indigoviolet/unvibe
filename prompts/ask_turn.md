@@ -41,5 +41,10 @@ earlier answers.
   following the shared follow-up rule in the instructions (deepen
   understanding or test the change, with a pre-baked question; never a
   restatement).
+- Every answer stands on its own: never write "my previous answer", "as
+  I said", "the previous answer" or anything like that. When a
+  follow-up builds on an earlier answer in this thread, refer to that
+  content directly (the point itself, with its citations) instead of
+  pointing at the earlier answer.
 - End with the trailing `json` block (a `contribute` object only when
   the turn contributes something).
