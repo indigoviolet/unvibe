@@ -8,7 +8,7 @@ import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import type { Locator } from "@playwright/test";
-import { apiJson, createDemoReview } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createSeededDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -17,10 +17,19 @@ test.describe("J2 explain ask follow-up nested", () => {
   let svc: RunningService | null = null;
   let reviewId = "";
 
+  // Seeded (#257): the finished demo snapshot is seeded straight into the
+  // store, so no replay fill wait is needed. The depth tests below need
+  // fresh reviews (earlier cards would capture the unscoped clicks), so
+  // their reviews are seeded up front under their own ids.
+  const FRESH_DEPTH_ID = "j2-depth-seed";
+  const FRESH_CONV_ID = "j2-conv-seed";
+
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j2-data-"));
+    reviewId = createSeededDemoReview(dataDir, "j2-seed");
+    createSeededDemoReview(dataDir, FRESH_DEPTH_ID);
+    createSeededDemoReview(dataDir, FRESH_CONV_ID);
     svc = await startService(dataDir, { agent: "replay" });
-    reviewId = await createDemoReview(svc);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
@@ -250,7 +259,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     if (!svc) throw new Error("no service");
     // Fresh review: earlier tests in this file leave cards on the shared
     // review whose own Deeper buttons would capture the unscoped clicks.
-    const freshId = await createDemoReview(svc);
+    const freshId = FRESH_DEPTH_ID;
     await page.goto(`${svc.origin}/review/${freshId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     const card = page.locator("#C-central");
@@ -274,7 +283,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     test.setTimeout(300_000);
     if (!svc) throw new Error("no service");
     // Fresh review: the page-card test above leaves its own state behind.
-    const freshId = await createDemoReview(svc);
+    const freshId = FRESH_CONV_ID;
     await page.goto(`${svc.origin}/review/${freshId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
@@ -595,8 +604,8 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j2-nesting-data-"));
     let svc: RunningService | null = null;
     try {
+      const reviewId = createSeededDemoReview(dataDir, "j2-nesting-seed");
       svc = await startService(dataDir, { agent: "replay" });
-      const reviewId = await createDemoReview(svc);
       const errors: string[] = [];
       page.on("pageerror", (err) => errors.push(String(err)));
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -647,6 +656,9 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j2-journey-data-"));
     let svc: RunningService | null = null;
     try {
+      // Replay (#257): asserts the pipeline's auto-written go-deeper cards
+      // (collapsed until opened) and a pending Generate, which only the
+      // live pipeline produces.
       svc = await startService(dataDir, { agent: "replay" });
       const reviewId = await createDemoReview(svc);
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
