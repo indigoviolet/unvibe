@@ -1934,6 +1934,169 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
   }
 });
 
+// Issue #270: a failed Ask follow-up shows the banner with Retry, and
+// the retry lands a clean answer (no raw trailing block, no cut-off
+// start). Own service lifecycle like the writing-state scene above:
+// slow replay, killed mid-answer, restarted fast.
+test("visual tour ask retry (#270)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askretry-"));
+  let svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // One fresh Ask card per theme, so the two kill/restart cycles never
+    // share turn state.
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") {
+        await page.emulateMedia({ colorScheme: "dark" });
+        // Slow the stream again (the light cycle restarted fast): the
+        // follow-up must still be mid-flight at the kill. killHard only —
+        // a graceful stop mid-cycle is not what this scene exercises.
+        svc.killHard();
+        await page.waitForTimeout(500);
+        svc = await startService(dir, {
+          agent: "replay",
+          extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+        });
+      }
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      // Fail the follow-up mid-answer, then restart on the same data dir.
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator(".ans").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      svc.killHard();
+      await page.waitForTimeout(500);
+      svc = await startService(dir, { agent: "replay" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      const shotCard = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(shotCard).toBeVisible({ timeout: 30_000 });
+      const failed = shotCard.locator(".ans").last();
+      await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-failed", `1440-${theme}`, "Couldn't get an answer");
+      // Retry lands the clean answer.
+      await failed.getByRole("button", { name: "Retry" }).click();
+      await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      const retried = shotCard.locator(".exp-b").last();
+      await expect(retried).not.toBeEmpty({ timeout: 60_000 });
+      await expect(retried).not.toContainText('{"contribute"');
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      await shot(page, "ask-retried", `1440-${theme}`, followUp);
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #271: while a follow-up answer is pending, the reply box stays
+// visible and editable (Send disabled with the reason as its tooltip)
+// and the indicator carries the plain label. One frame per theme: the
+// pending turn with a typed draft in the box.
+test("visual tour ask pending draft (#271)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askpending-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator(".ans").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await expect(turn.locator(".working")).toHaveText("Writing answer");
+      // The box stays through the fill: type the next question already.
+      const draft = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(draft).toBeVisible();
+      await draft.fill("And then?");
+      const send = card.getByRole("button", { name: "Reply" });
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-pending", `1440-${theme}`, "And then?");
+      // Let the answer land so the next theme starts settled.
+      await expect(turn.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Issue #81 file tab. The demo review's commits resolve in no checkout,
 // so its files cannot be read; these frames use a scratch repo (three
 // small files written here, nothing external) on an agent-less service,

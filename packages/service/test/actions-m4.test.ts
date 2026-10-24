@@ -190,7 +190,7 @@ describe("M4 actions on the demo review (replay)", () => {
       const working = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(working.type).toBe("conversation");
       expect(working.open).toBe(true);
-      expect(working.working === "Thinking…" || (working.turns?.[0]?.blocks.length ?? 0) > 0).toBe(true);
+      expect(working.working === "Thinking" || (working.turns?.[0]?.blocks.length ?? 0) > 0).toBe(true);
 
       await waitForJob(ctx, res.json.jobId as string);
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;

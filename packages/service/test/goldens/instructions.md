@@ -130,6 +130,11 @@ the body, and never repeat a diagram's caption in its walkthrough.
 Never address the reader about how to read the guide or whether to
 keep reading: no "if you only need…", "in short…" or "TL;DR" framings.
 State the content itself instead.
+Every answer stands on its own: never write "my previous answer", "as
+I said", "the previous answer" or anything like that. When a follow-up
+builds on an earlier answer in the thread, refer to that content
+directly (the point itself, with its citations) instead of pointing at
+the earlier answer.
 Never show internal IDs (contribution, card, block, annotation or
 similar app IDs) in text the reader sees; refer to the thing in plain
 words instead. IDs belong only in link tokens and the trailing JSON.

@@ -62,7 +62,7 @@ function answerCard(): Annotation {
     open: true,
     messages: [],
     post: false,
-    working: "Writing answer…",
+    working: "Writing answer",
     turns: [
       {
         id: "ans_1",
@@ -71,7 +71,7 @@ function answerCard(): Annotation {
         level: "standard",
         revision: 1,
         undoStack: [],
-        working: "Writing answer…",
+        working: "Writing answer",
       },
     ],
   } as unknown as Annotation;
@@ -273,7 +273,7 @@ describe("CardView immediate feedback", () => {
       // The clicked chip cannot be double-clicked; the answer placeholder
       // shows where the expansion will land.
       expect(screen.getByRole("button", { name: "Working…" })).toBeDisabled();
-      expect(screen.getByRole("status")).toHaveTextContent("Writing answer…");
+      expect(screen.getByRole("status")).toHaveTextContent("Writing answer");
     } finally {
       held.restore();
     }
@@ -329,10 +329,10 @@ describe("CardView immediate feedback", () => {
       useReview.getState().beginInflight("followup:c1:b-f:0", "followup");
     });
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
-    // …the answer expansion itself shows Writing answer…, not the generic
+    // …the answer expansion itself shows Writing answer, not the generic
     // server text.
     const exp = document.querySelector('[data-expansion="ann_ans"]');
-    expect(exp?.querySelector(".working")).toHaveTextContent("Writing answer…");
+    expect(exp?.querySelector(".working")).toHaveTextContent("Writing answer");
   });
 
   test("depth marks the card as rewriting on click", () => {

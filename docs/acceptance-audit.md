@@ -505,11 +505,32 @@ needed (that deviation is closed, not added).
   unpinned by older data renders inline when open. While a turn is
   being written it shows only the header and the writing state; the
   answer toolbar and the reply box appear when the answer arrives,
-  and a failed turn shows Retry (issue #203; a conversation job
-  interrupted by a restart settles its turn as failed at startup, so
-  Retry is what it shows) — met
-  (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
-  guide-pinned/guide-writing/diff scenes).
+   and a failed turn shows Retry (issue #203; a conversation job
+   interrupted by a restart settles its turn as failed at startup, so
+   Retry is what it shows) — met
+   (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
+   guide-pinned/guide-writing/diff scenes). Issue #270: the banner and
+   Retry agree on one source of truth (Retry refills the last *failed*
+   turn, wherever it sits — a turn pushed while an earlier one still
+   filled can leave the failure behind the last turn); a failed turn
+   stores no partial answer (no cut-off citation, no raw trailing block
+   — the raw output stays on the job for Debug), a retry starts from
+   empty blocks so it can never concatenate; refusal and guard toasts
+   carry plain words with no internal ids; follow-up answers stand on
+   their own (prompt rule in `ask_turn.md` + L0 reply hygiene) — met
+   (`conversation-retry-270.test.ts`, journey J270, visual tour
+   ask-failed/ask-retried frames). Issue #271: the reply box stays
+   visible and editable while a *follow-up* answer is pending, with
+   Send disabled and the reason as its tooltip ("Wait for the
+   answer"); the kept draft sends once the answer lands (first answers
+   keep the #203 header-only writing state). On a failure the box
+   stays hidden and Retry governs (a draft typed while pending is kept
+   in the server draft and is back after the retry lands). In-progress
+   labels in Ask/Explain and follow-ups carry no stacked ellipsis
+   beside the dots ("Writing answer", "Thinking", "Asking",
+   "Retrying"; reply-path fills unified on "Writing answer") — met
+   (`ConversationCard.test.tsx` #271 cases, journey J271, visual tour
+   ask-pending frames, J6 + tour writing-state scene).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with

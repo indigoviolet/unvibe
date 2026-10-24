@@ -65,7 +65,7 @@ test("explain from a selection shows a working expansion immediately, then fills
   // tested — too transient to catch from here).
   const exp = page.locator("#C-central [data-expansion]").first();
   await expect(exp).toBeVisible({ timeout: 5000 });
-  await expect(exp.locator(".working").first()).toHaveText("Writing explanation…", { timeout: 5000 });
+  await expect(exp.locator(".working").first()).toHaveText("Writing explanation", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });
   const seen = await seenFlags(page);
   expect(seen.plainWorking).toBe(true);
@@ -81,7 +81,7 @@ test("follow-up click disables the chip and shows the answer working state", asy
   // ~700 ms), and at no point renders streamed text.
   const exp = page.locator("#C-g-flow [data-expansion]").first();
   await expect(exp).toBeVisible({ timeout: 5000 });
-  await expect(exp.locator(".working").first()).toHaveText("Writing answer…", { timeout: 5000 });
+  await expect(exp.locator(".working").first()).toHaveText("Writing answer", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });
   const seen = await seenFlags(page);
   expect(seen.busy).toBe(true);
