@@ -193,30 +193,39 @@ describe("conversation card", () => {
     });
   });
 
-  test("while the first answer is being written: header + writing state only, no toolbar or reply box (#203)", () => {
+  test("while the first answer is being written: header + writing state, toolbar hidden, reply box kept with Send disabled (#271)", () => {
     const c = card({
-      working: "Writing explanation…",
-      turns: [turn("ans_1", { blocks: [], working: "Writing explanation…" })],
+      working: "Writing explanation",
+      turns: [turn("ans_1", { blocks: [], working: "Writing explanation" })],
     });
     seedSnapshot([c]);
+    const spy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: c.id });
     show(c);
     const answer = document.querySelector('[data-answer="ans_1"]')!;
     // Header (quote + close) and the writing state stay.
     expect(document.getElementById("B-ann_conv")).toHaveTextContent("Some text.");
     expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
     expect(answer.querySelector(".working")).not.toBeNull();
-    // No per-answer toolbar and no reply box until the answer arrives.
+    // No per-answer toolbar until the answer arrives…
     expect(answer.querySelector(".ctl")).toBeNull();
-    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
+    // …but the reply box stays: editable, with the draft kept, Send
+    // disabled with the reason as its tooltip.
+    const box = screen.getByLabelText("Ask a follow-up") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "And then?" } });
+    expect(box.value).toBe("And then?");
+    const send = screen.getByRole("button", { name: "Reply" });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAttribute("data-tip", "Wait for the answer");
+    fireEvent.click(send);
+    expect(spy).not.toHaveBeenCalled();
   });
 
-  test("a follow-up turn being written keeps the earlier toolbar but hides its own and the reply box (#203)", () => {
+  test("a follow-up turn being written keeps the earlier toolbar but hides its own; the reply box stays with Send disabled (#271)", () => {
     const c = card({
-      working: "Writing answer…",
+      working: "Writing answer",
       turns: [
         turn("ans_1"),
-        turn("ans_2", { question: "And then?", blocks: [], working: "Writing answer…" }),
+        turn("ans_2", { question: "And then?", blocks: [], working: "Writing answer" }),
       ],
     });
     seedSnapshot([c]);
@@ -226,7 +235,12 @@ describe("conversation card", () => {
     expect(first.querySelector(".ctl")).not.toBeNull();
     expect(second.querySelector(".ctl")).toBeNull();
     expect(second.querySelector(".working")).not.toBeNull();
-    expect(screen.queryByLabelText("Ask a follow-up")).toBeNull();
+    const box = screen.getByLabelText("Ask a follow-up") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "One more?" } });
+    expect(box.value).toBe("One more?");
+    const send = screen.getByRole("button", { name: "Reply" });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAttribute("data-tip", "Wait for the answer");
   });
 
   test("a failed turn shows Retry, not the toolbar or the reply box (#203)", () => {
