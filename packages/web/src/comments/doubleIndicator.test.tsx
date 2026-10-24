@@ -166,12 +166,12 @@ describe("issue #97: one box while working", () => {
       });
       // Placeholder only, so far.
       expect(screen.getAllByRole("status")).toHaveLength(1);
-      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
+      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
       // The service's working expansion lands before the request returns.
       addAnnotations([workingExpansion()]);
       // Exactly one working indicator, labelled for the Explain…
       expect(screen.getAllByRole("status")).toHaveLength(1);
-      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
+      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
       // …and content-needing controls are absent (not just disabled) on
       // the still-empty card — issue #203: header + writing state only.
       const exp = document.querySelector('[data-expansion="ann_x"]') as HTMLElement;
@@ -185,7 +185,7 @@ describe("issue #97: one box while working", () => {
       });
       await act(async () => {});
       expect(screen.getAllByRole("status")).toHaveLength(1);
-      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
+      expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
     } finally {
       held.restore();
     }
@@ -216,13 +216,13 @@ describe("issue #97: one box while working", () => {
       });
       fireEvent.change(screen.getByLabelText("New comment"), { target: { value: "what's that" } });
       fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-      expect(screen.getByRole("status")).toHaveTextContent("Asking…");
+      expect(screen.getByRole("status")).toHaveTextContent("Asking");
       // The service's working card lands before the request returns.
       addAnnotations([workingConversation()]);
       // The question is shown once, with one Ask-labelled indicator.
       expect(screen.queryByLabelText("New comment")).toBeNull();
       expect(screen.getAllByRole("status")).toHaveLength(1);
-      expect(screen.getByRole("status")).toHaveTextContent("Asking…");
+      expect(screen.getByRole("status")).toHaveTextContent("Asking");
       // The request returns: still exactly one box.
       act(() => {
         held.resolveAction({ accepted: true, annotationId: "ann_t", turnId: "ans_t1" });
@@ -230,7 +230,7 @@ describe("issue #97: one box while working", () => {
       await act(async () => {});
       expect(screen.queryByLabelText("New comment")).toBeNull();
       expect(screen.getAllByRole("status")).toHaveLength(1);
-      expect(screen.getByRole("status")).toHaveTextContent("Asking…");
+      expect(screen.getByRole("status")).toHaveTextContent("Asking");
     } finally {
       held.restore();
     }

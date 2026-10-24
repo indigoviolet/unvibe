@@ -58,7 +58,7 @@ export async function followupAction(
     const current = getSnapshotOrThrow(reviews, reviewId);
     const card = current.annotations.find((a) => a.id === annotationId);
     if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
-    const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer…");
+    const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
     const probe = await probeConversationSessionFor(ctx, card);
     const live = probe.continueSessionId !== undefined && !probe.rebuilt;
     const res = await runConversationTurn(ctx, annotationId, turnId, {
@@ -71,7 +71,7 @@ export async function followupAction(
       echoCandidates: [quote, message],
       replayKind: "ask",
       cardLabel: message,
-      workingLabel: "Writing answer…",
+      workingLabel: "Writing answer",
     });
     return { annotationId, turnId, ...res };
   }
@@ -93,7 +93,7 @@ export async function followupAction(
   await reviews.mutate(reviewId, (draft) => {
     removeFollowUpItem(draft, holder.cardId, blockId, index);
   });
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, message, "Writing answer…");
+  const { annotationId, turnId } = await createConversationCard(ctx, anchor, message, "Writing answer");
 
   const live = getSnapshotOrThrow(reviews, reviewId);
   const ann = live.annotations.find((a) => a.id === annotationId)!;
@@ -107,7 +107,7 @@ export async function followupAction(
     echoCandidates: [quote, message],
     replayKind: "ask",
     cardLabel: message,
-    workingLabel: "Writing answer…",
+    workingLabel: "Writing answer",
   });
   return { annotationId, turnId, ...res };
 }

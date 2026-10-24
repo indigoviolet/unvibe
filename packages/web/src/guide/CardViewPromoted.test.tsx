@@ -124,7 +124,7 @@ describe("CardView promoted fill states (issue #152)", () => {
     show(card());
     // One working indicator only (the job's), never stacked with the turn's.
     expect(screen.getAllByRole("status")).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent("Asking…");
+    expect(screen.getByRole("status")).toHaveTextContent("Asking");
   });
 
   test("a settled card shows neither working nor error", () => {

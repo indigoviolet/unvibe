@@ -697,7 +697,7 @@ export async function explainAction(
   }
 
   // Immediately visible working state.
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, null, "Thinking…");
+  const { annotationId, turnId } = await createConversationCard(ctx, anchor, null, "Thinking");
 
   const res = await runConversationTurn(ctx, annotationId, turnId, {
     anchor,
@@ -707,7 +707,7 @@ export async function explainAction(
     echoCandidates: questionEchoCandidates(req.quote, DEFAULT_QUESTION),
     replayKind: "explain",
     cardLabel: `Explain: ${excerptQuote(req.quote)}`,
-    workingLabel: "Thinking…",
+    workingLabel: "Thinking",
   });
   return { annotationId, turnId, ...res };
 }
@@ -791,7 +791,7 @@ export async function askAction(
 
   // Card with the reader's question as its first turn (guide cards start
   // open in place, like Explain).
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, req.message, "Thinking…");
+  const { annotationId, turnId } = await createConversationCard(ctx, anchor, req.message, "Thinking");
 
   const res = await runConversationTurn(ctx, annotationId, turnId, {
     anchor,
@@ -801,7 +801,7 @@ export async function askAction(
     echoCandidates: questionEchoCandidates(req.quote, req.message),
     replayKind: "ask",
     cardLabel: req.message,
-    workingLabel: "Thinking…",
+    workingLabel: "Thinking",
   });
   return { annotationId, turnId, ...res };
 }
@@ -823,7 +823,7 @@ export async function replyAction(
   const card = before.annotations.find((a) => a.id === annotationId);
   if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
 
-  const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing reply…");
+  const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
   // The reply-box text is consumed by this turn: clear the stored draft
   // like comment replies do, so it can never flow back into the emptied
   // box (or survive a reload) after sending. Follow-up chips keep any
@@ -844,7 +844,7 @@ export async function replyAction(
     echoCandidates: [card.anchor.quotedText, message],
     replayKind: "ask",
     cardLabel: message,
-    workingLabel: "Writing reply…",
+    workingLabel: "Writing answer",
   });
   return { annotationId, turnId, ...res };
 }
@@ -891,7 +891,7 @@ export async function retryAction(
     echoCandidates: questionEchoCandidates(found.anchor.quotedText, message),
     replayKind: firstTurn ? "explain" : "ask",
     cardLabel: firstTurn ? `Explain: ${excerptQuote(found.anchor.quotedText ?? "")}` : message,
-    workingLabel: firstTurn ? "Thinking…" : "Writing reply…",
+    workingLabel: firstTurn ? "Thinking" : "Writing answer",
   });
   if (res.jobId && found.type === "link") {
     // Retry on a promoted link refills the page: the job moves to the

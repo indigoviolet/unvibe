@@ -2706,7 +2706,7 @@ export const mockApi = {
           pinned: true,
           messages: [],
           post: false,
-          working: "Thinking…",
+          working: "Thinking",
           jobId: askJobId,
           turns: [
             {
@@ -2716,7 +2716,7 @@ export const mockApi = {
               level: "standard",
               revision: 1,
               undoStack: [],
-              working: "Thinking…",
+              working: "Thinking",
               jobId: askJobId,
             },
           ],
@@ -2745,10 +2745,10 @@ export const mockApi = {
           level: "standard",
           revision: 1,
           undoStack: [],
-          working: "Writing reply…",
+          working: "Writing answer",
           jobId: `mock-reply-${found.id}-${turnId}`,
         } as never);
-        found.working = "Writing reply…";
+        found.working = "Writing answer";
         found.error = null;
         found.open = true;
         found.jobId = `mock-reply-${found.id}-${turnId}`;
@@ -2771,8 +2771,8 @@ export const mockApi = {
       }
       last.error = null;
       found.error = null;
-      last.working = "Thinking…";
-      found.working = "Thinking…";
+      last.working = "Thinking";
+      found.working = "Thinking";
       // Mirrors the service: a retry starts from empty blocks, never the
       // failed attempt's partials (#270).
       last.blocks = [];
@@ -2840,7 +2840,7 @@ export const mockApi = {
         pinned: true,
         messages: [],
         post: false,
-        working: "Thinking…",
+        working: "Thinking",
         jobId,
         turns: [
           {
@@ -2850,7 +2850,7 @@ export const mockApi = {
             level: "standard",
             revision: 1,
             undoStack: [],
-            working: "Thinking…",
+            working: "Thinking",
             jobId,
           },
         ],
@@ -2913,9 +2913,9 @@ export const mockApi = {
           level: "standard",
           revision: 1,
           undoStack: [],
-          working: "Writing answer…",
+          working: "Writing answer",
         } as never);
-        ref.annotation.working = "Writing answer…";
+        ref.annotation.working = "Writing answer";
         ref.annotation.error = null;
         ref.annotation.open = true;
         emitAnnotations();
@@ -2963,9 +2963,9 @@ export const mockApi = {
         pinned: true,
         messages: [],
         post: false,
-        working: "Writing answer…",
+        working: "Writing answer",
         turns: [
-          { id: turnId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer…" },
+          { id: turnId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
