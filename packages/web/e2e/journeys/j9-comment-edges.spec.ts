@@ -7,7 +7,7 @@ import { expect, test } from "../network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createScratchReview, createSeededDemoReview, makeScratchRepo, writeFakeGh } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createScratchReview, createSeededDemoReview, makeScratchRepo, writeFakeGh } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const appKey = fileKeyForPath("src/app.py");
