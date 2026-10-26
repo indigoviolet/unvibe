@@ -13,7 +13,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -443,9 +443,12 @@ export function ThreadCollapsedRow({
         .trim()
     : "";
   const snippet = lastText.length > 90 ? `${lastText.slice(0, 89)}…` : lastText;
+  // Never show empty quote marks: a thread with no quoted text (e.g. a
+  // line comment) is just question · snippet · count.
+  const rowQuote = (thread.anchor.quotedText ?? "").trim();
   return (
     <button type="button" className="spike-row" data-row={thread.id} onClick={onExpand} aria-label={`Expand thread ${thread.anchor.quotedText}`}>
-      <span className="spike-row-q">“{thread.anchor.quotedText}”</span>
+      {rowQuote !== "" ? <span className="spike-row-q">“{thread.anchor.quotedText}”</span> : null}
       <span className="spike-row-first">{firstHeading}</span>
       <span className="spike-row-sep">·</span>
       <span className="spike-row-snip">{snippet}</span>
@@ -622,10 +625,49 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   };
 
   const footnoted = !!thread.anchorStale;
+  // Never show empty or near-empty quote marks: a thread with no quoted
+  // text (e.g. a line comment) shows only its location, and a quote that
+  // can't fit at least ~12 characters is dropped in favour of the
+  // location (measured live, so narrow panes degrade gracefully).
+  const rawQuote = (thread.anchor.quotedText ?? "").trim();
+  const mqRef = useRef<HTMLSpanElement | null>(null);
+  const [quoteFits, setQuoteFits] = useState(true);
+  // Reset the fit verdict whenever the anchor changes; a missing element
+  // below means this same verdict already hid it, so it stays hidden
+  // (otherwise show → hide → show would loop forever).
+  useLayoutEffect(() => {
+    setQuoteFits(true);
+  }, [rawQuote, thread.id]);
+  useLayoutEffect(() => {
+    if (!rawQuote) {
+      setQuoteFits(false);
+      return;
+    }
+    const el = mqRef.current;
+    if (!el) return;
+    const fit = (): void => {
+      const ratio = el.clientWidth / Math.max(1, el.scrollWidth);
+      const visibleChars = Math.floor(rawQuote.length * Math.min(1, ratio));
+      setQuoteFits((prev) => {
+        const next = visibleChars >= 12;
+        return prev === next ? prev : next;
+      });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    if (el.parentElement) ro.observe(el.parentElement);
+    ro.observe(el);
+    window.addEventListener("resize", fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [rawQuote, thread.id, replies.length]);
+  const showQuote = rawQuote !== "" && quoteFits;
   return (
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
       <div className="thd">
-        <span className="mq">“{thread.anchor.quotedText}”</span>
+        {showQuote ? <span className="mq" ref={mqRef}>“{thread.anchor.quotedText}”</span> : null}
         <span className="hint">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
