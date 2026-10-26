@@ -57,7 +57,7 @@ export function AccessSection({
             disabled={saving}
             onClick={() => void save({ fullAccess: false })}
           >
-            Reply off full access
+            Turn off full access
           </button>
         </>
       ) : (
@@ -68,7 +68,7 @@ export function AccessSection({
           </p>
           {!confirming ? (
             <button className="ui-btn" data-variant="primary" type="button" disabled={saving} onClick={() => setConfirming(true)}>
-              Reply on full access…
+              Turn on full access…
             </button>
           ) : (
             <Card variant="inset" data-testid="access-warning" style={{ padding: "4px 14px" }}>

@@ -1878,7 +1878,7 @@ test("visual tour document review (#222)", async ({ page }) => {
       const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
       seeded.annotations.push({
         id: "ann-doc-cite",
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "document#p2" },
           quotedText: "folds obsolete headers",
@@ -1889,10 +1889,12 @@ test("visual tour document review (#222)", async ({ page }) => {
         },
         open: true,
         pinned: true,
-        messages: [],
         post: false,
         replies: [
           {
+            id: "ans_doc_cite1",
+            kind: "explain",
+            who: "agent",
             question: null,
             blocks: [
               {
@@ -1902,6 +1904,9 @@ test("visual tour document review (#222)", async ({ page }) => {
                 citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
               },
             ],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
           },
         ],
       });
@@ -1986,9 +1991,9 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.scrollIntoViewIfNeeded().catch(() => {});
     await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
-    // Once the answer arrives, the toolbar and reply box appear.
+    // Once the answer arrives, the toolbar and both reply boxes appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
-    await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
+    await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
@@ -2051,7 +2056,7 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       // Fail the follow-up mid-answer, then restart on the same data dir.
@@ -2059,16 +2064,16 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await expect(box).toBeVisible({ timeout: 30_000 });
       await box.fill(followUp);
       await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-      const turn = card.locator(".ans").last();
+      const turn = card.locator("[data-reply]").last();
       await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
       svc.killHard();
       await page.waitForTimeout(500);
       svc = await startService(dir, { agent: "replay" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
       await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
-      const shotCard = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
+      const shotCard = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(shotCard).toBeVisible({ timeout: 30_000 });
-      const failed = shotCard.locator(".ans").last();
+      const failed = shotCard.locator("[data-reply]").last();
       await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
       await shotCard.scrollIntoViewIfNeeded().catch(() => {});
       mkdirSync(SHOTS, { recursive: true });
@@ -2130,14 +2135,14 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       const box = card.getByPlaceholder(/Ask a follow-up/);
       await expect(box).toBeVisible({ timeout: 30_000 });
       await box.fill(followUp);
       await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-      const turn = card.locator(".ans").last();
+      const turn = card.locator("[data-reply]").last();
       await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
       await expect(turn.locator(".working")).toHaveText("Writing answer");
       // The box stays through the fill: type the next question already.

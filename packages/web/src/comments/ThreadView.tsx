@@ -479,6 +479,10 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   // #271: while a follow-up is pending, the comment Reply stays disabled
   // ("Wait for the answer"); the Ask follow-up box keeps its draft.
   const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
+  // #203: while the first agent answer is still being written (no blocks
+  // yet) there is no answer for boxes to act on — show only the header
+  // and the writing state.
+  const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && r.blocks.length > 0);
   // Follow-up box only once the thread has agent replies: pure comment
   // threads keep their old single-box height (file-tab slot checks), and
   // the first agent reply arrives via ask-about or selected-text Ask.
@@ -606,7 +610,9 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           ) : null}
         </div>
       ) : null}
-      {threadWorking && !threadError ? <Working text={typeof thread.working === "string" ? thread.working : "Working"} /> : null}
+      {threadWorking && !threadError && !replies.some((r) => r.kind !== "comment" && (r.working ?? "") !== "") ? (
+        <Working text={typeof thread.working === "string" ? thread.working : "Working"} />
+      ) : null}
       {threadError && !failedReply ? (
         <div className="perr" role="alert">
           <span>Couldn't get an answer. Retry, or see Debug for details.</span>
@@ -670,7 +676,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested ? null : (
+      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : (
         <>
           <ReplyBox
             reviewId={reviewId}
