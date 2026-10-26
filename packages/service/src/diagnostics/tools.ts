@@ -86,6 +86,18 @@ export const TOOL_SPECS: ToolSpec[] = [
     probeFromWorktreeLike: true,
   },
   {
+    // Issue #279: the pi provider. No minimum version (the runner speaks
+    // the documented RPC protocol and degrades gracefully); Doctor shows
+    // the running version, readiness reports the login state separately.
+    tool: "pi",
+    names: ["pi"],
+    overrideEnvs: ["UNVIBE_PI_BIN"],
+    versionArgs: ["--version"],
+    installHint:
+      "Install Pi (https://pi.dev) and ensure `pi` is on your login-shell PATH; Unvibe does not install it for you. Without pi, OpenAI/Codex models run on the Codex CLI.",
+    probeFromWorktreeLike: true,
+  },
+  {
     tool: "d2",
     names: ["d2"],
     overrideEnvs: ["UNVIBE_D2_BIN"],

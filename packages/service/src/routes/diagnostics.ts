@@ -58,7 +58,8 @@ async function modelsForDiagnostics(deps: RouteDeps): Promise<Record<string, Mod
     const catalog = deps.models;
     if (!catalog) return undefined;
     const out: Record<string, ModelInfo[]> = {};
-    for (const provider of ["claude", "codex"]) {
+    // Issue #279: pi rides along when detected (empty otherwise, skipped).
+    for (const provider of ["claude", "codex", "pi"]) {
       try {
         const list = await catalog.listModels(provider);
         if (list.length > 0) out[provider] = list as ModelInfo[];

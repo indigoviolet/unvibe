@@ -417,6 +417,8 @@ const realApi = {
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
+  /** Providers the pickers offer (issue #279): pi only when detected. */
+  providers: (): Promise<{ providers: string[] }> => get("/api/providers"),
   /** Thinking levels the provider's adapter offers (Default when none). */
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),

@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ReadinessCheck, Settings } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
+import { RealCommandRunner } from "../exec/index.js";
 import { gitHubCredentialConfig } from "../exec/git.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import type { AgentRunner } from "@unvibe/shared";
@@ -315,6 +316,7 @@ export const ROLE_LABEL: Record<AgentRole, string> = {
 const CLI_FOR_PROVIDER: Record<string, string> = {
   claude: "claude",
   codex: "codex",
+  pi: "pi",
 };
 
 /**
@@ -403,13 +405,13 @@ export async function agentCheck(opts: {
       settingsAnchor: "#models",
     };
   }
-  if (provider !== "claude" && provider !== "codex") {
+  if (provider !== "claude" && provider !== "codex" && provider !== "pi") {
     return {
       id,
       label,
       status: "error",
       summary: `Unknown provider "${provider}" for ${role}`,
-      fix: "Pick claude or codex in Settings → Models, then Re-check.",
+      fix: "Pick claude, codex or pi in Settings → Models, then Re-check.",
       settingsAnchor: "#models",
     };
   }
@@ -452,6 +454,13 @@ export async function agentCheck(opts: {
     };
   }
   const bin = { path: binPath, source: diag?.candidates.find((c) => c.path === binPath)?.source ?? "login-shell PATH" };
+  // Issue #279: the pi provider. No version gate (the runner speaks the
+  // documented RPC protocol); instead the login is probed explicitly,
+  // because the model probe below falls back to a static list offline and
+  // would otherwise report a logged-out pi as ready.
+  if (provider === "pi") {
+    return agentCheckPi({ id, label, pick, agents, bin, binVersion, timeoutMs, runner: opts.runner, env });
+  }
   // Version gate: adapters were written against specific CLI versions; a
   // too-old CLI fails as a generic adapter crash, so report the specific
   // minimum here instead. binVersion comes only from a successful run.
@@ -558,8 +567,225 @@ export async function agentCheck(opts: {
   };
 }
 
-export function distinctCheck(settings: Settings): ReadinessCheck {
-  const a = settings.main;
+/**
+ * Issue #279: pi login state in plain words. Runs pi's own status command
+ * (`pi auth check --provider <p> --json`) for both subscription routes —
+ * never reads pi's config or credentials (`~/.pi` is off-limits).
+ */
+export interface PiAuthState {
+  ready: boolean;
+  /** Raw status word pi reported (ready/not_ready/invalid/unknown). */
+  status: string;
+  /** pi's reason, when it gave one. */
+  reason?: string;
+}
+
+export interface PiLogin {
+  codex: PiAuthState;
+  openai: PiAuthState;
+}
+
+const PI_AUTH_PROVIDERS = ["openai-codex", "openai"] as const;
+
+function parsePiAuth(out: string): PiAuthState {
+  try {
+    const parsed = JSON.parse(out) as { status?: string; reason?: string };
+    const status = typeof parsed.status === "string" ? parsed.status : "unknown";
+    const state: PiAuthState = { ready: status === "ready", status };
+    if (typeof parsed.reason === "string" && parsed.reason) state.reason = parsed.reason;
+    return state;
+  } catch {
+    const snippet = out.trim().split("\n")[0]?.trim().slice(0, 160) ?? "";
+    return { ready: /ready/i.test(snippet) && !/not[_\s-]*ready/i.test(snippet), status: snippet || "unknown" };
+  }
+}
+
+export async function probePiLogin(
+  runner: CommandRunner,
+  piBin: string,
+  timeoutMs = 15000,
+): Promise<PiLogin> {
+  const one = async (provider: string): Promise<PiAuthState> => {
+    try {
+      const res = await runWithTimeout(
+        runner.run(piBin, { args: ["auth", "check", "--provider", provider, "--json"] }),
+        timeoutMs,
+        () => ({ stdout: "", stderr: "timed out", code: 1 }),
+      );
+      if (!res.stdout.trim()) {
+        const snippet = (res.stderr.trim() || `exit ${res.code}`).slice(0, 160);
+        return { ready: false, status: "unknown", reason: snippet };
+      }
+      return parsePiAuth(res.stdout);
+    } catch (e) {
+      return { ready: false, status: "unknown", reason: String(e instanceof Error ? e.message : e).slice(0, 160) };
+    }
+  };
+  const [codex, openai] = await Promise.all(PI_AUTH_PROVIDERS.map((p) => one(p)));
+  return { codex, openai };
+}
+
+function piReadyProviders(login: PiLogin): string[] {
+  const out: string[] = [];
+  if (login.codex.ready) out.push("openai-codex");
+  if (login.openai.ready) out.push("openai");
+  return out;
+}
+
+/** Role-level pi check (a role picked provider "pi"): bin + login + models. */
+async function agentCheckPi(opts: {
+  id: string;
+  label: string;
+  pick: { provider: string; model: string };
+  agents: AgentRunner;
+  bin: { path: string; source: string };
+  binVersion: string | null;
+  timeoutMs: number;
+  runner?: CommandRunner;
+  env?: NodeJS.ProcessEnv;
+}): Promise<ReadinessCheck> {
+  const { id, label, pick, agents, bin, binVersion, timeoutMs } = opts;
+  const cli = "pi";
+  const binSuffix = binVersion ? ` (running ${cli} ${binVersion} at ${bin.path})` : ` (running ${bin.path})`;
+  const runner = opts.runner ?? new RealCommandRunner();
+  let login: PiLogin;
+  try {
+    login = await probePiLogin(runner, bin.path, Math.min(timeoutMs, 15000));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      id,
+      label,
+      status: "warning",
+      summary: `${cli} didn't answer${binSuffix}`,
+      fix: `Re-check, and make sure ${cli} is installed and logged in (pi's /login). (${msg})`,
+      settingsAnchor: "#models",
+    };
+  }
+  const ready = piReadyProviders(login);
+  if (ready.length === 0) {
+    const reason = login.codex.reason ?? login.openai.reason ?? "not logged in";
+    return {
+      id,
+      label,
+      status: "error",
+      summary: `${cli} not logged in (${reason})${binSuffix}`,
+      fix: "Run pi's /login once to connect your ChatGPT subscription, then Re-check. Unvibe uses whatever login your pi has and never logs in for you.",
+      settingsAnchor: "#models",
+    };
+  }
+  let models: { id: string; name?: string; description?: string }[];
+  try {
+    models = await probeAgentModels(agents, "pi", timeoutMs);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      id,
+      label,
+      status: "error",
+      summary: `${cli} unusable: ${msg}${binSuffix}`,
+      fix: `Check that ${cli} is installed and logged in (pi's /login), then Re-check.`,
+      settingsAnchor: "#models",
+    };
+  }
+  if (!models.map((m) => m.id).includes(pick.model)) {
+    return {
+      id,
+      label,
+      status: "warning",
+      summary: `${cli} ready${binSuffix}, but model "${pick.model}" not offered (has ${models.length} models)`,
+      fix: "Pick one of the offered models in Settings → Models.",
+      settingsAnchor: "#models",
+    };
+  }
+  const display = modelDisplayLabel(pick.model, models);
+  return {
+    id,
+    label,
+    status: "ok",
+    summary: `${cli}/${display} ready${binSuffix}, logged in (${ready.join(", ")})`,
+    fix: "",
+    settingsAnchor: "#models",
+  };
+}
+
+/**
+ * Standalone pi check (issue #279): whether pi is installed and logged in,
+ * in plain words. Informational when pi is absent (codex covers those
+ * models); a warning only when pi is installed but logged out.
+ */
+export async function piCheck(opts: {
+  agents: AgentRunner;
+  pathValue?: string;
+  timeoutMs?: number;
+  runner?: CommandRunner;
+  env?: NodeJS.ProcessEnv;
+}): Promise<ReadinessCheck> {
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const pathValue = opts.pathValue ?? process.env.PATH ?? "";
+  const env = opts.env ?? process.env;
+  const spec = TOOL_SPECS.find((s) => s.tool === "pi")!;
+  let diag: import("@unvibe/shared").DiagnosticTool | null = null;
+  try {
+    diag = await diagnoseTool(spec, {
+      pathValue,
+      env,
+      ...(opts.runner ? { runner: opts.runner } : {}),
+      timeoutMs: Math.min(timeoutMs, 8000),
+    });
+  } catch {
+    diag = null;
+  }
+  const binPath = diag?.chosen ?? null;
+  const binVersion = diag?.candidates.find((c) => c.path === binPath)?.version ?? null;
+  if (!binPath) {
+    return {
+      id: "pi",
+      label: "Pi (ChatGPT via pi)",
+      status: "ok",
+      summary: "pi not installed — OpenAI/Codex models run on the Codex CLI",
+      fix: "",
+      settingsAnchor: "#models",
+    };
+  }
+  const where = binVersion ? `pi ${binVersion} at ${binPath}` : `pi at ${binPath}`;
+  const runner = opts.runner ?? new RealCommandRunner();
+  let login: PiLogin;
+  try {
+    login = await probePiLogin(runner, binPath, Math.min(timeoutMs, 15000));
+  } catch {
+    return {
+      id: "pi",
+      label: "Pi (ChatGPT via pi)",
+      status: "warning",
+      summary: `${where} found but didn't answer the login check`,
+      fix: "Re-check, and make sure pi is installed and on your login-shell PATH.",
+      settingsAnchor: "#models",
+    };
+  }
+  const ready = piReadyProviders(login);
+  if (ready.length > 0) {
+    return {
+      id: "pi",
+      label: "Pi (ChatGPT via pi)",
+      status: "ok",
+      summary: `${where}, logged in (${ready.join(", ")})`,
+      fix: "",
+      settingsAnchor: "#models",
+    };
+  }
+  const reason = login.codex.reason ?? login.openai.reason ?? "not logged in";
+  return {
+    id: "pi",
+    label: "Pi (ChatGPT via pi)",
+    status: "warning",
+    summary: `${where} installed but not logged in (${reason})`,
+    fix: "To offer pi as a provider for OpenAI/Codex models, run pi's /login once. Unvibe uses whatever login your pi has and never logs in for you.",
+    settingsAnchor: "#models",
+  };
+}
+
+export function distinctCheck(settings: Settings): ReadinessCheck {  const a = settings.main;
   const b = settings.secondOpinion;
   const same = a.provider === b.provider && a.model === b.model;
   if (same) {
