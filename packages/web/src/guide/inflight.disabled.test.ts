@@ -192,16 +192,16 @@ describe("entry keys", () => {
     } as unknown as ReviewSnapshot;
     // Chip key still set (answer rendered before the response retargets).
     const chip = { "followup:c1:b-f:0": entry("followup", "followup:c1:b-f:0") };
-    expect(busyForConversation(chip, [], snap, answer)).toMatchObject({ label: "Writing answer…" });
+    expect(busyForConversation(chip, [], snap, answer)).toMatchObject({ label: "Writing answer" });
     // Direct entry wins with its own label.
     const direct = { ann_ans: entry("retry", "ann_ans") };
-    expect(busyForConversation(direct, [], snap, answer)).toMatchObject({ label: "Retrying…" });
+    expect(busyForConversation(direct, [], snap, answer)).toMatchObject({ label: "Retrying" });
     // Job-derived ask fill on an answer reads as its answer…
     const jobs = [job({ kind: "ask", annotationId: "ann_ans" })];
-    expect(busyForConversation({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer…" });
+    expect(busyForConversation({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer" });
     // …but not on ordinary expansions.
     const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
-    expect(busyForConversation({}, jobs, snap, plain)).toMatchObject({ label: "Asking…" });
+    expect(busyForConversation({}, jobs, snap, plain)).toMatchObject({ label: "Asking" });
     expect(busyForConversation({}, [], snap, plain)).toBeNull();
   });
 
@@ -277,11 +277,11 @@ describe("entry keys", () => {
     const snap = { pages: [], annotations: [] } as unknown as ReviewSnapshot;
     const inflight = { "explain:block:b1": entry("explain", "explain:block:b1") };
     expect(busyForConversation(inflight, [], snap, expansion)).toMatchObject({
-      label: "Writing explanation…",
+      label: "Writing explanation",
       rewriting: false,
     });
     // A direct entry still wins.
     const direct = { ann_x: entry("retry", "ann_x") };
-    expect(busyForConversation(direct, [], snap, expansion)).toMatchObject({ label: "Retrying…" });
+    expect(busyForConversation(direct, [], snap, expansion)).toMatchObject({ label: "Retrying" });
   });
 });

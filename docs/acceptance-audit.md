@@ -305,10 +305,9 @@ needed (that deviation is closed, not added).
    shown. A turn fails only on facts the service observes itself — the
    turn errored or was cancelled, the answer is empty, or a review-tool
    call failed to connect. A trailing `degraded` field with a usable body
-   (it parses and has at least one block) keeps the answer: it shows
-   with the plain-words note "Some references in this answer could not
-   be linked to the code." and the raw reason lands on the job
-   (`degradedReason`) for the Debug page; it is never a failure when
+   (it parses and has at least one block) keeps the answer: it shows as
+   written with no appended note (issue #264) and the raw reason lands on
+   the job (`degradedReason`) for the Debug page; it is never a failure when
    there is content, and only an empty degraded answer fails the turn.
    Connection failures retry once on a fresh session (fork jobs since
    #51, the reader since #146: fresh per-run secret + session,
@@ -326,7 +325,14 @@ needed (that deviation is closed, not added).
    `GET /api/jobs/:id/reply`) so the Debug page shows it next to the
    prompt. Streamed partials are cleared on failure and the reason
    lands in the job error on the Debug page
-   (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
+   (   `degraded-turn-51.test.ts`, `reader-146-124.test.ts`). Job dedupe is
+   scoped per review (#276): a review whose reader is queued while
+   another review's reader (same base version) is still open gets its
+   own reader job instead of attaching to the foreign one (which left
+   the review with hunk passes, no reader row and "Building" forever).
+   A reader that cannot be queued marks the reader stage failed with
+   Retry instead of stalling (`reader-dedupe-276.test.ts`,
+   `jobs.test.ts` dedupe). A reply anchor
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
    failed citations) is kept on the job's stored prompt, so the Debug
@@ -429,17 +435,27 @@ needed (that deviation is closed, not added).
   (`guide/BlockView.list.test.tsx`).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
-- Unverified citations dimmed + tooltip — met (`validate/validate.ts`
-  `unverified` flag, snapshot tests; live pipeline: 0 unverified of
-  37+14 — `docs/live-pipeline-results.md`).
+- Unverified citations get no marker (issue #264) — met: the service
+  still flags them (`validate/validate.ts` `unverified` flag, recorded
+  in job debug data) and the raw reason stays on the job for the Debug
+  page, but card text shows no `<>` chip, no tooltip and no popover —
+  the surrounding text stays plain text (`guide/Markers.test.tsx`
+  “renders no marker”, journey J81 missing-file case).
 - Comment marker (bubble + count, only never-quoted) + footnote chips
   sharing the citations line (issue #72) — met (`guide/Markers.test.tsx`
   quoted-vs-unquoted + footnote chips; `e2e/anchor-footnotes-service.spec.ts`
-  chip on the citations row). Clicking the marker opens every comment
-  on the block, stacked; clicking one item of its hover preview opens
-  just that comment (issue #205, guide and PR description alike) — met
-  (`guide/Markers.test.tsx` “opens every comment”, journey J9 “marker
-  opens all”). Highlight passes retry placement with an overall bound
+  chip on the citations row). The marker is a toggle: clicking it opens
+  every comment on the block, stacked, unless all of them are already
+  open — then one click collapses them all; a mix opens all
+  (issue #262, guide and PR description alike). Its tooltip states the
+  action ("Show comments" / "Hide comments"). Per-thread Close still
+  works and the marker's state follows it. Clicking one item of its
+  hover preview opens just that comment (issue #205, guide and PR
+  description alike) — met (`guide/Markers.test.tsx` “opens every
+  comment”, journey J9 “marker opens all”, journey J262 “marker is a
+  toggle”). The `<>` code marker has no such asymmetry — it navigates
+  (reveals the source), so a second click idempotently re-reveals;
+  unchanged. Highlight passes retry placement with an overall bound
   per change and leave the DOM alone when a pass would change nothing,
   so one unplaceable anchor no longer re-marks the page every 250 ms
   (issue #206); anchors that stay unplaced are listed with the reason
@@ -496,11 +512,38 @@ needed (that deviation is closed, not added).
   unpinned by older data renders inline when open. While a turn is
   being written it shows only the header and the writing state; the
   answer toolbar and the reply box appear when the answer arrives,
-  and a failed turn shows Retry (issue #203; a conversation job
-  interrupted by a restart settles its turn as failed at startup, so
-  Retry is what it shows) — met
-  (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
-  guide-pinned/guide-writing/diff scenes).
+   and a failed turn shows Retry (issue #203; a conversation job
+   interrupted by a restart settles its turn as failed at startup, so
+   Retry is what it shows) — met
+   (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
+   guide-pinned/guide-writing/diff scenes). Issue #270: the banner and
+   Retry agree on one source of truth (Retry refills the last *failed*
+   turn, wherever it sits — a turn pushed while an earlier one still
+   filled can leave the failure behind the last turn); a failed turn
+   stores no partial answer (no cut-off citation, no raw trailing block
+   — the raw output stays on the job for Debug), a retry starts from
+   empty blocks so it can never concatenate; refusal and guard toasts
+   carry plain words with no internal ids; follow-up answers stand on
+   their own (prompt rule in `ask_turn.md` + L0 reply hygiene) — met
+   (`conversation-retry-270.test.ts`, journey J270, visual tour
+   ask-failed/ask-retried frames). Issue #271: the reply box stays
+   visible and editable while a *follow-up* answer is pending, with
+   Send disabled and the reason as its tooltip ("Wait for the
+   answer"); the kept draft sends once the answer lands (first answers
+   keep the #203 header-only writing state). On a failure the box
+   stays hidden and Retry governs (a draft typed while pending is kept
+   in the server draft and is back after the retry lands). In-progress
+   labels in Ask/Explain and follow-ups carry no stacked ellipsis
+   beside the dots ("Writing answer", "Thinking", "Asking",
+   "Retrying"; reply-path fills unified on "Writing answer") — met
+   (`ConversationCard.test.tsx` #271 cases, journey J271, visual tour
+   ask-pending frames, J6 + tour writing-state scene). Issue #272: a
+   fill that fails while its card is closed records the failure anyway
+   (banner plus Retry on reopen); an explicitly cancelled fill settles
+   quietly with no working flag, job link or partials left; a
+   graceful-shutdown-cancelled fill still marked working is settled as
+   interrupted on the next boot — met (`conversation-stuck-272.test.ts`,
+   journey J272).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
   `promote.ts`).
 - Anchor lost → footnote chip on the citations line, open cards stay with
@@ -703,8 +746,14 @@ needed (that deviation is closed, not added).
 
 ### §4.11 PR description — all met
 
-- Restated → links; branch tab shows commit messages read-only — met
-  (`pipeline` restated mapping, `ingest/description.ts`).
+- Guide-card layout, no Restated links (issue #263); branch tab shows
+  commit messages read-only — met: the description renders in the
+  shared Card with normal margins, paragraphs/bullet/numbered lists and
+  headings share one content inset with markers inside it (guide `.lst`
+  styling), nested lists indent from it; the "Restated →" links and
+  their `button.back` code are removed while card links and the
+  comments-menu jump keep working (journey J263, visual-tour
+  `desc-full` frames; `ingest/description.ts`).
 - Author + open-PR gate; in-place edit with Discard/Save; local pending
   (“Edited · goes to GitHub…”, Revert); paragraph identity preserved —
   met (`routes/description.ts:61` viewer check, `description-m6.test.ts`).
@@ -839,7 +888,10 @@ needed (that deviation is closed, not added).
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
-  — met (`DiffView.test.tsx`, `diffLogic.test.ts`).
+  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #261 tightens
+  the unified gutter to digits + padding + exactly the affordance room
+  (old +34px with the reopen marker, new +30px with the comment icon)
+  and drops the empty number column on added/deleted files/hunks.
 - Syntax highlighting (issue #23): plain rows first, token colours after
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met
@@ -857,10 +909,15 @@ needed (that deviation is closed, not added).
   file edges; the total is probed up front for single-hunk files), and a
   quiet fold icon on each revealed block's first gutter number instead
   of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 10 tests, `FileExpansion.test.tsx` 14 tests,
-  `e2e/diff-expand.spec.ts` 8 tests); revealed rows are tinted context
+  `expandLines.test.ts` 13 tests, `FileExpansion.test.tsx` 15 tests,
+  `e2e/diff-expand.spec.ts` 8 tests, journey `j265-expand-up.spec.ts` 3
+  tests against the real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
-  (`expand.css`, `highlightLines`); deleted files expand on the old
+  (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
+  `diff-expand-full-gap`); revealed lines read in the section whose
+  control revealed them (issue #265: up-steps and show-all-up atop the
+  clicked hunk, down-steps below it, a fully revealed gap once in
+  exactly one section); deleted files expand on the old
   side, new files on the new side, binary files offer nothing, renames
   read the new path at head — nothing throws; revealed lines offer
   Explain, Ask and GitHub on the diff-line anchor (read as
@@ -2991,6 +3048,35 @@ hunk coverage) is reported for a separate issue, not fixed here.
   service `test/reviews-list.test.ts` (unchanged behaviour).
   Full gates not yet run.
 
+
+## Addendum: #252 (glossary: naming discipline across turns)
+
+- **#252 (glossary; §13 prompts, §7 data model, §4.5 links):**
+  L0 `prompts/instructions.md` gains the owner’s Names bullet (codebase’s
+  own nomenclature, one term per thing across the guide). `prompts/reader.md`
+  builds plotline names and card titles from the code’s own names, keeps the
+  Names card as commentary on newly introduced names, and writes the shared
+  term list in its existing trailing-data turn (`glossary`: exact name,
+  one-line definition, `code:`/`diff:`/`h:` citation, validated like other
+  citations with the existing #213 repair turn on a malformed block; no
+  extra agent call). The shared type lands in `packages/shared` first
+  (`GlossaryEntry`, `normalizeGlossary`, `formatGlossaryForPrompt`,
+  `linkGlossaryInHtml`) and the glossary is stored on the review snapshot
+  (no backward compatibility: existing reviews simply have no glossary
+  until regenerated; no shim). Later turns receive a compact context block
+  (names + one-line definitions + use-exact-terms instruction) in per-hunk
+  jobs, Ask, Go deeper and concept pages (no new calls/jobs). Card text
+  links exact matches in code (web `linkCardBlocks`, first mention per
+  card; skips existing links; fenced code blocks and headings untouched;
+  inline code spans link); hover shows the definition + citation via
+  `HoverPopover`, styled like the citation hover, click reveals the source.
+  No check agent. Evidence: `shared/test/glossary.test.ts`,
+  `service/test/glossary-252.test.ts` (stored + prompts via fake runner),
+  `web/src/guide/glossary.test.ts`, `e2e/journeys/j252-glossary.spec.ts`
+  (hover shows definition + citation), `e2e/glossary-tour.spec.ts`
+  (links + hover open, 1440/960 light/dark, `checkLayout`).
+  Full gates not yet run.
+
 ## Addendum: #255 (branch `feat/255-code-highlight`)
 
 - **#255 (syntax highlighting for code blocks in documents and guide
@@ -3030,9 +3116,26 @@ hunk coverage) is reported for a separate issue, not fixed here.
   the theme's small control height, centred like #245). PR and branch
   reviews are unchanged. The same name appears in the Documents screen
   list (document icon + title in `SessionRow`) and the browser tab
-  (`document.title` set to the document name on document reviews).
-  Evidence: `src/shell/ReviewBar.test.tsx` (icon + name, no PR link,
-  no Refresh, tab title), `e2e/journeys/j222-document.spec.ts` (bar
-  icon + name, list entry, `toHaveTitle`, plus `reviewbar-doc-*`
-  theme frames with `checkLayout` in Default/Studio/Console).
-  Full gates not yet run.
+   (`document.title` set to the document name on document reviews).
+   Evidence: `src/shell/ReviewBar.test.tsx` (icon + name, no PR link,
+   no Refresh, tab title), `e2e/journeys/j222-document.spec.ts` (bar
+   icon + name, list entry, `toHaveTitle`, plus `reviewbar-doc-*`
+   theme frames with `checkLayout` in Default/Studio/Console).
+   Full gates not yet run.
+
+## Addendum: #267 (cite hunks, never "commit N"; branch `fix/267-commit-refs`)
+
+- **#267 (commit refs; §13 prompts, §9 context):** option 1, prompt
+  only. L0 `prompts/instructions.md` gains the shared rule (cite the
+  hunks themselves with their `h:`/`diff:` links, never a commit by
+  position; name a commit by its subject only when the commit itself is
+  the point). `prompts/reader.md` repeats a short line where the commit
+  list is presented. The model's commit list itself is no longer
+  numbered: `buildCommitsSection` (`service/src/context/layers.ts`)
+  renders plain bullets (`- <sha> <subject>`) in the same landing
+  order. No data-shape change, no new mechanism, no new ID kind, no UI.
+  Evidence: `service/test/prompts.test.ts` ("cards cite hunks, never
+  commit positions"), `service/test/commits-193.test.ts` (bullets, never
+  numbered), prompt goldens (`reader.md`, `base_pack.md`,
+  `instructions.md`). No journey or tour (no UI change). Full gates not
+  yet run.

@@ -28,15 +28,15 @@ export function inflightLabel(kind: InFlightKind): string {
     case "generate":
       return "Writing…";
     case "explain":
-      return "Writing explanation…";
+      return "Writing explanation";
     case "ask":
-      return "Asking…";
+      return "Asking";
     case "reply":
-      return "Writing reply…";
+      return "Writing answer";
     case "retry":
-      return "Retrying…";
+      return "Retrying";
     case "followup":
-      return "Writing answer…";
+      return "Writing answer";
     case "second_opinion":
       return "Getting a second opinion…";
     case "concept":

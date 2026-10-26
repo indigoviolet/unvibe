@@ -241,14 +241,26 @@ export class JobQueue {
 
   // -- enqueue --------------------------------------------------------
 
+  /**
+   * Dedupe scope: identical requests share one job/result while active,
+   * but only within the same review. A global namespace let a review
+   * attach to another review's live job (e.g. its reader to a foreign
+   * reader at the same base version): the job ran for the other review
+   * while this one waited forever with no job row of its own (#276).
+   */
+  private dedupeScope(reviewId: string, key: string): string {
+    return `${reviewId}|${key}`;
+  }
+
   enqueue(opts: EnqueueOptions): Job {
     const dedupeKey = opts.dedupe ? jobDedupeKeyString(opts.dedupe) : undefined;
-    if (dedupeKey) {
-      const existing = this.dedupe.get(dedupeKey);
+    const scopedKey = dedupeKey === undefined ? undefined : this.dedupeScope(opts.reviewId, dedupeKey);
+    if (scopedKey) {
+      const existing = this.dedupe.get(scopedKey);
       if (existing) {
         const entry = this.entries.get(existing);
         if (entry && !isTerminal(entry.job.state)) return copy(entry.job);
-        this.dedupe.delete(dedupeKey);
+        this.dedupe.delete(scopedKey);
       }
     }
     const job: Job = {
@@ -288,7 +300,7 @@ export class JobQueue {
     // 0 attempts, never runnable) is left in entries/dedupe.
     this.save(entry);
     this.entries.set(job.id, entry);
-    if (dedupeKey) this.dedupe.set(dedupeKey, job.id);
+    if (scopedKey) this.dedupe.set(scopedKey, job.id);
     this.emit(entry);
     this.pump();
     return copy(job);
@@ -441,7 +453,7 @@ export class JobQueue {
     entry.job.turnRecords = undefined;
     entry.currentTurn = undefined;
     entry.snapshotBaseline = undefined;
-    if (entry.job.dedupeKey) this.dedupe.set(entry.job.dedupeKey, entry.job.id);
+    if (entry.job.dedupeKey) this.dedupe.set(this.dedupeScope(entry.reviewId, entry.job.dedupeKey), entry.job.id);
     this.save(entry);
     this.emit(entry);
     this.pump();
@@ -477,11 +489,18 @@ export class JobQueue {
    * carry no `run`, so they never execute, never count as active, and
    * never block idle exit.
    */
-  recover(savedJobs: Job[]): { interrupted: Job[]; orphaned: Job[] } {
+  recover(savedJobs: Job[]): { interrupted: Job[]; orphaned: Job[]; cancelled: Job[] } {
     const interrupted: Job[] = [];
     const orphaned: Job[] = [];
+    // Persisted `cancelled` jobs (#272): a graceful shutdown cancels
+    // every open fill, so a cancelled job with a turn still marked
+    // working died mid-fill — the app settles those like interrupted
+    // ones. (Explicit Debug cancels already settled their turns, so the
+    // app's working-check skips them.)
+    const cancelled: Job[] = [];
     for (const saved of savedJobs) {
       if (this.entries.has(saved.id)) continue;
+      if (saved.state === "cancelled") cancelled.push(copy(saved));
       const open = !isTerminal(saved.state);
       const job: Job = open
         ? {
@@ -505,7 +524,7 @@ export class JobQueue {
       this.emit(entry);
       if (open) interrupted.push(copy(job));
     }
-    return { interrupted, orphaned };
+    return { interrupted, orphaned, cancelled };
   }
 
   /** Abort everything; used on service shutdown. */
@@ -908,7 +927,9 @@ export class JobQueue {
 
   private forgetDedupe(entry: Entry): void {
     const key = entry.job.dedupeKey;
-    if (key && this.dedupe.get(key) === entry.job.id) this.dedupe.delete(key);
+    if (!key) return;
+    const scoped = this.dedupeScope(entry.reviewId, key);
+    if (this.dedupe.get(scoped) === entry.job.id) this.dedupe.delete(scoped);
   }
 
   private save(entry: Entry): void {

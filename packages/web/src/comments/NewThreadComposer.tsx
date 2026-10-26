@@ -115,7 +115,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
             <i />
             <i />
           </span>
-          <span>Asking…</span>
+          <span>Asking</span>
         </div>
       ) : null}
       <div className="composer">

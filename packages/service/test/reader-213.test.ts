@@ -123,7 +123,7 @@ describe("reader trailing data block (#213)", () => {
       const root = snap.pages.find((p) => p.id === "root")!;
       expect(root.cards.map((c) => c.id).sort()).toEqual(["central", "problem"]);
       expect(snap.plotlines ?? []).toHaveLength(0);
-      expect(ctx.jobs.get(job.id)?.degradedReason).toContain("no plotlines or go-deeper directions");
+      expect(ctx.jobs.get(job.id)?.degradedReason).toContain("no plotlines, glossary or go-deeper directions");
       expect(agents.prompts.filter((p) => p.text.includes("Resend just the data block"))).toHaveLength(1);
     } finally {
       await app.close();

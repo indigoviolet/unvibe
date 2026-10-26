@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [direction]
+variables: [direction, glossary]
 ---
 
 # Go deeper
@@ -16,8 +16,13 @@ its content at standard depth.
 The direction is the title plus the why-line the reader wrote when planning
 the review. It tells you what the card must cover and why it matters.
 
+## Glossary
+
+{{glossary}}
+
 ## Rules
 
+- Use the glossary's exact terms for the things they name, never a synonym, abbreviation or paraphrase.
 - One card: two to five paragraphs, then a `### Follow-ups` section with
   at most three follow-up suggestions, each following the shared
   follow-up rule in the instructions (deepen understanding or test the

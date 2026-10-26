@@ -52,7 +52,7 @@ describe("GuideBlockThreads explain placeholder", () => {
     act(() => {
       useReview.getState().beginInflight("explain:block:b1", "explain");
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
+    expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
     act(() => {
       useReview.getState().clearInflight("explain:block:b1");
     });
@@ -65,7 +65,7 @@ describe("GuideBlockThreads explain placeholder", () => {
     act(() => {
       useReview.getState().beginInflight("explain:block:c1#b1", "explain");
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Writing explanation…");
+    expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
   });
 
   test("ask entries show no placeholder (the composer owns them)", () => {

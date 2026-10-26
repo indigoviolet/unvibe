@@ -6,7 +6,12 @@
  * Controls are quiet gutter icons in thin separator rows: a single
  * caret steps 20 lines, a double caret shows a whole run; direction
  * follows where lines appear. Each gap holds one hidden run with one
- * set of controls sharing its remaining count; continuous boundaries
+ * remaining count shared from both ends: step-down + show-all ride the
+ * upper hunk's table, step-up + show-all-to-previous ride the lower
+ * hunk's. Revealed lines land in the section whose control revealed
+ * them (issue #265): up-steps (and show-all up) atop the clicked hunk,
+ * down-steps below it; a fully revealed gap shows once, never in both
+ * sections. Continuous boundaries
  * (fully revealed gaps, adjacent hunks, file edges) show no controls.
  * Revealed blocks collapse back through a hover gutter icon on their
  * first row — never a control row between continuous lines.
@@ -75,13 +80,20 @@ export interface FileExpansion {
   retry: () => void;
   expandUp: (hunk: Hunk, index: number) => void;
   expandDown: (hunk: Hunk, index: number) => void;
-  expandAll: (region: ExpandRegion) => void;
+  expandAll: (region: ExpandRegion, dir: "up" | "down") => void;
   /** Hide one contiguous revealed block (hover gutter icon). */
   collapseInterval: (start: number, end: number) => void;
   /** Learn the file total without revealing anything (single-hunk files). */
   probeTotal: () => void;
   regionAbove: (index: number) => ExpandRegion | null;
   regionBelow: (index: number, hunks: Hunk[]) => ExpandRegion | null;
+  /**
+   * Gap partition for rendering (issue #265): lines of `region` below
+   * the split read under the earlier hunk, lines at/above it atop the
+   * later hunk. Top/bottom regions and untouched gaps default past the
+   * end (everything reads under the earlier hunk, as before).
+   */
+  splitFor: (region: ExpandRegion) => number;
   /** Unit step for one hunk (issue #133, stage 2). */
   expandUnit: (hunk: Hunk) => void;
   unitFor: (hunk: Hunk) => HunkUnit;
@@ -127,6 +139,7 @@ export function useFileExpansion(
   opts: { reviewId: string; headCommit: string; baseCommit: string; disabled?: boolean },
 ): FileExpansion {
   const [revealed, setRevealed] = useState<RevealedRange[]>([]);
+  const [splits, setSplits] = useState<ReadonlyMap<string, number>>(new Map());
   const [texts, setTexts] = useState<ReadonlyMap<number, string>>(new Map());
   const [totalLines, setTotalLines] = useState<number | null>(null);
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(new Set());
@@ -147,6 +160,21 @@ export function useFileExpansion(
     [regions],
   );
 
+  const splitFor = useCallback(
+    (region: ExpandRegion): number => splits.get(region.key) ?? region.end + 1,
+    [splits],
+  );
+
+  const claimSplit = useCallback((region: ExpandRegion, split: number): void => {
+    // Top/bottom regions read from one side only; only gaps partition.
+    if (!region.key.startsWith("gap-")) return;
+    setSplits((prev) => {
+      if (prev.get(region.key) === split) return prev;
+      const next = new Map(prev);
+      next.set(region.key, split);
+      return next;
+    });
+  }, []);
   const regionBelow = useCallback(
     (index: number, all: Hunk[]): ExpandRegion | null => {
       if (index >= all.length - 1) return regions.find((r) => r.key === "bottom") ?? null;
@@ -217,9 +245,12 @@ export function useFileExpansion(
       const region = index <= 0 ? regions.find((r) => r.key === "top") : regions.find((r) => r.key === `gap-${index - 1}`);
       if (!region) return;
       const plan = planExpandUp(start, region, revealed);
-      if (plan) void fetchRanges([plan]);
+      if (!plan) return;
+      // The tail just revealed reads atop the clicked hunk (issue #265).
+      claimSplit(region, plan.start);
+      void fetchRanges([plan]);
     },
-    [edgeOf, regions, revealed, fetchRanges],
+    [edgeOf, regions, revealed, fetchRanges, claimSplit],
   );
 
   const expandDown = useCallback(
@@ -232,16 +263,23 @@ export function useFileExpansion(
       // below for single-hunk files starting at line 1).
       if (!region) return;
       const plan = planExpandDown(end, region, revealed);
-      if (plan) void fetchRanges([plan]);
+      if (!plan) return;
+      // The head just revealed reads under the clicked hunk (issue #265).
+      claimSplit(region, plan.end + 1);
+      void fetchRanges([plan]);
     },
-    [edgeOf, hunks.length, regions, revealed, fetchRanges],
+    [edgeOf, hunks.length, regions, revealed, fetchRanges, claimSplit],
   );
 
   const expandAll = useCallback(
-    (region: ExpandRegion): void => {
+    (region: ExpandRegion, dir: "up" | "down"): void => {
+      // Show-all lands in the section whose control was clicked: up
+      // (to the top or the previous hunk) reads atop the later hunk,
+      // down below the earlier one (issue #265).
+      claimSplit(region, dir === "up" ? region.start : region.end + 1);
       void fetchRanges(planExpandAll(region, revealed, SLICE_CAP));
     },
-    [revealed, fetchRanges],
+    [revealed, fetchRanges, claimSplit],
   );
 
   /**
@@ -468,6 +506,7 @@ export function useFileExpansion(
     probeTotal,
     regionAbove,
     regionBelow,
+    splitFor,
     expandUnit,
     unitFor,
   };
@@ -529,16 +568,25 @@ export function ControlSeparator({
   controls,
   cols,
   pending,
+  hideOld,
+  hideNew,
 }: {
   controls: GutterControl[];
   cols: number;
   pending: boolean;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
   if (controls.length === 0) return null;
   const icon = (c: GutterControl): IconName => {
     if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
     return c.dir === "up" ? "upUp" : "downDown";
   };
+  // Unified with a hidden number column: the icon cell + code only (2
+  // cols). The icons spill via `.xicons` (width 0, visible overflow),
+  // so the narrow gutter still shows them without reserving number width.
+  const unifiedHidden = cols !== 4 && (hideOld === true || hideNew === true);
   return (
     <tr className="xsep">
       <td className="n xgutter">
@@ -564,6 +612,8 @@ export function ControlSeparator({
           <td className="n" />
           <td className="c" />
         </>
+      ) : unifiedHidden ? (
+        <td className="c" />
       ) : (
         <>
           <td className="n" />
@@ -579,15 +629,48 @@ function RevealedCells({
   view,
   segs,
   hide,
+  hideOld,
+  hideNew,
 }: {
   line: RevealedLine;
   view: "unified" | "split";
   segs: LineTokens | null;
   /** Hide control for the block's first row, overlaid on its gutter number. */
   hide: ReactNode;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
   const html = escapeHtml(" ") + codeLineHtml(line.text, segs);
   if (view === "unified") {
+    // With a hidden column the Hide overlay rides the remaining number
+    // cell, so collapsing never needs the empty column back.
+    if (hideOld === true) {
+      return (
+        <>
+          <td className="n xhide-cell">
+            {line.newLine ?? ""}
+            {hide}
+          </td>
+          <td className="c">
+            <span dangerouslySetInnerHTML={{ __html: html }} />
+          </td>
+        </>
+      );
+    }
+    if (hideNew === true) {
+      return (
+        <>
+          <td className="n xhide-cell">
+            {line.oldLine ?? ""}
+            {hide}
+          </td>
+          <td className="c">
+            <span dangerouslySetInnerHTML={{ __html: html }} />
+          </td>
+        </>
+      );
+    }
     return (
       <>
         <td className="n xhide-cell">
@@ -654,6 +737,8 @@ export function RevealedRows({
   slots,
   highlight,
   onHideBlock,
+  hideOld,
+  hideNew,
 }: {
   fileKey: string;
   lines: RevealedLine[];
@@ -662,8 +747,12 @@ export function RevealedRows({
   slots: LineSlots;
   highlight: LineRange | null;
   onHideBlock: (start: number, end: number) => void;
+  /** Issue #261: collapse the empty number column (unified only). */
+  hideOld?: boolean;
+  hideNew?: boolean;
 }): ReactNode {
-  const cols = view === "split" ? 4 : 3;
+  const hidden = view !== "split" && (hideOld === true || hideNew === true);
+  const cols = view === "split" ? 4 : hidden ? 2 : 3;
   const blocks: RevealedLine[][] = [];
   for (const l of lines) {
     const last = blocks[blocks.length - 1];
@@ -696,7 +785,7 @@ export function RevealedRows({
           return (
             <Fragment key={`rev-${l.line}`}>
               <tr className={hl ? "hl" : undefined} data-revealed="1" id={rowId}>
-                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} />
+                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} hideOld={hideOld} hideNew={hideNew} />
               </tr>
               {num !== null && num !== undefined && slots[slotKey(fileKey, num)] != null ? (
                 <tr className="pr">

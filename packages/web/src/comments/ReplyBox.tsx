@@ -38,6 +38,13 @@ interface Props {
   /** Follows the sending state (callers disable sibling controls with it). */
   onSendingChange?: (sending: boolean) => void;
   /**
+   * Issue #271: disable Send while the reason holds (e.g. an answer is
+   * still pending on a conversation card). The textarea stays editable
+   * and the draft is kept; the tip says why.
+   */
+  sendDisabled?: boolean;
+  sendDisabledTip?: string;
+  /**
    * Keep Discard enabled with an empty box (a new thread's Discard
    * deletes the thread itself, so it must work before anything is typed).
    */
@@ -58,6 +65,8 @@ export function ReplyBox({
   onDiscard,
   onSendingChange,
   allowEmptyDiscard,
+  sendDisabled,
+  sendDisabledTip,
 }: Props) {
   const [draft, setDraft] = useState(serverReply ?? "");
   const [sending, setSending] = useState(false);
@@ -170,7 +179,7 @@ export function ReplyBox({
 
   const handleSend = (): void => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sending || sendDisabled) return;
     setSendingBoth(true);
     const wait = consumeDraft();
     const attempt = wait ? wait.then(() => onSend(text)) : onSend(text);
@@ -226,7 +235,8 @@ export function ReplyBox({
           size="sm"
           type="button"
           data-send={annotationId}
-          disabled={sending || draft.trim() === ""}
+          data-tip={sendDisabled ? sendDisabledTip : undefined}
+          disabled={sending || draft.trim() === "" || sendDisabled}
           onClick={handleSend}
         >
           {sendLabel}

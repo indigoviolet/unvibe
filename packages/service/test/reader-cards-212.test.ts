@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { isDefaultReaderCardId, readerApply, readerCardId } from "../src/pipeline/apply.js";
 
 describe("reader card ids (#212)", () => {
+  // Note: `templateBody` filtering is moot below (data is null), so these
+  // pass a body naming pendingCards+plotlines like the real prompts do.
+  const BODY = `"pendingCards" "plotlines"`;
+
   it("keeps decisions stable and gives Names its own stable id", () => {
     expect(readerCardId(0)).toBe("problem");
     expect(readerCardId(1)).toBe("central");
@@ -24,6 +28,7 @@ describe("reader card ids (#212)", () => {
         { title: "Names", blocks },
       ],
       null,
+      BODY,
     );
     expect(applied.cards.map((c) => [c.id, c.title])).toEqual([
       ["problem", "The problem"],
@@ -47,6 +52,7 @@ describe("reader card ids (#212)", () => {
         { title: "Names", blocks },
       ],
       null,
+      BODY,
     );
     expect(applied.cards.map((c) => c.id)).toEqual([
       "problem",

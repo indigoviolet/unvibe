@@ -28,8 +28,9 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, isDocumentReview, JOB_PRIORITY, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
+import { validateTarget } from "../validate/index.js";
 import type { HunkReplyResult } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
@@ -52,11 +53,11 @@ import { lookupForSnapshot, resolveCodeFileExistence } from "./lookup.js";
 import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { buildDocumentBaseText } from "../document/map.js";
 import { resolveDocumentCodeExistence } from "../document/resolve.js";
-import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, splitFinalizedBlocks } from "./apply.js";
+import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, requestedReaderFields, splitFinalizedBlocks } from "./apply.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
-import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
+import { changeListVariable, ingestAgentTurn, templateExpectsGlossary } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
 
@@ -230,39 +231,11 @@ function reportToolFrom(ctx?: {
   return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
 }
 
-/**
- * Plain-words note appended to a kept degraded answer (never the agent's
- * internal reason — that lives on the job for the Debug page).
- */
-export const DEGRADED_ANSWER_NOTE = "Some references in this answer could not be linked to the code.";
-
-/** Id for the appended degraded note (deduped, never anchored). */
-export const DEGRADED_NOTE_BLOCK_ID = "b-degraded-note";
-
 export type TurnDisposition =
   | { kind: "ok" }
   | { kind: "fail-conn"; message: string }
   | { kind: "fail-empty"; message: string }
   | { kind: "keep"; reason: string };
-
-/**
- * Append the quiet degraded note to a kept answer's last card (once —
- * keyed by its stable block id). The note is plain words; the agent's
- * internal reason lives on the job for the Debug page.
- */
-function attachDegradedNote(cards: { blocks: { id: string }[] }[]): void {
-  const last = cards[cards.length - 1];
-  if (!last) return;
-  if (last.blocks.some((b) => b.id === DEGRADED_NOTE_BLOCK_ID || b.id.startsWith(`${DEGRADED_NOTE_BLOCK_ID}-`))) {
-    return;
-  }
-  (last.blocks as unknown[]).push({
-    type: "paragraph",
-    id: DEGRADED_NOTE_BLOCK_ID,
-    text: { standard: DEGRADED_ANSWER_NOTE },
-    citations: [],
-  });
-}
 
 /**
  * Fence-tag language for a pinned path. No shared helper exists (pin
@@ -486,6 +459,13 @@ export class Pipeline {
       ...(o.hunkHash ? { hunkHash: o.hunkHash } : {}),
       baseLogSeq,
     });
+    // Issue #252: later turns receive the glossary in their context.
+    // Callers that already pass it (Ask first turns, go-deeper, concept)
+    // keep theirs; older/test callers that do not are backfilled here so
+    // the template always renders (no new mechanism, just the block).
+    if (variables["glossary"] === undefined && templateExpectsGlossary(this.promptsDir, o.template)) {
+      variables["glossary"] = this.glossaryForPrompt(snapshot);
+    }
     const template = this.render(o.template, variables);
     let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
 
@@ -626,7 +606,6 @@ export class Pipeline {
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
-              attachDegradedNote(finalCards);
               ctx.setDegradedReason(degradedReason);
             }
             ctx.reportUsage(usage);
@@ -713,7 +692,14 @@ export class Pipeline {
 
   async runSmall(o: RunSmallOptions): Promise<RunInForkResult> {
     const settings = await this.effectiveSettings();
-    const template = this.render(o.template, o.variables);
+    const variables: Record<string, unknown> = { ...(o.variables as Record<string, unknown>) };
+    // Issue #252: backfill the glossary block for callers that predate it
+    // (tests, older code paths); the hunk pass passes its own explicitly.
+    if (variables["glossary"] === undefined && templateExpectsGlossary(this.promptsDir, o.template)) {
+      const snap = this.opts.reviews.getSnapshot(o.reviewId);
+      variables["glossary"] = snap ? this.glossaryForPrompt(snap) : "(no glossary yet)";
+    }
+    const template = this.render(o.template, variables);
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
     const model = settings.small.model;
@@ -883,7 +869,15 @@ export class Pipeline {
     this.setStage(reviewId, "base", "pending");
     this.setStage(reviewId, "critic", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
-    await this.enqueueReader(reviewId);
+    try {
+      await this.enqueueReader(reviewId);
+    } catch (err) {
+      // The reader never got a job: surface the failed state with Retry
+      // instead of leaving the guide on "Building the guide" forever
+      // (#276). Resume retries the reader (its stage isn't done).
+      this.setStage(reviewId, "reader", "error", err instanceof Error ? err.message : String(err));
+      throw err;
+    }
     // #123: the hunk pass needs only the diff, so it starts at ingest
     // instead of waiting for the reader. Small-model jobs run in their own
     // queue bucket, never behind the critics. The CITED-BY-GUIDE hint is
@@ -949,6 +943,7 @@ export class Pipeline {
       this.render("concept_page", {
         concept: `${slug} — ${existing?.title ?? slug}`,
         mentions: this.mentionsOf(snapshot, slug),
+        glossary: this.glossaryForPrompt(snapshot),
       }),
       isReplayRunner(this.opts.runner) ? { kind: "concept-page", key: slug } : undefined,
     );
@@ -1040,7 +1035,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
     const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: hunkText, path: found.file.path, plotline: this.plotlineForHunk(snapshot, contentHash) }),
+      this.render("hunk_pass", { hunk: hunkText, path: found.file.path, plotline: this.plotlineForHunk(snapshot, contentHash), glossary: this.glossaryForPrompt(snapshot) }),
       isReplayRunner(this.opts.runner)
         ? { kind: "hunk", key: this.replayKeyForHunk(snapshot, found.file.fileKey, contentHash) ?? undefined }
         : undefined,
@@ -1217,9 +1212,33 @@ export class Pipeline {
       split.ok && typeof split.data === "object" && split.data !== null
         ? (split.data as ReplyData).anchor
         : undefined;
-    const validation = validateReply(blocks, lookup, {
+    const baseValidation = validateReply(blocks, lookup, {
       ...(anchor?.quote && anchor?.host ? { anchor: { quote: anchor.quote, host: anchor.host } } : {}),
     });
+    // Issue #252: glossary citations validate like any other citation.
+    // Only the reader sends a glossary; every other turn has none, so
+    // this is a no-op everywhere else.
+    const glossaryRaw =
+      split.ok && typeof split.data === "object" && split.data !== null
+        ? (split.data as ReplyData).glossary
+        : undefined;
+    let validation = baseValidation;
+    if (Array.isArray(glossaryRaw) && glossaryRaw.length > 0) {
+      const normalized = normalizeGlossary(glossaryRaw);
+      const extra = normalized.terms.map((t) => validateTarget(t.citation, lookup));
+      if (extra.length > 0) {
+        const tokens = [...baseValidation.tokens, ...extra];
+        const unverified = tokens.filter((t) => t.status === "unverified").length;
+        const repaired = tokens.filter((t) => t.status === "repaired").length;
+        validation = {
+          ...baseValidation,
+          tokens,
+          unverified,
+          repaired,
+          needsRepairTurn: unverified >= 2 || baseValidation.needsRepairTurn,
+        };
+      }
+    }
     return { cards, data: split.ok ? (split.data as ReplyData) : null, validation, body };
   }
 
@@ -1245,7 +1264,13 @@ export class Pipeline {
       const cards =
         echoCandidates === undefined ? parseCards(split.body) : parseCards(split.body, { echoCandidates });
       const collected = collectTargets(cards.flatMap((c) => c.blocks));
-      const targets = [...collected.citations, ...collected.links];
+      const glossaryTargets =
+        split.ok && typeof split.data === "object" && split.data !== null
+          ? (((split.data as ReplyData).glossary ?? [])
+              .map((g) => (typeof g?.citation === "string" ? g.citation : null))
+              .filter((c): c is string => c !== null))
+          : [];
+      const targets = [...collected.citations, ...collected.links, ...glossaryTargets];
       if (targets.some((t) => t.startsWith("code:"))) {
         // Issue #222: document answers cite context-repo files; the repo
         // is resolved from the cited sha (first repo containing it), and
@@ -1278,10 +1303,10 @@ export class Pipeline {
   /**
    * Decide a finished turn's fate from facts the service observes, never
    * from the reply's wording (#180; the phrase matching from #51 is gone):
-   * - the trailing `degraded` field is present with a usable body (it
-   *   parses and has at least one block): keep the answer as written,
-   *   record the raw reason on the job and add the quiet note. Never a
-   *   failure when there is content;
+    * - the trailing `degraded` field is present with a usable body (it
+    *   parses and has at least one block): keep the answer as written,
+    *   record the raw reason on the job for the Debug page. Never a
+    *   failure when there is content;
    * - a review-tool call observably failed to connect this turn (a hit
    *   on an unknown/revoked MCP secret): fail as a connection error,
    *   which the caller retries once on a fresh session;
@@ -1692,6 +1717,10 @@ export class Pipeline {
     const diff = ladder.diff;
     const lib = loadTemplatesDirSync(this.promptsDir);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
+    const readerTemplateBody = lib.get("reader")?.body ?? "";
+    // Issue #252: the reader-result parser stores only trailing-JSON
+    // fields this prompt requested (see `requestedReaderFields`).
+    const requestedKeys = requestedReaderFields(readerTemplateBody);
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
@@ -1785,7 +1814,7 @@ export class Pipeline {
             let finalValidation = validation;
             // Facts only (#180), same as fork turns: wording never fails
             // the guide. An explicit degraded field with usable cards is
-            // kept (reason on the job, quiet note on the last card) and
+            // kept (reason on the job, no appended note) and
             // skips the repair turn; a connection failure retries once
             // on a fresh session; an empty reply fails.
             let degradedReason: string | undefined;
@@ -1800,10 +1829,14 @@ export class Pipeline {
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
             if (brokenDataError !== undefined) {
               // #213: one repair turn, same session, just the data block.
+              // Issue #252: the field list mirrors what the prompt
+              // requested (see `requestedReaderFields`) — an unrequested
+              // field is never named here, so the repair turn cannot leak
+              // it; no new mechanism.
               const repairPrompt =
                 `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
                 `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
-                `(cardIds, pendingCards, plotlines and any contribute block), with no cards and no prose.`;
+                `(${[...requestedKeys, "any contribute block"].join(", ")}), with no cards and no prose.`;
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
@@ -1821,8 +1854,15 @@ export class Pipeline {
               if (repaired.ok) {
                 finalData = repaired.data as ReplyData;
               } else {
+                // Name only what the prompt requested (see above).
+                const missing = [
+                  ...(requestedKeys.includes("plotlines") ? ["plotlines"] : []),
+                  ...(requestedKeys.includes("glossary") ? ["glossary"] : []),
+                  ...(requestedKeys.includes("pendingCards") ? ["go-deeper directions"] : []),
+                ];
                 degradedReason =
-                  "The reader's trailing data block did not parse and the repair reply did not parse either, so the guide has no plotlines or go-deeper directions.";
+                  "The reader's trailing data block did not parse and the repair reply did not parse either, " +
+                  `so the guide has no ${missing.join(", ").replace(/, ([^,]*)$/, " or $1")}.`;
               }
             } else if (validation.needsRepairTurn && degradedReason === undefined) {
               const anchorProblem =
@@ -1868,7 +1908,6 @@ export class Pipeline {
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
-              attachDegradedNote(finalCards);
               ctx.setDegradedReason(degradedReason);
             }
             // #145: diagrams the reader wrote inline in guide cards go
@@ -1986,6 +2025,15 @@ export class Pipeline {
     });
   }
 
+  /** Reader template text the reply answers (keys off `requestedReaderFields`). */
+  private readerTemplateBody(): string {
+    try {
+      return loadTemplatesDirSync(this.promptsDir).get("reader")?.body ?? "";
+    } catch {
+      return "";
+    }
+  }
+
   private async applyReaderResult(
     reviewId: string,
     cards: ParsedCard[],
@@ -1995,6 +2043,7 @@ export class Pipeline {
     const applied = readerApply(
       cards.map((c) => ({ title: c.title, blocks: c.blocks })),
       (data ?? null) as Record<string, unknown> | null,
+      this.readerTemplateBody(),
     );
     // Issue #169: validate the reader's plotline hunk IDs like any other
     // ID before storing. Unknown IDs are dropped, a twice-claimed hunk
@@ -2011,6 +2060,25 @@ export class Pipeline {
           `${dropped.unknown.length} unknown hunk IDs` +
           (dropped.unknown.length > 0 ? ` (${dropped.unknown.slice(0, 5).join(", ")})` : "") +
           `, ${dropped.duplicates.length} duplicates, ${dropped.extraPlotlines} extra plotlines`,
+      );
+    }
+    // Issue #252: validate the reader's glossary shape, then existence
+    // like any other citation. Unknown grammar is dropped by
+    // `normalizeGlossary`; unverified existence is repaired through the
+    // normal citation repair turn (merged into `validation` above), and
+    // repaired targets are stored canonical.
+    const glossaryNormalized = normalizeGlossary(applied.glossary);
+    const glossaryDropped = glossaryNormalized.dropped;
+    if (
+      glossaryDropped.empty > 0 ||
+      glossaryDropped.invalidCitation > 0 ||
+      glossaryDropped.duplicates > 0 ||
+      glossaryDropped.extra > 0
+    ) {
+      console.warn(
+        `[reader] ${reviewId}: glossary dropped ` +
+          `${glossaryDropped.empty} empty, ${glossaryDropped.invalidCitation} invalid citations, ` +
+          `${glossaryDropped.duplicates} duplicates, ${glossaryDropped.extra} extra`,
       );
     }
     await this.opts.reviews.mutate(reviewId, (draft) => {
@@ -2067,6 +2135,21 @@ export class Pipeline {
       }
       // Issue #169: store the validated plotlines; per-hunk assignment
       // rides `HunkState.plotline` (content-hash keyed, like summaries).
+      // Issue #252: store the validated glossary (shared term list).
+      const snapshotForGlossary = this.opts.reviews.getSnapshot(reviewId);
+      const lookupForGlossary = snapshotForGlossary ? this.lookupWithAliases(snapshotForGlossary) : null;
+      const byTarget = new Map(validation.tokens.map((t) => [t.target, t]));
+      const resolveGlossary = snapshotForGlossary
+        ? this.lookupWithAliases(snapshotForGlossary).resolveFileKey.bind(this.lookupWithAliases(snapshotForGlossary))
+        : () => null;
+      draft.glossary = glossaryNormalized.terms.map((t) => {
+        const rep = lookupForGlossary && byTarget.get(t.citation);
+        if (rep?.status === "repaired" && rep.repairedTo) {
+          return { ...t, citation: canonicalizeTarget(rep.repairedTo, resolveGlossary) };
+        }
+        if (rep?.status === "unverified") return { ...t, citation: t.citation };
+        return { ...t, citation: canonicalizeTarget(t.citation, resolveGlossary) };
+      });
       draft.plotlines = plotlines.plotlines;
       for (const [hid, pid] of Object.entries(plotlines.assignment)) {
         const hash = hid.slice(hid.lastIndexOf(":") + 1);
@@ -2087,7 +2170,6 @@ export class Pipeline {
       });
     });
     await this.persistPins(reviewId);
-    await this.updateRestatedMapping(reviewId);
   }
 
   // -- after reader ---------------------------------------------------
@@ -2233,7 +2315,6 @@ export class Pipeline {
               });
             }
           });
-          await this.updateRestatedMapping(reviewId);
           await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, data }));
           this.warmBase(reviewId);
           this.maybeMarkStageDone(reviewId, "critic", 1);
@@ -2333,7 +2414,7 @@ export class Pipeline {
     const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
     const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
     const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash) }),
+      this.render("hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash), glossary: this.glossaryForPrompt(snapshot) }),
       isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
     );
     return this.opts.jobs.enqueue({
@@ -2600,7 +2681,7 @@ export class Pipeline {
     if (!card?.pending) throw new Error(`no pending card ${cardId}`);
     const direction = `${card.pending.label}\n${card.pending.why}`;
     const prompt = withReplayMark(
-      this.render("go_deeper", { direction }),
+      this.render("go_deeper", { direction, glossary: this.glossaryForPrompt(snapshot) }),
       isReplayRunner(this.opts.runner) ? { kind: "go-deeper", key: cardId.replace(/^g-/, "") } : undefined,
     );
     ctx?.setPromptSnapshot(prompt);
@@ -2669,7 +2750,6 @@ export class Pipeline {
         (draft.pipeline.stages as Record<string, string>)["go-deeper"] = "done";
       }
     });
-    await this.updateRestatedMapping(reviewId);
     // #122: the fill is applied above; bookkeeping joins the chain.
     await this.finishBookkeeping(reviewId, () => this.ingestTurn(reviewId, { sessionId: forked.session.id, cardId, data }));
     // #122: the fill changed the guide — rebuild the base ahead.
@@ -2688,6 +2768,17 @@ export class Pipeline {
     const plotline = id ? (snapshot.plotlines ?? []).find((p) => p.id === id) : undefined;
     if (!plotline) return "(none assigned yet)";
     return plotline.description ? `${plotline.name} — ${plotline.description}` : plotline.name;
+  }
+
+  /**
+   * Issue #252: the glossary context block for later card-writing turns
+   * (per-hunk jobs, Ask, Go deeper, concept pages). Compact: names +
+   * one-line definitions with the instruction to use those exact terms.
+   * `(no glossary yet)` when the reader named none (ingest-time hunk pass).
+   */
+  private glossaryForPrompt(snapshot: ReviewSnapshot): string {
+    const formatted = formatGlossaryForPrompt(snapshot.glossary ?? []);
+    return formatted === "" ? "(no glossary yet)" : formatted;
   }
 
   private formatHunkForPrompt(snapshot: ReviewSnapshot, fileKey: string, contentHash: string): string {
@@ -2830,36 +2921,6 @@ export class Pipeline {
         byKey.set(key, entry);
       }
     });
-  }
-
-  /**
-   * Recompute the description's "Restated →" mapping (PRD §4.11): paragraph
-   * id → guide block ids whose citations restate it. Derived from the root
-   * page's `desc:` citations; rerun as the guide grows (reader, critic
-   * findings cite description too, go-deeper fills).
-   */
-  private async updateRestatedMapping(reviewId: string): Promise<void> {
-    try {
-      await this.opts.reviews.mutate(reviewId, (draft) => {
-        if (!draft.description) return;
-        const map: Record<string, string[]> = {};
-        const root = draft.pages.find((p) => p.id === "root");
-        for (const card of root?.cards ?? []) {
-          for (const b of card.blocks) {
-            for (const t of citationsOf(b)) {
-              const parsed = parseId(t);
-              if (parsed?.kind === "desc") {
-                (map[parsed.paragraph] ??= []).push(b.id);
-              }
-            }
-          }
-        }
-        for (const k of Object.keys(map)) map[k] = [...new Set(map[k])];
-        draft.description!.restated = map;
-      });
-    } catch {
-      // best-effort
-    }
   }
 
   /**

@@ -506,12 +506,21 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .qtag { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-pill); padding: 0 6px; white-space: nowrap; }
 .confirm { background: var(--sunk); border-radius: var(--radius-6); padding: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 8px; }
 .desc { padding: 16px 20px 40px; font-size: 13.5px; }
+/* #263: the description reads like a guide card — the shared Card with
+   normal margins, so the box never runs into the pane edges. */
+#right .ui-card.desc { margin: 14px 16px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: var(--radius-10); background: var(--surface); }
 .dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
-.desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+.desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; padding: 2px 6px; }
 .desc p, .desc li { margin: 6px 0; }
-.desc .para { border-radius: var(--radius-4); padding: 2px 6px; margin-inline: -6px; transition: background .4s; }
-.desc .back { font-size: 11.5px; color: var(--accent); background: none; border: 0; padding: 0; margin-left: 4px; }
+/* #263: one consistent content inset. Paragraphs, lists and headings share
+   the same left edge (no negative outdent); list markers sit inside the
+   content padding (like guide `.lst` lists), and nested lists indent from
+   it. Two-digit numbers fit in the marker area instead of touching the box. */
+.desc p.para, .desc pre.para { border-radius: var(--radius-4); padding: 2px 6px; margin: 6px 0; transition: background .4s; }
+.desc ul.para, .desc ol.para { border-radius: var(--radius-4); padding: 2px 6px 2px 28px; margin: 6px 0; transition: background .4s; }
+.desc ul.para ul, .desc ul.para ol, .desc ol.para ul, .desc ol.para ol { padding-left: 22px; margin: 6px 0; }
+.desc pre.para { overflow-x: auto; }
 .desc table, .md table { border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
 .desc th, .desc td, .md th, .md td { border: var(--border-width) solid var(--line); padding: 4px 7px; text-align: left; vertical-align: top; }
 .desc th, .md th { background: var(--sunk); font-weight: 600; }
@@ -566,17 +575,25 @@ table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select
    `--lnw`, digit count, on `.dfile`), so code columns start at the same x
    in every hunk instead of sizing per hunk. The widths are floors
    (border-box): the old column also reserves the reopen marker's slot
-   (#189) and the new column the comment icon's, so neither a marker nor
+   (#189, ~18px: the "↪" mark + its padding/margin) and the new column
+   the comment icon's (11px + 3px margin), so neither a marker nor
    an icon can push one hunk's code column sideways. The floors are the
    column widths, which makes the second column's sticky offset exact.
-   Split tables are fixed-layout with identical colgroups already;
-   their old gutter sticks at the edge and the new-side gutter sticks
-   beside it if the table ever scrolls sideways. No `opacity` on these
-   cells: it would blend the whole cell — background included — with
-   the code sliding underneath the sticky gutter. */
-table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 36px); left: 0; }
-table.diff:not(.split) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 36px); }
-table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 46px); }
+   (Issue #261: tightened from +36/+46px to digits + 16px cell padding
+   + exactly the affordance room.) Split tables are fixed-layout with
+   identical colgroups already; their old gutter sticks at the edge and
+   the new-side gutter sticks beside it if the table ever scrolls
+   sideways. No `opacity` on these cells: it would blend the whole
+   cell — background included — with the code sliding underneath the
+   sticky gutter. */
+table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 16px); left: 0; }
+/* Old column (first child when present): digits + padding + the reopen
+   marker's room (~18px). Hidden-old tables have no old column — their
+   first child is the new column, sized by the `.new` rule below. */
+table.diff:not(.split):not(.hide-old) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 34px); }
+table.diff.hide-old:not(.split) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 30px); }
+table.diff:not(.split):not(.hide-old):not(.hide-new) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 34px); }
+table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 30px); }
 table.diff.split td.n:first-child { left: 0; }
 table.diff.split td.n:nth-child(3) { left: 3.6em; }
 table.diff td.n.new { cursor: pointer; }
@@ -780,6 +797,10 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 a.cx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.cx:hover { color: var(--accent); }
 a.cx.pg { text-decoration-style: solid; color: var(--accent); }
+/* Issue #252: glossary term links read like dotted concept links. */
+a.gx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
+a.gx:hover { color: var(--accent); }
+#pop .xdef { max-width: 400px; font-size: 13px; margin: 4px 0; }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: var(--radius-4); padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */

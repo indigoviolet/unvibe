@@ -7,7 +7,7 @@
  * working: the root lives at `/review/:id`, other pages at
  * `/review/:id/page/:pageId` (the route is `/review/:id/*`; see `App.tsx`).
  * Listens for `unvibe:guide-block` (`{ cardId, blockId }` in `detail`,
- * sent by "Restated →" links in the description tab): opens the block's
+ * sent by card links): opens the block's
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";

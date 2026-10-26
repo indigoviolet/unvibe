@@ -31,6 +31,7 @@ import { useReview } from "../../state/store.js";
 import { performAction, performInsertAction } from "../actions.js";
 import { blockThreads } from "../annotations.js";
 import { BlockView } from "../BlockView.js";
+import { linkCardBlocks } from "../glossary.js";
 import { DepthControl } from "../DepthControl.js";
 import { busyForCard, busyForConversation, inflightLabel, isFollowupAnswer, type BusyState } from "../inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../secondOpinion/index.js";
@@ -157,7 +158,7 @@ function AnswerView({
   const showWorking = !!direct || serverWorking || (!!cardBusy && isLatest && !hasWorkingTurn(card));
   const workingLabel =
     direct?.label ??
-    (serverWorking || (isLatest && !hasWorkingTurn(card)) ? (cardBusy?.label ?? fixedTurnLabel(snapshot, card, turn, isFirst)) : "Working…");
+    (serverWorking || (isLatest && !hasWorkingTurn(card)) ? (cardBusy?.label ?? fixedTurnLabel(snapshot, card, turn, isFirst)) : "Working");
   const errorText = turn.error ?? null;
   const noAgent = isNoAgentMessage(errorText);
 
@@ -286,7 +287,7 @@ function AnswerView({
             <span>Still writing…</span>
           </div>
         ) : null}
-        {turn.blocks.map((block) => {
+        {linkCardBlocks(turn.blocks, snapshot?.glossary ?? [], turn.level).map((block) => {
           // Annotations on text inside this answer render under their
           // block exactly like page-card annotations do: threads (open
           // ones plus the pending Ask/Comment composer) via
@@ -357,7 +358,7 @@ function fixedTurnLabel(
   isFirst: boolean,
 ): string {
   if (isFollowupAnswer(snapshot, card)) return inflightLabel("followup");
-  if ((turn.blocks?.length ?? 0) > 0) return "Working…";
+  if ((turn.blocks?.length ?? 0) > 0) return "Working";
   if (turn.question === null) return inflightLabel("explain");
   return isFirst ? inflightLabel("ask") : inflightLabel("reply");
 }
@@ -431,16 +432,23 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
   }
 
   const below = [...(ancestorIds ?? []), expansion.id];
-  // Issue #203: the reply box appears only once the latest turn's answer
-  // has arrived — not while it is being written, and not on a failure
-  // (that turn shows Retry instead).
+  // Issue #271: the reply box stays visible while a *follow-up* turn's
+  // answer is being written (editable, Send disabled with the reason as
+  // its tooltip, draft kept). The #203/#204 rule stands for the first
+  // answer: while it is being written the card shows only its header
+  // and the writing state (no toolbar, no reply box). On a failure the
+  // box stays hidden — that turn shows Retry instead (#270: Retry is
+  // the source of truth, and a draft typed while pending is kept
+  // through it).
   const latest = turns[turns.length - 1];
-  const latestAwaiting =
+  const latestFailed = !!latest && (!!latest.error || !!expansion.error);
+  const latestPending =
     !!latest &&
+    !latestFailed &&
     (((latest.working ?? "") !== "" && latest.working !== null) ||
-      !!latest.error ||
-      !!expansion.error ||
       (latest.blocks.length === 0 && (!!expansion.working || !!cardBusy)));
+  const latestIsFirst = !!latest && turns[0] === latest;
+  const hideBox = latestFailed || (latestPending && latestIsFirst);
   return (
     <Card
       as="section"
@@ -473,7 +481,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           ancestorIds={below}
         />
       ))}
-      {latestAwaiting ? null : (
+      {hideBox ? null : (
         <CardFooter>
         <ReplyBox
           reviewId={reviewId}
@@ -483,6 +491,8 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
           ariaLabel="Ask a follow-up"
           sendLabel="Reply"
           discardLabel="Discard"
+          sendDisabled={latestPending}
+          sendDisabledTip={latestPending ? "Wait for the answer" : undefined}
           onSend={(text) =>
             performAction(reviewId, { kind: "reply", annotationId: expansion.id, message: text }, { toast: false })
           }

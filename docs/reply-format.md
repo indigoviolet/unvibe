@@ -247,7 +247,7 @@ All fields are optional; unknown fields are kept, never rejected. A
 `degraded` line reports what the turn could not do (unreachable tool,
 empty lookup, refused call) and what the reply is weaker for — process
 chatter never belongs in the Markdown body. A `degraded` line with a
-usable body keeps the answer: it shows with a plain-words note while the
+usable body keeps the answer as written with no appended note while the
 raw reason lands on the job for the Debug page; it is never a failure
 when there is content, and only a degraded answer with no usable body
 fails the turn (issues #51, #180). The service never reads the Markdown

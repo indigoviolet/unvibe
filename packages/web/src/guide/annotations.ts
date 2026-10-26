@@ -14,14 +14,24 @@ import { useReview } from "../state/store.js";
 import { anchorMatchesBlock } from "./guideUtils.js";
 
 export type OpenThreadHandler = (threadId: string, blockId: string, opts?: { scroll?: boolean }) => void;
+export type CloseThreadHandler = (threadId: string, blockId: string) => void;
 
 let openHandler: OpenThreadHandler | null = null;
+let closeHandler: CloseThreadHandler | null = null;
 
 /** Threads milestone: register the real open-thread behaviour here. */
 export function onOpenBlockThread(fn: OpenThreadHandler): () => void {
   openHandler = fn;
   return () => {
     if (openHandler === fn) openHandler = null;
+  };
+}
+
+/** Issue #262: the marker toggles, so the close path needs the same seam. */
+export function onCloseBlockThread(fn: CloseThreadHandler): () => void {
+  closeHandler = fn;
+  return () => {
+    if (closeHandler === fn) closeHandler = null;
   };
 }
 
@@ -32,10 +42,16 @@ export function openBlockThread(commentId: string, blockId: string): void {
 
 /**
  * Issue #205: a block's comment marker opens every comment on the block,
- * stacked in order (only the first scrolls into view).
+ * stacked in order (only the first scrolls into view). Issue #262: the
+ * marker is a toggle — when every one of its threads is already open, a
+ * click closes them all instead.
  */
 export function openBlockThreads(commentIds: string[], blockId: string): void {
   commentIds.forEach((id, i) => openHandler?.(id, blockId, { scroll: i === 0 }));
+}
+
+export function closeBlockThreads(commentIds: string[], blockId: string): void {
+  commentIds.forEach((id) => closeHandler?.(id, blockId));
 }
 
 /** All comment annotations anchored on a guide card + block. */

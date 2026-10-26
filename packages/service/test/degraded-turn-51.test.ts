@@ -9,7 +9,7 @@
  * itself — the turn errored or was cancelled, the answer is empty, or
  * a review-tool call failed to connect (one retry on a fresh session).
  * The trailing `degraded` field stays: with a usable body it is kept,
- * recorded on the job and shown with a quiet note; only an empty
+ * recorded on the job and shown as written with no appended note; only an empty
  * degraded answer fails.
  */
 import { describe, expect, it } from "vitest";
@@ -237,7 +237,7 @@ describe("answers are never judged by wording (#180)", () => {
 });
 
 describe("the trailing degraded field (#51, #180)", () => {
-  it("a trailing degraded field with a usable body keeps the answer with a note", { timeout: 90000 }, async () => {
+  it("a trailing degraded field with a usable body keeps the answer with no note", { timeout: 90000 }, async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
@@ -260,10 +260,10 @@ describe("the trailing degraded field (#51, #180)", () => {
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(ann.type).toBe("conversation");
       const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
-      // …the answer shows with the body plus a plain-words note (never
+      // …the answer shows as written with no appended note (never
       // the agent's internal wording on the card).
       expect(JSON.stringify(blocks)).toContain("The host block is described here.");
-      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
+      expect(JSON.stringify(blocks)).not.toContain("Some references in this answer could not be linked to the code.");
       expect(JSON.stringify(blocks)).not.toContain("resolve returned nothing");
       expect(ann.turns?.[0]?.error).toBeFalsy();
     } finally {
@@ -461,7 +461,7 @@ describe("connection-error retry (#51, #180)", () => {
     }
   });
 
-  it("a retry that still reports degraded keeps its usable body", { timeout: 90000 }, async () => {
+  it("a retry that still reports degraded keeps its usable body with no note", { timeout: 90000 }, async () => {
     const FIELD_WITH_BODY = `The host block is described here.\n\n\`\`\`json\n{"degraded": "resolve came back empty"}\n\`\`\`\n`;
     const { agents, mcp } = hittingRunner([CHATTER, FIELD_WITH_BODY]);
     const { app, ctx, id } = await openDemo(agents);
@@ -471,13 +471,13 @@ describe("connection-error retry (#51, #180)", () => {
       const explains = agents.seen.filter((t) => t.includes("## The question\n\nExplain this."));
       expect(explains).toHaveLength(2);
       // The retry's body is usable with an explicit degraded field, so
-      // the answer is kept with the note instead of failing the job.
+      // the answer is kept as written with no appended note instead of failing the job.
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve came back empty");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
       expect(JSON.stringify(blocks)).toContain("The host block is described here.");
-      expect(JSON.stringify(blocks)).toContain("Some references in this answer could not be linked to the code.");
+      expect(JSON.stringify(blocks)).not.toContain("Some references in this answer could not be linked to the code.");
     } finally {
       await app.close();
     }

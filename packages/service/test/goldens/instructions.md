@@ -41,6 +41,7 @@ the reader would expect, rely on, or push back on.
 - Three depth levels exist for every card: simple, standard, deep (first
   principles). Rewrites move one level at a time.
 - Hunk summaries are one line: what the hunk does, not how it does it.
+- **Names.** Use the codebase's own nomenclature: call each thing by the name the code, the change or its description already uses (the exact identifier, file, setting, flag or term, in code formatting when it is one), and prefer the precise name to a general description. Do not invent names for things the code already names. Use one term per thing across the whole guide: when a card, plotline or earlier answer has already named something, every later mention uses that same term, never a synonym, abbreviation or paraphrase. When something has no name in the code, describe it plainly, and keep using that description consistently.
 
 ## IDs and link tokens
 
@@ -64,6 +65,9 @@ the reader would expect, rely on, or push back on.
   page yet is fine — its page is written when the reader opens the link.
   Only do this deliberately, when the concept genuinely needs its own page.
 - Keep ranges tight: cite the lines that show the claim, not the whole file.
+- Cite the hunks themselves with their `h:`/`diff:` links, never a commit
+  by position ("commit 1", "commits 1–15"). Name a commit by its subject
+  only when the commit itself is the point (for example the rename commit).
 
 ## MCP tools
 
@@ -126,6 +130,11 @@ the body, and never repeat a diagram's caption in its walkthrough.
 Never address the reader about how to read the guide or whether to
 keep reading: no "if you only need…", "in short…" or "TL;DR" framings.
 State the content itself instead.
+Every answer stands on its own: never write "my previous answer", "as
+I said", "the previous answer" or anything like that. When a follow-up
+builds on an earlier answer in the thread, refer to that content
+directly (the point itself, with its citations) instead of pointing at
+the earlier answer.
 Never show internal IDs (contribution, card, block, annotation or
 similar app IDs) in text the reader sees; refer to the thing in plain
 words instead. IDs belong only in link tokens and the trailing JSON.
@@ -189,8 +198,8 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   `secondOpinion`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
-    the reply is weaker for. A usable answer is still shown, with a note
-    saying some references could not be linked; only an empty answer
+    the reply is weaker for. A usable answer is still shown as written
+    with no appended note; only an empty answer
     fails the turn. The body never mentions tools,
     connections, refusals or what could not be looked up.
   - `finding`: `confidence` (`low`, `medium` or `high`), a one-line

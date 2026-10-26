@@ -24,14 +24,14 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
+import { canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
 import { hashHunkLines } from "../ingest/hash.js";
 import { uninterestingReason } from "../ingest/uninteresting.js";
 import type { ManifestEntry } from "./runner.js";
-import { createSnapshotLookup, validateReply } from "../validate/index.js";
+import { createSnapshotLookup, validateReply, validateTarget } from "../validate/index.js";
 
 export interface FixtureMeta {
   repo: string;
@@ -181,6 +181,15 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, canonBlocks(c.blocks)),
   );
 
+  // Issue #252: the reader's glossary rides the snapshot (shared term list).
+  const glossaryNormalized = normalizeGlossary(
+    (reader.data?.glossary as { name?: string; definition?: string; citation?: string }[] | undefined) ?? [],
+  );
+  const glossary = glossaryNormalized.terms.map((t) => ({
+    ...t,
+    citation: canonicalizeTarget(t.citation, resolveKey),
+  }));
+
   for (const key of ["flow", "design", "regex", "check"]) {
     const entry = manifest.recordings.find((e) => e.kind === "go-deeper" && e.key === key)!;
     const parsed = parseReply(textOf(entry.file));
@@ -264,39 +273,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // #216: no concept pages are seeded; a concept page is written when
   // its link is opened (concept-page recordings stay for that on-demand fill).
-
-  // "Restated →" mapping (PRD §4.11): description paragraph → guide block
-  // ids whose citations restate it, derived from the root page's `desc:`.
-  const restated: Record<string, string[]> = {};
-  const rootPage = pages.find((p) => p.id === "root")!;
-  const scanTargets = (b: Block): string[] => {
-    switch (b.type) {
-      case "paragraph":
-        return b.citations.map((c) => c.target);
-      case "list":
-        return [...b.citations.map((c) => c.target), ...b.items.flatMap((it) => it.citations.map((c) => c.target))];
-      case "aside":
-        return [...b.citations.map((c) => c.target), ...b.inner.flatMap(scanTargets)];
-      case "table":
-      case "code":
-      case "diagram":
-      case "finding-link":
-      case "comment-link":
-      case "follow-up":
-        return b.citations.map((c) => c.target);
-    }
-  };
-  for (const card of rootPage.cards) {
-    for (const block of card.blocks) {
-      for (const t of scanTargets(block)) {
-        const parsed = parseId(t);
-        if (parsed?.kind === "desc") {
-          restated[parsed.paragraph] ??= [];
-          if (!restated[parsed.paragraph].includes(block.id)) restated[parsed.paragraph].push(block.id);
-        }
-      }
-    }
-  }
 
   // --- annotations (prototype seed()) ----------------------------------
   // Annotation anchors use real file keys; card anchors use card#block IDs.
@@ -447,13 +423,13 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       createdAt: 1760000000000,
     },
     version,
+    ...(glossary.length > 0 ? { glossary } : {}),
     files,
     description: {
       html: rendered.html,
       rev: "1",
       source: "pr",
       editable: false,
-      restated,
     },
     ingest: { status: "ready" },
     pages,
@@ -505,6 +481,28 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     }
     if (report.anchor && !report.anchor.ok) {
       failures.push({ file: entry.file, detail: `bad anchor on ${report.anchor.host}: ${report.anchor.reason}` });
+    }
+  }
+
+  // Issue #252: the reader's glossary citations validate like any other
+  // citation (the stored snapshot carries the canonical targets above).
+  if (glossaryNormalized.dropped.empty > 0 || glossaryNormalized.dropped.invalidCitation > 0) {
+    failures.push({
+      file: "reader.md",
+      detail: `glossary dropped ${glossaryNormalized.dropped.empty} empty, ${glossaryNormalized.dropped.invalidCitation} invalid citations`,
+    });
+  }
+  for (const term of glossary) {
+    const parsed = parseId(term.citation);
+    if (!parsed) {
+      failures.push({ file: "reader.md", detail: `glossary citation does not parse: ${term.citation}` });
+      continue;
+    }
+    const rep = validateTarget(term.citation, lookup);
+    if (rep.status === "unverified") {
+      failures.push({ file: "reader.md", detail: `glossary unverified ${term.citation}: ${rep.reason}` });
+    } else if (rep.status === "repaired") {
+      failures.push({ file: "reader.md", detail: `glossary needs repair ${term.citation} → ${rep.repairedTo}` });
     }
   }
 

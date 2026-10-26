@@ -16,7 +16,7 @@ import type { Pipeline } from "../runner.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
 import type { SharedContextService } from "../../sharedctx/service.js";
-import { findBlock, l4Variables, recordInteraction } from "../../interaction/index.js";
+import { findBlock, l4Variables, mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
 
 export { JOB_PRIORITY };
 export { recordInteraction };
@@ -217,28 +217,24 @@ export function normalizeBlockAnchor(snapshot: ReviewSnapshot, anchor: ActionAnc
 
 /**
  * True when a fill failure must NOT leave a visible error: the annotation
- * was closed or deleted while its job ran (cancel-on-close, PRD §12), or
- * its job was cancelled. Clears the working state and returns true.
- * Promoted links (issue #152) are exempt: opened as a page mid-fill, the
- * failure belongs on the page with its Retry path.
+ * was deleted while its job ran, or its job was explicitly cancelled
+ * (Debug cancel). Clearing is total: the annotation's working state and
+ * the filling turn's working flag, job link and partial blocks all go,
+ * so the card never sticks on "Writing" with no banner and no Retry
+ * (#272). Promoted links (issue #152) are exempt: opened as a page
+ * mid-fill, the failure belongs on the page with its Retry path.
+ *
+ * A card closed while its fill runs is NOT suppressed (PRD §4.7: close
+ * only hides the card, and a failure shows the error with Retry): the
+ * caller records the failure normally so reopening shows the banner
+ * plus Retry.
  */
 export async function suppressFillError(ctx: ActionContext, annotationId: string): Promise<boolean> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = reviews.getSnapshot(reviewId);
   const found = snapshot?.annotations.find((a) => a.id === annotationId);
-  const promoted = found?.type === "link" && !!found?.promotedToPage;
-  if ((!found || !found.open) && !promoted) {
-    // Deleted or closed while filling: clear any working flag, no error.
-    try {
-      await reviews.mutate(reviewId, (draft) => {
-        const ann = (draft.annotations as unknown as { id: string; working?: string | null }[]).find(
-          (a) => a.id === annotationId,
-        );
-        if (ann) ann.working = null;
-      });
-    } catch {
-      // Already deleted: nothing to clear.
-    }
+  if (!found) {
+    // Deleted while filling: nothing left to mark.
     return true;
   }
   const jobId = found.jobId;
@@ -246,12 +242,36 @@ export async function suppressFillError(ctx: ActionContext, annotationId: string
     try {
       if (jobs.get(jobId)?.state === "cancelled") {
         await reviews.mutate(reviewId, (draft) => {
-          const ann = (draft.annotations as unknown as { id: string; working?: string | null; error?: string | null }[]).find(
-            (a) => a.id === annotationId,
-          );
-          if (ann) {
-            ann.working = null;
-            ann.error = null;
+          const ann = (
+            draft.annotations as unknown as {
+              id: string;
+              working?: string | null;
+              error?: string | null;
+              jobId?: string;
+              turns?: {
+                id: string;
+                working?: string | null;
+                error?: string | null;
+                jobId?: string;
+                blocks: unknown[];
+              }[];
+            }[]
+          ).find((a) => a.id === annotationId);
+          if (!ann) return;
+          ann.working = null;
+          ann.error = null;
+          ann.jobId = undefined;
+          for (const turn of ann.turns ?? []) {
+            if (turn.jobId === jobId || (turn.working ?? null) !== null) {
+              turn.working = null;
+              turn.error = null;
+              turn.jobId = undefined;
+              // A stopped fill is not an answer: no partial blocks stay
+              // behind (#270). A stopped promoted turn stays in sync
+              // with the page: its (emptied) blocks still mirror (#152).
+              turn.blocks = [];
+              mirrorPromotedAnswer(draft, turn.id);
+            }
           }
         });
         return true;

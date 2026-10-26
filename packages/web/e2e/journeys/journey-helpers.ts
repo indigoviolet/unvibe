@@ -49,6 +49,32 @@ export async function makeScratchRepo(dir: string): Promise<{ dir: string; headS
   return { dir, headSha: await git(dir, "rev-parse", "HEAD") };
 }
 
+/**
+ * Scratch repo with one two-hunk file over a real gap (issue #265):
+ * base `src/big.py` holds 80 numbered lines; the feature branch changes
+ * line 10 and line 70, so the diff is two hunks around a ~50-line gap of
+ * real, sliceable content (the demo's worktree pads such lines blank, so
+ * expansion cannot run there).
+ */
+export async function makeGapRepo(dir: string): Promise<{ dir: string; headSha: string }> {
+  mkdirSync(path.join(dir, "src"), { recursive: true });
+  await git(dir, "init", "-b", "main");
+  await git(dir, "config", "user.email", "t@example.com");
+  await git(dir, "config", "user.name", "T");
+  const base = Array.from({ length: 80 }, (_, i) => `value_${String(i + 1).padStart(2, "0")} = ${i + 1}`);
+  writeFileSync(path.join(dir, "src", "big.py"), `${base.join("\n")}\n`);
+  await git(dir, "add", ".");
+  await git(dir, "commit", "-m", "base");
+  await git(dir, "checkout", "-b", "feature");
+  const feat = [...base];
+  feat[9] = "value_10 = 1000  # changed";
+  feat[69] = "value_70 = 7000  # changed";
+  writeFileSync(path.join(dir, "src", "big.py"), `${feat.join("\n")}\n`);
+  await git(dir, "add", ".");
+  await git(dir, "commit", "-m", "feature work");
+  return { dir, headSha: await git(dir, "rev-parse", "HEAD") };
+}
+
 /** Finished demo snapshot fixture (issue #257): the same snapshot the
  * bundled demo replays from, seeded straight into the store. Journeys that
  * don't test guide generation start from this instead of waiting for the

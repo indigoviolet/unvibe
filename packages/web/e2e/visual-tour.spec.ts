@@ -29,7 +29,7 @@ import { selectDiffRows, selectText } from "./select-text.js";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -556,6 +556,92 @@ async function checkGutters(page: Page, step: string): Promise<void> {
 }
 
 /**
+ * Issue #261: the unified gutter is at most digits + padding (+ exactly
+ * the affordance room: 11px comment icon + 3px margin on the new side,
+ * ~18px reopen marker on the old side). Added files drop the empty old
+ * column; deleted files drop the new one. Returns the measured widths
+ * (px) so the run logs before/after numbers.
+ */
+async function checkGutterWidth(page: Page, fileKey: string, step: string): Promise<{ old: number; nw: number; digits: number }> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  const info = await page.evaluate((key) => {
+    const file = document.getElementById(`F-${key}`);
+    if (!file) return null;
+    const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
+    // Measure padding on a code-row number cell, not the `xsep` icon
+    // cell (its left padding is 2px, code rows use 8px + 8px).
+    const sample = file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n");
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.fontSize = cs.fontSize;
+      probe.style.fontStyle = cs.fontStyle;
+      probe.style.fontWeight = cs.fontWeight;
+      probe.style.letterSpacing = cs.letterSpacing;
+    }
+    probe.textContent = "0123456789";
+    document.body.appendChild(probe);
+    const digitW = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    let pad = 16;
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+    }
+    let oldMax = 0;
+    let nwMax = 0;
+    for (const t of file.querySelectorAll("table.diff:not(.split)")) {
+      const hideOld = t.classList.contains("hide-old");
+      const hideNew = t.classList.contains("hide-new");
+      for (const tr of t.querySelectorAll("tbody > tr")) {
+        if (tr.classList.contains("xsep")) continue;
+        if ((tr as HTMLElement).dataset.revealed !== undefined) continue;
+        const cells = [...tr.querySelectorAll(":scope > td.n")];
+        if (cells.length === 2 && !hideOld && !hideNew) {
+          oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
+          nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
+        } else if (cells.length === 1 && (hideOld || hideNew)) {
+          const w = cells[0].getBoundingClientRect().width;
+          if (hideOld) nwMax = Math.max(nwMax, w);
+          else oldMax = Math.max(oldMax, w);
+        }
+      }
+    }
+    return {
+      digits,
+      digitW,
+      pad,
+      oldMax,
+      nwMax,
+      hideOld: !!file.querySelector("table.diff.hide-old"),
+      hideNew: !!file.querySelector("table.diff.hide-new"),
+      isNew: file.classList.contains("is-new"),
+      isDeleted: file.classList.contains("is-deleted"),
+    };
+  }, fileKey);
+  expect(info, `${step}: missing #F-${fileKey}`).not.toBeNull();
+  const { digits, digitW, pad, oldMax, nwMax, hideOld, hideNew, isNew } = info!;
+  // Deleted files keep only the old column (no comment affordance there);
+  // added files keep only the new one.
+  if (isNew) expect(hideOld, `${step}: added file must hide the empty old column`).toBe(true);
+  else expect(hideOld, `${step}: modified file must keep both number columns`).toBe(false);
+  expect(hideNew, `${step}: this review has no deleted files`).toBe(false);
+  const tol = 3;
+  if (!hideOld) {
+    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding + marker`).toBeLessThanOrEqual(digits * digitW + pad + 18 + tol);
+    expect(oldMax, `${step}: no old number cells measured`).toBeGreaterThan(0);
+  } else {
+    expect(oldMax, `${step}: hidden old column must measure 0`).toBe(0);
+  }
+  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding + icon`).toBeLessThanOrEqual(digits * digitW + pad + 14 + tol);
+  expect(nwMax, `${step}: no new number cells measured`).toBeGreaterThan(0);
+  console.log(`gutter-261 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
+  return { old: oldMax, nw: nwMax, digits };
+}
+
+/**
  * Generic check (diff scenes, issue #191): on a settled pane nothing
  * animates forever. Any running infinite animation inside the diff
  * pane fails — unless a working indicator (the dots or a spinner) is
@@ -777,6 +863,25 @@ for (const combo of [
     await closeCard(page, guideChild);
     await closeCard(page, seedCard);
 
+    // PR description tab (#263): paragraphs, a bullet list, a numbered
+    // list past 9 items and inline code, in the shared Card. No
+    // "Restated →" links remain.
+    await page.locator('#right [role="tab"]').getByText("PR description").click();
+    await expect(page.locator("#right #d-p1")).toContainText("obs-fold response-header case", { timeout: 15_000 });
+    await expect(page.locator("#right #d-p2")).toContainText("HTTPHeaderDict", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li").nth(9)).toContainText("towncrier", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li")).toHaveCount(12);
+    await expect(page.locator("#right .desc button.back")).toHaveCount(0);
+    await expect(page.locator("#right .desc")).not.toContainText("Restated →");
+    await stepChecks(page, "desc-full");
+    await shot(page, "desc-full", suffix, "Review checklist");
+
+    // Scrolled to the end of the numbered list: two-digit numbers sit
+    // inside the content padding like the single-digit ones.
+    await page.locator("#right ol#d-p6 li").nth(11).scrollIntoViewIfNeeded();
+    await stepChecks(page, "desc-checklist-end");
+    await shot(page, "desc-checklist-end", suffix, "next request");
+
     // Diff, unified.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
@@ -923,6 +1028,37 @@ for (const combo of [
     await stepChecks(page, "diff-split");
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
+
+    // Issue #261 gutter tour: a modified file and an added file in the
+    // narrow pane (the 960 combos run the guide beside the diff, so the
+    // diff pane is narrow with the source pane open), before and after a
+    // sideways scroll (the sticky gutter must hold). Each frame runs the
+    // generic layout checks plus the gutter-width assert.
+    const MOD = "src-urllib3-connection.py";
+    const ADDED = "changelog-1362.bugfix.rst";
+    await page.locator(`[id="F-${MOD}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${MOD}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-modified");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified");
+    await shot(page, "diff-gutter-modified", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-modified-hscroll");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified-hscroll");
+    await shot(page, "diff-gutter-modified-hscroll", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
+    // The added changelog file hides under Hide-uninteresting: reveal it
+    // (later steps assert no hidden counts, so this is safe here).
+    await page.getByRole("button", { name: "Hide uninteresting" }).click();
+    await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-added");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added");
+    await shot(page, "diff-gutter-added", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-added-hscroll");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added-hscroll");
+    await shot(page, "diff-gutter-added-hscroll", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
 
     // Menus: file-type filter, then Reviewed/GitHub filter.
     await page.getByRole("button", { name: "Show file list" }).click({ timeout: 5_000 }).catch(() => {});
@@ -1137,6 +1273,76 @@ for (const combo of [
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
   });
 }
+
+// Issue #265: expanding up lands in the clicked hunk. The demo's worktree
+// pads every line outside the hunks blank, so expansion cannot run there;
+// these frames use a scratch repo with one two-hunk file over a real gap
+// (the J265 journey asserts the placement against the same shape).
+test.describe("visual tour diff expansion up (#265)", () => {
+  let dir265 = "";
+  let data265 = "";
+  let svc265: RunningService | null = null;
+  let review265 = "";
+  let gapLen265 = 0;
+  let gapEnd265 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-repo-"));
+    await makeGapRepo(dir265);
+    data265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-data-"));
+    svc265 = await startService(data265, { agent: "none" });
+    review265 = await createJourneyReview(svc265, dir265);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc265.origin, svc265.token, "GET", `/api/reviews/${review265}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const file = snap.files?.find((f) => f.path === "src/big.py");
+      if (file && file.hunks.length === 2) {
+        gapEnd265 = file.hunks[1].newStart - 1;
+        gapLen265 = gapEnd265 - file.hunks[0].newEnd;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gap review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc265?.stop().catch(() => {});
+    svc265 = null;
+    for (const d of [dir265, data265]) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("visual tour diff expansion up (#265)", async ({ page }) => {
+    if (!svc265) throw new Error("expansion service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const suffix = "1440-light";
+    const BIG = "src-big.py";
+    await page.goto(`${svc265.origin}/review/${review265}?token=${svc265.token}`);
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    const file = page.locator(`[id="F-${BIG}"]`);
+    await expect(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+    const second = file.locator(".dhunk").nth(1);
+    // ^ on the second hunk: the tail reads atop its own code.
+    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
+    await page.mouse.move(20, 400);
+    await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-up");
+    await shot(page, "diff-expand-up", suffix, "Hunk 2 of 2");
+    // ⇞ to the previous hunk: the whole gap reads once, into the
+    // hunk's first line (20 lines already revealed above).
+    await second.getByRole("button", { name: `Show all ${gapLen265 - 20} lines` }).click();
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen265, { timeout: 60_000 });
+    await page.mouse.move(20, 400);
+    await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-full-gap");
+    await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
+  });
+});
 
 // Studio and Console themes (issues #196/#164): one scene set per
 // theme in light and dark at 1440px, applied before first paint
@@ -1724,6 +1930,169 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
     await slow.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #270: a failed Ask follow-up shows the banner with Retry, and
+// the retry lands a clean answer (no raw trailing block, no cut-off
+// start). Own service lifecycle like the writing-state scene above:
+// slow replay, killed mid-answer, restarted fast.
+test("visual tour ask retry (#270)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askretry-"));
+  let svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // One fresh Ask card per theme, so the two kill/restart cycles never
+    // share turn state.
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") {
+        await page.emulateMedia({ colorScheme: "dark" });
+        // Slow the stream again (the light cycle restarted fast): the
+        // follow-up must still be mid-flight at the kill. killHard only —
+        // a graceful stop mid-cycle is not what this scene exercises.
+        svc.killHard();
+        await page.waitForTimeout(500);
+        svc = await startService(dir, {
+          agent: "replay",
+          extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+        });
+      }
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      // Fail the follow-up mid-answer, then restart on the same data dir.
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator(".ans").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      svc.killHard();
+      await page.waitForTimeout(500);
+      svc = await startService(dir, { agent: "replay" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      const shotCard = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(shotCard).toBeVisible({ timeout: 30_000 });
+      const failed = shotCard.locator(".ans").last();
+      await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-failed", `1440-${theme}`, "Couldn't get an answer");
+      // Retry lands the clean answer.
+      await failed.getByRole("button", { name: "Retry" }).click();
+      await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      const retried = shotCard.locator(".exp-b").last();
+      await expect(retried).not.toBeEmpty({ timeout: 60_000 });
+      await expect(retried).not.toContainText('{"contribute"');
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      await shot(page, "ask-retried", `1440-${theme}`, followUp);
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #271: while a follow-up answer is pending, the reply box stays
+// visible and editable (Send disabled with the reason as its tooltip)
+// and the indicator carries the plain label. One frame per theme: the
+// pending turn with a typed draft in the box.
+test("visual tour ask pending draft (#271)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askpending-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator(".ans").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await expect(turn.locator(".working")).toHaveText("Writing answer");
+      // The box stays through the fill: type the next question already.
+      const draft = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(draft).toBeVisible();
+      await draft.fill("And then?");
+      const send = card.getByRole("button", { name: "Reply" });
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-pending", `1440-${theme}`, "And then?");
+      // Let the answer land so the next theme starts settled.
+      await expect(turn.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
     rmSync(dir, { recursive: true, force: true });
   }
 });

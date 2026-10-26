@@ -32,8 +32,19 @@ ai: A header value continued on the next line. [[desc:d-intro]]
 
 Does Requests see the raw value?
 
+## Glossary
+
+## Glossary
+
+Use these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.
+
+- `HTTPHeaderDict` — Headers view.
+
+
 ## Rules
 
+- Use the glossary's exact terms for the things they name, never a
+  synonym, abbreviation or paraphrase.
 - Answer the question about the selected text, directly first, then the
   supporting detail — no longer than the question needs. Do not quote
   the selection or the question back — the app already shows both on

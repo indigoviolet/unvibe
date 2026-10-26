@@ -325,6 +325,11 @@ interface ReviewSnapshotBase {
    */
   plotlines?: Plotline[];
   /**
+   * Issue #252: the reader's glossary (empty/absent = none named yet).
+   * The guide's shared term list; card text links exact matches.
+   */
+  glossary?: import("./glossary.js").GlossaryEntry[];
+  /**
    * Issue #169: the diff's score/plotline filter, remembered with the
    * review. Absent = all hunks (no filtering).
    */
