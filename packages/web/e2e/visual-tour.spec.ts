@@ -865,8 +865,27 @@ for (const combo of [
     await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
     await stepChecks(page, "guide-nested");
     await shot(page, "guide-nested", suffix, "explain");
+    // #273 frames: the in-thread link, collapse-all, and expand-one.
+    const rlink = seedCard.locator('button.rlink[data-replylink]').first();
+    await expect(rlink).toBeVisible({ timeout: 30_000 });
+    await rlink.click();
+    await page.waitForTimeout(800);
+    await stepChecks(page, "thread-replylink");
+    await shot(page, "thread-replylink", suffix, "explain");
+    await page.locator('[data-testid="collapse-threads"]').click();
+    await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "threads-collapsed");
+    await shot(page, "threads-collapsed", suffix, "reply");
+    await page.locator(`button.spike-row[data-row="${seedId}"]`).click();
+    await expect(seedCard).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "thread-expanded");
+    await shot(page, "thread-expanded", suffix, "explain");
     await closeCard(page, seedCard);
     expect(seedId).toBeTruthy();
+    // Collapse-all is global (store): switch it back off so later scenes
+    // start from expanded threads.
+    await page.locator('[data-testid="collapse-threads"]').click();
+    await expect(page.locator('[data-testid="collapse-threads"]')).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
 
     // PR description tab (#263): paragraphs, a bullet list, a numbered
     // list past 9 items and inline code, in the shared Card. No
@@ -894,27 +913,21 @@ for (const combo of [
     await checkTokenContrast(page, "diff-unified");
     await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
-    // Pinned thread + in-thread reply in the diff (flat, #273).
-    // Seeded suggestion threads already sit on this line, so create via
-    // API on a distinct quote to avoid selecting into them.
-    const diffSnap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
-      files: { fileKey: string; path: string }[];
-    };
-    const diffFile = (diffSnap.files ?? []).find((f) => f.path.includes("conn")) ?? (diffSnap.files ?? [])[0];
-    const diffMk = (await apiJson(svc.origin, svc.token, "POST", `/api/reviews/${reviewId}/actions`, {
-      kind: "explain",
-      quote: "_OBSOLETE_FOLD_RE",
-      anchor: { where: "diff-line", fileKey: diffFile.fileKey, line: 82 },
-    })) as { annotationId: string };
-    const diffId = (diffMk as unknown as { annotationId: string }).annotationId;
+    // Pinned thread + in-thread reply in the diff (flat, #273): use the
+    // seeded suggestion thread on this line (already visible under it)
+    // and Explain inside its comment reply — the answer appends there.
+    const sugAll = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string; anchor: { host: { kind: string; fileKey?: string } }; replies: { kind: string; suggested?: boolean }[] }[] }).annotations;
+    const diffId = sugAll.find((a) => a.anchor.host.kind === "diff-line" && String((a.anchor.host as { fileKey?: string }).fileKey ?? "").includes("conn") && a.replies.some((r) => r.kind === "comment" && r.suggested))?.id;
+    if (!diffId) throw new Error("no seeded diff suggestion thread");
     const diffCard = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
-    await expect(diffCard).toBeVisible({ timeout: 15_000 });
-    await expect(diffCard.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
-    await selectText(page, `.dhunk section.ithread[data-thread="${diffId}"] [data-reply] .exp-b`, "fold");
+    await expect(diffCard).toBeVisible({ timeout: 30_000 });
+    await expect(diffCard.locator('[data-reply][data-kind="comment"]').first()).toBeVisible({ timeout: 30_000 });
+    const diffWord = await diffCard.locator('[data-reply][data-kind="comment"]').first().evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "bare");
+    await selectText(page, `.dhunk section.ithread[data-thread="${diffId}"] [data-reply][data-kind="comment"]`, diffWord);
     await page.locator('#selbar [data-act="explain"]').click();
     await expect
       .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
-      .toBeGreaterThanOrEqual(2);
+      .toBeGreaterThanOrEqual(1);
     await stepChecks(page, "diff-nested");
     await shot(page, "diff-nested", suffix, "explain");
     await closeCard(page, diffCard);
@@ -1161,26 +1174,23 @@ for (const combo of [
     await shot(page, "menu-comments", suffix, "On GitHub");
     await page.keyboard.press("Escape");
 
-    // Outbox section with the Markdown export box (#223): mark one
-    // visible suggested comment, then open the menu — This review,
-    // Outbox (with drafts + Copy box) and On GitHub all populated.
-    // The four variants share one review, so an earlier variant may
-    // already have marked every rendered comment (no "Add to Outbox"
-    // left), and at 960 the diff threads can still be mounting when
-    // this step starts. Wait (bounded, with a clear message) for a
-    // toggle in either state, and only click when nothing is marked.
-    const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
-    const inOutbox = page.getByRole("button", { name: "Remove from the Outbox" }).first();
-    await expect
-      .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
-        timeout: 15_000,
-        message: "menu-outbox: no comment Outbox toggle rendered yet (diff threads not mounted)",
-      })
-      .toBeGreaterThan(0);
-    if ((await inOutbox.count()) === 0) {
-      await addToOutbox.click({ timeout: 10_000 });
-      await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
-    }
+    // Outbox section with the Markdown export box (#223): write a fresh
+    // comment on a visible diff line (deterministic: earlier steps close
+    // every thread they open, and seeded threads may sit in folded
+    // hunks), mark it, then open the menu — This review, Outbox (with
+    // drafts + Copy box) and On GitHub all populated.
+    const connLine = page.locator('[id="F-src-urllib3-connection.py"] td.n.new').first();
+    await expect(connLine).toBeVisible({ timeout: 15_000 });
+    await connLine.click();
+    const outboxComposer = page.locator(".dhunk .ithread[data-pending-thread]").first();
+    await expect(outboxComposer).toBeVisible({ timeout: 15_000 });
+    await outboxComposer.locator("textarea").fill("Tour outbox probe.");
+    await outboxComposer.getByRole("button", { name: "Save" }).click();
+    const outboxThread = page.locator('.dhunk section.ithread[data-thread]', { hasText: "Tour outbox probe." }).first();
+    await expect(outboxThread).toBeVisible({ timeout: 30_000 });
+    const addToOutbox = outboxThread.getByRole("button", { name: "Add to Outbox" });
+    const inOutbox = outboxThread.getByRole("button", { name: "Remove from the Outbox" });
+    await expect(inOutbox).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });

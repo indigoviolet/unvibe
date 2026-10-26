@@ -465,6 +465,9 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const successor = successorTarget(thread);
   const suggested = replies.some((r) => r.kind === "comment" && r.suggested === true);
   const suggestedQuestion = replies.some((r) => r.kind === "comment" && r.suggestedQuestion === true);
+  // Outbox toggle only when there is something postable: agent-only
+  // threads carry no comment replies and Submit skips them.
+  const hasCommentReplies = replies.some((r) => r.kind === "comment");
   const commentCards = (snapshot?.annotations ?? []).filter(
     (a) => a.anchor.host.kind === "comment" && a.anchor.host.commentId === thread.id,
   );
@@ -552,7 +555,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         <span className="count" data-count={thread.id}>
           {replies.length} {replies.length === 1 ? "reply" : "replies"}
         </span>
-        {!isNew ? (
+        {!isNew && hasCommentReplies ? (
           <button
             className="ib pr"
             type="button"
