@@ -18,6 +18,7 @@ export {
   setThreadOpen,
   setThreadPost,
   threadPostText,
+  updateFollowupDraft,
   updateReplyBox,
   updateThreadDraft,
   type CreateSuggestedParams,

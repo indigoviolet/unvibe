@@ -291,29 +291,11 @@ export function useDiffExpansionBindings(
     return () => document.removeEventListener("click", onClick);
   }, [reviewId, onOpenPage]);
 
-  const lineSlots = useMemo<LineSlots>(() => {
-    const slots: LineSlots = {};
-    for (const [key, exps] of byLine) {
-      // Issue #204: open cards are pinned inline under their line.
-      const open = exps.filter((a) => a.type === "thread" && a.open);
-      if (open.length === 0) continue;
-      slots[key] = (
-        <>
-          {open.map((e) => (
-            <ThreadView
-              key={e.id}
-              reviewId={reviewId}
-              thread={e}
-              lookupPage={lookupPage}
-              onOpenPage={onOpenPage}
-              onFollowUp={onFollowUp}
-            />
-          ))}
-        </>
-      );
-    }
-    return slots;
-  }, [byLine, reviewId, lookupPage, onOpenPage, onFollowUp]);
+  // Issue #273: diff-line threads render through DiffComments line slots
+  // (one thread component everywhere). These slots stay empty so the same
+  // thread is never rendered twice; marks/expandedLines below still drive
+  // the diff highlight passes.
+  const lineSlots = useMemo<LineSlots>(() => ({}), []);
 
   const expandedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

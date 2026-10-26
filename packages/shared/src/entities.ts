@@ -546,8 +546,10 @@ export interface Thread {
   post: boolean;
   /** Editable draft of the text to post (Outbox view). */
   draft?: string;
-  /** Unsent reply-box content (survives re-renders). */
+  /** Unsent reply-box content (survives re-renders; reviewer comment box). */
   reply?: string | null;
+  /** Unsent Ask follow-up draft (survives re-renders + restart, #271). */
+  followupDraft?: string | null;
   /**
    * The thread's one agent session, created on the first agent reply
    * and reused for every later agent reply in the same thread. After a

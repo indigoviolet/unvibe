@@ -472,6 +472,20 @@ export function setDraftInDraft(
   }
 }
 
+/** Draft helper: unsent Ask follow-up draft (null clears it, #271). */
+export function setFollowupDraftInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  commentId: string,
+  text: string | null | undefined,
+): void {
+  const thread = findThread(draft, commentId);
+  if (text === null || text === undefined) {
+    delete thread.followupDraft;
+  } else {
+    thread.followupDraft = text;
+  }
+}
+
 /** Draft helper: unsent reply-box content (null clears it). */
 export function setReplyBoxInDraft(
   draft: WritableDraft<ReviewSnapshot>,
@@ -661,6 +675,18 @@ export async function updateThreadDraft(
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
     setDraftInDraft(draft, commentId, text);
+  });
+}
+
+/** Set the unsent Ask follow-up draft (null clears it). */
+export async function updateFollowupDraft(
+  store: ReviewStore,
+  reviewId: string,
+  commentId: string,
+  text: string | null | undefined,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    setFollowupDraftInDraft(draft, commentId, text);
   });
 }
 

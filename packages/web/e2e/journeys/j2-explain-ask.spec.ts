@@ -99,8 +99,21 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
+    const beforeAsk = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
+    let cardId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+        const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+        cardId = ids.find((id) => !beforeAsk.includes(id)) ?? null;
+        if (cardId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!cardId) throw new Error("new ask thread did not appear");
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(card.locator(".lk[data-refs]").first()).toBeVisible({ timeout: 30_000 });
 
@@ -117,7 +130,6 @@ test.describe("J2 explain ask follow-up nested", () => {
     // pin/unpin control — and its persisted state says pinned.
     await expect(card).not.toHaveClass(/floating/);
     await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-    const cardId = diffId;
     expect(cardId).toBeTruthy();
     if (!svc) throw new Error("no service");
     const snapRes = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -182,14 +194,14 @@ test.describe("J2 explain ask follow-up nested", () => {
       }
     }
     if (!diffId) throw new Error("new diff thread did not appear");
-    const card = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
+    const cardId: string = diffId;
+    const card = page.locator(`.dhunk section.ithread[data-thread="${cardId}"]`).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
     // Pinned inline in the diff too: no floating overlay, no pin control.
     await expect(card).not.toHaveClass(/floating/);
     await expect(page.locator(".dhunk .exp-float")).toHaveCount(0);
     await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-    const cardId = diffId;
     expect(cardId).toBeTruthy();
 
     // Close collapses to the mark in the diff row; clicking the mark
@@ -336,10 +348,10 @@ test.describe("J2 explain ask follow-up nested", () => {
       const deadline = Date.now() + 60_000;
       for (;;) {
         const cur = await apiJson(svc, "GET", `/api/reviews/${freshId}`);
-        const ann = ((cur.json as { annotations: { id: string; turns?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
+        const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
           (a) => a.id === annId,
         );
-        if ((ann?.turns?.[0]?.blocks.length ?? 0) > 0) break;
+        if ((ann?.replies?.[0]?.blocks.length ?? 0) > 0) break;
         if (Date.now() > deadline) throw new Error("conversation did not fill in time");
         await new Promise((r) => setTimeout(r, 100));
       }

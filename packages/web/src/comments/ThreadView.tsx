@@ -462,6 +462,9 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const threadError = thread.error ?? null;
   // Latest failed agent reply for the thread-level banner (Retry as single source of truth, #270).
   const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && r.error);
+  // #271: while a follow-up is pending, the comment Reply stays disabled
+  // ("Wait for the answer"); the Ask follow-up box keeps its draft.
+  const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
 
   const onRetryThread = (): void => {
     void performAction(reviewId, { kind: "retry", annotationId: thread.id }).catch((err: unknown) => {
@@ -624,22 +627,27 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             discardLabel="Discard"
             rows={isNew ? 3 : 1}
             allowEmptyDiscard={isNew}
+            sendDisabled={!isNew && hasPendingAgent}
+            sendDisabledTip={!isNew && hasPendingAgent ? "Wait for the answer" : undefined}
             onSend={(text) => api.replyComment(reviewId, thread.id, { text })}
             onDiscard={() => (isNew ? api.deleteComment(reviewId, thread.id) : api.updateComment(reviewId, thread.id, { reply: null }))}
           />
-          {!isNew ? (
+          {!isNew && !failedReply ? (
             <ReplyBox
               reviewId={reviewId}
-              annotationId={`${thread.id}:ask`}
-              serverReply={undefined}
+              annotationId={thread.id}
+              serverReply={thread.followupDraft ?? undefined}
               placeholder="Ask a follow-up…"
               ariaLabel="Ask a follow-up"
               sendLabel="Ask"
               discardLabel="Clear"
               rows={1}
               allowEmptyDiscard
+              sendDisabled={hasPendingAgent}
+              sendDisabledTip={hasPendingAgent ? "Wait for the answer" : undefined}
+              persistField="followupDraft"
               onSend={onAskFollowup}
-              onDiscard={() => Promise.resolve()}
+              onDiscard={() => api.updateComment(reviewId, thread.id, { followupDraft: null })}
             />
           ) : null}
         </>

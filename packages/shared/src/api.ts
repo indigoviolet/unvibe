@@ -886,6 +886,8 @@ export interface UpdateCommentRequest {
   open?: boolean;
   /** M6: unsent reply-box content (survives re-renders); null clears it. */
   reply?: string | null;
+  /** Issue #273: unsent Ask follow-up draft (#271); null clears it. */
+  followupDraft?: string | null;
   /** Issue #167: pin a conversation card into the page (conversations only). */
   pinned?: boolean;
 }

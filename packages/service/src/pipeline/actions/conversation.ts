@@ -921,7 +921,10 @@ export async function replyAction(
   // typed reply text, so only the reply path clears.
   await reviews.mutate(reviewId, (draft) => {
     const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    if (target) target.reply = "";
+    if (target) {
+      target.reply = "";
+      delete (target as { followupDraft?: unknown }).followupDraft;
+    }
   });
   const probe = await probeConversationSessionFor(ctx, card);
   const live = probe.continueSessionId !== undefined && !probe.rebuilt;

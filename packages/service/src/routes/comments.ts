@@ -159,7 +159,7 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid comment patch body" });
     }
-    const { post, draft, open, reply: replyBox, pinned } = body;
+    const { post, draft, open, reply: replyBox, followupDraft, pinned } = body as typeof body & { followupDraft?: string | null };
     if (post !== undefined && typeof post !== "boolean") {
       return reply.code(400).send({ error: "post must be a boolean" });
     }
@@ -172,10 +172,13 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (replyBox !== undefined && replyBox !== null && typeof replyBox !== "string") {
       return reply.code(400).send({ error: "reply must be a string or null" });
     }
+    if (followupDraft !== undefined && followupDraft !== null && typeof followupDraft !== "string") {
+      return reply.code(400).send({ error: "followupDraft must be a string or null" });
+    }
     if (pinned !== undefined && typeof pinned !== "boolean") {
       return reply.code(400).send({ error: "pinned must be a boolean" });
     }
-    if (post === undefined && draft === undefined && open === undefined && replyBox === undefined && pinned === undefined) {
+    if (post === undefined && draft === undefined && open === undefined && replyBox === undefined && followupDraft === undefined && pinned === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
     if (!reviews.getSnapshot(id)) return reply.code(404).send({ error: `unknown review ${id}` });
@@ -194,16 +197,26 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           throw new Error(`annotation ${commentId} is not a comment`);
         }
         if ((found.type === "thread" || found.type === "link")) {
-          if (post !== undefined || draft !== undefined || draft === null) {
-            throw new Error(`annotation ${commentId} is not a thread`);
-          }
-          // Issue #167: pinning is conversation-only and stored, so it
-          // survives a reload.
+          // Issue #273: one thread kind — post/draft (Outbox), open,
+          // reply/followupDraft boxes, and pin all apply to threads.
           if (pinned !== undefined) found.pinned = pinned;
+          if (post !== undefined) {
+            (found as Record<string, unknown>).post = post;
+          }
+          if (draft === null) {
+            delete (found as Record<string, unknown>).draft;
+          } else if (draft !== undefined) {
+            (found as Record<string, unknown>).draft = draft;
+          }
           if (replyBox === null) {
-            delete found.reply;
+            delete (found as Record<string, unknown>).reply;
           } else if (replyBox !== undefined) {
-            found.reply = replyBox;
+            (found as Record<string, unknown>).reply = replyBox;
+          }
+          if (followupDraft === null) {
+            delete (found as Record<string, unknown>).followupDraft;
+          } else if (followupDraft !== undefined) {
+            (found as Record<string, unknown>).followupDraft = followupDraft;
           }
           return;
         }
