@@ -53,7 +53,7 @@ function seedSnapshot(): void {
 function workingExpansion(): Annotation {
   return {
     id: "ann_x",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -63,7 +63,7 @@ function workingExpansion(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    replies: [],
     post: false,
     working: "Thinking…",
     turns: [
@@ -83,7 +83,7 @@ function workingExpansion(): Annotation {
 function workingConversation(): Annotation {
   return {
     id: "ann_t",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -93,7 +93,7 @@ function workingConversation(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    replies: [],
     post: false,
     working: "Thinking…",
     turns: [

@@ -63,7 +63,7 @@ function fillingLink(): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
+    replies: [],
     post: false,
     promotedToPage: "p-1",
     promotedTurns: [{ turnId: "ans_1", cardId: "c-1" }],

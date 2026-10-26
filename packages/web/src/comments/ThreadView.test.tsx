@@ -15,10 +15,26 @@ import { ThreadView } from "./ThreadView.js";
 
 const REVIEW_ID = "thread-test";
 
+function mkReply(who: "you" | "agent", text: string, opts: { suggested?: boolean; suggestedQuestion?: boolean } = {}): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`,
+    kind: "comment",
+    who,
+    question: null,
+    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...(opts.suggested ? { suggested: true } : {}),
+    ...(opts.suggestedQuestion ? { suggestedQuestion: true } : {}),
+  };
+}
+
 function thread(over: Partial<Annotation> = {}): Annotation {
   return {
     id: "ann_thread_test",
-    type: "comment",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "central#b1" },
       quotedText: "optional",
@@ -29,7 +45,7 @@ function thread(over: Partial<Annotation> = {}): Annotation {
     },
     open: true,
     pinned: false,
-    messages: [{ who: "you", text: "First message" }],
+    replies: [mkReply("you", "First message")],
     post: false,
     ...over,
   };
@@ -96,7 +112,7 @@ describe("ThreadView reply box", () => {
   });
 
   test("a reply sends through the comments route, never an agent action", async () => {
-    const commenting = thread({ messages: [{ who: "you", text: "Nit" }] });
+    const commenting = thread({ replies: [mkReply("you", "Nit")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     const actionSpy = vi.spyOn(api, "action");
     const replySpy = vi.spyOn(api, "replyComment").mockResolvedValue({ ok: true });
@@ -114,7 +130,7 @@ describe("ThreadView reply box", () => {
   });
 
   test("a new comment offers Save and deletes on Discard", async () => {
-    const fresh = thread({ messages: [], reply: "" });
+    const fresh = thread({ replies: [], reply: "" });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [fresh] });
     const deleteSpy = vi.spyOn(api, "deleteComment").mockResolvedValue({ ok: true });
     render(<ThreadView reviewId={REVIEW_ID} thread={fresh} />);
@@ -129,7 +145,7 @@ describe("ThreadView reply box", () => {
   });
 
   test("comments carry the Outbox control", async () => {
-    const commenting = thread({ messages: [{ who: "you", text: "Nit" }], post: true });
+    const commenting = thread({ replies: [mkReply("you", "Nit")], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     expect(screen.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible();
@@ -138,16 +154,17 @@ describe("ThreadView reply box", () => {
 
 describe("ThreadView ask-about (issue #136)", () => {
   test("asks the agent about the comment text on the comment anchor", async () => {
-    const commenting = thread({ messages: [{ who: "you", text: "Why is this so?" }] });
+    const commenting = thread({ replies: [mkReply("you", "Why is this so?")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     try {
       fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
+      // Issue #273: Ask about a comment appends inside the same thread.
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
         kind: "ask",
         quote: "Why is this so?",
-        anchor: { where: "block", blockId: "central#b1" },
+        threadId: "ann_thread_test",
         message: "Why is this so?",
       });
     } finally {
@@ -156,7 +173,7 @@ describe("ThreadView ask-about (issue #136)", () => {
   });
 
   test("no ask-about without comment text", async () => {
-    const empty = thread({ messages: [] });
+    const empty = thread({ replies: [] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [empty] });
     const actionSpy = vi.spyOn(api, "action");
     render(<ThreadView reviewId={REVIEW_ID} thread={empty} />);
@@ -193,7 +210,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
         position: 82,
         version: 1,
       },
-      messages: [{ who: "ai", text: "Consider a boundary test.", suggested: true }],
+      replies: [mkReply("agent", "Consider a boundary test.", { suggested: true })],
       post: false,
       ...over,
     });
@@ -236,7 +253,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
         kind: "ask",
         quote: "Consider a boundary test.",
-        anchor: { where: "diff-line", fileKey: "conn", line: 82 },
+        threadId: "ann_thread_test",
         message: "Consider a boundary test.",
       });
     } finally {
@@ -245,7 +262,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
   });
 
   test("a user comment keeps its reply box", () => {
-    const commenting = thread({ messages: [{ who: "you", text: "Nit" }] });
+    const commenting = thread({ replies: [mkReply("you", "Nit")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     expect(screen.getByLabelText("Reply")).toBeInTheDocument();
@@ -253,7 +270,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
 
   test("a suggested question is tagged apart from findings, with no reply box", () => {
     const s = suggested({
-      messages: [{ who: "ai", text: "Is this covered?", suggested: true, question: true }],
+      replies: [mkReply("agent", "Is this covered?", { suggested: true, suggestedQuestion: true })],
     });
     seedSuggested(s);
     const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={s} />);

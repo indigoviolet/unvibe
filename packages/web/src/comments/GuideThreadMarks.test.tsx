@@ -19,7 +19,7 @@ const REVIEW_ID = "marks-test";
 function thread(): Annotation {
   return {
     id: "thr_1",
-    type: "comment",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "central#b1" },
       quotedText: "fast path",

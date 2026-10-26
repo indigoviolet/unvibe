@@ -203,6 +203,12 @@ export function buildAnchor(
   if (host.kind === "block") {
     const found = findBlock(snapshot, host.blockId);
     if (!found) throw new Error(`unknown block ${host.blockId}`);
+    // Issue #273: the `ans_…` host form is gone. Selections inside a
+    // thread reply travel as threadId/sourceReplyId, never as a block
+    // anchor — a nested thread is rejected so flat threads stay flat.
+    if (found.cardId.startsWith("ans_")) {
+      throw new Error("selections inside a thread reply need threadId, not a block anchor");
+    }
     const ctx = contextAround(blockText(found.block), quote);
     return {
       // Stored as `<card>#<block>`: block ids repeat across cards (#78).

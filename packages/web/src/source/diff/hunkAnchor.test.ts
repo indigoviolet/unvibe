@@ -106,7 +106,7 @@ describe("hunkAnchor", () => {
         version: 1,
       },
       open: false,
-      messages: [],
+      replies: [],
       post: false,
       promotedToPage: "p-9",
     } as unknown as import("@unvibe/shared").Annotation);

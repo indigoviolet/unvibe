@@ -9,22 +9,24 @@ import {
   isPromotedLink,
 } from "./expansionUtils.js";
 
-function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Turn {
+function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Reply {
   return {
     id: "ans_1",
+    kind: "ask",
+    who: "agent",
     question: null,
     blocks: [],
     level: "standard",
     revision: 1,
     undoStack: [],
     ...over,
-  } as import("@unvibe/shared").Turn;
+  } as import("@unvibe/shared").Reply;
 }
 
 function ann(over: Partial<Annotation>): Annotation {
   return {
     id: "a1",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "b1" },
       quotedText: "q",
@@ -34,9 +36,9 @@ function ann(over: Partial<Annotation>): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    pinned: false,
+    replies: [],
     post: false,
-    note: false,
     ...over,
   } as Annotation;
 }
@@ -56,7 +58,7 @@ describe("conversation card utils", () => {
 
   it("previews the first paragraph", () => {
     const a = ann({
-      turns: [
+      replies: [
         turn({
           blocks: [{ type: "paragraph", id: "b1", text: { standard: "<code>x</code> hello world" }, citations: [] }],
         }),

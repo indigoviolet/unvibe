@@ -55,7 +55,7 @@ function listBlock(): Block {
 function footnote(): Annotation {
   return {
     id: "e1",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "b1" },
       quotedText: "a lost quote",
@@ -65,7 +65,7 @@ function footnote(): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
+    replies: [],
     post: false,
   } as unknown as Annotation;
 }

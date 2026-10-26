@@ -31,10 +31,10 @@ function setAnswerLevel(answerId: string, level: DepthLevel): void {
   useReview.getState().setSnapshot({
     ...snap,
     annotations: snap.annotations.map((a) => {
-      if (a.type !== "conversation") return a;
+      if (a.type !== "thread" && a.type !== "link") return a;
       return {
         ...a,
-        turns: (a.turns ?? []).map((t) => (t.id === answerId ? { ...t, level } : t)),
+        replies: (a.replies ?? []).map((t) => (t.id === answerId ? { ...t, level } : t)),
       };
     }),
   });

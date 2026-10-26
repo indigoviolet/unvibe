@@ -36,17 +36,34 @@ vi.mock("../api/client.js", async () => {
 
 const FILES = [{ fileKey: "appkey", path: "src/app.py", hunks: [] }];
 
+function mkReply(text: string): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  return {
+    id: `ans_${Math.random().toString(36).slice(2, 6)}`,
+    kind: "comment",
+    who: "you",
+    question: null,
+    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+  };
+}
+
 function thread(id: string, text: string, extra: Partial<Annotation> = {}): Annotation {
+  const { messages, replies, ...rest } = extra as unknown as Record<string, unknown>;
+  void messages;
+  const extraReplies = (replies as unknown[] | undefined) ?? [mkReply(text)];
   return {
     id,
-    type: "comment",
+    type: "thread",
     anchor: { host: { kind: "diff-line", fileKey: "appkey", line: 2 }, quotedText: "x = 1" },
     open: true,
     pinned: false,
-    messages: [{ who: "you", text }],
+    replies: extraReplies,
     post: false,
-    ...extra,
-  } as Annotation;
+    ...rest,
+  } as unknown as Annotation;
 }
 
 function guideThread(id: string, text: string): Annotation {
@@ -115,7 +132,7 @@ describe("two tabs", () => {
     thread("t-plain", "Plain review thought"),
     thread("t-outbox", "Outbox thought", { post: true }),
     thread("t-posted", "Posted thought", { post: true, postedAt: 123 }),
-    thread("t-ai", "Suggested tweak", { messages: [{ who: "ai", text: "Suggested tweak", suggested: true }] }),
+    thread("t-ai", "Suggested tweak", { replies: [{ id: "ans_ai1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Suggested tweak" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] }),
   ];
 
   it("opening shows the Comments tab; the Outbox lives on its own tab", () => {

@@ -40,7 +40,7 @@ function file(): ReviewFile {
 function card(open: boolean): Annotation {
   return {
     id: "ann_hunk",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "hunk", fileKey: FILE_KEY, contentHash: HASH },
       quotedText: "",
@@ -50,7 +50,7 @@ function card(open: boolean): Annotation {
       version: 1,
     },
     open,
-    messages: [],
+    replies: [],
     post: false,
     turns: [
       {
@@ -232,7 +232,7 @@ describe("hunk summary activation (issue #138)", () => {
         version: 1,
       },
       open: false,
-      messages: [],
+      replies: [],
       post: false,
       promotedToPage: "p-1",
     } as unknown as Annotation;

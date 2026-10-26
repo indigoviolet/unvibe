@@ -50,7 +50,7 @@ function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[]
 function answerCard(): Annotation {
   return {
     id: "ann_ans",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b-f" },
       quotedText: "Why?",
@@ -60,7 +60,7 @@ function answerCard(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    replies: [],
     post: false,
     working: "Writing answer",
     turns: [
@@ -442,7 +442,7 @@ describe("CardView titles (issue #49)", () => {
     });
     const closed: Annotation = {
       id: "ann_closed",
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "c1#b-p" },
         quotedText: "Draw the Stereo vs mono-mixdown with a very long quote",
@@ -452,7 +452,7 @@ describe("CardView titles (issue #49)", () => {
         version: 1,
       },
       open: false,
-      messages: [],
+      replies: [],
       post: false,
     } as unknown as Annotation;
     seedSnapshot([withPara], [], [closed]);

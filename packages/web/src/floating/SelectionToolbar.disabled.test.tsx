@@ -174,7 +174,7 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
       annotations: [
         {
           id: "ann_sug",
-          type: "comment",
+          type: "thread",
           anchor: {
             host: { kind: "diff-line", fileKey: "conn", line: 82 },
             quotedText: "_OBSOLETE_FOLD_RE",
@@ -231,8 +231,8 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
 function seedConversationCard(): void {
   const card: Annotation = {
     id: "ann_1",
-    type: "conversation",
-    turns: [{ id: "ans_9", question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
+    type: "thread",
+    replies: [{ id: "ans_9", kind: "ask" as const, who: "agent" as const, question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
     anchor: {
       host: { kind: "diff-line", fileKey: "conn", line: 91 },
       quotedText: "code",
@@ -243,7 +243,6 @@ function seedConversationCard(): void {
     },
     open: true,
     pinned: false,
-    messages: [],
     post: false,
   };
   useReview.getState().clear();

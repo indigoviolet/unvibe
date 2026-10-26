@@ -8,14 +8,29 @@ import {
   threadWhereLabel,
 } from "./threads.js";
 
+function mkReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`,
+    kind: "comment",
+    who,
+    question: null,
+    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...(suggested ? { suggested: true } : {}),
+  };
+}
+
 function thread(over: Partial<Annotation> = {}): Annotation {
   return {
     id: "ann_x",
-    type: "comment",
+    type: "thread",
     anchor: { host: { kind: "block", blockId: "c#b" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     pinned: false,
-    messages: [],
+    replies: [],
     post: false,
     ...over,
   };
@@ -23,14 +38,14 @@ function thread(over: Partial<Annotation> = {}): Annotation {
 
 describe("threadPostText", () => {
   test("prefers the Outbox draft", () => {
-    const t = thread({ draft: "draft", messages: [{ who: "you", text: "orig" }] });
+    const t = thread({ draft: "draft", replies: [mkReply("you", "orig")] });
     expect(threadPostText(t)).toBe("draft");
   });
 
   test("falls back to the first user message, then the suggestion", () => {
-    expect(threadPostText(thread({ messages: [{ who: "you", text: "hello" }] }))).toBe("hello");
+    expect(threadPostText(thread({ replies: [mkReply("you", "hello")] }))).toBe("hello");
     expect(
-      threadPostText(thread({ messages: [{ who: "ai", text: "s", suggested: true }] })),
+      threadPostText(thread({ replies: [mkReply("agent", "s", true)] })),
     ).toBe("s");
   });
 });
@@ -39,8 +54,8 @@ describe("pending counts", () => {
   test("posted threads are never pending", () => {
     const snap = {
       annotations: [
-        thread({ id: "a", post: true, messages: [{ who: "you", text: "x" }] }),
-        thread({ id: "b", post: true, postedAt: 1, messages: [{ who: "you", text: "y" }] }),
+        thread({ id: "a", post: true, replies: [mkReply("you", "x")] }),
+        thread({ id: "b", post: true, postedAt: 1, replies: [mkReply("you", "y")] }),
       ],
     } as unknown as ReviewSnapshot;
     expect(outboxThreads(snap).map((t) => t.id)).toEqual(["a"]);

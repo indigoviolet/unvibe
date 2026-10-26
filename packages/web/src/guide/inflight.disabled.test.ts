@@ -159,7 +159,7 @@ describe("entry keys", () => {
   test("answer expansions are detected by their anchor block", () => {
     const answer = {
       id: "ann_ans",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
     } as unknown as Annotation;
     const snap = {
@@ -183,7 +183,7 @@ describe("entry keys", () => {
   test("busyForConversation prefers the anchor entry and labels answers", () => {
     const answer = {
       id: "ann_ans",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
     } as unknown as Annotation;
     const snap = {
@@ -231,7 +231,7 @@ describe("entry keys", () => {
   test("an explain entry stands in for its not-yet-retargeted expansion (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
     } as unknown as Annotation;
     // Bare and qualified spellings both match.
@@ -271,7 +271,7 @@ describe("entry keys", () => {
   test("busyForConversation falls back to the anchor entry with the Explain label (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
     } as unknown as Annotation;
     const snap = { pages: [], annotations: [] } as unknown as ReviewSnapshot;

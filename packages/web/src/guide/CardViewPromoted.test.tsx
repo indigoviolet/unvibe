@@ -52,7 +52,7 @@ function link(turns: Turn[]): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
+    replies: [],
     post: false,
     promotedToPage: "p-mock-1",
     promotedTurns: [{ turnId: "ans_1", cardId: "c-mock-0" }],

@@ -9,7 +9,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import { streamingEnabled } from "./streamedAnswer.js";
 
 const REVIEW_ID = "stream-test";
@@ -30,7 +30,7 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
 function card(over: Record<string, unknown> = {}): Annotation {
   return {
     id: "ann_stream",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -40,7 +40,7 @@ function card(over: Record<string, unknown> = {}): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    replies: [],
     post: false,
     turns: [turn("ans_1")],
     ...over,
@@ -65,9 +65,9 @@ function seedSnapshot(annotations: Annotation[]): void {
 
 function show(c: Annotation): { rerender: (next: Annotation) => void } {
   const renderCard = (card: Annotation): React.JSX.Element => (
-    <ExpansionCard
+    <ThreadView
       reviewId={REVIEW_ID}
-      expansion={card}
+      thread={card}
       lookupPage={() => undefined}
       onOpenPage={() => {}}
       onFollowUp={() => {}}

@@ -483,6 +483,21 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     });
   };
 
+  const onAskAbout = (): void => {
+    const text = threadPostText(thread).trim();
+    if (!text) {
+      toast("Write the comment first, then ask about it");
+      return;
+    }
+    void performAction(
+      reviewId,
+      { kind: "ask", quote: text, threadId: thread.id, message: text } as import("@unvibe/shared").ReviewAction,
+      { toast: false },
+    ).catch((err: unknown) => {
+      toast(`Couldn't ask the agent: ${friendlyError(err)}`);
+    });
+  };
+
   const onAskFollowup = (text: string): Promise<unknown> => api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
 
   const footnoted = !!thread.anchorStale;
@@ -508,6 +523,18 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             onClick={togglePost}
           >
             <Icon name="send" />
+          </button>
+        ) : null}
+        {!isNew && !readOnly ? (
+          <button
+            className="ib"
+            type="button"
+            data-tip="Ask about this"
+            aria-label="Ask about this"
+            data-ask-about={thread.id}
+            onClick={onAskAbout}
+          >
+            <Icon name="spark" />
           </button>
         ) : null}
         <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete"} aria-label="Delete" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
