@@ -77,6 +77,8 @@ test.describe("J279 pi provider", () => {
         PATH: `${binDir}${path.delimiter}${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,
         UNVIBE_FAKE_PI_MODE: "replay",
         UNVIBE_FAKE_PI_FIXTURES: FIXTURES,
+        // The fake reports its version from here; 1.4.0 meets the minimum.
+        UNVIBE_FAKE_PI_VERSION: "1.4.0",
         UNVIBE_FAKE_PI_MODELS: JSON.stringify([{ provider: "openai-codex", id: "gpt-fake-1", name: "Fake 1" }]),
         UNVIBE_FAKE_PI_THINKING: JSON.stringify(["low", "high"]),
       },
@@ -86,7 +88,16 @@ test.describe("J279 pi provider", () => {
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     await plain?.stop().catch(() => {});
-    for (const d of [binDir, blockedDir, dataDir, plainDir, scratchHome]) rmSync(d, { recursive: true, force: true });
+    for (const d of [binDir, blockedDir, dataDir, plainDir]) rmSync(d, { recursive: true, force: true });
+    // Scratch HOME last, with retries: version probes of the real
+    // claude/codex binaries (diagnostics enumerates every PATH entry)
+    // can flush first-run files asynchronously after the probe exits,
+    // racing a single rm (ENOTEMPTY). Anything still present afterwards
+    // fails loudly below via the per-run temp guard.
+    for (let i = 0; i < 5 && existsSync(scratchHome); i++) {
+      rmSync(scratchHome, { recursive: true, force: true });
+      if (existsSync(scratchHome)) await new Promise((r) => setTimeout(r, 1000));
+    }
   });
 
   test("providers list pi; settings pickers offer it with models and effort; doctor reports it", async ({ page }) => {
