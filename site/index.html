@@ -3,50 +3,137 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Unvibe reads a branch or pull request with you: a guide with links to the exact code, beside the diff. Install it, then open your local instance." />
-<title>Unvibe — understand the change before you review it</title>
+<meta name="description" content="Unvibe reads a branch or pull request with you, using your Claude Code or Codex subscription. Install it, then open your local instance." />
+<title>Unvibe — vibe to code, unvibe to understand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" />
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-<header class="wrap">
-<p class="kicker">Unvibe</p>
-<h1>Understand the change before you review it</h1>
-<p class="lede">Unvibe reads a branch or pull request with you. It restates the change as a guide with links to the exact code, shows the diff beside it, answers questions anchored to the text, and submits review comments to GitHub when you choose.</p>
-<p class="open"><a class="button" href="http://unvibe.localhost:4517">Open Unvibe</a></p>
-<p class="hint">Opens your Unvibe running on this machine — nothing here talks to it and this page never sees your token. If nothing answers, <a href="#if-nothing-answers">see below</a>.</p>
+<div class="watermark" aria-hidden="true">
+<svg viewBox="0 0 640 640" role="presentation">
+<g fill="none" stroke="currentColor" stroke-width="3">
+<circle cx="320" cy="320" r="248" />
+<!-- longitudes -->
+<ellipse cx="320" cy="320" rx="248" ry="248" />
+<ellipse cx="320" cy="320" rx="186" ry="248" />
+<ellipse cx="320" cy="320" rx="124" ry="248" />
+<ellipse cx="320" cy="320" rx="62" ry="248" />
+<!-- latitudes -->
+<ellipse cx="320" cy="320" rx="248" ry="62" />
+<ellipse cx="320" cy="320" rx="248" ry="124" />
+<ellipse cx="320" cy="320" rx="248" ry="186" />
+<ellipse cx="320" cy="220" rx="196" ry="40" />
+<ellipse cx="320" cy="420" rx="196" ry="40" />
+<!-- equator + tropics -->
+<line x1="72" y1="320" x2="568" y2="320" />
+<line x1="100" y1="258" x2="540" y2="258" />
+<line x1="100" y1="382" x2="540" y2="382" />
+</g>
+<g fill="currentColor" aria-hidden="true">
+<!-- mirror sparkles -->
+<path d="M128 128l6 16 16 6-16 6-6 16-6-16-16-6 16-6z" />
+<path d="M520 150l5 13 13 5-13 5-5 13-5-13-13-5 13-5z" />
+<path d="M540 470l6 16 16 6-16 6-6 16-6-16-16-6 16-6z" />
+<path d="M112 452l4 11 11 4-11 4-4 11-4-11-11-4 11-4z" />
+<circle cx="320" cy="72" r="7" />
+</g>
+</svg>
+</div>
+
+<header class="wrap site-head">
+<a class="github-btn" href="https://github.com/indigoviolet/unvibe">
+<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+<span>GitHub</span>
+</a>
 </header>
 
 <main class="wrap">
-<figure>
-<img src="./screenshot-guide.png" alt="The Unvibe guide beside the diff: cards restating the change on the left, the pull request diff on the right" width="1096" height="700" />
-<figcaption>The guide beside the diff, on the bundled demo review.</figcaption>
-</figure>
+<section class="hero">
+<h1>
+<span class="line"><span class="wm"><span class="vibe">vibe</span></span> <span class="conn">to code.</span></span>
+<span class="line"><span class="wm"><span class="un">un</span><span class="vibe">vibe</span></span> <span class="conn">to understand.</span></span>
+</h1>
+<p class="lede">Unvibe reads a branch or pull request with you, using your Claude Code or Codex subscription.</p>
 
-<h2 id="install">Install</h2>
-<p>You need Node 24 or newer, <code>git</code>, and <code>gh</code> logged in (for pull requests and submitting; local branches work without it). For the guide itself, the <code>claude</code> and/or <code>codex</code> command-line tools, installed and logged in. Diagrams need the <code>d2</code> program; without it everything else works. Unvibe runs on macOS and Linux.</p>
+<div class="install" id="install">
+<div class="install-code">
 <pre><code>npm install -g github:indigoviolet/unvibe#release
+unvibe setup
 unvibe open</code></pre>
-<p>After installing, run <code>unvibe setup</code> once: it starts the service at every login and places the <code>unvibe://</code> link handler. <code>unvibe open</code> prints a link with your token — open it once to connect the browser, then bookmark the plain address:</p>
-<pre><code>http://unvibe.localhost:4517</code></pre>
-<p>The bookmark keeps working across browser restarts.</p>
+<button class="copy" id="copyBtn" type="button">Copy</button>
+</div>
+<p class="req">Needs macOS or Linux with Node 24+, git, gh, and the claude or codex CLI (d2 optional for diagrams).</p>
+</div>
+</section>
 
-<h2 id="if-nothing-answers">If nothing answers</h2>
-<p>The service is not running. Start it with <code>unvibe start</code>, or run <code>unvibe setup</code> so it starts at every login. If the address itself does not resolve — Safari may not turn <code>*.localhost</code> names into addresses — run <code>unvibe open</code> instead, which opens the numeric address. For anything else, run <code>unvibe doctor</code>, or open Settings → Environment in the app.</p>
-
-<h2 id="update">Update</h2>
-<p>Install again, or switch channels from inside the app:</p>
-<pre><code>npm install -g github:indigoviolet/unvibe#release
-unvibe update &lt;channel&gt;</code></pre>
-
-<h2 id="uninstall">Uninstall</h2>
-<pre><code>unvibe stop
-unvibe setup --uninstall
-npm uninstall -g unvibe</code></pre>
-<p>This keeps your reviews on disk. To remove those too, delete the data folder, <code>~/.local/share/unvibe</code>.</p>
+<section class="features" aria-label="Features">
+<div class="feat">
+<h2>Start with the story</h2>
+<p>Open a PR or branch and get a guide that restates the change as linked pages: the idea first, then the decisions and alternatives, each tied to the exact lines.</p>
+</div>
+<div class="feat">
+<h2>Keep asking why</h2>
+<p>Select any phrase to explain it or ask a follow-up. Answers land anchored to the text and build on earlier pages instead of starting over.</p>
+</div>
+<div class="feat">
+<h2>Untangle the plotlines</h2>
+<p>Follow concepts, data flow and findings across cards and diagrams, with depth controls and a second opinion when a claim needs pressure-testing.</p>
+</div>
+<div class="feat">
+<h2>Review in your own voice</h2>
+<p>Leave notes anywhere, collect them in the Outbox, and submit once as a single GitHub review — or copy them as Markdown on any review.</p>
+</div>
+<div class="feat">
+<h2>Use the subscriptions you have</h2>
+<p>Unvibe drives your own Claude Code and Codex logins through their CLIs. No new account, no separate API billing to set up.</p>
+</div>
+<div class="feat">
+<h2>Local, no middleman</h2>
+<p>The service runs on your machine and talks only to loopback. Your reviews stay on your disk, and nothing reaches GitHub until you submit.</p>
+</div>
+</section>
 </main>
 
 <footer class="wrap">
 <p>Unvibe is a local reader for code changes. Source and open work: <a href="https://github.com/indigoviolet/unvibe">github.com/indigoviolet/unvibe</a>.</p>
 </footer>
+
+<script>
+(function () {
+  var btn = document.getElementById("copyBtn");
+  if (!btn) return;
+  var text = [
+    "npm install -g github:indigoviolet/unvibe#release",
+    "unvibe setup",
+    "unvibe open"
+  ].join("\n");
+  btn.addEventListener("click", function () {
+    function done() {
+      var old = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(function () { btn.textContent = old; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    } else {
+      fallback();
+    }
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+      done();
+    }
+  });
+})();
+</script>
 </body>
 </html>
