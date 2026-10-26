@@ -1040,10 +1040,17 @@ export function StartPage(): React.JSX.Element {
     effectiveAuthor !== AUTHOR_ALL ? `No ${noun} by ${effectiveAuthor}.` : null;
 
   return (
-    <div className="app">
+    <div className="app start">
       <Toast />
       <Tooltip />
       <ScreenTopBar showBadge />
+      {/* Brain/disco-ball behind the start screen's content (issue #281,
+          variant A Watermark): #275's faint, tilted, centred, fixed
+          watermark. Static and pointer-transparent; the top bar and the
+          content below sit above it. */}
+      <div className="start-watermark" aria-hidden="true">
+        <img src="/disco-ball.svg" alt="" />
+      </div>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
