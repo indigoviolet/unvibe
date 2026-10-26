@@ -1,5 +1,5 @@
 /**
- * AgentRunner factory (M3 pipeline + ACP default).
+ * AgentRunner factory (M3 pipeline + ACP default + pi when detected).
  *
  * Runner selection:
  * - `UNVIBE_AGENT=replay` uses the recorded-session runner over
@@ -15,7 +15,10 @@
  *   the review mid-test.
  * - The default (unset or anything else) is the real ACP runner
  *   (`src/agent/acp/`, via `createAcpRunner()`): one subprocess per
- *   provider (claude/codex), multiplexing all sessions.
+ *   provider (claude/codex), multiplexing all sessions. When a `pi` binary
+ *   is detected on PATH (issue #279), the factory returns a composite that
+ *   routes claude/codex to ACP unchanged and `pi` to the native pi runner
+ *   (`src/agent/pi/`, `pi --mode rpc` child per session).
  *
  * Provider + model per role come from settings (main, small, second
  * opinion); the pipeline passes them to `runner.start({provider, model,
@@ -35,6 +38,8 @@ import { NoAgentRunner } from "./none.js";
 import { ReplayAgentRunner } from "../replay/runner.js";
 import { createAcpRunner } from "./acp-runner.js";
 import { assertLiveAgentAllowed } from "./live-guard.js";
+import { CompositeAgentRunner, PiAgentRunner } from "./pi/index.js";
+import { isPiAvailable } from "./pi/detect.js";
 
 export interface CreateRunnerOptions {
   env?: NodeJS.ProcessEnv;
@@ -117,7 +122,15 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   // start real agents and spend tokens, so it fails loudly unless the
   // product entry or a test:live:* task set UNVIBE_ALLOW_LIVE_AGENT=1.
   assertLiveAgentAllowed(env);
-  return createAcpRunner({ env });
+  const acp = createAcpRunner({ env });
+  // Issue #279: when a `pi` binary is detected, `pi` is offered as a
+  // provider for OpenAI/Codex models through the native pi runner; claude
+  // and codex keep going through ACP unchanged. Without pi the factory
+  // returns the ACP runner exactly as before.
+  if (isPiAvailable({ env })) {
+    return new CompositeAgentRunner(acp, new PiAgentRunner({ env }));
+  }
+  return acp;
 }
 
 /** True when the runner serves recordings (replay/demo path). */

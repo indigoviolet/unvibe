@@ -12,6 +12,8 @@
  *   offer), otherwise the full updated settings.
  * - `GET /api/models?provider=:id` — models the provider offers (live, or
  *   the static fallback offline).
+ * - `GET /api/providers` — providers the pickers offer (issue #279):
+ *   `["claude", "codex"]`, plus `"pi"` only when its binary is detected.
  * - `GET /api/thinking?provider=:id` — thinking levels the provider's
  *   adapter offers (issue #172; empty options with no live adapter, so the
  *   UI offers Default only).
@@ -107,8 +109,20 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     return res.settings;
   });
 
-  app.get("/api/models", async (req, reply) => {
-    if (!deps.models) return reply.code(501).send(TODO);
+  app.get("/api/providers", async () => {
+    if (!deps.models) return { providers: ["claude", "codex"] };
+    const providers = deps.models.providers;
+    if (typeof providers !== "function") return { providers: ["claude", "codex"] };
+    try {
+      const list = await providers.call(deps.models);
+      if (Array.isArray(list) && list.length > 0) return { providers: list };
+    } catch {
+      // fall through to the static pair
+    }
+    return { providers: ["claude", "codex"] };
+  });
+
+  app.get("/api/models", async (req, reply) => {    if (!deps.models) return reply.code(501).send(TODO);
     const q = req.query as Record<string, string | undefined>;
     const provider = q["provider"];
     if (!provider) return reply.code(400).send({ error: "missing ?provider=" });
