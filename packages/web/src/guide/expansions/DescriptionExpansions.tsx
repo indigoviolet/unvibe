@@ -9,12 +9,10 @@
  * - Promoted links highlight as page links (`a.cx.pg`).
  */
 import { useEffect, useState } from "react";
-import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
-import { ThreadView } from "../../comments/ThreadView.js";
 import { isAnchorStale } from "./expansionUtils.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import type { Page } from "@unvibe/shared";
@@ -42,7 +40,7 @@ interface Props {
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
 }
 
-export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpenPage, onFollowUp }: Props) {
+export function DescriptionExpansions({ reviewId, paragraphId }: Props) {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const [, setTick] = useState(0);
 
@@ -164,20 +162,9 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
     return () => document.removeEventListener("click", onClick);
   }, [reviewId]);
 
-  if (open.length === 0) return null;
-  return (
-    <>
-      {open.map((e) => (
-        <div className="dann" key={e.id}>
-          <ThreadView
-            reviewId={reviewId}
-            thread={e as Thread}
-            lookupPage={lookupPage}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        </div>
-      ))}
-    </>
-  );
+  // Issue #273: description threads render in DescriptionView itself (one
+  // thread component everywhere). This slot stays empty so the same thread
+  // is never rendered twice; the mark pass above still drives highlights.
+  void open;
+  return null;
 }
