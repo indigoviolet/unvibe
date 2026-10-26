@@ -326,9 +326,12 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
     return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
   }, [cardId, blockId]);
 
+  const collapseAll = useReview((s) => s.collapseAll);
+  const expandedThreads = useReview((s) => s.expandedThreads);
+  const setThreadExpanded = useReview((s) => s.setThreadExpanded);
   const threads = (annotations ?? []).filter(
     (a): a is Annotation =>
-      a.replies.some((r) => r.kind === "comment") &&
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
       a.open,
@@ -353,9 +356,19 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   if (!pending && threads.length === 0 && !placeholder) return null;
   return (
     <>
-      {threads.map((t) => (
-        <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
-      ))}
+      {threads.map((t) => {
+        const collapsed = collapseAll && !expandedThreads[t.id];
+        return (
+          <ThreadView
+            key={t.id}
+            reviewId={reviewId}
+            thread={t}
+            readOnly={readOnly}
+            collapsed={collapsed}
+            onExpand={() => setThreadExpanded(t.id, true)}
+          />
+        );
+      })}
       {placeholder ? <WorkingPlaceholder label={inflightLabel(placeholder.kind)} /> : null}
       {pending && !readOnly ? (
         <NewThreadComposer
@@ -366,6 +379,8 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           kind={pending.kind}
           initialText={pending.initialText}
           offsets={pending.offsets}
+          threadId={pending.threadId}
+          sourceReplyId={pending.sourceReplyId}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);

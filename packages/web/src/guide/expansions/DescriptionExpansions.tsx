@@ -14,7 +14,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import { isAnchorStale } from "./expansionUtils.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import type { Page } from "@unvibe/shared";
@@ -169,9 +169,9 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
     <>
       {open.map((e) => (
         <div className="dann" key={e.id}>
-          <ExpansionCard
+          <ThreadView
             reviewId={reviewId}
-            expansion={e as Annotation}
+            thread={e as Annotation}
             lookupPage={lookupPage}
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}

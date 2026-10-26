@@ -15,7 +15,6 @@ import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { ThreadView } from "../../comments/ThreadView.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
-import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
 import { useReview } from "../../state/store.js";
 import "./file.css";
 
@@ -179,7 +178,7 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
               </div>
               {openCards.map((a) => (
                 <div className="cf-slot" key={a.id}>
-                  <ExpansionCard reviewId={reviewId} expansion={a} lookupPage={lookupPage} onOpenPage={onOpenPage} onFollowUp={onFollowUp} />
+                  <ThreadView reviewId={reviewId} thread={a} lookupPage={lookupPage} onOpenPage={onOpenPage} onFollowUp={onFollowUp} />
                 </div>
               ))}
               {openThreads.map((a) => (

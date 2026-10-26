@@ -51,6 +51,26 @@ function RecheckStatus({ page }: { page: Page }) {
   );
 }
 
+/** Issue #273: collapse-all threads control in the guide pane header. */
+function CollapseThreadsButton(): React.JSX.Element {
+  const collapseAll = useReview((s) => s.collapseAll);
+  const setCollapseAll = useReview((s) => s.setCollapseAll);
+  return (
+    <button
+      type="button"
+      className="ib spike-collapse-all"
+      data-testid="collapse-threads"
+      data-tip={collapseAll ? "Expand all threads" : "Collapse all threads"}
+      aria-label={collapseAll ? "Expand all threads" : "Collapse all threads"}
+      aria-pressed={collapseAll}
+      onClick={() => setCollapseAll(!collapseAll)}
+    >
+      <Icon name={collapseAll ? "unfold" : "fold"} />
+      <span className="spike-collapse-label">{collapseAll ? "Expand threads" : "Collapse threads"}</span>
+    </button>
+  );
+}
+
 /** Display form of a page title: the default shows as "Guide". */
 function displayTitle(title: string): string {
   return isDefaultGuideTitle(title) ? DEFAULT_GUIDE_TITLE : title;
@@ -305,6 +325,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
         <h1 className="title">{rootTitle}</h1>
+        <CollapseThreadsButton />
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />

@@ -21,17 +21,20 @@ interface Props {
   reviewId: string;
   anchor: ActionAnchor;
   quote: string;
-  /** Comment (no agent reply) or Ask (usual conversation card). */
+  /** Comment (no agent reply) or Ask (usual thread). */
   kind: "comment" | "ask";
   /** Prefilled text (issue #135: a Comment from an agent answer quotes the selection). */
   initialText?: string;
   /** Issue #166: the selection's offsets within its host's text, when recorded. */
   offsets?: { start: number; end: number };
+  /** Issue #273: Ask inside a thread appends there instead of starting a new one. */
+  threadId?: string;
+  sourceReplyId?: string;
   onDiscard: () => void;
   onCreated: (id: string) => void;
 }
 
-export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, offsets, onDiscard, onCreated }: Props) {
+export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, offsets, threadId, sourceReplyId, onDiscard, onCreated }: Props) {
   const [text, setText] = useState(initialText ?? "");
   const [sending, setSending] = useState(false);
   // Set once the question/comment is sent: annotation ids already here, so
@@ -69,11 +72,12 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
         reviewId,
         {
           kind: "ask",
-          anchor,
           quote,
           message: value,
-          ...(offsets ? { offsets } : {}),
-        },
+          ...(threadId ? { threadId } : { anchor }),
+          ...(sourceReplyId ? { sourceReplyId } : {}),
+          ...(offsets && !threadId ? { offsets } : {}),
+        } as import("@unvibe/shared").ReviewAction,
         { toast: false },
       )
         .then((res) => {

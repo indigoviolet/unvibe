@@ -14,7 +14,7 @@ import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { ExpansionCard } from "./expansions/ExpansionCard.js";
+import { ThreadView } from "../comments/ThreadView.js";
 import { isClosedExpansion, isOpenExpansion } from "./expansions/expansionUtils.js";
 import { RichText } from "./RichText.js";
 import { Card as UiCard } from "../ui/index.js";
@@ -76,10 +76,10 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
           {expansionsForBlock(annotations, DOCUMENT_CARD_ID, titleBlock.id)
             .filter(isOpenExpansion)
             .map((e) => (
-              <ExpansionCard
+              <ThreadView
                 key={e.id}
                 reviewId={reviewId}
-                expansion={e}
+                thread={e}
                 lookupPage={lookupPage}
                 onOpenPage={onOpenPage}
                 onFollowUp={() => {}}
@@ -110,10 +110,10 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
               )}
               <GuideBlockThreads reviewId={reviewId} cardId={DOCUMENT_CARD_ID} blockId={db.id} />
               {open.map((e) => (
-                <ExpansionCard
+                <ThreadView
                   key={e.id}
                   reviewId={reviewId}
-                  expansion={e}
+                  thread={e}
                   lookupPage={lookupPage}
                   onOpenPage={onOpenPage}
                   onFollowUp={() => {}}

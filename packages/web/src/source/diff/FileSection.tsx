@@ -31,7 +31,7 @@ import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
-import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import {
   fileStats,
   groupHunks,
@@ -449,9 +449,9 @@ function HunkCard({
         // conversation card replaces the idle text directly (no `.fcard`
         // around the card's own bordered section).
         <>
-          <ExpansionCard
+          <ThreadView
             reviewId={reviewId}
-            expansion={hunkCard}
+            thread={hunkCard}
             lookupPage={lookupPage}
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}

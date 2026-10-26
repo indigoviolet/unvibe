@@ -30,7 +30,7 @@ import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
-import { ExpansionCard } from "./expansions/ExpansionCard.js";
+import { ThreadView } from "../comments/ThreadView.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
@@ -204,16 +204,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
         />
         <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
-        {open.map((e) => (
-          <ExpansionCard
-            key={e.id}
-            reviewId={reviewId}
-            expansion={e}
-            lookupPage={lookupPage}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        ))}
       </Fragment>
     );
   });

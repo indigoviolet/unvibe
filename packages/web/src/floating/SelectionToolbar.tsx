@@ -64,8 +64,11 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** Comment (no agent reply) or Ask (usual conversation card). */
+  /** Comment (no agent reply) or Ask (usual thread). */
   kind: "comment" | "ask";
+  /** Issue #273: Ask inside a thread appends there instead of starting a new one. */
+  threadId?: string;
+  sourceReplyId?: string;
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
   /**
@@ -349,6 +352,9 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /** Issue #273: selection inside a thread reply — Explain/Ask appends there. */
+  threadId?: string;
+  sourceReplyId?: string;
   /**
    * Issue #166: the selection's character offsets within its host's
    * text, recorded at the moment of selection (absent when unrecordable).
@@ -647,6 +653,11 @@ export function SelectionToolbar() {
             : undefined;
         // #81: same widening for file-tab selections.
         const codeRange = host.anchor.where === "code" ? codeRangeForSelection(sel) : null;
+        // Issue #273: selection inside a thread reply appends there.
+        const replyEl = (anchorEl as HTMLElement).closest?.("[data-reply]") as HTMLElement | null;
+        const threadEl = (anchorEl as HTMLElement).closest?.("[data-thread]") as HTMLElement | null;
+        const inThreadId = threadEl?.dataset.thread ?? (threadEl?.id ?? "");
+        const inReplyId = replyEl?.dataset.reply ?? "";
         setPending({
           quote,
           anchor:
@@ -655,6 +666,7 @@ export function SelectionToolbar() {
               : codeRange && host.anchor.where === "code" && codeRange.end > host.anchor.line
                 ? { ...host.anchor, endLine: codeRange.end }
                 : host.anchor,
+          ...(inThreadId ? { threadId: inThreadId, ...(inReplyId ? { sourceReplyId: inReplyId } : {}) } : {}),
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),
@@ -782,15 +794,16 @@ export function SelectionToolbar() {
     }
     // The in-flight entry (keyed by anchor) is set synchronously, so a
     // placeholder shows where the explanation will land before the
-    // request returns.
+    // request returns. Inside a thread the answer appends there (#273).
     performAction(
       reviewId,
       {
         kind: "explain",
         quote: current.quote,
-        anchor: current.anchor,
-        ...(current.offsets ? { offsets: current.offsets } : {}),
-      },
+        ...(current.threadId ? { threadId: current.threadId } : { anchor: current.anchor }),
+        ...(current.sourceReplyId ? { sourceReplyId: current.sourceReplyId } : {}),
+        ...(current.offsets && !current.threadId ? { offsets: current.offsets } : {}),
+      } as import("@unvibe/shared").ReviewAction,
       { toast: false },
     )
       .then((res) => {
@@ -815,6 +828,25 @@ export function SelectionToolbar() {
         openPromotedPage(promoted);
         return;
       }
+    }
+    // Issue #273: Ask inside a thread appends there; Comment keeps its remap.
+    if (kind === "ask" && (current as { threadId?: string }).threadId) {
+      const reviewId = useReview.getState().snapshot?.review.id;
+      if (!reviewId) {
+        toast("The review is still loading");
+        return;
+      }
+      const tid = (current as { threadId?: string }).threadId as string;
+      const src = (current as { sourceReplyId?: string }).sourceReplyId;
+      requestNewThread({
+        anchor: current.anchor,
+        quote: current.quote,
+        kind,
+        ...(current.offsets ? { offsets: current.offsets } : {}),
+        ...( { threadId: tid } as unknown as Record<string, unknown>),
+        ...(src ? ({ sourceReplyId: src } as unknown as Record<string, unknown>) : {}),
+      } as unknown as import("./SelectionToolbar.js").NewThreadRequest);
+      return;
     }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {

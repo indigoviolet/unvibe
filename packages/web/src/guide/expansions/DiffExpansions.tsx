@@ -20,7 +20,7 @@ import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
@@ -300,10 +300,10 @@ export function useDiffExpansionBindings(
       slots[key] = (
         <>
           {open.map((e) => (
-            <ExpansionCard
+            <ThreadView
               key={e.id}
               reviewId={reviewId}
-              expansion={e}
+              thread={e}
               lookupPage={lookupPage}
               onOpenPage={onOpenPage}
               onFollowUp={onFollowUp}

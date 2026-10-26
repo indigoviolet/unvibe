@@ -401,6 +401,9 @@ interface Props {
 export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage, onFollowUp, collapsed, onExpand }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
+  const storeCollapseAll = useReview((s) => s.collapseAll);
+  const storeExpanded = useReview((s) => s.expandedThreads);
+  const storeSetExpanded = useReview((s) => s.setThreadExpanded);
   const [flashId, setFlashId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -426,8 +429,10 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const op = onOpenPage ?? noopOpen;
   const of = onFollowUp ?? noopFollow;
 
-  if (collapsed) {
-    return <ThreadCollapsedRow thread={thread} onExpand={onExpand ?? (() => {})} />;
+  const isCollapsed = collapsed ?? (storeCollapseAll && !storeExpanded[thread.id]);
+  const doExpand = onExpand ?? (() => storeSetExpanded(thread.id, true));
+  if (isCollapsed) {
+    return <ThreadCollapsedRow thread={thread} onExpand={doExpand} />;
   }
 
   const host = thread.anchor.host;
