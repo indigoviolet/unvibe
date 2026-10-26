@@ -100,7 +100,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
     const beforeAsk = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
-    const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" });
+    const card = page.locator('#C-problem section.ithread[data-thread]:has([data-kind="ask"])', { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     let cardId: string | null = null;
     {
@@ -248,7 +248,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(composer).toBeVisible();
     await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-central section.ithread[data-thread]", {
+    const card = page.locator('#C-central section.ithread[data-thread]:has([data-kind="ask"])', {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
@@ -769,7 +769,7 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill("What is line folding?");
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" });
+      const card = page.locator('#C-problem section.ithread[data-thread]:has([data-kind="ask"])', { hasText: "What is line folding?" });
       await expect(card.first()).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       const marker = card.locator(".lk[data-refs]");
