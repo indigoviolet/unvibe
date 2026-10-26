@@ -49,24 +49,43 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.keyboard.press("Escape");
 
     // Explain selected guide text; exactly one working indicator while it streams.
-    await selectText(page, "#C-central", "fast path");
+    // ("optional whitespace" is card-only; "fast path" also appears in the
+    // seeded thread text, which would route in-thread under #273.)
+    const beforeExp = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await selectText(page, "#C-central", "optional whitespace");
     await page.locator('#selbar [data-act="explain"]').click();
-    const exp = page.locator("#C-central [data-expansion]").first();
+    let expId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+        const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+        expId = ids.find((id) => !beforeExp.includes(id)) ?? null;
+        if (expId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!expId) throw new Error("new explain thread did not appear");
+    const exp = page.locator(`#C-central section.ithread[data-thread="${expId}"]`).first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
     await expect(exp.locator(".working")).toHaveCount(0, { timeout: 30_000 });
 
-    // Nested: select text inside the answer and Explain again.
-    const word = await page.evaluate(() => {
-      const text = document.querySelector("#C-central [data-expansion] .exp-b")?.textContent ?? "";
-      return text.match(/[A-Za-z]{4,}/)?.[0] ?? "";
-    });
+    // In-thread (reworked #273, was nested): select text inside the reply
+    // and Explain again — the answer appends as a reply in the same thread.
+    const threadId = expId;
+    const word = await exp.locator(".exp-b").first().evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "");
     expect(word).not.toBe("");
-    await selectText(page, "#C-central [data-expansion] .exp-b", word);
+    await selectText(page, `#C-central section.ithread[data-thread="${threadId}"] .exp-b`, word);
     await page.locator('#selbar [data-act="explain"]').click();
-    const nested = exp.locator("[data-expansion]").first();
-    await expect(nested).toBeVisible({ timeout: 15_000 });
-    await expect(nested.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    // Same thread gains a second agent reply (flat, never nested boxes).
+    await expect
+      .poll(async () => exp.locator('[data-reply][data-kind="explain"], [data-reply][data-kind="ask"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(2);
+    await expect(exp.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
+    // The source reply hyperlinks to the new reply.
+    await expect(exp.locator('button.rlink[data-replylink]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(`#C-central section.ithread[data-thread="${threadId}"]`)).toHaveCount(1);
 
     // Depth change rewrites the parent answer (visible change, not empty).
     const beforeDepth = await exp.locator(".exp-b").first().innerText();
@@ -80,7 +99,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" });
+    const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(card.locator(".lk[data-refs]").first()).toBeVisible({ timeout: 30_000 });
@@ -98,7 +117,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     // pin/unpin control — and its persisted state says pinned.
     await expect(card).not.toHaveClass(/floating/);
     await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-    const cardId = await card.getAttribute("data-expansion");
+    const cardId = diffId;
     expect(cardId).toBeTruthy();
     if (!svc) throw new Error("no service");
     const snapRes = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -148,16 +167,29 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
 
+    const beforeDiff = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator(".dhunk .ui-card.child[data-expansion]").first();
+    let diffId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+        const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+        diffId = ids.find((id) => !beforeDiff.includes(id)) ?? null;
+        if (diffId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!diffId) throw new Error("new diff thread did not appear");
+    const card = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
     // Pinned inline in the diff too: no floating overlay, no pin control.
     await expect(card).not.toHaveClass(/floating/);
     await expect(page.locator(".dhunk .exp-float")).toHaveCount(0);
     await expect(card.getByRole("button", { name: /Pin into the page|Unpin/ })).toHaveCount(0);
-    const cardId = await card.getAttribute("data-expansion");
+    const cardId = diffId;
     expect(cardId).toBeTruthy();
 
     // Close collapses to the mark in the diff row; clicking the mark
@@ -204,7 +236,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(composer).toBeVisible();
     await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-central .ui-card.child[data-expansion]", {
+    const card = page.locator("#C-central section.ithread[data-thread]", {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
@@ -315,7 +347,7 @@ test.describe("J2 explain ask follow-up nested", () => {
 
     await page.reload();
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-    const exp = page.locator(`#C-central [data-expansion="${annId}"]`).first();
+    const exp = page.locator(`#C-central [data-thread="${annId}"]`).first();
     await expect(exp).toBeVisible({ timeout: 30_000 });
 
     for (let i = 0; i < 2; i++) {
@@ -366,7 +398,7 @@ test.describe("J2 explain ask follow-up nested", () => {
       if (hasGuide) {
         await selectText(page, "#C-central", "the");
         await page.locator('#selbar [data-act="explain"]').click();
-        const exp = page.locator("#C-central [data-expansion]").first();
+        const exp = page.locator("#C-central section.ithread[data-thread]").first();
         await expect(exp).toBeVisible({ timeout: 15_000 });
         await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
       } else {
@@ -375,7 +407,7 @@ test.describe("J2 explain ask follow-up nested", () => {
         const text = (await cell.innerText()).slice(0, 12) || "test";
         await selectText(page, "#right table.diff", text.slice(0, 6));
         await page.locator('#selbar [data-act="explain"]').click();
-        const exp = page.locator("#right [data-expansion]").first();
+        const exp = page.locator("#right [data-thread]").first();
         await expect(exp).toBeVisible({ timeout: 15_000 });
         await expect(exp).toContainText(/agent is turned off/i, { timeout: 30_000 });
       }
@@ -617,29 +649,29 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       // Parent explanation on card text.
       await selectText(page, "#C-central", "fast path");
       await page.locator('#selbar [data-act="explain"]').click();
-      const parent = page.locator("#C-central [data-expansion]").first();
+      const parent = page.locator("#C-central section.ithread[data-thread]").first();
       await expect(parent).toBeVisible({ timeout: 15_000 });
       await expect(parent.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
 
       // The toolbar appears for text selected inside the parent…
       const word = await page.evaluate(() => {
-        const text = document.querySelector("#C-central [data-expansion] .exp-b")?.textContent ?? "";
+        const text = document.querySelector("#C-central section.ithread[data-thread] .exp-b")?.textContent ?? "";
         return text.match(/[A-Za-z]{4,}/)?.[0] ?? "";
       });
       expect(word).not.toBe("");
-      await selectText(page, "#C-central [data-expansion] .exp-b", word);
+      await selectText(page, "#C-central section.ithread[data-thread] .exp-b", word);
       // …and Explain nests a card under the parent block.
       await page.locator('#selbar [data-act="explain"]').click();
-      const nested = parent.locator("[data-expansion]").first();
+      const nested = parent.locator("[data-thread]").first();
       await expect(nested).toBeVisible({ timeout: 15_000 });
       await expect(nested.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
 
       // Reload: both cards survive and the nested highlight returns.
       await page.reload();
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      const parentAfter = page.locator("#C-central [data-expansion]").first();
+      const parentAfter = page.locator("#C-central section.ithread[data-thread]").first();
       await expect(parentAfter).toBeVisible({ timeout: 15_000 });
-      const nestedAfter = parentAfter.locator("[data-expansion]").first();
+      const nestedAfter = parentAfter.locator("[data-thread]").first();
       await expect(nestedAfter).toBeVisible({ timeout: 15_000 });
       await expect(nestedAfter.locator(".exp-b")).not.toBeEmpty({ timeout: 30_000 });
       await expect(parentAfter.locator("mark.anc.ex").first()).toBeVisible({ timeout: 10_000 });
@@ -670,7 +702,7 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       // Explain selected guide text; the expansion fills with streamed text.
       await selectText(page, "#C-central", "fast path");
       await page.locator('#selbar [data-act="explain"]').click();
-      const exp = page.locator("#C-central [data-expansion]").first();
+      const exp = page.locator("#C-central section.ithread[data-thread]").first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
       await expect(exp.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
 
@@ -701,17 +733,17 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
 
       // Close → dotted link → hover preview → click re-expands.
       await exp.getByRole("button", { name: "Close" }).click();
-      await expect(page.locator("#C-central [data-expansion]").first()).toHaveCount(0, { timeout: 10_000 });
+      await expect(page.locator("#C-central section.ithread[data-thread]").first()).toHaveCount(0, { timeout: 10_000 });
       const mark = page.locator("#C-central mark.anc.exl").first();
       await expect(mark).toBeVisible({ timeout: 10_000 });
       await mark.hover();
       await expect(page.locator("#pop")).toBeVisible({ timeout: 5000 });
       await page.keyboard.press("Escape");
       await mark.click();
-      await expect(page.locator("#C-central [data-expansion]").first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("#C-central section.ithread[data-thread]").first()).toBeVisible({ timeout: 10_000 });
 
       // Open as page, then back.
-      await page.locator("#C-central [data-expansion]").first().getByRole("button", { name: "Open as page" }).click();
+      await page.locator("#C-central section.ithread[data-thread]").first().getByRole("button", { name: "Open as page" }).click();
       await expect(page).toHaveURL(/\/page\/p-/, { timeout: 15_000 });
       await expect(page.locator("#page nav.crumbs")).toContainText("Unfold obsolete", { timeout: 10_000 });
       await page.goBack();
@@ -725,7 +757,7 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill("What is line folding?");
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" });
+      const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" });
       await expect(card.first()).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       const marker = card.locator(".lk[data-refs]");
