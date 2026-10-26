@@ -272,9 +272,11 @@ function AgentReplyView({
           ))}
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
-        {reply.linkTo && reply.linkText ? (
+        {reply.linkTo ? (
           <div className="hint">
-            Selected text links to a reply below — use the highlighted link in the answer above to jump to it.
+            <button type="button" className="rlink" data-replylink={reply.linkTo} onClick={() => onLink(reply.linkTo as string)}>
+              {reply.linkText ?? "Jump to reply →"}
+            </button>
           </div>
         ) : null}
         {secondOpinions.map((so) => (
