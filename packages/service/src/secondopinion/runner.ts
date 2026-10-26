@@ -246,8 +246,8 @@ export function resolveTarget(snapshot: ReviewSnapshot, cardId: string): Resolve
     // Promoted links still holding turns keep their answers addressable
     // (issue #152): an in-flight second opinion settles onto the turn
     // and mirrors to the page.
-    if (ann.type !== "conversation" && !(ann.type === "link" && (ann.turns?.length ?? 0) > 0)) continue;
-    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+    if ((ann.type !== "thread" && ann.type !== "link") && !(ann.type === "link" && (ann.replies?.length ?? 0) > 0)) continue;
+    const turn = (ann.replies ?? []).find((t) => t.id === cardId);
     if (!turn) continue;
     const blocks = turn.blocks;
     const citedIds = [...new Set(collectTargets(blocks).citations)];
@@ -520,7 +520,7 @@ export function findStoredSecondOpinion(
     s.effort === effort &&
     s.version === version;
   for (const ann of snapshot.annotations) {
-    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+    const turn = (ann.replies ?? []).find((t) => t.id === cardId);
     const hit = turn?.secondOpinions?.find(matches);
     if (hit) return hit;
   }
@@ -747,8 +747,8 @@ export async function requestSecondOpinion(
               (a) => a.id === target.annotationId,
             );
             const turn =
-              ann && (ann.type === "conversation" || (ann.type === "link" && (ann.turns?.length ?? 0) > 0))
-                ? (ann.turns ?? []).find((t) => t.id === target.answerId)
+              ann && ((ann.type === "thread" || ann.type === "link") || (ann.type === "link" && (ann.replies?.length ?? 0) > 0))
+                ? (ann.replies ?? []).find((t) => t.id === target.answerId)
                 : undefined;
             if (!ann || !turn) {
               throw new Error(`unknown card ${req.cardId}`);
@@ -843,8 +843,8 @@ export async function removeSecondOpinion(
     // is an answer id for answer results; a stored `so-…` id matches
     // globally (ids are unique) so `delete` works without a card.
     for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
-      if (a.type !== "conversation") continue;
-      for (const t of a.turns ?? []) {
+      if ((a.type !== "thread" && a.type !== "link")) continue;
+      for (const t of a.replies ?? []) {
         if (opinionId === undefined && t.id !== cardId) continue;
         const before = t.secondOpinions ?? [];
         const after = before.filter((s) => {

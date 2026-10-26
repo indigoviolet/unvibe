@@ -26,7 +26,7 @@
  * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { ActionAnchor, Anchor, Annotation, Block, Job, ReviewSnapshot, Turn } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Annotation, Block, Job, Reply, ReviewSnapshot, Thread } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
@@ -58,7 +58,7 @@ export function newTurnId(): string {
  * True when a turn still owns work: filling, failed, or job-attached
  * (issue #152: promote keeps exactly these turns on the link).
  */
-export function isTurnUnsettled(t: Turn): boolean {
+export function isTurnUnsettled(t: Reply): boolean {
   return (
     ((t.working ?? "") !== "" && t.working !== null) ||
     ((t.error ?? "") !== "" && t.error !== null) ||
@@ -74,9 +74,14 @@ export function isTurnUnsettled(t: Turn): boolean {
  */
 export function holdsFillableTurns(ann: Annotation | undefined): ann is Annotation {
   if (!ann) return false;
-  if (ann.type === "conversation") return true;
-  return ann.type === "link" && (ann.turns?.length ?? 0) > 0;
+  if (ann.type === "thread") return true;
+  return ann.type === "link" && (ann.promotedReplies?.length ?? 0) > 0;
 }
+
+/** Back-compat alias. */
+export const holdsFillableReplies = holdsFillableTurns;
+/** True when a reply still owns work: filling, failed, or job-attached. */
+export const isReplyUnsettled = isTurnUnsettled;
 
 /**
  * The conversation card hosted on a hunk (issue #138), if the hunk's
@@ -91,7 +96,7 @@ export function hunkCardFor(
 ): Annotation | undefined {
   return (snapshot.annotations ?? []).find(
     (a) =>
-      a.type === "conversation" &&
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "hunk" &&
       a.anchor.host.fileKey === fileKey &&
       a.anchor.host.contentHash === contentHash,
@@ -110,7 +115,7 @@ export async function ensureHunkCard(
   ctx: ActionContext,
   fileKey: string,
   contentHash: string,
-): Promise<{ annotationId: string; turnId: string }> {
+): Promise<{ annotationId: string; replyId: string }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const file = (snapshot.files ?? []).find((f) => f.fileKey === fileKey);
@@ -128,17 +133,19 @@ export async function ensureHunkCard(
         if (target) target.open = true;
       });
     }
-    const firstTurn = (existing.turns ?? [])[0];
+    const firstTurn = (existing.replies ?? [])[0];
     if (!firstTurn) throw new Error(`hunk card ${existing.id} has no turns`);
-    return { annotationId: existing.id, turnId: firstTurn.id };
+    return { annotationId: existing.id, replyId: firstTurn.id };
   }
   const version = snapshot.version.n;
   const annotationId = newAnnotationId();
-  const turnId = newTurnId();
+  const replyId = newTurnId();
   const blocks = parseBlocks(summary) as Block[];
   if (blocks.length === 0) throw new Error(`hunk ${fileKey}:${contentHash} summary produced no content`);
-  const turn: Turn = {
-    id: turnId,
+  const turn: Reply = {
+    id: replyId,
+    kind: "explain",
+    who: "agent",
     question: null,
     blocks,
     level: "standard",
@@ -149,7 +156,7 @@ export async function ensureHunkCard(
   await reviews.mutate(reviewId, (draft) => {
     (draft.annotations as unknown as Annotation[]).push({
       id: annotationId,
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "hunk", fileKey, contentHash },
         quotedText: "",
@@ -160,25 +167,24 @@ export async function ensureHunkCard(
       },
       open: true,
       pinned: true,
-      messages: [],
+      replies: [turn],
       post: false,
-      turns: [turn],
     } as unknown as Annotation);
   });
-  return { annotationId, turnId };
+  return { annotationId, replyId };
 }
 
 /**
  * First summary block of a hunk card's turn (the nested Explain/Ask
  * anchors here, exactly like a selection in any answer).
  */
-function hunkSummaryBlock(ctx: ActionContext, annotationId: string, turnId: string): string {
+function hunkSummaryBlock(ctx: ActionContext, annotationId: string, replyId: string): string {
   const snapshot = getSnapshotOrThrow(ctx.reviews, ctx.reviewId);
   const card = snapshot.annotations.find((a) => a.id === annotationId);
-  const turn = card?.turns?.find((t) => t.id === turnId);
+  const turn = card?.replies?.find((t) => t.id === replyId);
   const block = turn?.blocks.find((b) => b.type === "paragraph") ?? turn?.blocks[0];
   if (!turn || !block) throw new Error(`hunk card ${annotationId} has no content`);
-  return `${turnId}#${block.id}`;
+  return `${replyId}#${block.id}`;
 }
 
 /**
@@ -191,7 +197,7 @@ export async function hunkCardAction(
   ctx: ActionContext,
   fileKey: string,
   contentHash: string,
-): Promise<{ annotationId: string; turnId: string }> {
+): Promise<{ annotationId: string; replyId: string }> {
   return ensureHunkCard(ctx, fileKey, contentHash);
 }
 
@@ -205,12 +211,15 @@ export async function createConversationCard(
   anchor: Anchor,
   question: string | null,
   workingLabel: string,
-): Promise<{ annotationId: string; turnId: string }> {
+  kind: "ask" | "explain" = "ask",
+): Promise<{ annotationId: string; replyId: string }> {
   const { reviews, reviewId } = ctx;
   const annotationId = newAnnotationId();
-  const turnId = newTurnId();
-  const turn: Turn = {
-    id: turnId,
+  const replyId = newTurnId();
+  const turn: Reply = {
+    id: replyId,
+    kind,
+    who: "agent",
     question,
     blocks: [],
     level: "standard",
@@ -221,50 +230,52 @@ export async function createConversationCard(
   await reviews.mutate(reviewId, (draft) => {
     draft.annotations.push({
       id: annotationId,
-      type: "conversation",
+      type: "thread",
       anchor,
       open: true,
-      // Issue #204: new Explain/Ask cards open pinned inline.
+      // Issue #204: new Explain/Ask threads open pinned inline.
       pinned: true,
-      messages: [],
+      replies: [turn],
       post: false,
-      turns: [turn],
       working: workingLabel,
     } as unknown as Annotation);
   });
-  return { annotationId, turnId };
+  return { annotationId, replyId };
 }
 
-/** Push a follow-up turn in the working state onto an open card. */
+/** Push a follow-up reply in the working state onto an open thread. */
 export async function pushConversationTurn(
   ctx: ActionContext,
   annotationId: string,
   question: string,
   workingLabel: string,
+  kind: "ask" | "explain" = "ask",
 ): Promise<string> {
   const { reviews, reviewId } = ctx;
-  const turnId = newTurnId();
+  const replyId = newTurnId();
   await reviews.mutate(reviewId, (draft) => {
     const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    if (!found || found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
-    const last = (found.turns ?? [])[(found.turns ?? []).length - 1];
+    if (!found || (found.type !== "thread" && found.type !== "link")) throw new Error(`unknown conversation ${annotationId}`);
+    const last = (found.replies ?? [])[(found.replies ?? []).length - 1];
     if (last?.error) {
       throw new Error(`this conversation has a failed turn; retry it first`);
     }
-    (found.turns ?? []).push({
-      id: turnId,
+    (found.replies ?? []).push({
+      id: replyId,
+      kind,
+      who: "agent",
       question,
       blocks: [],
       level: "standard",
       revision: 1,
       undoStack: [],
       working: workingLabel,
-    } as Turn);
+    } as Reply);
     found.working = workingLabel;
     found.error = null;
     found.open = true;
   });
-  return turnId;
+  return replyId;
 }
 
 export interface ConversationTurnOptions {
@@ -305,7 +316,7 @@ export interface ConversationTurnOptions {
 export async function runConversationTurn(
   ctx: ActionContext,
   annotationId: string,
-  turnId: string,
+  replyId: string,
   opts: ConversationTurnOptions,
 ): Promise<{ jobId?: string; deduplicated?: boolean }> {
   const { pipeline, reviews, reviewId } = ctx;
@@ -327,15 +338,15 @@ export async function runConversationTurn(
   // Promoted links still holding turns fill the same way (issue #152).
   await reviews.mutate(reviewId, (draft) => {
     const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+    const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
     if (!found || !turn) return;
     found.working = opts.workingLabel;
     found.error = null;
-    if (found.type === "conversation") found.open = true;
+    if (found.type === "thread") found.open = true;
     turn.working = opts.workingLabel;
     turn.error = null;
     turn.blocks = [];
-    mirrorPromotedAnswer(draft, turnId);
+    mirrorPromotedAnswer(draft, replyId);
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
@@ -388,7 +399,7 @@ export async function runConversationTurn(
           const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
           if (found) {
             found.jobId = job.id;
-            const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+            const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
             if (turn) turn.jobId = job.id;
           }
         })
@@ -403,12 +414,12 @@ export async function runConversationTurn(
       void reviews
         .mutate(reviewId, (draft) => {
           const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-          const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+          const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (turn && !turn.error) {
             turn.blocks = blocks as Block[];
             // Promoted mid-fill (issue #152): the page card is the
             // visible copy, so every partial lands there too.
-            mirrorPromotedAnswer(draft, turnId);
+            mirrorPromotedAnswer(draft, replyId);
           }
         })
         .catch(() => {});
@@ -441,7 +452,7 @@ export async function runConversationTurn(
         if (first.needsRepair) {
           try {
             const turn = getSnapshotOrThrow(reviews, reviewId).annotations
-              .find((a) => a.id === annotationId)?.turns?.find((t) => t.id === turnId);
+              .find((a) => a.id === annotationId)?.replies?.find((t) => t.id === replyId);
             const repaired = await repairDiagrams(
               ctx,
               {
@@ -466,12 +477,12 @@ export async function runConversationTurn(
       }
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
         // Promoted links are "closed" by shape but the fill lands
         // normally (issue #152): only real conversations take the
         // closed-while-filling branch.
-        if (found.type === "conversation" && !found.open && turn.blocks.length > 0) {
+        if (found.type === "thread" && !found.open && turn.blocks.length > 0) {
           // Closed while filling: keep the content for the dotted-link preview.
           turn.blocks = stored;
           turn.revision += 1;
@@ -488,7 +499,7 @@ export async function runConversationTurn(
         found.error = null;
         found.jobId = undefined;
         // Promoted mid-fill: the page card is the visible copy.
-        mirrorPromotedAnswer(draft, turnId);
+        mirrorPromotedAnswer(draft, replyId);
       });
       // New turn content enters the log in full (PRD §9.3 `new-card`).
       // Awaited so tests observe the entry once the fill settles. Runs
@@ -502,14 +513,14 @@ export async function runConversationTurn(
         // The card's session may have been rebuilt under a new id while
         // the turn ran: store what the job actually used — unless the
         // turns already moved off a settled promoted link.
-        const stillOwnsTurn = (filled?.turns ?? []).some((t) => t.id === turnId);
+        const stillOwnsTurn = (filled?.replies ?? []).some((t) => t.id === replyId);
         if (sessionId && filled && stillOwnsTurn && filled.sessionId !== sessionId) {
           await reviews.mutate(reviewId, (draft) => {
             const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-            if (target && (target.turns ?? []).some((t) => t.id === turnId)) target.sessionId = sessionId;
+            if (target && (target.replies ?? []).some((t) => t.id === replyId)) target.sessionId = sessionId;
           });
         }
-        const event = filled ? newCardForTurn(reviewId, snap, filled, turnId, sessionId) : null;
+        const event = filled ? newCardForTurn(reviewId, snap, filled, replyId, sessionId) : null;
         if (event) await recordInteraction(event);
       } catch {
         // Logging never fails the action.
@@ -527,7 +538,7 @@ export async function runConversationTurn(
       const message = err instanceof Error ? err.message : String(err);
       await reviews.mutate(reviewId, (draft) => {
         const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = holdsFillableTurns(found) ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
         found.working = null;
         turn.working = null;
@@ -540,7 +551,7 @@ export async function runConversationTurn(
         turn.blocks = [];
         // A failed promoted turn stays retryable from the page: its
         // (emptied) blocks still mirror (issue #152).
-        mirrorPromotedAnswer(draft, turnId);
+        mirrorPromotedAnswer(draft, replyId);
       });
       // Failures produce no shared knowledge: visible error only, no log.
       return message;
@@ -564,7 +575,7 @@ export async function runConversationTurn(
 export function cancelConversationJob(ctx: ActionContext, snapshot: { annotations: Annotation[] }, annotationId: string): void {
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   const turnJob = holdsFillableTurns(found)
-    ? [...(found.turns ?? [])].reverse().find((t) => t.jobId)?.jobId
+    ? [...(found.replies ?? [])].reverse().find((t) => t.jobId)?.jobId
     : undefined;
   cancelAnnotationJob(ctx.jobs, ctx.reviewId, found?.jobId ?? turnJob);
 }
@@ -578,16 +589,16 @@ export async function dropSettledPromotedTurns(ctx: ActionContext, annotationId:
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
-  if (!found || found.type !== "link" || (found.turns?.length ?? 0) === 0) return;
-  if ((found.turns ?? []).some(isTurnUnsettled)) return;
+  if (!found || found.type !== "link" || (found.replies?.length ?? 0) === 0) return;
+  if ((found.replies ?? []).some(isTurnUnsettled)) return;
   const sessionId = found.sessionId;
   await reviews.mutate(reviewId, (draft) => {
     const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
     if (!target || target.type !== "link") return;
-    if ((target.turns ?? []).some(isTurnUnsettled)) return;
-    delete target.turns;
-    delete target.promotedTurns;
-    delete target.sessionId;
+    if ((target.replies ?? []).some(isTurnUnsettled)) return;
+    target.replies = [];
+    delete (target as { promotedReplies?: unknown }).promotedReplies;
+    delete (target as { sessionId?: unknown }).sessionId;
   });
   // The card's session belongs to the card: close it so it does not linger.
   if (sessionId && ctx.sessions) {
@@ -601,18 +612,29 @@ export async function dropSettledPromotedTurns(ctx: ActionContext, annotationId:
 
 export interface ExplainRequest {
   quote: string;
-  anchor: ActionAnchor;
+  anchor?: ActionAnchor;
   /** Issue #166: the client's recorded selection offsets, when selected. */
   offsets?: { start: number; end: number };
+  /** Issue #273: append inside this thread instead of starting a new one. */
+  threadId?: string;
+  /** Reply the selection came from; gets the in-thread link to the new reply. */
+  sourceReplyId?: string;
 }
 
 export interface AskRequest {
   quote: string;
-  anchor: ActionAnchor;
+  anchor?: ActionAnchor;
   message: string;
   /** Issue #166: the client's recorded selection offsets, when selected. */
   offsets?: { start: number; end: number };
+  /** Issue #273: append inside this thread instead of starting a new one. */
+  threadId?: string;
+  /** Reply the selection came from; gets the in-thread link to the new reply. */
+  sourceReplyId?: string;
 }
+
+/** New reply id alias (replies use `ans_…`). */
+export const newReplyId = newTurnId;
 
 /** The default question, fixed in code (the merged prompt takes it as the message). */
 export const DEFAULT_QUESTION = "Explain this.";
@@ -624,24 +646,88 @@ function questionEchoCandidates(quote: string, message: string): string[] {
   return [quote, message];
 }
 
+/**
+ * Issue #273: append an agent reply inside an existing thread. The new
+ * reply carries `kind`/`question`; the source reply (when given) gets
+ * `linkTo`/`linkText` pointing at it so the selected text hyperlinks to
+ * the answer. Returns the thread + new reply ids.
+ */
+async function appendInThreadReply(
+  ctx: ActionContext,
+  threadId: string,
+  kind: "ask" | "explain",
+  question: string | null,
+  message: string,
+  quote: string,
+  sourceReplyId?: string,
+  workingLabel?: string,
+  replayKind?: "ask" | "explain",
+  cardLabel?: string,
+): Promise<{ annotationId: string; replyId: string; jobId?: string; deduplicated?: boolean }> {
+  const { reviews, reviewId } = ctx;
+  const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const thread = snapshot.annotations.find((a) => a.id === threadId);
+  if (!thread || (thread.type !== "thread" && thread.type !== "link")) {
+    throw new Error(`unknown thread ${threadId}`);
+  }
+  const label = workingLabel ?? (kind === "explain" ? "Thinking" : "Writing answer");
+  const replyId = await pushConversationTurn(ctx, threadId, question ?? message, label, kind);
+  if (sourceReplyId) {
+    await reviews.mutate(reviewId, (draft) => {
+      const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
+      const src = target?.replies.find((r) => r.id === sourceReplyId);
+      if (src) {
+        src.linkTo = replyId;
+        src.linkText = quote.slice(0, 200);
+      }
+      const created = target?.replies.find((r) => r.id === replyId);
+      if (created && quote && kind === "explain" && (created.question ?? "") === "") {
+        created.question = quote.slice(0, 240);
+      }
+    });
+  }
+  const live = getSnapshotOrThrow(reviews, reviewId);
+  const ann = live.annotations.find((a) => a.id === threadId)!;
+  const probe = await probeConversationSessionFor(ctx, ann);
+  const isLive = probe.continueSessionId !== undefined && !probe.rebuilt;
+  const res = await runConversationTurn(ctx, threadId, replyId, {
+    anchor: ann.anchor,
+    template: isLive ? "ask_turn" : "ask",
+    message,
+    ...(probe.transcript !== undefined && !isLive ? { transcript: probe.transcript } : {}),
+    ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    skipDedupe: true,
+    echoCandidates: questionEchoCandidates(quote, message),
+    replayKind: replayKind ?? (kind === "explain" ? "explain" : "ask"),
+    cardLabel: cardLabel ?? message,
+    workingLabel: label,
+  });
+  return { annotationId: threadId, replyId, ...res };
+}
+
 export async function explainAction(
   ctx: ActionContext,
   req: ExplainRequest,
-): Promise<{ annotationId: string; turnId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
+): Promise<{ annotationId: string; replyId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { reviews, reviewId } = ctx;
   // Empty quotes are legal: the anchor still scopes the turn.
   if (typeof req.quote !== "string") throw new Error("quote is required");
+  // Issue #273: inside a thread, Explain appends a reply there (never a nested box).
+  if (req.threadId) {
+    return appendInThreadReply(ctx, req.threadId, "explain", req.quote, DEFAULT_QUESTION, req.quote, req.sourceReplyId, "Thinking", "explain", `Explain: ${excerptQuote(req.quote)}`);
+  }
+  if (!req.anchor) throw new Error("anchor is required");
   // Issue #138: a hunk anchor activates the hunk's idle summary into a
-  // card (no agent call), then this same Explain runs nested on the
-  // selected summary text inside that answer.
+  // thread (no agent call), then this same Explain appends inside that
+  // thread on the selected summary text.
   if (req.anchor.where === "hunk") {
     const ensured = await ensureHunkCard(ctx, req.anchor.fileKey, req.anchor.contentHash);
-    // Issue #166: the recorded offsets belong to the idle summary text,
-    // not to the answer block below — they are dropped here on purpose
-    // and the nested card places by text match.
+    // Issue #166: the recorded offsets belong to the idle summary text —
+    // dropped here; the in-thread reply places by text match.
     return explainAction(ctx, {
       quote: req.quote,
-      anchor: { where: "block", blockId: hunkSummaryBlock(ctx, ensured.annotationId, ensured.turnId) },
+      threadId: ensured.annotationId,
+      sourceReplyId: ensured.replyId,
     });
   }
   const before = getSnapshotOrThrow(reviews, reviewId);
@@ -662,11 +748,11 @@ export async function explainAction(
   const active = findActiveJob(ctx.jobs, reviewId, key);
   if (active) {
     const existing = before.annotations.find(
-      (a) => a.type === "conversation" && a.anchor.quotedText === req.quote && a.jobId === active.id,
+      (a) => (a.type === "thread" || a.type === "link") && a.anchor.quotedText === req.quote && a.jobId === active.id,
     );
     return {
       annotationId: existing?.id ?? "",
-      turnId: existing?.turns?.[0]?.id ?? "",
+      replyId: existing?.replies?.[0]?.id ?? "",
       jobId: active.id,
       deduplicated: true,
     };
@@ -678,13 +764,13 @@ export async function explainAction(
   // (new commits) invalidates: anchor.version must match current version.
   const storedDup = before.annotations.find(
     (a) =>
-      a.type === "conversation" &&
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.quotedText === req.quote &&
       anchorSameHost(a.anchor, anchor) &&
       a.anchor.version === before.version.n &&
       !a.error &&
-      !(a.turns ?? []).some((t) => t.error) &&
-      (a.turns ?? []).some((t) => t.blocks.length > 0),
+      !(a.replies ?? []).some((t) => t.error) &&
+      (a.replies ?? []).some((t) => t.blocks.length > 0),
   );
   if (storedDup) {
     if (!storedDup.open) {
@@ -693,13 +779,13 @@ export async function explainAction(
         if (found) found.open = true;
       });
     }
-    return { annotationId: storedDup.id, turnId: storedDup.turns?.[0]?.id ?? "", reused: true };
+    return { annotationId: storedDup.id, replyId: storedDup.replies?.[0]?.id ?? "", reused: true };
   }
 
   // Immediately visible working state.
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, null, "Thinking");
+  const { annotationId, replyId } = await createConversationCard(ctx, anchor, null, "Thinking", "explain");
 
-  const res = await runConversationTurn(ctx, annotationId, turnId, {
+  const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor,
     template: "ask",
     message: DEFAULT_QUESTION,
@@ -709,29 +795,34 @@ export async function explainAction(
     cardLabel: `Explain: ${excerptQuote(req.quote)}`,
     workingLabel: "Thinking",
   });
-  return { annotationId, turnId, ...res };
+  return { annotationId, replyId, ...res };
 }
 
 export async function askAction(
   ctx: ActionContext,
   req: AskRequest,
-): Promise<{ annotationId: string; turnId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
+): Promise<{ annotationId: string; replyId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { reviews, reviewId } = ctx;
   if (!req.message || req.message.trim() === "") throw new Error("ask message is required");
   // Empty quotes are legal: diff-line clicks and description flows often
   // carry no quote (the header falls back to file:line). Only the type is
   // enforced (the dispatcher 400s a missing quote).
   if (typeof req.quote !== "string") throw new Error("quote is required");
+  // Issue #273: inside a thread, Ask appends a reply there (never a nested box).
+  if (req.threadId) {
+    return appendInThreadReply(ctx, req.threadId, "ask", req.message, req.message, req.quote, req.sourceReplyId, "Writing answer", "ask", req.message);
+  }
+  if (!req.anchor) throw new Error("anchor is required");
   // Issue #138: a hunk anchor activates the hunk's idle summary into a
-  // card (no agent call), then this same Ask runs nested on the selected
-  // summary text inside that answer.
+  // thread (no agent call), then this same Ask appends inside that thread.
   if (req.anchor.where === "hunk") {
     const ensured = await ensureHunkCard(ctx, req.anchor.fileKey, req.anchor.contentHash);
     // Issue #166: recorded offsets belong to the idle summary text (see
     // the explain branch) — dropped here too.
     return askAction(ctx, {
       quote: req.quote,
-      anchor: { where: "block", blockId: hunkSummaryBlock(ctx, ensured.annotationId, ensured.turnId) },
+      threadId: ensured.annotationId,
+      sourceReplyId: ensured.replyId,
       message: req.message,
     });
   }
@@ -754,11 +845,11 @@ export async function askAction(
   const active = findActiveJob(ctx.jobs, reviewId, key);
   if (active) {
     const existing = before.annotations.find(
-      (a) => a.type === "conversation" && a.jobId === active.id,
+      (a) => (a.type === "thread" || a.type === "link") && a.jobId === active.id,
     );
     return {
       annotationId: existing?.id ?? "",
-      turnId: existing?.turns?.[0]?.id ?? "",
+      replyId: existing?.replies?.[0]?.id ?? "",
       jobId: active.id,
       deduplicated: true,
     };
@@ -770,12 +861,12 @@ export async function askAction(
   // repeat is a new request; a new base version invalidates via
   // anchor.version.
   const storedDup = before.annotations.find((a) => {
-    if (a.type !== "conversation") return false;
+    if (a.type !== "thread" && a.type !== "link") return false;
     if (a.anchor.quotedText !== req.quote) return false;
     if (!anchorSameHost(a.anchor, anchor)) return false;
     if (a.anchor.version !== before.version.n) return false;
-    if (a.error || (a.turns ?? []).some((t) => t.error)) return false;
-    const first = (a.turns ?? [])[0];
+    if (a.error || (a.replies ?? []).some((t) => t.error)) return false;
+    const first = (a.replies ?? [])[0];
     if (!first || first.question?.trim() !== req.message.trim()) return false;
     return first.blocks.length > 0;
   });
@@ -786,14 +877,14 @@ export async function askAction(
         if (found) found.open = true;
       });
     }
-    return { annotationId: storedDup.id, turnId: storedDup.turns?.[0]?.id ?? "", reused: true };
+    return { annotationId: storedDup.id, replyId: storedDup.replies?.[0]?.id ?? "", reused: true };
   }
 
   // Card with the reader's question as its first turn (guide cards start
   // open in place, like Explain).
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, req.message, "Thinking");
+  const { annotationId, replyId } = await createConversationCard(ctx, anchor, req.message, "Thinking");
 
-  const res = await runConversationTurn(ctx, annotationId, turnId, {
+  const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor,
     template: "ask",
     message: req.message,
@@ -803,7 +894,7 @@ export async function askAction(
     cardLabel: req.message,
     workingLabel: "Thinking",
   });
-  return { annotationId, turnId, ...res };
+  return { annotationId, replyId, ...res };
 }
 
 /**
@@ -816,14 +907,14 @@ export async function replyAction(
   ctx: ActionContext,
   annotationId: string,
   message: string,
-): Promise<{ annotationId: string; turnId: string; jobId?: string }> {
+): Promise<{ annotationId: string; replyId: string; jobId?: string }> {
   const { reviews, reviewId } = ctx;
   if (!message || message.trim() === "") throw new Error("reply message is required");
   const before = getSnapshotOrThrow(reviews, reviewId);
   const card = before.annotations.find((a) => a.id === annotationId);
-  if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
+  if (!card || (card.type !== "thread" && card.type !== "link")) throw new Error(`unknown conversation ${annotationId}`);
 
-  const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
+  const replyId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
   // The reply-box text is consumed by this turn: clear the stored draft
   // like comment replies do, so it can never flow back into the emptied
   // box (or survive a reload) after sending. Follow-up chips keep any
@@ -834,7 +925,7 @@ export async function replyAction(
   });
   const probe = await probeConversationSessionFor(ctx, card);
   const live = probe.continueSessionId !== undefined && !probe.rebuilt;
-  const res = await runConversationTurn(ctx, annotationId, turnId, {
+  const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor: card.anchor,
     template: live ? "ask_turn" : "ask",
     message,
@@ -846,7 +937,7 @@ export async function replyAction(
     cardLabel: message,
     workingLabel: "Writing answer",
   });
-  return { annotationId, turnId, ...res };
+  return { annotationId, replyId, ...res };
 }
 
 /**
@@ -862,12 +953,12 @@ export async function replyAction(
 export async function retryAction(
   ctx: ActionContext,
   annotationId: string,
-): Promise<{ annotationId: string; turnId: string; jobId?: string }> {
+): Promise<{ annotationId: string; replyId: string; jobId?: string }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!holdsFillableTurns(found)) throw new Error(`unknown conversation ${annotationId}`);
-  const turns = found.turns ?? [];
+  const turns = found.replies ?? [];
   if (turns.length === 0) throw new Error(`nothing to retry: this conversation has no turn to retry`);
   // The banner shows on every failed turn, so Retry must work from any
   // of them: refill the last failed turn, not just the last one (#270).
@@ -896,7 +987,7 @@ export async function retryAction(
   if (res.jobId && found.type === "link") {
     // Retry on a promoted link refills the page: the job moves to the
     // mapped card with the content (issue #152).
-    const cardId = (found.promotedTurns ?? []).find((m) => m.turnId === last.id)?.cardId;
+    const cardId = (found.promotedReplies ?? []).find((m) => m.replyId === last.id)?.cardId;
     if (cardId) {
       try {
         ctx.jobs.retarget(res.jobId, cardId);
@@ -906,5 +997,5 @@ export async function retryAction(
       }
     }
   }
-  return { annotationId, turnId: last.id, ...res };
+  return { annotationId, replyId: last.id, ...res };
 }

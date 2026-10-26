@@ -45,11 +45,11 @@ export function cardTitle(snapshot: ReviewSnapshot, cardId: string): string {
     if (card) return "untitled card";
   }
   const ann = snapshot.annotations.find((a) => a.id === cardId);
-  if (ann?.type === "conversation") {
+  if (ann && (ann.type === "thread" || ann.type === "link")) {
     return ann.anchor.quotedText.trim() !== "" ? ann.anchor.quotedText : "explanation";
   }
   for (const a of snapshot.annotations ?? []) {
-    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    const turn = (a.replies ?? []).find((t) => t.id === cardId);
     if (turn) return turn.question ?? (a.anchor.quotedText.trim() !== "" ? a.anchor.quotedText : "explanation");
   }
   return "untitled card";
@@ -75,7 +75,7 @@ export function storedCardTitle(snapshot: ReviewSnapshot, cardId: string): strin
  */
 export function answerEchoTitle(snapshot: ReviewSnapshot, cardId: string): string | undefined {
   for (const a of snapshot.annotations ?? []) {
-    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    const turn = (a.replies ?? []).find((t) => t.id === cardId);
     if (turn) return turn.question ?? (a.anchor.quotedText || undefined);
   }
   return undefined;
@@ -99,15 +99,15 @@ export function newCardForTurn(
   reviewId: string,
   snapshot: ReviewSnapshot,
   annotation: Annotation,
-  turnId: string,
+  replyId: string,
   sessionId?: string,
 ): InteractionEvent | null {
   // Promoted links still holding turns log like conversations (issue
   // #152): a turn that fills after the move is new shared knowledge.
-  if (annotation.type !== "conversation" && !(annotation.type === "link" && (annotation.turns?.length ?? 0) > 0)) {
+  if (!(annotation.type === "thread" || (annotation.type === "link" && (annotation.replies?.length ?? 0) > 0))) {
     return null;
   }
-  const turn = (annotation.turns ?? []).find((t) => t.id === turnId);
+  const turn = (annotation.replies ?? []).find((t) => t.id === replyId);
   if (!turn) return null;
   const event: InteractionEvent = {
     kind: "new-card",
@@ -123,15 +123,15 @@ export function newCardForTurn(
 
 /** True when an annotation holds shared agent content (deletion-worthy). */
 export function wasShared(annotation: Annotation): boolean {
-  if (annotation.type === "conversation") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
-  if (annotation.type === "link") return (annotation.turns ?? []).some((t) => t.blocks.length > 0);
-  if (annotation.type === "comment") return annotation.messages.some((m) => m.who === "ai");
+  if (annotation.type === "thread" || annotation.type === "link") {
+    return (annotation.replies ?? []).some((t) => t.kind !== "comment" ? t.blocks.length > 0 : t.who === "agent");
+  }
   return false;
 }
 
 /** `item-deleted` one-liner for a deleted shared item. */
 export function deletionFor(reviewId: string, annotation: Annotation): InteractionEvent {
-  const what = annotation.type === "conversation" ? "explanation" : annotation.type === "comment" ? "comment" : "annotation";
+  const what = (annotation.replies ?? []).some((r) => r.kind !== "comment") ? "explanation" : (annotation.replies ?? []).some((r) => r.kind === "comment") ? "comment" : "annotation";
   return {
     kind: "item-deleted",
     reviewId,

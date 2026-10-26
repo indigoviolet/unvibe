@@ -11,9 +11,10 @@ import type { Annotation } from "./entities.js";
 import type { ReviewSnapshot as Snapshot } from "./api.js";
 import { DOCUMENT_CARD_ID } from "./document.js";
 
-/** True when a thread is in the Outbox: a marked comment not yet posted. */
+/** True when a thread is in the Outbox: a marked thread with comment replies, not yet posted. */
 export function isInOutbox(thread: Annotation): boolean {
-  return thread.type === "comment" && thread.post && !thread.postedAt;
+  if (!thread.post || thread.postedAt) return false;
+  return thread.replies.some((r) => r.kind === "comment");
 }
 
 /** Every Outbox thread in stored order (export reorders for reading). */
@@ -22,19 +23,37 @@ export function outboxThreads(snapshot: Snapshot | null | undefined): Annotation
   return (snapshot.annotations ?? []).filter((a) => isInOutbox(a as Annotation)) as Annotation[];
 }
 
-/** Exact text exported/posted for a thread: draft, else first own, else suggested. */
-export function threadOutboxText(thread: Annotation): string {
-  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
-  const you = thread.messages.find((m) => m.who === "you" && m.text);
-  if (you?.text) return you.text;
-  const suggested = thread.messages.find((m) => m.suggested && m.text);
-  if (suggested?.text) return suggested.text;
-  return thread.messages.find((m) => m.text)?.text ?? "";
+/** Plain text of one comment reply: its single paragraph block. */
+function replyText(reply: { blocks?: Array<{ type: string }> }): string {
+  const blocks = (reply.blocks ?? []) as Array<Record<string, unknown>>;
+  const parts: string[] = [];
+  for (const b of blocks) {
+    if (!b || typeof b !== "object") continue;
+    if (b["type"] === "paragraph") {
+      const t = b["text"] as Record<string, unknown> | undefined;
+      const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      // Strip tags for export/post text.
+      parts.push(s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+    }
+  }
+  return parts.filter(Boolean).join("\n\n");
 }
 
-/** True when any message is an AI-suggested comment (export tags these). */
+/** Exact text exported/posted for a thread: draft, else comment replies joined. */
+export function threadOutboxText(thread: Annotation): string {
+  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+  const comments = thread.replies.filter((r) => r.kind === "comment");
+  const you = comments.find((r) => r.who === "you" && replyText(r) !== "");
+  if (you) return replyText(you);
+  const suggested = comments.find((r) => r.suggested && replyText(r) !== "");
+  if (suggested) return replyText(suggested);
+  const first = comments[0];
+  return first ? replyText(first) : "";
+}
+
+/** True when any comment reply is an AI-suggested comment (export tags these). */
 export function isAiSuggested(thread: Annotation): boolean {
-  return thread.messages.some((m) => m.suggested === true);
+  return thread.replies.some((r) => r.kind === "comment" && r.suggested === true);
 }
 
 function guideAnchorTitle(snapshot: Snapshot, blockId: string): string {

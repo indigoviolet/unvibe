@@ -132,13 +132,16 @@ export async function dispatchAction(
       }
       case "explain": {
         need(ctx);
-        if (typeof action.quote !== "string" || !action.anchor) return bad(reply, "quote and anchor are required");
+        if (typeof action.quote !== "string") return bad(reply, "quote is required");
+        if (!action.threadId && !action.anchor) return bad(reply, "quote and anchor are required");
         const res = await explainAction(ctx, {
           quote: action.quote,
-          anchor: action.anchor,
+          ...(action.anchor ? { anchor: action.anchor } : {}),
+          ...(action.threadId ? { threadId: action.threadId } : {}),
+          ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
         });
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
@@ -146,16 +149,19 @@ export async function dispatchAction(
       }
       case "ask": {
         need(ctx);
-        if (typeof action.quote !== "string" || !action.anchor || typeof action.message !== "string") {
-          return bad(reply, "quote, anchor and message are required");
+        if (typeof action.quote !== "string" || typeof action.message !== "string") {
+          return bad(reply, "quote and message are required");
         }
+        if (!action.threadId && !action.anchor) return bad(reply, "quote, anchor and message are required");
         const res = await askAction(ctx, {
           quote: action.quote,
-          anchor: action.anchor,
+          ...(action.anchor ? { anchor: action.anchor } : {}),
+          ...(action.threadId ? { threadId: action.threadId } : {}),
+          ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           message: action.message,
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
         });
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
@@ -178,15 +184,16 @@ export async function dispatchAction(
           return bad(reply, "annotationId and message are required");
         }
         const res = await replyAction(ctx, action.annotationId, action.message);
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
+      case "reply_retry":
       case "retry": {
         need(ctx);
         if (typeof action.annotationId !== "string") return bad(reply, "annotationId is required");
         const res = await retryAction(ctx, action.annotationId);
-        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, turnId: res.turnId };
+        const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
@@ -253,7 +260,7 @@ export async function dispatchAction(
           return bad(reply, "fileKey and contentHash are required");
         }
         const res = await hunkCardAction(ctx, action.fileKey, action.contentHash);
-        return { accepted: true, annotationId: res.annotationId, turnId: res.turnId } satisfies ActionResponse;
+        return { accepted: true, annotationId: res.annotationId, replyId: res.replyId } satisfies ActionResponse;
       }
       case "close": {
         need(ctx);
@@ -292,7 +299,7 @@ export async function dispatchAction(
         }
         const res = await followupAction(ctx, action.cardId, action.blockId, action.index);
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
-        if (res.turnId) out.turnId = res.turnId;
+        if (res.replyId) out.replyId = res.replyId;
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
         if ((res as { reused?: boolean }).reused) out.reused = true;

@@ -301,13 +301,13 @@ export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotatio
  */
 export function locatePendingThreads(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): LocatedComment[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.type === "comment" && a.post && !a.postedAt)
+    .filter((a) => a.post && !a.postedAt && a.replies.some((r) => r.kind === "comment"))
     .map((t) => locateThreadWithText(snapshot, t as Annotation, repo));
 }
 
 /** Comments already posted (skipped on retry). */
 export function postedThreadIds(snapshot: ReviewSnapshot): string[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.type === "comment" && a.post && a.postedAt)
+    .filter((a) => a.post && a.postedAt && a.replies.some((r) => r.kind === "comment"))
     .map((a) => a.id);
 }

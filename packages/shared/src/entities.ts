@@ -229,13 +229,13 @@ export interface Page {
 export type DepthLevel = "simple" | "standard" | "deep";
 
 /**
- * Issue #136: what depth, examples, diagram, undo and second opinion act
- * on — a page card's body or one answer (turn) of a conversation card.
- * Every unit carries its own `ans_…`/card id so none of those contracts
- * change shape when the unit is an answer.
+ * Issue #273: what depth, examples, diagram, undo and second opinion act
+ * on — a page card's body or one reply of a thread. Every unit carries
+ * its own `ans_…`/card id so none of those contracts change shape when
+ * the unit is a reply.
  */
 export interface ContentBody {
-  /** Page-card id, or `ans_<12 hex>` for a conversation answer. */
+  /** Page-card id, or `ans_<12 hex>` for a thread reply. */
   id: string;
   blocks: Block[];
   level: DepthLevel;
@@ -470,124 +470,120 @@ export type Block =
   | AsideBlock;
 
 /**
- * Issue #136: a conversation card (`"conversation"`) holds turns; a
- * comment (`"comment"`, reviewer-written, the only thing submitted)
- * holds messages; `"link"` is an opened-as-page card.
+ * Issue #273 (from #268 spike): one flat thread for everything.
+ * Explain/Ask answers and reviewer comments are replies with a `kind`
+ * (`ask`, `explain`, `comment`, with `persona` reserved for #11).
+ * Replaces the nested expansion tree (`Annotation`/`Turn`) and the
+ * separate comment threads (`ChatMessage`). No backward compatibility:
+ * stored reviews must be reset.
  */
-export type AnnotationType = "conversation" | "comment" | "link";
+export type ReplyKind = "ask" | "explain" | "comment" | "persona";
 
 /**
- * Issue #136 slice 2: one comment message. Comments never carry agent
- * replies (those live on conversation turns as blocks); `ai` appears
- * only for agent-drafted suggested comments not yet in the Outbox.
+ * One reply inside a thread. Agent answers (`ask`/`explain`) carry blocks
+ * like a guide card body, so depth, examples, diagram, undo and second
+ * opinion act on the reply through the same lookup, keyed by the reply's
+ * own `ans_…` id. Reviewer comments (`comment`, `persona` later) carry
+ * their text as a single paragraph block; only comment-kind replies are
+ * submitted to GitHub.
  */
-export interface ChatMessage {
-  who: "you" | "ai";
-  /** Plain text. */
-  text?: string;
-  /** Agent-drafted suggested comment not yet in the Outbox. */
-  suggested?: boolean;
+export interface Reply extends ContentBody {
+  /** What this reply is; badged in the UI. */
+  kind: ReplyKind;
+  /** Agent answer vs reviewer comment — the visible distinction. */
+  who: "agent" | "you";
   /**
-   * Issue #181: this suggested message is an agent's open question,
-   * offered as a suggested comment. Distinguishes question suggestions
-   * from finding suggestions in the UI.
-   */
-  question?: boolean;
-}
-
-/**
- * Issue #136: one question and its answer inside a conversation card. The
- * answer is stored as blocks — the same unit as a guide card's body — so
- * depth, examples, diagram, undo and second opinion act on it through the
- * same lookup, keyed by the answer's own `ans_…` id.
- */
-export interface Turn extends ContentBody {
-  /**
-   * The reader's question, or null for the default question (Explain).
-   * Shown as the answer's heading for later turns; the card header shows
-   * the selected text for the first.
+   * The reader's question (Ask), the explained phrase (Explain), or null
+   * (comment without a heading; reviewer comments render their text).
+   * Shown as the reply heading for agent answers.
    */
   question: string | null;
-  /** Progress line while this turn's job runs (immediately visible working state). */
+  /**
+   * In-thread link (issue #268): the reply this reply's selected text
+   * points at, in the same thread. Clicking scrolls to that reply and
+   * highlights it (no job, no patch). Set on the source reply when an
+   * Explain/Ask inside the thread creates its answer as a later reply.
+   */
+  linkTo?: string;
+  /** Selected text that carries the in-thread link. */
+  linkText?: string;
+  /** Agent-drafted suggested comment not yet in the Outbox (first comment reply). */
+  suggested?: boolean;
+  /**
+   * Issue #181: this suggested reply is an agent's open question,
+   * offered as a suggested comment.
+   */
+  suggestedQuestion?: boolean;
+  /** Progress line while this reply's job runs (immediately visible working state). */
   working?: string | null;
   /** Retryable failure text (visible error state + retry path, PRD §4.8). */
   error?: string | null;
-  /** Active job filling or rewriting this turn, when one is running. */
+  /** Active job filling or rewriting this reply, when one is running. */
   jobId?: string;
 }
 
-/** A conversation card, comment, or opened-as-page link on an anchor. */
-export interface Annotation {
+/** A thread anchored once, with flat replies. Issue #273. */
+export interface Thread {
   id: string;
-  type: AnnotationType;
+  /** `"thread"` normally; `"link"` once promoted to a page (issue #152). */
+  type: "thread" | "link";
+  /** Collapsed to the title row (per-thread collapse; global collapse-all is UI-local). */
+  collapsed?: boolean;
   anchor: Anchor;
+  /** Flat replies, in creation order. Never nested. */
+  replies: Reply[];
   /** Open in place vs closed back to its marker/link. */
   open: boolean;
   /**
-   * Issue #204 (revising #167): conversation cards open pinned inline
-   * in the flow of the content; floating is only the hover peek on a
-   * closed card's mark. Stored on the annotation so the pin survives a
-   * reload; set at creation and when a mark reopens the card, through
-   * the comment PATCH. There is no unpin. Required: no backward
-   * compatibility.
+   * Issue #204 (revising #167): threads open pinned inline in the flow
+   * of the content; floating is only the hover peek on a closed thread's
+   * mark. Stored on the thread so the pin survives a reload; set at
+   * creation and when a mark reopens the thread. There is no unpin.
+   * Required: no backward compatibility.
    */
   pinned: boolean;
-  /** Comments only: messages so far. */
-  messages: ChatMessage[];
-  /** Comments only: include in the Outbox (Submit review payload on PR reviews). */
+  /** Include comment-kind replies in the Outbox (Submit review payload). */
   post: boolean;
-  /** Comments only: editable draft of the text to post (Outbox view). */
+  /** Editable draft of the text to post (Outbox view). */
   draft?: string;
-  /** Unsent reply-box content (survives re-renders; comments and conversations). */
-  reply?: string;
+  /** Unsent reply-box content (survives re-renders). */
+  reply?: string | null;
   /**
-   * Issue #136: turns of a conversation card (type `"conversation"` only).
-   * The first turn's question is null for Explain (the default question).
-   */
-  turns?: Turn[];
-  /**
-   * Issue #136: the card's one agent session, created on the first turn
-   * and reused for every later turn. After a restart the session is
-   * rebuilt from the stored turns.
+   * The thread's one agent session, created on the first agent reply
+   * and reused for every later agent reply in the same thread. After a
+   * restart the session is rebuilt from the stored agent replies.
    */
   sessionId?: string;
-  /** Conversations only: collapsed to the title row. */
-  collapsed?: boolean;
   /**
-   * M4: progress line while an agent job works on this annotation
+   * M4: progress line while an agent job works on this thread
    * (explain fill, ask reply). Cleared when the job settles.
    */
   working?: string | null;
   /**
    * M4: retryable failure text (visible error state with a retry path,
-   * never a spinner forever, PRD §4.8). Set on the thread/conversation
-   * when its job errors; cleared on the next attempt.
+   * never a spinner forever, PRD §4.8). Cleared on the next attempt.
    */
   error?: string | null;
-  /** M4: active agent job for this annotation, when one is running. */
+  /** M4: active agent job for this thread, when one is running. */
   jobId?: string;
   /**
    * M4: true when the anchor text can no longer be found in its host
-   * (for example after a depth rewrite of the host card). The annotation
-   * stays attached to the block; the UI shows the collapsed-card fallback
-   * (PRD §4.7).
+   * (for example after a depth rewrite of the host card).
    */
   anchorStale?: boolean;
   /**
-   * M4: page this annotation was promoted to ("Open as page", PRD §4.7).
-   * The anchor becomes a link to that page; the annotation itself is
-   * closed (type `"link"` on promotion, or kept with this pointer).
+   * M4: page this thread was promoted to ("Open as page", PRD §4.7).
+   * The anchor becomes a link to that page; the thread itself is closed.
    */
   promotedToPage?: string;
   /**
-   * Issue #152: when a conversation is opened as a page while a turn is
-   * still filling (or has failed), the turns stay on the link annotation
-   * as the fill's state owner and each moved turn maps to its page card.
-   * The fill keeps running and mirrors finished blocks onto the mapped
-   * card; the page resolves the working/error state through this mapping.
-   * Turns are dropped once every mapped turn has settled successfully.
+   * Issue #152 (threads): when a thread is opened as a page while a
+   * reply is still filling (or has failed), the replies stay on the
+   * thread as the fill's state owner and each moved reply maps to its
+   * page card. Mirrors finished blocks onto the mapped card; dropped
+   * once every mapped reply has settled successfully.
    */
-  promotedTurns?: { turnId: string; cardId: string }[];
+  promotedReplies?: { replyId: string; cardId: string }[];
   /**
    * M5 (PRD §8): true when the anchored code changed and the quote could
    * not be re-found with confidence. The original snippet is kept in
@@ -599,17 +595,13 @@ export interface Annotation {
   successor?: Anchor;
   /**
    * M6: posted marker set by Submit after the comment reaches GitHub.
-   * Comments with `postedAt` set are never posted twice (double-submit
-   * protection; retry after a partial failure skips them).
+   * Threads with `postedAt` set are never posted twice.
    */
   postedAt?: number;
   /** M6: GitHub review URL the thread was posted in. */
   postedUrl?: string;
   /**
-   * Issue #181: this suggested comment is an agent's open question.
-   * Links the suggestion to its contribution item, so dismissing the
-   * suggestion marks that item dismissed (resolved) in the shared
-   * context and the question is not raised again.
+   * Issue #181: this suggested thread is an agent's open question.
    */
   openQuestion?: {
     contributionId: string;
@@ -617,13 +609,19 @@ export interface Annotation {
   };
 }
 
-/** Where an annotation is attached (PRD §7.1). */export type AnchorHost =
+/** Back-compat alias: `Annotation` is now `Thread`. Prefer `Thread`. */
+export type Annotation = Thread;
+/** Back-compat alias: `Turn` is now `Reply`. Prefer `Reply`. */
+export type Turn = Reply;
+/** Removed: comment messages are `Reply` with `kind: "comment"`. */
+export type AnnotationType = "thread" | "link";
+
+/** Where a thread is attached (PRD §7.1). Issue #273: the `ans_…` host form is gone. */export type AnchorHost =
   /**
    * A guide block, stored `<card>#<block>` (block ids repeat across cards,
-   * #78). The card part is a page-card id, or — for an annotation on text
-   * inside a conversation answer (#116, #136) — the hosting answer's
-   * `ans_…` id. Hosts nest by the same mechanism to any depth (an
-   * annotation per level; every level stays in the flat annotation list).
+   * #78). The card part is always a page-card id. Anchors inside a thread
+   * reply never create a nested thread: Explain/Ask there appends a reply
+   * to the same thread, with an in-thread link.
    */
   | { kind: "block"; blockId: string }
   | { kind: "description"; paragraphId: string }

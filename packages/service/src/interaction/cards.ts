@@ -1,8 +1,7 @@
 /**
- * Card targets + pure card mutations (issue #136).
+ * Card targets + pure card mutations (issue #273).
  *
- * A "card" for interaction purposes is either a `Page` card or one answer
- * (turn) of a conversation card (`Annotation.turns`, each with its own
+ * A "card" for interaction purposes is either a `Page` card or one reply of a thread (`Thread.replies`, each with its own
  * `ans_…` id). Every helper below resolves both, so depth / examples /
  * diagram / undo / second opinion work on answers exactly like on cards
  * (PRD §4.4). All mutations run inside `ReviewStore.mutate` in the action
@@ -18,13 +17,13 @@ import type {
   DepthLevel,
   DiagramBlock,
   ReviewSnapshot,
-  Turn,
+  Reply,
 } from "@unvibe/shared";
 import { freshBlockId } from "@unvibe/shared";
 
 export type CardTarget =
   | { kind: "page-card"; pageId: string; card: Card }
-  | { kind: "answer"; annotation: Annotation; turn: Turn };
+  | { kind: "answer"; annotation: Annotation; turn: Reply };
 
 const ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -35,7 +34,7 @@ export function findCardTarget(snapshot: ReviewSnapshot, cardId: string): CardTa
     if (card) return { kind: "page-card", pageId: page.id, card };
   }
   for (const annotation of snapshot.annotations ?? []) {
-    const turn = (annotation.turns ?? []).find((t) => t.id === cardId);
+    const turn = (annotation.replies ?? []).find((t) => t.id === cardId);
     if (turn) return { kind: "answer", annotation, turn };
   }
   return null;
@@ -52,8 +51,8 @@ export function findCardTargetInDraft(
   }
   for (const annotation of draft.annotations ?? []) {
     const ann = annotation as unknown as Annotation;
-    const turn = (ann.turns ?? []).find((t) => t.id === cardId);
-    if (turn) return { kind: "answer", annotation: ann, turn: turn as Turn };
+    const turn = (ann.replies ?? []).find((t) => t.id === cardId);
+    if (turn) return { kind: "answer", annotation: ann, turn: turn as Reply };
   }
   return null;
 }
@@ -61,7 +60,7 @@ export function findCardTargetInDraft(
 /** The conversation card holding an answer, or null. */
 export function conversationForAnswer(snapshot: ReviewSnapshot, answerId: string): Annotation | null {
   for (const annotation of snapshot.annotations ?? []) {
-    if ((annotation.turns ?? []).some((t) => t.id === answerId)) return annotation;
+    if ((annotation.replies ?? []).some((t) => t.id === answerId)) return annotation;
   }
   return null;
 }
@@ -78,9 +77,9 @@ export function mirrorPromotedAnswer(
   answerId: string,
 ): void {
   for (const annotation of draft.annotations as unknown as Annotation[]) {
-    const mapping = (annotation.promotedTurns ?? []).find((m) => m.turnId === answerId);
+    const mapping = (annotation.promotedReplies ?? []).find((m) => m.replyId === answerId);
     if (!mapping) continue;
-    const turn = (annotation.turns ?? []).find((t) => t.id === answerId);
+    const turn = (annotation.replies ?? []).find((t) => t.id === answerId);
     if (!turn) continue;
     for (const page of draft.pages ?? []) {
       const card = (page.cards ?? []).find((c) => c.id === mapping.cardId);
@@ -382,7 +381,7 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
     }
   }
   for (const ann of draft.annotations as unknown as Annotation[]) {
-    for (const turn of ann.turns ?? []) {
+    for (const turn of ann.replies ?? []) {
       if (turn.id === cardId) collect(turn.blocks, turn.level);
     }
   }

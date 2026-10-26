@@ -326,9 +326,11 @@ export function suggestedAnnotation(
   // fixture's `_OBSOLETE_FOLD_RE` style without hard-coding it).
   const m = lineText.match(/[A-Za-z_][A-Za-z0-9_]+/);
   const quotedText = m ? m[0] : lineText.slice(0, 40);
+  const replyId = `ans_${id.replace(/[^0-9a-f]/gi, "").slice(0, 6) || "seed"}`;
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
     id,
-    type: "comment",
+    type: "thread",
     anchor: {
       host: { kind: "diff-line", fileKey, line },
       quotedText,
@@ -339,7 +341,17 @@ export function suggestedAnnotation(
     },
     open: true,
     pinned: false,
-    messages: [{ who: "ai", suggested: true, text }],
+    replies: [{
+      id: replyId,
+      kind: "comment",
+      who: "agent",
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+      suggested: true,
+    }],
     post: false,
   };
 }

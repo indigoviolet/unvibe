@@ -80,7 +80,7 @@ export function createSnapshotLookup(
     // Answers are cards in their own right (#136): `card:<ans>#<block>`
     // citations address their blocks the same way page cards do.
     for (const ann of snapshot.annotations) {
-      const turn = (ann.turns ?? []).find((t) => t.id === cardId);
+      const turn = (ann.replies ?? []).find((t) => t.id === cardId);
       if (turn) return turn.blocks;
     }
     return null;
@@ -177,10 +177,20 @@ export function createSnapshotLookup(
         return found ? documentBlockText(found) : null;
       }
       if (parsed?.kind === "ann") {
-        // Issue #214: an `ann:` host is a comment; its text is the host block.
-        const ann = snapshot.annotations.find((a) => a.id === parsed.id && a.type === "comment");
+        // Issue #214 (threads): an `ann:` host is a thread; its comment replies are the host text.
+        const ann = snapshot.annotations.find((a) => a.id === parsed.id);
         if (!ann) return null;
-        return (ann.messages ?? []).map((m) => m.text ?? "").filter((t) => t !== "").join("\n\n");
+        const parts: string[] = [];
+        for (const r of ann.replies ?? []) {
+          if (r.kind !== "comment") continue;
+          for (const b of r.blocks ?? []) {
+            if (b.type === "paragraph") {
+              const plain = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+              if (plain) parts.push(plain);
+            }
+          }
+        }
+        return parts.join("\n\n") || null;
       }
       if (parsed?.kind === "diff") {
         // New-side line text from the hunk rows, so quoted anchors on diff

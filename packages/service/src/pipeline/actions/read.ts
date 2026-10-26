@@ -23,18 +23,18 @@ export async function collapseAction(
   await reviews.mutate(reviewId, (draft) => {
     const t = findCardTargetInDraft(draft, cardId);
     if (!t) {
-      // A conversation card id addresses the card, not one answer.
+      // A thread id addresses the thread, not one reply.
       const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
         (a) => a.id === cardId,
       );
-      if (!ann || ann.type !== "conversation") throw new Error(`unknown card ${cardId}`);
+      if (!ann || (ann.type !== "thread" && ann.type !== "link")) throw new Error(`unknown card ${cardId}`);
       ann.collapsed = collapsed;
       return;
     }
     if (t.kind === "page-card") {
       t.card.collapsed = collapsed;
     } else {
-      // An answer id collapses its card (answers have no collapsed flag
+      // A reply id collapses its thread (replies have no collapsed flag
       // of their own).
       t.annotation.collapsed = collapsed;
     }

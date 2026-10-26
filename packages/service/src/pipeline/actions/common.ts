@@ -248,7 +248,7 @@ export async function suppressFillError(ctx: ActionContext, annotationId: string
               working?: string | null;
               error?: string | null;
               jobId?: string;
-              turns?: {
+              replies?: {
                 id: string;
                 working?: string | null;
                 error?: string | null;
@@ -261,7 +261,7 @@ export async function suppressFillError(ctx: ActionContext, annotationId: string
           ann.working = null;
           ann.error = null;
           ann.jobId = undefined;
-          for (const turn of ann.turns ?? []) {
+          for (const turn of ann.replies ?? []) {
             if (turn.jobId === jobId || (turn.working ?? null) !== null) {
               turn.working = null;
               turn.error = null;

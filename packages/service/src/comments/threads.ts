@@ -1,26 +1,26 @@
 /**
- * Comments without the agent (M6, #136 slice 2).
+ * Threads without nesting (issue #273, from #268 spike).
  *
- * Comments live as `Annotation` records of type `"comment"` in the review
- * snapshot (`packages/shared` entities) — the only thing submitted to
- * GitHub. Every change goes through `ReviewStore.mutate` so subscribers
- * get RFC 6902 patches.
+ * Threads live as `Thread` records in the review snapshot (`packages/shared`
+ * entities) — the only thing submitted to GitHub. Every change goes through
+ * `ReviewStore.mutate` so subscribers get RFC 6902 patches.
  *
- * - `createThreadInDraft` / `createThread`: a reviewer comment anchored
+ * - `createThreadInDraft` / `createThread`: a reviewer thread anchored
  *   on a guide block, a description paragraph, or a diff line, with
- *   quoted text + prefix/suffix (PRD §7 Anchor). Comments are in the
- *   Outbox by default.
+ *   quoted text + prefix/suffix (PRD §7 Anchor). Comment-kind replies are
+ *   in the Outbox by default.
  * - `createSuggestedCommentInDraft` / `createSuggestedComment`: agent
- *   findings' suggested comments — a comment on a diff line whose first
- *   message is flagged `suggested` and is NOT in the Outbox (PRD §4.9).
- * - `replyInDraft` / `replyToThread`: user reply.
+ *   findings' suggested comments — a thread on a diff line whose first
+ *   reply is the agent's suggestion (`suggested: true`) and is NOT in the
+ *   Outbox initially (PRD §4.9).
+ * - `replyInDraft` / `replyToThread`: reviewer comment reply.
  * - `setOpenInDraft` / `setThreadOpen`, `setPostInDraft` / `setThreadPost`,
  *   `setDraftInDraft` / `updateThreadDraft`, `deleteInDraft` /
  *   `deleteAnnotation`: open/close, mark Outbox, edit the Outbox draft, delete.
  *
  * The `POST /api/reviews/:id/actions` union (`note`, `close`, `delete`)
- * overlaps this module. The actions route (another agent) should call
- * `createNoteThread`, `closeAnnotation`, and `deleteAnnotation` below.
+ * overlaps this module. The actions route calls `createNoteThread`,
+ * `closeAnnotation`, and `deleteAnnotation` below.
  */
 
 import { randomBytes } from "node:crypto";
@@ -28,9 +28,10 @@ import type {
   ActionAnchor,
   Anchor,
   AnchorHost,
-  Annotation,
-  ChatMessage,
+  Block,
+  Reply,
   ReviewSnapshot,
+  Thread,
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
@@ -47,7 +48,7 @@ export interface CreateThreadParams {
   startOffset?: number;
   /** Issue #166: end of the recorded selection (see `startOffset`). */
   endOffset?: number;
-  /** Initial user text (first message when present). */
+  /** Initial user text (first comment reply when present). */
   text?: string;
 }
 
@@ -64,6 +65,11 @@ export interface CreateSuggestedParams {
 /** New thread ids. Format `ann_<12 hex>` (app-assigned, PRD §7.2). */
 export function newAnnotationId(): string {
   return `ann_${randomBytes(6).toString("hex")}`;
+}
+
+/** New reply ids. Format `ans_<12 hex>` (app-assigned, PRD §7.2). */
+export function newReplyId(): string {
+  return `ans_${randomBytes(6).toString("hex")}`;
 }
 
 function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
@@ -128,6 +134,13 @@ function stripTags(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function snapshotDescriptionParagraphText(snapshot: ReviewSnapshot, paragraphId: string): string | null {
@@ -221,7 +234,7 @@ export function buildAnchor(
     };
   }
   if (host.kind === "comment") {
-    // Issue #214: the host is that comment; its text is the host block.
+    // Issue #214: the host is that thread; its comment replies are the host text.
     const text = commentHostText(snapshot, host.commentId, quote);
     if (text === null) throw new Error(`unknown comment ${host.commentId}`);
     const ctx = contextAround(text, quote);
@@ -271,7 +284,7 @@ export function buildAnchor(
   if (!file) throw new Error(`unknown file ${host.fileKey}`);
   if (host.kind === "hunk") {
     // Issue #138: the hunk must exist; the summary text lives in
-    // hunkStates, read by the hunk-card creation (not stored here).
+    // hunkStates, read by the hunk-thread creation (not stored here).
     const hunk = file.hunks.find((h) => h.contentHash === host.contentHash);
     if (!hunk) throw new Error(`unknown hunk ${host.fileKey}:${host.contentHash}`);
     return {
@@ -304,12 +317,36 @@ export function buildAnchor(
   };
 }
 
-/** Draft helper: insert a thread; returns the new annotation. */
+/** One comment reply carrying plain reviewer text. */
+export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Reply {
+  const who = opts?.who ?? "you";
+  const html = escapeHtml(text).replace(/\n/g, "<br>");
+  const block: Block = {
+    type: "paragraph",
+    id: "b1",
+    text: { standard: html },
+    citations: [],
+  };
+  return {
+    id: newReplyId(),
+    kind: "comment",
+    who: who === "agent" ? "agent" : "you",
+    question: null,
+    blocks: [block],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...(opts?.suggested ? { suggested: true } : {}),
+    ...(opts?.suggestedQuestion ? { suggestedQuestion: true } : {}),
+  };
+}
+
+/** Draft helper: insert a thread; returns the new thread. */
 export function createThreadInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   snapshot: ReviewSnapshot,
   params: CreateThreadParams,
-): Annotation {
+): Thread {
   const quote = params.quote ?? "";
   const anchor = buildAnchor(
     snapshot,
@@ -323,25 +360,25 @@ export function createThreadInDraft(
       endOffset: params.endOffset,
     },
   );
-  const messages: ChatMessage[] = [];
+  const replies: Reply[] = [];
   if (params.text !== undefined && params.text !== "") {
-    messages.push({ who: "you", text: params.text });
+    replies.push(commentReply(params.text));
   }
-  // Guide comments start closed; diff + description comments start open
+  // Guide threads start closed; diff + description threads start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
   // A Comment is in the Outbox by default (issue #135).
   const open = anchor.host.kind === "block" ? false : true;
-  const thread: Annotation = {
+  const thread: Thread = {
     id: newAnnotationId(),
-    type: "comment",
+    type: "thread",
     anchor,
+    replies,
     open,
     pinned: false,
-    messages,
     post: true,
-    ...(messages.length === 0 ? { reply: "" } : {}),
+    ...(replies.length === 0 ? { reply: "" } : {}),
   };
-  draft.annotations.push(thread as Annotation);
+  draft.annotations.push(thread as Thread);
   return thread;
 }
 
@@ -350,7 +387,7 @@ export function createSuggestedCommentInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   snapshot: ReviewSnapshot,
   params: CreateSuggestedParams,
-): Annotation {
+): Thread {
   if (params.anchor.where !== "diff-line") {
     throw new Error("suggested comments must anchor on a diff line");
   }
@@ -363,27 +400,26 @@ export function createSuggestedCommentInDraft(
     params.quote ?? "",
     { prefix: params.prefix, suffix: params.suffix, position: params.position },
   );
-  const thread: Annotation = {
+  const thread: Thread = {
     id: newAnnotationId(),
-    type: "comment",
+    type: "thread",
     anchor,
+    replies: [commentReply(params.suggestionText, { who: "agent", suggested: true })],
     open: true,
     pinned: false,
-    messages: [{ who: "ai", text: params.suggestionText, suggested: true }],
     post: false,
   };
-  draft.annotations.push(thread as Annotation);
+  draft.annotations.push(thread as Thread);
   return thread;
 }
 
-function findThread(draft: WritableDraft<ReviewSnapshot>, commentId: string): Annotation {
-  const found = (draft.annotations as Annotation[]).find((a) => a.id === commentId);
+function findThread(draft: WritableDraft<ReviewSnapshot>, commentId: string): Thread {
+  const found = (draft.annotations as Thread[]).find((a) => a.id === commentId);
   if (!found) throw new Error(`unknown comment ${commentId}`);
-  if (found.type !== "comment") throw new Error(`annotation ${commentId} is not a comment`);
-  return found as WritableDraft<Annotation> as unknown as Annotation;
+  return found as WritableDraft<Thread> as unknown as Thread;
 }
 
-/** Draft helper: user reply. */
+/** Draft helper: reviewer comment reply. */
 export function replyInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   commentId: string,
@@ -391,7 +427,7 @@ export function replyInDraft(
 ): void {
   if (!text || text.trim() === "") throw new Error("reply text is required");
   const thread = findThread(draft, commentId);
-  (thread.messages as ChatMessage[]).push({ who: "you", text });
+  thread.replies.push(commentReply(text));
   thread.reply = "";
   thread.open = true;
 }
@@ -446,15 +482,15 @@ export function setReplyBoxInDraft(
 
 /** Draft helper: delete a thread. */
 export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: string): void {
-  const idx = (draft.annotations as Annotation[]).findIndex((a) => a.id === commentId);
+  const idx = (draft.annotations as Thread[]).findIndex((a) => a.id === commentId);
   if (idx < 0) throw new Error(`unknown comment ${commentId}`);
   // Owner decision (#161): the idle hunk summary is the collapsed state
-  // of the hunk card, so deleting a hunk card removes the hunk's stored
+  // of the hunk thread, so deleting a hunk thread removes the hunk's stored
   // summary too — the hunk is left with no summary, in the same draft
   // (one crash-safe mutate, logged like other deletes). Re-summarizing
   // can make a new one; the update pass only regenerates summaries for
   // hunks that changed.
-  const host = (draft.annotations as Annotation[])[idx].anchor.host;
+  const host = (draft.annotations as Thread[])[idx].anchor.host;
   if (host.kind === "hunk") {
     const state = draft.hunkStates.find((s) => s.contentHash === host.contentHash);
     if (state) delete state.summary;
@@ -462,26 +498,45 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: s
   // Issue #181: dismissing a question suggestion resolves its
   // contribution item in the shared context, so agents do not raise it
   // again (re-raises dedupe against stored items, whatever their status).
-  const link = (draft.annotations as Annotation[])[idx].openQuestion;
+  const link = (draft.annotations as Thread[])[idx].openQuestion;
   if (link) {
     const item = draft.contributions.find((c) => c.id === link.contributionId)?.items[link.itemIndex];
     if (item && item.kind === "open_question") item.status = "dismissed";
   }
-  (draft.annotations as Annotation[]).splice(idx, 1);
+  (draft.annotations as Thread[]).splice(idx, 1);
 }
 
 /**
  * Exact text that will be posted for a thread: the Outbox draft when set,
- * else the first user message, else the suggested message (prototype
+ * else the first reviewer reply, else the suggested reply (prototype
  * `Comments menu` draft fallback).
  */
-export function threadPostText(thread: Annotation): string {  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
-  const you = thread.messages.find((m) => m.who === "you" && m.text);
-  if (you?.text) return you.text;
-  const suggested = thread.messages.find((m) => m.suggested && m.text);
-  if (suggested?.text) return suggested.text;
-  const first = thread.messages.find((m) => m.text);
-  return first?.text ?? "";
+export function threadPostText(thread: Thread): string {
+  if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+  const toText = (r: Reply): string => {
+    const parts: string[] = [];
+    for (const b of r.blocks ?? []) {
+      if (b.type === "paragraph") {
+        const s = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        if (s) parts.push(s);
+      } else if (b.type === "list") {
+        for (const it of b.items ?? []) {
+          const s = (it.html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+          if (s) parts.push(s);
+        }
+      } else if (b.type === "code") {
+        if (b.code.trim()) parts.push(b.code);
+      }
+    }
+    return parts.join("\n\n");
+  };
+  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
+  const you = comments.find((r) => r.who === "you" && toText(r) !== "");
+  if (you) return toText(you);
+  const suggested = comments.find((r) => r.suggested && toText(r) !== "");
+  if (suggested) return toText(suggested);
+  const first = comments.find((r) => toText(r) !== "");
+  return first ? toText(first) : "";
 }
 
 // --- Store wrappers (all through ReviewStore.mutate) ------------------------
@@ -489,7 +544,7 @@ export function threadPostText(thread: Annotation): string {  if (thread.draft !
 async function mutateThread(
   store: ReviewStore,
   reviewId: string,
-  fn: (draft: WritableDraft<ReviewSnapshot>, snapshot: ReviewSnapshot) => Annotation | void,
+  fn: (draft: WritableDraft<ReviewSnapshot>, snapshot: ReviewSnapshot) => Thread | void,
 ): Promise<ReviewSnapshot> {
   const before = store.getSnapshot(reviewId);
   if (!before) throw new Error(`unknown review ${reviewId}`);
@@ -514,7 +569,7 @@ export async function createThread(
 
 /**
  * Actions-route seam: `note` action without agent involvement.
- * Creates a comment (no agent reply); the conversation pipeline owns
+ * Creates a comment reply (no agent reply); the conversation pipeline owns
  * everything that needs the agent.
  */
 export async function createNoteThread(
@@ -546,7 +601,7 @@ export async function createSuggestedComment(
   return { id, snapshot };
 }
 
-/** User reply. */
+/** Reviewer comment reply. */
 export async function replyToThread(
   store: ReviewStore,
   reviewId: string,
@@ -625,5 +680,3 @@ export async function deleteAnnotation(
     deleteInDraft(draft, commentId);
   });
 }
-
-

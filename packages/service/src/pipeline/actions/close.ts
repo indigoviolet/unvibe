@@ -38,9 +38,9 @@ export async function closeAction(
     // Closing keeps content for the dotted-link preview; a working job
     // that finishes later still fills the (closed) turn.
   });
-  // Close is UI state (never logged). A closed comment or card settles
+  // Close is UI state (never logged). A closed thread settles
   // at once: one line in the log so other conversations see it (PRD §9.3).
-  if (found.type === "comment") {
+  if (found.replies.some((r) => r.kind === "comment")) {
     await recordInteraction({ kind: "close", reviewId, annotationId, text: `Closed comment "${annotationId}"` });
   } else {
     await recordInteraction({ kind: "close", reviewId, annotationId, text: `Closed ${annotationId}` });

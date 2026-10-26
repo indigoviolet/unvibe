@@ -341,7 +341,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
               ann.error = INTERRUPTED_MESSAGE;
               ann.jobId = undefined;
             }
-            for (const turn of ann.turns ?? []) {
+            for (const turn of ann.replies ?? []) {
               if (turn.jobId === job.id || (annMatches && (turn.working ?? null) !== null)) {
                 turn.working = null;
                 turn.error = INTERRUPTED_MESSAGE;

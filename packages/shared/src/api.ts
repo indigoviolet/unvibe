@@ -19,6 +19,8 @@ import type {
   HunkState,
   PrReviewDecision,
   PrState,
+  Reply,
+  ReplyKind,
   ReviewKind,
   ReviewViewPrefs,
   Job,
@@ -29,6 +31,7 @@ import type {
   ReviewFile,
   Repo,
   SelectionOffsets,
+  Thread,
   Version,
 } from "./entities.js";
 import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
@@ -557,20 +560,29 @@ export interface UpdateReviewResponse {
  * route by `kind` and later agents can add variants without new endpoints.
  */
 export type ReviewAction =
-  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets }
-  /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
-  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string; offsets?: SelectionOffsets }
+  /**
+   * Issue #273: Explain starts a new thread anchored on content, or —
+   * with `threadId` — appends an Explain reply inside that thread. The
+   * selected text (`quote`, optionally from `sourceReplyId`) becomes a
+   * hyperlink to the new reply (`linkTo`).
+   */
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  /**
+   * Issue #273: Ask starts a new thread anchored on content, or —
+   * with `threadId` — appends an Ask reply inside that thread.
+   */
+  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
-   * Issue #136: `cardId` is a page-card id or one conversation answer's
+   * Issue #273: `cardId` is a page-card id or one thread reply's
    * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
-   * that unit's own blocks/level/undo stack, so an answer rewrites alone.
+   * that unit's own blocks/level/undo stack, so a reply rewrites alone.
    */
   | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
   | { kind: "examples"; cardId: string }
   | { kind: "diagram"; cardId: string }
   | { kind: "undo"; cardId: string }
-  /** Issue #136: `cardId` is a page-card id or a conversation card id. */
+  /** `cardId` is a page-card id or a thread id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
@@ -578,28 +590,29 @@ export type ReviewAction =
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
   /**
-   * Issue #138: turn an idle hunk summary into its conversation card
+   * Issue #138 (threads): turn an idle hunk summary into its thread
    * (created from the stored summary text, no agent call), or reopen it.
    * The explicit hunk control sends this; selecting summary text and
    * choosing Explain/Ask goes through those actions with a hunk anchor.
    */
   | { kind: "hunk_card"; fileKey: string; contentHash: string }
   /**
-   * M4: answer a follow-up suggestion under the block it came from.
-   * `cardId` is a page-card id, a conversation card id, or one answer's
-   * `ans_…` id. On a page card the answer arrives as a new conversation
-   * card anchored on that block (prototype `follow`), quoting the
-   * suggestion label; on a conversation card the suggestion is sent as
-   * the next turn in the same conversation (#136).
+   * M4 (threads): answer a follow-up suggestion under the block it came
+   * from. `cardId` is a page-card id, a thread id, or one reply's
+   * `ans_…` id. On a page card the answer arrives as a new thread
+   * anchored on that block, quoting the suggestion label; on a thread
+   * reply the suggestion is sent as the next agent reply in the same
+   * thread.
    */
   | { kind: "followup"; cardId: string; blockId: string; index: number }
   /**
-   * Follow-up user message on a conversation card, added as a turn on
-   * the card's session (`Annotation.sessionId`) instead of forking
-   * again.
+   * Follow-up user message on a thread, answered as an Ask reply on the
+   * thread's session (`Thread.sessionId`) instead of forking again.
    */
   | { kind: "reply"; annotationId: string; message: string }
-  /** Retry the last turn of a conversation card. */
+  /** Retry the last failed agent reply of a thread. */
+  | { kind: "reply_retry"; annotationId: string; replyId?: string }
+  /** Retry the last failed agent reply of a thread (alias of `reply_retry`). */
   | { kind: "retry"; annotationId: string }
   /**
    * M4: write a concept page on first open (`ensureConceptPage`). The
@@ -610,10 +623,10 @@ export type ReviewAction =
 export type ActionAnchor =
   /**
    * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
-   * in every card, so the card qualifier is required). The card part is a
-   * page-card id, or — for a selection inside a conversation answer (#116,
-   * #136) — the hosting answer's `ans_…` id, so nested cards address
-   * `<answer>#<block>` the same way.
+   * in every card, so the card qualifier is required). The card part is
+   * always a page-card id (issue #273: the `ans_…` host form is gone;
+   * selections inside a thread reply travel as `threadId`/`sourceReplyId`
+   * on explain/ask instead).
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
@@ -645,9 +658,11 @@ export interface ActionResponse {
   accepted: boolean;
   /** Job started for the action, when async. */
   jobId?: string;
-  /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
+  /** M4: thread created or targeted by the action (explain/ask/note/followup). */
   annotationId?: string;
-  /** Issue #136: turn created or targeted by the action (explain/ask/reply/retry/followup). */
+  /** Issue #273: reply created or targeted by the action (explain/ask/reply/retry/followup). Alias `turnId` kept for callers. */
+  replyId?: string;
+  /** Deprecated alias of `replyId`. */
   turnId?: string;
   /** M4: page created or targeted (promote/concept). */
   pageId?: string;
@@ -1549,4 +1564,4 @@ export type ReviewEvent =
   | { type: "error"; message: string; jobId?: string };
 
 /** Re-exported entity slices used by route stubs. */
-export type { Annotation, Card, Page };
+export type { Annotation, Card, Page, Reply, ReplyKind, Thread };

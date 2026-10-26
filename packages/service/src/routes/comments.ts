@@ -188,12 +188,12 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
         // Issue #136: `open` and the reply-box draft (`reply`) apply to
         // conversation cards too (dotted-link click re-expands a closed
         // card in place). Post/draft stay comment-only: only comments post.
-        if (open !== undefined && (found.type === "comment" || found.type === "conversation" || found.type === "link")) {
+        if (open !== undefined && (found.type === "comment" || (found.type === "thread" || found.type === "link") || found.type === "link")) {
           found.open = open;
         } else if (open !== undefined) {
           throw new Error(`annotation ${commentId} is not a comment`);
         }
-        if (found.type === "conversation") {
+        if ((found.type === "thread" || found.type === "link")) {
           if (post !== undefined || draft !== undefined || draft === null) {
             throw new Error(`annotation ${commentId} is not a thread`);
           }
