@@ -12,7 +12,7 @@
  *
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
-import type { Annotation, Block, Reply } from "@unvibe/shared";
+import type { Thread, Block, Reply } from "@unvibe/shared";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
@@ -95,7 +95,7 @@ function ControlButton({
   );
 }
 
-function successorTarget(thread: Annotation): string | null {
+function successorTarget(thread: Thread): string | null {
   const successor = thread.successor;
   if (!successor) return null;
   const host = successor.host;
@@ -107,7 +107,7 @@ function successorTarget(thread: Annotation): string | null {
   return null;
 }
 
-function headerLabel(snapshotFile: string | null, thread: Annotation): string {
+function headerLabel(snapshotFile: string | null, thread: Thread): string {
   if (thread.anchor.quotedText) return `“${thread.anchor.quotedText}”`;
   if (thread.anchor.host.kind === "diff-line") {
     const name = snapshotFile ?? thread.anchor.host.fileKey;
@@ -139,7 +139,7 @@ function AgentReplyView({
   onLink,
 }: {
   reviewId: string;
-  thread: Annotation;
+  thread: Thread;
   reply: Reply;
   lookupPage: (pageId: string) => { id: string } | undefined;
   onOpenPage: (pageId: string) => void;
@@ -356,7 +356,7 @@ export function ThreadCollapsedRow({
   thread,
   onExpand,
 }: {
-  thread: Annotation;
+  thread: Thread;
   onExpand: () => void;
 }) {
   const first = thread.replies[0];
@@ -393,7 +393,7 @@ export function ThreadCollapsedRow({
 
 interface Props {
   reviewId: string;
-  thread: Annotation;
+  thread: Thread;
   readOnly?: boolean;
   lookupPage?: (pageId: string) => { id: string } | undefined;
   onOpenPage?: (pageId: string) => void;

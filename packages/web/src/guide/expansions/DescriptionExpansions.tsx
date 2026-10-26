@@ -9,7 +9,7 @@
  * - Promoted links highlight as page links (`a.cx.pg`).
  */
 import { useEffect, useState } from "react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
@@ -171,7 +171,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
         <div className="dann" key={e.id}>
           <ThreadView
             reviewId={reviewId}
-            thread={e as Annotation}
+            thread={e as Thread}
             lookupPage={lookupPage}
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}

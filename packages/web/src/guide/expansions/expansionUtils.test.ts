@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import {
   expansionPreview,
   isAnchorStale,
@@ -23,7 +23,7 @@ function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Repl
   } as import("@unvibe/shared").Reply;
 }
 
-function ann(over: Partial<Annotation>): Annotation {
+function ann(over: Partial<Thread>): Thread {
   return {
     id: "a1",
     type: "thread",
@@ -40,7 +40,7 @@ function ann(over: Partial<Annotation>): Annotation {
     replies: [],
     post: false,
     ...over,
-  } as Annotation;
+  } as Thread;
 }
 
 describe("conversation card utils", () => {

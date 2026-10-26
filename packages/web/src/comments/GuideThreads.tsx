@@ -21,7 +21,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { useLocation } from "react-router";
 import { subscribeHighlight } from "../source/diff/highlight/shiki.js";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -111,13 +111,13 @@ export function GuideThreadHooks() {
     const page = document.getElementById("page");
     if (!page) return;
     const threads = (annotations ?? []).filter(
-      (a): a is Annotation => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
+      (a): a is Thread => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
     // Issue #166: anchors whose host text isn't there yet (a re-render
     // landing after this pass) are retried — bounded overall per effect
     // run (#206), never re-armed per pass.
     let pending = new Set<string>(threads.map((t) => t.id));
-    const placedOf = (thread: Annotation): { placed: boolean; hostMissing: boolean } => {
+    const placedOf = (thread: Thread): { placed: boolean; hostMissing: boolean } => {
       const host = thread.anchor.host;
       if (host.kind !== "block") return { placed: false, hostMissing: true };
       const scope = anchorScope(page, host.blockId);
@@ -330,7 +330,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const expandedThreads = useReview((s) => s.expandedThreads);
   const setThreadExpanded = useReview((s) => s.setThreadExpanded);
   const threads = (annotations ?? []).filter(
-    (a): a is Annotation =>
+    (a): a is Thread =>
       (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&

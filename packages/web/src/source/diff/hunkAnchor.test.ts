@@ -94,7 +94,7 @@ describe("hunkAnchor", () => {
     const ref = { fileKey: "conn", contentHash: "hash1" };
     expect(promotedPageForHunk(snapshot([hunk()]), ref)).toBeNull();
     const snap = snapshot([hunk()]);
-    (snap.annotations as import("@unvibe/shared").Annotation[]).push({
+    (snap.annotations as import("@unvibe/shared").Thread[]).push({
       id: "ann_link",
       type: "link",
       anchor: {
@@ -109,7 +109,7 @@ describe("hunkAnchor", () => {
       replies: [],
       post: false,
       promotedToPage: "p-9",
-    } as unknown as import("@unvibe/shared").Annotation);
+    } as unknown as import("@unvibe/shared").Thread);
     expect(promotedPageForHunk(snap, ref)).toBe("p-9");
     expect(promotedPageForHunk(snap, { fileKey: "conn", contentHash: "other" })).toBeNull();
   });

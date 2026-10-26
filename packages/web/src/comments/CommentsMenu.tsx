@@ -31,7 +31,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router";
-import type { Annotation, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
 import { isAiSuggested, isDocumentReview, parseId } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
@@ -62,7 +62,7 @@ function replyPlain(reply: { blocks?: Array<{ type: string }> }): string {
   return "";
 }
 
-function excerpt(thread: Annotation): string {
+function excerpt(thread: Thread): string {
   const first = (thread.replies ?? []).find((r) => r.kind === "comment" && replyPlain(r) !== "") ?? thread.replies[0];
   if (!first) return "";
   return replyPlain(first).slice(0, 140);
@@ -94,7 +94,7 @@ function findBlockCitations(snapshot: ReviewSnapshot, blockId: string): string[]
 }
 
 /** Where GitHub will show the thread (client approximation; Submit shows the backend preview). */
-export function prLocationLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
+export function prLocationLabel(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
@@ -146,7 +146,7 @@ function guideCardOf(
  * left (file name stays visible); guide threads read like the location
  * elsewhere — "Guide › <card title>"; never the review title.
  */
-export function groupLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
+export function groupLabel(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
@@ -163,7 +163,7 @@ export function groupLabel(snapshot: ReviewSnapshot, thread: Annotation): string
 }
 
 /** Full-length group heading for the tooltip: file paths unshortened. */
-export function groupTitle(snapshot: ReviewSnapshot, thread: Annotation): string {
+export function groupTitle(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
@@ -174,7 +174,7 @@ export function groupTitle(snapshot: ReviewSnapshot, thread: Annotation): string
 }
 
 /** Group key: diff threads share their file; document threads their title. */
-function groupKey(snapshot: ReviewSnapshot, thread: Annotation): string {
+function groupKey(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
@@ -192,7 +192,7 @@ function truncate(s: string, max: number): string {
 }
 
 /** Entry meta (tertiary, small): the line under a file group, the quote elsewhere. */
-export function entryMeta(snapshot: ReviewSnapshot, thread: Annotation): string {
+export function entryMeta(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     return host.endLine !== undefined && host.endLine !== host.line ? `:${host.line}-${host.endLine}` : `:${host.line}`;
@@ -213,7 +213,7 @@ export function entryMeta(snapshot: ReviewSnapshot, thread: Annotation): string 
 }
 
 /** "From …" origin for menu rows. */
-export function whereLabel(snapshot: ReviewSnapshot, thread: Annotation): string {
+export function whereLabel(snapshot: ReviewSnapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = snapshot.files.find((f) => f.fileKey === host.fileKey);
@@ -250,7 +250,7 @@ function DraftArea({
   readOnly,
 }: {
   reviewId: string;
-  thread: Annotation;
+  thread: Thread;
   readOnly: boolean;
 }) {
   const serverDraft = thread.draft ?? threadPostText(thread);
@@ -325,7 +325,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     () =>
       ((snapshot?.annotations ?? []).filter(
         (a) => a.replies.some((r) => r.kind === "comment"),
-      ) as Annotation[]),
+      ) as Thread[]),
     [snapshot],
   );
   // Owner decision A (#226): disjoint sections — This review holds the
@@ -337,7 +337,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   interface MenuGroup {
     label: string;
     title: string;
-    threads: Annotation[];
+    threads: Thread[];
   }
 
   const thisGroups: MenuGroup[] = useMemo(() => {
@@ -431,7 +431,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     };
   }, [open ]);
 
-  const jump = (thread: Annotation): void => {
+  const jump = (thread: Thread): void => {
     const snap = useReview.getState().snapshot;
     if (!snap) return;
     setOpen(false);
@@ -565,7 +565,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     },
   });
 
-  const localRow = (thread: Annotation, withDraft: boolean): React.JSX.Element => {
+  const localRow = (thread: Thread, withDraft: boolean): React.JSX.Element => {
     const meta = entryMeta(snapshot as ReviewSnapshot, thread);
     const go = (): void => jump(thread);
     const row = (

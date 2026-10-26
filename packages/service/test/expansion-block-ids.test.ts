@@ -218,7 +218,7 @@ describe("answer body block IDs (#116, #136)", () => {
       else await new Promise((r) => setTimeout(r, 500));
       const turnId = res.json.turnId as string;
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
-      const ids = topIds((ann.turns ?? []).find((t) => t.id === turnId)!.blocks);
+      const ids = topIds((ann.replies ?? []).find((t) => t.id === turnId)!.blocks);
       expect(ids.length).toBeGreaterThan(2);
       assertUnique(ids);
       // First occurrences keep their parser IDs.
@@ -244,7 +244,7 @@ describe("answer body block IDs (#116, #136)", () => {
       const annId = res.json.annotationId as string;
       const turnId = res.json.turnId as string;
       const turnBlocks = () =>
-        (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns ?? []).find((t) => t.id === turnId)!.blocks;
+        (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.replies ?? []).find((t) => t.id === turnId)!.blocks;
       const atFirst = topIds(turnBlocks());
       assertUnique(atFirst);
 
@@ -283,7 +283,7 @@ describe("answer body block IDs (#116, #136)", () => {
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       const annId = res.json.annotationId as string;
       const turnId = res.json.turnId as string;
-      const body = (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns ?? []).find(
+      const body = (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.replies ?? []).find(
         (t) => t.id === turnId,
       )!.blocks;
       const followUp = body.find((b) => b.type === "follow-up");
@@ -291,37 +291,45 @@ describe("answer body block IDs (#116, #136)", () => {
 
       // A suggestion on the conversation card is the next turn in the
       // same conversation (the item stays).
-      const turnsBefore = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.turns!.length;
+      const turnsBefore = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.replies!.length;
       const follow = await postAction(app, id, { kind: "followup", cardId: turnId, blockId: followUp!.id, index: 0 });
       expect(follow.status).toBe(200);
       if (follow.json.jobId) await waitForJob(ctx, follow.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (follow.json.annotationId as string))!;
       expect(card.id).toBe(annId);
-      expect(card.turns!.length).toBe(turnsBefore + 1);
-      expect(card.turns!.at(-1)!.blocks.length).toBeGreaterThan(0);
-      const kept = (card.turns ?? []).find((t) => t.id === turnId)!.blocks.find((b) => b.type === "follow-up");
+      expect(card.replies!.length).toBe(turnsBefore + 1);
+      expect(card.replies!.at(-1)!.blocks.length).toBeGreaterThan(0);
+      const kept = (card.replies ?? []).find((t) => t.id === turnId)!.blocks.find((b) => b.type === "follow-up");
       expect(kept).toBeTruthy();
 
-      // A nested Explain on each paragraph addresses a distinct host
-      // (stored qualified by the answer id).
+      // Issue #273 (was nested): an in-thread Explain on each paragraph
+      // appends a reply in the SAME thread (flat) with an in-thread link
+      // on the source reply — never a nested thread per level.
       const paras = body.filter((b) => b.type === "paragraph");
       expect(paras.length).toBeGreaterThanOrEqual(2);
-      const hosts: string[] = [];
+      const linkTargets: string[] = [];
       for (const [i, p] of paras.entries()) {
         const text = (p as { text: { standard: string } }).text.standard.replace(/<[^>]*>/g, " ").trim();
         const quote = text.split(/\s+/).slice(0, 3).join(" ");
+        const before = (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.replies ?? []).length;
         const nested = await postAction(app, id, {
           kind: "explain",
           quote: `${quote} #${i}`,
-          anchor: { where: "block", blockId: `${turnId}#${(p as { id: string }).id}` },
+          threadId: annId,
+          sourceReplyId: turnId,
         });
         expect(nested.status).toBe(200);
-        const stored = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (nested.json.annotationId as string))!;
-        const host = (stored.anchor.host as { blockId: string }).blockId;
-        expect(host).toBe(`${turnId}#${(p as { id: string }).id}`);
-        hosts.push(host);
+        if (nested.json.jobId) await waitForJob(ctx, nested.json.jobId as string);
+        const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!;
+        expect(nested.json.annotationId).toBe(annId);
+        expect((thread.replies ?? []).length).toBe(before + 1);
+        const added = (thread.replies ?? [])[(thread.replies ?? []).length - 1];
+        expect(added.kind).toBe("explain");
+        const src = (thread.replies ?? []).find((t) => t.id === turnId)!;
+        expect(src.linkTo).toBe(added.id);
+        linkTargets.push(added.id);
       }
-      expect(new Set(hosts).size).toBe(hosts.length);
+      expect(new Set(linkTargets).size).toBe(linkTargets.length);
     } finally {
       await app.close();
     }

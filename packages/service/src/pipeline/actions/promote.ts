@@ -20,10 +20,10 @@
  * nothing a reader made is lost.
  */
 import { randomBytes } from "node:crypto";
-import type { Annotation, Block, Card } from "@unvibe/shared";
+import type { Thread, Block, Card } from "@unvibe/shared";
 import { findBlock } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
-import { isTurnUnsettled } from "./conversation.js";
+import { isReplyUnsettled } from "./conversation.js";
 
 export async function promoteAction(
   ctx: ActionContext,
@@ -50,14 +50,14 @@ export async function promoteAction(
   // Pre-assign the page-card ids so the live fill job can be re-targeted
   // at its card inside the same mutate.
   const cardIds = found.replies.map(() => `c-${randomBytes(4).toString("hex")}`);
-  const unsettled = found.replies.some(isTurnUnsettled);
+  const unsettled = found.replies.some(isReplyUnsettled);
   // The live fill job (if any) moves to its page card with the content.
   const filling = found.replies.find((t) => t.jobId !== undefined);
   const fillingCardId = filling ? cardIds[found.replies.indexOf(filling)] : undefined;
   const fillingJobId = filling?.jobId ?? found.jobId;
 
   await reviews.mutate(reviewId, (draft) => {
-    const ann = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    const ann = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
     if (!ann || (ann.type !== "thread" && ann.type !== "link") || !ann.replies) throw new Error(`unknown conversation ${annotationId}`);
     const cards: Card[] = ann.replies.map((turn, i) => ({
       id: cardIds[i],

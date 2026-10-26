@@ -22,7 +22,7 @@
 import type { MutableRefObject, ReactNode } from "react";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
@@ -91,12 +91,12 @@ export function DescriptionView({ reviewId, editor }: Props) {
   const descThreads = useMemo(
     () =>
       (annotations ?? []).filter(
-        (a): a is Annotation => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "description",
+        (a): a is Thread => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "description",
       ),
     [annotations],
   );
   const byPara = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const thread of descThreads) {
       const pid = thread.anchor.host.kind === "description" ? thread.anchor.host.paragraphId : "";
       const list = map.get(pid) ?? [];
@@ -260,8 +260,8 @@ export function DescriptionView({ reviewId, editor }: Props) {
 interface BodyProps {
   reviewId: string;
   segments: ReturnType<typeof splitDescriptionHtml>;
-  byPara: Map<string, Annotation[]>;
-  orphans: Annotation[];
+  byPara: Map<string, Thread[]>;
+  orphans: Thread[];
   highlighted: ReadonlySet<string>;
   setHighlighted: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   pending: NewThreadRequest | null;

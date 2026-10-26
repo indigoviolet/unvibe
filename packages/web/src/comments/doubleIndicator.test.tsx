@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { Annotation, Card, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Card, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { NEW_THREAD_EVENT } from "../floating/SelectionToolbar.js";
 import { performAction } from "../guide/actions.js";
@@ -50,7 +50,7 @@ function seedSnapshot(): void {
   } as unknown as ReviewSnapshot);
 }
 
-function workingExpansion(): Annotation {
+function workingExpansion(): Thread {
   return {
     id: "ann_x",
     type: "thread",
@@ -77,10 +77,10 @@ function workingExpansion(): Annotation {
         working: "Thinking…",
       },
     ],
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function workingConversation(): Annotation {
+function workingConversation(): Thread {
   return {
     id: "ann_t",
     type: "thread",
@@ -107,10 +107,10 @@ function workingConversation(): Annotation {
         working: "Thinking…",
       },
     ],
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function addAnnotations(annotations: Annotation[]): void {
+function addAnnotations(annotations: Thread[]): void {
   act(() => {
     const snap = useReview.getState().snapshot!;
     useReview.getState().applyEvent({

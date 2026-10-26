@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
-  Annotation,
+  Thread,
   Block,
   Card,
   Hunk,
@@ -275,8 +275,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // its link is opened (concept-page recordings stay for that on-demand fill).
 
   // --- annotations (prototype seed()) ----------------------------------
-  // Annotation anchors use real file keys; card anchors use card#block IDs.
-  // Issue #136: the seed conversation carries its turns (`Annotation.turns`)
+  // Thread anchors use real file keys; card anchors use card#block IDs.
+  // Issue #136: the seed conversation carries its turns (`Thread.turns`)
   // so it renders like any explain result — each answer is a unit in its
   // own right (level, revision, undo stack). Content comes from the
   // recorded `explain-obs-fold` reply, canonicalized like the live
@@ -298,7 +298,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       ...(suggested ? { suggested: true } : {}),
     };
   };
-  const annotations: Annotation[] = [
+  const annotations: Thread[] = [
     {
       id: "x-seed",
       type: "thread",

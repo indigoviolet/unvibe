@@ -7,7 +7,7 @@
  * repair turn) by the `runInFork` seam.
  */
 import type { Job } from "@unvibe/shared";
-import { JOB_PRIORITY, jobDedupeKeyString, type ActionAnchor, type Anchor, type Annotation, type JobDedupeKey, type ReviewSnapshot } from "@unvibe/shared";
+import { JOB_PRIORITY, jobDedupeKeyString, type ActionAnchor, type Anchor, type Thread, type JobDedupeKey, type ReviewSnapshot } from "@unvibe/shared";
 import path from "node:path";
 import type { JobQueue } from "../../jobs/index.js";
 import { readCodeSlice } from "../../mcp/read.js";
@@ -144,7 +144,7 @@ export async function l4VariablesWithRevealed(
   ctx: ActionContext,
   snapshot: ReviewSnapshot,
   anchor: Anchor,
-  opts: { thread?: Annotation; message: string; excludeId?: string },
+  opts: { thread?: Thread; message: string; excludeId?: string },
 ): Promise<Record<string, unknown>> {
   const variables = l4Variables(snapshot, anchor, opts);
   const text = await revealedBlockText(ctx, anchor);

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { CommentsMenu } from "./CommentsMenu.js";
 
@@ -50,7 +50,7 @@ function mkReply(text: string): import("@unvibe/shared").Reply {
   };
 }
 
-function thread(id: string, text: string, extra: Partial<Annotation> = {}): Annotation {
+function thread(id: string, text: string, extra: Partial<Thread> = {}): Thread {
   const { messages, replies, ...rest } = extra as unknown as Record<string, unknown>;
   void messages;
   const extraReplies = (replies as unknown[] | undefined) ?? [mkReply(text)];
@@ -63,18 +63,18 @@ function thread(id: string, text: string, extra: Partial<Annotation> = {}): Anno
     replies: extraReplies,
     post: false,
     ...rest,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function guideThread(id: string, text: string): Annotation {
+function guideThread(id: string, text: string): Thread {
   return thread(id, text, {
-    anchor: { host: { kind: "block", blockId: "problem#b1" }, quotedText: "folded values" } as Annotation["anchor"],
+    anchor: { host: { kind: "block", blockId: "problem#b1" }, quotedText: "folded values" } as Thread["anchor"],
   });
 }
 
 function snapshot(
   prefs: ReviewSnapshot["viewPrefs"],
-  annotations: Annotation[] = [],
+  annotations: Thread[] = [],
   extra: Record<string, unknown> = {},
 ): ReviewSnapshot {
   return {

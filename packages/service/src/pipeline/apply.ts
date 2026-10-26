@@ -9,7 +9,7 @@
  * - go-deeper `cardId` → placeholder card id;
  * - concept `slug` → `c-<slug>` page id.
  */
-import type { Annotation, Block, Card, Page } from "@unvibe/shared";
+import type { Thread, Block, Card, Page } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
 
 function mkCard(id: string, pageId: string, title: string | null, blocks: Block[]): Card {
@@ -316,7 +316,7 @@ export function suggestedAnnotation(
   version: number,
   aliases: Record<string, string>,
   lineTextOf: (fileKey: string, line: number) => string | null,
-): Annotation | null {
+): Thread | null {
   const parsed = parseId(diffTarget);
   if (parsed?.kind !== "diff") return null;
   const fileKey = aliases[parsed.fileKey] ?? parsed.fileKey;

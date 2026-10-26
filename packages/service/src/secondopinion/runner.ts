@@ -743,7 +743,7 @@ export async function requestSecondOpinion(
         // attached (#136).
         await deps.reviews.mutate(req.reviewId, (draft) => {
           if (target.answerId) {
-            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
               (a) => a.id === target.annotationId,
             );
             const turn =
@@ -842,7 +842,7 @@ export async function removeSecondOpinion(
     // Issue #136: answers carry their results on the turn. `cardId` here
     // is an answer id for answer results; a stored `so-…` id matches
     // globally (ids are unique) so `delete` works without a card.
-    for (const a of draft.annotations as unknown as import("@unvibe/shared").Annotation[]) {
+    for (const a of draft.annotations as unknown as import("@unvibe/shared").Thread[]) {
       if ((a.type !== "thread" && a.type !== "link")) continue;
       for (const t of a.replies ?? []) {
         if (opinionId === undefined && t.id !== cardId) continue;

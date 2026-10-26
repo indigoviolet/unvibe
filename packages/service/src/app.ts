@@ -331,7 +331,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         const annotationId = job.annotationId;
         void reviews
           .mutate(reviewId, (draft) => {
-            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
               (a) => a.id === annotationId,
             );
             if (!ann) return;

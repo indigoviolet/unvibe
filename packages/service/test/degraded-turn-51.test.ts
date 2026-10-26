@@ -92,7 +92,7 @@ async function runExplain(
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
       | { working: string | null; turns?: { working: string | null }[] }
       | undefined;
-    return a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
+    return a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, 60000);
   return { annotationId, ...(jobId ? { jobId } : {}) };
 }
@@ -103,7 +103,7 @@ function turnBlocks(
   annotationId: string,
 ): unknown[] {
   const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-  return (ann.turns ?? [])[0]?.blocks ?? [];
+  return (ann.replies ?? [])[0]?.blocks ?? [];
 }
 
 /**
@@ -258,14 +258,14 @@ describe("the trailing degraded field (#51, #180)", () => {
       // The raw reason lands on the job for the Debug page…
       expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve returned nothing");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(ann.type).toBe("conversation");
-      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      expect(ann.type).toBe("thread");
+      const blocks = (ann.replies ?? [])[0]?.blocks ?? [];
       // …the answer shows as written with no appended note (never
       // the agent's internal wording on the card).
       expect(JSON.stringify(blocks)).toContain("The host block is described here.");
       expect(JSON.stringify(blocks)).not.toContain("Some references in this answer could not be linked to the code.");
       expect(JSON.stringify(blocks)).not.toContain("resolve returned nothing");
-      expect(ann.turns?.[0]?.error).toBeFalsy();
+      expect(ann.replies?.[0]?.error).toBeFalsy();
     } finally {
       await app.close();
     }
@@ -287,7 +287,7 @@ describe("the trailing degraded field (#51, #180)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/degraded/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
+      expect(((ann.replies ?? [])[0]?.blocks ?? [])).toEqual([]);
       // The failed job keeps its reply for the Debug page (#180).
       expect(ctx.jobs.get(jobId!)?.replySnapshot).toContain("there is no answer");
     } finally {
@@ -311,7 +311,7 @@ describe("the trailing degraded field (#51, #180)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/empty/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
+      expect(((ann.replies ?? [])[0]?.blocks ?? [])).toEqual([]);
     } finally {
       await app.close();
     }
@@ -370,7 +370,7 @@ describe("card-only anchors (#51 validator)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        ((ann.turns ?? [])[0]?.blocks ?? []).length,
+        ((ann.replies ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -426,7 +426,7 @@ describe("connection-error retry (#51, #180)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("error");
       expect(ctx.jobs.get(jobId!)?.error).toMatch(/failed to connect/);
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(((ann.turns ?? [])[0]?.blocks ?? [])).toEqual([]);
+      expect(((ann.replies ?? [])[0]?.blocks ?? [])).toEqual([]);
       // The failed job keeps its reply, served next to the prompt (#180).
       expect(ctx.jobs.get(jobId!)?.replySnapshot).toContain("could not look up the host block");
       const replyRes = await app.inject({
@@ -454,7 +454,7 @@ describe("connection-error retry (#51, #180)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(
-        ((ann.turns ?? [])[0]?.blocks ?? []).length,
+        ((ann.replies ?? [])[0]?.blocks ?? []).length,
       ).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -475,7 +475,7 @@ describe("connection-error retry (#51, #180)", () => {
       expect(ctx.jobs.get(jobId!)?.state).toBe("done");
       expect(ctx.jobs.get(jobId!)?.degradedReason).toContain("resolve came back empty");
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const blocks = (ann.turns ?? [])[0]?.blocks ?? [];
+      const blocks = (ann.replies ?? [])[0]?.blocks ?? [];
       expect(JSON.stringify(blocks)).toContain("The host block is described here.");
       expect(JSON.stringify(blocks)).not.toContain("Some references in this answer could not be linked to the code.");
     } finally {

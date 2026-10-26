@@ -10,7 +10,7 @@
  * - `threadLocationLabel`: short human location for menus (`file:line`,
  *   guide excerpt, or "General PR comment").
  */
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { descriptionPaneName } from "../source/description/paneName.js";
 
 function replyText(reply: { blocks?: Array<{ type: string }> }): string {
@@ -26,7 +26,7 @@ function replyText(reply: { blocks?: Array<{ type: string }> }): string {
   return parts.join("\n\n");
 }
 
-export function threadPostText(thread: Annotation): string {
+export function threadPostText(thread: Thread): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
   const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
   const you = comments.find((r) => r.who === "you" && replyText(r) !== "");
@@ -38,16 +38,16 @@ export function threadPostText(thread: Annotation): string {
 }
 
 /** Threads already posted to GitHub (skipped on retry, never pending). */
-export function isPosted(thread: Annotation): boolean {
+export function isPosted(thread: Thread): boolean {
   return thread.postedAt !== undefined;
 }
 
 /** Comment threads in the Outbox that are not yet posted. */
-export function outboxThreads(snapshot: ReviewSnapshot | null): Annotation[] {
+export function outboxThreads(snapshot: ReviewSnapshot | null): Thread[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => a.replies.some((r) => r.kind === "comment") && a.post && !isPosted(a as Annotation),
-  ) as Annotation[];
+    (a) => a.replies.some((r) => r.kind === "comment") && a.post && !isPosted(a as Thread),
+  ) as Thread[];
 }
 
 /** Submit count: Outbox threads + pending description edit. */
@@ -59,11 +59,11 @@ export function pendingCount(snapshot: ReviewSnapshot | null): number {
 }
 
 /** All threads with comment replies that carry text (the Comments menu lists these). */
-export function listedThreads(snapshot: ReviewSnapshot | null): Annotation[] {
+export function listedThreads(snapshot: ReviewSnapshot | null): Thread[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter((a) =>
     (a.replies ?? []).some((r) => r.kind === "comment" && replyText(r) !== ""),
-  ) as Annotation[];
+  ) as Thread[];
 }
 
 /**
@@ -73,7 +73,7 @@ export function listedThreads(snapshot: ReviewSnapshot | null): Annotation[] {
  */
 export function threadLocationLabel(
   snapshot: ReviewSnapshot | null,
-  thread: Annotation,
+  thread: Thread,
 ): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
@@ -90,7 +90,7 @@ export function threadLocationLabel(
 /** Where a thread lives, for the Comments menu "from …" disambiguation. */
 export function threadWhereLabel(
   snapshot: ReviewSnapshot | null,
-  thread: Annotation,
+  thread: Thread,
 ): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {

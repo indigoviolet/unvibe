@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { ThreadView } from "../../comments/ThreadView.js";
 import { streamingEnabled } from "./streamedAnswer.js";
@@ -27,7 +27,7 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-function card(over: Record<string, unknown> = {}): Annotation {
+function card(over: Record<string, unknown> = {}): Thread {
   return {
     id: "ann_stream",
     type: "thread",
@@ -44,10 +44,10 @@ function card(over: Record<string, unknown> = {}): Annotation {
     post: false,
     turns: [turn("ans_1")],
     ...over,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function seedSnapshot(annotations: Annotation[]): void {
+function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -63,8 +63,8 @@ function seedSnapshot(annotations: Annotation[]): void {
   } as unknown as ReviewSnapshot);
 }
 
-function show(c: Annotation): { rerender: (next: Annotation) => void } {
-  const renderCard = (card: Annotation): React.JSX.Element => (
+function show(c: Thread): { rerender: (next: Thread) => void } {
+  const renderCard = (card: Thread): React.JSX.Element => (
     <ThreadView
       reviewId={REVIEW_ID}
       thread={card}
@@ -75,7 +75,7 @@ function show(c: Annotation): { rerender: (next: Annotation) => void } {
   );
   const rendered = render(renderCard(c));
   return {
-    rerender: (next: Annotation) => {
+    rerender: (next: Thread) => {
       act(() => {
         rendered.rerender(renderCard(next));
       });
@@ -89,7 +89,7 @@ function streamText(annotationId: string, jobId: string, delta: string): void {
   });
 }
 
-function reseed(annotations: Annotation[]): void {
+function reseed(annotations: Thread[]): void {
   act(() => {
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations });
   });

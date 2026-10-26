@@ -18,7 +18,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { useNavigate, useParams } from "react-router";
-import type { Anchor, Annotation, Page } from "@unvibe/shared";
+import type { Anchor, Thread, Page } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
 import { api } from "../api/client.js";
@@ -70,7 +70,7 @@ function successorTarget(successor: Anchor): string | null {
   return null;
 }
 
-function previewThread(thread: Annotation | undefined, openable = false): string {
+function previewThread(thread: Thread | undefined, openable = false): string {
   if (!thread) return "";
   const inner = previewThreadInner(thread);
   // Issue #205: each item of a comment marker's preview opens just its
@@ -80,7 +80,7 @@ function previewThread(thread: Annotation | undefined, openable = false): string
     : inner;
 }
 
-function previewThreadInner(thread: Annotation): string {
+function previewThreadInner(thread: Thread): string {
   const outdated = thread.outdated
     ? `<div class="pv outdated"><div class="q">Outdated · the code changed</div>` +
       (thread.originalSnippet
@@ -103,7 +103,7 @@ function pagePreview(page: Page): string {
 }
 
 /** Closed conversation-card preview: quoted text + first paragraph (PRD §4.7). */
-function previewExpansion(expansion: Annotation | undefined): string {
+function previewExpansion(expansion: Thread | undefined): string {
   if (!expansion) return "";
   const firstTurn = (expansion.replies ?? [])[0];
   const blocks = firstTurn?.blocks ?? [];

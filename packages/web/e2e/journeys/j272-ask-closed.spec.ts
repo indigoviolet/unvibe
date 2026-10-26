@@ -34,7 +34,7 @@ test.describe("J272 closed-card failure is recorded", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Turn 1: Ask.
+    // Reply 1: Ask.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
@@ -50,7 +50,7 @@ test.describe("J272 closed-card failure is recorded", () => {
     const annotationId = (snap.annotations ?? []).find((a) => (a.replies ?? [])[0]?.question === "What is line folding?")?.id;
     if (!annotationId) throw new Error("ask card not found via API");
 
-    // Turn 2: close the card while its answer fills, then kill mid-flight.
+    // Reply 2: close the thread while its answer fills, then kill mid-flight.
     const box = card.getByPlaceholder(/Ask a follow-up/);
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");

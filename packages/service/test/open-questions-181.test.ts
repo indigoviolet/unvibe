@@ -121,8 +121,8 @@ function questionSuggestions(ctx: App["ctx"], id: string): ReviewSnapshot["annot
   const snap = ctx.reviews.getSnapshot(id)!;
   return snap.annotations.filter(
     (a) =>
-      a.type === "comment" &&
-      a.messages.some((m) => m.who === "ai" && m.suggested === true && m.question === true),
+      (a.type === "thread" || a.type === "link") &&
+      a.replies.some((r) => r.kind === "comment" && r.who === "agent" && r.suggested === true && r.suggestedQuestion === true),
   );
 }
 
@@ -141,7 +141,7 @@ describe("open questions as suggested comments (#181)", () => {
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === (res.json.annotationId as string));
-        const turn = a?.turns?.[0];
+        const turn = a?.replies?.[0];
         return !!turn && turn.blocks.length > 0 && turn.working == null;
       });
       // The contribution is stored…
@@ -153,7 +153,9 @@ describe("open questions as suggested comments (#181)", () => {
       const offered = questionSuggestions(ctx, id);
       expect(offered).toHaveLength(1);
       const sug = offered[0];
-      expect(sug.messages).toEqual([{ who: "ai", text: QUESTION, suggested: true, question: true }]);
+      expect(sug.replies).toHaveLength(1);
+      expect(sug.replies[0].kind).toBe("comment");
+      expect(sug.replies[0].suggested).toBe(true);
       expect(sug.post).toBe(false);
       expect(sug.anchor.host.kind).toBe("block");
       // Guide questions start closed (marker), like other guide threads.
@@ -180,7 +182,7 @@ describe("open questions as suggested comments (#181)", () => {
       await ctx.reviews.mutate(id, (draft) => {
         (draft.annotations as unknown as ReviewSnapshot["annotations"]).push({
           id: "ann_preseeded",
-          type: "comment",
+          type: "thread",
           anchor: {
             host: { kind: "block", blockId: `${owner.id}#b1` },
             quotedText: "",
@@ -190,7 +192,7 @@ describe("open questions as suggested comments (#181)", () => {
             version: 1,
           },
           open: false,
-          messages: [{ who: "ai", text: QUESTION, suggested: true, question: true }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: QUESTION }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true, suggestedQuestion: true }],
           post: false,
         } as never);
       });
@@ -203,7 +205,7 @@ describe("open questions as suggested comments (#181)", () => {
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === (res.json.annotationId as string));
-        const turn = a?.turns?.[0];
+        const turn = a?.replies?.[0];
         return !!turn && turn.blocks.length > 0 && turn.working == null;
       });
       // The contribution is stored, but no second suggestion is offered.
@@ -230,7 +232,7 @@ describe("open questions as suggested comments (#181)", () => {
       if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
-        const turn = a?.turns?.[0];
+        const turn = a?.replies?.[0];
         return !!turn && turn.blocks.length > 0 && turn.working == null;
       });
       expect(questionSuggestions(ctx, id)).toHaveLength(1);
@@ -257,7 +259,7 @@ describe("open questions as suggested comments (#181)", () => {
       expect(rep.status).toBe(200);
       if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
       await waitFor(() => {
-        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.turns ?? [];
+        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.replies ?? [];
         return turns.length === 2 && turns[1].blocks.length > 0 && turns[1].working == null;
       });
       expect(questionSuggestions(ctx, id)).toHaveLength(0);
@@ -273,7 +275,7 @@ describe("resolveQuestionAnchor (#181)", () => {
       annotations: [
         {
           id: "ann_conv",
-          type: "conversation",
+          type: "thread",
           anchor: {
             host: { kind: "diff-line", fileKey: "conn", line: 82 },
             quotedText: "code",
@@ -283,7 +285,7 @@ describe("resolveQuestionAnchor (#181)", () => {
             version: 1,
           },
           open: true,
-          messages: [],
+          replies: [],
           post: false,
           turns: [],
         },

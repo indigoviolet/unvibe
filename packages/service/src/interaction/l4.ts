@@ -6,7 +6,7 @@
  * message. The action modules render these into the `explain` / `ask`
  * templates through `runInFork`.
  */
-import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Block, ReviewSnapshot } from "@unvibe/shared";
 import { formatGlossaryForPrompt } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 
@@ -44,7 +44,7 @@ export function excerptQuote(q: string, max = 240): string {
  * selection's size and (for diff lines) its line range — the full
  * selection always travels in the host block below it.
  */
-export function quoteForPrompt(anchor: Annotation["anchor"]): string {
+export function quoteForPrompt(anchor: Thread["anchor"]): string {
   const q = anchor.quotedText ?? "";
   if (q.length <= 2000) return q;
   const host = anchor.host;
@@ -92,7 +92,7 @@ export function findBlock(
 export function findAnswer(
   snapshot: ReviewSnapshot,
   answerId: string,
-): { annotation: Annotation; turn: import("@unvibe/shared").Reply } | null {
+): { annotation: Thread; turn: import("@unvibe/shared").Reply } | null {
   for (const annotation of snapshot.annotations ?? []) {
     const turn = (annotation.replies ?? []).find((t) => t.id === answerId);
     if (turn) return { annotation, turn };
@@ -104,7 +104,7 @@ export function findAnswer(
 export function findReply(
   snapshot: ReviewSnapshot,
   replyId: string,
-): { thread: Annotation; reply: import("@unvibe/shared").Reply } | null {
+): { thread: Thread; reply: import("@unvibe/shared").Reply } | null {
   const hit = findAnswer(snapshot, replyId);
   return hit ? { thread: hit.annotation, reply: hit.turn } : null;
 }
@@ -166,12 +166,12 @@ function findBlockIn(
 }
 
 /** Thread behind a comment host (issue #214), or null. */
-export function findComment(snapshot: ReviewSnapshot, commentId: string): Annotation | null {
+export function findComment(snapshot: ReviewSnapshot, commentId: string): Thread | null {
   return (snapshot.annotations ?? []).find((a) => a.id === commentId) ?? null;
 }
 
 /** Plain text of a thread's comment replies joined, in order. */
-export function commentPlainText(comment: Annotation): string {
+export function commentPlainText(comment: Thread): string {
   const toText = (r: { blocks?: Array<{ type: string }> }): string => {
     const parts: string[] = [];
     for (const b of ((r.blocks ?? []) as Array<Record<string, unknown>>)) {
@@ -221,7 +221,7 @@ export function commentHostText(snapshot: ReviewSnapshot, commentId: string, quo
 }
 
 /** Full host block text for an anchor (paragraph / description / diff). */
-export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anchor"]): string {
+export function hostBlockText(snapshot: ReviewSnapshot, anchor: Thread["anchor"]): string {
   const host = anchor.host;
   if (host.kind === "block") {
     const found = findBlock(snapshot, host.blockId);
@@ -279,7 +279,7 @@ export function hostBlockText(snapshot: ReviewSnapshot, anchor: Annotation["anch
 }
 
 /** The card the anchor belongs to, rendered for the prompt. */
-export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor"]): string {
+export function cardTextFor(snapshot: ReviewSnapshot, anchor: Thread["anchor"]): string {
   if (anchor.host.kind === "block") {
     const found = findBlock(snapshot, anchor.host.blockId);
     if (!found) return "(none)";
@@ -329,7 +329,7 @@ export function cardTextFor(snapshot: ReviewSnapshot, anchor: Annotation["anchor
 /** Nearby threads on the same host, rendered in full. */
 export function nearbyAnnotationsText(
   snapshot: ReviewSnapshot,
-  anchor: Annotation["anchor"],
+  anchor: Thread["anchor"],
   excludeId?: string,
 ): string {
   const same = (snapshot.annotations ?? []).filter((a) => {
@@ -365,7 +365,7 @@ export function nearbyAnnotationsText(
 }
 
 /** Thread replies so far, rendered for the prompt. */
-export function threadTextFor(thread: Annotation): string {
+export function threadTextFor(thread: Thread): string {
   if ((thread.replies ?? []).length === 0) return "(none)";
   return (thread.replies ?? [])
     .map((r) => {
@@ -381,7 +381,7 @@ export function threadTextFor(thread: Annotation): string {
  * A rebuilt session (restart, idle close) never saw the earlier replies,
  * so the full first-turn prompt carries them as "conversation so far".
  */
-export function turnsTextFor(card: Annotation): string {
+export function turnsTextFor(card: Thread): string {
   return threadTextFor(card);
 }
 
@@ -394,8 +394,8 @@ export function turnsTextFor(card: Annotation): string {
  */
 export function l4Variables(
   snapshot: ReviewSnapshot,
-  anchor: Annotation["anchor"],
-  opts: { thread?: Annotation; message: string; excludeId?: string },
+  anchor: Thread["anchor"],
+  opts: { thread?: Thread; message: string; excludeId?: string },
 ): Record<string, unknown> {
   const formatted = formatGlossaryForPrompt(snapshot.glossary ?? []);
   return {

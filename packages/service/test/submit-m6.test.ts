@@ -4,7 +4,7 @@
  * partial failure without double-posting, existing-comments fetch.
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import type { ScriptedResult } from "../src/exec/runner.js";
 import { HEAD_SHA, OWNER, PR_NUMBER, REPO_NAME, setupReview, threadOnDiffLine } from "./m6-helpers.js";
@@ -12,14 +12,23 @@ import { HEAD_SHA, OWNER, PR_NUMBER, REPO_NAME, setupReview, threadOnDiffLine } 
 const authed = { authorization: "Bearer tok" };
 const REVIEW_URL = `https://github.com/${OWNER}/${REPO_NAME}/pull/${PR_NUMBER}#discussion_1`;
 
-function descThread(text: string): Annotation {
+function descThread(text: string): Thread {
   return {
     id: "ann_desc",
-    type: "comment",
+    type: "thread",
     anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     pinned: false,
-    messages: [{ who: "you", text }],
+    replies: [{
+      id: "ans_desc1",
+      kind: "comment",
+      who: "you",
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+    }],
     post: true,
   };
 }
@@ -135,9 +144,9 @@ describe("submit", () => {
   });
 
   it("posts a file-tab comment in the review body with a permalink (#81)", async () => {
-    const codeThread: Annotation = {
+    const codeThread: Thread = {
       id: "ann_code",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2, endLine: 3 },
         quotedText: "beta = 2\ngamma = 3",
@@ -148,7 +157,7 @@ describe("submit", () => {
       },
       open: true,
       pinned: false,
-      messages: [{ who: "you", text: "Is beta still the right default?" }],
+      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const runner = new FakeCommandRunner();

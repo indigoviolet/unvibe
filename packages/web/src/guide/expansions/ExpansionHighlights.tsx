@@ -314,10 +314,10 @@ function splitBlock(blockId: string): { cardId: string | null; block: string } {
 
 /** Conversation cards anchored on a card + block (open ones render in place). */
 export function expansionsForBlock(
-  annotations: import("@unvibe/shared").Annotation[] | undefined,
+  annotations: import("@unvibe/shared").Thread[] | undefined,
   cardId: string,
   blockId: string,
-): import("@unvibe/shared").Annotation[] {
+): import("@unvibe/shared").Thread[] {
   if (!annotations) return [];
   return annotations.filter((a) => {
     if (a.type !== "thread" && a.type !== "link") return false;

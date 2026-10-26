@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Annotation, Card, Job, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -31,7 +31,7 @@ function card(over: Partial<Card> = {}): Card {
   } as unknown as Card;
 }
 
-function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[] = []): void {
+function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Thread[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -47,7 +47,7 @@ function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[]
   } as unknown as ReviewSnapshot);
 }
 
-function answerCard(): Annotation {
+function answerCard(): Thread {
   return {
     id: "ann_ans",
     type: "thread",
@@ -74,7 +74,7 @@ function answerCard(): Annotation {
         working: "Writing answer",
       },
     ],
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
 function holdAction(): {
@@ -440,7 +440,7 @@ describe("CardView titles (issue #49)", () => {
         },
       ],
     });
-    const closed: Annotation = {
+    const closed: Thread = {
       id: "ann_closed",
       type: "thread",
       anchor: {
@@ -454,7 +454,7 @@ describe("CardView titles (issue #49)", () => {
       open: false,
       replies: [],
       post: false,
-    } as unknown as Annotation;
+    } as unknown as Thread;
     seedSnapshot([withPara], [], [closed]);
     render(
       <CardView

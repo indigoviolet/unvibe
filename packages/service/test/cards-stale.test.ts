@@ -46,7 +46,7 @@ function snapshot(level: "simple" | "standard" | "deep"): ReviewSnapshot {
     annotations: [
       {
         id: "ann1",
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "central#b-p" },
           quotedText: "fast path",
@@ -56,7 +56,7 @@ function snapshot(level: "simple" | "standard" | "deep"): ReviewSnapshot {
           version: 1,
         },
         open: false,
-        messages: [],
+        replies: [],
         post: false,
         note: false,
       },

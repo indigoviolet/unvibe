@@ -1,6 +1,6 @@
 // DISABLED(#188): pins toolbar labels and state keys
 import { describe, expect, test } from "vitest";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import {
   blockquoteQuote,
@@ -229,7 +229,7 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
 });
 
 function seedConversationCard(): void {
-  const card: Annotation = {
+  const card: Thread = {
     id: "ann_1",
     type: "thread",
     replies: [{ id: "ans_9", kind: "ask" as const, who: "agent" as const, question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],

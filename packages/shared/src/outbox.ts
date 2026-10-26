@@ -7,20 +7,20 @@
  * no Node or DOM APIs, no agent calls. Documents reuse this module and the
  * `GET /api/reviews/:id/outbox` endpoint unchanged.
  */
-import type { Annotation } from "./entities.js";
+import type { Thread } from "./entities.js";
 import type { ReviewSnapshot as Snapshot } from "./api.js";
 import { DOCUMENT_CARD_ID } from "./document.js";
 
 /** True when a thread is in the Outbox: a marked thread with comment replies, not yet posted. */
-export function isInOutbox(thread: Annotation): boolean {
+export function isInOutbox(thread: Thread): boolean {
   if (!thread.post || thread.postedAt) return false;
   return thread.replies.some((r) => r.kind === "comment");
 }
 
 /** Every Outbox thread in stored order (export reorders for reading). */
-export function outboxThreads(snapshot: Snapshot | null | undefined): Annotation[] {
+export function outboxThreads(snapshot: Snapshot | null | undefined): Thread[] {
   if (!snapshot) return [];
-  return (snapshot.annotations ?? []).filter((a) => isInOutbox(a as Annotation)) as Annotation[];
+  return (snapshot.annotations ?? []).filter((a) => isInOutbox(a as Thread)) as Thread[];
 }
 
 /** Plain text of one comment reply: its single paragraph block. */
@@ -40,7 +40,7 @@ function replyText(reply: { blocks?: Array<{ type: string }> }): string {
 }
 
 /** Exact text exported/posted for a thread: draft, else comment replies joined. */
-export function threadOutboxText(thread: Annotation): string {
+export function threadOutboxText(thread: Thread): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
   const comments = thread.replies.filter((r) => r.kind === "comment");
   const you = comments.find((r) => r.who === "you" && replyText(r) !== "");
@@ -52,7 +52,7 @@ export function threadOutboxText(thread: Annotation): string {
 }
 
 /** True when any comment reply is an AI-suggested comment (export tags these). */
-export function isAiSuggested(thread: Annotation): boolean {
+export function isAiSuggested(thread: Thread): boolean {
   return thread.replies.some((r) => r.kind === "comment" && r.suggested === true);
 }
 
@@ -80,7 +80,7 @@ function guideAnchorTitle(snapshot: Snapshot, blockId: string): string {
 }
 
 /** Anchor title for one entry, from what the comment already knows. */
-export function outboxAnchorTitle(snapshot: Snapshot, thread: Annotation): string {
+export function outboxAnchorTitle(snapshot: Snapshot, thread: Thread): string {
   const host = thread.anchor.host;
   if (host.kind === "diff-line") {
     const file = (snapshot.files ?? []).find((f) => f.fileKey === host.fileKey);
@@ -101,7 +101,7 @@ export function outboxAnchorTitle(snapshot: Snapshot, thread: Annotation): strin
   return "Comment";
 }
 
-function hostRank(thread: Annotation): number {
+function hostRank(thread: Thread): number {
   const kind = thread.anchor.host.kind;
   if (kind === "diff-line") return 0;
   if (kind === "description") return 1;
@@ -109,7 +109,7 @@ function hostRank(thread: Annotation): number {
   return 3;
 }
 
-function guideOrder(snapshot: Snapshot, thread: Annotation): number {
+function guideOrder(snapshot: Snapshot, thread: Thread): number {
   if (thread.anchor.host.kind !== "block") return Number.MAX_SAFE_INTEGER;
   const blockId = thread.anchor.host.blockId;
   const bare = blockId.includes("#") ? blockId.slice(blockId.indexOf("#") + 1) : blockId;
@@ -134,7 +134,7 @@ function guideOrder(snapshot: Snapshot, thread: Annotation): number {
  * the document is the left-pane reading text — and file-tab (`code:`)
  * comments follow, since they point outside the reading text.
  */
-export function orderedOutboxThreads(snapshot: Snapshot): Annotation[] {
+export function orderedOutboxThreads(snapshot: Snapshot): Thread[] {
   const fileOrder = new Map((snapshot.files ?? []).map((f, i) => [f.fileKey, i]));
   return outboxThreads(snapshot)
     .map((thread, index) => ({ thread, index }))

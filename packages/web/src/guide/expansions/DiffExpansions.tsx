@@ -13,7 +13,7 @@
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
 import { useEffect, useMemo, useReducer } from "react";
-import type { Annotation, Page } from "@unvibe/shared";
+import type { Thread, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
@@ -66,7 +66,7 @@ export function useDiffExpansionBindings(
   const annotations = useReview((s) => s.snapshot?.annotations);
 
   const byLine = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const a of annotations ?? []) {
       if (a.type !== "thread" && a.type !== "link") continue;
       // Issue #214: a card on a comment renders under that comment's line.

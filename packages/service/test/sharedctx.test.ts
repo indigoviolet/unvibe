@@ -19,7 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type {
-  Annotation,
+  Thread,
   Card,
   Contribution,
   LogEntry,
@@ -89,10 +89,10 @@ function card(id: string, standard: string): Card {
   };
 }
 
-function thread(id: string, agentText: string, open = true): Annotation {
+function thread(id: string, agentText: string, open = true): Thread {
   return {
     id,
-    type: "comment",
+    type: "thread",
     anchor: {
       host: { kind: "diff-line", fileKey: "a-py", line: 2 },
       quotedText: "y = 2",
@@ -102,9 +102,27 @@ function thread(id: string, agentText: string, open = true): Annotation {
       version: 1,
     },
     open,
-    messages: [
-      { who: "you", text: "Why is y two?" },
-      { who: "ai", text: agentText },
+    replies: [
+      {
+        id: `ans_${id}_0`,
+        kind: "comment",
+        who: "you",
+        question: null,
+        blocks: [{ type: "paragraph", id: "b1", text: { standard: "Why is y two?" }, citations: [] }],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+      },
+      {
+        id: `ans_${id}_1`,
+        kind: "comment",
+        who: "agent",
+        question: null,
+        blocks: [{ type: "paragraph", id: "b2", text: { standard: agentText }, citations: [] }],
+        level: "standard",
+        revision: 1,
+        undoStack: [],
+      },
     ],
     post: false,
     pinned: false,
@@ -608,7 +626,7 @@ describe("contributions (PRD §9.5)", () => {
     expect(isThreadSettled(toThreadSnapshot(open, 1000), 1000 + 60_000)).toBe(false);
     expect(isThreadSettled(toThreadSnapshot(open, 1000), 1000 + 5 * 60_000)).toBe(true);
     // No agent reply yet: never settles by idle.
-    const waiting = { ...toThreadSnapshot(open, 1000), messages: [{ who: "you" as const, text: "hello?" }] };
+    const waiting = { ...toThreadSnapshot(open, 1000), messages: [{ who: "you" as const, text: "hello?" }] as ThreadSnapshot["messages"] };
     expect(isThreadSettled(waiting, 1000 + 60 * 60_000)).toBe(false);
     await expect(summarizeSettledThread(toThreadSnapshot(open, 1000))).resolves.toBe("First line here.");
   });
@@ -990,25 +1008,63 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
         draft.annotations.push(
           {
             id: tA,
-            type: "comment",
+            type: "thread",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
             pinned: false,
-            messages: [
-              { who: "you", text: "What about A?" },
-              { who: "ai", text: "SETTLED-A-SUMMARY the A thread concluded first.", suggested: true },
+            replies: [
+              {
+                id: "ans_tA_0",
+                kind: "comment",
+                who: "you",
+                question: null,
+                blocks: [{ type: "paragraph", id: "b1", text: { standard: "What about A?" }, citations: [] }],
+                level: "standard",
+                revision: 1,
+                undoStack: [],
+              },
+              {
+                id: "ans_tA_1",
+                kind: "comment",
+                who: "agent",
+                question: null,
+                blocks: [{ type: "paragraph", id: "b2", text: { standard: "SETTLED-A-SUMMARY the A thread concluded first." }, citations: [] }],
+                level: "standard",
+                revision: 1,
+                undoStack: [],
+                suggested: true,
+              },
             ],
             post: false,
           },
           {
             id: tB,
-            type: "comment",
+            type: "thread",
             anchor: { host: { kind: "diff-line", fileKey: firstFile.fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
             open: false,
             pinned: false,
-            messages: [
-              { who: "you", text: "What about B?" },
-              { who: "ai", text: "SETTLED-B-SUMMARY the B thread concluded second.", suggested: true },
+            replies: [
+              {
+                id: "ans_tB_0",
+                kind: "comment",
+                who: "you",
+                question: null,
+                blocks: [{ type: "paragraph", id: "b1", text: { standard: "What about B?" }, citations: [] }],
+                level: "standard",
+                revision: 1,
+                undoStack: [],
+              },
+              {
+                id: "ans_tB_1",
+                kind: "comment",
+                who: "agent",
+                question: null,
+                blocks: [{ type: "paragraph", id: "b2", text: { standard: "SETTLED-B-SUMMARY the B thread concluded second." }, citations: [] }],
+                level: "standard",
+                revision: 1,
+                undoStack: [],
+                suggested: true,
+              },
             ],
             post: false,
           },

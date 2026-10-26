@@ -416,7 +416,7 @@ describe("comments for the PR (issue #135)", () => {
       await ctx.reviews.mutate(reviewId, (draft) => {
         draft.annotations.push({
           id: "ann_card",
-          type: "conversation",
+          type: "thread",
           anchor: {
             host: { kind: "diff-line", fileKey: "a-py", line: 2 },
             quotedText: "y",
@@ -426,7 +426,7 @@ describe("comments for the PR (issue #135)", () => {
             version: 1,
           },
           open: true,
-          messages: [],
+          replies: [],
           post: true,
           turns: [],
         } as never);
@@ -445,11 +445,11 @@ describe("comments for the PR (issue #135)", () => {
       await ctx.reviews.mutate(reviewId, (draft) => {
         draft.annotations.push({
           id: "ann_pin",
-          type: "conversation",
+          type: "thread",
           anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "q", prefix: "", suffix: "", position: 0, version: 1 },
           open: true,
           pinned: false,
-          messages: [],
+          replies: [],
           post: false,
           turns: [],
         } as never);

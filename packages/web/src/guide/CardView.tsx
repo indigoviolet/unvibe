@@ -16,7 +16,7 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { Annotation, Card, DepthLevel, Page, Reply } from "@unvibe/shared";
+import type { Thread, Card, DepthLevel, Page, Reply } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -117,7 +117,7 @@ function runCardAction(reviewId: string, action: Parameters<typeof performAction
  * it still carries a working flag or an error.
  */
 function promotedFillFor(
-  annotations: Annotation[],
+  annotations: Thread[],
   card: Card,
 ): { linkId: string; turn: Reply } | null {
   for (const a of annotations) {
@@ -175,7 +175,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   }
 
   const depthIndex = DEPTH_ORDER.indexOf(card.level);
-  const threadsFor = (blockId: string): Annotation[] =>
+  const threadsFor = (blockId: string): Thread[] =>
     blockThreads(annotations, card.id, blockId);
 
   // Issue #252: glossary terms link in card text (first mention per card).

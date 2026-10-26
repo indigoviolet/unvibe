@@ -7,7 +7,6 @@
  * unauthenticated.
  */
 import type {
-  Annotation,
   Card,
   ContextRepoRef,
   ContextRepoSource,
@@ -32,6 +31,7 @@ import type {
   Repo,
   SelectionOffsets,
   Thread,
+  ThreadType,
   Version,
 } from "./entities.js";
 import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
@@ -305,7 +305,7 @@ interface ReviewSnapshotBase {
   /** #92: ingest state. */
   ingest: IngestStatus;
   pages: Page[];
-  annotations: Annotation[];
+  annotations: Thread[];
   hunkStates: HunkState[];
   /**
    * Issue #162: per-file fold state, keyed by file key. Reviewed is
@@ -1566,4 +1566,4 @@ export type ReviewEvent =
   | { type: "error"; message: string; jobId?: string };
 
 /** Re-exported entity slices used by route stubs. */
-export type { Annotation, Card, Page, Reply, ReplyKind, Thread };
+export type { Thread, Card, Page, Reply, ReplyKind, ThreadType };

@@ -733,7 +733,7 @@ describe("timings (#194)", () => {
     expect(done?.state).toBe("done");
     expect(done?.finishedAt).toBe(5000);
     expect(done?.attemptTimings).toEqual([{ attempt: 1, startedAt: 0, finishedAt: 5000 }]);
-    expect(done?.turns).toEqual([{ label: "first", startedAt: 0, finishedAt: 5000 }]);
+    expect(done?.replies).toEqual([{ label: "first", startedAt: 0, finishedAt: 5000 }]);
     expect(done?.tools?.[0]).toMatchObject({ name: "Read", startedAt: 0 });
     // Persisted through the store as well.
     const listed = queue.listByReview("r1");

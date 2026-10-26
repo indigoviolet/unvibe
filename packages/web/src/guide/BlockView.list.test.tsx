@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
-import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Block, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { BlockView } from "./BlockView.js";
 
@@ -52,7 +52,7 @@ function listBlock(): Block {
   } as unknown as Block;
 }
 
-function footnote(): Annotation {
+function footnote(): Thread {
   return {
     id: "e1",
     type: "thread",
@@ -67,7 +67,7 @@ function footnote(): Annotation {
     open: false,
     replies: [],
     post: false,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
 describe("BlockView list citations (#165)", () => {

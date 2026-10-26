@@ -177,7 +177,7 @@ describe("idle sweep never closes a session mid-turn (#143)", () => {
       const res = await postAction(app, id, { kind: "ask", quote: "central paragraph", anchor: { where: "block", blockId: "central#b1" }, message: "long question" });
       expect(res.status).toBe(200);
       await waitFor(() => started);
-      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => (a.turns ?? []).some((t) => t.question === "long question"));
+      const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => (a.replies ?? []).some((t) => t.question === "long question"));
       // Find the session the running job is on from its prompt record.
       const sessionId = agents.prompts.find((p) => p.text.includes("long question"))!.sessionId;
       void card;
@@ -268,7 +268,7 @@ describe("post-restart reply (#143)", () => {
       await waitJob(second.ctx, res.json.jobId as string);
       const card = second.ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(card.sessionId).toBe(sessionId);
-      expect((card.turns ?? []).length).toBe(2);
+      expect((card.replies ?? []).length).toBe(2);
       const sent = agents.prompts.slice(before).filter((p) => p.sessionId === sessionId);
       expect(sent.length).toBeGreaterThan(0);
       const last = sent[sent.length - 1]!.text;
@@ -302,7 +302,7 @@ describe("post-restart reply (#143)", () => {
       expect(res.status).toBe(200);
       await waitJob(second.ctx, res.json.jobId as string);
       const card = second.ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect((card.turns ?? []).length).toBe(2);
+      expect((card.replies ?? []).length).toBe(2);
       expect(card.sessionId).toBeTruthy();
       // The rebuild turn carried the earlier turns once.
       const rebuildPrompt = agents2.prompts.find((p) => p.text.includes("after restart question") && p.text.includes("# Ask"));

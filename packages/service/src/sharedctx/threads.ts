@@ -15,7 +15,7 @@
  * pipeline); when no small model is available the fallback is the first line
  * of the last agent reply.
  */
-import type { Annotation, Block } from "@unvibe/shared";
+import type { Thread, Block } from "@unvibe/shared";
 import { renderMarkdown } from "@unvibe/shared";
 
 /** Rendered answer text for settling (tags stripped downstream). */
@@ -34,7 +34,7 @@ export interface ThreadSnapshot {
   lastActivityAt: number | null;
 }
 
-export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | null): ThreadSnapshot {
+export function toThreadSnapshot(thread: Thread, lastActivityAt: number | null): ThreadSnapshot {
   return {
     id: thread.id,
     open: thread.open,
@@ -44,7 +44,7 @@ export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | nu
 }
 
 /** Messages for settling: one reader/agent pair per agent reply, comment replies as-is. */
-function threadMessages(thread: Annotation): ThreadSnapshot["messages"] {
+function threadMessages(thread: Thread): ThreadSnapshot["messages"] {
   const out: ThreadSnapshot["messages"] = [];
   for (const t of thread.replies ?? []) {
     if (t.kind === "comment") {

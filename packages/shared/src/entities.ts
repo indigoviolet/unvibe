@@ -473,8 +473,8 @@ export type Block =
  * Issue #273 (from #268 spike): one flat thread for everything.
  * Explain/Ask answers and reviewer comments are replies with a `kind`
  * (`ask`, `explain`, `comment`, with `persona` reserved for #11).
- * Replaces the nested expansion tree (`Annotation`/`Turn`) and the
- * separate comment threads (`ChatMessage`). No backward compatibility:
+ * Replaces the nested expansion tree and the separate comment threads.
+ * No backward compatibility:
  * stored reviews must be reset.
  */
 export type ReplyKind = "ask" | "explain" | "comment" | "persona";
@@ -611,12 +611,10 @@ export interface Thread {
   };
 }
 
-/** Back-compat alias: `Annotation` is now `Thread`. Prefer `Thread`. */
-export type Annotation = Thread;
-/** Back-compat alias: `Turn` is now `Reply`. Prefer `Reply`. */
-export type Turn = Reply;
-/** Removed: comment messages are `Reply` with `kind: "comment"`. */
-export type AnnotationType = "thread" | "link";
+/** Removed (issue #273): nested `Annotation`/`Turn`/`ChatMessage` are gone.
+ * Threads are `Thread`; replies are `Reply` with
+ * `kind: "ask" | "explain" | "comment" | "persona"`. */
+export type ThreadType = "thread" | "link";
 
 /** Where a thread is attached (PRD §7.1). Issue #273: the `ans_…` host form is gone. */export type AnchorHost =
   /**

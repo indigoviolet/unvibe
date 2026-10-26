@@ -10,7 +10,7 @@
  * flight the composer itself shows the Ask as running.
  */
 import { useRef, useState } from "react";
-import type { ActionAnchor, Annotation } from "@unvibe/shared";
+import type { ActionAnchor, Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { performAction } from "../guide/actions.js";
@@ -158,7 +158,7 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
  * composers on same-named blocks of other cards stay independent.
  * Description and diff-line anchors match exactly.
  */
-function threadAnchorMatches(anchor: ActionAnchor, thread: Annotation): boolean {
+function threadAnchorMatches(anchor: ActionAnchor, thread: Thread): boolean {
   const host = thread.anchor.host;
   if (anchor.where === "block" && host.kind === "block") {
     return anchor.blockId === host.blockId || anchor.blockId === bare(host.blockId);

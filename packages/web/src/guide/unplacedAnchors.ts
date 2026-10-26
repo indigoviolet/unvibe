@@ -14,9 +14,9 @@ import { useSyncExternalStore } from "react";
 export type UnplacedReason = "host-missing" | "quote-not-found";
 
 export interface UnplacedAnchor {
-  /** Annotation id (`ann_…`). */
+  /** Thread id (`ann_…`). */
   id: string;
-  /** Annotation type (`conversation`, `comment`, `link`). */
+  /** Thread type (`conversation`, `comment`, `link`). */
   kind: string;
   /** Host id only: a `card#block`, a description paragraph, or `file:line`. */
   host: string;

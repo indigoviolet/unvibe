@@ -34,7 +34,7 @@ test.describe("J270 ask follow-up failure and retry", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Turn 1: Ask.
+    // Reply 1: Ask.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
@@ -45,7 +45,7 @@ test.describe("J270 ask follow-up failure and retry", () => {
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
-    // Turn 2: follow-up, killed mid-answer.
+    // Reply 2: follow-up, killed mid-answer.
     const box = card.getByPlaceholder(/Ask a follow-up/);
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");

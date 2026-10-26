@@ -283,7 +283,7 @@ function mockPrincipleAside(): import("@unvibe/shared").Block {
 
 type MockCardRef =
   | { kind: "page"; pageId: string; card: import("@unvibe/shared").Card }
-  | { kind: "answer"; annotation: import("@unvibe/shared").Annotation; turn: import("@unvibe/shared").Reply };
+  | { kind: "answer"; annotation: import("@unvibe/shared").Thread; turn: import("@unvibe/shared").Reply };
 
 function findMockCard(cardId: string): MockCardRef | null {
   for (const p of mockPages) {
@@ -574,13 +574,13 @@ const hunkStates = seedHunkStates();
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
 /** Issue #169: the diff's score/plotline filter, remembered with the review. */
 let mockDiffFilter: DiffFilter | undefined;
-function seedAnnotations(): import("@unvibe/shared").Annotation[] {
-  const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Annotation[];
+function seedAnnotations(): import("@unvibe/shared").Thread[] {
+  const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Thread[];
   // Issue #204: conversation cards are pinned, like the service creates them.
   for (const a of list) if (a.type === "thread") a.pinned = true;
   return list;
 }
-let annotations: import("@unvibe/shared").Annotation[] = seedAnnotations();
+let annotations: import("@unvibe/shared").Thread[] = seedAnnotations();
 let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
   JSON.stringify(MOCK_PAGES),
 ) as import("@unvibe/shared").Page[];
@@ -1380,7 +1380,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
         working: null,
       },
     ],
-  } as unknown as import("@unvibe/shared").Annotation);
+  } as unknown as import("@unvibe/shared").Thread);
   emitAnnotations();
   return { id, replyId, blockId };
 }
@@ -1474,7 +1474,7 @@ function mockReplyText(reply: { blocks?: Array<{ type: string }> }): string {
   return parts.join("\n\n");
 }
 
-function mockPostText(thread: import("@unvibe/shared").Annotation): string {
+function mockPostText(thread: import("@unvibe/shared").Thread): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
   const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
   const you = comments.find((r) => r.who === "you" && mockReplyText(r) !== "");
@@ -1505,8 +1505,8 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
   // Mirrors the service's locatePendingThreads: only comments are
   // submitted, never conversation cards.
   const pending = annotations.filter(
-    (a) => a.replies.some((r) => r.kind === "comment") && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
-  ) as import("@unvibe/shared").Annotation[];
+    (a) => a.replies.some((r) => r.kind === "comment") && (a as import("@unvibe/shared").Thread).post && !(a as import("@unvibe/shared").Thread).postedAt,
+  ) as import("@unvibe/shared").Thread[];
   const alreadyPosted = annotations
     .filter((a) => a.replies.some((r) => r.kind === "comment") && a.post && a.postedAt)
     .map((a) => a.id);
@@ -2667,7 +2667,7 @@ export const mockApi = {
         emitPages();
         return { accepted: true };
       }
-      // Annotation deletion (expansions + threads via the actions route).
+      // Thread deletion (expansions + threads via the actions route).
       const annIdx = annotations.findIndex((x) => x.id === target);
       if (annIdx >= 0) {
         const [removed] = annotations.splice(annIdx, 1);
@@ -2720,7 +2720,7 @@ export const mockApi = {
           id,
           type: "thread",
           anchor: {
-            host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+            host: host as import("@unvibe/shared").Thread["anchor"]["host"],
             quotedText: a.quote,
             prefix: "",
             suffix: "",
@@ -2752,7 +2752,7 @@ export const mockApi = {
               jobId: askJobId,
             },
           ],
-        } as unknown as import("@unvibe/shared").Annotation);
+        } as unknown as import("@unvibe/shared").Thread);
         emitAnnotations();
         trackMockJob(askJobId, "ask", { annotationId: id });
         answerTurnLater(id, replyId, a.message, askJobId);
@@ -2856,7 +2856,7 @@ export const mockApi = {
         id,
         type: "conversation",
         anchor: {
-          host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+          host: host as import("@unvibe/shared").Thread["anchor"]["host"],
           quotedText: a.quote,
           prefix: "",
           suffix: "",
@@ -2886,7 +2886,7 @@ export const mockApi = {
             jobId,
           },
         ],
-      } as unknown as import("@unvibe/shared").Annotation);
+      } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
       trackMockJob(jobId, "ask", { annotationId: id });
       answerTurnLater(id, replyId, a.quote, jobId);
@@ -2999,7 +2999,7 @@ export const mockApi = {
         turns: [
           { id: replyId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
-      } as unknown as import("@unvibe/shared").Annotation);
+      } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
       trackMockJob(jobId, "ask", { cardId, annotationId: id });
       window.setTimeout(() => {
@@ -3295,11 +3295,11 @@ export const mockApi = {
             : anchor.where === "code"
               ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
               : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
-    const thread: import("@unvibe/shared").Annotation = {
+    const thread: import("@unvibe/shared").Thread = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
       type: "thread",
       anchor: {
-        host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
+        host: host as import("@unvibe/shared").Thread["anchor"]["host"],
         quotedText: body.quote ?? "",
         prefix: body.prefix ?? "",
         suffix: body.suffix ?? "",

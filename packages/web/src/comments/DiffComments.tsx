@@ -13,7 +13,7 @@
  * - `slotKeyFor` re-exports the registry key helper.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -120,10 +120,10 @@ export function useDiffCommentBindings(reviewId: string): {
   }, []);
 
   const byLine = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const annotation of annotations ?? []) {
       if (annotation.type !== "thread" && annotation.type !== "link") continue;
-      const thread = annotation as Annotation;
+      const thread = annotation as Thread;
       const host = thread.anchor.host;
       if (host.kind !== "diff-line") continue;
       const key = slotKey(host.fileKey, host.line);

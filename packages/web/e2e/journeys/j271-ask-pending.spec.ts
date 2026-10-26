@@ -35,7 +35,7 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Turn 1: Ask.
+    // Reply 1: Ask.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
@@ -46,7 +46,7 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
-    // Turn 2: while it is pending, the indicator carries the plain
+    // Reply 2: while it is pending, the indicator carries the plain
     // label (no stacked ellipsis) and the box stays: editable, with
     // Send disabled and the reason as its tooltip.
     const box = card.getByPlaceholder(/Ask a follow-up/);

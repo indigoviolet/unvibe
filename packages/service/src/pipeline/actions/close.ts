@@ -12,11 +12,11 @@
  *   is working. Only `delete` cancels a running job (PRD §12); comments
  *   never carry jobs.
  */
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { deleteInDraft } from "../../comments/threads.js";
 import { recordInteraction } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
-import { cancelConversationJob, holdsFillableTurns } from "./conversation.js";
+import { cancelConversationJob, holdsFillableReplies } from "./conversation.js";
 import { deletionFor, wasShared } from "./events.js";
 
 export async function closeAction(
@@ -32,7 +32,7 @@ export async function closeAction(
   // a reopened card shows the answer (and that it was working).
 
   await reviews.mutate(reviewId, (draft) => {
-    const ann = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    const ann = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
     if (!ann) throw new Error(`unknown annotation ${annotationId}`);
     ann.open = false;
     // Closing keeps content for the dotted-link preview; a working job
@@ -61,7 +61,7 @@ export async function deleteAction(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === targetId);
   if (!found) throw new Error(`unknown annotation ${targetId}`);
-  if (holdsFillableTurns(found)) {
+  if (holdsFillableReplies(found)) {
     cancelConversationJob(ctx, snapshot, targetId);
   }
   // The card's session belongs to the card: close it so it does not linger.

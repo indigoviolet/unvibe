@@ -14,7 +14,7 @@
  * - collapse / undo / close → UI-state kinds (accepted,
  *   never logged).
  */
-import { parseId, renderMarkdown, type Annotation, type Block, type ReviewSnapshot } from "@unvibe/shared";
+import { parseId, renderMarkdown, type Thread, type Block, type ReviewSnapshot } from "@unvibe/shared";
 import type { InteractionEvent } from "../../interaction/index.js";
 import { findBlock } from "../../interaction/index.js";
 
@@ -30,7 +30,7 @@ export function turnText(blocks: Block[], quote: string, question: string | null
 }
 
 /** Page-card id hosting a block anchor, when there is one. */
-export function hostCardId(snapshot: ReviewSnapshot, anchor: Annotation["anchor"]): string | undefined {
+export function hostCardId(snapshot: ReviewSnapshot, anchor: Thread["anchor"]): string | undefined {
   if (anchor.host.kind !== "block") return undefined;
   const found = findBlock(snapshot, anchor.host.blockId);
   if (!found || !found.pageId) return undefined;
@@ -98,7 +98,7 @@ export function hasOutOfBaseCitations(tokens: { target: string; status: string }
 export function newCardForTurn(
   reviewId: string,
   snapshot: ReviewSnapshot,
-  annotation: Annotation,
+  annotation: Thread,
   replyId: string,
   sessionId?: string,
 ): InteractionEvent | null {
@@ -122,7 +122,7 @@ export function newCardForTurn(
 }
 
 /** True when an annotation holds shared agent content (deletion-worthy). */
-export function wasShared(annotation: Annotation): boolean {
+export function wasShared(annotation: Thread): boolean {
   if (annotation.type === "thread" || annotation.type === "link") {
     return (annotation.replies ?? []).some((t) => t.kind !== "comment" ? t.blocks.length > 0 : t.who === "agent");
   }
@@ -130,7 +130,7 @@ export function wasShared(annotation: Annotation): boolean {
 }
 
 /** `item-deleted` one-liner for a deleted shared item. */
-export function deletionFor(reviewId: string, annotation: Annotation): InteractionEvent {
+export function deletionFor(reviewId: string, annotation: Thread): InteractionEvent {
   const what = (annotation.replies ?? []).some((r) => r.kind !== "comment") ? "explanation" : (annotation.replies ?? []).some((r) => r.kind === "comment") ? "comment" : "annotation";
   return {
     kind: "item-deleted",

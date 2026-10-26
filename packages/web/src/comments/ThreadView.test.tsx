@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { ThreadView } from "./ThreadView.js";
@@ -31,7 +31,7 @@ function mkReply(who: "you" | "agent", text: string, opts: { suggested?: boolean
   };
 }
 
-function thread(over: Partial<Annotation> = {}): Annotation {
+function thread(over: Partial<Thread> = {}): Thread {
   return {
     id: "ann_thread_test",
     type: "thread",
@@ -79,7 +79,7 @@ afterEach(() => {
 
 describe("ThreadView reply box", () => {
   test("typed text survives an unrelated WS patch", async () => {
-    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
     render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
     const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "unsent draft" } });
@@ -96,7 +96,7 @@ describe("ThreadView reply box", () => {
   });
 
   test("Discard clears the box on an existing comment", async () => {
-    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const updateSpy = vi.spyOn(api, "updateComment").mockResolvedValue({ ok: true });
     render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
     try {
@@ -188,7 +188,7 @@ describe("ThreadView ask-about (issue #136)", () => {
 });
 describe("ThreadView authorship (owner decision: icons, not text)", () => {
   test("the user's avatar is a person icon with a screen-reader name, and no visible author text", () => {
-    const found = useReview.getState().snapshot?.annotations[0] as Annotation;
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
     const avatar = container.querySelector(".av.you");
     expect(avatar?.getAttribute("aria-label")).toBe("You");
@@ -200,7 +200,7 @@ describe("ThreadView authorship (owner decision: icons, not text)", () => {
 });
 
 describe("ThreadView suggested comments (issue #163)", () => {
-  function suggested(over: Partial<Annotation> = {}): Annotation {
+  function suggested(over: Partial<Thread> = {}): Thread {
     return thread({
       anchor: {
         host: { kind: "diff-line", fileKey: "conn", line: 82 },
@@ -216,7 +216,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
     });
   }
 
-  function seedSuggested(s: Annotation): void {
+  function seedSuggested(s: Thread): void {
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [s] });
   }
 

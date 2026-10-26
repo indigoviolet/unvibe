@@ -22,7 +22,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import type { Annotation, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { useDiffExpansionBindings } from "../../guide/expansions/DiffExpansions.js";
 import { FileSection } from "./FileSection.js";
@@ -56,7 +56,7 @@ function file(): ReviewFile {
   return { fileKey: FILE_KEY, path: "src/a.rs", category: "source", hunks: [hunk()] };
 }
 
-function expansion(): Annotation {
+function expansion(): Thread {
   return {
     id: "ann_crash",
     type: "thread",
@@ -72,15 +72,15 @@ function expansion(): Annotation {
     replies: [],
     post: false,
     note: false,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function otherExpansion(): Annotation {
+function otherExpansion(): Thread {
   const e = expansion();
-  return { ...e, id: "ann_other", anchor: { ...e.anchor, quotedText: "NoSuchQuoteInAnyRow" } } as Annotation;
+  return { ...e, id: "ann_other", anchor: { ...e.anchor, quotedText: "NoSuchQuoteInAnyRow" } } as Thread;
 }
 
-function seedSnapshot(annotations: Annotation[]): void {
+function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },

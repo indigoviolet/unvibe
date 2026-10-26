@@ -105,7 +105,7 @@ export function createFakeState(turns: FakeTurn[] = []): FakeAgentState {
 }
 
 function pickTurn(state: FakeAgentState, text: string): FakeTurn {
-  return state.turns.find((t) => text.includes(t.match)) ?? { match: "" };
+  return state.replies.find((t) => text.includes(t.match)) ?? { match: "" };
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

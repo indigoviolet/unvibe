@@ -7,7 +7,7 @@
  * agent-finding card), follow-up chips, comment-link (suggested review
  * comment on a diff line).
  */
-import type { Annotation, Block, DepthLevel, Page } from "@unvibe/shared";
+import type { Thread, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
@@ -28,9 +28,9 @@ export interface BlockCallbacks {
 interface Props extends BlockCallbacks {
   block: Block;
   level: DepthLevel;
-  threads: Annotation[];
+  threads: Thread[];
   /** Closed expansions + promoted links anchored on this block (footnote chips). */
-  footnotes?: Annotation[];
+  footnotes?: Thread[];
   lookupPage?: (pageId: string) => Page | undefined;
   /** Owning card (or expansion) id: follow-up chips read in-flight state. */
   cardId: string;
@@ -48,8 +48,8 @@ function Paragraph({
   id: string;
   html: string;
   citations: ReturnType<typeof resolveBlockCitations>;
-  threads: Annotation[];
-  footnotes?: Annotation[];
+  threads: Thread[];
+  footnotes?: Thread[];
   blockId: string;
   onOpenPage: (pageId: string) => void;
 }) {

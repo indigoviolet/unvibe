@@ -26,7 +26,7 @@
  * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { ActionAnchor, Anchor, Annotation, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Thread, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
@@ -55,33 +55,28 @@ export function newTurnId(): string {
 }
 
 /**
- * True when a turn still owns work: filling, failed, or job-attached
- * (issue #152: promote keeps exactly these turns on the link).
+ * True when a reply still owns work: filling, failed, or job-attached
+ * (issue #152: promote keeps exactly these replies on the link).
  */
-export function isTurnUnsettled(t: Reply): boolean {
+export function isReplyUnsettled(r: Reply): boolean {
   return (
-    ((t.working ?? "") !== "" && t.working !== null) ||
-    ((t.error ?? "") !== "" && t.error !== null) ||
-    t.jobId !== undefined
+    ((r.working ?? "") !== "" && r.working !== null) ||
+    ((r.error ?? "") !== "" && r.error !== null) ||
+    r.jobId !== undefined
   );
 }
 
 /**
- * Annotations that own fillable turns: conversations, plus promoted
- * links still holding unsettled turns (issue #152: opened as a page
- * mid-fill, the fill keeps running against the link's turns and mirrors
- * onto the page cards).
+ * Threads that own fillable replies, plus promoted links still holding
+ * unsettled replies (issue #152: opened as a page mid-fill, the fill
+ * keeps running against the link's replies and mirrors onto the page
+ * cards).
  */
-export function holdsFillableTurns(ann: Annotation | undefined): ann is Annotation {
+export function holdsFillableReplies(ann: Thread | undefined): ann is Thread {
   if (!ann) return false;
   if (ann.type === "thread") return true;
   return ann.type === "link" && (ann.promotedReplies?.length ?? 0) > 0;
 }
-
-/** Back-compat alias. */
-export const holdsFillableReplies = holdsFillableTurns;
-/** True when a reply still owns work: filling, failed, or job-attached. */
-export const isReplyUnsettled = isTurnUnsettled;
 
 /**
  * The conversation card hosted on a hunk (issue #138), if the hunk's
@@ -93,7 +88,7 @@ export function hunkCardFor(
   snapshot: ReviewSnapshot,
   fileKey: string,
   contentHash: string,
-): Annotation | undefined {
+): Thread | undefined {
   return (snapshot.annotations ?? []).find(
     (a) =>
       (a.type === "thread" || a.type === "link") &&
@@ -129,12 +124,12 @@ export async function ensureHunkCard(
   if (existing) {
     if (!existing.open) {
       await reviews.mutate(reviewId, (draft) => {
-        const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === existing.id);
+        const target = (draft.annotations as unknown as Thread[]).find((a) => a.id === existing.id);
         if (target) target.open = true;
       });
     }
     const firstTurn = (existing.replies ?? [])[0];
-    if (!firstTurn) throw new Error(`hunk card ${existing.id} has no turns`);
+    if (!firstTurn) throw new Error(`hunk card ${existing.id} has no replies`);
     return { annotationId: existing.id, replyId: firstTurn.id };
   }
   const version = snapshot.version.n;
@@ -154,7 +149,7 @@ export async function ensureHunkCard(
     working: null,
   };
   await reviews.mutate(reviewId, (draft) => {
-    (draft.annotations as unknown as Annotation[]).push({
+    (draft.annotations as unknown as Thread[]).push({
       id: annotationId,
       type: "thread",
       anchor: {
@@ -169,7 +164,7 @@ export async function ensureHunkCard(
       pinned: true,
       replies: [turn],
       post: false,
-    } as unknown as Annotation);
+    } as unknown as Thread);
   });
   return { annotationId, replyId };
 }
@@ -225,7 +220,7 @@ export async function createConversationCard(
       replies: [turn],
       post: false,
       working: workingLabel,
-    } as unknown as Annotation);
+    } as unknown as Thread);
   });
   return { annotationId, replyId };
 }
@@ -241,7 +236,7 @@ export async function pushConversationTurn(
   const { reviews, reviewId } = ctx;
   const replyId = newTurnId();
   await reviews.mutate(reviewId, (draft) => {
-    const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
     if (!found || (found.type !== "thread" && found.type !== "link")) throw new Error(`unknown conversation ${annotationId}`);
     const last = (found.replies ?? [])[(found.replies ?? []).length - 1];
     if (last?.error) {
@@ -324,8 +319,8 @@ export async function runConversationTurn(
   // never concatenate the failed output with the new one.
   // Promoted links still holding turns fill the same way (issue #152).
   await reviews.mutate(reviewId, (draft) => {
-    const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
+    const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+    const turn = holdsFillableReplies(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
     if (!found || !turn) return;
     found.working = opts.workingLabel;
     found.error = null;
@@ -383,10 +378,10 @@ export async function runConversationTurn(
       capture.onJob(job);
       void reviews
         .mutate(reviewId, (draft) => {
-          const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+          const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
           if (found) {
             found.jobId = job.id;
-            const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
+            const turn = holdsFillableReplies(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
             if (turn) turn.jobId = job.id;
           }
         })
@@ -400,8 +395,8 @@ export async function runConversationTurn(
       if (blocks.length === 0) return;
       void reviews
         .mutate(reviewId, (draft) => {
-          const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-          const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
+          const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+          const turn = holdsFillableReplies(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (turn && !turn.error) {
             turn.blocks = blocks as Block[];
             // Promoted mid-fill (issue #152): the page card is the
@@ -463,8 +458,8 @@ export async function runConversationTurn(
         }
       }
       await reviews.mutate(reviewId, (draft) => {
-        const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
+        const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+        const turn = holdsFillableReplies(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
         // Promoted links are "closed" by shape but the fill lands
         // normally (issue #152): only real conversations take the
@@ -503,7 +498,7 @@ export async function runConversationTurn(
         const stillOwnsTurn = (filled?.replies ?? []).some((t) => t.id === replyId);
         if (sessionId && filled && stillOwnsTurn && filled.sessionId !== sessionId) {
           await reviews.mutate(reviewId, (draft) => {
-            const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+            const target = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
             if (target && (target.replies ?? []).some((t) => t.id === replyId)) target.sessionId = sessionId;
           });
         }
@@ -524,8 +519,8 @@ export async function runConversationTurn(
       if (await suppressFillError(ctx, annotationId)) return null;
       const message = err instanceof Error ? err.message : String(err);
       await reviews.mutate(reviewId, (draft) => {
-        const found = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-        const turn = holdsFillableTurns(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
+        const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+        const turn = holdsFillableReplies(found) ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
         found.working = null;
         turn.working = null;
@@ -559,9 +554,9 @@ export async function runConversationTurn(
 }
 
 /** Cancel the job filling a conversation turn (used by close/delete). */
-export function cancelConversationJob(ctx: ActionContext, snapshot: { annotations: Annotation[] }, annotationId: string): void {
+export function cancelConversationJob(ctx: ActionContext, snapshot: { annotations: Thread[] }, annotationId: string): void {
   const found = snapshot.annotations.find((a) => a.id === annotationId);
-  const turnJob = holdsFillableTurns(found)
+  const turnJob = holdsFillableReplies(found)
     ? [...(found.replies ?? [])].reverse().find((t) => t.jobId)?.jobId
     : undefined;
   cancelAnnotationJob(ctx.jobs, ctx.reviewId, found?.jobId ?? turnJob);
@@ -577,12 +572,12 @@ export async function dropSettledPromotedTurns(ctx: ActionContext, annotationId:
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!found || found.type !== "link" || (found.replies?.length ?? 0) === 0) return;
-  if ((found.replies ?? []).some(isTurnUnsettled)) return;
+  if ((found.replies ?? []).some(isReplyUnsettled)) return;
   const sessionId = found.sessionId;
   await reviews.mutate(reviewId, (draft) => {
-    const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    const target = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
     if (!target || target.type !== "link") return;
-    if ((target.replies ?? []).some(isTurnUnsettled)) return;
+    if ((target.replies ?? []).some(isReplyUnsettled)) return;
     target.replies = [];
     delete (target as { promotedReplies?: unknown }).promotedReplies;
     delete (target as { sessionId?: unknown }).sessionId;
@@ -661,7 +656,7 @@ async function appendInThreadReply(
   const replyId = await pushConversationTurn(ctx, threadId, question ?? message, label, kind);
   if (sourceReplyId) {
     await reviews.mutate(reviewId, (draft) => {
-      const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === threadId);
+      const target = (draft.annotations as unknown as Thread[]).find((a) => a.id === threadId);
       const src = target?.replies.find((r) => r.id === sourceReplyId);
       if (src) {
         src.linkTo = replyId;
@@ -762,7 +757,7 @@ export async function explainAction(
   if (storedDup) {
     if (!storedDup.open) {
       await reviews.mutate(reviewId, (draft) => {
-        const found = (draft.annotations as unknown as Annotation[]).find((x) => x.id === storedDup.id);
+        const found = (draft.annotations as unknown as Thread[]).find((x) => x.id === storedDup.id);
         if (found) found.open = true;
       });
     }
@@ -861,7 +856,7 @@ export async function askAction(
   if (storedDup) {
     if (!storedDup.open) {
       await reviews.mutate(reviewId, (draft) => {
-        const found = (draft.annotations as unknown as Annotation[]).find((x) => x.id === storedDup.id);
+        const found = (draft.annotations as unknown as Thread[]).find((x) => x.id === storedDup.id);
         if (found) found.open = true;
       });
     }
@@ -908,7 +903,7 @@ export async function replyAction(
   // box (or survive a reload) after sending. Follow-up chips keep any
   // typed reply text, so only the reply path clears.
   await reviews.mutate(reviewId, (draft) => {
-    const target = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
+    const target = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
     if (target) {
       target.reply = "";
       delete (target as { followupDraft?: unknown }).followupDraft;
@@ -948,19 +943,19 @@ export async function retryAction(
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
-  if (!holdsFillableTurns(found)) throw new Error(`unknown conversation ${annotationId}`);
-  const turns = found.replies ?? [];
-  if (turns.length === 0) throw new Error(`nothing to retry: this conversation has no turn to retry`);
-  // The banner shows on every failed turn, so Retry must work from any
-  // of them: refill the last failed turn, not just the last one (#270).
-  const last = [...turns].reverse().find((t) => t.error) ?? turns[turns.length - 1];
-  if (!last.error && !found.error) throw new Error(`nothing to retry: this conversation has no failed turn`);
+  if (!holdsFillableReplies(found)) throw new Error(`unknown conversation ${annotationId}`);
+  const replies = found.replies ?? [];
+  if (replies.length === 0) throw new Error(`nothing to retry: this thread has no reply to retry`);
+  // The banner shows on every failed reply, so Retry must work from any
+  // of them: refill the last failed reply, not just the last one (#270).
+  const last = [...replies].reverse().find((t) => t.error) ?? replies[replies.length - 1];
+  if (!last.error && !found.error) throw new Error(`nothing to retry: this thread has no failed reply`);
   const firstTurn = last.question === null;
   const probe = await probeConversationSessionFor(ctx, found);
   // A retry behind a later turn never continues the live session: its
   // history already holds the later turns, so the refill forks fresh
   // with the stored turns as the transcript (#270).
-  const isLatest = last.id === turns[turns.length - 1].id;
+  const isLatest = last.id === replies[replies.length - 1].id;
   const live = probe.continueSessionId !== undefined && !firstTurn && !probe.rebuilt && isLatest;
   const message = last.question ?? DEFAULT_QUESTION;
   const res = await runConversationTurn(ctx, annotationId, last.id, {

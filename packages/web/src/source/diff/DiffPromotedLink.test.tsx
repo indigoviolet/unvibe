@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import type { Annotation, Hunk, ReviewFile, ReviewSnapshot, Turn } from "@unvibe/shared";
+import type { Thread, Hunk, ReviewFile, ReviewSnapshot, Reply } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { useDiffExpansionBindings } from "../../guide/expansions/DiffExpansions.js";
 import { FileSection } from "./FileSection.js";
@@ -40,7 +40,7 @@ function file(): ReviewFile {
 }
 
 /** A promoted link whose moved turn is still filling (empty page copy). */
-function fillingLink(): Annotation {
+function fillingLink(): Thread {
   const turn = {
     id: "ans_1",
     question: null,
@@ -50,7 +50,7 @@ function fillingLink(): Annotation {
     undoStack: [],
     working: "Thinking…",
     jobId: "job-1",
-  } as unknown as Turn;
+  } as unknown as Reply;
   return {
     id: "ann_promoted",
     type: "link",
@@ -68,19 +68,19 @@ function fillingLink(): Annotation {
     promotedToPage: "p-1",
     promotedTurns: [{ turnId: "ans_1", cardId: "c-1" }],
     turns: [turn],
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
 /** A promoted link with no turns at all (settled move, empty answer). */
-function emptyLink(): Annotation {
+function emptyLink(): Thread {
   const { turns: _dropped, ...rest } = fillingLink() as unknown as Record<string, unknown>;
   void _dropped;
   const { promotedTurns: _mapping, ...bare } = rest;
   void _mapping;
-  return bare as unknown as Annotation;
+  return bare as unknown as Thread;
 }
 
-function seedSnapshot(annotations: Annotation[]): void {
+function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },

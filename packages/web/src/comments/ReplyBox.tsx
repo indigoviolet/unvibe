@@ -22,7 +22,7 @@ import { Button } from "../ui/index.js";
 interface Props {
   reviewId: string;
   annotationId: string;
-  /** Server draft (`Annotation.reply`); external edits flow back in. */
+  /** Server draft (`Thread.reply`); external edits flow back in. */
   serverReply: string | undefined;
   placeholder: string;
   /** Accessible name for the textarea. */

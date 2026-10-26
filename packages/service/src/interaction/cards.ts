@@ -9,7 +9,7 @@
  */
 import type { WritableDraft } from "immer";
 import type {
-  Annotation,
+  Thread,
   AsideBlock,
   Block,
   Card,
@@ -23,7 +23,7 @@ import { freshBlockId } from "@unvibe/shared";
 
 export type CardTarget =
   | { kind: "page-card"; pageId: string; card: Card }
-  | { kind: "answer"; annotation: Annotation; turn: Reply };
+  | { kind: "answer"; annotation: Thread; turn: Reply };
 
 const ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
@@ -50,7 +50,7 @@ export function findCardTargetInDraft(
     if (card) return { kind: "page-card", pageId: page.id, card: card as Card };
   }
   for (const annotation of draft.annotations ?? []) {
-    const ann = annotation as unknown as Annotation;
+    const ann = annotation as unknown as Thread;
     const turn = (ann.replies ?? []).find((t) => t.id === cardId);
     if (turn) return { kind: "answer", annotation: ann, turn: turn as Reply };
   }
@@ -58,7 +58,7 @@ export function findCardTargetInDraft(
 }
 
 /** The conversation card holding an answer, or null. */
-export function conversationForAnswer(snapshot: ReviewSnapshot, answerId: string): Annotation | null {
+export function conversationForAnswer(snapshot: ReviewSnapshot, answerId: string): Thread | null {
   for (const annotation of snapshot.annotations ?? []) {
     if ((annotation.replies ?? []).some((t) => t.id === answerId)) return annotation;
   }
@@ -76,7 +76,7 @@ export function mirrorPromotedAnswer(
   draft: WritableDraft<ReviewSnapshot>,
   answerId: string,
 ): void {
-  for (const annotation of draft.annotations as unknown as Annotation[]) {
+  for (const annotation of draft.annotations as unknown as Thread[]) {
     const mapping = (annotation.promotedReplies ?? []).find((m) => m.replyId === answerId);
     if (!mapping) continue;
     const turn = (annotation.replies ?? []).find((t) => t.id === answerId);
@@ -380,12 +380,12 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
       if (card.id === cardId) collect(card.blocks as Block[], card.level);
     }
   }
-  for (const ann of draft.annotations as unknown as Annotation[]) {
+  for (const ann of draft.annotations as unknown as Thread[]) {
     for (const turn of ann.replies ?? []) {
       if (turn.id === cardId) collect(turn.blocks, turn.level);
     }
   }
-  for (const ann of (draft.annotations ?? []) as unknown as Annotation[]) {
+  for (const ann of (draft.annotations ?? []) as unknown as Thread[]) {
     const host = ann.anchor?.host;
     if (!host || host.kind !== "block") continue;
     const rawId = host.blockId;

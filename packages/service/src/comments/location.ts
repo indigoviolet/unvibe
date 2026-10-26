@@ -14,7 +14,7 @@
  */
 
 import type {
-  Annotation,
+  Thread,
   ReviewFile,
   ReviewSnapshot,
   SubmitCommentLocation,
@@ -24,7 +24,7 @@ import { threadPostText } from "./threads.js";
 import { findBlock } from "../interaction/l4.js";
 
 export interface LocatedComment {
-  thread: Annotation;
+  thread: Thread;
   location: SubmitCommentLocation;
   /** Exact text to post (draft + fallback note when we moved the line). */
   text: string;
@@ -42,7 +42,7 @@ export interface SubmitRepoRef {
  * a blockquote, then the comment. Without a repo there is no permalink
  * to build, so the plain text stands alone.
  */
-export function codeCommentBodyText(thread: Annotation, base: string, repo?: SubmitRepoRef): string {
+export function codeCommentBodyText(thread: Thread, base: string, repo?: SubmitRepoRef): string {
   const host = thread.anchor.host;
   if (host.kind !== "code" || !repo || base.trim() === "") return base;
   const url = githubFileUrl(repo.owner, repo.name, host.commit, host.path, host.line, host.endLine);
@@ -193,7 +193,7 @@ function locateDiffTarget(snapshot: ReviewSnapshot, target: string): SubmitComme
   };
 }
 
-function locateDiffLineThread(snapshot: ReviewSnapshot, thread: Annotation): SubmitCommentLocation {
+function locateDiffLineThread(snapshot: ReviewSnapshot, thread: Thread): SubmitCommentLocation {
   const host = thread.anchor.host;
   if (host.kind !== "diff-line") return { kind: "general" };
   const file = fileByKey(snapshot, host.fileKey);
@@ -263,7 +263,7 @@ function locateDiffLineThread(snapshot: ReviewSnapshot, thread: Annotation): Sub
  * host block's first `diff:` citation; description threads and blocks
  * without a diff citation are general comments.
  */
-export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): SubmitCommentLocation {
+export function locateThread(snapshot: ReviewSnapshot, thread: Thread): SubmitCommentLocation {
   const host = thread.anchor.host;
   if (host.kind === "code") {
     // #81 (owner decision A): GitHub takes inline comments only on diff
@@ -284,7 +284,7 @@ export function locateThread(snapshot: ReviewSnapshot, thread: Annotation): Subm
 }
 
 /** Locate one thread with its exact post text (fallback note prepended). */
-export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotation, repo?: SubmitRepoRef): LocatedComment {
+export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Thread, repo?: SubmitRepoRef): LocatedComment {
   const location = locateThread(snapshot, thread);
   const base = threadPostText(thread);
   let text =
@@ -302,7 +302,7 @@ export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Annotatio
 export function locatePendingThreads(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): LocatedComment[] {
   return (snapshot.annotations ?? [])
     .filter((a) => a.post && !a.postedAt && a.replies.some((r) => r.kind === "comment"))
-    .map((t) => locateThreadWithText(snapshot, t as Annotation, repo));
+    .map((t) => locateThreadWithText(snapshot, t as Thread, repo));
 }
 
 /** Comments already posted (skipped on retry). */

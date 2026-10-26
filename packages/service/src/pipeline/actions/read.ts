@@ -24,7 +24,7 @@ export async function collapseAction(
     const t = findCardTargetInDraft(draft, cardId);
     if (!t) {
       // A thread id addresses the thread, not one reply.
-      const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+      const ann = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
         (a) => a.id === cardId,
       );
       if (!ann || (ann.type !== "thread" && ann.type !== "link")) throw new Error(`unknown card ${cardId}`);

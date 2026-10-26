@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { onOpenBlockThread } from "./annotations.js";
 import { BlockMarkers } from "./Markers.js";
 import type { ResolvedCitation } from "./citations.js";
@@ -66,7 +66,7 @@ describe("BlockMarkers", () => {
   });
 
   it("renders the comment marker with a count", () => {
-    const threads: Annotation[] = ["t1", "t2"].map((id) => ({
+    const threads: Thread[] = ["t1", "t2"].map((id) => ({
       id,
       type: "thread",
       anchor: {
@@ -89,7 +89,7 @@ describe("BlockMarkers", () => {
   });
 
   it("clicking the comment marker opens every comment on the block, in order (#205)", () => {
-    const threads: Annotation[] = ["t1", "t2", "t3"].map((id) => ({
+    const threads: Thread[] = ["t1", "t2", "t3"].map((id) => ({
       id,
       type: "thread",
       anchor: {
@@ -117,7 +117,7 @@ describe("BlockMarkers", () => {
   });
 
   it("quoted threads get footnote chips, not the bubble marker", () => {
-    const threads: Annotation[] = [
+    const threads: Thread[] = [
       {
         id: "tq",
         type: "thread",
@@ -164,7 +164,7 @@ describe("BlockMarkers", () => {
   });
 
   it("closed expansions and links render footnote chips on the same row", () => {
-    const footnotes: Annotation[] = [
+    const footnotes: Thread[] = [
       {
         id: "e1",
         type: "thread",

@@ -23,13 +23,13 @@
  *
  * Pure helpers only (no Node/DOM).
  */
-import type { Annotation, Block, DiagramBlock, Page } from "../entities.js";
+import type { Thread, Block, DiagramBlock, Page } from "../entities.js";
 import { canonicalizeD2Source } from "./d2.js";
 
 /** The snapshot slice the walker needs (structural, not the full type). */
 export interface BlockSnapshot {
   pages: Page[];
-  annotations: Annotation[];
+  annotations: Thread[];
 }
 
 /**

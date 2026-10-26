@@ -98,7 +98,7 @@ async function waitForTurnSettled(ctx: App["ctx"], id: string, annotationId: str
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
       | { working: string | null; turns?: { working: string | null }[] }
       | undefined;
-    return a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
+    return a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, 60000);
 }
 
@@ -158,7 +158,7 @@ describe("failed ask turns + retry (#270)", () => {
       // The banner state: the turn carries the error, and no partial
       // answer (cut-off citation or trailing block) survives on it.
       const failed = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const failedTurn = (failed.turns ?? []).find((t) => t.id === turnId)!;
+      const failedTurn = (failed.replies ?? []).find((t) => t.id === turnId)!;
       expect(failedTurn.error).toBe("boom mid-stream");
       expect(failedTurn.blocks).toEqual([]);
       // The raw output and the error stay on the job for the Debug page.
@@ -172,7 +172,7 @@ describe("failed ask turns + retry (#270)", () => {
       expect(await waitForJob(ctx, retry.json.jobId as string)).toBe("done");
       await waitForTurnSettled(ctx, id, annotationId);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const retried = (after.turns ?? []).find((t) => t.id === turnId)!;
+      const retried = (after.replies ?? []).find((t) => t.id === turnId)!;
       expect(retried.error).toBeFalsy();
       // No concatenation: only the new answer is stored.
       expect(JSON.stringify(retried.blocks)).toContain("Clean retry answer here.");
@@ -183,7 +183,7 @@ describe("failed ask turns + retry (#270)", () => {
       const again = await postAction(app, id, { kind: "retry", annotationId });
       expect(again.status).toBe(400);
       const message = (again.json as { error?: string }).error ?? "";
-      expect(message).toContain("no failed turn");
+      expect(message).toContain("no failed reply");
       expect(message).not.toContain("ann_");
       expect(message).not.toContain(annotationId);
     } finally {
@@ -214,7 +214,7 @@ describe("failed ask turns + retry (#270)", () => {
       expect(await waitForJob(ctx, jobId)).toBe("error");
       await waitForTurnSettled(ctx, id, annotationId);
       const snap = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const turn = (snap.turns ?? [])[0]!;
+      const turn = (snap.replies ?? [])[0]!;
       // Banner plus Retry: the turn carries the error, no partial card.
       expect(turn.error).toMatch(/expected format/);
       expect(turn.blocks).toEqual([]);
@@ -290,11 +290,11 @@ describe("failed ask turns + retry (#270)", () => {
       expect(await waitForJob(ctx, rep1.json.jobId as string)).toBe("error");
       await waitForTurnSettled(ctx, id, annotationId);
       const snap = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect((snap.turns ?? []).map((t) => t.id)).toContain(turn1);
-      expect((snap.turns ?? []).map((t) => t.id).indexOf(turn1)).toBeLessThan(
-        (snap.turns ?? []).map((t) => t.id).indexOf(turn2),
+      expect((snap.replies ?? []).map((t) => t.id)).toContain(turn1);
+      expect((snap.replies ?? []).map((t) => t.id).indexOf(turn1)).toBeLessThan(
+        (snap.replies ?? []).map((t) => t.id).indexOf(turn2),
       );
-      expect((snap.turns ?? []).find((t) => t.id === turn1)!.error).toBe("first failed late");
+      expect((snap.replies ?? []).find((t) => t.id === turn1)!.error).toBe("first failed late");
 
       // Retry works from the failed (non-last) turn's banner: it refills
       // turn 1 and leaves turn 2 untouched.
@@ -304,8 +304,8 @@ describe("failed ask turns + retry (#270)", () => {
       expect(await waitForJob(ctx, retry.json.jobId as string)).toBe("done");
       await waitForTurnSettled(ctx, id, annotationId);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const t1 = (after.turns ?? []).find((t) => t.id === turn1)!;
-      const t2 = (after.turns ?? []).find((t) => t.id === turn2)!;
+      const t1 = (after.replies ?? []).find((t) => t.id === turn1)!;
+      const t2 = (after.replies ?? []).find((t) => t.id === turn2)!;
       expect(t1.error).toBeFalsy();
       expect(JSON.stringify(t1.blocks)).toContain("First retried answer.");
       expect(JSON.stringify(t2.blocks)).toContain("Second answer body.");

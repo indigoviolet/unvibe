@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import {
   outboxThreads,
   pendingCount,
@@ -23,7 +23,7 @@ function mkReply(who: "you" | "agent", text: string, suggested = false): import(
   };
 }
 
-function thread(over: Partial<Annotation> = {}): Annotation {
+function thread(over: Partial<Thread> = {}): Thread {
   return {
     id: "ann_x",
     type: "thread",
