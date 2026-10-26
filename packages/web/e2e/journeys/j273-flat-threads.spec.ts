@@ -46,7 +46,7 @@ test.describe("J273 flat threads", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("ask starts a thread, explain-inside appends a reply, comment joins, link scrolls, collapse-all works", async ({
+  test("ask starts a thread, explain-inside appends a reply, Reply asks again, link scrolls, collapse-all works", async ({
     page,
   }) => {
     test.setTimeout(300_000);
@@ -109,17 +109,19 @@ test.describe("J273 flat threads", () => {
     await expect(target).toHaveClass(/flash/, { timeout: 15_000 });
     await page.screenshot({ path: "test-results/j273-replylink.png" });
 
-    // A reviewer comment joins the same thread (kind badged, person avatar).
-    await thread.locator('textarea[aria-label="Reply"]').first().fill("Good — let's call this out in the description.");
-    await thread.getByRole("button", { name: "Reply" }).first().click();
+    // The single Reply box asks the agent: a follow-up appends an Ask
+    // reply in the same thread (flat, kind badged). Only one box — the
+    // comment-reply box is gone from agent threads; reviewer comments
+    // are written elsewhere (covered in comment-only threads by J9).
+    await expect(thread.locator("textarea")).toHaveCount(1);
+    await thread.locator('textarea[aria-label="Reply"]').fill("Does a cookie header change this?");
+    await thread.getByRole("button", { name: "Reply", exact: true }).click();
     await expect
       .poll(async () => (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.length ?? 0, {
         timeout: 60_000,
       })
       .toBeGreaterThanOrEqual(3);
-    await expect(thread.locator('[data-reply][data-kind="comment"]').first()).toBeVisible({ timeout: 30_000 });
-    await expect(thread.locator(".kind-comment").first()).toBeVisible();
-    await expect(thread.locator('.av.you').first()).toBeVisible();
+    await expect(thread.locator('[data-reply][data-kind="ask"]')).toHaveCount(2, { timeout: 60_000 });
 
     // Collapse-all turns every thread into one row; expanding restores this one.
     await page.locator('[data-testid="collapse-threads"]').click();

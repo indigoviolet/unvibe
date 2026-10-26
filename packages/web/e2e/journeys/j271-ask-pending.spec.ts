@@ -60,7 +60,7 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(draft).toBeVisible();
     await draft.fill("What about ordering?");
     await expect(draft).toHaveValue("What about ordering?");
-    const send = card.getByRole("button", { name: "Ask" }).last();
+    const send = card.getByRole("button", { name: "Reply" }).last();
     await expect(send).toBeDisabled();
     await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
     // The pending turn has no toolbar of its own.

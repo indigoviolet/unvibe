@@ -2000,7 +2000,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.scrollIntoViewIfNeeded().catch(() => {});
     await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
-    // Once the answer arrives, the toolbar and both reply boxes appear.
+    // Once the answer arrives, the toolbar and the reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "guide-writing-done");

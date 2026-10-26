@@ -519,10 +519,13 @@ needed (that deviation is closed, not added).
 - Thread header (quote, reply count, Open as page, Outbox toggle, Delete,
   Close) + one reply view per reply, each with the card controls (depth,
   Use examples, Add diagram, Undo, Second opinion) acting on that reply
-  alone, plus a comment Reply box and an Ask follow-up box answered in
-  the same thread — met (`actions/conversation.ts`,
-  `comments/ThreadView.tsx` + `ReplyBox.tsx` with `followupDraft`,
-  `conversation.test.ts`, journeys J2/J15/J273). “Ask about this” on a
+  alone. A thread with agent replies ends in ONE box, labelled Reply,
+  and it asks the agent (an Ask reply in the same thread); reviewer
+  comments are written elsewhere, never from that box. New threads and
+  comment-only threads keep the comment Reply box — met
+  (`actions/conversation.ts`, `comments/ThreadView.tsx` + `ReplyBox.tsx`
+  with `followupDraft`, `conversation.test.ts`, journeys
+  J2/J15/J273). “Ask about this” on a
   comment appends an Ask reply inside the same thread — the only way a
   comment leads to an agent reply, and the answer is never submitted.
   The header never shows an empty or near-empty quote: no quoted text
@@ -556,13 +559,13 @@ needed (that deviation is closed, not added).
    internal ids; follow-up answers stand on their own (prompt rule in
    `ask_turn.md` + L0 reply hygiene) — met
    (`conversation-retry-270.test.ts`, journey J270, visual tour
-   ask-failed/ask-retried frames). Issue #271: the Ask follow-up box
+   ask-failed/ask-retried frames). Issue #271: the single Reply box
    stays visible and editable while a *follow-up* answer is pending,
    with Send disabled and the reason as its tooltip ("Wait for the
    answer"); the kept draft (server-persisted `followupDraft`) sends
    once the answer lands (first answers keep the #203 header-only
-   writing state, with both boxes hidden until the first agent reply
-   arrives). On a failure both boxes hide and Retry governs (a draft
+   writing state, with the box hidden until the first agent reply
+   arrives). On a failure the box hides and Retry governs (a draft
    typed while pending is kept in the server draft and is back after
    the retry lands). In-progress labels in Ask/Explain and follow-ups
    carry no stacked ellipsis beside the dots ("Writing answer",
@@ -674,12 +677,14 @@ needed (that deviation is closed, not added).
   toggle filled when on, Delete, Close) — met
   (`comments/threads.test.ts`, `ThreadView.test.tsx`, journey J273,
   visual-tour thread frames).
-- Reply boxes: the comment Reply box is always visible (Discard/Reply,
-  typed text survives rerender; Discard stays disabled on an existing
-  thread until there is a draft) and the Ask follow-up box appears once
-  the thread has agent replies (hidden while the first answer fills,
-  Send disabled with “Wait for the answer” while a follow-up pends —
-  #271) — met (`comments/ThreadView.test.tsx`,
+- Reply boxes: a thread with agent replies ends in ONE box, labelled
+  Reply, and it asks the agent (Clear/Reply, typed text survives
+  rerender, draft persisted as `followupDraft`; hidden while the first
+  answer fills, Send disabled with “Wait for the answer” while a
+  follow-up pends — #271; hidden on failure where Retry governs —
+  #270). New threads and comment-only threads keep the comment Reply
+  box (Discard/Reply, Discard stays disabled on an existing thread
+  until there is a draft) — met (`comments/ThreadView.test.tsx`,
   `comments/ReplyBox.test.tsx`, journeys J271/J273, visual-tour
   ask-pending/writing-state frames). Reviewer comments live alongside
   agent answers as `kind: "comment"` replies, badged by kind.

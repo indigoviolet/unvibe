@@ -46,7 +46,7 @@ test.describe("J15 multi-turn thread", () => {
       await expect(box).toBeVisible({ timeout: 15_000 });
       const answersBefore = await thread.locator('[data-reply][data-kind="ask"], [data-reply][data-kind="explain"]').count();
       await box.fill(question);
-      await thread.getByRole("button", { name: "Ask" }).last().click();
+      await thread.getByRole("button", { name: "Reply" }).last().click();
       await expect
         .poll(async () => thread.locator('[data-reply][data-kind="ask"], [data-reply][data-kind="explain"]').count(), { timeout: 60_000 })
         .toBeGreaterThan(answersBefore);
@@ -121,12 +121,12 @@ test.describe("J15 multi-turn thread", () => {
     await expect(thread.first()).toBeVisible({ timeout: 30_000 });
     await expect(thread.locator('[data-reply] .exp-b').first()).not.toBeEmpty({ timeout: 30_000 });
 
-    const box = thread.locator('textarea[aria-label="Ask a follow-up"]');
+    const box = thread.locator('textarea[aria-label="Reply"]');
     await box.fill("never mind");
     await thread.getByRole("button", { name: "Clear" }).click();
     await expect(box).toHaveValue("");
     await box.fill("And a bare LF?");
-    await thread.getByRole("button", { name: "Ask" }).last().click();
+    await thread.getByRole("button", { name: "Reply" }).last().click();
     await expect(box).toHaveValue("", { timeout: 5000 });
     await expect(thread.locator("[data-reply]").nth(1)).toContainText("bare LF", { timeout: 30_000 });
     await expect(box).toHaveValue("");
@@ -138,6 +138,6 @@ test.describe("J15 multi-turn thread", () => {
     });
     await expect(again.first()).toBeVisible({ timeout: 30_000 });
     await expect(again.locator("[data-reply]").nth(1)).toContainText("bare LF", { timeout: 30_000 });
-    await expect(again.locator('textarea[aria-label="Ask a follow-up"]')).toHaveValue("");
+    await expect(again.locator('textarea[aria-label="Reply"]')).toHaveValue("");
   });
 });
