@@ -325,7 +325,14 @@ needed (that deviation is closed, not added).
    `GET /api/jobs/:id/reply`) so the Debug page shows it next to the
    prompt. Streamed partials are cleared on failure and the reason
    lands in the job error on the Debug page
-   (`degraded-turn-51.test.ts`, `reader-146-124.test.ts`). A reply anchor
+   (   `degraded-turn-51.test.ts`, `reader-146-124.test.ts`). Job dedupe is
+   scoped per review (#276): a review whose reader is queued while
+   another review's reader (same base version) is still open gets its
+   own reader job instead of attaching to the foreign one (which left
+   the review with hunk passes, no reader row and "Building" forever).
+   A reader that cannot be queued marks the reader stage failed with
+   Retry instead of stalling (`reader-dedupe-276.test.ts`,
+   `jobs.test.ts` dedupe). A reply anchor
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
    failed citations) is kept on the job's stored prompt, so the Debug
