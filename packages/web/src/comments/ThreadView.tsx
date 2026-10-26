@@ -13,7 +13,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -106,13 +106,30 @@ function successorTarget(thread: Thread): string | null {
   return null;
 }
 
-function headerLabel(snapshotFile: string | null, thread: Thread): string {
-  if (thread.anchor.quotedText) return `“${thread.anchor.quotedText}”`;
-  if (thread.anchor.host.kind === "diff-line") {
-    const name = snapshotFile ?? thread.anchor.host.fileKey;
-    return `${name}:${thread.anchor.host.line}`;
+/** Location context for the thread header. The anchor quote itself is
+ * already shown in `.mq`, so this never repeats it — it names *where*
+ * the thread lives (card title / file:line / description block). */
+function headerLabel(
+  snapshot: import("@unvibe/shared").ReviewSnapshot | null | undefined,
+  thread: Thread,
+): string {
+  const host = thread.anchor.host;
+  if (host.kind === "diff-line") {
+    const file = snapshot?.files?.find((f) => f.fileKey === host.fileKey);
+    const name = file?.path.split("/").pop() ?? host.fileKey;
+    return host.endLine && host.endLine !== host.line ? `${name}:${host.line}-${host.endLine}` : `${name}:${host.line}`;
   }
-  return "Thread";
+  if (host.kind === "description") return "PR description";
+  if (host.kind === "code") return `${host.path}:${host.line}`;
+  if (host.kind === "block") {
+    const cardId = host.blockId.includes("#") ? host.blockId.slice(0, host.blockId.indexOf("#")) : host.blockId;
+    for (const page of snapshot?.pages ?? []) {
+      const card = page.cards.find((c) => c.id === cardId);
+      if (card) return card.title || page.title || "Guide";
+    }
+    return "Guide";
+  }
+  return "Comment";
 }
 
 function replyHeading(reply: Reply, anchorQuote: string): string {
@@ -177,6 +194,55 @@ function AgentReplyView({
   const contentReady = reply.blocks.length > 0 && !controlsBusy;
   const provisional = useProvisionalBlocks(thread.id, reply as unknown as Parameters<typeof useProvisionalBlocks>[1], showWorking && !errorText);
   const awaitingAnswer = !!errorText || (showWorking && (serverWorking || reply.blocks.length === 0));
+
+  // In-thread reply link (#268 spike): hyperlink the selected words
+  // *inside this reply's own text* (dotted teal underline), pointing at
+  // the target reply. The link text is plain selected text while the
+  // rendered blocks carry markup, so match against live text nodes and
+  // split the first one containing the phrase (never inside a button or
+  // link, so citation chips stay intact). Restored before every
+  // re-wrap so React's own patches never see the inserted button.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const linkBtnRef = useRef<HTMLButtonElement | null>(null);
+  const unwrapLink = useCallback(() => {
+    const btn = linkBtnRef.current;
+    linkBtnRef.current = null;
+    if (btn && btn.isConnected) btn.replaceWith(document.createTextNode(btn.textContent ?? ""));
+  }, []);
+  useEffect(() => {
+    unwrapLink();
+    const targetId = reply.linkTo;
+    const phrase = reply.linkText;
+    const root = bodyRef.current;
+    if (!targetId || !phrase || !root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Text | null = null;
+    let matchAt = -1;
+    while (walker.nextNode()) {
+      const text = walker.currentNode as Text;
+      // Never split inside an interactive element (citation chips etc.).
+      if ((text.parentElement as HTMLElement | null)?.closest?.("button, a, [role=\"button\"]")) continue;
+      const at = text.data.indexOf(phrase);
+      if (at >= 0) {
+        node = text;
+        matchAt = at;
+        break;
+      }
+    }
+    if (!node || matchAt < 0 || !node.parentNode) return;
+    const before = node.splitText(matchAt);
+    const after = before.splitText(phrase.length);
+    void after;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rlink";
+    btn.dataset.replylink = targetId;
+    btn.textContent = phrase;
+    btn.addEventListener("click", () => onLink(targetId));
+    node.parentNode.replaceChild(btn, before);
+    linkBtnRef.current = btn;
+    return unwrapLink;
+  }, [reply.blocks, reply.linkTo, reply.linkText, onLink, unwrapLink]);
 
   const renderBlocks = (blocks: Block[]): React.ReactNode =>
     linkCardBlocks(blocks, snapshot?.glossary ?? [], reply.level).map((block) => (
@@ -256,7 +322,7 @@ function AgentReplyView({
             </Button>
           </div>
         ) : null}
-        <div className={`exp-b${provisional ? " streaming" : ""}`}>
+        <div className={`exp-b${provisional ? " streaming" : ""}`} ref={bodyRef}>
           {provisional?.map((block) => (
             <BlockView
               key={block.id}
@@ -271,13 +337,6 @@ function AgentReplyView({
           ))}
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
-        {reply.linkTo ? (
-          <div className="hint">
-            <button type="button" className="rlink" data-replylink={reply.linkTo} onClick={() => onLink(reply.linkTo as string)}>
-              {reply.linkText ?? "Jump to reply →"}
-            </button>
-          </div>
-        ) : null}
         {secondOpinions.map((so) => (
           <SecondOpinionBlock
             key={so.id}
@@ -359,10 +418,18 @@ export function ThreadCollapsedRow({
   onExpand: () => void;
 }) {
   const first = thread.replies[0];
+  // Same headings as the replies themselves (spike), so the row reads
+  // quote · question/kind · snippet · count.
   const firstHeading = first
     ? first.kind === "comment"
       ? "Reviewer comment"
-      : (first.question ?? thread.anchor.quotedText ?? "")
+      : first.kind === "persona"
+        ? "Persona note"
+        : first.kind === "explain"
+          ? `Explain · “${(first.question ?? thread.anchor.quotedText ?? "").slice(0, 80)}”`
+          : first.question
+            ? `Ask · ${first.question.slice(0, 100)}`
+            : "Ask"
     : "";
   const last = thread.replies[thread.replies.length - 1];
   const lastText = last
@@ -447,16 +514,23 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const of = onFollowUp ?? noopFollow;
 
   const isCollapsed = collapsed ?? (storeCollapseAll && !storeExpanded[thread.id]);
-  const doExpand = onExpand ?? (() => storeSetExpanded(thread.id, true));
+  // Expanding a collapsed row restores its thread: mark it expanded, and
+  // open it too when it was closed (a closed thread otherwise has no
+  // inline view to restore).
+  const doExpand =
+    onExpand ??
+    (() => {
+      storeSetExpanded(thread.id, true);
+      if (!thread.open && !readOnly) {
+        api.updateComment(reviewId, thread.id, { open: true }).catch((err: unknown) => {
+          toast(`Couldn't open the thread: ${friendlyError(err)}`);
+        });
+      }
+    });
   if (isCollapsed) {
     return <ThreadCollapsedRow thread={thread} onExpand={doExpand} />;
   }
 
-  const host = thread.anchor.host;
-  const file =
-    host.kind === "diff-line"
-      ? (snapshot?.files.find((f) => f.fileKey === host.fileKey)?.path.split("/").pop() ?? null)
-      : null;
   const replies = thread.replies ?? [];
   const isNew = replies.length === 0;
   const posted = thread.postedAt !== undefined;
@@ -508,6 +582,10 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   };
 
   const onClose = (): void => {
+    // Closing drops the per-thread expanded override too: with
+    // collapse-all on, the thread falls back to its collapsed row
+    // instead of lingering inline while closed.
+    storeSetExpanded(thread.id, false);
     api.updateComment(reviewId, thread.id, { open: false }).catch((err: unknown) => {
       toast(`Couldn't close the thread: ${friendlyError(err)}`);
     });
@@ -548,7 +626,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
       <div className="thd">
         <span className="mq">“{thread.anchor.quotedText}”</span>
-        <span className="hint">{headerLabel(file, thread)}</span>
+        <span className="hint">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
         <span className="count" data-count={thread.id}>

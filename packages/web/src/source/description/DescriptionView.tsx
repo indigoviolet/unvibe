@@ -277,6 +277,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   const navigate = useNavigate();
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
+  const collapseAll = useReview((s) => s.collapseAll);
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     snapshot?.pages.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
@@ -391,7 +392,9 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     >
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
-        const open = threads.filter((t) => t.open);
+        // Collapse-all renders every thread under the paragraph as a row,
+        // including closed ones (which otherwise show only as marks).
+        const open = threads.filter((t) => t.open || collapseAll);
         // Issue #262: the marker is a toggle over the paragraph's
         // unhighlighted threads (quoted threads that placed keep their
         // inline mark instead). When all of them are open a click
@@ -482,10 +485,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           </div>
         );
       })}
-      {orphans.filter((t) => t.open).length > 0 ? (
+      {orphans.filter((t) => t.open || collapseAll).length > 0 ? (
         <div className="dann">
           {orphans
-            .filter((t) => t.open)
+            .filter((t) => t.open || collapseAll)
             .map((t) => (
               <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
             ))}

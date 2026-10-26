@@ -334,6 +334,12 @@ export function HoverPopover() {
       overAnchor.current = anchor;
       const pending = anchor;
       openTimer.current = window.setTimeout(() => {
+        // The selection toolbar (z-index 30) sits below the peek
+        // (z-index 35): never open the peek over a visible toolbar —
+        // its clicks would land on the peek instead (main-tour flakes).
+        // Re-hovering after the toolbar dismisses opens normally.
+        const bar = document.getElementById("selbar");
+        if (bar && !bar.hidden) return;
         if (!pending.isConnected) {
           // The anchor re-rendered under a stationary pointer while
           // the open was pending (a snapshot patch replaced the node):
@@ -424,6 +430,14 @@ export function HoverPopover() {
       if (!(e.target as Element | null)?.closest?.("#pop")) hideRef.current();
     };
 
+    // A newly formed text selection means the toolbar is about to show
+    // (or is already up): hide the peek so it can never cover it, and
+    // don't reopen until the selection collapses (see scheduleOpen).
+    const onSelectionChange = (): void => {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) hideRef.current();
+    };
+
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") hideRef.current();
     };
@@ -437,6 +451,7 @@ export function HoverPopover() {
     document.addEventListener("scroll", dismissOnScroll, true);
     document.addEventListener("wheel", dismissOnScroll, { capture: true, passive: true });
     document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("keydown", onKeyDown);
     document.documentElement.addEventListener("mouseleave", onMouseLeave);
     window.addEventListener("blur", hideRef.current);
@@ -447,6 +462,7 @@ export function HoverPopover() {
       document.removeEventListener("scroll", dismissOnScroll, true);
       document.removeEventListener("wheel", dismissOnScroll, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("keydown", onKeyDown);
       document.documentElement.removeEventListener("mouseleave", onMouseLeave);
       window.removeEventListener("blur", hideRef.current);

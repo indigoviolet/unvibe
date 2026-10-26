@@ -60,6 +60,7 @@ export function useDiffCommentBindings(reviewId: string): {
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const inflight = useReview((s) => s.inflight);
+  const collapseAll = useReview((s) => s.collapseAll);
   const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<Pending | null>(null);
 
@@ -167,11 +168,13 @@ export function useDiffCommentBindings(reviewId: string): {
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, threads] of byLine) {
-      const open = threads.filter((t) => t.open);
-      if (open.length === 0) continue;
+      // Collapse-all renders every thread on the line as a row, including
+      // closed ones (which otherwise show only as line icons).
+      const shown = threads.filter((t) => t.open || collapseAll);
+      if (shown.length === 0) continue;
       slots[key] = (
         <>
-          {open.map((t) => (
+          {shown.map((t) => (
             <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
           ))}
           {pending && !readOnly && slotKey(pending.fileKey, pending.line) === key ? (
@@ -226,7 +229,7 @@ export function useDiffCommentBindings(reviewId: string): {
       }
     }
     return slots;
-  }, [annotations, byLine, pending, reviewId, readOnly, inflight]);
+  }, [annotations, byLine, pending, reviewId, readOnly, inflight, collapseAll]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

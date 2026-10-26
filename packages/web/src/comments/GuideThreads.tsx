@@ -327,14 +327,14 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   }, [cardId, blockId]);
 
   const collapseAll = useReview((s) => s.collapseAll);
-  const expandedThreads = useReview((s) => s.expandedThreads);
-  const setThreadExpanded = useReview((s) => s.setThreadExpanded);
+  // Collapse-all renders every thread on the block as a row — including
+  // closed ones, which otherwise show only as marks.
   const threads = (annotations ?? []).filter(
     (a): a is Thread =>
       (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
-      a.open,
+      (a.open || collapseAll),
   );
 
   // An explain started from a selection on this block shows a
@@ -356,19 +356,9 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   if (!pending && threads.length === 0 && !placeholder) return null;
   return (
     <>
-      {threads.map((t) => {
-        const collapsed = collapseAll && !expandedThreads[t.id];
-        return (
-          <ThreadView
-            key={t.id}
-            reviewId={reviewId}
-            thread={t}
-            readOnly={readOnly}
-            collapsed={collapsed}
-            onExpand={() => setThreadExpanded(t.id, true)}
-          />
-        );
-      })}
+      {threads.map((t) => (
+        <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
+      ))}
       {placeholder ? <WorkingPlaceholder label={inflightLabel(placeholder.kind)} /> : null}
       {pending && !readOnly ? (
         <NewThreadComposer
