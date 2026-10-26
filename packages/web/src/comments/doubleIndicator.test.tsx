@@ -10,7 +10,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { Annotation, Card, ReviewSnapshot } from "@unvibe/shared";
+import { MemoryRouter } from "react-router";
+import type { Thread, Card, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { NEW_THREAD_EVENT } from "../floating/SelectionToolbar.js";
 import { performAction } from "../guide/actions.js";
@@ -50,10 +51,10 @@ function seedSnapshot(): void {
   } as unknown as ReviewSnapshot);
 }
 
-function workingExpansion(): Annotation {
+function workingExpansion(): Thread {
   return {
     id: "ann_x",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -63,27 +64,28 @@ function workingExpansion(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
-    post: false,
-    working: "Thinking…",
-    turns: [
+    replies: [
       {
         id: "ans_x1",
+        kind: "explain",
+        who: "agent",
         question: null,
         blocks: [],
         level: "standard",
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Writing explanation",
       },
     ],
-  } as unknown as Annotation;
+    post: false,
+    working: "Writing explanation",
+  } as unknown as Thread;
 }
 
-function workingConversation(): Annotation {
+function workingConversation(): Thread {
   return {
     id: "ann_t",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -93,24 +95,25 @@ function workingConversation(): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
-    post: false,
-    working: "Thinking…",
-    turns: [
+    replies: [
       {
         id: "ans_t1",
+        kind: "ask",
+        who: "agent",
         question: "what's that",
         blocks: [],
         level: "standard",
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Asking",
       },
     ],
-  } as unknown as Annotation;
+    post: false,
+    working: "Asking",
+  } as unknown as Thread;
 }
 
-function addAnnotations(annotations: Annotation[]): void {
+function addAnnotations(annotations: Thread[]): void {
   act(() => {
     const snap = useReview.getState().snapshot!;
     useReview.getState().applyEvent({
@@ -149,13 +152,15 @@ describe("issue #97: one box while working", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
           lookupPage={() => undefined}
           onOpenPage={() => {}}
           onFollowUp={() => {}}
-        />,
+        />
+        </MemoryRouter>
       );
       act(() => {
         void performAction(REVIEW_ID, {
@@ -174,7 +179,7 @@ describe("issue #97: one box while working", () => {
       expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
       // …and content-needing controls are absent (not just disabled) on
       // the still-empty card — issue #203: header + writing state only.
-      const exp = document.querySelector('[data-expansion="ann_x"]') as HTMLElement;
+      const exp = document.querySelector('[data-thread="ann_x"]') as HTMLElement;
       expect(exp).not.toBeNull();
       expect(within(exp).queryByRole("button", { name: "Use examples" })).toBeNull();
       expect(within(exp).queryByRole("button", { name: "Simpler" })).toBeNull();
@@ -195,13 +200,15 @@ describe("issue #97: one box while working", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
           lookupPage={() => undefined}
           onOpenPage={() => {}}
           onFollowUp={() => {}}
-        />,
+        />
+        </MemoryRouter>
       );
       act(() => {
         window.dispatchEvent(

@@ -88,7 +88,7 @@ test.describe("J14 diagrams, debug, redo", () => {
     await page.getByRole("button", { name: "Output" }).first().click();
     const output = page.locator('[data-testid="job-output"]').first();
     await expect(output).toBeVisible({ timeout: 30_000 });
-    await expect(output).toContainText("Turn 1");
+    await expect(output).toContainText("Reply 1");
     await expect(output).toContainText("Prompt");
     await expect(output).toContainText("Output");
     // Inside the view, tool calls are one line each in a bounded list;

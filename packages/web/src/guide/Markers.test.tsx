@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { onOpenBlockThread } from "./annotations.js";
 import { BlockMarkers } from "./Markers.js";
 import type { ResolvedCitation } from "./citations.js";
@@ -19,6 +19,11 @@ const rc = (target: string, unverified = false): ResolvedCitation => ({
   snippet: "snippet",
   ...(unverified ? { unverified: true } : {}),
 });
+
+function mkReply(text: string): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  return { id: `ans_${Math.random().toString(36).slice(2, 6)}`, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }], level: "standard", revision: 1, undoStack: [] };
+}
 
 describe("BlockMarkers", () => {
   it("renders nothing without citations or threads", () => {
@@ -61,9 +66,9 @@ describe("BlockMarkers", () => {
   });
 
   it("renders the comment marker with a count", () => {
-    const threads: Annotation[] = ["t1", "t2"].map((id) => ({
+    const threads: Thread[] = ["t1", "t2"].map((id) => ({
       id,
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "b" },
         quotedText: "",
@@ -74,7 +79,7 @@ describe("BlockMarkers", () => {
       },
       open: false,
       pinned: false,
-      messages: [],
+      replies: [],
       post: false,
     }));
     render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
@@ -84,9 +89,9 @@ describe("BlockMarkers", () => {
   });
 
   it("clicking the comment marker opens every comment on the block, in order (#205)", () => {
-    const threads: Annotation[] = ["t1", "t2", "t3"].map((id) => ({
+    const threads: Thread[] = ["t1", "t2", "t3"].map((id) => ({
       id,
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "b" },
         quotedText: "",
@@ -97,7 +102,7 @@ describe("BlockMarkers", () => {
       },
       open: false,
       pinned: false,
-      messages: [{ who: "you", text: `note ${id}` }],
+      replies: [mkReply(`note ${id}`)],
       post: false,
     }));
     const opened: string[] = [];
@@ -112,10 +117,10 @@ describe("BlockMarkers", () => {
   });
 
   it("quoted threads get footnote chips, not the bubble marker", () => {
-    const threads: Annotation[] = [
+    const threads: Thread[] = [
       {
         id: "tq",
-        type: "comment",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "Draw the Stereo vs mono-mix",
@@ -126,12 +131,12 @@ describe("BlockMarkers", () => {
         },
         open: false,
         pinned: false,
-        messages: [],
+        replies: [],
         post: false,
       },
       {
         id: "tn",
-        type: "comment",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "",
@@ -142,7 +147,7 @@ describe("BlockMarkers", () => {
         },
         open: false,
         pinned: false,
-        messages: [],
+        replies: [],
         post: false,
       },
     ];
@@ -159,10 +164,10 @@ describe("BlockMarkers", () => {
   });
 
   it("closed expansions and links render footnote chips on the same row", () => {
-    const footnotes: Annotation[] = [
+    const footnotes: Thread[] = [
       {
         id: "e1",
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "b" },
           quotedText: "Draw the Stereo vs mono-mixdown with a very long quote for truncation",
@@ -173,7 +178,7 @@ describe("BlockMarkers", () => {
         },
         open: false,
         pinned: false,
-        messages: [],
+        replies: [],
         post: false,
       },
       {
@@ -189,7 +194,7 @@ describe("BlockMarkers", () => {
         },
         open: false,
         pinned: false,
-        messages: [],
+        replies: [],
         post: false,
         promotedToPage: "p1",
       },

@@ -24,12 +24,12 @@ test("open as page mid-fill keeps filling the page; anchor links at once", async
   try {
     await selectText(page, "#C-central", "fast path");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-expansion]").first();
-    await expect(card).toBeVisible({ timeout: 5000 });
-    await expect(card.locator(".working").first()).toBeVisible({ timeout: 5000 });
+    const thread = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
+    await expect(thread).toBeVisible({ timeout: 5000 });
+    await expect(thread.locator(".working").first()).toBeVisible({ timeout: 5000 });
 
     // Open as page while the answer is still being written.
-    await card.getByRole("button", { name: "Open as page" }).click();
+    await thread.getByRole("button", { name: "Open as page" }).click();
     await expect(page).toHaveURL(/\/review\/demo\/page\/p-mock-/, { timeout: 5000 });
     // The page shows the working state (never an empty silent card).
     await expect(page.locator("#page .ui-card .working").first()).toBeVisible({ timeout: 5000 });

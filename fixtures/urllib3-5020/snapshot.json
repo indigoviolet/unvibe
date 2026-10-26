@@ -1918,7 +1918,7 @@
   "annotations": [
     {
       "id": "x-seed",
-      "type": "conversation",
+      "type": "thread",
       "anchor": {
         "host": {
           "kind": "block",
@@ -1932,11 +1932,12 @@
       },
       "open": true,
       "pinned": true,
-      "messages": [],
       "post": false,
-      "turns": [
+      "replies": [
         {
           "id": "ans_seed1",
+          "kind": "explain",
+          "who": "agent",
           "question": null,
           "blocks": [
             {
@@ -1979,7 +1980,7 @@
     },
     {
       "id": "t-seed",
-      "type": "comment",
+      "type": "thread",
       "anchor": {
         "host": {
           "kind": "block",
@@ -1993,17 +1994,32 @@
       },
       "open": true,
       "pinned": false,
-      "messages": [
+      "replies": [
         {
+          "id": "ans_you_zuuy5s",
+          "kind": "comment",
           "who": "you",
-          "text": "Does the fast path still catch a fold that uses a bare LF?"
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "Does the fast path still catch a fold that uses a bare LF?"
+              },
+              "citations": []
+            }
+          ],
+          "level": "standard",
+          "revision": 1,
+          "undoStack": []
         }
       ],
       "post": false
     },
     {
       "id": "t-sglf",
-      "type": "comment",
+      "type": "thread",
       "anchor": {
         "host": {
           "kind": "diff-line",
@@ -2018,18 +2034,33 @@
       },
       "open": true,
       "pinned": false,
-      "messages": [
+      "replies": [
         {
-          "who": "ai",
-          "suggested": true,
-          "text": "http.client also accepts header lines that end in a bare LF, so a fold like `a=1\\n b=2` keeps its line break: both the `\"\\r\\n\" not in value` fast path and this pattern only look for CRLF. Would `\\r?\\n` here (and in the fast path), plus a test, make sense?"
+          "id": "ans_agent_ywurgg",
+          "kind": "comment",
+          "who": "agent",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "Suggested comment."
+              },
+              "citations": []
+            }
+          ],
+          "level": "standard",
+          "revision": 1,
+          "undoStack": [],
+          "suggested": true
         }
       ],
       "post": false
     },
     {
       "id": "t-sgperf",
-      "type": "comment",
+      "type": "thread",
       "anchor": {
         "host": {
           "kind": "diff-line",
@@ -2044,18 +2075,33 @@
       },
       "open": true,
       "pinned": false,
-      "messages": [
+      "replies": [
         {
-          "who": "ai",
-          "suggested": true,
-          "text": "Could we add a test that normalizes a value with a very long run of spaces, so a later simplification of this pattern can't bring back the quadratic case?"
+          "id": "ans_agent_cudlcd",
+          "kind": "comment",
+          "who": "agent",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "Suggested comment."
+              },
+              "citations": []
+            }
+          ],
+          "level": "standard",
+          "revision": 1,
+          "undoStack": [],
+          "suggested": true
         }
       ],
       "post": false
     },
     {
       "id": "t-diff",
-      "type": "comment",
+      "type": "thread",
       "anchor": {
         "host": {
           "kind": "diff-line",
@@ -2070,10 +2116,25 @@
       },
       "open": true,
       "pinned": false,
-      "messages": [
+      "replies": [
         {
+          "id": "ans_you_nxxkx2",
+          "kind": "comment",
           "who": "you",
-          "text": "Is the double space here intended?"
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "Is the double space here intended?"
+              },
+              "citations": []
+            }
+          ],
+          "level": "standard",
+          "revision": 1,
+          "undoStack": []
         }
       ],
       "post": false

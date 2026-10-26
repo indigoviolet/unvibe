@@ -45,7 +45,7 @@ export interface InteractionEvent {
   cardId?: string;
   /** Hunk content hash, for hunk-anchored events (e.g. settled threads). */
   hunkHash?: string;
-  /** Annotation the event came from, when there is one. */
+  /** Thread the event came from, when there is one. */
   annotationId?: string;
   /** Session that produced the content, when there is one. */
   sessionId?: string;

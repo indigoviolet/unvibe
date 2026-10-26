@@ -23,7 +23,7 @@
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
+import type { Thread, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { Button, Card, DiffStat } from "../../ui/index.js";
@@ -31,7 +31,7 @@ import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
-import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import {
   fileStats,
   groupHunks,
@@ -123,7 +123,7 @@ interface SectionProps {
    * of the idle summary text. Optional (defaults to none) so sections
    * stay usable standalone in tests.
    */
-  hunkCards?: ReadonlyMap<string, Annotation>;
+  hunkCards?: ReadonlyMap<string, Thread>;
   /**
    * Promoted hunk discussions (issue #138 follow-up): content hash →
    * page id. The hunk keeps its summary text plus a page-link chip.
@@ -410,7 +410,7 @@ function HunkCard({
   hash: string;
   fileKey: string;
   /** Activated conversation card hosted on this hunk, if any (#138). */
-  hunkCard: Annotation | undefined;
+  hunkCard: Thread | undefined;
   /** Page a hunk discussion moved to, if any (#138 follow-up). */
   promotedPageId: string | undefined;
   reviewId: string;
@@ -449,9 +449,9 @@ function HunkCard({
         // conversation card replaces the idle text directly (no `.fcard`
         // around the card's own bordered section).
         <>
-          <ExpansionCard
+          <ThreadView
             reviewId={reviewId}
-            expansion={hunkCard}
+            thread={hunkCard}
             lookupPage={lookupPage}
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}

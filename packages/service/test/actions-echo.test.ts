@@ -121,7 +121,7 @@ describe("echo stripping on actions (issue #50)", () => {
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(ann.error).toBeNull();
       const turnId = res.json.turnId as string;
-      const blocks = (ann.turns ?? []).find((t) => t.id === turnId)!.blocks;
+      const blocks = (ann.replies ?? []).find((t) => t.id === turnId)!.blocks;
       expect(blocks).toHaveLength(1);
     } finally {
       await app.close();
@@ -154,7 +154,7 @@ Not with this PR. The message is rewritten in place.
       const turnId = res.json.turnId as string;
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(card.error).toBeNull();
-      const turn = (card.turns ?? []).find((t) => t.id === turnId)!;
+      const turn = (card.replies ?? []).find((t) => t.id === turnId)!;
       const { renderMarkdown } = await import("@unvibe/shared");
       const body = renderMarkdown(turn.blocks);
       expect(body).not.toContain("Does Requests see the raw value?");

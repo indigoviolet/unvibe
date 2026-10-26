@@ -144,7 +144,7 @@ test("working dots pulse while the agent works", async ({ page }) => {
   await page.locator("#C-g-flow .follow button").first().click();
   await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("dot-pulse 1s");
   // The work still completes normally afterwards.
-  await expect(page.locator("#C-g-flow [data-expansion]").first()).toContainText("Mock explanation", {
+  await expect(page.locator('#C-g-flow section.ithread[data-thread]:has([data-reply][data-kind="ask"])').first()).toContainText("Mock explanation", {
     timeout: 8000,
   });
 });

@@ -40,7 +40,7 @@ export function FullAccessMarker({ compact }: { compact?: boolean }): React.JSX.
   return (
     <p className="warnline" data-testid="full-access-marker" title={full}>
       Full access is on — the review helper can run commands as you.{" "}
-      <Link to="/settings?tab=access">Turn it off in Settings → Access</Link>.
+      <Link to="/settings?tab=access">Reply it off in Settings → Access</Link>.
     </p>
   );
 }

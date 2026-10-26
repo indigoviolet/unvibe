@@ -188,17 +188,17 @@ describe("M4 actions on the demo review (replay)", () => {
       // Immediately visible working state (or already filled: the replay
       // runner answers in milliseconds, so a fast poll may see it done).
       const working = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(working.type).toBe("conversation");
+      expect(working.type).toBe("thread");
       expect(working.open).toBe(true);
-      expect(working.working === "Thinking" || (working.turns?.[0]?.blocks.length ?? 0) > 0).toBe(true);
+      expect(working.working === "Thinking" || (working.replies?.[0]?.blocks.length ?? 0) > 0).toBe(true);
 
       await waitForJob(ctx, res.json.jobId as string);
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
+      expect(done.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       expect(done.working).toBeNull();
-      expect(done.turns?.[0]?.revision).toBe(2);
+      expect(done.replies?.[0]?.revision).toBe(2);
       // Stored targets are canonical (real file keys, no aliases).
-      const targets = JSON.stringify(done.turns?.[0]?.blocks);
+      const targets = JSON.stringify(done.replies?.[0]?.blocks);
       expect(targets).not.toContain("diff:conn:");
       expect(targets).toContain("diff:");
       unsub();
@@ -233,8 +233,8 @@ describe("M4 actions on the demo review (replay)", () => {
       await waitForJob(ctx, res.json.jobId as string);
 
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(card.type).toBe("conversation");
-      const first = (card.turns ?? [])[0]!;
+      expect(card.type).toBe("thread");
+      const first = (card.replies ?? [])[0]!;
       expect(first.question).toBe("Does the fast path still catch a fold that uses a bare LF?");
       expect(first.blocks.length).toBeGreaterThan(0);
       expect(card.working).toBeNull();
@@ -252,8 +252,8 @@ describe("M4 actions on the demo review (replay)", () => {
       expect(rep.json.jobId).toBeTruthy();
       await waitForJob(ctx, rep.json.jobId as string);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect((after.turns ?? []).length).toBe(2);
-      expect(after.turns![1].blocks.length).toBeGreaterThan(0);
+      expect((after.replies ?? []).length).toBe(2);
+      expect(after.replies![1].blocks.length).toBeGreaterThan(0);
       expect(agents.sessions.size).toBe(sessionsBefore);
       expect(agents.prompts.filter((p) => p.sessionId === sessionId).length).toBe(promptsOnSession + 1);
       const lastPrompt = agents.prompts.filter((p) => p.sessionId === sessionId).at(-1)!;
@@ -286,8 +286,9 @@ describe("M4 actions on the demo review (replay)", () => {
         expect(res.status).toBe(200);
         expect(res.json.jobId).toBeUndefined();
         const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
-        expect(thread.type).toBe("comment");
-        expect(thread.messages).toHaveLength(1);
+        expect(thread.type).toBe("thread");
+        expect(thread.replies).toHaveLength(1);
+        expect(thread.replies[0].kind).toBe("comment");
         expect(events).toHaveLength(0);
       } finally {
         setInteractionHandler(prev);
@@ -402,8 +403,8 @@ describe("M4 actions on the demo review (replay)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const snap = ctx.reviews.getSnapshot(id)!;
       const answer = snap.annotations.find((a) => a.id === annotationId)!;
-      expect(answer.type).toBe("conversation");
-      expect(answer.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
+      expect(answer.type).toBe("thread");
+      expect(answer.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
       const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!.blocks.find(
         (b) => b.type === "follow-up",
       )!;
@@ -684,7 +685,7 @@ describe("M4 dedupe + close-keeps-answer / delete-cancels (gated runners)", () =
       expect(await waitForJob(ctx, jobId)).toBe("done");
       const filled = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
       expect(filled.open).toBe(false);
-      expect((filled.turns ?? [])[0]?.blocks.length).toBeGreaterThan(0);
+      expect((filled.replies ?? [])[0]?.blocks.length).toBeGreaterThan(0);
 
       // Reopening (the comments route the web uses) shows the answer.
       const reopened = await app.inject({
@@ -696,7 +697,7 @@ describe("M4 dedupe + close-keeps-answer / delete-cancels (gated runners)", () =
       expect(reopened.statusCode).toBe(200);
       const shown = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
       expect(shown.open).toBe(true);
-      expect((shown.turns ?? [])[0]?.blocks.length).toBeGreaterThan(0);
+      expect((shown.replies ?? [])[0]?.blocks.length).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -789,7 +790,7 @@ describe("M4 failure paths (scripted fakes)", () => {
       await waitForJob(ctx, retry.json.jobId as string);
       const recovered = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(recovered.error).toBeNull();
-      expect(recovered.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
+      expect(recovered.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -1026,7 +1027,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const threadId = ask.json.annotationId as string;
       await waitFor(() => {
         const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
-        const turn = t?.type === "conversation" ? (t.turns ?? [])[0] : undefined;
+        const turn = t?.type === "thread" ? (t.replies ?? [])[0] : undefined;
         return !!t && (t.error != null || (turn?.blocks.length ?? 0) > 0);
       });
       const thread = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
@@ -1044,7 +1045,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const expansionId = ex.json.annotationId as string;
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId);
-        return !!a && (a.error != null || ((a.turns?.[0]?.blocks.length ?? 0) > 0));
+        return !!a && (a.error != null || ((a.replies?.[0]?.blocks.length ?? 0) > 0));
       });
       const expansion = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === expansionId)!;
       expect(expansion.working).toBeNull();
@@ -1072,7 +1073,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect(retry.json.jobId).toBeUndefined();
       await waitFor(() => {
         const t = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId);
-        const turn = t?.type === "conversation" ? (t.turns ?? [])[0] : undefined;
+        const turn = t?.type === "thread" ? (t.replies ?? [])[0] : undefined;
         return !!t?.error && t.working === null && (turn?.error != null || (turn?.blocks.length ?? 0) > 0);
       });
       expect(

@@ -63,9 +63,9 @@ test("explain from a selection shows a working expansion immediately, then fills
   // label (the mock fill lands ~700 ms later); a placeholder covers the
   // same spot in the frames before the response retargets it (unit
   // tested — too transient to catch from here).
-  const exp = page.locator("#C-central [data-expansion]").first();
+  const exp = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
   await expect(exp).toBeVisible({ timeout: 5000 });
-  await expect(exp.locator(".working").first()).toHaveText("Writing explanation", { timeout: 5000 });
+  await expect(exp.locator(".working").first()).toHaveText("Thinking", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });
   const seen = await seenFlags(page);
   expect(seen.plainWorking).toBe(true);
@@ -77,9 +77,9 @@ test("follow-up click disables the chip and shows the answer working state", asy
   await armObserver(page);
   const follow = page.locator("#C-g-flow .follow button").first();
   await follow.click();
-  // The answer expansion arrives with a plain working state (mock fill:
+  // The answer thread arrives with a plain working state (mock fill:
   // ~700 ms), and at no point renders streamed text.
-  const exp = page.locator("#C-g-flow [data-expansion]").first();
+  const exp = page.locator("#C-g-flow section.ithread[data-thread]").first();
   await expect(exp).toBeVisible({ timeout: 5000 });
   await expect(exp.locator(".working").first()).toHaveText("Writing answer", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });
@@ -91,9 +91,9 @@ test("follow-up click disables the chip and shows the answer working state", asy
 test("second opinion shows dots on its control plus a card working state", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
-  // Issue #167: the demo seeds an open pinned card under C-problem that
+  // Issue #167: the demo seeds an open pinned thread under C-problem that
   // overlays the controls below it — close it first, as a reader would.
-  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
+  await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
   await page.locator("#C-central [data-so-ctl] button").first().click();
   // The control itself goes busy and the card shows where the verdict lands.
   await expect(page.locator('#C-central [data-so-ctl] button[aria-busy="true"]')).toBeVisible({

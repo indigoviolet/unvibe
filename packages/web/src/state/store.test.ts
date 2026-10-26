@@ -10,10 +10,10 @@
  * after the gap — including the just-created thread — never applied).
  */
 import { beforeEach, describe, expect, test } from "vitest";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { applyOp, useReview } from "./store.js";
 
-function thread(id: string, text: string): Annotation {
+function thread(id: string, text: string): Thread {
   return {
     id,
     type: "thread",
@@ -29,10 +29,10 @@ function thread(id: string, text: string): Annotation {
     messages: [{ who: "you", text }],
     post: false,
     note: false,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function snap(rev: number, annotations: Annotation[] = []): ReviewSnapshot {
+function snap(rev: number, annotations: Thread[] = []): ReviewSnapshot {
   return {
     review: { id: "rv_race", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
@@ -191,7 +191,7 @@ describe("applyOp", () => {
       op: "add",
       path: "/annotations/1",
       value: thread("ann_b", "y"),
-    }) as { annotations: Annotation[] };
+    }) as { annotations: Thread[] };
     expect(next.annotations.map((a) => a.id)).toEqual(["ann_a", "ann_b"]);
   });
 });

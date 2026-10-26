@@ -22,7 +22,7 @@
 import type { MutableRefObject, ReactNode } from "react";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
@@ -91,12 +91,12 @@ export function DescriptionView({ reviewId, editor }: Props) {
   const descThreads = useMemo(
     () =>
       (annotations ?? []).filter(
-        (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "description",
+        (a): a is Thread => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "description",
       ),
     [annotations],
   );
   const byPara = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const thread of descThreads) {
       const pid = thread.anchor.host.kind === "description" ? thread.anchor.host.paragraphId : "";
       const list = map.get(pid) ?? [];
@@ -121,6 +121,10 @@ export function DescriptionView({ reviewId, editor }: Props) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying paragraph.
+      if (req.threadId) return;
       if (req.anchor.where === "comment") {
         const commentId = req.anchor.commentId;
         const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
@@ -260,8 +264,8 @@ export function DescriptionView({ reviewId, editor }: Props) {
 interface BodyProps {
   reviewId: string;
   segments: ReturnType<typeof splitDescriptionHtml>;
-  byPara: Map<string, Annotation[]>;
-  orphans: Annotation[];
+  byPara: Map<string, Thread[]>;
+  orphans: Thread[];
   highlighted: ReadonlySet<string>;
   setHighlighted: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   pending: NewThreadRequest | null;
@@ -277,6 +281,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   const navigate = useNavigate();
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
+  const collapseAll = useReview((s) => s.collapseAll);
   const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
     snapshot?.pages.find((p) => p.id === id);
   const onOpenPage = (pageId: string): void => {
@@ -391,13 +396,15 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     >
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
-        const open = threads.filter((t) => t.open);
+        // Collapse-all renders every thread under the paragraph as a row,
+        // including closed ones (which otherwise show only as marks).
+        const open = threads.filter((t) => t.open || collapseAll);
         // Issue #262: the marker is a toggle over the paragraph's
         // unhighlighted threads (quoted threads that placed keep their
         // inline mark instead). When all of them are open a click
         // collapses them; otherwise a click opens the closed ones. The
         // tooltip states the action.
-        const markerThreads = threads.filter((t) => t.messages.length > 0 && !highlighted.has(t.id));
+        const markerThreads = threads.filter((t) => (t.replies ?? []).length > 0 && !highlighted.has(t.id));
         const allOpen = markerThreads.length > 0 && markerThreads.every((t) => t.open);
         const showPending =
           pending &&
@@ -453,7 +460,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
               if (incoming?.kind !== "explain") return null;
               const arrived = (snapshot?.annotations ?? []).some(
                 (a) =>
-                  a.type === "conversation" &&
+                  a.type === "thread" &&
                   a.open &&
                   a.anchor.host.kind === "description" &&
                   a.anchor.host.paragraphId === seg.id,
@@ -482,10 +489,10 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           </div>
         );
       })}
-      {orphans.filter((t) => t.open).length > 0 ? (
+      {orphans.filter((t) => t.open || collapseAll).length > 0 ? (
         <div className="dann">
           {orphans
-            .filter((t) => t.open)
+            .filter((t) => t.open || collapseAll)
             .map((t) => (
               <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
             ))}

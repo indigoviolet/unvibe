@@ -7,9 +7,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import { MemoryRouter } from "react-router";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import { streamingEnabled } from "./streamedAnswer.js";
 
 const REVIEW_ID = "stream-test";
@@ -17,6 +18,8 @@ const REVIEW_ID = "stream-test";
 function turn(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
+    kind: "explain",
+    who: "agent",
     question: null,
     blocks: [],
     level: "standard",
@@ -27,10 +30,10 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-function card(over: Record<string, unknown> = {}): Annotation {
+function card(over: Record<string, unknown> = {}): Thread {
   return {
     id: "ann_stream",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "c1#b1" },
       quotedText: "Some text.",
@@ -40,14 +43,13 @@ function card(over: Record<string, unknown> = {}): Annotation {
       version: 1,
     },
     open: true,
-    messages: [],
+    replies: [turn("ans_1")],
     post: false,
-    turns: [turn("ans_1")],
     ...over,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function seedSnapshot(annotations: Annotation[]): void {
+function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -63,19 +65,21 @@ function seedSnapshot(annotations: Annotation[]): void {
   } as unknown as ReviewSnapshot);
 }
 
-function show(c: Annotation): { rerender: (next: Annotation) => void } {
-  const renderCard = (card: Annotation): React.JSX.Element => (
-    <ExpansionCard
+function show(c: Thread): { rerender: (next: Thread) => void } {
+  const renderCard = (card: Thread): React.JSX.Element => (
+    <MemoryRouter>
+    <ThreadView
       reviewId={REVIEW_ID}
-      expansion={card}
+      thread={card}
       lookupPage={() => undefined}
       onOpenPage={() => {}}
       onFollowUp={() => {}}
     />
+    </MemoryRouter>
   );
   const rendered = render(renderCard(c));
   return {
-    rerender: (next: Annotation) => {
+    rerender: (next: Thread) => {
       act(() => {
         rendered.rerender(renderCard(next));
       });
@@ -89,7 +93,7 @@ function streamText(annotationId: string, jobId: string, delta: string): void {
   });
 }
 
-function reseed(annotations: Annotation[]): void {
+function reseed(annotations: Thread[]): void {
   act(() => {
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations });
   });
@@ -125,7 +129,7 @@ describe("provisional streamed paragraphs", () => {
     expect(exp).not.toBeNull();
     expect(exp.textContent).toContain("First paragraph is done.");
     expect(exp.textContent).not.toContain("Second, still");
-    expect(screen.getByText("Still writing…")).toBeInTheDocument();
+    expect(screen.getByText("Writing explanation…")).toBeInTheDocument();
     // The fixed working label stays alongside the streamed content.
     expect(document.querySelector(".working")).not.toBeNull();
   });
@@ -149,7 +153,7 @@ describe("provisional streamed paragraphs", () => {
     // (Parents pass the fresh annotation from the store; the test
     // re-renders with it, like a snapshot patch does.)
     const stored = card({
-      turns: [
+      replies: [
         turn("ans_1", {
           blocks: [
             { type: "paragraph", id: "b1", text: { standard: "Final validated answer." }, citations: [] },
@@ -173,7 +177,7 @@ describe("provisional streamed paragraphs", () => {
     streamText("ann_stream", "job-1", "First paragraph is done.\n\nSecond, still");
     expect(document.querySelector(".exp-b.streaming")).not.toBeNull();
     const failed = card({
-      turns: [turn("ans_1", { working: null, error: "rate limited" })],
+      replies: [turn("ans_1", { working: null, error: "rate limited" })],
     });
     reseed([failed]);
     rerender(failed);

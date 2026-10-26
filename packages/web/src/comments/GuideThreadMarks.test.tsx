@@ -9,17 +9,17 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router";
 import { useEffect } from "react";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { GuideThreadHooks } from "./GuideThreads.js";
 
 const REVIEW_ID = "marks-test";
 
-function thread(): Annotation {
+function thread(): Thread {
   return {
     id: "thr_1",
-    type: "comment",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "central#b1" },
       quotedText: "fast path",
@@ -29,9 +29,19 @@ function thread(): Annotation {
       version: 1,
     },
     open: false,
-    messages: [{ who: "you", text: "A quiet comment" }],
+    pinned: false,
+    replies: [{
+      id: "ans_m1",
+      kind: "comment",
+      who: "you",
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: "A quiet comment" }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+    }],
     post: true,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
 function seed(): void {

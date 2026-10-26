@@ -9,7 +9,7 @@
  * - `onOpenBlockThread` is the seam the threads milestone plugs into.
  */
 import { useMemo } from "react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { anchorMatchesBlock } from "./guideUtils.js";
 
@@ -54,15 +54,15 @@ export function closeBlockThreads(commentIds: string[], blockId: string): void {
   commentIds.forEach((id) => closeHandler?.(id, blockId));
 }
 
-/** All comment annotations anchored on a guide card + block. */
+/** All threads anchored on a guide card + block (issue #273: one thread kind). */
 export function blockThreads(
-  annotations: Annotation[],
+  annotations: Thread[],
   cardId: string,
   blockId: string,
-): Annotation[] {
+): Thread[] {
   return annotations.filter(
     (a) =>
-      a.type === "comment" &&
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );
@@ -70,20 +70,20 @@ export function blockThreads(
 
 /** Open (in-place) conversation annotations anchored on a card + block. */
 export function blockExpansions(
-  annotations: Annotation[],
+  annotations: Thread[],
   cardId: string,
   blockId: string,
-): Annotation[] {
+): Thread[] {
   return annotations.filter(
     (a) =>
-      a.type === "conversation" &&
+      a.type === "thread" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );
 }
 
-export function useBlockThreads(cardId: string, blockId: string): Annotation[] {
+export function useBlockThreads(cardId: string, blockId: string): Thread[] {
   const annotations = useReview((s) => s.snapshot?.annotations);
   return useMemo(
     () => (annotations ? blockThreads(annotations, cardId, blockId) : []),
@@ -91,7 +91,7 @@ export function useBlockThreads(cardId: string, blockId: string): Annotation[] {
   );
 }
 
-export function useBlockExpansions(cardId: string, blockId: string): Annotation[] {
+export function useBlockExpansions(cardId: string, blockId: string): Thread[] {
   const annotations = useReview((s) => s.snapshot?.annotations);
   return useMemo(
     () => (annotations ? blockExpansions(annotations, cardId, blockId) : []),

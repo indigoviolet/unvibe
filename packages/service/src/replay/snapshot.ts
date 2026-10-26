@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
-  Annotation,
+  Thread,
   Block,
   Card,
   Hunk,
@@ -275,8 +275,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // its link is opened (concept-page recordings stay for that on-demand fill).
 
   // --- annotations (prototype seed()) ----------------------------------
-  // Annotation anchors use real file keys; card anchors use card#block IDs.
-  // Issue #136: the seed conversation carries its turns (`Annotation.turns`)
+  // Thread anchors use real file keys; card anchors use card#block IDs.
+  // Issue #136: the seed conversation carries its turns (`Thread.turns`)
   // so it renders like any explain result — each answer is a unit in its
   // own right (level, revision, undo stack). Content comes from the
   // recorded `explain-obs-fold` reply, canonicalized like the live
@@ -284,10 +284,24 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   const connKey = meta.keyAliases["conn"];
   const tconnKey = meta.keyAliases["tconn"];
   const explainSeed = parseReply(textOf("explain-obs-fold.md"));
-  const annotations: Annotation[] = [
+  const mkCommentReply = (who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply => {
+    const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return {
+      id: `ans_${who}_${Math.random().toString(36).slice(2, 8)}`,
+      kind: "comment",
+      who,
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+      ...(suggested ? { suggested: true } : {}),
+    };
+  };
+  const annotations: Thread[] = [
     {
       id: "x-seed",
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "problem#b1" },
         quotedText: "raw CRLF",
@@ -298,11 +312,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: true,
-      messages: [],
       post: false,
-      turns: [
+      replies: [
         {
           id: "ans_seed1",
+          kind: "explain",
+          who: "agent",
           question: null,
           blocks: canonBlocks(explainSeed.blocks),
           level: "standard",
@@ -313,7 +328,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     },
     {
       id: "t-seed",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "central#b4" },
         quotedText: "fast path",
@@ -324,14 +339,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      messages: [
-        { who: "you", text: "Does the fast path still catch a fold that uses a bare LF?" },
-      ],
+      replies: [mkCommentReply("you", "Does the fast path still catch a fold that uses a bare LF?")],
       post: false,
     },
     {
       id: "t-sglf",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "diff-line", fileKey: connKey, line: 82 },
         quotedText: "_OBSOLETE_FOLD_RE",
@@ -342,18 +355,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      messages: [
-        {
-          who: "ai",
-          suggested: true,
-          text: "http.client also accepts header lines that end in a bare LF, so a fold like `a=1\\n b=2` keeps its line break: both the `\"\\r\\n\" not in value` fast path and this pattern only look for CRLF. Would `\\r?\\n` here (and in the fast path), plus a test, make sense?",
-        },
-      ],
+      replies: [mkCommentReply("agent", "Suggested comment.", true)],
       post: false,
     },
     {
       id: "t-sgperf",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "diff-line", fileKey: connKey, line: 80 },
         quotedText: "Starting the optional OWS match",
@@ -364,18 +371,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      messages: [
-        {
-          who: "ai",
-          suggested: true,
-          text: "Could we add a test that normalizes a value with a very long run of spaces, so a later simplification of this pattern can't bring back the quadratic case?",
-        },
-      ],
+      replies: [mkCommentReply("agent", "Suggested comment.", true)],
       post: false,
     },
     {
       id: "t-diff",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "diff-line", fileKey: tconnKey, line: 220 },
         quotedText: "one  three",
@@ -386,9 +387,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      messages: [
-        { who: "you", text: "Is the double space here intended?" },
-      ],
+      replies: [mkCommentReply("you", "Is the double space here intended?")],
       post: false,
     },
   ];

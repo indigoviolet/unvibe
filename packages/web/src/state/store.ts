@@ -147,6 +147,11 @@ interface ReviewState {
    * refetches the snapshot on change; the fresh snapshot drains `pending`.
    */
   resyncSeq: number;
+  /** Issue #273: collapse-all threads + per-thread expanded overrides (UI-local). */
+  collapseAll: boolean;
+  expandedThreads: Record<string, true>;
+  setCollapseAll: (v: boolean) => void;
+  setThreadExpanded: (id: string, open: boolean) => void;
   setSnapshot: (snapshot: ReviewSnapshot) => void;
   setConnected: (connected: boolean) => void;
   applyEvent: (event: ReviewEvent) => void;
@@ -285,6 +290,17 @@ export const useReview = create<ReviewState>()((set, get) => ({
   pending: [],
   streams: {},
   resyncSeq: 0,
+  collapseAll: false,
+  expandedThreads: {},
+  setCollapseAll: (v) =>
+    set(() => (v ? { collapseAll: true, expandedThreads: {} } : { collapseAll: false, expandedThreads: {} })),
+  setThreadExpanded: (id, open) =>
+    set((s) => {
+      const next = { ...s.expandedThreads };
+      if (open) next[id] = true;
+      else delete next[id];
+      return { expandedThreads: next };
+    }),
   setSnapshot: (snapshot) =>
     set((s) => {
       // A stale fetch must never clobber newer WS state. Equal revs are

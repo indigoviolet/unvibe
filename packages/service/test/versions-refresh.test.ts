@@ -86,11 +86,11 @@ describe("refresh integration", () => {
         draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: true, summary: "adds y" });
         draft.annotations.push({
           id: "ann-1",
-          type: "comment",
+          type: "thread",
           anchor: { host: { kind: "diff-line", fileKey, line: 2 }, quotedText: "y = 2", prefix: "x = 1", suffix: "", position: 2, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "why?" }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "why?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -165,11 +165,11 @@ describe("refresh integration", () => {
         draft.hunkStates.push({ contentHash: bHash, folded: false, reviewed: true, summary: "adds b" });
         draft.annotations.push({
           id: "ann-a",
-          type: "comment",
+          type: "thread",
           anchor: { host: { kind: "diff-line", fileKey: aKey, line: 3 }, quotedText: "z = 9", prefix: "y = 2", suffix: "", position: 3, version: snap2.version.n, hunkHash: aHash },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "z?" }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -235,11 +235,11 @@ describe("refresh integration", () => {
       await ctx.reviews.mutate(id, (draft) => {
         draft.annotations.push({
           id: "ann-tail",
-          type: "comment",
+          type: "thread",
           anchor: { host: { kind: "diff-line", fileKey, line: 21 }, quotedText: "tail = 1", prefix: "line20", suffix: "", position: 21, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "tail?" }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "tail?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
       });
@@ -283,11 +283,11 @@ describe("refresh integration", () => {
       await ctx.reviews.mutate(id, (draft) => {
         draft.annotations.push({
           id: "ann-r",
-          type: "comment",
+          type: "thread",
           anchor: { host: { kind: "diff-line", fileKey, line: 3 }, quotedText: "z = 3", prefix: "y = 2", suffix: "", position: 3, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "z?" }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
       });

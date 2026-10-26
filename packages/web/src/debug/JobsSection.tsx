@@ -357,7 +357,7 @@ function TurnRecord({ turn, index, now }: { turn: JobTurnRecord; index: number; 
     <details className="lay" open={index === 0} data-testid="job-turn">
       <summary>
         <span className="kind">
-          Turn {index + 1} · {turn.label}
+          Reply {index + 1} · {turn.label}
         </span>
         <span className="hint">
           started {formatLocalTime(turn.startedAt)} · {formatDurationMs(stepDurationMs(turn, now))}
@@ -431,9 +431,9 @@ function diagramErrorsFor(snapshot: ReviewSnapshot | null, job: Job): string[] {
   }
   if (job.annotationId) {
     const found = snapshot.annotations.find((a) => a.id === job.annotationId) as unknown as
-      | { turns?: { blocks: Block[] }[] }
+      | { replies?: { blocks: Block[] }[] }
       | undefined;
-    for (const turn of found?.turns ?? []) walk(turn.blocks);
+    for (const turn of found?.replies ?? []) walk(turn.blocks);
   }
   return out;
 }

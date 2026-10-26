@@ -19,7 +19,7 @@
  *   by the highlight passes when their quote is not found in the host text,
  *   so switching back to a level that contains the phrase hides them again.
  */
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { closeBlockThreads, openBlockThreads } from "./annotations.js";
@@ -28,9 +28,9 @@ import type { ResolvedCitation } from "./citations.js";
 
 interface Props {
   citations: ResolvedCitation[];
-  threads: Annotation[];
+  threads: Thread[];
   /** Closed expansions + promoted links anchored on this block. */
-  footnotes?: Annotation[];
+  footnotes?: Thread[];
   blockId: string;
   onOpenPage?: (pageId: string) => void;
 }
