@@ -41,7 +41,7 @@ test.describe("J266 scroll restore", () => {
     // Open an expansion as a page so Contents lists it under linked pages.
     await selectText(page, "#C-central", "fast path");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator('#C-central [data-expansion]').first();
+    const card = page.locator('#C-central [data-thread]').first();
     await expect(card.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
     await card.getByRole("button", { name: "Open as page" }).click();
     await expect(page).toHaveURL(/\/page\/p-/, { timeout: 15_000 });

@@ -298,10 +298,12 @@ function AgentReplyView({
 /** One reviewer comment reply. */
 function CommentReplyView({
   reply,
+  threadId,
   flash,
   onLink,
 }: {
   reply: Reply;
+  threadId: string;
   flash: boolean;
   onLink: (targetId: string) => void;
 }) {
@@ -335,7 +337,7 @@ function CommentReplyView({
     body = <p dangerouslySetInnerHTML={{ __html: html }} />;
   }
   return (
-    <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind="comment">
+    <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind="comment" data-comment={threadId}>
       <span className="av you" role="img" aria-label="You">
         <Icon name="person" />
       </span>
@@ -570,7 +572,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {replies.map((r, i) =>
         r.kind === "comment" || r.kind === "persona" ? (
-          <CommentReplyView key={r.id} reply={r} flash={flashId === r.id} onLink={scrollToReply} />
+          <CommentReplyView key={r.id} reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} />
         ) : (
           <AgentReplyView
             key={r.id}

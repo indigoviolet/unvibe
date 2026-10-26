@@ -236,16 +236,15 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
     if (host.kind === "diff-line") return { anchor: { where: "diff-line", fileKey: host.fileKey, line: host.line } };
     return null;
   }
-  // Issue #136: inside a conversation answer the owning unit is the
-  // answer, found from the answer wrapper's attribute — not from
-  // `section.ui-card[id]`, which names the whole card.
-  const answer = el.closest("[data-answer]");
+  // Issue #273: inside a thread reply selections append there (never a
+  // nested box). Agent-reply blocks resolve via BlockView; comment replies
+  // have no data-top blocks and fall through to the comment logic below.
+  const answer = el.closest("[data-reply]");
   if (answer) {
-    const answerId = (answer as HTMLElement).dataset.answer ?? "";
+    const answerId = (answer as HTMLElement).dataset.reply ?? "";
     const top = el.closest("[data-top]");
     const blockId = (top as HTMLElement | null)?.dataset.top ?? "";
-    if (!answerId || !blockId) return null;
-    return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
+    if (answerId && blockId) return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
   }
   const top = el.closest("#page [data-top], #right [data-top]");
   if (top) {
