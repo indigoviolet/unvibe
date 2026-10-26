@@ -43,6 +43,15 @@ function tmpDir(prefix: string): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
+/**
+ * Scratch home for update/switch flows (issue #280): every flow that can
+ * reach the login unit gets an empty temp home, so a managed real home is
+ * never rewritten. Unmanaged by construction (no unit file inside).
+ */
+function scratchHome(): string {
+  return tmpDir("unvibe-home-");
+}
+
 /** Fake install tree: <dir>/package.json + a CLI script path inside it. */
 function makeInstall(dir: string, pkg: unknown): { scriptPath: string; packagePath: string } {
   const packagePath = path.join(dir, "package.json");
@@ -648,7 +657,7 @@ describe("runUpdateChannelFlow", () => {
   it("rejects unknown channels without touching anything", async () => {
     const runner = new FakeCommandRunner();
     const out = await runUpdateChannelFlow(
-      { runner, dataDir: tmpDir("unvibe-badchan-"), cliScriptPath: undefined, serviceVersion: "0" },
+      { runner, dataDir: tmpDir("unvibe-badchan-"), cliScriptPath: undefined, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "main",
     );
     expect(out.code).toBe(2);
@@ -660,7 +669,7 @@ describe("runUpdateChannelFlow", () => {
     writeLock(dataDir, { pid: process.pid, port: 4517, startedAt: "" });
     const runner = new FakeCommandRunner();
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: undefined, serviceVersion: "0" },
+      { runner, dataDir, cliScriptPath: undefined, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(1);
@@ -682,7 +691,7 @@ describe("runUpdateChannelFlow", () => {
       },
     });
     const out = await runUpdateChannelFlow(
-      { runner, dataDir: tmpDir("unvibe-same-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
+      { runner, dataDir: tmpDir("unvibe-same-data-"), cliScriptPath: scriptPath, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -714,7 +723,7 @@ describe("runUpdateChannelFlow", () => {
       },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -750,7 +759,7 @@ describe("runUpdateChannelFlow", () => {
       },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -770,7 +779,7 @@ describe("runUpdateChannelFlow", () => {
       unvibe: { channel: "preview/feat-x", commit: "abc1234full" },
     }); // no refPkgs: gh 404s
     const out = await runUpdateChannelFlow(
-      { runner, dataDir: tmpDir("unvibe-reinstall-blind-data-"), cliScriptPath: scriptPath, serviceVersion: "0" },
+      { runner, dataDir: tmpDir("unvibe-reinstall-blind-data-"), cliScriptPath: scriptPath, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -803,7 +812,7 @@ describe("runUpdateChannelFlow", () => {
       },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -838,7 +847,7 @@ describe("runUpdateChannelFlow", () => {
       { "preview/feat-x": { name: "unvibe", version: "0.0.1-preview.feat-x.abc1234" } },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(0);
@@ -874,7 +883,7 @@ describe("runUpdateChannelFlow", () => {
       "/other/prefix",
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(1);
@@ -908,7 +917,7 @@ describe("runUpdateChannelFlow", () => {
       },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0", homeDir: scratchHome(), platform: process.platform },
       "preview/b",
     );
     expect(out.code).toBe(0);
@@ -950,6 +959,7 @@ describe("runUpdateChannelFlow", () => {
       serviceVersion: "0",
       channel: "preview/a",
       restoreBackupOf: "preview/a",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(result.code).toBe(0);
@@ -980,6 +990,7 @@ describe("runUpdateChannelFlow", () => {
       serviceVersion: "0",
       channel: "preview/a",
       restoreBackupOf: "preview/a",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(result.code).toBe(0);
@@ -1011,7 +1022,7 @@ describe("runUpdateChannelFlow", () => {
       },
     );
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: scratchHome(), platform: process.platform },
       "preview/other",
     );
     expect(out.code).toBe(0);
@@ -1038,7 +1049,7 @@ describe("runUpdateChannelFlow", () => {
     });
     runner.enqueue({ cmd: "npm", stdout: "", stderr: "network down", code: 1 });
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: scratchHome(), platform: process.platform },
       "preview/feat-x",
     );
     expect(out.code).toBe(1);

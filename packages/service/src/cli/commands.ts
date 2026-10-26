@@ -19,6 +19,7 @@ import { loadConfig } from "../config.js";
 import { isHealthOk, readLock, removeLock, removeOwnLock, waitForHealth, isPidAlive } from "./lock.js";
 import { cliEnsureRunning, cliStart, cliStatus, cliStop, spawnDetachedService, type CliDeps } from "./managed-cli.js";
 import { installSetup, isSetupInstalled, realSetupRunner, resolveSetupPaths, uninstallSetup } from "./setup/index.js";
+import { isNpxCachePath, SETUP_NPX_MESSAGE, UPDATE_NPX_MESSAGE } from "./npx.js";
 import { currentUid } from "../update/service-manager.js";
 import { bookmarkUrl, serviceUrl } from "./urls.js";
 
@@ -128,6 +129,12 @@ async function cmdSetup(args: string[]): Promise<number> {
     for (const s of steps) console.log(s);
     console.log("removed the link handler and login start (token and data kept)");
     return 0;
+  }
+  // Issue #277: refuse before writing anything (token, handler, unit).
+  // Uninstall above stays available so an old npx-placed setup can be removed.
+  if (isNpxCachePath(process.argv[1])) {
+    console.error(SETUP_NPX_MESSAGE);
+    return 1;
   }
   const noLogin = args.includes("--no-login");
   const token = loadOrCreateToken(config.dataDir);
@@ -257,6 +264,13 @@ async function cmdUpdate(args: string[]): Promise<number> {
     const outcome = await runUpdateListFlow(deps);
     for (const line of outcome.lines) console.log(line);
     return outcome.code;
+  }
+  // Issue #277: `update` would npm-install into the default global prefix
+  // while leaving the running npx-cached copy untouched — refuse instead.
+  // `--list` above stays available; `--help` returned earlier.
+  if (isNpxCachePath(process.argv[1])) {
+    console.error(UPDATE_NPX_MESSAGE);
+    return 1;
   }
   const channel = args.find((a) => !a.startsWith("-"));
   if (!channel) {

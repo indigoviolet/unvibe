@@ -51,6 +51,12 @@ export interface InstallOptions {
    * Undefined inherits the process env.
    */
   env?: Record<string, string | undefined>;
+  /**
+   * Home dir for the stable npm cwd (issue #280). Production omits it
+   * (real `os.homedir()`); tests pass a scratch dir. Only the spawn cwd,
+   * never a write target.
+   */
+  homeDir?: string;
 }
 
 /** Install the channel's ref globally. The caller reports the result. */
@@ -61,7 +67,7 @@ export async function installRef(
 ): Promise<RunResult> {
   const args = ["install", "-g", installSpec(channel)];
   if (opts.prefix) args.push("--prefix", opts.prefix);
-  return runner.run("npm", { args, cwd: stableNpmCwd(), env: opts.env });
+  return runner.run("npm", { args, cwd: stableNpmCwd(opts.homeDir ?? os.homedir()), env: opts.env });
 }
 
 /**
