@@ -89,14 +89,20 @@ test.describe("J279 pi provider", () => {
     await svc?.stop().catch(() => {});
     await plain?.stop().catch(() => {});
     for (const d of [binDir, blockedDir, dataDir, plainDir]) rmSync(d, { recursive: true, force: true });
-    // Scratch HOME last, with retries: version probes of the real
-    // claude/codex binaries (diagnostics enumerates every PATH entry)
-    // can flush first-run files asynchronously after the probe exits,
-    // racing a single rm (ENOTEMPTY). Anything still present afterwards
+    // Scratch HOME last, with retries: an async first-run flush can
+    // recreate entries mid-cleanup (ENOTEMPTY on a bare rmSync, which
+    // throws instead of retrying). Anything still present afterwards
     // fails loudly below via the per-run temp guard.
     for (let i = 0; i < 5 && existsSync(scratchHome); i++) {
-      rmSync(scratchHome, { recursive: true, force: true });
+      try {
+        rmSync(scratchHome, { recursive: true, force: true });
+      } catch {
+        // Best effort per attempt; the existsSync check decides.
+      }
       if (existsSync(scratchHome)) await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (existsSync(scratchHome)) {
+      throw new Error(`scratch HOME still present after cleanup: ${scratchHome}`);
     }
   });
 
