@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Toast } from "../floating/Toast.js";
@@ -77,6 +78,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={pending}
@@ -84,6 +86,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
       // The Generate button is replaced by the placeholder indicator.
@@ -97,6 +100,7 @@ describe("CardView immediate feedback", () => {
   describe("pending cards while generating (issue #84)", () => {
     function renderPending(p: Card): void {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={p}
@@ -104,6 +108,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
     }
 
@@ -141,6 +146,7 @@ describe("CardView immediate feedback", () => {
       });
       seedSnapshot([first, second]);
       render(
+        <MemoryRouter>
         <>
           <CardView
             reviewId={REVIEW_ID}
@@ -157,6 +163,7 @@ describe("CardView immediate feedback", () => {
             onFollowUp={() => {}}
           />
         </>,
+        </MemoryRouter>
       );
       act(() => {
         useReview.getState().beginInflight("c1", "generate");
@@ -195,6 +202,7 @@ describe("CardView immediate feedback", () => {
         .mockResolvedValue(useReview.getState().snapshot!);
       try {
         render(
+          <MemoryRouter>
           <>
             <Toast />
             <CardView
@@ -205,6 +213,7 @@ describe("CardView immediate feedback", () => {
               onFollowUp={() => {}}
             />
           </>,
+          </MemoryRouter>
         );
         fireEvent.click(screen.getByRole("button", { name: "Generate" }));
         // The error surfaces the way every other card action error does.
@@ -230,6 +239,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={withFollow}
@@ -237,6 +247,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={(cardId, blockId, i) => performFollowUp(REVIEW_ID, cardId, blockId, i)}
         />,
+        </MemoryRouter>
       );
       const chip = screen.getByRole("button", { name: "Why?" });
       fireEvent.click(chip);
@@ -263,6 +274,7 @@ describe("CardView immediate feedback", () => {
     seedSnapshot([card()], [live]);
     expect(useReview.getState().inflight).toEqual({});
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={card()}
@@ -270,6 +282,7 @@ describe("CardView immediate feedback", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
     expect(screen.getByRole("status")).toHaveTextContent("Rewriting…");
@@ -302,6 +315,7 @@ describe("CardView immediate feedback", () => {
       } as unknown as Thread,
     ]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={withFollow}
@@ -309,6 +323,7 @@ describe("CardView immediate feedback", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     // Chip entry set (answer thread arrived before the response
     // retargets): no second indicator under the chips. The answer
@@ -326,6 +341,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
@@ -333,6 +349,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
       fireEvent.click(screen.getByRole("button", { name: "Deeper" }));
       const section = document.getElementById("C-c1");
@@ -365,6 +382,7 @@ describe("CardView titles (issue #49)", () => {
     });
     seedSnapshot([untitled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={untitled}
@@ -372,6 +390,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     const head = document.querySelector(".chead");
     expect(head).not.toBeNull();
@@ -386,6 +405,7 @@ describe("CardView titles (issue #49)", () => {
     const untitled = card({ title: null, collapsed: true });
     seedSnapshot([untitled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={untitled}
@@ -393,6 +413,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     // Empty blocks: no title and no preview — but the row is just the
     // chevron, never a blank-looking preview.
@@ -403,6 +424,7 @@ describe("CardView titles (issue #49)", () => {
     const titled = card({ title: "The problem" });
     seedSnapshot([titled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={titled}
@@ -410,6 +432,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     expect(document.querySelector("h2.ct")).toHaveTextContent("The problem");
   });
@@ -443,6 +466,7 @@ describe("CardView titles (issue #49)", () => {
     } as unknown as Thread;
     seedSnapshot([withPara], [], [closed]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={withPara}
@@ -450,6 +474,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     // No full-width fallback rows.
     expect(document.querySelector(".linkstub")).toBeNull();

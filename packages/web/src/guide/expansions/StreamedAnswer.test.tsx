@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { ThreadView } from "../../comments/ThreadView.js";
@@ -66,6 +67,7 @@ function seedSnapshot(annotations: Thread[]): void {
 
 function show(c: Thread): { rerender: (next: Thread) => void } {
   const renderCard = (card: Thread): React.JSX.Element => (
+    <MemoryRouter>
     <ThreadView
       reviewId={REVIEW_ID}
       thread={card}
@@ -73,6 +75,7 @@ function show(c: Thread): { rerender: (next: Thread) => void } {
       onOpenPage={() => {}}
       onFollowUp={() => {}}
     />
+    </MemoryRouter>
   );
   const rendered = render(renderCard(c));
   return {

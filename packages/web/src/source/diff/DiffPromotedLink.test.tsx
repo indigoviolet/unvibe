@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, Hunk, ReviewFile, ReviewSnapshot, Reply } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { useDiffExpansionBindings } from "../../guide/expansions/DiffExpansions.js";
@@ -175,7 +176,7 @@ afterEach(() => {
 describe("issue #152: promoted links keep a page-link mark in the diff", () => {
   test("a still-filling promoted turn marks the anchor as a page link", async () => {
     seedSnapshot([fillingLink()]);
-    render(<Harness />);
+    render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     pageLink();
     // The moved card renders no slot under the line (it lives on the page).
@@ -184,7 +185,7 @@ describe("issue #152: promoted links keep a page-link mark in the diff", () => {
 
   test("an empty promoted link (no turns) still marks the anchor", async () => {
     seedSnapshot([emptyLink()]);
-    render(<Harness />);
+    render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     pageLink();
   });

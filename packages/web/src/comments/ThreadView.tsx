@@ -14,6 +14,7 @@
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -511,6 +512,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const noopPage = useCallback(() => undefined, []);
   const noopOpen = useCallback(() => {}, []);
   const noopFollow = useCallback(() => {}, []);
+  const navigate = useNavigate();
   const lp = (lookupPage ?? noopPage) as (pageId: string) => never;
   const op = onOpenPage ?? noopOpen;
   const of = onFollowUp ?? noopFollow;
@@ -610,8 +612,10 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     void performAction(reviewId, { kind: "promote", annotationId: thread.id })
       .then((res) => {
         if (res.accepted && res.pageId) {
-          const token = new URLSearchParams(window.location.search).get("token") ?? "";
-          window.location.assign(`/review/${reviewId}/page/${encodeURIComponent(res.pageId)}?token=${token}`);
+          navigate({
+            pathname: `/review/${reviewId}/page/${encodeURIComponent(res.pageId)}`,
+            search: window.location.search,
+          });
         }
       })
       .catch((err: unknown) => {

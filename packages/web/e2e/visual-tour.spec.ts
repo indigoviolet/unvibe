@@ -81,13 +81,18 @@ test.beforeAll(async () => {
       UNVIBE_UPDATER_BACKEND: "fake",
     },
   });
+  reviewId = await createTourReview();
+});
+
+async function createTourReview(): Promise<string> {
+  if (!svc) throw new Error("service not running");
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
   };
-  reviewId = created.review.id;
+  const id = created.review.id;
   const deadline = Date.now() + 90_000;
   for (;;) {
-    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${id}`)) as {
       pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
     };
     const root = snap.pages.find((p) => p.id === "root");
@@ -95,7 +100,8 @@ test.beforeAll(async () => {
     if (Date.now() > deadline) throw new Error("guide did not fill in time");
     await new Promise((r) => setTimeout(r, 1000));
   }
-});
+  return id;
+}
 
 test.afterAll(async () => {
   await svc?.stop().catch(() => {});
@@ -812,15 +818,27 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   await checkMenus(page, step);
 }
 
-for (const combo of [
-  { name: "1440-light", width: 1440, dark: false },
-  { name: "1440-dark", width: 1440, dark: true },
-  { name: "960-light", width: 960, dark: false },
-  { name: "960-dark", width: 960, dark: true },
-] as const) {
+// The four passes share one service review, and every pass creates
+// threads with the same quotes plus a global collapse-all toggle: run
+// them serially so one pass never fills, selects inside, collapses or
+// outboxes another pass's threads mid-shot.
+test.describe("visual tour passes", () => {
+  test.describe.configure({ mode: "serial" });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
   test(`visual tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(240_000);
+    // A fresh review per pass: passes share identical selections, and
+    // the service dedupes identical explain/ask requests onto the same
+    // thread — a shared review would hand one pass another pass's
+    // thread (and its collapse-all/outbox state).
+    reviewId = await createTourReview();
     await page.setViewportSize({ width: combo.width, height: 900 });
     if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
     const suffix = combo.name;
@@ -845,9 +863,20 @@ for (const combo of [
     await page.locator("#C-problem").scrollIntoViewIfNeeded();
     // Open a pinned card the way a reader does: select guide text
     // and Explain it.
+    const beforeIds = (
+      (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
+    ).annotations.map((a) => a.id);
     await selectText(page, "#C-problem", "used to let a server continue");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedCard: Locator = page.locator("#page section.ithread[data-thread]").first();
+    let seedId: string | null = null;
+    await expect
+      .poll(async () => {
+        const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        seedId = snap.annotations.map((a) => a.id).find((id) => !beforeIds.includes(id)) ?? null;
+        return seedId;
+      }, { timeout: 30_000 })
+      .toBeTruthy();
+    const seedCard: Locator = page.locator(`#page section.ithread[data-thread="${seedId}"]`);
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
@@ -856,9 +885,10 @@ for (const combo of [
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
-    await selectText(page, "#page section.ithread[data-thread] [data-reply]", "fold");
+    await expect(seedId).toBeTruthy();
+    const seedSelector = `#page section.ithread[data-thread="${seedId!}"] [data-reply]`;
+    await selectText(page, seedSelector, "fold");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedId = await seedCard.getAttribute("data-thread");
     await expect
       .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
       .toBeGreaterThanOrEqual(2);
@@ -1413,8 +1443,11 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
     await stepChecks(page, "diff-expand-full-gap");
     await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
+    });
   });
 });
+
+// Studio and Console themes (issues #196/#164): one scene set per
 
 // Studio and Console themes (issues #196/#164): one scene set per
 // theme in light and dark at 1440px, applied before first paint

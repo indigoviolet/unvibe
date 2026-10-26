@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
@@ -26,7 +27,11 @@ afterEach(() => {
 });
 
 async function renderDiff() {
-  const r = render(<DiffView reviewId="demo" />);
+  const r = render(
+    <MemoryRouter>
+      <DiffView reviewId="demo" />
+    </MemoryRouter>,
+  );
   await screen.findByText("connection.py", {}, { timeout: 3000 });
   return r;
 }

@@ -97,6 +97,10 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying line.
+      if (req.threadId) return;
       if (req.anchor.where !== "code") return;
       if (req.anchor.path !== path || req.anchor.commit !== commit) return;
       setPending({

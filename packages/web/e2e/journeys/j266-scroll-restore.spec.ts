@@ -61,7 +61,7 @@ test.describe("J266 scroll restore", () => {
     await card.getByRole("button", { name: "Open as page" }).click();
     await expect(page).toHaveURL(/\/page\/p-/, { timeout: 15_000 });
     await expect(page.locator("#page nav.crumbs")).toContainText("Unfold obsolete", { timeout: 10_000 });
-    const pageId = page.url().match(/page\/(.+)$/)?.[1] ?? "";
+    const pageId = page.url().match(/page\/([^?#]+)/)?.[1] ?? "";
     await page.goBack();
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 15_000 });
     const link = page.locator(`nav.toc [data-node="${pageId}"]`);

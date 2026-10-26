@@ -67,6 +67,10 @@ export function useDiffCommentBindings(reviewId: string): {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying line.
+      if (req.threadId) return;
       if (req.anchor.where === "hunk") {
         // Issue #138: Ask on a hunk summary. The composer sits on the
         // hunk's first changed line; the send keeps the hunk anchor.

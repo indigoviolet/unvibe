@@ -306,6 +306,10 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying block.
+      if (req.threadId) return;
       if (req.anchor.where === "comment") {
         // Issue #214: Ask on a comment shows its composer under the
         // comment's guide block (the card itself anchors to the comment).

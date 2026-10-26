@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
@@ -80,7 +81,7 @@ afterEach(() => {
 describe("ThreadView reply box", () => {
   test("typed text survives an unrelated WS patch", async () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
-    render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "unsent draft" } });
     expect(box).toHaveValue("unsent draft");
@@ -98,7 +99,7 @@ describe("ThreadView reply box", () => {
   test("Discard clears the follow-up draft on an existing thread", async () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const updateSpy = vi.spyOn(api, "updateComment").mockResolvedValue({ ok: true });
-    render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     try {
       const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: "to clear" } });
@@ -116,7 +117,7 @@ describe("ThreadView reply box", () => {
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
     const replySpy = vi.spyOn(api, "replyComment").mockResolvedValue({ ok: true });
-    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={commenting} /></MemoryRouter>);
     try {
       const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: "And then?" } });
@@ -137,7 +138,7 @@ describe("ThreadView reply box", () => {
     const fresh = thread({ replies: [], reply: "" });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [fresh] });
     const deleteSpy = vi.spyOn(api, "deleteComment").mockResolvedValue({ ok: true });
-    render(<ThreadView reviewId={REVIEW_ID} thread={fresh} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={fresh} /></MemoryRouter>);
     try {
       expect(screen.getByLabelText("New comment")).toHaveAttribute("placeholder", "Write a comment…");
       expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
@@ -151,7 +152,7 @@ describe("ThreadView reply box", () => {
   test("comments carry the Outbox control", async () => {
     const commenting = thread({ replies: [mkReply("you", "Nit")], post: true });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
-    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={commenting} /></MemoryRouter>);
     expect(screen.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible();
   });
 });
@@ -161,7 +162,7 @@ describe("ThreadView ask-about (issue #136)", () => {
     const commenting = thread({ replies: [mkReply("you", "Why is this so?")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
-    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={commenting} /></MemoryRouter>);
     try {
       fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
       // Issue #273: Ask about a comment appends inside the same thread.
@@ -180,7 +181,7 @@ describe("ThreadView ask-about (issue #136)", () => {
     const empty = thread({ replies: [] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [empty] });
     const actionSpy = vi.spyOn(api, "action");
-    render(<ThreadView reviewId={REVIEW_ID} thread={empty} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={empty} /></MemoryRouter>);
     try {
       // New (unsaved) comments offer no ask-about control.
       expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
@@ -193,7 +194,7 @@ describe("ThreadView ask-about (issue #136)", () => {
 describe("ThreadView authorship (owner decision: icons, not text)", () => {
   test("the user's avatar is a person icon with a screen-reader name, and no visible author text", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
-    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const avatar = container.querySelector(".av.you");
     expect(avatar?.getAttribute("aria-label")).toBe("You");
     expect(avatar?.querySelector("svg")).not.toBeNull();
@@ -227,7 +228,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
   test("an AI-suggested comment has no reply box", () => {
     const s = suggested();
     seedSuggested(s);
-    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     // No composer at all: no textarea, no Reply/Save/Discard.
     expect(container.querySelector("textarea")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
@@ -240,7 +241,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
   test("a suggestion keeps ask-about, Outbox, delete and close", () => {
     const s = suggested();
     seedSuggested(s);
-    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Add to Outbox/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
@@ -251,7 +252,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
     const s = suggested();
     seedSuggested(s);
     const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
-    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     try {
       fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
       expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
@@ -268,7 +269,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
   test("a user comment keeps its reply box", () => {
     const commenting = thread({ replies: [mkReply("you", "Nit")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
-    render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={commenting} /></MemoryRouter>);
     expect(screen.getByLabelText("Reply")).toBeInTheDocument();
   });
 
@@ -277,7 +278,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
       replies: [mkReply("agent", "Is this covered?", { suggested: true, suggestedQuestion: true })],
     });
     seedSuggested(s);
-    const { container } = render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.getByText("Suggested question")).toBeInTheDocument();
     expect(container.querySelector("textarea")).toBeNull();
     // Same suggestion controls as findings: ask-about, mark, delete, close.
@@ -287,7 +288,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
   test("a finding suggestion carries no question tag", () => {
     const s = suggested();
     seedSuggested(s);
-    render(<ThreadView reviewId={REVIEW_ID} thread={s} />);
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.queryByText("Suggested question")).toBeNull();
   });
 });

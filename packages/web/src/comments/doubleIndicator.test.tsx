@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, Card, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { NEW_THREAD_EVENT } from "../floating/SelectionToolbar.js";
@@ -151,13 +152,15 @@ describe("issue #97: one box while working", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
           lookupPage={() => undefined}
           onOpenPage={() => {}}
           onFollowUp={() => {}}
-        />,
+        />
+        </MemoryRouter>
       );
       act(() => {
         void performAction(REVIEW_ID, {
@@ -197,13 +200,15 @@ describe("issue #97: one box while working", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
           lookupPage={() => undefined}
           onOpenPage={() => {}}
           onFollowUp={() => {}}
-        />,
+        />
+        </MemoryRouter>
       );
       act(() => {
         window.dispatchEvent(

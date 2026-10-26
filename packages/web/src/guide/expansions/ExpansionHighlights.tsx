@@ -61,12 +61,16 @@ export function ExpansionHighlights() {
     if (!root) return;
     // Issue #166: anchors whose host text isn't there yet are retried —
     // bounded overall per effect run (#206), never re-armed per pass.
+    // Threads with reviewer comments are marked by GuideThreads
+    // (`mark.anc[data-thr]` + their own footnote chips); marking them
+    // here too would nest an expansion mark inside the thread mark.
     const placeable = (annotations ?? []).filter(
       (a) =>
         (a.type === "thread" || a.type === "link") &&
         !isAnchorStale(a) &&
         !!a.anchor.quotedText &&
-        a.anchor.host.kind === "block",
+        a.anchor.host.kind === "block" &&
+        !(a.replies ?? []).some((r) => r.kind === "comment"),
     );
     let pending = new Set<string>(placeable.map((a) => a.id));
 

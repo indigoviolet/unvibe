@@ -22,6 +22,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type { Thread, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { useDiffExpansionBindings } from "../../guide/expansions/DiffExpansions.js";
@@ -189,7 +190,7 @@ afterEach(() => {
 describe("issue #101: anchor marks vs diff highlight upgrade", () => {
   test("mark, re-mark, then token upgrade renders spans without throwing", async () => {
     seedSnapshot([expansion()]);
-    const r = render(<Harness />);
+    const r = render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     markedRow();
 
@@ -202,7 +203,7 @@ describe("issue #101: anchor marks vs diff highlight upgrade", () => {
 
     // The highlight upgrade swaps the cell content for spans.
     await act(async () => {
-      r.rerender(<Harness tokens={spans()} />);
+      r.rerender(<MemoryRouter><Harness tokens={spans()} /></MemoryRouter>);
     });
     const row = document.getElementById(`L-${FILE_KEY}-2`);
     expect(row).not.toBeNull();
@@ -211,11 +212,11 @@ describe("issue #101: anchor marks vs diff highlight upgrade", () => {
 
   test("a single marking pass followed by the upgrade renders without throwing", async () => {
     seedSnapshot([expansion()]);
-    const r = render(<Harness />);
+    const r = render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     markedRow();
     await act(async () => {
-      r.rerender(<Harness tokens={spans()} />);
+      r.rerender(<MemoryRouter><Harness tokens={spans()} /></MemoryRouter>);
     });
     const row = document.getElementById(`L-${FILE_KEY}-2`);
     expect(row).not.toBeNull();

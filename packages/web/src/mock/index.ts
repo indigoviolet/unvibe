@@ -2689,21 +2689,63 @@ export const mockApi = {
     // like the service (working flag, delayed canned answer, patch
     // delivery). Ask creates the card; reply adds a turn; retry refills
     // the last turn in place.
+    const newTurnId = (): string =>
+      `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
     if (a.kind === "ask" || a.kind === "reply" || a.kind === "retry") {
-      const newTurnId = (): string =>
-        `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       if (a.kind === "ask") {
-        // Issue #138: a hunk anchor activates the summary into its thread.
-        const _anchor = (a as { anchor?: import("@unvibe/shared").ActionAnchor }).anchor;
+        // Issue #138: a hunk anchor activates the summary into its
+        // thread (no agent call), then this same Ask appends inside
+        // that thread — like the service.
+        let inThreadId = (a as { threadId?: string }).threadId;
+        let hunkSource: string | undefined;
+        const rawAnchor = (a as { anchor?: import("@unvibe/shared").ActionAnchor }).anchor;
+        if (!inThreadId && rawAnchor?.where === "hunk") {
+          const ensured = ensureMockHunkCard(rawAnchor.fileKey, rawAnchor.contentHash);
+          inThreadId = ensured.id;
+          hunkSource = ensured.replyId;
+        }
+        // Issue #273: Ask inside a thread appends there (Ask about this,
+        // the toolbar's Ask on a selection inside a thread).
+        if (inThreadId) {
+          const target = annotations.find((x) => x.id === inThreadId);
+          if (!target || target.type !== "thread") throw new Error(`unknown thread ${inThreadId}`);
+          const replyId = newTurnId();
+          (target.replies ?? []).push({
+            id: replyId,
+            kind: "ask",
+            who: "agent",
+            question: (a as { message: string }).message,
+            blocks: [],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
+            working: "Writing answer",
+            jobId: `mock-ask-${target.id}-${replyId}`,
+          } as never);
+          // In-thread link from the source reply, like the service.
+          const srcId = (a as { sourceReplyId?: string }).sourceReplyId ?? hunkSource;
+          const quote = (a as { quote?: string }).quote ?? "";
+          const src = srcId ? (target.replies ?? []).find((r) => r.id === srcId) : undefined;
+          if (src && quote) {
+            (src as { linkTo?: string; linkText?: string }).linkTo = replyId;
+            (src as { linkTo?: string; linkText?: string }).linkText = quote.slice(0, 200);
+          }
+          target.working = "Writing answer";
+          target.error = null;
+          target.open = true;
+          target.jobId = `mock-ask-${target.id}-${replyId}`;
+          delete target.reply;
+          emitAnnotations();
+          const askJobId = `mock-ask-${target.id}-${replyId}`;
+          trackMockJob(askJobId, "ask", { annotationId: target.id });
+          answerTurnLater(target.id, replyId, (a as { message: string }).message, askJobId);
+          return { accepted: true, annotationId: target.id, replyId, jobId: askJobId };
+        }
+        // Issue #138: a non-hunk anchor starts a fresh thread.
+        const _anchor = rawAnchor;
         if (!_anchor) throw new Error("quote and anchor are required");
-        const anchor: import("@unvibe/shared").ActionAnchor =
-          _anchor.where === "hunk"
-            ? (() => {
-                const h = _anchor as { where: "hunk"; fileKey: string; contentHash: string };
-                const ensured = ensureMockHunkCard(h.fileKey, h.contentHash);
-                return { where: "block", blockId: ensured.blockId };
-              })()
-            : _anchor;
+        if (_anchor.where === "hunk") throw new Error("unreachable: hunk anchors recurse in-thread");
+        const anchor: import("@unvibe/shared").ActionAnchor = _anchor;
         const host =
           anchor.where === "block"
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2774,6 +2816,8 @@ export const mockApi = {
         const replyId = newTurnId();
         (found.replies ?? []).push({
           id: replyId,
+          kind: "ask",
+          who: "agent",
           question: (a as { message: string }).message,
           blocks: [],
           level: "standard",
@@ -2832,15 +2876,52 @@ export const mockApi = {
     // the real shapes (working → streamed text → blocks, error + retry via
     // `retry`, anchor-stale fallback, dotted-link close).
     if (a.kind === "explain") {
-      // Issue #138: a hunk anchor activates the summary into its card,
-      // then this same Explain runs nested on the summary block.
-      const anchor: import("@unvibe/shared").ActionAnchor =
-        a.anchor.where === "hunk"
-          ? (() => {
-              const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
-              return { where: "block", blockId: ensured.blockId };
-            })()
-          : a.anchor;
+      // Issue #138: a hunk anchor activates the summary into its thread
+      // (no agent call), then this same Explain appends inside that
+      // thread on the selected summary text — like the service.
+      // Issue #273: inside a thread, Explain appends a reply there.
+      let inThreadId = (a as { threadId?: string }).threadId;
+      let hunkSource: string | undefined;
+      if (!inThreadId && a.anchor.where === "hunk") {
+        const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
+        inThreadId = ensured.id;
+        hunkSource = ensured.replyId;
+      }
+      if (inThreadId) {
+        const target = annotations.find((x) => x.id === inThreadId);
+        if (!target || target.type !== "thread") throw new Error(`unknown thread ${inThreadId}`);
+        const replyId = newTurnId();
+        (target.replies ?? []).push({
+          id: replyId,
+          kind: "explain",
+          who: "agent",
+          question: a.quote,
+          blocks: [],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+          working: "Thinking",
+          jobId: `mock-explain-${target.id}-${replyId}`,
+        } as never);
+        const srcId = (a as { sourceReplyId?: string }).sourceReplyId ?? hunkSource;
+        const src = srcId ? (target.replies ?? []).find((r) => r.id === srcId) : undefined;
+        if (src && a.quote) {
+          (src as { linkTo?: string; linkText?: string }).linkTo = replyId;
+          (src as { linkTo?: string; linkText?: string }).linkText = a.quote.slice(0, 200);
+        }
+        target.working = "Thinking";
+        target.error = null;
+        target.open = true;
+        target.jobId = `mock-explain-${target.id}-${replyId}`;
+        delete target.reply;
+        emitAnnotations();
+        const explainJobId = `mock-explain-${target.id}-${replyId}`;
+        trackMockJob(explainJobId, "ask", { annotationId: target.id });
+        answerTurnLater(target.id, replyId, a.quote, explainJobId);
+        return { accepted: true, annotationId: target.id, replyId, jobId: explainJobId };
+      }
+      const anchor: import("@unvibe/shared").ActionAnchor = a.anchor;
+      if (anchor.where === "hunk") throw new Error("unreachable: hunk anchors recurse in-thread");
       const host =
         anchor.where === "block"
           ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }

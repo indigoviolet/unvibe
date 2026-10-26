@@ -121,6 +121,10 @@ export function DescriptionView({ reviewId, editor }: Props) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying paragraph.
+      if (req.threadId) return;
       if (req.anchor.where === "comment") {
         const commentId = req.anchor.commentId;
         const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
