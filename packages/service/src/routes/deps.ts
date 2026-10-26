@@ -69,6 +69,16 @@ export interface RouteDeps {
    */
   pickFolder?: import("../repos/pick-folder.js").PickFolderOptions;
   /**
+   * Login-home override for the version picker (issue #280): the home dir
+   * + platform the switch route uses to detect the login unit. Production
+   * omits it (real `os.homedir()` + `process.platform`); tests pass a
+   * scratch dir so a managed real home is never read as managed.
+   */
+  loginHome?: {
+    homeDir?: string;
+    platform?: string;
+  };
+  /**
    * Diagnostics probe overrides (tests only): a pre-resolved PATH
    * picture so `GET /api/diagnostics` and `POST /api/reload` skip
    * spawning login shells. The tool `--version` probes already run

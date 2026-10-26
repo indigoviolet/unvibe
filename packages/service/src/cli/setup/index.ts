@@ -26,6 +26,7 @@ import {
 } from "./macos.js";
 import { desktopFileContent, desktopFilePath, DESKTOP_FILENAME, URL_MIME } from "./linux.js";
 import { isLoginManaged } from "../../update/service-manager.js";
+import { isNpxCachePath, SETUP_NPX_MESSAGE } from "../npx.js";
 
 /**
  * Whether `unvibe setup` has placed the link handler and the
@@ -128,6 +129,11 @@ export async function installSetup(
   platform: SetupPlatform = process.platform,
   opts: InstallSetupOpts = {},
 ): Promise<string[]> {
+  // Issue #277: refuse before writing anything — the npx cache path baked
+  // into the handler and login unit would rot when npm prunes its cache.
+  if (isNpxCachePath(paths.cliPath)) {
+    throw new Error(SETUP_NPX_MESSAGE);
+  }
   const steps: string[] = [];
   if (platform === "darwin") {
     const appPath = helperAppPath(paths.homeDir);

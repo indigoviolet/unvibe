@@ -1636,6 +1636,16 @@ needed (that deviation is closed, not added).
   (`store/paths.ts`); `DEVELOPMENT.md`'s `unvibe.sqlite` name was stale
   and is corrected there. The legacy `unvibe.sqlite*` backup was removed
   under #137 — only `unvibe.db*` is backed up and restored.
+- npx try-out (issue #277) — implemented, not a PRD requirement: running
+  from an npx cache (`/_npx/` in the resolved script path) supports
+  `doctor`/`start`/`stop`, while `setup` and `update <channel>` (CLI and
+  the in-app switcher, which answers 409) refuse with the global-install
+  pointer instead of baking ephemeral paths or npm-installing into the
+  wrong prefix. `update --list` still works. Doctor reports no new
+  check (it has no install-kind check). Evidence:
+  `test/npx-guards.test.ts` (7: detection, setup/update refusal + normal
+  layout paths, in-app 409 with the fake updater); `update.test.ts`,
+  `update-routes.test.ts`, `setup-status.test.ts` still green.
 
 ### §14.1 Endpoints — all met (ran)
 

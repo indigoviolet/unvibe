@@ -65,6 +65,11 @@ export interface RealUpdaterOptions {
    * The detached helper passes the service's repaired PATH here explicitly.
    */
   env?: Record<string, string | undefined>;
+  /**
+   * Home dir for the stable npm cwd + mise lookup (issue #280).
+   * Production omits it (real `os.homedir()`); tests pass a scratch dir.
+   */
+  homeDir?: string;
 }
 
 /**
@@ -79,6 +84,7 @@ export class RealUpdater implements Updater {
   private readonly serviceVersion: string;
   private readonly log: (line: string) => void;
   private readonly env: Record<string, string | undefined> | undefined;
+  private readonly homeDir: string | undefined;
 
   constructor(opts: RealUpdaterOptions) {
     // Default stays the plain runner: this module is bundled into the
@@ -92,6 +98,7 @@ export class RealUpdater implements Updater {
     this.serviceVersion = opts.serviceVersion;
     this.log = opts.log ?? (() => {});
     this.env = opts.env;
+    this.homeDir = opts.homeDir;
   }
 
   async listChannels(): Promise<UpdateChannel[]> {
@@ -108,6 +115,7 @@ export class RealUpdater implements Updater {
       channel: ref,
       ...(opts?.restoreBackupOf ? { restoreBackupOf: opts.restoreBackupOf } : {}),
       env: this.env,
+      ...(this.homeDir !== undefined ? { homeDir: this.homeDir } : {}),
       log: this.log,
     });
     if (result.code === 2) throw new Error(`unknown update channel "${ref}"`);

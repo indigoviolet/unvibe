@@ -54,6 +54,7 @@ import {
   writePendingSwitch,
   clearPendingSwitch,
 } from "../update/state.js";
+import { isNpxCachePath, UPDATE_NPX_MESSAGE } from "../cli/npx.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 
@@ -229,6 +230,13 @@ export async function registerUpdate(
     const updater = deps.updater;
     if (!updater) return reply.code(501).send({ error: "not available in this build" });
 
+    // Issue #277: the service itself runs from the npx cache — switching
+    // would npm-install into the default global prefix while this copy
+    // keeps running. Report it as unavailable instead of running npm.
+    if (isNpxCachePath(process.argv[1])) {
+      return reply.code(409).send({ error: UPDATE_NPX_MESSAGE });
+    }
+
     // `from` is the installed channel read locally: a preview ref can be
     // deleted from the remote while installed, and a rollback to
     // "unknown" cannot work. Source checkouts (and pre-field installs
@@ -349,10 +357,11 @@ export async function registerUpdate(
       // #108) working: the unit files deliberately carry no PATH.
       effectivePath: process.env.PATH ?? "",
       // Restart through the service manager when login-managed (issue
-      // #108 follow-up): detected here from the real HOME; tests use the
-      // fake HOME through the same path.
-      managed: isLoginManaged(os.homedir(), process.platform),
-      loginUnitPath: loginUnitPath(os.homedir(), process.platform),
+      // #108 follow-up): detected here from the real HOME in production
+      // (issue #280); tests pass a scratch home via `deps.loginHome` so
+      // a managed real home never reads as managed.
+      managed: isLoginManaged(deps.loginHome?.homeDir ?? os.homedir(), deps.loginHome?.platform ?? process.platform),
+      loginUnitPath: loginUnitPath(deps.loginHome?.homeDir ?? os.homedir(), deps.loginHome?.platform ?? process.platform),
       loginUid: currentUid(),
       ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
     };
