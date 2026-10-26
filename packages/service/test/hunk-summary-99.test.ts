@@ -222,8 +222,8 @@ describe("hunk job turn timings (#210, #194)", () => {
       const job = ctx.jobs.listByReview(id).find((j) => j.kind === "hunk-pass");
       expect(job).toBeDefined();
       expect(job!.state).toBe("done");
-      expect((job!.replies ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
-      for (const turn of job!.replies ?? []) {
+      expect((job!.turns ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
+      for (const turn of job!.turns ?? []) {
         expect(turn.finishedAt).toBeDefined();
         expect(turn.finishedAt!).toBeGreaterThanOrEqual(turn.startedAt);
       }
@@ -243,8 +243,8 @@ describe("hunk job turn timings (#210, #194)", () => {
       const job = ctx.jobs.listByReview(id).find((j) => j.kind === "summarize");
       expect(job).toBeDefined();
       expect(job!.state).toBe("done");
-      expect((job!.replies ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
-      for (const turn of job!.replies ?? []) {
+      expect((job!.turns ?? []).map((t) => t.label)).toEqual(["session start", "first"]);
+      for (const turn of job!.turns ?? []) {
         expect(turn.finishedAt).toBeDefined();
         expect(turn.finishedAt!).toBeGreaterThanOrEqual(turn.startedAt);
       }

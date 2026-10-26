@@ -130,7 +130,9 @@ describe("page header title row (#240: no bookmark)", () => {
     const row = document.querySelector(".title-row");
     expect(row).not.toBeNull();
     expect(row?.querySelector("h1.title")).toHaveTextContent("b");
-    expect(row?.querySelector("button")).toBeNull();
+    // Only the #273 collapse-all control lives in the title row now.
+    expect(row?.querySelectorAll("button")).toHaveLength(1);
+    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
   });
 
   test("a finding page keeps its type label above the title row", () => {
@@ -144,12 +146,15 @@ describe("page header title row (#240: no bookmark)", () => {
     expect(document.querySelector(".eyebrow")).toHaveTextContent("Agent finding · medium confidence");
     const row = document.querySelector(".title-row");
     expect(row?.querySelector("h1.title")).toHaveTextContent("A finding");
-    expect(row?.querySelector("button")).toBeNull();
+    expect(row?.querySelectorAll("button")).toHaveLength(1);
+    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
   });
 
   test("a concept page carries no bookmark control either", () => {
     show({ id: "c-x", kind: "concept", title: "A concept", cards: [] } as Page);
-    expect(document.querySelector(".title-row")?.querySelector("button")).toBeNull();
+    const row = document.querySelector(".title-row");
+    expect(row?.querySelectorAll("button")).toHaveLength(1);
+    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Save to this repo" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Unsave from this repo" })).toBeNull();
   });

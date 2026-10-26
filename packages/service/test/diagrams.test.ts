@@ -804,7 +804,7 @@ function waitForExpansion(
   return waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; turns?: { blocks: unknown[]; working: string | null }[] }
+      | { working: string | null; replies?: { blocks: unknown[]; working: string | null }[] }
       | undefined;
     return ((a?.replies?.[0]?.blocks.length ?? 0) > 0) && a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, timeoutMs);

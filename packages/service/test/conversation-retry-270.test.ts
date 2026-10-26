@@ -96,7 +96,7 @@ async function waitForTurnSettled(ctx: App["ctx"], id: string, annotationId: str
   await waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; turns?: { working: string | null }[] }
+      | { working: string | null; replies?: { working: string | null }[] }
       | undefined;
     return a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, 60000);

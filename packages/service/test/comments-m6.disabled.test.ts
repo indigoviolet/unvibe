@@ -6,7 +6,7 @@
  * never in threads (#136 slice 2).
  */
 import { describe, expect, it } from "vitest";
-import type { Card, Page } from "@unvibe/shared";
+import type { Card, Page, Thread } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import {
   closeAnnotation,
@@ -18,6 +18,18 @@ import { locatePendingThreads } from "../src/comments/location.js";
 import { setupReview, sourceFile } from "./m6-helpers.js";
 
 const authed = { authorization: "Bearer tok" };
+
+/** Plain-text view of a thread's replies, mirroring the old message shape. */
+function replyMessages(thread: Thread | undefined): Array<{ who: string; text: string; suggested?: boolean }> {
+  return (thread?.replies ?? []).map((r) => {
+    const first = r.blocks[0] as { text?: { standard?: string } } | undefined;
+    return {
+      who: r.who,
+      text: first?.text?.standard ?? "",
+      ...(r.suggested ? { suggested: true as const } : {}),
+    };
+  });
+}
 
 describe("comment threads", () => {
   it("creates a comment on a diff line (open, with prefix/suffix)", async () => {
@@ -42,7 +54,7 @@ describe("comment threads", () => {
       expect(t?.open).toBe(true);
       // Issue #135: a Comment is for the PR by default.
       expect(t?.post).toBe(true);
-      expect(t?.messages).toEqual([{ who: "you", text: "why here?" }]);
+      expect(replyMessages(t)).toEqual([{ who: "you", text: "why here?" }]);
       expect(t?.anchor.host).toEqual({ kind: "diff-line", fileKey: "a-py", line: 2 });
       expect(snap?.rev).toBe(2);
     } finally {
@@ -248,7 +260,7 @@ describe("comment threads", () => {
       expect(res.statusCode).toBe(201);
       const snap = ctx.reviews.getSnapshot(reviewId);
       const t = snap?.annotations[0];
-      expect(t?.messages).toEqual([{ who: "ai", text: "consider a test", suggested: true }]);
+      expect(replyMessages(t)).toEqual([{ who: "ai", text: "consider a test", suggested: true }]);
       expect(t?.post).toBe(false);
 
       const badHost = await app.inject({
@@ -300,7 +312,7 @@ describe("comment threads", () => {
         payload: { text: "follow-up" },
       });
       expect(replied.statusCode).toBe(200);
-      expect(ctx.reviews.getSnapshot(reviewId)?.annotations[0].messages).toHaveLength(2);
+      expect(ctx.reviews.getSnapshot(reviewId)?.annotations[0].replies).toHaveLength(2);
 
       const patched = await app.inject({
         method: "PATCH",
@@ -365,7 +377,7 @@ describe("comment threads", () => {
 
       const snap = ctx.reviews.getSnapshot(reviewId);
       const thread = snap?.annotations.find((a) => a.id === note.id);
-      expect(thread?.messages).toEqual([{ who: "you", text: "a note" }]);
+      expect(replyMessages(thread)).toEqual([{ who: "you", text: "a note" }]);
 
       await closeAnnotation(ctx.reviews, reviewId, note.id);
       expect(ctx.reviews.getSnapshot(reviewId)?.annotations.find((a) => a.id === note.id)?.open).toBe(false);

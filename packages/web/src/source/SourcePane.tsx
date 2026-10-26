@@ -51,7 +51,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   };
   const annotations = useReview((s) => s.snapshot?.annotations);
   const diffComments = useDiffCommentBindings(reviewId);
-  const diffExpansions = useDiffExpansionBindings(reviewId, lookupPage, onOpenPage, onFollowUp);
+  const diffExpansions = useDiffExpansionBindings(reviewId, lookupPage, onOpenPage);
   // A comment and a conversation card share a line's slot row: merge
   // the content instead of letting one map overwrite the other (the
   // card used to vanish when a comment landed on its line).

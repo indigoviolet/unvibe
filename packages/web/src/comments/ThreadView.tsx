@@ -551,19 +551,15 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const hasOpenCard = commentCards.some((a) => a.open);
   const threadWorking = (thread.working ?? "") !== "" && thread.working !== null;
   const threadError = thread.error ?? null;
-  // Latest failed agent reply for the thread-level banner (Retry as single source of truth, #270).
+  // Latest failed agent reply: Retry is the single source of truth (#270).
   const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && r.error);
-  // #271: while a follow-up is pending, the comment Reply stays disabled
-  // ("Wait for the answer"); the Ask follow-up box keeps its draft.
+  // #271: while an answer is pending, the Reply box stays visible and
+  // editable with Send disabled ("Wait for the answer").
   const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
   // #203: while the first agent answer is still being written (no blocks
   // yet) there is no answer for boxes to act on — show only the header
   // and the writing state.
   const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && r.blocks.length > 0);
-  // Follow-up box only once the thread has agent replies: pure comment
-  // threads keep their old single-box height (file-tab slot checks), and
-  // the first agent reply arrives via ask-about or selected-text Ask.
-  const hasAgentReply = replies.some((r) => r.kind !== "comment");
 
   const onRetryThread = (): void => {
     void performAction(reviewId, { kind: "retry", annotationId: thread.id }).catch((err: unknown) => {

@@ -123,7 +123,7 @@ describe("submit", () => {
       expect(editCall?.opts.args.slice(0, 4)).toEqual(["pr", "edit", String(PR_NUMBER), "--body-file"]);
 
       const snap = ctx.reviews.getSnapshot(reviewId);
-      expect(snap?.annotations.every((a) => a.type !== "comment" || !a.post || a.postedAt)).toBe(true);
+      expect(snap?.annotations.every((a) => !a.replies.some((r) => r.kind === "comment") || !a.post || a.postedAt)).toBe(true);
       expect(snap?.annotations[0].postedUrl).toBe(REVIEW_URL);
       expect(snap?.description?.pendingMarkdown).toBeUndefined();
       expect(snap?.description?.baseMarkdown).toBe("Edited body.\n");

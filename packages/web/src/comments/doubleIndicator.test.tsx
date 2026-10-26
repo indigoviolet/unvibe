@@ -63,20 +63,21 @@ function workingExpansion(): Thread {
       version: 1,
     },
     open: true,
-    replies: [],
-    post: false,
-    working: "Thinking…",
-    turns: [
+    replies: [
       {
         id: "ans_x1",
+        kind: "explain",
+        who: "agent",
         question: null,
         blocks: [],
         level: "standard",
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Writing explanation",
       },
     ],
+    post: false,
+    working: "Writing explanation",
   } as unknown as Thread;
 }
 
@@ -93,20 +94,21 @@ function workingConversation(): Thread {
       version: 1,
     },
     open: true,
-    replies: [],
-    post: false,
-    working: "Thinking…",
-    turns: [
+    replies: [
       {
         id: "ans_t1",
+        kind: "ask",
+        who: "agent",
         question: "what's that",
         blocks: [],
         level: "standard",
         revision: 1,
         undoStack: [],
-        working: "Thinking…",
+        working: "Asking",
       },
     ],
+    post: false,
+    working: "Asking",
   } as unknown as Thread;
 }
 
@@ -174,7 +176,7 @@ describe("issue #97: one box while working", () => {
       expect(screen.getByRole("status")).toHaveTextContent("Writing explanation");
       // …and content-needing controls are absent (not just disabled) on
       // the still-empty card — issue #203: header + writing state only.
-      const exp = document.querySelector('[data-expansion="ann_x"]') as HTMLElement;
+      const exp = document.querySelector('[data-thread="ann_x"]') as HTMLElement;
       expect(exp).not.toBeNull();
       expect(within(exp).queryByRole("button", { name: "Use examples" })).toBeNull();
       expect(within(exp).queryByRole("button", { name: "Simpler" })).toBeNull();

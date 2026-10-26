@@ -29,6 +29,8 @@ function card(): Card {
 function turn(over: Partial<Reply> = {}): Reply {
   return {
     id: "ans_1",
+    kind: "ask",
+    who: "agent",
     question: null,
     blocks: [],
     level: "standard",
@@ -39,7 +41,7 @@ function turn(over: Partial<Reply> = {}): Reply {
   } as unknown as Reply;
 }
 
-function link(turns: Reply[]): Thread {
+function link(replies: Reply[]): Thread {
   return {
     id: "ann_1",
     type: "link",
@@ -52,11 +54,10 @@ function link(turns: Reply[]): Thread {
       version: 1,
     },
     open: false,
-    replies: [],
     post: false,
     promotedToPage: "p-mock-1",
-    promotedTurns: [{ turnId: "ans_1", cardId: "c-mock-0" }],
-    turns,
+    promotedReplies: [{ replyId: "ans_1", cardId: "c-mock-0" }],
+    replies,
   } as unknown as Thread;
 }
 

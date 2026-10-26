@@ -17,6 +17,8 @@ const REVIEW_ID = "stream-test";
 function turn(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
+    kind: "explain",
+    who: "agent",
     question: null,
     blocks: [],
     level: "standard",
@@ -40,9 +42,8 @@ function card(over: Record<string, unknown> = {}): Thread {
       version: 1,
     },
     open: true,
-    replies: [],
+    replies: [turn("ans_1")],
     post: false,
-    turns: [turn("ans_1")],
     ...over,
   } as unknown as Thread;
 }
@@ -125,7 +126,7 @@ describe("provisional streamed paragraphs", () => {
     expect(exp).not.toBeNull();
     expect(exp.textContent).toContain("First paragraph is done.");
     expect(exp.textContent).not.toContain("Second, still");
-    expect(screen.getByText("Still writing…")).toBeInTheDocument();
+    expect(screen.getByText("Writing explanation…")).toBeInTheDocument();
     // The fixed working label stays alongside the streamed content.
     expect(document.querySelector(".working")).not.toBeNull();
   });
@@ -149,7 +150,7 @@ describe("provisional streamed paragraphs", () => {
     // (Parents pass the fresh annotation from the store; the test
     // re-renders with it, like a snapshot patch does.)
     const stored = card({
-      turns: [
+      replies: [
         turn("ans_1", {
           blocks: [
             { type: "paragraph", id: "b1", text: { standard: "Final validated answer." }, citations: [] },
@@ -173,7 +174,7 @@ describe("provisional streamed paragraphs", () => {
     streamText("ann_stream", "job-1", "First paragraph is done.\n\nSecond, still");
     expect(document.querySelector(".exp-b.streaming")).not.toBeNull();
     const failed = card({
-      turns: [turn("ans_1", { working: null, error: "rate limited" })],
+      replies: [turn("ans_1", { working: null, error: "rate limited" })],
     });
     reseed([failed]);
     rerender(failed);

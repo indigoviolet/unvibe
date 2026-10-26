@@ -1355,7 +1355,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
   const safe = summary.replace(/</g, "&lt;");
   annotations.push({
     id,
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "hunk", fileKey, contentHash },
       quotedText: "",
@@ -1366,12 +1366,13 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
     },
     open: true,
     pinned: true,
-    messages: [],
     post: false,
     working: null,
-    turns: [
+    replies: [
       {
         id: replyId,
+        kind: "explain",
+        who: "agent",
         question: null,
         blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
         level: "standard",
@@ -2736,13 +2737,14 @@ export const mockApi = {
           // closed-thread legacy).
           open: true,
           pinned: true,
-          messages: [],
           post: false,
           working: "Thinking",
           jobId: askJobId,
-          turns: [
+          replies: [
             {
               id: replyId,
+              kind: "ask",
+              who: "agent",
               question: a.message,
               blocks: [],
               level: "standard",
@@ -2854,7 +2856,7 @@ export const mockApi = {
       const jobId = `mock-explain-${id}`;
       annotations.push({
         id,
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: host as import("@unvibe/shared").Thread["anchor"]["host"],
           quotedText: a.quote,
@@ -2870,13 +2872,14 @@ export const mockApi = {
         },
         open: true,
         pinned: true,
-        messages: [],
         post: false,
         working: "Thinking",
         jobId,
-        turns: [
+        replies: [
           {
             id: replyId,
+            kind: "explain",
+            who: "agent",
             question: null,
             blocks: [],
             level: "standard",
@@ -2980,7 +2983,7 @@ export const mockApi = {
       const jobId = `mock-followup-${id}`;
       annotations.push({
         id,
-        type: "conversation",
+        type: "thread",
         anchor: {
           // Qualified like the service stores it (#116): a bare block ID
           // would match the same-numbered block of every card.
@@ -2993,11 +2996,10 @@ export const mockApi = {
         },
         open: true,
         pinned: true,
-        messages: [],
         post: false,
         working: "Writing answer",
-        turns: [
-          { id: replyId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+        replies: [
+          { id: replyId, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();

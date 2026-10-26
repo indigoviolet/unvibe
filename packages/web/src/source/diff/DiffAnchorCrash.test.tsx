@@ -128,7 +128,6 @@ function Harness({ tokens }: { tokens?: Tokens }): React.JSX.Element {
     REVIEW_ID,
     () => undefined,
     () => {},
-    () => {},
   );
   return (
     <table>

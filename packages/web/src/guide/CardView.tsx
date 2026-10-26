@@ -30,9 +30,8 @@ import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
-import { ThreadView } from "../comments/ThreadView.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
+import { isClosedExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
@@ -184,7 +183,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
 
   const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
-    const open = exps.filter(isOpenExpansion);
     // Closed expansions + promoted links whose quote is gone become footnote
     // chips on the paragraph's citations line (via BlockView → BlockMarkers);
     // the highlight passes reveal them when the mark lands nowhere.

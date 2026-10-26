@@ -20,7 +20,6 @@ import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
-import { ThreadView } from "../../comments/ThreadView.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
@@ -58,7 +57,6 @@ export function useDiffExpansionBindings(
   reviewId: string,
   lookupPage: (pageId: string) => Page | undefined,
   onOpenPage: (pageId: string) => void,
-  onFollowUp: (cardId: string, blockId: string, index: number) => void,
 ): {
   lineSlots: LineSlots;
   expandedLines: ReadonlySet<string>;

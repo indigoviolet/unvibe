@@ -50,7 +50,7 @@ import { recordInteraction } from "../src/sharedctx/hooks.js";
 import { planRebuild } from "../src/sharedctx/rebuild.js";
 import { SharedContextService } from "../src/sharedctx/service.js";
 import { SharedContextStore } from "../src/sharedctx/store.js";
-import { isThreadSettled, summarizeSettledThread, toThreadSnapshot } from "../src/sharedctx/threads.js";
+import { isThreadSettled, summarizeSettledThread, toThreadSnapshot, type ThreadSnapshot } from "../src/sharedctx/threads.js";
 import {
   descriptionFor,
   repoRow,
