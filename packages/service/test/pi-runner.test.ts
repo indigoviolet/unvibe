@@ -25,8 +25,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
 import type { AgentEvent } from "@unvibe/shared";
 import { PiAgentRunner } from "../src/agent/pi/pi-runner.js";
+import { CompositeAgentRunner } from "../src/agent/pi/composite.js";
+import type { AcpAgentRunner } from "../src/agent/acp/index.js";
 import { probePiLogin } from "../src/readiness/checks.js";
-import { RealCommandRunner } from "../src/exec/runner.js";
+import { FakeCommandRunner, RealCommandRunner } from "../src/exec/runner.js";
+import { piCheck } from "../src/readiness/checks.js";
 
 const FAKE_PI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fake-pi.mjs");
 
@@ -141,7 +144,10 @@ function makeRunner(extraEnv: Record<string, string> = {}): PiAgentRunner {
   return new PiAgentRunner({
     binPath: FAKE_PI,
     sessionDir,
-    env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, ...extraEnv },
+    // The fake reports its version from UNVIBE_FAKE_PI_VERSION (default
+    // 0.0.0-fake, i.e. too old on purpose): tests that need a supported
+    // pi opt into a new one here; the too-old tests use the default.
+    env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, UNVIBE_FAKE_PI_VERSION: "9.9.9-fake", ...extraEnv },
   });
 }
 
@@ -225,10 +231,10 @@ describe("pi runner over a fake pi RPC process", () => {
 
   it("full access spawns the wider tool list (issue #160)", async () => {
     // Full access scrubs UNVIBE_* from the child env (like the ACP
-    // adapters), so the fake's own log channel is gone here: capture argv
-    // with a wrapper binary instead.
+    // adapters), so the fake's own version/mode vars are gone here: the
+    // wrapper re-exports the version a new pi would report on its own.
     const wrapper = path.join(dir, "pi-wrapper.sh");
-    fs.writeFileSync(wrapper, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${logFile}.argv"\nexec "${process.execPath}" "${FAKE_PI}" "$@"\n`, { mode: 0o755 });
+    fs.writeFileSync(wrapper, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${logFile}.argv"\nUNVIBE_FAKE_PI_VERSION=9.9.9-fake exec "${process.execPath}" "${FAKE_PI}" "$@"\n`, { mode: 0o755 });
     const runner = new PiAgentRunner({
       binPath: wrapper,
       sessionDir,
@@ -345,6 +351,82 @@ describe("pi runner over a fake pi RPC process", () => {
     }
   });
 
+  it("an older pi is not offered: listModels is empty and start refuses", async () => {
+    // Default fake version (0.0.0-fake) is older than PI_MIN_VERSION.
+    const old = new PiAgentRunner({ binPath: FAKE_PI, sessionDir, env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile } });
+    try {
+      expect(await old.isSupported()).toBe(false);
+      expect(await old.listModels("pi")).toEqual([]);
+      expect(await old.listThinking("pi")).toEqual([]);
+      await expect(
+        old.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() }),
+      ).rejects.toThrow(/needs pi ≥ 1\.4\.0/);
+    } finally {
+      await old.dispose();
+    }
+  });
+
+  it("composite providers() hides pi when its version is too old", async () => {
+    const acp = {} as unknown as AcpAgentRunner;
+    const withNew = new CompositeAgentRunner(
+      acp,
+      new PiAgentRunner({ binPath: FAKE_PI, sessionDir, env: { ...process.env, UNVIBE_FAKE_PI_VERSION: "1.4.0" } }),
+    );
+    const withOld = new CompositeAgentRunner(acp, new PiAgentRunner({ binPath: FAKE_PI, sessionDir, env: { ...process.env } }));
+    try {
+      expect(await withNew.providers()).toContain("pi");
+      expect(await withOld.providers()).toEqual(["claude", "codex"]);
+    } finally {
+      await withNew.dispose();
+      await withOld.dispose();
+    }
+  });
+
+  it("piCheck reports an installed-but-too-old pi with the upgrade", async () => {
+    const toolDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-pi-tool-"));
+    const toolBin = path.join(toolDir, "pi");
+    fs.writeFileSync(toolBin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const runner = new FakeCommandRunner();
+    runner.enqueue({ cmd: toolBin, args: ["--version"], stdout: "pi 1.2.0\n", stderr: "", code: 0 });
+    try {
+      const check = await piCheck({ pathValue: toolDir, runner });
+      expect(check.status).toBe("warning");
+      expect(check.summary).toContain("1.2.0");
+      expect(check.summary).toContain("too old");
+      expect(check.fix).toContain("Upgrade pi to 1.4.0 or later");
+    } finally {
+      fs.rmSync(toolDir, { recursive: true, force: true });
+    }
+  });
+
+  it("piCheck reports a current logged-in pi as ready", async () => {
+    const toolDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-pi-tool-"));
+    const toolBin = path.join(toolDir, "pi");
+    fs.writeFileSync(toolBin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const runner = new FakeCommandRunner();
+    runner.enqueue({ cmd: toolBin, args: ["--version"], stdout: "pi 1.4.0\n", stderr: "", code: 0 });
+    runner.enqueue({
+      cmd: toolBin,
+      args: ["auth", "check", "--provider", "openai-codex", "--json"],
+      stdout: JSON.stringify({ status: "ready", provider: "openai-codex" }),
+      stderr: "",
+      code: 0,
+    });
+    runner.enqueue({
+      cmd: toolBin,
+      args: ["auth", "check", "--provider", "openai", "--json"],
+      stdout: JSON.stringify({ status: "not_ready", provider: "openai", reason: "credentials_not_configured" }),
+      stderr: "",
+      code: 0,
+    });
+    try {
+      const check = await piCheck({ pathValue: toolDir, runner });
+      expect(check.status).toBe("ok");
+      expect(check.summary).toContain("logged in (openai-codex)");
+    } finally {
+      fs.rmSync(toolDir, { recursive: true, force: true });
+    }
+  });
   it("rejects unknown models and non-pi providers", async () => {
     const runner = makeRunner({ UNVIBE_FAKE_PI_MODELS: JSON.stringify([{ provider: "openai-codex", id: "m1", name: "M1" }]) });
     try {

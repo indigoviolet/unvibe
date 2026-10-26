@@ -204,15 +204,16 @@ export class AcpModelCatalog implements ModelCatalog {
   }
 
   /** Providers the pickers offer (issue #279): claude/codex, plus pi
-   * only when its binary is detected. Falls back to the static pair when
-   * the runner says nothing (fake/test runners). */
-  providers(): string[] {
+   * only when its binary is detected and not too old (checked live,
+   * cached). Falls back to the static pair when the runner says nothing
+   * (fake/test runners). */
+  async providers(): Promise<string[]> {
     try {
       const list = (
         this.runner as unknown as { providers?: () => string[] | Promise<string[]> }
       ).providers;
       if (typeof list === "function") {
-        const res = list.call(this.runner);
+        const res = await list.call(this.runner);
         if (Array.isArray(res) && res.length > 0) return res;
       }
     } catch {

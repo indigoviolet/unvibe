@@ -16,6 +16,15 @@ export const PI_PROVIDER = "pi";
 /** Explicit Unvibe override for the pi executable (unusual installs). */
 export const PI_BIN_ENV = "UNVIBE_PI_BIN";
 
+/**
+ * Minimum pi version Unvibe works with (owner decision on #279): the RPC
+ * protocol plus the extension surface this runner relies on
+ * (`before_provider_request` payload override, `--fork`/`--session` file
+ * flags, `get_available_models`). Older binaries are not offered as a
+ * provider; Doctor reports them as too old.
+ */
+export const PI_MIN_VERSION = "1.4.0";
+
 function isExecutableFile(p: string): boolean {
   try {
     fs.accessSync(p, fs.constants.X_OK);
@@ -80,6 +89,30 @@ export function isPiAvailable(
   if (!resolved) return false;
   if (resolved.source.endsWith("(missing)")) return false;
   return isExecutableFile(resolved.path);
+}
+
+/**
+ * True when `version` satisfies the minimum (owner decision on #279).
+ * Null (version unknown — the probe failed) does not gate: the runner's
+ * live calls fail loudly on their own when the binary is broken.
+ */
+export function piVersionMeetsMin(version: string | null): boolean {
+  if (!version) return true;
+  const parts = (v: string): number[] => v.split(".").map((s) => Number(s) || 0);
+  const a = parts(version);
+  const b = parts(PI_MIN_VERSION);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x < y) return false;
+    if (x > y) return true;
+  }
+  return true;
+}
+
+/** Plain-words too-old message (Doctor + readiness). */
+export function piTooOldMessage(version: string): string {
+  return `pi ${version} found; Unvibe needs pi ≥ ${PI_MIN_VERSION} (the RPC mode and extension surface in docs/pi-runner.md). Upgrade pi to ${PI_MIN_VERSION} or later (https://pi.dev).`;
 }
 
 /** Plain-words install hint used when pi is absent. */

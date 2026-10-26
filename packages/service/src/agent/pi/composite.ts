@@ -90,11 +90,12 @@ export class CompositeAgentRunner implements AgentRunner {
     return [];
   }
 
-  /** Providers this composite serves (pi only when its binary is present). */
-  providers(): string[] {
+  /** Providers this composite serves (pi only when its binary is present
+   * and not older than PI_MIN_VERSION — checked live, cached). */
+  async providers(): Promise<string[]> {
     const out = ["claude", "codex"];
     try {
-      if (this.pi.isAvailable()) out.push(PI_PROVIDER);
+      if (await this.pi.isSupported()) out.push(PI_PROVIDER);
     } catch {
       // detection never throws, but never let it break the catalog
     }

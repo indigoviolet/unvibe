@@ -165,7 +165,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       // present (never blocks): ok when absent or logged in, warning when
       // installed but logged out.
       await withTimeout(
-        piCheck({ agents: deps.agents, pathValue, timeoutMs, runner: deps.runner, env: process.env }),
+        piCheck({ pathValue, timeoutMs, runner: deps.runner, env: process.env }),
         {
           id: "pi",
           label: "Pi (ChatGPT via pi)",

@@ -43,15 +43,16 @@
  *   user's pi login keeps working), and the boundary is a process that a
  *   future change can wrap without touching the service.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentEvent, AgentRunner, McpServerConfig, ModelInfo, Session } from "@unvibe/shared";
-import { isPiAvailable, PI_PROVIDER, resolvePiBin } from "./detect.js";
+import { isPiAvailable, PI_PROVIDER, piTooOldMessage, piVersionMeetsMin, resolvePiBin } from "./detect.js";
 import { PI_EXTENSION_SOURCE } from "./extension.js";
 import { assertLiveAgentAllowed } from "../live-guard.js";
 import { loadConfig } from "../../config.js";
+import { parseVersion } from "../../exec/agent-bins.js";
 
 /** Review tool names Unvibe's MCP mount offers (tools.ts). Named in `--tools`
  * so the allowlist keeps the extension-registered bridge tools; pi ignores
@@ -363,6 +364,7 @@ export class PiAgentRunner implements AgentRunner {
   private extensionPath: string | null = null;
   private modelsCache: { at: number; models: ModelInfo[]; providers: Map<string, string> } | null = null;
   private thinkingCache: { at: number; options: { value: string; name?: string; description?: string }[] } | null = null;
+  private versionCache: { at: number; version: string | null } | null = null;
 
   constructor(opts: PiRunnerOptions = {}) {
     this.env = opts.env ?? process.env;
@@ -545,6 +547,12 @@ export class PiAgentRunner implements AgentRunner {
     mcpServers: McpServerConfig[];
   } & { readOnly?: boolean; effort?: string }): Promise<Session> {
     if (opts.provider !== PI_PROVIDER) throw new Error(`PiAgentRunner serves provider "pi" only`);
+    if (!(await this.isSupported())) {
+      const version = await this.piVersion();
+      throw new Error(
+        version ? piTooOldMessage(version) : "pi is not installed (not on PATH). Install Pi (https://pi.dev) and ensure `pi` is on your login-shell PATH; Unvibe does not install it for you.",
+      );
+    }
     const readOnly = opts.readOnly ?? true;
     const effort = opts.effort ?? "";
     const resolved = await this.resolveModel(opts.model);
@@ -848,10 +856,10 @@ export class PiAgentRunner implements AgentRunner {
   private readonly modelProviders = new Map<string, string>();
 
   /** Models pi offers (live, else the static fallback so pickers render
-   * offline; [] only when pi is not installed). */
+   * offline; [] when pi is absent or older than PI_MIN_VERSION). */
   async listModels(provider: string): Promise<ModelInfo[]> {
     if (provider !== PI_PROVIDER) return [];
-    if (!this.isAvailable()) return [];
+    if (!(await this.isSupported())) return [];
     const now = Date.now();
     if (this.modelsCache && now - this.modelsCache.at < this.modelCacheMs) return this.modelsCache.models;
     let models: ModelInfo[] = [...PI_STATIC_MODELS];
@@ -880,7 +888,7 @@ export class PiAgentRunner implements AgentRunner {
 
   /** Thinking levels pi offers (issue #172). Null-able via []: Default only. */
   async listThinking(provider: string): Promise<{ configId: string; current: string; options: { value: string; name?: string; description?: string }[] }[]> {
-    if (provider !== PI_PROVIDER || !this.isAvailable()) return [];
+    if (provider !== PI_PROVIDER || !(await this.isSupported())) return [];
     const now = Date.now();
     if (this.thinkingCache && now - this.thinkingCache.at < this.modelCacheMs) {
       return [{ configId: "thinking", current: "", options: this.thinkingCache.options }];
@@ -921,10 +929,46 @@ export class PiAgentRunner implements AgentRunner {
     return isPiAvailable({ env: this.env });
   }
 
-  /** Clear the model/thinking caches (Reload everything). */
+  /**
+   * pi's own version (`pi --version`, cached). Null when the probe fails —
+   * callers fail open on null and let the live calls report the breakage.
+   */
+  async piVersion(): Promise<string | null> {
+    const now = Date.now();
+    if (this.versionCache && now - this.versionCache.at < this.modelCacheMs) return this.versionCache.version;
+    let version: string | null = null;
+    try {
+      const bin = this.piBin();
+      const output = await new Promise<string>((resolve, reject) => {
+        // Inherit the runner env (tests point UNVIBE_FAKE_PI_* through it).
+        execFile(bin, ["--version"], { timeout: 15000, env: { ...process.env, ...this.env } }, (err, stdout, stderr) => {
+          if (err) reject(err);
+          else resolve(`${stdout}\n${stderr}`);
+        });
+      });
+      version = parseVersion(output);
+    } catch {
+      version = null;
+    }
+    this.versionCache = { at: now, version };
+    return version;
+  }
+
+  /**
+   * True when pi may serve as a provider: binary present and not older
+   * than PI_MIN_VERSION (owner decision on #279). Unknown versions fail
+   * open (fail loudly later instead).
+   */
+  async isSupported(): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    return piVersionMeetsMin(await this.piVersion());
+  }
+
+  /** Clear the model/thinking/version caches (Reload everything). */
   clearModelCache(): void {
     this.modelsCache = null;
     this.thinkingCache = null;
+    this.versionCache = null;
   }
 
   private async ephemeralModels(): Promise<{ models: ModelInfo[]; providers: Map<string, string> }> {

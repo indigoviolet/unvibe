@@ -11,6 +11,7 @@ import path from "node:path";
 import type { ReadinessCheck, Settings } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/index.js";
+import { PI_MIN_VERSION, piTooOldMessage, piVersionMeetsMin } from "../agent/pi/detect.js";
 import { gitHubCredentialConfig } from "../exec/git.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import type { AgentRunner } from "@unvibe/shared";
@@ -454,10 +455,11 @@ export async function agentCheck(opts: {
     };
   }
   const bin = { path: binPath, source: diag?.candidates.find((c) => c.path === binPath)?.source ?? "login-shell PATH" };
-  // Issue #279: the pi provider. No version gate (the runner speaks the
-  // documented RPC protocol); instead the login is probed explicitly,
-  // because the model probe below falls back to a static list offline and
-  // would otherwise report a logged-out pi as ready.
+  // Issue #279: the pi provider. The runner only serves pi ≥
+  // PI_MIN_VERSION (older binaries are not offered), so role checks fail
+  // fast here with the upgrade message; the login is probed explicitly
+  // because the model probe falls back to a static list offline and would
+  // otherwise report a logged-out pi as ready.
   if (provider === "pi") {
     return agentCheckPi({ id, label, pick, agents, bin, binVersion, timeoutMs, runner: opts.runner, env });
   }
@@ -647,6 +649,16 @@ async function agentCheckPi(opts: {
   const { id, label, pick, agents, bin, binVersion, timeoutMs } = opts;
   const cli = "pi";
   const binSuffix = binVersion ? ` (running ${cli} ${binVersion} at ${bin.path})` : ` (running ${bin.path})`;
+  if (binVersion && !piVersionMeetsMin(binVersion)) {
+    return {
+      id,
+      label,
+      status: "error",
+      summary: `${piTooOldMessage(binVersion)}${binSuffix}`,
+      fix: `Upgrade pi to ${PI_MIN_VERSION} or later (https://pi.dev), then Re-check.`,
+      settingsAnchor: "#models",
+    };
+  }
   const runner = opts.runner ?? new RealCommandRunner();
   let login: PiLogin;
   try {
@@ -715,7 +727,6 @@ async function agentCheckPi(opts: {
  * models); a warning only when pi is installed but logged out.
  */
 export async function piCheck(opts: {
-  agents: AgentRunner;
   pathValue?: string;
   timeoutMs?: number;
   runner?: CommandRunner;
@@ -749,6 +760,18 @@ export async function piCheck(opts: {
     };
   }
   const where = binVersion ? `pi ${binVersion} at ${binPath}` : `pi at ${binPath}`;
+  // Owner decision on #279: older binaries are not offered as a provider.
+  // Doctor names the running version and the upgrade.
+  if (binVersion && !piVersionMeetsMin(binVersion)) {
+    return {
+      id: "pi",
+      label: "Pi (ChatGPT via pi)",
+      status: "warning",
+      summary: `${where} installed but too old (Unvibe needs pi ≥ ${PI_MIN_VERSION})`,
+      fix: `Upgrade pi to ${PI_MIN_VERSION} or later (https://pi.dev), then Re-check. Until then OpenAI/Codex models run on the Codex CLI.`,
+      settingsAnchor: "#models",
+    };
+  }
   const runner = opts.runner ?? new RealCommandRunner();
   let login: PiLogin;
   try {
@@ -785,7 +808,8 @@ export async function piCheck(opts: {
   };
 }
 
-export function distinctCheck(settings: Settings): ReadinessCheck {  const a = settings.main;
+export function distinctCheck(settings: Settings): ReadinessCheck {
+  const a = settings.main;
   const b = settings.secondOpinion;
   const same = a.provider === b.provider && a.model === b.model;
   if (same) {

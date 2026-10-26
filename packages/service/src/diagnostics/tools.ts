@@ -25,6 +25,7 @@ import type { CommandRunner } from "../exec/runner.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import type { DiagnosticCandidate, DiagnosticTool } from "@unvibe/shared";
 import { agentBinSpec, compareVersions, type AgentProvider } from "../exec/agent-bins.js";
+import { PI_MIN_VERSION } from "../agent/pi/detect.js";
 import { isResolvableShim, resolveShimTarget, shimManagerForCandidate } from "../exec/shim-resolve.js";
 import { D2_MIN } from "../diagrams/bins.js";
 
@@ -86,12 +87,13 @@ export const TOOL_SPECS: ToolSpec[] = [
     probeFromWorktreeLike: true,
   },
   {
-    // Issue #279: the pi provider. No minimum version (the runner speaks
-    // the documented RPC protocol and degrades gracefully); Doctor shows
-    // the running version, readiness reports the login state separately.
+    // Issue #279: the pi provider. The minimum is enforced (older
+    // binaries are not offered; Doctor names the running version), and
+    // readiness reports the login state separately.
     tool: "pi",
     names: ["pi"],
     overrideEnvs: ["UNVIBE_PI_BIN"],
+    minVersion: PI_MIN_VERSION,
     versionArgs: ["--version"],
     installHint:
       "Install Pi (https://pi.dev) and ensure `pi` is on your login-shell PATH; Unvibe does not install it for you. Without pi, OpenAI/Codex models run on the Codex CLI.",

@@ -7,5 +7,5 @@
  */
 export { PiAgentRunner, piEnvFor, PI_REVIEW_TOOLS, PI_STATIC_MODELS, type PiRunnerOptions } from "./pi-runner.js";
 export { CompositeAgentRunner } from "./composite.js";
-export { PI_PROVIDER, PI_BIN_ENV, findPiOnPath, isPiAvailable, resolvePiBin, piInstallHint, type ResolvedPiBin } from "./detect.js";
+export { PI_PROVIDER, PI_BIN_ENV, PI_MIN_VERSION, findPiOnPath, isPiAvailable, piTooOldMessage, piVersionMeetsMin, resolvePiBin, piInstallHint, type ResolvedPiBin } from "./detect.js";
 export { PI_EXTENSION_SOURCE } from "./extension.js";
