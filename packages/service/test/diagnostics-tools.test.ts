@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { diagnoseTool, TOOL_SPECS, enumerateCandidates } from "../src/diagnostics/tools.js";
+import { diagnoseTool, sweepStaleProbeDirs, TOOL_SPECS, enumerateCandidates } from "../src/diagnostics/tools.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
 
 function makeBin(dir: string, name: string, body: string): string {
@@ -190,5 +190,53 @@ describe("diagnoseTool shim resolution (issue #105)", () => {
     expect(diag.chosen).toBe(w.shim);
     expect(diag.candidates[0].resolvedPath).toBeUndefined();
     expect(fake.calls.some((c) => c.cmd === w.miseBin)).toBe(false);
+  });
+});
+
+describe("probe worktree cleanup (issue #279 follow-up)", () => {
+  function probeDirs(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter((e) => e.startsWith("unvibe-probe-"));
+  }
+
+  it("diagnoseTool leaves no probe dir behind", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-probe-test-"));
+    makeBin(dir, "git", "#!/bin/sh\necho 'git version 2.50.0'\n");
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: path.join(dir, "git"), args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "git")!;
+    const before = new Set(probeDirs());
+    try {
+      await diagnoseTool(spec, { pathValue: dir, env: {}, runner: fake as never, timeoutMs: 3000 });
+      expect(probeDirs().filter((e) => !before.has(e))).toEqual([]);
+    } finally {
+      // Never pollute the shared tmp even when the assertion fails.
+      for (const e of probeDirs().filter((x) => !before.has(x))) {
+        fs.rmSync(path.join(os.tmpdir(), e), { recursive: true, force: true });
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sweepStaleProbeDirs removes only stale probe dirs", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-sweep-"));
+    try {
+      const stale = path.join(root, "unvibe-probe-old");
+      const fresh = path.join(root, "unvibe-probe-new");
+      const other = path.join(root, "unvibe-other");
+      fs.mkdirSync(stale);
+      fs.mkdirSync(fresh);
+      fs.mkdirSync(other);
+      fs.writeFileSync(path.join(root, "unvibe-probe-file"), "not a dir");
+      const old = new Date(Date.now() - 60 * 60_000);
+      fs.utimesSync(stale, old, old);
+      const removed = sweepStaleProbeDirs({ tmpRoot: root, olderThanMs: 10 * 60_000 });
+      expect(removed).toEqual([stale]);
+      expect(fs.existsSync(fresh)).toBe(true);
+      expect(fs.existsSync(other)).toBe(true);
+      expect(fs.existsSync(path.join(root, "unvibe-probe-file"))).toBe(true);
+      expect(sweepStaleProbeDirs({ tmpRoot: path.join(root, "missing") })).toEqual([]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

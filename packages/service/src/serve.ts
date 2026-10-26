@@ -11,6 +11,7 @@ import { loadOrCreateToken } from "./auth.js";
 import { removeOwnLock, writeLock } from "./cli/lock.js";
 import { loadConfig } from "./config.js";
 import { applyLoginShellPath } from "./diagnostics/path-probe.js";
+import { sweepStaleProbeDirs } from "./diagnostics/tools.js";
 import { shutdownService, type ServiceShutdownReport, type ServiceShutdownSteps } from "./lifecycle/index.js";
 import { createApp, listen } from "./server.js";
 import { makeDefaultSpawnHelper } from "./routes/update.js";
@@ -35,6 +36,11 @@ export async function serve(): Promise<void> {
   } catch {
     // non-fatal: keep the inherited PATH
   }
+
+  // Orphaned probe dirs (issue #279 follow-up): a SIGKILLed service never
+  // runs the diagnoseTool finally, so sweep our own stale entries here at
+  // startup (only minutes-old ones; a concurrent diagnosis is untouched).
+  sweepStaleProbeDirs();
 
   const db = openDatabase(dbFilePath(config.dataDir));
   migrate(db);
