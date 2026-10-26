@@ -198,7 +198,7 @@ footer a { color: inherit; }
 @media (max-width: 600px) {
   .install-code { flex-direction: column; }
   .install-code pre { padding: 14px; }
-  .install-code code { font-size: .83rem; white-space: pre-wrap; word-break: break-all; }
+  .install-code code { font-size: .83rem; white-space: pre; }
   .copy {
     border-left: 0;
     border-top: 1px solid rgb(251 248 242 / .3);
