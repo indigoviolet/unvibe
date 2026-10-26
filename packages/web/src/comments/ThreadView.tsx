@@ -755,47 +755,44 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : hasAgentReply ? (
-        // Owner decision: a thread with agent replies ends in ONE box,
-        // labelled Reply, and it asks the agent (the old "Ask a follow-up"
-        // box). Reviewer comments are written elsewhere, never from this
-        // box. #271 stays: while an answer is pending the box stays
-        // visible and editable with Send disabled ("Wait for the answer")
-        // and the draft kept; #270 stays: a failed turn hides the box
-        // and Retry governs.
-        failedReply ? null : (
-          <ReplyBox
-            reviewId={reviewId}
-            annotationId={thread.id}
-            serverReply={thread.followupDraft ?? undefined}
-            placeholder="Ask a follow-up…"
-            ariaLabel="Reply"
-            sendLabel="Reply"
-            discardLabel="Clear"
-            rows={1}
-            allowEmptyDiscard
-            sendDisabled={hasPendingAgent}
-            sendDisabledTip={hasPendingAgent ? "Wait for the answer" : undefined}
-            persistField="followupDraft"
-            onSend={onAskFollowup}
-            onDiscard={() => api.updateComment(reviewId, thread.id, { followupDraft: null })}
-          />
-        )
-      ) : (
+      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}
           serverReply={thread.reply ?? undefined}
-          placeholder={isNew ? "Write a comment…" : "Reply…"}
-          ariaLabel={isNew ? "New comment" : "Reply"}
-          sendLabel={isNew ? "Save" : "Reply"}
+          placeholder="Write a comment…"
+          ariaLabel="New comment"
+          sendLabel="Save"
           discardLabel="Discard"
-          rows={isNew ? 3 : 1}
-          allowEmptyDiscard={isNew}
-          sendDisabled={!isNew && hasPendingAgent}
-          sendDisabledTip={!isNew && hasPendingAgent ? "Wait for the answer" : undefined}
+          rows={3}
+          allowEmptyDiscard
           onSend={(text) => api.replyComment(reviewId, thread.id, { text })}
-          onDiscard={() => (isNew ? api.deleteComment(reviewId, thread.id) : api.updateComment(reviewId, thread.id, { reply: null }))}
+          onDiscard={() => api.deleteComment(reviewId, thread.id)}
+        />
+      ) : // Owner decision: EVERY thread ends in ONE box, labelled Reply,
+      // and it asks the agent (an Ask reply in the same thread) — new,
+      // comment-only and agent threads alike. Reviewer comments are
+      // written elsewhere (the selection toolbar's Comment), never
+      // from this box. #271 stays: while an answer is pending the box
+      // stays visible and editable with Send disabled ("Wait for the
+      // answer") and the draft kept; #270 stays: a failed turn hides
+      // the box and Retry governs.
+      failedReply ? null : (
+        <ReplyBox
+          reviewId={reviewId}
+          annotationId={thread.id}
+          serverReply={thread.followupDraft ?? undefined}
+          placeholder="Ask a follow-up…"
+          ariaLabel="Reply"
+          sendLabel="Reply"
+          discardLabel="Clear"
+          rows={1}
+          allowEmptyDiscard
+          sendDisabled={hasPendingAgent}
+          sendDisabledTip={hasPendingAgent ? "Wait for the answer" : undefined}
+          persistField="followupDraft"
+          onSend={onAskFollowup}
+          onDiscard={() => api.updateComment(reviewId, thread.id, { followupDraft: null })}
         />
       )}
       {pendingExplain && !hasOpenCard && !readOnly ? <WorkingPlaceholder label={inflightLabel(pendingExplain[1].kind)} /> : null}

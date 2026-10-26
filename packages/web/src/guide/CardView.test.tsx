@@ -47,36 +47,6 @@ function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Thread[] = [
   } as unknown as ReviewSnapshot);
 }
 
-function answerCard(): Thread {
-  return {
-    id: "ann_ans",
-    type: "thread",
-    anchor: {
-      host: { kind: "block", blockId: "c1#b-f" },
-      quotedText: "Why?",
-      prefix: "",
-      suffix: "",
-      position: 0,
-      version: 1,
-    },
-    open: true,
-    replies: [],
-    post: false,
-    working: "Writing answer",
-    turns: [
-      {
-        id: "ans_1",
-        question: "Why?",
-        blocks: [],
-        level: "standard",
-        revision: 1,
-        undoStack: [],
-        working: "Writing answer",
-      },
-    ],
-  } as unknown as Thread;
-}
-
 function holdAction(): {
   resolveAction: (res: { accepted: boolean }) => void;
   restore: () => void;
@@ -306,14 +276,31 @@ describe("CardView immediate feedback", () => {
     expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
   });
 
-  test("once the answer renders, the chip placeholder is replaced by its working state", () => {
+  test("once the answer thread arrives, the chip placeholder is gone", () => {
     const withFollow = card({
       blocks: [
         { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
-    seedSnapshot([withFollow], [], [answerCard()]);
+    seedSnapshot([withFollow], [], [
+      {
+        id: "ann_ans",
+        type: "thread",
+        anchor: {
+          host: { kind: "block", blockId: "c1#b-f" },
+          quotedText: "Why?",
+          prefix: "",
+          suffix: "",
+          position: 0,
+          version: 1,
+        },
+        open: true,
+        replies: [],
+        post: false,
+        working: "Writing answer",
+      } as unknown as Thread,
+    ]);
     render(
       <CardView
         reviewId={REVIEW_ID}
@@ -323,16 +310,15 @@ describe("CardView immediate feedback", () => {
         onFollowUp={() => {}}
       />,
     );
-    // Chip entry set (answer rendered before the response retargets): no
-    // second indicator under the chips…
+    // Chip entry set (answer thread arrived before the response
+    // retargets): no second indicator under the chips. The answer
+    // thread itself carries the working state (#273: expansions are
+    // threads now, covered by journeys J15/J271) — nothing renders
+    // here.
     act(() => {
       useReview.getState().beginInflight("followup:c1:b-f:0", "followup");
     });
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
-    // …the answer expansion itself shows Writing answer, not the generic
-    // server text.
-    const exp = document.querySelector('[data-expansion="ann_ans"]');
-    expect(exp?.querySelector(".working")).toHaveTextContent("Writing answer");
   });
 
   test("depth marks the card as rewriting on click", () => {

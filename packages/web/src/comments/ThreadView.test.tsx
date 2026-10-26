@@ -95,15 +95,15 @@ describe("ThreadView reply box", () => {
     expect(screen.getByLabelText("Reply")).toHaveValue("unsent draft");
   });
 
-  test("Discard clears the box on an existing comment", async () => {
+  test("Discard clears the follow-up draft on an existing thread", async () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const updateSpy = vi.spyOn(api, "updateComment").mockResolvedValue({ ok: true });
     render(<ThreadView reviewId={REVIEW_ID} thread={found} />);
     try {
       const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: "to clear" } });
-      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-      expect(updateSpy).toHaveBeenCalledWith(REVIEW_ID, found.id, { reply: null });
+      fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+      expect(updateSpy).toHaveBeenCalledWith(REVIEW_ID, found.id, { followupDraft: null });
       await vi.advanceTimersByTimeAsync(500);
       expect(screen.getByLabelText("Reply")).toHaveValue("");
     } finally {
@@ -111,18 +111,22 @@ describe("ThreadView reply box", () => {
     }
   });
 
-  test("a reply sends through the comments route, never an agent action", async () => {
+  test("a reply asks the agent, never the comments route", async () => {
     const commenting = thread({ replies: [mkReply("you", "Nit")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
-    const actionSpy = vi.spyOn(api, "action");
+    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
     const replySpy = vi.spyOn(api, "replyComment").mockResolvedValue({ ok: true });
     render(<ThreadView reviewId={REVIEW_ID} thread={commenting} />);
     try {
       const box = screen.getByLabelText("Reply") as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: "And then?" } });
       fireEvent.click(screen.getByRole("button", { name: "Reply" }));
-      expect(replySpy).toHaveBeenCalledWith(REVIEW_ID, commenting.id, { text: "And then?" });
-      expect(actionSpy).not.toHaveBeenCalled();
+      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
+        kind: "reply",
+        annotationId: commenting.id,
+        message: "And then?",
+      });
+      expect(replySpy).not.toHaveBeenCalled();
     } finally {
       actionSpy.mockRestore();
       replySpy.mockRestore();
