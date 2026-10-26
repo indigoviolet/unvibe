@@ -4,6 +4,9 @@ import { suiteOptions } from "../../vitest.shared.js";
 export default defineConfig({
   test: {
     setupFiles: ["./vitest.setup.ts"],
+    // Real-home guard (issue #280): fails the run if any test rewrites the
+    // real login-unit locations. Metadata only, never reads contents.
+    globalSetup: ["./test/home-guard.global-setup.ts"],
     // NOTE: test/acp-live.test.ts is NOT excluded here — it skips itself via
     // describe.skipIf(!LIVE) and runs with `npm run test:live` (UNVIBE_LIVE=1).
     // The `test`/`test:fast` scripts exclude it via CLI (`--exclude test/acp-live.test.ts`)
