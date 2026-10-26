@@ -934,7 +934,12 @@ export function StartPage(): React.JSX.Element {
         </p>
       ) : null}
       {prOffer && !cloningPr ? (
-        <div className="ci" data-testid="pr-clone-offer">
+          <div
+            className="ci"
+            data-testid="pr-clone-offer"
+            // #281: opaque box above the watermark (see the readiness callout).
+            style={{ background: "var(--surface)" }}
+          >
           <div style={{ minWidth: 0 }}>
             <span className="hint">
               {prOffer.owner}/{prOffer.name} isn&apos;t in your repos. Clone it and open #
@@ -1083,7 +1088,9 @@ export function StartPage(): React.JSX.Element {
                   key={c.id}
                   className="ci"
                   data-testid={`readiness-callout-${c.id}`}
-                  style={{ border: "1px solid var(--line)", alignItems: "center" }}
+                  // #281: opaque box above the watermark (the ball must
+                  // never show inside a card or notice box).
+                  style={{ border: "1px solid var(--line)", alignItems: "center", background: "var(--surface)" }}
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13 }}>

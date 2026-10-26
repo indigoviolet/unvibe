@@ -259,23 +259,27 @@ code { font-family: var(--mono); font-size: .86em; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .top .brand .wordmark .wm-un { fill: var(--ink); }
 }
-/* Start-screen watermark (issue #281, variant A Watermark): #275's faint,
-   tilted, multiply-blended, fixed watermark, centred behind the content
-   with the whole ball visible. The top bar and the start content sit
-   above it; toasts, popovers and menus render in portals, untouched.
-   Multiply goes invisible on dark grounds, so dark mode uses a plain
-   low opacity instead. */
+/* Start-screen watermark (issue #281, variant A Watermark): #275's disco
+   ball, faint, tilted and multiply-blended, fixed and behind the content —
+   but off-centre, sitting in the empty space right of the content column
+   (owner direction; the centred #275 position put it behind the lists).
+   The whole art shows: it is only cropped where the window edge cuts it,
+   like the variant-A mock. At narrow widths with no side space it sits
+   partly behind the content, still faint and legible, and — being fixed —
+   never causes horizontal overflow. Multiply goes invisible on dark
+   grounds, so dark mode uses a plain low opacity instead. */
 .start-watermark {
   position: fixed;
   inset: 0;
   z-index: 0;
-  display: grid;
-  place-items: center;
   pointer-events: none;
 }
 .start-watermark img {
-  width: min(82vmin, 720px);
-  height: min(82vmin, 720px);
+  position: absolute;
+  right: -150px;
+  bottom: -110px;
+  width: 640px;
+  height: auto;
   opacity: .16;
   transform: rotate(-9deg);
   mix-blend-mode: multiply;
@@ -283,6 +287,13 @@ code { font-family: var(--mono); font-size: .86em; }
 :root[data-theme="dark"] .start-watermark img { opacity: .1; mix-blend-mode: normal; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .start-watermark img { opacity: .1; mix-blend-mode: normal; }
+}
+/* Narrow windows: the 760px content column plus the page padding leave
+   no side space at 808px and below, so the ball would sit entirely
+   behind the cards — hide it there (owner direction). At 960 it still
+   peeks in the remaining margin; the opaque cards keep it out. */
+@media (max-width: 808px) {
+  .start-watermark { display: none; }
 }
 .app.start > .top, .app.start > main { position: relative; z-index: 1; }
 /* Breadcrumb after the home link (issue #31 round 2): quiet, muted
