@@ -1442,6 +1442,41 @@ for (const combo of [
   });
 }
 
+// Issue #281 (variant A Watermark): the start screen in Studio, light
+// and dark, at 1440 and 960 (the default theme's start scenes run in the
+// four main passes above). One frame per combo: the wordmark top-bar
+// logo plus the faint centred ball behind the lists. Resets the theme
+// to default, like the theme loop above.
+for (const combo of [
+  { width: 1440, dark: false },
+  { width: 1440, dark: true },
+  { width: 960, dark: false },
+  { width: 960, dark: true },
+] as const) {
+  const suffix = `studio-${combo.width}-${combo.dark ? "dark" : "light"}`;
+  test(`visual tour start studio (${suffix})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: combo.width, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "studio" });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("unvibe:ui-theme", "studio");
+      } catch {
+        // Boot falls back to the default theme; the assert below fails.
+      }
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, `start-${suffix}`);
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
+  });
+}
+
 // Issue #232 preparing states: while a review is being prepared both
 // panes share one modest loading state — the processing indicator plus a
 // short label at body size ("Building the guide" / "Loading the diff"),
