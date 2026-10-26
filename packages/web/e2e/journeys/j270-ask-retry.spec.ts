@@ -64,6 +64,7 @@ test.describe("J270 ask follow-up failure and retry", () => {
     // no toolbar or reply box on that turn.
     const failed = after.locator("[data-reply]").nth(1);
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
+    await page.screenshot({ path: "test-results/j270-failed.png" });
     await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 15_000 });
     await expect(failed.locator(".ctl")).toHaveCount(0);
 

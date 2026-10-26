@@ -1,5 +1,15 @@
 # Acceptance audit (hardening pass, branch `hardening`; audit-10 update 2026-10-11)
 
+> #273 flat threads (branch `feat/273-flat-threads`, unmerged): Explain/Ask
+> answers and reviewer comments are now replies in one flat `Thread`
+> (`anchor`, `replies[]`, kind `ask`/`explain`/`comment`, `persona`
+> reserved). Nested ExpansionCard recursion, the separate comment ThreadView,
+> per-annotation sessions, old action payloads and the `ans_…` host form are
+> gone. **Stored reviews must be reset (no migration; wipe the data dir).**
+> Journeys j2/j15/j214/j265/j266/j206/j6 reworked to the new behaviour; new
+> journey j273 covers ask → explain-inside → comment, reply link,
+> collapse-all/expand-one.
+
 Method: every verdict below is backed by code (`file:line`), a named test,
 or a command run against the **built** service (`mise run build` output) in
 demo mode (`UNVIBE_AGENT=replay`, recorded pipeline, no tokens) against real

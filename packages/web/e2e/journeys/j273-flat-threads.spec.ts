@@ -88,6 +88,7 @@ test.describe("J273 flat threads", () => {
       })
       .toBeGreaterThanOrEqual(2);
     await expect(thread.locator('[data-reply][data-kind="explain"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: "test-results/j273-thread.png" });
 
     // Still one thread, now with ask + explain replies (flat).
     const snap1 = await threads(svc, reviewId);
@@ -106,6 +107,7 @@ test.describe("J273 flat threads", () => {
     const target = page.locator(`[data-reply="${targetId}"]`);
     await expect(target).toBeVisible({ timeout: 15_000 });
     await expect(target).toHaveClass(/flash/, { timeout: 15_000 });
+    await page.screenshot({ path: "test-results/j273-replylink.png" });
 
     // A reviewer comment joins the same thread (kind badged, person avatar).
     await thread.locator('textarea[aria-label="Reply"]').first().fill("Good — let's call this out in the description.");
@@ -124,11 +126,13 @@ test.describe("J273 flat threads", () => {
     const row = page.locator(`button.spike-row[data-row="${threadId}"]`);
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(/1 reply|2 replies|3 replies/);
+    await page.screenshot({ path: "test-results/j273-collapsed.png" });
     await expect(page.locator(`#C-problem section.ithread[data-thread="${threadId}"]`)).toHaveCount(0);
     await row.click();
     await expect(page.locator(`#C-problem section.ithread[data-thread="${threadId}"]`)).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.locator(`#C-problem [data-thread="${threadId}"] [data-reply]`).first()).toBeVisible();
+    await page.screenshot({ path: "test-results/j273-expanded.png" });
   });
 });

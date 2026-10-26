@@ -13,7 +13,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Annotation, Block, Reply } from "@unvibe/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -22,7 +22,7 @@ import { performAction, performInsertAction } from "../guide/actions.js";
 import { BlockView } from "../guide/BlockView.js";
 import { DepthControl } from "../guide/DepthControl.js";
 import { linkCardBlocks } from "../guide/glossary.js";
-import { busyForCard, busyForConversation, inflightLabel, type BusyState } from "../guide/inflight.js";
+import { busyForCard, inflightLabel } from "../guide/inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../guide/secondOpinion/index.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
@@ -128,8 +128,6 @@ function AgentReplyView({
   reviewId,
   thread,
   reply,
-  isLatest,
-  cardBusy,
   lookupPage,
   onOpenPage,
   onFollowUp,
@@ -139,8 +137,6 @@ function AgentReplyView({
   reviewId: string;
   thread: Annotation;
   reply: Reply;
-  isLatest: boolean;
-  cardBusy: BusyState | null;
   lookupPage: (pageId: string) => { id: string } | undefined;
   onOpenPage: (pageId: string) => void;
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
@@ -457,7 +453,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     ([k, v]) => (k === `explain:comment:${thread.id}` || k === `ask:comment:${thread.id}`) && (v.kind === "explain" || v.kind === "ask"),
   );
   const hasOpenCard = commentCards.some((a) => a.open);
-  const cardBusy = busyForConversation(inflight, snapshot?.jobs ?? [], snapshot, thread);
   const threadWorking = (thread.working ?? "") !== "" && thread.working !== null;
   const threadError = thread.error ?? null;
   // Latest failed agent reply for the thread-level banner (Retry as single source of truth, #270).
@@ -573,7 +568,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           </Button>
         </div>
       ) : null}
-      {replies.map((r, i) =>
+      {replies.map((r) =>
         r.kind === "comment" || r.kind === "persona" ? (
           <CommentReplyView key={r.id} reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} />
         ) : (
@@ -582,8 +577,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             reviewId={reviewId}
             thread={thread}
             reply={r}
-            isLatest={i === replies.length - 1}
-            cardBusy={cardBusy}
             lookupPage={lp}
             onOpenPage={op}
             onFollowUp={of}

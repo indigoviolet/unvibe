@@ -26,7 +26,7 @@
  * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { ActionAnchor, Anchor, Annotation, Block, Job, Reply, ReviewSnapshot, Thread } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Annotation, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
@@ -172,19 +172,6 @@ export async function ensureHunkCard(
     } as unknown as Annotation);
   });
   return { annotationId, replyId };
-}
-
-/**
- * First summary block of a hunk card's turn (the nested Explain/Ask
- * anchors here, exactly like a selection in any answer).
- */
-function hunkSummaryBlock(ctx: ActionContext, annotationId: string, replyId: string): string {
-  const snapshot = getSnapshotOrThrow(ctx.reviews, ctx.reviewId);
-  const card = snapshot.annotations.find((a) => a.id === annotationId);
-  const turn = card?.replies?.find((t) => t.id === replyId);
-  const block = turn?.blocks.find((b) => b.type === "paragraph") ?? turn?.blocks[0];
-  if (!turn || !block) throw new Error(`hunk card ${annotationId} has no content`);
-  return `${replyId}#${block.id}`;
 }
 
 /**
