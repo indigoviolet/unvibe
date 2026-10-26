@@ -1,17 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="78" height="26" fill="none" viewBox="2 28 77.5 25.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="75.1" height="22.6" fill="none" viewBox="3.1 29.6 75.1 22.6">
 <!-- SVG created with Arrow, by QuiverAI (https://quiver.ai) -->
-  <defs>
-    <filter id="filter0_d_10217_60364" x="2.465" y="28.71" width="76.52" height="24.23" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
-      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
-      <feColorMatrix in="SourceAlpha" result="hardAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
-      <feOffset/>
-      <feGaussianBlur stdDeviation="0.664062"/>
-      <feColorMatrix values="0 0 0 0 0.980392 0 0 0 0 0.0509804 0 0 0 0 0.745098 0 0 0 1 0"/>
-      <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_10217_60364"/>
-      <feBlend in="SourceGraphic" in2="effect1_dropShadow_10217_60364" result="shape"/>
-    </filter>
-  </defs>
-  <g filter="url(#filter0_d_10217_60364)">
+  <g>
     <path d="m3.71 37.23v8.23l3.14 3.08h7.98l3-3.02v-8.29h-4.3v7.03h-5.45v-7.03h-4.37z" stroke="#9231E2" stroke-width=".166"/>
     <path d="m18.48 37.23v11.31h4.24v-7.17h5.13v7.17h4.29v-8.22l-3.04-3.09h-10.62z" stroke="#9231E2" stroke-width=".166"/>
     <path d="m4.12 37.63v7.66l2.9 2.92h7.67l2.83-2.91v-7.67h-3.62v7.01h-6.15v-7.01h-3.63z" fill="#38309E"/>

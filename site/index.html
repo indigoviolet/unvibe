@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Unvibe reads a branch or pull request with you, using your Claude Code or Codex subscription. Install it, then open your local instance." />
+<meta name="description" content="Guided, explorable reviews of pull requests and branches, run on your machine with your existing Claude Code or Codex subscription." />
 <title>Unvibe — vibe to code, unvibe to understand</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,13 +22,14 @@
 </a>
 </header>
 
-<main class="wrap">
+<main>
+<div class="wrap">
 <section class="hero">
 <h1>
 <span class="line"><img class="wm" src="./unvibe-vibe.svg" alt="vibe" /> <span class="conn">to code.</span></span>
 <span class="line"><img class="wm" src="./unvibe-wordmark.svg" alt="unvibe" /> <span class="conn">to understand.</span></span>
 </h1>
-<p class="lede">Unvibe reads a branch or pull request with you, using your Claude Code or Codex subscription.</p>
+<p class="lede">Guided, explorable reviews of pull requests and branches, run on your machine with your existing Claude Code or Codex subscription.</p>
 
 <div class="install" id="install">
 <div class="install-code">
@@ -37,40 +38,48 @@ unvibe setup
 unvibe open</code></pre>
 <button class="copy" id="copyBtn" type="button">Copy</button>
 </div>
-<p class="req">Needs macOS or Linux with Node 24+, git, gh, and the claude or codex CLI (d2 optional for diagrams).</p>
+<p class="req">macOS or Linux, Node 24+, <code>git</code>. Log in to <code>gh</code> for pull requests and to <code>claude</code> or <code>codex</code> for guides. <code>d2</code> is optional, for diagrams.</p>
 </div>
 </section>
+</div>
 
+<hr class="rule" />
+
+<div class="wrap">
 <section class="features" aria-label="Features">
 <div class="feat">
 <h2>Start with the story</h2>
-<p>Open a PR or branch and get a guide that restates the change as linked pages: the idea first, then the decisions and alternatives, each tied to the exact lines.</p>
+<p>A guide to the problem, the central idea and the concepts, before any hunks.</p>
 </div>
 <div class="feat">
 <h2>Keep asking why</h2>
-<p>Select any phrase to explain it or ask a follow-up. Answers land anchored to the text and build on earlier pages instead of starting over.</p>
+<p>Ask about anything in the guide or code, recursively, with the repository in context.</p>
 </div>
 <div class="feat">
 <h2>Untangle the plotlines</h2>
-<p>Follow concepts, data flow and findings across cards and diagrams, with depth controls and a second opinion when a claim needs pressure-testing.</p>
+<p>Follow each thread of a change on its own, with mechanical edits hidden.</p>
 </div>
 <div class="feat">
 <h2>Review in your own voice</h2>
-<p>Leave notes anywhere, collect them in the Outbox, and submit once as a single GitHub review — or copy them as Markdown on any review.</p>
+<p>Mark hunks reviewed, comment as you go, and post to GitHub as yourself.</p>
 </div>
 <div class="feat">
 <h2>Use the subscriptions you have</h2>
-<p>Unvibe drives your own Claude Code and Codex logins through their CLIs. No new account, no separate API billing to set up.</p>
+<p>Runs on your Claude Code or Codex subscription. No new account or API key.</p>
 </div>
 <div class="feat">
 <h2>Local, no middleman</h2>
-<p>The service runs on your machine and talks only to loopback. Your reviews stay on your disk, and nothing reaches GitHub until you submit.</p>
+<p>There is no Unvibe server. Your code goes only to GitHub and your AI provider.</p>
 </div>
 </section>
+</div>
 </main>
 
-<footer class="wrap">
-<p>Unvibe is a local reader for code changes. Source and open work: <a href="https://github.com/indigoviolet/unvibe">github.com/indigoviolet/unvibe</a>.</p>
+<footer>
+<div class="wrap foot">
+<img class="foot-wm" src="./unvibe-wordmark.svg" alt="unvibe" />
+<a href="https://github.com/indigoviolet/unvibe">github.com/indigoviolet/unvibe</a>
+</div>
 </footer>
 
 <script>
