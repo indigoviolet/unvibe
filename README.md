@@ -6,7 +6,7 @@ Unvibe reads a branch or pull request with you. It restates the change as a guid
 
 ## Status
 
-It works on Linux and macOS. Install the release with `npm install -g github:indigoviolet/unvibe#release`. What it is and how to run it is also on the front-door page: [indigoviolet.github.io/unvibe](https://indigoviolet.github.io/unvibe/). Open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
+It works on Linux and macOS. Install the release with `npm install -g 'github:indigoviolet/unvibe#release'`. What it is and how to run it is also on the front-door page: [indigoviolet.github.io/unvibe](https://indigoviolet.github.io/unvibe/). Open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
 
 ## Requirements
 
@@ -31,7 +31,7 @@ unvibe start
 ## Install and run
 
 ```sh
-npm install -g github:indigoviolet/unvibe#release
+npm install -g 'github:indigoviolet/unvibe#release'
 unvibe setup
 unvibe start
 ```
