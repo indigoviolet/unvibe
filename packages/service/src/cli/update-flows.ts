@@ -42,6 +42,18 @@ export interface UpdateDeps {
    * inherits the process env.
    */
   updateEnv?: { PATH: string };
+  /**
+   * Home dir for the login-unit refresh (issue #280). Production omits it
+   * (real `os.homedir()`); tests pass a scratch dir so a managed real home
+   * is never rewritten.
+   */
+  homeDir?: string;
+  /**
+   * Platform for the login-unit refresh (issue #280). Production omits it
+   * (real `process.platform`); tests pass an explicit value with the scratch
+   * home.
+   */
+  platform?: string;
 }
 
 export interface UpdateOutcome {
@@ -96,6 +108,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
     serviceVersion: deps.serviceVersion,
     channel,
     env: deps.updateEnv,
+    ...(deps.homeDir !== undefined ? { homeDir: deps.homeDir } : {}),
     log: () => {},
   });
   if (result.code === 2) {
@@ -117,7 +130,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
     // running CLI's own path is the new one; the node is this process's.
     const cliPath = deps.cliScriptPath;
     if (cliPath) {
-      const refreshed = refreshLoginUnitIfManaged(os.homedir(), process.platform, {
+      const refreshed = refreshLoginUnitIfManaged(deps.homeDir ?? os.homedir(), deps.platform ?? process.platform, {
         nodePath: process.execPath,
         cliPath,
         port: loadConfig().port,

@@ -30,6 +30,11 @@ function tmpDir(prefix: string): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
+/** Scratch home for switch flows (issue #280): never the real home. */
+function scratchHome(): string {
+  return tmpDir("unvibe-home-");
+}
+
 function makeExecutable(dir: string, name: string, body: string): string {
   const file = path.join(dir, name);
   fs.writeFileSync(file, body, { mode: 0o755 });
@@ -218,6 +223,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceVersion: "0.0.1",
       channel: "preview/feat-x",
       env: { PATH: "/fake/mise/bin:/usr/bin" },
+      homeDir: scratchHome(),
       log: () => {},
     });
     const npmCall = runner.calls.find((c) => c.cmd === "npm");
@@ -241,6 +247,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: scriptPath,
       serviceVersion: "0.0.1",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     // Verified in place: no rollback into the same failure.
@@ -275,6 +282,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: scriptPath,
       serviceVersion: "0.0.1",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(result.code).toBe(1);
@@ -313,6 +321,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: scriptPath,
       serviceVersion: "0.0.1",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(result.code).toBe(1);
@@ -341,6 +350,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: scriptPath,
       serviceVersion: "0.0.1",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(result.code).toBe(1);
@@ -372,6 +382,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: landed.scriptPath,
       serviceVersion: "0",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(ok.code).toBe(0);
@@ -389,6 +400,7 @@ describe("switch core with a wrapper-hook failure", () => {
       serviceScriptPath: blind.scriptPath,
       serviceVersion: "0",
       channel: "preview/feat-x",
+      homeDir: scratchHome(),
       log: () => {},
     });
     expect(blindResult.code).toBe(0);

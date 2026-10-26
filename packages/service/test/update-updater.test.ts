@@ -30,6 +30,11 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-update-"));
 }
 
+/** Scratch home for updater flows (issue #280): never the real home. */
+function scratchHome(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-home-"));
+}
+
 describe("FakeUpdater", () => {
   it("marks the installed ref current and switches it", async () => {
     const dir = tempDir();
@@ -105,7 +110,7 @@ describe("backend selection + real updater", () => {
   it("real updater rejects unknown channels without touching npm", async () => {
     const dir = tempDir();
     const runner = new FakeCommandRunner();
-    const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1" });
+    const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1", homeDir: scratchHome() });
     await expect(real.switchTo("bogus")).rejects.toThrow('unknown update channel "bogus"');
     expect(runner.calls).toHaveLength(0);
   });
@@ -123,7 +128,7 @@ describe("backend selection + real updater", () => {
     process.env.UNVIBE_UPDATE_CHANNELS_FILE = file;
     try {
       const runner = new FakeCommandRunner();
-      const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1" });
+      const real = new RealUpdater({ runner, dataDir: dir, serviceScriptPath: undefined, serviceVersion: "0.0.1", homeDir: scratchHome() });
       const list = await real.listChannels();
       expect(list.map((c) => c.ref)).toEqual(["release", "preview/a"]);
       expect(runner.calls).toHaveLength(0);

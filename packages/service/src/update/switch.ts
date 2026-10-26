@@ -29,6 +29,7 @@ import {
   shortCommit,
   type InstalledBuild,
 } from "./channels.js";
+import os from "node:os";
 import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "./install.js";
 import { findMiseBinStatic } from "./mise-find.js";
 
@@ -56,6 +57,12 @@ export interface SwitchCoreRequest {
    * service's repaired PATH before calling).
    */
   env?: Record<string, string | undefined>;
+  /**
+   * Home dir for the stable npm cwd + mise lookup (issue #280).
+   * Production omits it (real `os.homedir()`); tests pass a scratch dir.
+   * Only a spawn cwd / lookup root, never a write target.
+   */
+  homeDir?: string;
   /** Receives every output line as it is produced (console or switch log). */
   log: (line: string) => void;
 }
@@ -108,8 +115,10 @@ export function isReshimOnlyFailure(inst: RunResult): boolean {
  */
 async function attemptOwnReshim(req: SwitchCoreRequest): Promise<string> {
   try {
+    const homeDir = req.homeDir ?? os.homedir();
     const mise = findMiseBinStatic({
       env: { ...process.env, ...(req.env ?? {}) },
+      homeDir,
       inheritedPath: req.env?.PATH ?? process.env.PATH ?? "",
     });
     if (!mise) {
@@ -118,7 +127,7 @@ async function attemptOwnReshim(req: SwitchCoreRequest): Promise<string> {
         "if a terminal still runs the old build, run `mise reshim` there."
       );
     }
-    const res = await req.runner.run(mise, { args: ["reshim"], cwd: stableNpmCwd(), env: req.env });
+    const res = await req.runner.run(mise, { args: ["reshim"], cwd: stableNpmCwd(homeDir), env: req.env });
     return res.code === 0
       ? "note: ran `mise reshim` so mise's shims point at the new build."
       : `note: \`mise reshim\` exited ${res.code}; if a terminal still runs the old build, run \`mise reshim\` there.`;
@@ -211,7 +220,11 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   }
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
-  const inst = await installRef(req.runner, req.channel, { prefix, env: req.env });
+  const inst = await installRef(req.runner, req.channel, {
+    prefix,
+    env: req.env,
+    ...(req.homeDir !== undefined ? { homeDir: req.homeDir } : {}),
+  });
   let after: InstalledBuild;
   let afterNote: string | null = null;
   if (inst.code !== 0) {
@@ -261,7 +274,7 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   // versions, minimal-PATH helpers). Never swap databases on a miss.
   // (A verified wrapper-hook failure passes by construction.)
   if (after.channel !== req.channel || (remote.commit && after.commit !== remote.commit)) {
-    const prefixOut = await npmGlobalPrefix(req.runner, req.env);
+    const prefixOut = await npmGlobalPrefix(req.runner, req.env, req.homeDir);
     log(`installed ${req.channel} ${after.version} (was ${before.version})`);
     log(
       `but the build at ${after.packagePath ?? before.packagePath ?? "(unknown install location)"} ` +
@@ -324,7 +337,11 @@ async function runSameChannelReinstall(
   }
   const prefix = installPrefixForPackage(before.packagePath);
   log(`installing ${installSpec(req.channel)}${prefix ? ` (prefix ${prefix})` : ""} ...`);
-  const inst = await installRef(req.runner, req.channel, { prefix, env: req.env });
+  const inst = await installRef(req.runner, req.channel, {
+    prefix,
+    env: req.env,
+    ...(req.homeDir !== undefined ? { homeDir: req.homeDir } : {}),
+  });
   let after: InstalledBuild;
   let afterNote: string | null = null;
   if (inst.code !== 0) {
@@ -365,7 +382,7 @@ async function runSameChannelReinstall(
     after = readInstalledBuild(req.serviceScriptPath, before.version);
   }
   if (after.channel !== req.channel || (remoteCommit && after.commit !== remoteCommit)) {
-    const prefixOut = await npmGlobalPrefix(req.runner, req.env);
+    const prefixOut = await npmGlobalPrefix(req.runner, req.env, req.homeDir);
     log(
       `but the build at ${after.packagePath ?? before.packagePath ?? "(unknown install location)"} ` +
         `is ${after.channel ?? "(unknown channel)"} ${after.commit ? shortCommit(after.commit) : after.version} — ` +
@@ -393,9 +410,13 @@ async function runSameChannelReinstall(
 }
 
 /** `npm prefix -g` for mismatch messages; never throws. */
-async function npmGlobalPrefix(runner: CommandRunner, env?: Record<string, string | undefined>): Promise<string> {
+async function npmGlobalPrefix(
+  runner: CommandRunner,
+  env?: Record<string, string | undefined>,
+  homeDir?: string,
+): Promise<string> {
   try {
-    const res = await runner.run("npm", { args: ["prefix", "-g"], cwd: stableNpmCwd(), env });
+    const res = await runner.run("npm", { args: ["prefix", "-g"], cwd: stableNpmCwd(homeDir ?? os.homedir()), env });
     const out = res.stdout.trim();
     return out || "(empty)";
   } catch {

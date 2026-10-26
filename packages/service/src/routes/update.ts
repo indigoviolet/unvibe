@@ -357,10 +357,11 @@ export async function registerUpdate(
       // #108) working: the unit files deliberately carry no PATH.
       effectivePath: process.env.PATH ?? "",
       // Restart through the service manager when login-managed (issue
-      // #108 follow-up): detected here from the real HOME; tests use the
-      // fake HOME through the same path.
-      managed: isLoginManaged(os.homedir(), process.platform),
-      loginUnitPath: loginUnitPath(os.homedir(), process.platform),
+      // #108 follow-up): detected here from the real HOME in production
+      // (issue #280); tests pass a scratch home via `deps.loginHome` so
+      // a managed real home never reads as managed.
+      managed: isLoginManaged(deps.loginHome?.homeDir ?? os.homedir(), deps.loginHome?.platform ?? process.platform),
+      loginUnitPath: loginUnitPath(deps.loginHome?.homeDir ?? os.homedir(), deps.loginHome?.platform ?? process.platform),
       loginUid: currentUid(),
       ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
     };

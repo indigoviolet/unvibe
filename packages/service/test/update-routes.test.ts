@@ -76,6 +76,9 @@ async function makeHarness(opts: {
   const db = openDatabase(":memory:");
   migrate(db);
   const dataDir = tempDir();
+  // Scratch home for the switch route's login-unit detection (issue #280):
+  // never the real home, so a managed real home never reads as managed.
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-home-"));
   const settings = new SettingsStore(db);
   if (opts.gate) settings.update({ versionPickerEnabled: true });
   const savedArgv1 = process.argv[1];
@@ -106,6 +109,7 @@ async function makeHarness(opts: {
     dataDir,
     settings,
     jobs: opts.jobs ?? new JobQueue(),
+    loginHome: { homeDir, platform: process.platform },
     ...(updater ? { updater } : {}),
     updateHooks: {
       spawnHelper: async (argsFile: string) => {
