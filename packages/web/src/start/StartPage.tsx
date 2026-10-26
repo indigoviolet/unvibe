@@ -1049,8 +1049,8 @@ export function StartPage(): React.JSX.Element {
       <Toast />
       <Tooltip />
       <ScreenTopBar showBadge />
-      {/* Brain/disco-ball behind the start screen's content (issue #281,
-          variant A Watermark): #275's faint, tilted, centred, fixed
+      {/* Brain/disco-ball beside the start screen's content (issue #281,
+          variant A Watermark): #275's faint, tilted, off-centre, fixed
           watermark. Static and pointer-transparent; the top bar and the
           content below sit above it. */}
       <div className="start-watermark" aria-hidden="true">

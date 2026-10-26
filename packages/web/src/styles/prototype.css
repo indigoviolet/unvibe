@@ -263,8 +263,10 @@ code { font-family: var(--mono); font-size: .86em; }
    ball, faint, tilted and multiply-blended, fixed and behind the content —
    but off-centre, sitting in the empty space right of the content column
    (owner direction; the centred #275 position put it behind the lists).
-   The whole art shows: it is only cropped where the window edge cuts it,
-   like the variant-A mock. At narrow widths with no side space it sits
+   The file art is square; it is cropped to the mock's tall aspect (the
+   mock's 52x76 viewBox) with object-fit so the mount hangs from the top
+   edge like variant A instead of floating mid-screen. It is only cropped
+   where the window edge cuts it, like the variant-A mock. At narrow widths with no side space it sits
    partly behind the content, still faint and legible, and — being fixed —
    never causes horizontal overflow. Multiply goes invisible on dark
    grounds, so dark mode uses a plain low opacity instead. */
@@ -279,9 +281,11 @@ code { font-family: var(--mono); font-size: .86em; }
   right: -150px;
   bottom: -110px;
   width: 640px;
-  height: auto;
+  aspect-ratio: 52 / 76;
+  object-fit: cover;
+  object-position: center;
   opacity: .16;
-  transform: rotate(-9deg);
+  transform: rotate(-8deg);
   mix-blend-mode: multiply;
 }
 :root[data-theme="dark"] .start-watermark img { opacity: .1; mix-blend-mode: normal; }
