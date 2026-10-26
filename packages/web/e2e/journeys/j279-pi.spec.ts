@@ -1,5 +1,5 @@
 /** J279 (#279): pi provider — pickers, a review run on the fake pi, Doctor. */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,14 +19,42 @@ function writeFakePi(binDir: string): void {
   writeFileSync(path.join(binDir, "pi"), script, { mode: 0o755 });
 }
 
+/**
+ * Blocking agent stubs: `claude`, `codex` and `pi` that log every call,
+ * print "blocked in tests" and answer `--version` with a fake version.
+ * They must succeed (exit 0), not fail: diagnostics probes every PATH
+ * candidate and skips broken ones, and the ACP adapter falls back to its
+ * bundled binary when its override fails — either would execute a real
+ * binary (a real `claude` startup writes first-run files and breaks the
+ * temp guard). Answered first on PATH, the stubs are chosen and nothing
+ * real ever runs. Every line appended is `<name> <args>`.
+ */
+function writeBlockedStubs(blockedDir: string, logFile: string): void {
+  for (const name of ["claude", "codex", "pi"]) {
+    const script = `#!/bin/sh\necho "${name} $*" >> "${logFile}"\necho "blocked in tests: ${name}" >&2\nif [ "$1" = "--version" ]; then echo "0.0.0-blocked"; exit 0; fi\nexit 1\n`;
+    writeFileSync(path.join(blockedDir, name), script, { mode: 0o755 });
+  }
+}
+
+function readBlockedLog(logFile: string): string[] {
+  try {
+    return readFileSync(logFile, "utf8").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 test.describe("J279 pi provider", () => {
-  let binDir = "", dataDir = "", plainDir = "", scratchHome = "";
+  let binDir = "", blockedDir = "", blockedLog = "", dataDir = "", plainDir = "", scratchHome = "";
   let svc: RunningService | null = null;
   let plain: RunningService | null = null;
 
   test.beforeAll(async () => {
     binDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j279-bin-"));
     writeFakePi(binDir);
+    blockedDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j279-blocked-"));
+    blockedLog = path.join(blockedDir, "calls.log");
+    writeBlockedStubs(blockedDir, blockedLog);
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j279-data-"));
     plainDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j279-plain-"));
     // Hermetic home: the service's login-shell PATH probe must not pick up
@@ -43,7 +71,10 @@ test.describe("J279 pi provider", () => {
       port: "4529",
       extraEnv: {
         HOME: scratchHome,
-        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        // Fake pi first, then the blocking stubs, then the rest: no real
+        // agent binary is reachable even if settings fall back to
+        // claude/codex or a login-shell PATH is applied.
+        PATH: `${binDir}${path.delimiter}${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,
         UNVIBE_FAKE_PI_MODE: "replay",
         UNVIBE_FAKE_PI_FIXTURES: FIXTURES,
         UNVIBE_FAKE_PI_MODELS: JSON.stringify([{ provider: "openai-codex", id: "gpt-fake-1", name: "Fake 1" }]),
@@ -55,7 +86,7 @@ test.describe("J279 pi provider", () => {
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     await plain?.stop().catch(() => {});
-    for (const d of [binDir, dataDir, plainDir, scratchHome]) rmSync(d, { recursive: true, force: true });
+    for (const d of [binDir, blockedDir, dataDir, plainDir, scratchHome]) rmSync(d, { recursive: true, force: true });
   });
 
   test("providers list pi; settings pickers offer it with models and effort; doctor reports it", async ({ page }) => {
@@ -139,12 +170,17 @@ test.describe("J279 pi provider", () => {
   test("without pi on PATH the pickers go back to claude/codex", async ({ page }) => {
     test.setTimeout(120_000);
     // Deterministic absence whatever the machine has installed: an
-    // override pointing nowhere hides the provider.
+    // override pointing nowhere hides the provider. Blocking stubs stand
+    // in for claude/codex/pi so nothing real is reachable here either.
     plain = await startService(plainDir, {
       liveRunner: true,
       label: "j279-plain",
       port: "4530",
-      extraEnv: { UNVIBE_PI_BIN: path.join(plainDir, "no-such-pi") },
+      extraEnv: {
+        HOME: scratchHome,
+        PATH: `${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        UNVIBE_PI_BIN: path.join(plainDir, "no-such-pi"),
+      },
     });
     const providers = (await apiJson(plain, "GET", "/api/providers")).json as { providers: string[] };
     expect(providers.providers).not.toContain("pi");
@@ -156,5 +192,22 @@ test.describe("J279 pi provider", () => {
     await expect(providerOptions.first()).toBeVisible({ timeout: 15_000 });
     const providerNames = await providerOptions.evaluateAll((os) => os.map((o) => (o.textContent ?? "").replace("✓", "").trim()));
     expect(providerNames).not.toContain("pi");
+  });
+
+  test("blocked agent binaries are never used for sessions", async () => {
+    // Runs last: both services above are still up. Diagnostics probes every
+    // `pi` candidate with `--version` (the blocker refuses, the fake
+    // answers), so `pi --version` lines are expected; anything else —
+    // a session start (`--mode rpc`), a login check (`auth check`) —
+    // would mean a real binary was reached. Same for claude/codex.
+    if (!svc) throw new Error("no service");
+    const calls = readBlockedLog(blockedLog);
+    // Full file: both services ran, so probes must have happened (this
+    // proves the blockers are on PATH and refusing). Under --grep only
+    // this test runs and the log may be empty — the non-probe assertion
+    // below still holds either way.
+    if (plain) expect(calls.length).toBeGreaterThan(0);
+    const nonProbe = calls.filter((l) => !/^(claude|codex|pi) --version$/.test(l));
+    expect(nonProbe).toEqual([]);
   });
 });
