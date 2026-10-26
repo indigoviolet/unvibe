@@ -46,7 +46,7 @@ export function isPosted(thread: Thread): boolean {
 export function outboxThreads(snapshot: ReviewSnapshot | null): Thread[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => a.replies.some((r) => r.kind === "comment") && a.post && !isPosted(a as Thread),
+    (a) => (a.replies ?? []).some((r) => r.kind === "comment") && a.post && !isPosted(a as Thread),
   ) as Thread[];
 }
 

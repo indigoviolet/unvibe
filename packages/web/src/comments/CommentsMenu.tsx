@@ -324,7 +324,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const threads = useMemo(
     () =>
       ((snapshot?.annotations ?? []).filter(
-        (a) => a.replies.some((r) => r.kind === "comment"),
+        (a) => (a.replies ?? []).some((r) => r.kind === "comment"),
       ) as Thread[]),
     [snapshot],
   );

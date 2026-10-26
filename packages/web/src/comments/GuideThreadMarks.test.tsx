@@ -29,7 +29,17 @@ function thread(): Thread {
       version: 1,
     },
     open: false,
-    messages: [{ who: "you", text: "A quiet comment" }],
+    pinned: false,
+    replies: [{
+      id: "ans_m1",
+      kind: "comment",
+      who: "you",
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: "A quiet comment" }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+    }],
     post: true,
   } as unknown as Thread;
 }

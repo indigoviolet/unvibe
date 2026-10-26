@@ -111,7 +111,7 @@ export function GuideThreadHooks() {
     const page = document.getElementById("page");
     if (!page) return;
     const threads = (annotations ?? []).filter(
-      (a): a is Thread => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
+      (a): a is Thread => (a.replies ?? []).some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
     // Issue #166: anchors whose host text isn't there yet (a re-render
     // landing after this pass) are retried — bounded overall per effect
