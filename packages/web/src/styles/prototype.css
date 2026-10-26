@@ -1224,7 +1224,7 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
    in-thread reply links, and one-line collapsed rows. Class names follow
    the spike (`spike268`), tokens come from this file's prototype theme. */
 
-.spike-thread { margin-left: 0; }
+.spike-thread { margin-left: 0; container-type: inline-size; }
 
 .spike-thread .spike-reply { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .spike-thread .spike-reply:first-of-type { border-top: none; }
@@ -1265,6 +1265,15 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 }
 .spike-thread .spike-reply .ans-q { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* Thread header quote vs location (#273): the quote truncates with an
+   ellipsis, but never to a stub — below ~440px of thread width (the diff
+   pane at 960px) it hides entirely and the location stays. The query
+   reads the thread's own width: it is the nearest container for `.mq`. */
+.spike-thread .thd .thd-loc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 440px) {
+  .spike-thread .mq { display: none; }
+}
+
 /* In-thread reply link: the selected words hyperlinked inside the reply's
    own text (dotted teal underline), jumping to the target reply. */
 .spike-thread .rlink {
@@ -1293,6 +1302,7 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
   align-items: center;
   gap: 8px;
   width: 100%;
+  container-type: inline-size;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1309,6 +1319,11 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .spike-row-snip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .spike-row-count { flex: none; font-family: var(--label-font); font-size: var(--text-label); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 8px; }
 .spike-row .ic { flex: none; color: var(--muted); }
+/* Narrow row: same rule as the header — a quote that can't show ~12
+   characters is dropped instead of truncating to a stub. */
+@container (max-width: 300px) {
+  .spike-row-q { display: none; }
+}
 
 /* "Collapse threads" / "Expand threads" control in the guide pane header:
    single-line small button, right-aligned, never wrapping or crowding the title. */

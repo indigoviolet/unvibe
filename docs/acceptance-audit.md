@@ -525,6 +525,12 @@ needed (that deviation is closed, not added).
   `conversation.test.ts`, journeys J2/J15/J273). “Ask about this” on a
   comment appends an Ask reply inside the same thread — the only way a
   comment leads to an agent reply, and the answer is never submitted.
+  The header never shows an empty or near-empty quote: no quoted text
+  (e.g. a line comment) shows only the location, and below ~440px of
+  thread width (diff pane at 960px) the quote hides entirely via a
+  container query, keeping the location; collapsed rows drop their
+  quote below ~300px — met (visual-tour thread-replylink-960,
+  threads-collapsed-960 frames).
   Issue #204 (revising #167): new Explain/Ask threads open pinned inline
   in the guide, the description and the diff; there is no pin/unpin
   control and no floating open state — floating survives only as the

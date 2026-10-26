@@ -13,7 +13,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -515,56 +515,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const op = onOpenPage ?? noopOpen;
   const of = onFollowUp ?? noopFollow;
 
-  // Quote-fit measurement must live above the collapsed early-return:
-  // hooks run on every render in the same order, collapsed or not.
-  const rawQuote = (thread.anchor.quotedText ?? "").trim();
-  const mqRef = useRef<HTMLSpanElement | null>(null);
-  const [quoteFits, setQuoteFits] = useState(true);
-  useLayoutEffect(() => {
-    setQuoteFits(true);
-  }, [rawQuote, thread.id]);
-  useLayoutEffect(() => {
-    if (!rawQuote) {
-      setQuoteFits(false);
-      return;
-    }
-    const el = mqRef.current;
-    if (!el) return;
-    const fit = (): void => {
-      // No layout yet (hidden pane, jsdom): can't prove a misfit, so
-      // keep the quote.
-      if (el.clientWidth === 0 && el.scrollWidth === 0) return;
-      // Fully visible quotes always fit, however short; a truncated
-      // quote stays only if at least ~12 characters remain readable.
-      if (el.scrollWidth <= el.clientWidth + 2) {
-        setQuoteFits((prev) => (prev ? prev : true));
-        return;
-      }
-      const ratio = el.clientWidth / Math.max(1, el.scrollWidth);
-      const visibleChars = Math.floor(rawQuote.length * Math.min(1, ratio));
-      setQuoteFits((prev) => {
-        const next = visibleChars >= 12;
-        return prev === next ? prev : next;
-      });
-    };
-    fit();
-    // jsdom (unit tests) has no ResizeObserver; the window resize
-    // listener covers real panes, and the initial fit() covers mount.
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", fit);
-      return () => window.removeEventListener("resize", fit);
-    }
-    const ro = new ResizeObserver(fit);
-    if (el.parentElement) ro.observe(el.parentElement);
-    ro.observe(el);
-    window.addEventListener("resize", fit);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", fit);
-    };
-    // New replies shift header layout (reply boxes appear), so re-check.
-  }, [rawQuote, thread.id, (thread.replies ?? []).length]);
-
   const isCollapsed = collapsed ?? (storeCollapseAll && !storeExpanded[thread.id]);
   // Expanding a collapsed row restores its thread: mark it expanded, and
   // open it too when it was closed (a closed thread otherwise has no
@@ -674,16 +624,16 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   };
 
   const footnoted = !!thread.anchorStale;
-  // Never show empty or near-empty quote marks: a thread with no quoted
-  // text (e.g. a line comment) shows only its location, and a quote that
-  // can't fit at least ~12 characters is dropped in favour of the
-  // location (measured live above, so narrow panes degrade gracefully).
-  const showQuote = rawQuote !== "" && quoteFits;
+  // Never render empty quote marks: a thread with no quoted text (e.g.
+  // a line comment) shows only its location. Narrow panes are handled in
+  // CSS: below ~440px of thread width the quote hides entirely
+  // (container query), keeping the location.
+  const showQuote = (thread.anchor.quotedText ?? "").trim() !== "";
   return (
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
       <div className="thd">
-        {showQuote ? <span className="mq" ref={mqRef}>“{thread.anchor.quotedText}”</span> : null}
-        <span className="hint">{headerLabel(snapshot, thread)}</span>
+        {showQuote ? <span className="mq">“{thread.anchor.quotedText}”</span> : null}
+        <span className="hint thd-loc">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
         <span className="count" data-count={thread.id}>
