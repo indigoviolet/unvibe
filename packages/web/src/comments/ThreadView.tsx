@@ -725,14 +725,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           />
         ),
       )}
-      {failedReply && threadError ? (
-        <div className="perr" role="alert">
-          <span>Couldn't get an answer. Retry, or see Debug for details.</span>
-          <Button variant="primary" size="sm" type="button" data-retry={failedReply.id} onClick={onRetryThread}>
-            Retry
-          </Button>
-        </div>
-      ) : null}
       {inThreadPending && !readOnly ? (
         <NewThreadComposer
           key="in-thread-pending"
