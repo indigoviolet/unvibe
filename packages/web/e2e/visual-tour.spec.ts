@@ -171,7 +171,7 @@ async function checkMenus(page: Page, step: string): Promise<void> {
 
 /** Generic check: open cards fully inside horizontally + topmost grid. */
 async function checkCards(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".ui-card.child:visible");
+  const cards = page.locator("section.ithread[data-thread]:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const r = cardEl.getBoundingClientRect();
@@ -212,7 +212,7 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // its ancestor (a child above its parent). An ancestor — or
           // any part of it, such as its sticky reply footer — covering
           // a descendant, or an unrelated card covering this one, fails.
-          const hitCard = hit.closest(".ui-card.child");
+          const hitCard = hit.closest("section.ithread[data-thread]");
           if (hitCard && cardEl.contains(hitCard)) continue;
           // A header may cover a card only while it is actually stuck
           // in its pinned slot at the top of the pane (its top equals
@@ -239,10 +239,10 @@ async function checkCards(page: Page, step: string): Promise<void> {
  * its parent is the one allowed cover, as in the grid check).
  */
 async function checkReplyBoxes(page: Page, step: string): Promise<void> {
-  const boxes = page.locator(".ui-card.child textarea:visible");
+  const boxes = page.locator("section.ithread[data-thread] textarea:visible");
   for (let i = 0; i < (await boxes.count()); i++) {
     const bad = await boxes.nth(i).evaluate((ta: Element) => {
-      const card = ta.closest(".ui-card.child");
+      const card = ta.closest("section.ithread[data-thread]");
       if (!card) return "reply input not inside a floating card";
       const r = ta.getBoundingClientRect();
       const c = card.getBoundingClientRect();
@@ -253,6 +253,9 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
       // The footer must sit flush at the card's bottom: sample the
       // strip below the composer (if any) — answer content visible
       // there means scrolled text shows past the sticky footer.
+      // Issue #273: a thread carries two composers (comment Reply +
+      // Ask follow-up), so the other composer of the SAME thread below
+      // this one's footer is expected and allowed.
       const composer = ta.closest(".composer");
       if (composer) {
         const f = composer.getBoundingClientRect();
@@ -261,9 +264,11 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
             const hit = document.elementFromPoint(x, y);
             if (!hit) continue;
             if (composer.contains(hit) || hit === card) continue;
+            const hitComposer = (hit as Element).closest?.(".composer");
+            if (hitComposer && card.contains(hitComposer)) continue;
             // A descendant card over the strip is allowed; this
             // card's own answer content showing there is the bug.
-            const hitCard: Element | null = hit.closest(".ui-card.child");
+            const hitCard: Element | null = hit.closest("section.ithread[data-thread]");
             if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
             return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
           }
@@ -286,7 +291,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
         // Only a descendant card may cover this card's reply input;
         // an ancestor's footer (or anything else) over it fails.
-        const hitCard = hit.closest(".ui-card.child");
+        const hitCard = hit.closest("section.ithread[data-thread]");
         if (hitCard && card.contains(hitCard)) continue;
         return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
       }
@@ -303,7 +308,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
  * allowed cover is a descendant card, as in the grid check.
  */
 async function checkCardHeaders(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".ui-card.child:visible");
+  const cards = page.locator("section.ithread[data-thread]:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const header = cardEl.querySelector(":scope > .exp-h");
@@ -350,13 +355,13 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         const hit = document.elementFromPoint(x, y);
         if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
         if (cardEl.contains(hit)) {
-          const hitCard = hit.closest(".ui-card.child");
+          const hitCard = hit.closest("section.ithread[data-thread]");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
         // The pinned top stack (and the app top bar) slides over
         // inline cards by design.
         if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
-        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".ui-card.child")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest("section.ithread[data-thread]")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
     });
@@ -449,7 +454,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".ui-card.child")) {
+        if (hit && hit.closest("section.ithread[data-thread]")) {
           return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
         }
       }
@@ -463,7 +468,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
-    const cards = [...pane.querySelectorAll(".ui-card.child")].map((c) => c.getBoundingClientRect());
+    const cards = [...pane.querySelectorAll("section.ithread[data-thread]")].map((c) => c.getBoundingClientRect());
     let coveredTo = bandTop;
     for (const r of cover) {
       if (r.top > coveredTo + 0.2) {
@@ -491,7 +496,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       const y = (layers[i].bottom + layers[i + 1].top) / 2;
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".ui-card.child")) {
+        if (hit && hit.closest("section.ithread[data-thread]")) {
           return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
         }
       }
@@ -546,7 +551,7 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       if (y < pv.top || y > pv.bottom) continue;
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
-      if (hit.closest(".ui-card.child")) continue;
+      if (hit.closest("section.ithread[data-thread]")) continue;
       if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
@@ -745,9 +750,9 @@ async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
  * the click — a card that will not close is a real failure here.
  */
 async function closeCard(page: Page, card: Locator): Promise<void> {
-  const id = await card.getAttribute("data-expansion");
+  const id = await card.getAttribute("data-thread");
   await card.getByRole("button", { name: "Close" }).click();
-  const gone = id ? page.locator(`[data-expansion="${id}"]`) : card;
+  const gone = id ? page.locator(`[data-thread="${id}"]`) : card;
   await expect(gone).toBeHidden({ timeout: 15_000 });
 }
 
@@ -786,7 +791,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   let last = "";
   for (let i = 0; i < 10; i++) {
     const now = await page.evaluate(() =>
-      [...document.querySelectorAll(".ui-card.child")].map((c) => {
+      [...document.querySelectorAll("section.ithread[data-thread]")].map((c) => {
         const r = c.getBoundingClientRect();
         return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
       }).join("|"),
@@ -842,26 +847,26 @@ for (const combo of [
     // and Explain it.
     await selectText(page, "#C-problem", "used to let a server continue");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedCard: Locator = page.locator("#page .ui-card.child").first();
+    const seedCard: Locator = page.locator("#page section.ithread[data-thread]").first();
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-pinned");
     await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
 
-    // A card opened from inside the pinned card (guide).
-    await selectText(page, "#page .ui-card.child [data-answer]", "fold");
-    await page.locator('#selbar [data-act="ask"]').click();
-    const composer = page.locator("#page .ithread[data-pending-thread]");
-    await expect(composer).toBeVisible();
-    await composer.locator("textarea").fill("Why does this matter?");
-    await composer.getByRole("button", { name: "Ask" }).click();
-    const guideChild = page.locator("#page [data-expansion]", { hasText: "Why does this matter?" }).last();
-    await expect(guideChild).toBeVisible({ timeout: 15_000 });
+    // A reply inside the pinned thread (guide): Explain on selected text
+    // inside the reply appends to the same thread (flat, #273).
+    await selectText(page, "#page section.ithread[data-thread] [data-reply]", "fold");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const seedId = await seedCard.getAttribute("data-thread");
+    await expect
+      .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(2);
+    await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
     await stepChecks(page, "guide-nested");
-    await shot(page, "guide-nested", suffix, "Why does this matter?");
-    await closeCard(page, guideChild);
+    await shot(page, "guide-nested", suffix, "explain");
     await closeCard(page, seedCard);
+    expect(seedId).toBeTruthy();
 
     // PR description tab (#263): paragraphs, a bullet list, a numbered
     // list past 9 items and inline code, in the shared Card. No
@@ -889,33 +894,52 @@ for (const combo of [
     await checkTokenContrast(page, "diff-unified");
     await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
-    // Floating card + nested card in the diff.
-    await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+    // Pinned thread + in-thread reply in the diff (flat, #273).
+    // Seeded suggestion threads already sit on this line, so create via
+    // API on a distinct quote to avoid selecting into them.
+    const diffSnap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+      files: { fileKey: string; path: string }[];
+    };
+    const diffFile = (diffSnap.files ?? []).find((f) => f.path.includes("conn")) ?? (diffSnap.files ?? [])[0];
+    const diffMk = (await apiJson(svc.origin, svc.token, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "explain",
+      quote: "_OBSOLETE_FOLD_RE",
+      anchor: { where: "diff-line", fileKey: diffFile.fileKey, line: 82 },
+    })) as { annotationId: string };
+    const diffId = (diffMk as unknown as { annotationId: string }).annotationId;
+    const diffCard = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
+    await expect(diffCard).toBeVisible({ timeout: 15_000 });
+    await expect(diffCard.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    await selectText(page, `.dhunk section.ithread[data-thread="${diffId}"] [data-reply] .exp-b`, "fold");
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
-    await selectText(page, ".dhunk .ui-card.child [data-answer]", "fold");
-    await page.locator('#selbar [data-act="ask"]').click();
-    const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
-    await expect(dComposer).toBeVisible();
-    await dComposer.locator("textarea").fill("Why is this here?");
-    await dComposer.getByRole("button", { name: "Ask" }).click();
-    const diffChild = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
-    await expect(diffChild).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(2);
     await stepChecks(page, "diff-nested");
-    await shot(page, "diff-nested", suffix, "Why is this here?");
-    await closeCard(page, diffChild);
-    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
-    // No diff card may survive into the next step: the long
-    // card below is read through `.first()`, by DOM order.
-    await expect(page.locator(".dhunk .ui-card.child")).toHaveCount(0, { timeout: 15_000 });
+    await shot(page, "diff-nested", suffix, "explain");
+    await closeCard(page, diffCard);
+    // Our thread closed; seeded suggestion threads may remain open.
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`)).toHaveCount(0, { timeout: 15_000 });
 
     // Top-level diff card with a LONG answer (the dedicated replay
     // recording), scrolled to its middle and then its bottom inside
     // the card: the gutter must not paint over it and no answer text
     // may show below its sticky reply footer.
+    const beforeLong = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const longCard = page.locator(".dhunk .ui-card.child").first();
+    let longId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        longId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeLong.includes(id)) ?? null;
+        if (longId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!longId) throw new Error("long thread did not appear");
+    const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(longCard).toContainText("The tests around the helper mirror that split");
@@ -933,9 +957,23 @@ for (const combo of [
 
     // Same long card in split view, scrolled inside its card.
     await page.getByRole("button", { name: "Split" }).click();
+    const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const splitCard = page.locator(".dhunk .ui-card.child").first();
+    let splitId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        // Dedupe may reopen the long thread instead of creating one.
+        splitId = ids.find((id) => !beforeSplit.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (splitId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!splitId) throw new Error("split thread did not appear");
+    const splitCard = page.locator(`.dhunk section.ithread[data-thread="${splitId}"]`).first();
     await expect(splitCard).toBeVisible({ timeout: 15_000 });
     await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -951,9 +989,22 @@ for (const combo of [
     // section: its header and rows must paint below the card too.
     // The call site sits in the file's folded last hunk; unfold all.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    const beforeFile = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right", "_normalize_header_values(http");
     await page.locator('#selbar [data-act="explain"]').click();
-    const fileCard = page.locator(".dhunk .ui-card.child").first();
+    let fileId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        fileId = ids.find((id) => !beforeFile.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (fileId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!fileId) throw new Error("file thread did not appear");
+    const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(fileCard).toContainText("The tests around the helper mirror that split");
@@ -979,12 +1030,24 @@ for (const combo of [
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
     await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
+    const beforeMl = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await page.locator('#selbar [data-act="explain"]').click();
-    const mlCard = page.locator(".dhunk .ui-card.child").first();
+    let mlId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        mlId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeMl.includes(id)) ?? null;
+        if (mlId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!mlId) throw new Error("multiline thread did not appear");
+    const mlCard = page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`).first();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click();
-    await expect(mlCard).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`)).toBeHidden({ timeout: 10_000 });
     const mlMarker = page.locator("mark.anc.range[data-jump]").first();
     await expect(mlMarker).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-multiline-closed");
@@ -1018,10 +1081,10 @@ for (const combo of [
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
     await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
-    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
+    await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();
@@ -1761,7 +1824,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     // An Explain answer on document text.
     await selectText(page, "#C-document", "folds obsolete headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const exp = page.locator("#C-document [data-expansion]").first();
+    const exp = page.locator("#C-document [data-thread]").first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
     await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
@@ -1776,7 +1839,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
     await askComposer.locator("textarea").fill("Why does it keep a fast path?");
     await askComposer.getByRole("button", { name: "Ask" }).click();
-    const askCard = page.locator("#C-document [data-expansion]", { hasText: "Why does it keep a fast path?" });
+    const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
@@ -1828,7 +1891,7 @@ test("visual tour document review (#222)", async ({ page }) => {
         pinned: true,
         messages: [],
         post: false,
-        turns: [
+        replies: [
           {
             question: null,
             blocks: [
@@ -1855,7 +1918,7 @@ test("visual tour document review (#222)", async ({ page }) => {
       extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
     });
     await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
-    const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
+    const cited = page.locator("#C-document [data-thread]", { hasText: "The widget constant lives in the second repo." });
     await expect(cited.first()).toBeVisible({ timeout: 30_000 });
     await cited.first().getByRole("button", { name: "Source" }).click();
     await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
@@ -1912,7 +1975,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
     await selectText(page, "#C-central", "fast path");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-expansion]").first();
+    const card = page.locator("#C-central [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -1988,7 +2051,7 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       // Fail the follow-up mid-answer, then restart on the same data dir.
@@ -2003,7 +2066,7 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       svc = await startService(dir, { agent: "replay" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
       await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
-      const shotCard = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const shotCard = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
       await expect(shotCard).toBeVisible({ timeout: 30_000 });
       const failed = shotCard.locator(".ans").last();
       await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
@@ -2067,7 +2130,7 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread][data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       const box = card.getByPlaceholder(/Ask a follow-up/);
@@ -2230,7 +2293,7 @@ test.describe("visual tour file tab (#81)", () => {
         ...(snap.annotations ?? []),
         {
           id: "ft-comment",
-          type: "comment",
+          type: "thread",
           anchor: {
             host: { kind: "code", path: "helper.py", commit: ftHead, line: 2, endLine: 3 },
             quotedText: "beta = 2\ngamma = 3",
@@ -2241,7 +2304,25 @@ test.describe("visual tour file tab (#81)", () => {
           },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "Is beta still the right default?" }],
+          replies: [
+            {
+              id: "ans_ft1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b1",
+                  text: { standard: "Is beta still the right default?" },
+                  citations: [],
+                },
+              ],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
           post: true,
         },
       ];

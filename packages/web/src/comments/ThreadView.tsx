@@ -27,10 +27,13 @@ import { busyForCard, inflightLabel } from "../guide/inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "../guide/secondOpinion/index.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
+import { isReadOnlyVersionNow } from "./readOnly.js";
 import { isNoAgentMessage, NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { useProvisionalBlocks } from "../guide/expansions/streamedAnswer.js";
 import { revealSource } from "../source/reveal.js";
 import { ReplyBox } from "./ReplyBox.js";
+import { NewThreadComposer } from "./NewThreadComposer.js";
+import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { threadPostText } from "./threads.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
@@ -406,6 +409,20 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const storeExpanded = useReview((s) => s.expandedThreads);
   const storeSetExpanded = useReview((s) => s.setThreadExpanded);
   const [flashId, setFlashId] = useState<string | null>(null);
+  // Issue #273: Ask via the toolbar inside this thread opens its composer
+  // here (the anchor names a reply block, so no guide/diff/description slot
+  // would ever match it).
+  const [inThreadPending, setInThreadPending] = useState<NewThreadRequest | null>(null);
+  useEffect(() => {
+    const onRequest = (e: Event): void => {
+      const req = (e as CustomEvent<NewThreadRequest>).detail;
+      if (req.threadId !== thread.id) return;
+      if (isReadOnlyVersionNow()) return;
+      setInThreadPending(req);
+    };
+    window.addEventListener(NEW_THREAD_EVENT, onRequest);
+    return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
+  }, [thread.id]);
 
   useEffect(() => {
     if (!flashId) return;
@@ -423,6 +440,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     }, 30);
   }, []);
 
+  const navigate = useNavigate();
   const noopPage = useCallback(() => undefined, []);
   const noopOpen = useCallback(() => {}, []);
   const noopFollow = useCallback(() => {}, []);
@@ -461,6 +479,10 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   // #271: while a follow-up is pending, the comment Reply stays disabled
   // ("Wait for the answer"); the Ask follow-up box keeps its draft.
   const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
+  // Follow-up box only once the thread has agent replies: pure comment
+  // threads keep their old single-box height (file-tab slot checks), and
+  // the first agent reply arrives via ask-about or selected-text Ask.
+  const hasAgentReply = replies.some((r) => r.kind !== "comment");
 
   const onRetryThread = (): void => {
     void performAction(reviewId, { kind: "retry", annotationId: thread.id }).catch((err: unknown) => {
@@ -503,7 +525,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
 
   const onAskFollowup = (text: string): Promise<unknown> => api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
 
-  const navigate = useNavigate();
   const onPromote = (): void => {
     void performAction(reviewId, { kind: "promote", annotationId: thread.id })
       .then((res) => {
@@ -619,6 +640,21 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           </Button>
         </div>
       ) : null}
+      {inThreadPending && !readOnly ? (
+        <NewThreadComposer
+          key="in-thread-pending"
+          reviewId={reviewId}
+          anchor={inThreadPending.anchor}
+          quote={inThreadPending.quote}
+          kind={inThreadPending.kind}
+          initialText={inThreadPending.initialText}
+          offsets={inThreadPending.offsets}
+          threadId={inThreadPending.threadId}
+          sourceReplyId={inThreadPending.sourceReplyId}
+          onDiscard={() => setInThreadPending(null)}
+          onCreated={() => setInThreadPending(null)}
+        />
+      ) : null}
       {posted ? (
         <div className="hint">
           Posted
@@ -651,7 +687,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             onSend={(text) => api.replyComment(reviewId, thread.id, { text })}
             onDiscard={() => (isNew ? api.deleteComment(reviewId, thread.id) : api.updateComment(reviewId, thread.id, { reply: null }))}
           />
-          {!isNew && !failedReply ? (
+          {!isNew && !failedReply && hasAgentReply ? (
             <ReplyBox
               reviewId={reviewId}
               annotationId={thread.id}
