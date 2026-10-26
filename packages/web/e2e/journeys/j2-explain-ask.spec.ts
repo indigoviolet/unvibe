@@ -98,8 +98,8 @@ test.describe("J2 explain ask follow-up nested", () => {
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
-    await composer.getByRole("button", { name: "Ask" }).click();
     const beforeAsk = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await composer.getByRole("button", { name: "Ask" }).click();
     const card = page.locator('#C-problem section.ithread[data-thread]:has([data-kind="ask"])', { hasText: "What is line folding?" });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     let cardId: string | null = null;
@@ -179,22 +179,30 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
 
-    const beforeDiff = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
-    await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
-    await page.locator('#selbar [data-act="explain"]').click();
-    let diffId: string | null = null;
+    // Create via API (avoids quote ambiguity with the seeded suggestion
+    // on the same line; the UI pinned/close/mark/reopen/delete flow below
+    // is what this test covers, and the toolbar path is covered elsewhere).
+    // First resolve the diff fileKey for conn.
+    const snap0 = (await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { files: { fileKey: string; path: string }[] };
+    const connFile = (snap0.files ?? []).find((f) => f.path.includes("conn")) ?? (snap0.files ?? [])[0];
+    const mk = await apiJson(svc!, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "explain",
+      quote: "_OBSOLETE_FOLD_RE",
+      anchor: { where: "diff-line", fileKey: connFile.fileKey, line: 82 },
+    });
+    const cardId: string = (mk.json as { annotationId: string }).annotationId;
+    if (!cardId) throw new Error("new diff thread did not appear");
+    // Wait for the reply to fill so .exp-b is non-empty.
     {
-      const deadline = Date.now() + 60_000;
+      const deadline = Date.now() + 90_000;
       for (;;) {
         const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
-        const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
-        diffId = ids.find((id) => !beforeDiff.includes(id)) ?? null;
-        if (diffId || Date.now() > deadline) break;
+        const anns = ((res.json as { annotations: { id: string; replies: { blocks: unknown[] }[] }[] }).annotations ?? []);
+        const mine = anns.find((a) => a.id === cardId);
+        if ((mine?.replies?.[0]?.blocks.length ?? 0) > 0 || Date.now() > deadline) break;
         await new Promise((r) => setTimeout(r, 500));
       }
     }
-    if (!diffId) throw new Error("new diff thread did not appear");
-    const cardId: string = diffId;
     const card = page.locator(`.dhunk section.ithread[data-thread="${cardId}"]`).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
@@ -238,8 +246,11 @@ test.describe("J2 explain ask follow-up nested", () => {
       if (!root) return;
       new MutationObserver(() => {
         const seen = (window as unknown as { __m4seen: { working: boolean; stream: boolean } }).__m4seen;
-        if (root.querySelector(".ui-card.child .working")) seen.working = true;
-        if (root.querySelector(".ui-card.child .stream")) seen.stream = true;
+        if (root.querySelector('section.ithread[data-thread] .working')) seen.working = true;
+        // "stream" is the raw streamed-text dump (never rendered; answers
+        // arrive via patches). Provisional completed paragraphs use
+        // `.streaming`/`.stream-live` and do not count here.
+        if (root.querySelector('section.ithread[data-thread] .stream')) seen.stream = true;
       }).observe(root, { childList: true, subtree: true, characterData: true });
     });
     await selectText(page, "#C-central", "fast path");
@@ -643,7 +654,7 @@ test.describe("J2 blind second opinion on a finding (seeded)", () => {
 // text, so each runs on its own fresh replay review: earlier cards on a
 // shared review would capture the text selection and the toolbar.
 test.describe("J2 nested and full reader journey (fresh reviews)", () => {
-  test("nested explanation survives reload with its highlight", async ({ page }) => {
+  test("in-thread explanation survives reload with its highlight (reworked #273, was nested)", async ({ page }) => {
     test.setTimeout(300_000);
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j2-nesting-data-"));
     let svc: RunningService | null = null;
@@ -658,35 +669,44 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       });
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-      // Parent explanation on card text.
-      await selectText(page, "#C-central", "fast path");
+      // Parent explanation on card-unique text (avoids the seeded thread).
+      await selectText(page, "#C-central", "optional whitespace");
       await page.locator('#selbar [data-act="explain"]').click();
-      const parent = page.locator("#C-central section.ithread[data-thread]").first();
+      let parentId: string | null = null;
+      {
+        const deadline = Date.now() + 60_000;
+        for (;;) {
+          const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+          const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+          parentId = ids[ids.length - 1] ?? null;
+          if (parentId || Date.now() > deadline) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+      if (!parentId) throw new Error("parent thread did not appear");
+      const parent = page.locator(`#C-central section.ithread[data-thread="${parentId}"]`).first();
       await expect(parent).toBeVisible({ timeout: 15_000 });
       await expect(parent.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
 
-      // The toolbar appears for text selected inside the parent…
-      const word = await page.evaluate(() => {
-        const text = document.querySelector("#C-central section.ithread[data-thread] .exp-b")?.textContent ?? "";
-        return text.match(/[A-Za-z]{4,}/)?.[0] ?? "";
-      });
+      // The toolbar appears for text selected inside the parent reply…
+      const word = await parent.locator(".exp-b").first().evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "");
       expect(word).not.toBe("");
-      await selectText(page, "#C-central section.ithread[data-thread] .exp-b", word);
-      // …and Explain nests a card under the parent block.
+      await selectText(page, `#C-central section.ithread[data-thread="${parentId}"] .exp-b`, word);
+      // …and Explain appends a reply in the same thread (flat, never nested).
       await page.locator('#selbar [data-act="explain"]').click();
-      const nested = parent.locator("[data-thread]").first();
-      await expect(nested).toBeVisible({ timeout: 15_000 });
-      await expect(nested.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+      await expect
+        .poll(async () => parent.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+        .toBeGreaterThanOrEqual(2);
+      await expect(parent.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
 
-      // Reload: both cards survive and the nested highlight returns.
+      // Reload: the thread survives with both replies and the highlight returns.
       await page.reload();
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      const parentAfter = page.locator("#C-central section.ithread[data-thread]").first();
+      const parentAfter = page.locator(`#C-central section.ithread[data-thread="${parentId}"]`).first();
       await expect(parentAfter).toBeVisible({ timeout: 15_000 });
-      const nestedAfter = parentAfter.locator("[data-thread]").first();
-      await expect(nestedAfter).toBeVisible({ timeout: 15_000 });
-      await expect(nestedAfter.locator(".exp-b")).not.toBeEmpty({ timeout: 30_000 });
-      await expect(parentAfter.locator("mark.anc.ex").first()).toBeVisible({ timeout: 10_000 });
+      await expect(parentAfter.locator('[data-reply][data-kind="explain"]')).toHaveCount(2, { timeout: 30_000 });
+      await expect(parentAfter.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 30_000 });
+      await expect(page.locator(`#C-central mark.anc.ex[data-jump="${parentId}"]`).first()).toBeVisible({ timeout: 10_000 });
 
       expect(errors).toEqual([]);
     } finally {

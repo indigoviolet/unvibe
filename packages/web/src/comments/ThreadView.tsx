@@ -14,6 +14,7 @@
  */
 import type { Annotation, Block, Reply } from "@unvibe/shared";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -502,6 +503,19 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
 
   const onAskFollowup = (text: string): Promise<unknown> => api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
 
+  const navigate = useNavigate();
+  const onPromote = (): void => {
+    void performAction(reviewId, { kind: "promote", annotationId: thread.id })
+      .then((res) => {
+        if (res.accepted && res.pageId) {
+          navigate(`/review/${reviewId}/page/${encodeURIComponent(res.pageId)}`);
+        }
+      })
+      .catch((err: unknown) => {
+        toast(`Couldn't open as page: ${friendlyError(err)}`);
+      });
+  };
+
   const footnoted = !!thread.anchorStale;
   return (
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
@@ -537,6 +551,18 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             onClick={onAskAbout}
           >
             <Icon name="spark" />
+          </button>
+        ) : null}
+        {!isNew && !readOnly ? (
+          <button
+            className="ib"
+            type="button"
+            data-tip="Open as page"
+            aria-label="Open as page"
+            data-open-page={thread.id}
+            onClick={onPromote}
+          >
+            <Icon name="open" />
           </button>
         ) : null}
         <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete"} aria-label="Delete" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>

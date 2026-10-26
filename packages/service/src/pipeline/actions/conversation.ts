@@ -757,7 +757,7 @@ export async function explainAction(
       a.anchor.version === before.version.n &&
       !a.error &&
       !(a.replies ?? []).some((t) => t.error) &&
-      (a.replies ?? []).some((t) => t.blocks.length > 0),
+      (a.replies ?? []).some((t) => t.kind !== "comment" && t.blocks.length > 0),
   );
   if (storedDup) {
     if (!storedDup.open) {
@@ -766,7 +766,8 @@ export async function explainAction(
         if (found) found.open = true;
       });
     }
-    return { annotationId: storedDup.id, replyId: storedDup.replies?.[0]?.id ?? "", reused: true };
+    const firstAgent = (storedDup.replies ?? []).find((t) => t.kind !== "comment" && t.blocks.length > 0);
+    return { annotationId: storedDup.id, replyId: firstAgent?.id ?? "", reused: true };
   }
 
   // Immediately visible working state.
