@@ -1188,9 +1188,8 @@ for (const combo of [
     await outboxComposer.getByRole("button", { name: "Save" }).click();
     const outboxThread = page.locator('.dhunk section.ithread[data-thread]', { hasText: "Tour outbox probe." }).first();
     await expect(outboxThread).toBeVisible({ timeout: 30_000 });
-    const addToOutbox = outboxThread.getByRole("button", { name: "Add to Outbox" });
     const inOutbox = outboxThread.getByRole("button", { name: "Remove from the Outbox" });
-    await expect(inOutbox).toBeVisible({ timeout: 15_000 });
+    await expect(inOutbox, "fresh comment threads start in the Outbox").toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });

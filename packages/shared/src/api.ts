@@ -31,7 +31,6 @@ import type {
   Repo,
   SelectionOffsets,
   Thread,
-  ThreadType,
   Version,
 } from "./entities.js";
 import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
@@ -1566,4 +1565,4 @@ export type ReviewEvent =
   | { type: "error"; message: string; jobId?: string };
 
 /** Re-exported entity slices used by route stubs. */
-export type { Thread, Card, Page, Reply, ReplyKind, ThreadType };
+export type { Thread, Card, Page, Reply, ReplyKind };

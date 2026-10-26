@@ -14,7 +14,6 @@
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -440,7 +439,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     }, 30);
   }, []);
 
-  const navigate = useNavigate();
   const noopPage = useCallback(() => undefined, []);
   const noopOpen = useCallback(() => {}, []);
   const noopFollow = useCallback(() => {}, []);
@@ -536,7 +534,8 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     void performAction(reviewId, { kind: "promote", annotationId: thread.id })
       .then((res) => {
         if (res.accepted && res.pageId) {
-          navigate(`/review/${reviewId}/page/${encodeURIComponent(res.pageId)}`);
+          const token = new URLSearchParams(window.location.search).get("token") ?? "";
+          window.location.assign(`/review/${reviewId}/page/${encodeURIComponent(res.pageId)}?token=${token}`);
         }
       })
       .catch((err: unknown) => {
