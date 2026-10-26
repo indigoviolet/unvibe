@@ -2,12 +2,11 @@
  * inline copy script. Fonts come from Google Fonts (DM Sans, DM Mono,
  * Chakra Petch). The watermark ball is an inline SVG in index.html. */
 :root {
-  --cream: #faf3e6;
-  --ink: #211a13;
-  --muted: #6f6355;
-  --pink: #cf2f6d;
+  --cream: #FBF8F2;
+  --ink: #38309E;
+  --muted: #6f6a93;
   --card: #fffdf7;
-  --line: #211a13;
+  --line: #38309E;
   --sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --chakra: "Chakra Petch", "DM Sans", sans-serif;
@@ -33,15 +32,13 @@ body {
   pointer-events: none;
   z-index: 0;
 }
-.watermark svg {
+.watermark img {
   width: min(82vmin, 720px);
   height: min(82vmin, 720px);
-  color: var(--ink);
-  opacity: .08;
+  opacity: .16;
   transform: rotate(-9deg);
   mix-blend-mode: multiply;
 }
-
 .wrap {
   position: relative;
   z-index: 1;
@@ -81,13 +78,17 @@ h1 {
   text-wrap: balance;
 }
 h1 .line { display: block; white-space: nowrap; }
-.wm {
-  text-transform: lowercase;
-  font-weight: 900;
-  letter-spacing: -.045em;
+img.wm {
+  height: .58em;
+  width: auto;
+  vertical-align: -.06em;
 }
-.wm .un { color: var(--ink); }
-.wm .vibe { color: var(--pink); }
+/* Same user units as the full wordmark, so scale the height to match:
+   22.2 / 25.5 of the full height, with its baseline offset adjusted. */
+img.wm[src*="unvibe-vibe"] {
+  height: .505em;
+  vertical-align: -.09em;
+}
 .conn {
   font-family: var(--chakra);
   font-weight: 600;
@@ -107,7 +108,7 @@ h1 .line { display: block; white-space: nowrap; }
   align-items: stretch;
   gap: 0;
   background: var(--ink);
-  color: #f7efe0;
+  color: #FBF8F2;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -126,9 +127,9 @@ h1 .line { display: block; white-space: nowrap; }
 }
 .copy {
   border: 0;
-  border-left: 1px solid rgb(250 243 230 / .25);
+  border-left: 1px solid rgb(251 248 242 / .3);
   background: transparent;
-  color: #f7efe0;
+  color: #FBF8F2;
   font-family: var(--sans);
   font-weight: 700;
   font-size: .9rem;
@@ -184,7 +185,7 @@ footer a { color: var(--ink); }
   .install-code code { font-size: .83rem; white-space: pre-wrap; word-break: break-all; }
   .copy {
     border-left: 0;
-    border-top: 1px solid rgb(250 243 230 / .25);
+    border-top: 1px solid rgb(251 248 242 / .3);
     padding: 12px;
   }
 }
