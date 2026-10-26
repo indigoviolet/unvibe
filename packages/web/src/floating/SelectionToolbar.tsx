@@ -64,8 +64,11 @@ export const NEW_THREAD_EVENT = "unvibe:new-thread";
 export interface NewThreadRequest {
   anchor: ActionAnchor;
   quote: string;
-  /** Comment (no agent reply) or Ask (usual conversation card). */
+  /** Comment (no agent reply) or Ask (usual thread). */
   kind: "comment" | "ask";
+  /** Issue #273: Ask inside a thread appends there instead of starting a new one. */
+  threadId?: string;
+  sourceReplyId?: string;
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
   /**
@@ -215,7 +218,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (commentEl) {
     const id = (commentEl as HTMLElement).dataset.comment ?? "";
     const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
-    if (!found || found.type !== "comment") return null;
+    if (!found || !found.replies.some((r) => r.kind === "comment")) return null;
     return { anchor: { where: "comment", commentId: id } };
   }
   // Issue #163: a selection inside an agent-suggested comment anchors to
@@ -226,23 +229,22 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (sug) {
     const id = (sug as HTMLElement).dataset.aiComment ?? "";
     const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
-    const host = found && found.type === "comment" ? found.anchor.host : null;
+    const host = found && found.replies.some((r) => r.kind === "comment") ? found.anchor.host : null;
     if (!host) return null;
     if (host.kind === "block") return { anchor: { where: "block", blockId: host.blockId } };
     if (host.kind === "description") return { anchor: { where: "description", paragraphId: host.paragraphId } };
     if (host.kind === "diff-line") return { anchor: { where: "diff-line", fileKey: host.fileKey, line: host.line } };
     return null;
   }
-  // Issue #136: inside a conversation answer the owning unit is the
-  // answer, found from the answer wrapper's attribute — not from
-  // `section.ui-card[id]`, which names the whole card.
-  const answer = el.closest("[data-answer]");
+  // Issue #273: inside a thread reply selections append there (never a
+  // nested box). Agent-reply blocks resolve via BlockView; comment replies
+  // have no data-top blocks and fall through to the comment logic below.
+  const answer = el.closest("[data-reply]");
   if (answer) {
-    const answerId = (answer as HTMLElement).dataset.answer ?? "";
+    const answerId = (answer as HTMLElement).dataset.reply ?? "";
     const top = el.closest("[data-top]");
     const blockId = (top as HTMLElement | null)?.dataset.top ?? "";
-    if (!answerId || !blockId) return null;
-    return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
+    if (answerId && blockId) return { anchor: { where: "block", blockId: `${answerId}#${blockId}` } };
   }
   const top = el.closest("#page [data-top], #right [data-top]");
   if (top) {
@@ -349,6 +351,9 @@ function snapLiveSelection(sel: Selection): void {
 interface Pending {
   quote: string;
   anchor: ActionAnchor;
+  /** Issue #273: selection inside a thread reply — Explain/Ask appends there. */
+  threadId?: string;
+  sourceReplyId?: string;
   /**
    * Issue #166: the selection's character offsets within its host's
    * text, recorded at the moment of selection (absent when unrecordable).
@@ -477,7 +482,7 @@ export function blockquoteQuote(quote: string): string {
  */
 export function underlyingCommentAnchor(commentId: string): ActionAnchor | null {
   const found = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
-  if (!found || found.type !== "comment") return null;
+  if (!found || !found.replies.some((r) => r.kind === "comment")) return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
@@ -498,8 +503,8 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   const annotations = useReview.getState().snapshot?.annotations ?? [];
   const found =
     annotations.find((a) => a.id === owner) ??
-    annotations.find((a) => (a.turns ?? []).some((t) => t.id === owner));
-  if (!found || found.type !== "conversation") return null;
+    annotations.find((a) => (a.replies ?? []).some((t) => t.id === owner));
+  if (!found || (found.type !== "thread" && found.type !== "link")) return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
@@ -647,6 +652,11 @@ export function SelectionToolbar() {
             : undefined;
         // #81: same widening for file-tab selections.
         const codeRange = host.anchor.where === "code" ? codeRangeForSelection(sel) : null;
+        // Issue #273: selection inside a thread reply appends there.
+        const replyEl = (anchorEl as HTMLElement).closest?.("[data-reply]") as HTMLElement | null;
+        const threadEl = (anchorEl as HTMLElement).closest?.("[data-thread]") as HTMLElement | null;
+        const inThreadId = threadEl?.dataset.thread ?? (threadEl?.id ?? "");
+        const inReplyId = replyEl?.dataset.reply ?? "";
         setPending({
           quote,
           anchor:
@@ -655,6 +665,7 @@ export function SelectionToolbar() {
               : codeRange && host.anchor.where === "code" && codeRange.end > host.anchor.line
                 ? { ...host.anchor, endLine: codeRange.end }
                 : host.anchor,
+          ...(inThreadId ? { threadId: inThreadId, ...(inReplyId ? { sourceReplyId: inReplyId } : {}) } : {}),
           ...(offsets ? { offsets } : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),
@@ -782,15 +793,16 @@ export function SelectionToolbar() {
     }
     // The in-flight entry (keyed by anchor) is set synchronously, so a
     // placeholder shows where the explanation will land before the
-    // request returns.
+    // request returns. Inside a thread the answer appends there (#273).
     performAction(
       reviewId,
       {
         kind: "explain",
         quote: current.quote,
-        anchor: current.anchor,
-        ...(current.offsets ? { offsets: current.offsets } : {}),
-      },
+        ...(current.threadId ? { threadId: current.threadId } : { anchor: current.anchor }),
+        ...(current.sourceReplyId ? { sourceReplyId: current.sourceReplyId } : {}),
+        ...(current.offsets && !current.threadId ? { offsets: current.offsets } : {}),
+      } as import("@unvibe/shared").ReviewAction,
       { toast: false },
     )
       .then((res) => {
@@ -815,6 +827,25 @@ export function SelectionToolbar() {
         openPromotedPage(promoted);
         return;
       }
+    }
+    // Issue #273: Ask inside a thread appends there; Comment keeps its remap.
+    if (kind === "ask" && (current as { threadId?: string }).threadId) {
+      const reviewId = useReview.getState().snapshot?.review.id;
+      if (!reviewId) {
+        toast("The review is still loading");
+        return;
+      }
+      const tid = (current as { threadId?: string }).threadId as string;
+      const src = (current as { sourceReplyId?: string }).sourceReplyId;
+      requestNewThread({
+        anchor: current.anchor,
+        quote: current.quote,
+        kind,
+        ...(current.offsets ? { offsets: current.offsets } : {}),
+        ...( { threadId: tid } as unknown as Record<string, unknown>),
+        ...(src ? ({ sourceReplyId: src } as unknown as Record<string, unknown>) : {}),
+      } as unknown as import("./SelectionToolbar.js").NewThreadRequest);
+      return;
     }
     dismiss();
     if (kind === "comment" && current.commentAnchor) {

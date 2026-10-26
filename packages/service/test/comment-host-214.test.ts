@@ -3,7 +3,7 @@
  * comment, and the Ask/Explain host block is the comment's text.
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import { buildAnchor } from "../src/comments/threads.js";
 import { hostBlockText, l4Variables } from "../src/interaction/l4.js";
 import { anchorSameHost } from "../src/pipeline/actions/explain-host.js";
@@ -15,14 +15,27 @@ const QUESTION_TEXT = "Whether folded values that end in LF alone occur in real 
 const AI_TEXT = "This boundary test misses the bare-LF case entirely.";
 const PERSON_TEXT = "I think the fast path needs a second look here.";
 
-function comment(id: string, host: Annotation["anchor"]["host"], messages: Annotation["messages"]): Annotation {
+type MsgLike = { who: "you" | "ai"; text: string; suggested?: boolean; question?: boolean };
+
+function comment(id: string, host: Thread["anchor"]["host"], messages: MsgLike[]): Thread {
   return {
     id,
-    type: "comment",
+    type: "thread",
     anchor: { host, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
     open: true,
     pinned: false,
-    messages,
+    replies: messages.map((m, i) => ({
+      id: `ans_${id}_${i}`,
+      kind: "comment" as const,
+      who: m.who === "ai" ? ("agent" as const) : ("you" as const),
+      question: null,
+      blocks: [{ type: "paragraph" as const, id: `b${i + 1}`, text: { standard: m.text }, citations: [] as never[] }],
+      level: "standard" as const,
+      revision: 1,
+      undoStack: [],
+      ...(m.suggested ? { suggested: true } : {}),
+      ...(m.question ? { suggestedQuestion: true } : {}),
+    })),
     post: false,
   };
 }
@@ -89,7 +102,7 @@ function snapshot(): ReviewSnapshot {
   } as unknown as ReviewSnapshot;
 }
 
-function anchorFor(commentId: string, quote: string): Annotation["anchor"] {
+function anchorFor(commentId: string, quote: string): Thread["anchor"] {
   return {
     host: { kind: "comment", commentId },
     quotedText: quote,

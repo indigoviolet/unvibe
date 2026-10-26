@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { selectText } from "../select-text.js";
 import { apiJson, createSeededDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -31,25 +30,32 @@ test.describe("J206 anchor blink", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // One Explain on the problem card: this anchor becomes unplaceable
-    // when its host card is collapsed below.
-    await selectText(page, "#C-problem", "folded");
-    await page.locator('#selbar [data-act="explain"]').click();
-    const stuck = page.locator("#C-problem [data-expansion]").first();
+    // One Explain on the problem card (via API, avoiding thread-text
+    // selection ambiguity): this anchor becomes unplaceable when its host
+    // card is collapsed below.
+    const mk1 = await apiJson(svc!, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "explain",
+      quote: "folded",
+      anchor: { where: "block", blockId: "problem#b2" },
+    });
+    const stuckId = (mk1.json as { annotationId: string }).annotationId;
+    expect(stuckId).toBeTruthy();
+    const stuck = page.locator(`#C-problem [data-thread="${stuckId}"]`).first();
     await expect(stuck).toBeVisible({ timeout: 15_000 });
     await expect(stuck.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
-    const stuckId = await stuck.getAttribute("data-expansion");
-    expect(stuckId).toBeTruthy();
 
-    // One Explain on the central card: this anchor places fine and its
-    // highlight must then stay put.
-    await selectText(page, "#C-central", "fast path");
-    await page.locator('#selbar [data-act="explain"]').click();
-    const placed = page.locator("#C-central [data-expansion]").first();
+    // One Explain on the central card (via API): this anchor places fine
+    // and its highlight must then stay put.
+    const mk2 = await apiJson(svc!, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "explain",
+      quote: "helper",
+      anchor: { where: "block", blockId: "central#b1" },
+    });
+    const placedId = (mk2.json as { annotationId: string }).annotationId;
+    expect(placedId).toBeTruthy();
+    const placed = page.locator(`#C-central [data-thread="${placedId}"]`).first();
     await expect(placed).toBeVisible({ timeout: 15_000 });
     await expect(placed.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
-    const placedId = await placed.getAttribute("data-expansion");
-    expect(placedId).toBeTruthy();
 
     // Wait for the demo pipeline to settle: while snapshot patches keep
     // landing, each one legitimately re-arms the bounded retry (#206's
@@ -135,10 +141,10 @@ test.describe("J206 anchor blink", () => {
       const deadline = Date.now() + 60_000;
       for (;;) {
         const cur = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-        const ann = ((cur.json as { annotations: { id: string; turns?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
+        const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
           (a) => a.id === annId,
         );
-        if ((ann?.turns?.[0]?.blocks.length ?? 0) > 0) break;
+        if ((ann?.replies?.[0]?.blocks.length ?? 0) > 0) break;
         if (Date.now() > deadline) throw new Error("conversation did not fill in time");
         await new Promise((r) => setTimeout(r, 1000));
       }
@@ -175,12 +181,12 @@ test.describe("J206 anchor blink", () => {
 
     // Clicking the chip re-opens the explanation in place.
     await chip.click();
-    const expCard = page.locator(`#C-central [data-expansion="${annId}"]`).first();
+    const expCard = page.locator(`#C-central [data-thread="${annId}"]`).first();
     await expect(expCard).toBeVisible({ timeout: 15_000 });
 
     // Close it again so the return trip asserts the closed highlight path.
     await expCard.getByRole("button", { name: "Close" }).click();
-    await expect(page.locator(`#C-central [data-expansion="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator(`#C-central [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
 
     // Switching back restores the highlight and hides the chip.
     await page.locator("#C-central > .ctl").getByRole("button", { name: "Simpler" }).click();

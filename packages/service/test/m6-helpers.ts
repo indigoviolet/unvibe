@@ -5,7 +5,7 @@
  */
 import os from "node:os";
 import type {
-  Annotation,
+  Thread,
   Review,
   ReviewFile,
   ReviewSnapshot,
@@ -109,7 +109,7 @@ export function descriptionFor(baseMarkdown: string) {
 export interface SetupOpts {
   files?: ReviewFile[];
   baseMarkdown?: string;
-  annotations?: Annotation[];
+  annotations?: Thread[];
   pages?: ReviewSnapshot["pages"];
   prNumber?: number | null;
   reviewId?: string;
@@ -177,22 +177,37 @@ export async function setupReview(
 }
 
 let threadSeq = 0;
+export function mkTestReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    id: `ans_test${threadSeq}_${Math.random().toString(36).slice(2, 6)}`,
+    kind: "comment",
+    who,
+    question: null,
+    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...(suggested ? { suggested: true } : {}),
+  };
+}
+
 export function threadOnDiffLine(
   fileKey: string,
   line: number,
   text: string,
-  extra: Partial<Annotation> = {},
-): Annotation {
+  extra: Partial<Thread> = {},
+): Thread {
   threadSeq += 1;
   return {
     id: `ann_test${threadSeq}`,
-    type: "comment",
+    type: "thread",
     anchor: { host: { kind: "diff-line", fileKey, line }, quotedText: "q", prefix: "", suffix: "", position: line, version: 1 },
     open: true,
-    messages: [{ who: "you", text }],
+    replies: [mkTestReply("you", text)],
     post: true,
     ...extra,
-    // `extra` is a Partial, so its `pinned` may be absent; Annotation requires it.
+    // `extra` is a Partial, so its `pinned` may be absent; Thread requires it.
     pinned: extra.pinned ?? false,
   };
 }

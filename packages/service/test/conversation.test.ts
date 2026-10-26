@@ -158,7 +158,7 @@ async function explainFirstTurn(
   if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
   await waitFor(() => {
     const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
-    const turn = (a?.turns ?? []).find((t) => t.id === turnId);
+    const turn = (a?.replies ?? []).find((t) => t.id === turnId);
     return !!turn && turn.blocks.length > 0 && turn.working == null;
   });
   void reply;
@@ -183,7 +183,7 @@ describe("conversation cards (#136)", () => {
     try {
       const { annotationId } = await explainFirstTurn(app, ctx, id);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      expect(card.type).toBe("conversation");
+      expect(card.type).toBe("thread");
       expect(card.sessionId).toBeTruthy();
       const sessionId = card.sessionId!;
       const promptsBefore = agents.prompts.filter((p) => p.sessionId === sessionId).length;
@@ -199,7 +199,7 @@ describe("conversation cards (#136)", () => {
       expect(rep.json.turnId).toMatch(/^ans_/);
       if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
       await waitFor(() => {
-        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.turns ?? [];
+        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.replies ?? [];
         return turns.length === 2 && turns[1].blocks.length > 0 && turns[1].working == null;
       });
       // Same session: no fork, one more prompt on it.
@@ -207,7 +207,7 @@ describe("conversation cards (#136)", () => {
       expect(agents.prompts.filter((p) => p.sessionId === sessionId).length).toBe(promptsBefore + 1);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(after.sessionId).toBe(sessionId);
-      expect(after.turns?.[1]?.question).toBe("What about ordering?");
+      expect(after.replies?.[1]?.question).toBe("What about ordering?");
     } finally {
       await app.close();
     }
@@ -265,7 +265,7 @@ describe("conversation cards (#136)", () => {
       expect(rep.status).toBe(200);
       if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
       await waitFor(() => {
-        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.turns ?? [];
+        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.replies ?? [];
         return turns.length === 2 && turns[1].blocks.length > 0 && turns[1].working == null;
       });
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
@@ -276,7 +276,7 @@ describe("conversation cards (#136)", () => {
       const lastPrompt = agents.prompts[agents.prompts.length - 1];
       expect(lastPrompt.sessionId).toBe(after.sessionId);
       expect(lastPrompt.text).toContain("First answer body about the fold");
-      expect(after.turns?.[1]?.question).toBe("What about ordering?");
+      expect(after.replies?.[1]?.question).toBe("What about ordering?");
     } finally {
       await app.close();
     }
@@ -293,18 +293,18 @@ describe("conversation cards (#136)", () => {
       if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
       const secondTurnId = rep.json.turnId as string;
       await waitFor(() => {
-        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.turns ?? [];
+        const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.replies ?? [];
         return turns.length === 2 && turns[1].blocks.length > 0;
       });
       const secondBefore = JSON.stringify(
-        ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!.turns![1].blocks,
+        ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!.replies![1].blocks,
       );
 
       const depth = await postAction(app, id, { kind: "depth", cardId: turnId, direction: "simpler" });
       expect(depth.status).toBe(200);
       if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const [first, second] = card.turns!;
+      const [first, second] = card.replies!;
       expect(first.level).toBe("simple");
       expect(first.id).toBe(turnId);
       // The sibling answer is untouched: same blocks, same level.
@@ -327,19 +327,19 @@ describe("conversation cards (#136)", () => {
         const { annotationId } = await explainFirstTurn(app, ctx, id);
         // The first answer carries no diagram.
         const first = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-        expect(first.turns![0].blocks.some((b) => b.type === "diagram")).toBe(false);
+        expect(first.replies![0].blocks.some((b) => b.type === "diagram")).toBe(false);
 
         const rep = await postAction(app, id, { kind: "reply", annotationId, message: "Can you draw it?" });
         expect(rep.status).toBe(200);
         if (rep.json.jobId) await waitForJob(ctx, rep.json.jobId as string);
         await waitFor(() => {
-          const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.turns ?? [];
+          const turns = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)?.replies ?? [];
           return turns.length === 2 && turns[1].blocks.length > 0 && turns[1].working == null;
         });
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![1].blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![1].blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -384,13 +384,13 @@ describe("conversation cards (#136)", () => {
         if (res.json.jobId) await waitForJob(ctx, res.json.jobId as string);
         await waitFor(() => {
           const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
-          const turn = (a?.turns ?? []).find((t) => t.id === turnId);
+          const turn = (a?.replies ?? []).find((t) => t.id === turnId);
           return !!turn && turn.blocks.length > 0 && turn.working == null;
         });
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns!.find((t) => t.id === turnId)!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies!.find((t) => t.id === turnId)!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -526,8 +526,8 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       const link1 = snap1.annotations.find((a) => a.id === annotationId)!;
       expect(link1.type).toBe("link");
       expect(link1.promotedToPage).toBe(pageId);
-      expect(link1.turns?.map((t) => t.id)).toEqual([turnId]);
-      expect(link1.promotedTurns).toEqual([{ turnId, cardId: page1.cards[0].id }]);
+      expect(link1.replies?.map((t) => t.id)).toEqual([turnId]);
+      expect(link1.promotedReplies).toEqual([{ replyId: turnId, cardId: page1.cards[0].id }]);
 
       agents.release();
       expect(await waitForJob(ctx, jobId)).toBe("done");
@@ -541,8 +541,8 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       // Settled: the link drops the turns (the page holds the content)
       // and the session closes with them.
       const link2 = snap2.annotations.find((a) => a.id === annotationId)!;
-      expect(link2.turns).toBeUndefined();
-      expect(link2.promotedTurns).toBeUndefined();
+      expect(link2.replies).toEqual([]);
+      expect(link2.promotedReplies).toBeUndefined();
       expect(link2.sessionId).toBeUndefined();
     } finally {
       await app.close();
@@ -557,7 +557,7 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       const { annotationId, turnId, jobId } = await askQuestion(app, ctx, id, "flaky question about folds");
       expect(await waitForJob(ctx, jobId)).toBe("error");
       const failed = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
-      expect(failed.turns?.find((t) => t.id === turnId)?.error).toBeTruthy();
+      expect(failed.replies?.find((t) => t.id === turnId)?.error).toBeTruthy();
 
       const promoted = await postAction(app, id, { kind: "promote", annotationId });
       expect(promoted.status).toBe(200);
@@ -565,9 +565,9 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       const snap1 = ctx.reviews.getSnapshot(id)!;
       const link1 = snap1.annotations.find((a) => a.id === annotationId)!;
       expect(link1.type).toBe("link");
-      expect(link1.turns?.find((t) => t.id === turnId)?.error).toBeTruthy();
-      expect(link1.promotedTurns).toEqual([
-        { turnId, cardId: snap1.pages.find((p) => p.id === pageId)!.cards[0].id },
+      expect(link1.replies?.find((t) => t.id === turnId)?.error).toBeTruthy();
+      expect(link1.promotedReplies).toEqual([
+        { replyId: turnId, cardId: snap1.pages.find((p) => p.id === pageId)!.cards[0].id },
       ]);
 
       const retried = await postAction(app, id, { kind: "retry", annotationId });
@@ -582,7 +582,7 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       const snap2 = ctx.reviews.getSnapshot(id)!;
       expect(snap2.pages.find((p) => p.id === pageId)!.cards[0].blocks.length).toBeGreaterThan(0);
       const link2 = snap2.annotations.find((a) => a.id === annotationId)!;
-      expect(link2.turns).toBeUndefined();
+      expect(link2.replies).toEqual([]);
     } finally {
       await app.close();
     }
@@ -600,12 +600,12 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       expect(await waitForJob(ctx, jobId)).toBe("done");
       await waitFor(() => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
-        return (a?.turns?.find((t) => t.id === turnId)?.blocks.length ?? 0) > 0;
+        return (a?.replies?.find((t) => t.id === turnId)?.blocks.length ?? 0) > 0;
       });
       // A reader-made second opinion on the answer.
       await ctx.reviews.mutate(id, (draft) => {
         const ann = (draft.annotations as unknown as ReviewSnapshot["annotations"]).find((a) => a.id === annotationId);
-        const turn = ann?.type === "conversation" ? (ann.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = ann?.type === "thread" ? (ann.replies ?? []).find((t) => t.id === turnId) : undefined;
         if (!turn) throw new Error("turn missing");
         turn.secondOpinions = [
           {
@@ -632,8 +632,8 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
       expect(page.cards[0].secondOpinions?.map((s) => s.id)).toEqual([`so-${turnId}-check-mock`]);
       const link = snap.annotations.find((a) => a.id === annotationId)!;
       expect(link.type).toBe("link");
-      expect(link.turns).toBeUndefined();
-      expect(link.promotedTurns).toBeUndefined();
+      expect(link.replies).toEqual([]);
+      expect(link.promotedReplies).toBeUndefined();
     } finally {
       await app.close();
     }

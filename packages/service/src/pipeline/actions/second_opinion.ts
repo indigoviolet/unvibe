@@ -110,8 +110,8 @@ function findOpinionInSnapshot(
 ): { cardId: string; mode: SecondOpinionMode } | null {
   if (!snapshot) return null;
   for (const a of snapshot.annotations) {
-    if (a.type !== "conversation") continue;
-    for (const t of a.turns ?? []) {
+    if ((a.type !== "thread" && a.type !== "link")) continue;
+    for (const t of a.replies ?? []) {
       const hit = (t.secondOpinions ?? []).find((s) => s.id === opinionId);
       if (hit) return { cardId: t.id, mode: hit.mode };
     }

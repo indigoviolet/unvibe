@@ -931,7 +931,7 @@ describe("follow-ups across a posture flip (owner report)", () => {
       const live = ctx.reviews.getSnapshot(reviewId)!;
       const card = live.annotations.find((a) => a.id === annotationId)!;
       const replySession = card.sessionId!;
-      const replyText = (card.turns ?? []).map((t) => t.blocks.map((b) => JSON.stringify(b)).join("")).join("");
+      const replyText = (card.replies ?? []).map((t) => t.blocks.map((b) => JSON.stringify(b)).join("")).join("");
       return {
         firstSession,
         replySession,

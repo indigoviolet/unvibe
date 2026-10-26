@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "vitest";
 import type { Job } from "@unvibe/shared";
-import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewSnapshot } from "@unvibe/shared";
 import {
   anchorBlockType,
   anchorEntryForConversation,
@@ -159,9 +159,9 @@ describe("entry keys", () => {
   test("answer expansions are detected by their anchor block", () => {
     const answer = {
       id: "ann_ans",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     const snap = {
       pages: [
         {
@@ -174,18 +174,18 @@ describe("entry keys", () => {
     } as unknown as ReviewSnapshot;
     expect(isFollowupAnswer(snap, answer)).toBe(true);
     expect(anchorBlockType(snap, "c1#b-f")).toBe("follow-up");
-    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
+    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Thread;
     expect(isFollowupAnswer(snap, plain)).toBe(false);
-    const thread = { ...answer, type: "thread" } as unknown as Annotation;
+    const thread = { ...answer, type: "thread" } as unknown as Thread;
     expect(isFollowupAnswer(snap, thread)).toBe(false);
   });
 
   test("busyForConversation prefers the anchor entry and labels answers", () => {
     const answer = {
       id: "ann_ans",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b-f" }, quotedText: "Why?" },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     const snap = {
       pages: [{ cards: [{ id: "c1", blocks: [{ id: "b-f", type: "follow-up" }] }] }],
       annotations: [],
@@ -200,7 +200,7 @@ describe("entry keys", () => {
     const jobs = [job({ kind: "ask", annotationId: "ann_ans" })];
     expect(busyForConversation({}, jobs, snap, answer)).toMatchObject({ label: "Writing answer" });
     // …but not on ordinary expansions.
-    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Annotation;
+    const plain = { ...answer, anchor: { host: { kind: "block", blockId: "b-p" } } } as unknown as Thread;
     expect(busyForConversation({}, jobs, snap, plain)).toMatchObject({ label: "Asking" });
     expect(busyForConversation({}, [], snap, plain)).toBeNull();
   });
@@ -231,9 +231,9 @@ describe("entry keys", () => {
   test("an explain entry stands in for its not-yet-retargeted expansion (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     // Bare and qualified spellings both match.
     expect(
       anchorEntryForConversation({ "explain:block:b1": entry("explain", "explain:block:b1") }, expansion)?.kind,
@@ -245,7 +245,7 @@ describe("entry keys", () => {
     expect(anchorEntryForConversation({ "explain:block:b2": entry("explain", "explain:block:b2") }, expansion)).toBeUndefined();
     expect(anchorEntryForConversation({ "ask:block:b1": entry("ask", "ask:block:b1") }, expansion)).toBeUndefined();
     expect(anchorEntryForConversation({}, expansion)).toBeUndefined();
-    const thread = { ...expansion, type: "thread" } as unknown as Annotation;
+    const thread = { ...expansion, type: "thread" } as unknown as Thread;
     expect(
       anchorEntryForConversation({ "explain:block:b1": entry("explain", "explain:block:b1") }, thread),
     ).toBeUndefined();
@@ -253,7 +253,7 @@ describe("entry keys", () => {
     const desc = {
       ...expansion,
       anchor: { host: { kind: "description", paragraphId: "p1" }, quotedText: "q" },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     expect(
       anchorEntryForConversation({ "explain:desc:p1": entry("explain", "explain:desc:p1") }, desc)?.kind,
     ).toBe("explain");
@@ -261,7 +261,7 @@ describe("entry keys", () => {
     const diff = {
       ...expansion,
       anchor: { host: { kind: "diff-line", fileKey: "a.py", line: 7 }, quotedText: "q" },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     expect(
       anchorEntryForConversation({ "explain:diff:a.py:7": entry("explain", "explain:diff:a.py:7") }, diff)?.kind,
     ).toBe("explain");
@@ -271,9 +271,9 @@ describe("entry keys", () => {
   test("busyForConversation falls back to the anchor entry with the Explain label (#97)", () => {
     const expansion = {
       id: "ann_x",
-      type: "conversation",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "Some text." },
-    } as unknown as Annotation;
+    } as unknown as Thread;
     const snap = { pages: [], annotations: [] } as unknown as ReviewSnapshot;
     const inflight = { "explain:block:b1": entry("explain", "explain:block:b1") };
     expect(busyForConversation(inflight, [], snap, expansion)).toMatchObject({

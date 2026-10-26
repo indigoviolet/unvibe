@@ -26,7 +26,7 @@ export async function followupAction(
   cardId: string,
   blockId: string,
   index: number,
-): Promise<{ annotationId: string; turnId?: string; jobId?: string; deduplicated?: boolean }> {
+): Promise<{ annotationId: string; replyId?: string; jobId?: string; deduplicated?: boolean }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
 
@@ -53,15 +53,15 @@ export async function followupAction(
 
   // Issue #136: a suggestion on a conversation card is the next turn in
   // the same conversation (the item stays, like reply-box text).
-  if (located.holder.kind === "conversation") {
+  if (located.holder.kind === "thread") {
     const annotationId = located.holder.annotationId;
     const current = getSnapshotOrThrow(reviews, reviewId);
     const card = current.annotations.find((a) => a.id === annotationId);
-    if (!card || card.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
-    const turnId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
+    if (!card || (card.type !== "thread" && card.type !== "link")) throw new Error(`unknown conversation ${annotationId}`);
+    const replyId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
     const probe = await probeConversationSessionFor(ctx, card);
     const live = probe.continueSessionId !== undefined && !probe.rebuilt;
-    const res = await runConversationTurn(ctx, annotationId, turnId, {
+    const res = await runConversationTurn(ctx, annotationId, replyId, {
       anchor: card.anchor,
       template: live ? "ask_turn" : "ask",
       message,
@@ -73,7 +73,7 @@ export async function followupAction(
       cardLabel: message,
       workingLabel: "Writing answer",
     });
-    return { annotationId, turnId, ...res };
+    return { annotationId, replyId, ...res };
   }
 
   // Qualified like every other block anchor (#116): a bare block ID would
@@ -93,11 +93,11 @@ export async function followupAction(
   await reviews.mutate(reviewId, (draft) => {
     removeFollowUpItem(draft, holder.cardId, blockId, index);
   });
-  const { annotationId, turnId } = await createConversationCard(ctx, anchor, message, "Writing answer");
+  const { annotationId, replyId } = await createConversationCard(ctx, anchor, message, "Writing answer");
 
   const live = getSnapshotOrThrow(reviews, reviewId);
   const ann = live.annotations.find((a) => a.id === annotationId)!;
-  const res = await runConversationTurn(ctx, annotationId, turnId, {
+  const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor: ann.anchor,
     template: "ask",
     message,
@@ -109,12 +109,12 @@ export async function followupAction(
     cardLabel: message,
     workingLabel: "Writing answer",
   });
-  return { annotationId, turnId, ...res };
+  return { annotationId, replyId, ...res };
 }
 
 type FollowUpHolder =
   | { kind: "page-card"; cardId: string }
-  | { kind: "conversation"; annotationId: string };
+  | { kind: "thread"; annotationId: string };
 
 function findFollowUp(
   snapshot: ReviewSnapshot,
@@ -139,11 +139,11 @@ function findFollowUp(
     }
   }
   for (const ann of snapshot.annotations ?? []) {
-    if (ann.type !== "conversation") continue;
-    for (const turn of ann.turns ?? []) {
+    if (ann.type !== "thread" && ann.type !== "link") continue;
+    for (const turn of ann.replies ?? []) {
       if (ann.id !== cardId && turn.id !== cardId) continue;
       const hit = fromBlocks(turn.blocks);
-      if (hit) return { block: hit, holder: { kind: "conversation", annotationId: ann.id } };
+      if (hit) return { block: hit, holder: { kind: "thread", annotationId: ann.id } };
     }
   }
   // The block may live on a different card than addressed (anchor drift):
@@ -155,10 +155,10 @@ function findFollowUp(
     }
   }
   for (const ann of snapshot.annotations ?? []) {
-    if (ann.type !== "conversation") continue;
-    for (const turn of ann.turns ?? []) {
+    if (ann.type !== "thread" && ann.type !== "link") continue;
+    for (const turn of ann.replies ?? []) {
       const hit = fromBlocks(turn.blocks);
-      if (hit) return { block: hit, holder: { kind: "conversation", annotationId: ann.id } };
+      if (hit) return { block: hit, holder: { kind: "thread", annotationId: ann.id } };
     }
   }
   return null;

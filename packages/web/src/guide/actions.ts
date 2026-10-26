@@ -110,9 +110,9 @@ function targetForAction(action: ReviewAction): { targetId: string; kind: InFlig
     case "followup":
       return { targetId: followupKey(action.cardId, action.blockId, action.index), kind: "followup" };
     case "explain":
-      return { targetId: explainKey(action.anchor), kind: "explain" };
+      return action.threadId ? { targetId: action.threadId, kind: "explain" } : action.anchor ? { targetId: explainKey(action.anchor), kind: "explain" } : null;
     case "ask":
-      return { targetId: askKey(action.anchor), kind: "ask" };
+      return action.threadId ? { targetId: action.threadId, kind: "ask" } : action.anchor ? { targetId: askKey(action.anchor), kind: "ask" } : null;
     case "reply":
       return { targetId: action.annotationId, kind: "reply" };
     case "retry":
@@ -150,7 +150,7 @@ function currentLevel(cardId: string): DepthLevel | undefined {
     if (card) return card.level;
   }
   for (const a of snap?.annotations ?? []) {
-    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    const turn = (a.replies ?? []).find((t) => t.id === cardId);
     if (turn) return turn.level;
   }
   return undefined;
@@ -164,7 +164,7 @@ function currentRevision(cardId: string): number | undefined {
     if (card) return card.revision;
   }
   for (const a of snap?.annotations ?? []) {
-    const turn = (a.turns ?? []).find((t) => t.id === cardId);
+    const turn = (a.replies ?? []).find((t) => t.id === cardId);
     if (turn) return turn.revision;
   }
   return undefined;
@@ -418,8 +418,8 @@ export function performFollowUp(
   const allCards = [
     ...(snap?.pages.flatMap((p) => p.cards) ?? []),
     ...((snap?.annotations ?? [])
-      .filter((a) => a.type === "conversation")
-      .flatMap((a) => (a.turns ?? []).map((t) => ({ id: t.id, blocks: t.blocks }))) as never[] as { id: string; blocks: { id: string; type: string }[] }[]),
+      .filter((a) => a.type === "thread")
+      .flatMap((a) => (a.replies ?? []).map((t) => ({ id: t.id, blocks: t.blocks }))) as never[] as { id: string; blocks: { id: string; type: string }[] }[]),
   ];
   const card = allCards.find((c) => c.id === cardId) as
     | { blocks: { id: string; type: string; items?: { label: string }[] }[] }

@@ -155,18 +155,18 @@ test.describe("J222 document review", () => {
     // Explain on document text (replay agent answers from the base fork).
     await selectText(page, "#C-document", "folds obsolete headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const exp = page.locator("#C-document [data-expansion]").first();
+    const exp = page.locator('#C-document section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
 
-    // Ask on document text: a conversation card answers from the context repos.
+    // Ask on document text: an Ask thread answers from the context repos.
     await selectText(page, "#C-document", "fast path for modern responses");
     await page.locator('#selbar [data-act="ask"]').click();
     const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
     await askComposer.locator("textarea").fill("Why does it keep a fast path?");
     await askComposer.getByRole("button", { name: "Ask" }).click();
-    const askCard = page.locator("#C-document [data-expansion]", { hasText: "Why does it keep a fast path?" });
+    const askCard = page.locator('#C-document section.ithread[data-thread]:has([data-reply][data-kind="ask"])', { hasText: "Why does it keep a fast path?" });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
@@ -181,8 +181,8 @@ test.describe("J222 document review", () => {
       timeout: 15_000,
     });
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    const annotations = (snap.json as { annotations: { type: string; post: boolean }[] }).annotations;
-    const comment = annotations.find((a) => a.type === "comment");
+    const annotations = (snap.json as { annotations: { replies?: { kind?: string }[]; post: boolean }[] }).annotations;
+    const comment = annotations.find((a) => (a.replies ?? []).some((r) => r.kind === "comment"));
     expect(comment?.post).toBe(true);
 
     // A document answer citing code in the THIRD repo (#81 wiring):
@@ -203,7 +203,7 @@ test.describe("J222 document review", () => {
       const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
       seeded.annotations.push({
         id: "ann-doc-cite",
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "document#p2" },
           quotedText: "folds obsolete headers",
@@ -214,10 +214,12 @@ test.describe("J222 document review", () => {
         },
         open: true,
         pinned: true,
-        messages: [],
         post: false,
-        turns: [
+        replies: [
           {
+            id: "ans-doc-cite-1",
+            kind: "ask",
+            who: "agent",
             question: null,
             blocks: [
               {
@@ -227,6 +229,9 @@ test.describe("J222 document review", () => {
                 citations: [{ target: `code:src/app.ts:2@${sha3}` }],
               },
             ],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
           },
         ],
       });
@@ -241,7 +246,7 @@ test.describe("J222 document review", () => {
     svc = await startService(dataDir, { agent: "replay" });
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-    const cited = page.locator("#C-document [data-expansion]", { hasText: "The greeting lives in the third repo." });
+    const cited = page.locator('#C-document section.ithread[data-thread]', { hasText: "The greeting lives in the third repo." });
     await expect(cited.first()).toBeVisible({ timeout: 30_000 });
     await cited.first().getByRole("button", { name: "Source" }).click();
     await expect(page.getByRole("tab", { name: "app.ts" })).toBeVisible({ timeout: 30_000 });

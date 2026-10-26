@@ -149,9 +149,9 @@ test("selection across token spans snaps to words and Ask opens a composer", asy
   await expect(composer.locator(".mq")).toContainText("OBSOLETE_FOLD_RE");
   await composer.locator("textarea").fill("Why this regex?");
   await composer.getByRole("button", { name: "Ask" }).click();
-  // An Ask on diff code opens the usual conversation card under the line:
+  // An Ask on diff code opens the usual thread under the line:
   // working state, then the answer with its question and reply box.
-  const card = page.locator(`${connFile} [data-expansion]`, { hasText: "Why this regex?" });
+  const card = page.locator(`${connFile} section.ithread[data-thread]:has([data-reply][data-kind="ask"])`, { hasText: "Why this regex?" });
   await expect(card).toBeVisible({ timeout: 5000 });
   await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
   await expect(card.locator(".ans-q").first()).toContainText("Why this regex?", { timeout: 8000 });
@@ -164,7 +164,7 @@ test("Explain then Close leaves one flat dotted anchor mark in highlighted code"
   const quote = await selectSpanning(page, `${connFile} table.diff`, "header_items = message.items");
   expect(quote.length).toBeGreaterThanOrEqual(2);
   await page.locator('#selbar [data-act="explain"]').click();
-  const card = page.locator(`${connFile} [data-expansion]`).first();
+  const card = page.locator(`${connFile} section.ithread[data-thread]:has([data-reply][data-kind="explain"])`).first();
   await expect(card).toBeVisible({ timeout: 5000 });
   await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   await expect(card.getByRole("button", { name: "Close" })).toBeVisible();
@@ -185,7 +185,7 @@ test("Explain then Close leaves one flat dotted anchor mark in highlighted code"
   expect(new Set(jumps).size).toBe(1);
   // Click re-expands in place.
   await mark.click();
-  await expect(page.locator(`${connFile} [data-expansion]`).first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator(`${connFile} section.ithread[data-thread]:has([data-reply][data-kind="explain"])`).first()).toBeVisible({ timeout: 5000 });
 });
 
 test("revealSource highlights lines that are also token-highlighted", async ({ page }) => {

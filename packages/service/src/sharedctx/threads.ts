@@ -15,7 +15,7 @@
  * pipeline); when no small model is available the fallback is the first line
  * of the last agent reply.
  */
-import type { Annotation, Block } from "@unvibe/shared";
+import type { Thread, Block } from "@unvibe/shared";
 import { renderMarkdown } from "@unvibe/shared";
 
 /** Rendered answer text for settling (tags stripped downstream). */
@@ -34,7 +34,7 @@ export interface ThreadSnapshot {
   lastActivityAt: number | null;
 }
 
-export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | null): ThreadSnapshot {
+export function toThreadSnapshot(thread: Thread, lastActivityAt: number | null): ThreadSnapshot {
   return {
     id: thread.id,
     open: thread.open,
@@ -43,15 +43,18 @@ export function toThreadSnapshot(thread: Annotation, lastActivityAt: number | nu
   };
 }
 
-/** Messages for settling: comment messages, or one reader/agent pair per turn. */
-function threadMessages(thread: Annotation): ThreadSnapshot["messages"] {
-  if (thread.type === "conversation") {
-    return (thread.turns ?? []).flatMap((t) => [
-      { who: "you" as const, ...(t.question !== null ? { text: t.question } : {}) },
-      { who: "ai" as const, text: renderTurnText(t.blocks) },
-    ]);
+/** Messages for settling: one reader/agent pair per agent reply, comment replies as-is. */
+function threadMessages(thread: Thread): ThreadSnapshot["messages"] {
+  const out: ThreadSnapshot["messages"] = [];
+  for (const t of thread.replies ?? []) {
+    if (t.kind === "comment") {
+      out.push({ who: t.who === "agent" ? "ai" : "you", ...(renderTurnText(t.blocks) ? { text: renderTurnText(t.blocks) } : {}) });
+    } else {
+      out.push({ who: "you" as const, ...(t.question !== null ? { text: t.question } : {}) });
+      out.push({ who: "ai" as const, text: renderTurnText(t.blocks) });
+    }
   }
-  return thread.messages.map((m) => ({ who: m.who, ...(m.text !== undefined ? { text: m.text } : {}) }));
+  return out;
 }
 
 /** True once the thread has settled (closed, or idle past the threshold). */

@@ -141,7 +141,7 @@ describe("follow-up suggestions on answers (#136 slice 2)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(card.error).toBeNull();
-      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      const turn = (card.replies ?? []).find((t) => t.id === (res.json.turnId as string))!;
       expect(turn.blocks.length).toBeGreaterThan(0);
       const items = followUpItems(turn);
       expect(items).toHaveLength(2);
@@ -168,7 +168,7 @@ describe("follow-up suggestions on answers (#136 slice 2)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(card.error).toBeNull();
-      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      const turn = (card.replies ?? []).find((t) => t.id === (res.json.turnId as string))!;
       // A "## Follow-up" line is a card boundary to the parser, not a
       // chip section: the items land as an ordinary list block — nothing
       // is lost, nothing becomes a chip.
@@ -204,7 +204,7 @@ describe("follow-up suggestions on answers (#136 slice 2)", () => {
       await waitForJob(ctx, res.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(card.error).toBeNull();
-      const turn = (card.turns ?? []).find((t) => t.id === (res.json.turnId as string))!;
+      const turn = (card.replies ?? []).find((t) => t.id === (res.json.turnId as string))!;
       expect(turn.blocks.length).toBeGreaterThan(0);
       expect(followUpItems(turn)).toHaveLength(0);
     } finally {
@@ -234,7 +234,7 @@ describe("follow-up suggestions on answers (#136 slice 2)", () => {
       await waitForJob(ctx, rep.json.jobId as string);
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       expect(after.error).toBeNull();
-      const turns = after.turns ?? [];
+      const turns = after.replies ?? [];
       expect(turns).toHaveLength(2);
       for (const turn of turns) {
         expect(followUpItems(turn)).toHaveLength(2);
@@ -272,7 +272,7 @@ describe("follow-up suggestions on answers (#136 slice 2)", () => {
       const ann = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
       expect(ann.error).toBeNull();
       const turnId = res.json.turnId as string;
-      const turn = (ann.turns ?? []).find((t) => t.id === turnId)!;
+      const turn = (ann.replies ?? []).find((t) => t.id === turnId)!;
       const blocks = turn.blocks;
       const follow = blocks.find((b) => b.type === "follow-up") as unknown as {
         items: { label: string; ask?: string }[];

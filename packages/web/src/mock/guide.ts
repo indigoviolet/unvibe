@@ -11,7 +11,7 @@
  * targets (real file keys), so no alias table is needed anywhere.
  */
 import type {
-  Annotation,
+  Thread,
   Page,
   ReviewDescription,
   ReviewSnapshot,
@@ -28,7 +28,7 @@ function clone<T>(value: T): T {
 
 export const MOCK_PAGES: Page[] = clone(snapshot.pages);
 
-export const MOCK_ANNOTATIONS: Annotation[] = clone(snapshot.annotations);
+export const MOCK_ANNOTATIONS: Thread[] = clone(snapshot.annotations);
 
 export const MOCK_DESCRIPTION: ReviewDescription = clone(
   snapshot.description ?? { html: "", rev: "", source: "pr", editable: false },

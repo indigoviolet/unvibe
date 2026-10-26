@@ -14,8 +14,7 @@ import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { ExpansionCard } from "./expansions/ExpansionCard.js";
-import { isClosedExpansion, isOpenExpansion } from "./expansions/expansionUtils.js";
+import { isClosedExpansion } from "./expansions/expansionUtils.js";
 import { RichText } from "./RichText.js";
 import { Card as UiCard } from "../ui/index.js";
 
@@ -71,26 +70,11 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
         </p>
       ) : null}
       {titleBlock ? (
-        <>
-          <GuideBlockThreads reviewId={reviewId} cardId={DOCUMENT_CARD_ID} blockId={titleBlock.id} />
-          {expansionsForBlock(annotations, DOCUMENT_CARD_ID, titleBlock.id)
-            .filter(isOpenExpansion)
-            .map((e) => (
-              <ExpansionCard
-                key={e.id}
-                reviewId={reviewId}
-                expansion={e}
-                lookupPage={lookupPage}
-                onOpenPage={onOpenPage}
-                onFollowUp={() => {}}
-              />
-            ))}
-        </>
+        <GuideBlockThreads reviewId={reviewId} cardId={DOCUMENT_CARD_ID} blockId={titleBlock.id} />
       ) : null}
       <UiCard as="section" variant="raised" id={`C-${DOCUMENT_CARD_ID}`}>
         {doc.blocks.filter((db) => db.id !== titleBlock?.id).map((db) => {
           const exps = expansionsForBlock(annotations, DOCUMENT_CARD_ID, db.id);
-          const open = exps.filter(isOpenExpansion);
           const footnotes = exps.filter(isClosedExpansion);
           return (
             <Fragment key={db.id}>
@@ -109,16 +93,6 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
                 />
               )}
               <GuideBlockThreads reviewId={reviewId} cardId={DOCUMENT_CARD_ID} blockId={db.id} />
-              {open.map((e) => (
-                <ExpansionCard
-                  key={e.id}
-                  reviewId={reviewId}
-                  expansion={e}
-                  lookupPage={lookupPage}
-                  onOpenPage={onOpenPage}
-                  onFollowUp={() => {}}
-                />
-              ))}
             </Fragment>
           );
         })}

@@ -24,11 +24,11 @@ async function gotoReview(page: Page): Promise<void> {
 }
 
 /**
- * Issue #167: the demo seeds an open pinned card under C-problem that
+ * Issue #167: the demo seeds an open pinned thread under C-problem that
  * overlays the controls below it — close it first, as a reader would.
  */
 async function closeSeedCard(page: Page): Promise<void> {
-  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
+  await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
 }
 
 /**
@@ -201,9 +201,11 @@ test("on-demand concept page renders with no bookmark control (#216, #240)", asy
   await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
   await expect(page).toHaveURL(/\/review\/demo\/page\/c-ows-rws/);
   // The on-demand concept page renders (mock and replay titles differ,
-  // so assert non-empty, not exact text) with no bookmark control.
+  // so assert non-empty, not exact text) with no bookmark control —
+  // only the #273 collapse-all control lives in the title row.
   await expect(page.locator("#page h1.title")).not.toBeEmpty({ timeout: 15_000 });
-  await expect(page.locator("#page .title-row button")).toHaveCount(0);
+  await expect(page.locator("#page .title-row button")).toHaveCount(1);
+  await expect(page.locator('#page .title-row [data-testid="collapse-threads"]')).toBeVisible();
 });
 
 test("finding page carries its label and evidence", async ({ page }) => {

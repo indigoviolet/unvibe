@@ -1,9 +1,9 @@
 /**
  * Anchor host equality for dedupe/reuse checks (explain + ask share it).
  */
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 
-export function anchorSameHost(a: Annotation["anchor"], b: Annotation["anchor"]): boolean {
+export function anchorSameHost(a: Thread["anchor"], b: Thread["anchor"]): boolean {
   if (a.host.kind !== b.host.kind) return false;
   if (a.host.kind === "block" && b.host.kind === "block") return a.host.blockId === b.host.blockId;
   if (a.host.kind === "description" && b.host.kind === "description") return a.host.paragraphId === b.host.paragraphId;

@@ -11,7 +11,7 @@
  * Issue #152: opening as a page never discards work. An active fill job
  * is NOT cancelled: the turns stay on the link annotation as the fill's
  * state owner (with the card's session), each moved turn maps to its page
- * card (`promotedTurns`), and the fill mirrors finished blocks onto the
+ * card (`promotedReplies`), and the fill mirrors finished blocks onto the
  * mapped card until it settles. The page shows the usual working state
  * (the job is re-targeted at the page card) and the error-with-Retry
  * state (resolved through the mapping) until then. Turns are dropped —
@@ -20,10 +20,10 @@
  * nothing a reader made is lost.
  */
 import { randomBytes } from "node:crypto";
-import type { Annotation, Block, Card } from "@unvibe/shared";
+import type { Thread, Block, Card } from "@unvibe/shared";
 import { findBlock } from "../../interaction/index.js";
 import { getSnapshotOrThrow, type ActionContext } from "./common.js";
-import { isTurnUnsettled } from "./conversation.js";
+import { isReplyUnsettled } from "./conversation.js";
 
 export async function promoteAction(
   ctx: ActionContext,
@@ -33,7 +33,7 @@ export async function promoteAction(
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
   const found = snapshot.annotations.find((a) => a.id === annotationId);
   if (!found) throw new Error(`unknown annotation ${annotationId}`);
-  if (found.type !== "conversation" || !found.turns) {
+  if ((found.type !== "thread" && found.type !== "link") || !found.replies) {
     throw new Error(`annotation ${annotationId} is not a conversation`);
   }
   // The fill keeps running: no cancel here (issue #152).
@@ -49,17 +49,17 @@ export async function promoteAction(
   const pageId = `p-${randomBytes(4).toString("hex")}`;
   // Pre-assign the page-card ids so the live fill job can be re-targeted
   // at its card inside the same mutate.
-  const cardIds = found.turns.map(() => `c-${randomBytes(4).toString("hex")}`);
-  const unsettled = found.turns.some(isTurnUnsettled);
+  const cardIds = found.replies.map(() => `c-${randomBytes(4).toString("hex")}`);
+  const unsettled = found.replies.some(isReplyUnsettled);
   // The live fill job (if any) moves to its page card with the content.
-  const filling = found.turns.find((t) => t.jobId !== undefined);
-  const fillingCardId = filling ? cardIds[found.turns.indexOf(filling)] : undefined;
+  const filling = found.replies.find((t) => t.jobId !== undefined);
+  const fillingCardId = filling ? cardIds[found.replies.indexOf(filling)] : undefined;
   const fillingJobId = filling?.jobId ?? found.jobId;
 
   await reviews.mutate(reviewId, (draft) => {
-    const ann = (draft.annotations as unknown as Annotation[]).find((a) => a.id === annotationId);
-    if (!ann || ann.type !== "conversation" || !ann.turns) throw new Error(`unknown conversation ${annotationId}`);
-    const cards: Card[] = ann.turns.map((turn, i) => ({
+    const ann = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+    if (!ann || (ann.type !== "thread" && ann.type !== "link") || !ann.replies) throw new Error(`unknown conversation ${annotationId}`);
+    const cards: Card[] = ann.replies.map((turn, i) => ({
       id: cardIds[i],
       pageId,
       // First card carries the quoted text, later ones their questions.
@@ -82,12 +82,12 @@ export async function promoteAction(
       // The fill (or its retry) still owns these turns: keep them as the
       // state owner and mirror content onto the page cards until they
       // settle.
-      ann.promotedTurns = ann.turns.map((turn, i) => ({ turnId: turn.id, cardId: cardIds[i] }));
+      ann.promotedReplies = ann.replies.map((turn, i) => ({ replyId: turn.id, cardId: cardIds[i] }));
     } else {
       ann.working = null;
       ann.error = null;
       ann.jobId = undefined;
-      delete ann.turns;
+      (ann as { replies?: unknown }).replies = [];
     }
   });
   if (fillingJobId && fillingCardId) {
