@@ -16,6 +16,7 @@ import {
 import { runSwitchCore } from "../update/switch.js";
 import { DB_RULE } from "../update/data-backup.js";
 import { refreshLoginUnitIfManaged } from "../update/service-manager.js";
+import { isNpxCachePath, UPDATE_NPX_MESSAGE } from "./npx.js";
 
 export const UPDATE_USAGE = [
   "unvibe update: install a different channel",
@@ -73,6 +74,12 @@ export async function runUpdateListFlow(deps: UpdateDeps): Promise<UpdateOutcome
 
 /** Install a channel: backup, npm install (verified), keep the live DB. Never runs live. */
 export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): Promise<UpdateOutcome> {
+  // Issue #277: refuse before touching anything (backup, npm) — an npx
+  // install has no prefix to pin, so npm would write into whatever global
+  // prefix happens to be default while the npx copy keeps running.
+  if (isNpxCachePath(deps.cliScriptPath)) {
+    return { code: 1, lines: [UPDATE_NPX_MESSAGE] };
+  }
   if (!isChannelName(channel)) {
     return {
       code: 2,

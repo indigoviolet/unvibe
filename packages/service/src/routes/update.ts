@@ -54,6 +54,7 @@ import {
   writePendingSwitch,
   clearPendingSwitch,
 } from "../update/state.js";
+import { isNpxCachePath, UPDATE_NPX_MESSAGE } from "../cli/npx.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 
@@ -228,6 +229,13 @@ export async function registerUpdate(
     if (!hooks) return reply.code(501).send({ error: "not available in this build" });
     const updater = deps.updater;
     if (!updater) return reply.code(501).send({ error: "not available in this build" });
+
+    // Issue #277: the service itself runs from the npx cache — switching
+    // would npm-install into the default global prefix while this copy
+    // keeps running. Report it as unavailable instead of running npm.
+    if (isNpxCachePath(process.argv[1])) {
+      return reply.code(409).send({ error: UPDATE_NPX_MESSAGE });
+    }
 
     // `from` is the installed channel read locally: a preview ref can be
     // deleted from the remote while installed, and a rollback to
