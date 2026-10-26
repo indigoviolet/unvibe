@@ -421,7 +421,7 @@ needed (that deviation is closed, not added).
 - Read state removed as a feature (#136, owner decision): no Mark read
   control and no stored read state on any card (guide or
   conversation); the per-hunk reviewed tick and N/M progress stay.
-  (`entities.ts` has no `read`; `CardView.tsx` / `ExpansionCard.tsx`
+  (`entities.ts` has no `read`; `CardView.tsx` / `ThreadView.tsx`
   render no read control; `guideUtils.test.ts` read suites deleted.)
 - “Underlying principle” block at deepest `+` — met (audit-10):
   `e2e/depth-principle-service.spec.ts` (real service, `UNVIBE_AGENT:
@@ -503,59 +503,75 @@ needed (that deviation is closed, not added).
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
   `comments.spec.ts` “GitHub action links diff lines”).
 
-### §4.7 Explanations — all met (#136 slices 1+2, #152, #167)
+### §4.7 Threads — all met (#273 flat threads, from #268 spike; replaces #136 slices 1+2, #152, #167)
 
-- Conversation card on the source block's anchor, highlight; header (quote,
-  Open as page, Delete, Close) + one answer view per turn, each with the
-  card controls acting on that answer alone, plus a reply box answered in
-  the same conversation — met (`actions/conversation.ts`,
-  `ExpansionCard.tsx` + `ReplyBox.tsx`, `conversation.test.ts`,
-  `ConversationCard.test.tsx`, `ask-service.spec.ts` “explain runs”).
-  Issue #204 (revising #167): new Explain/Ask cards open pinned inline
+- One thread component for everything (`comments/ThreadView.tsx`): a
+  thread anchored once (guide card, description block, diff line) with
+  flat replies, never nested boxes. Explain or Ask on content starts a
+  thread; its answer is the first reply. Explain or Ask inside a thread
+  hyperlinks the selected text and appends the answer as a reply in the
+  same thread (`linkTo` on the source reply; click scrolls to the reply
+  and highlights it — no job, no patch). Each reply has a kind (`ask`,
+  `explain`, `comment`, `persona` reserved in the type only) badged by
+  kind — met (`packages/shared/src/entities.ts` `Thread`/`Reply`,
+  `pipeline/actions/conversation.ts` in-thread append, journeys J2
+  (reworked), J273, visual-tour guide-nested/diff-nested frames).
+- Thread header (quote, reply count, Open as page, Outbox toggle, Delete,
+  Close) + one reply view per reply, each with the card controls (depth,
+  Use examples, Add diagram, Undo, Second opinion) acting on that reply
+  alone, plus a comment Reply box and an Ask follow-up box answered in
+  the same thread — met (`actions/conversation.ts`,
+  `comments/ThreadView.tsx` + `ReplyBox.tsx` with `followupDraft`,
+  `conversation.test.ts`, journeys J2/J15/J273). “Ask about this” on a
+  comment appends an Ask reply inside the same thread — the only way a
+  comment leads to an agent reply, and the answer is never submitted.
+  Issue #204 (revising #167): new Explain/Ask threads open pinned inline
   in the guide, the description and the diff; there is no pin/unpin
   control and no floating open state — floating survives only as the
-  hover peek on a closed card's mark, and clicking the mark (or the
-  peek) pins the card in place. Close collapses the card back to its
-  mark; delete removes card and mark. The pin is stored on the
-  conversation annotation (`pinned`, set at creation and on reopen
-  through the comment PATCH), so it survives a reload; a card stored
-  unpinned by older data renders inline when open. While a turn is
-  being written it shows only the header and the writing state; the
-  answer toolbar and the reply box appear when the answer arrives,
-   and a failed turn shows Retry (issue #203; a conversation job
-   interrupted by a restart settles its turn as failed at startup, so
-   Retry is what it shows) — met
-   (`ConversationCard.test.tsx` “#203”, journeys J2/J6/J15, visual tour
-   guide-pinned/guide-writing/diff scenes). Issue #270: the banner and
-   Retry agree on one source of truth (Retry refills the last *failed*
-   turn, wherever it sits — a turn pushed while an earlier one still
-   filled can leave the failure behind the last turn); a failed turn
-   stores no partial answer (no cut-off citation, no raw trailing block
-   — the raw output stays on the job for Debug), a retry starts from
-   empty blocks so it can never concatenate; refusal and guard toasts
-   carry plain words with no internal ids; follow-up answers stand on
-   their own (prompt rule in `ask_turn.md` + L0 reply hygiene) — met
+  hover peek on a closed thread's mark, and clicking the mark (or the
+  peek) pins the thread in place. Close collapses the thread back to
+  its mark; delete removes thread and mark. The pin is stored on the
+  thread (`pinned`, set at creation and on reopen through the comment
+  PATCH), so it survives a reload. While a reply is being written the
+  thread shows only the header and the writing state; the per-reply
+  toolbar and the reply boxes appear when the first answer arrives,
+  and a failed reply shows Retry (issue #203; an agent job interrupted
+  by a restart settles its reply as failed at startup, so Retry is what
+  it shows) — met
+   (`comments/ThreadView.test.tsx` “#203”, journeys J2/J6/J15/J273, visual
+   tour guide-pinned/guide-writing/diff scenes). Issue #270: the banner
+   and Retry agree on one source of truth (Retry refills the last
+   *failed* reply in place and never starts a new reply — a reply pushed
+   while an earlier one still filled can leave the failure behind the
+   last reply); a failed reply stores no partial answer (no cut-off
+   citation, no raw trailing block — the raw output stays on the job
+   for Debug), a retry starts from empty blocks so it can never
+   concatenate; refusal and guard toasts carry plain words with no
+   internal ids; follow-up answers stand on their own (prompt rule in
+   `ask_turn.md` + L0 reply hygiene) — met
    (`conversation-retry-270.test.ts`, journey J270, visual tour
-   ask-failed/ask-retried frames). Issue #271: the reply box stays
-   visible and editable while a *follow-up* answer is pending, with
-   Send disabled and the reason as its tooltip ("Wait for the
-   answer"); the kept draft sends once the answer lands (first answers
-   keep the #203 header-only writing state). On a failure the box
-   stays hidden and Retry governs (a draft typed while pending is kept
-   in the server draft and is back after the retry lands). In-progress
-   labels in Ask/Explain and follow-ups carry no stacked ellipsis
-   beside the dots ("Writing answer", "Thinking", "Asking",
-   "Retrying"; reply-path fills unified on "Writing answer") — met
-   (`ConversationCard.test.tsx` #271 cases, journey J271, visual tour
-   ask-pending frames, J6 + tour writing-state scene). Issue #272: a
-   fill that fails while its card is closed records the failure anyway
-   (banner plus Retry on reopen); an explicitly cancelled fill settles
-   quietly with no working flag, job link or partials left; a
-   graceful-shutdown-cancelled fill still marked working is settled as
-   interrupted on the next boot — met (`conversation-stuck-272.test.ts`,
-   journey J272).
+   ask-failed/ask-retried frames). Issue #271: the Ask follow-up box
+   stays visible and editable while a *follow-up* answer is pending,
+   with Send disabled and the reason as its tooltip ("Wait for the
+   answer"); the kept draft (server-persisted `followupDraft`) sends
+   once the answer lands (first answers keep the #203 header-only
+   writing state, with both boxes hidden until the first agent reply
+   arrives). On a failure both boxes hide and Retry governs (a draft
+   typed while pending is kept in the server draft and is back after
+   the retry lands). In-progress labels in Ask/Explain and follow-ups
+   carry no stacked ellipsis beside the dots ("Writing answer",
+   "Thinking", "Asking", "Retrying"; reply-path fills unified on
+   "Writing answer"); exactly one working indicator shows while a reply
+   fills — met (`comments/ThreadView.test.tsx` #271 cases, journey
+   J271, visual tour ask-pending frames, J6 + tour writing-state
+   scene). Issue #272: a fill that fails while its thread is closed
+   records the failure anyway (banner plus Retry on reopen); an
+   explicitly cancelled fill settles quietly with no working flag, job
+   link or partials left; a graceful-shutdown-cancelled fill still
+   marked working is settled as interrupted on the next boot — met
+   (`conversation-stuck-272.test.ts`, journey J272).
 - Close → dotted link (preview/expand) — met (`actions/close.ts`,
-  `promote.ts`).
+  `promote.ts`, journeys J2/J206).
 - Anchor lost → footnote chip on the citations line, open cards stay with
   a "from an earlier wording" hint (issue #72, replaces the collapsed-card
   fallback) — met (`interaction/cards.ts` visible-level `markStaleAnchors`
@@ -563,35 +579,37 @@ needed (that deviation is closed, not added).
   `guide/CardView.test.tsx` footnote chips;
   `e2e/anchor-footnotes-service.spec.ts` closed → deep → chip → open →
   back → highlight).
-- Open as page moves content (one page card per answer, first titled
+- Open as page moves content (one page card per reply, first titled
   with the quote, later ones with their questions), anchor becomes link
-  at once in the guide, the description and the diff — met
-  (`actions/promote.ts`, `actions-m4.test.ts` “promote”,
-  `source/diff/DiffPromotedLink.test.tsx`). Opening as a page never
-  discards work (issue #152): a still-running fill keeps running and
-  lands on the page card (turns stay on the link as the fill's state
-  owner with the card's session, mirrored per partial; the job is
-  re-targeted at the page card so the page shows the working state; the
-  turns drop off the link and the session closes once everything has
-  settled), a failed fill shows the error with Retry on the page, and
-  second opinions move to the page with the answers — met
-  (`conversation.test.ts` “promote mid-fill”, `guide/CardViewPromoted.test.tsx`,
-  `e2e/promote-midfill.spec.ts`).
+  at once in the guide, the description and the diff — kept working on
+  threads in #273 — met (`actions/promote.ts`,
+  `actions-m4.test.ts` “promote”, `source/diff/DiffPromotedLink.test.tsx`,
+  journeys J2/J266 with the thread “Open as page” control). Opening as
+  a page never discards work (issue #152): a still-running fill keeps
+  running and lands on the page card (replies stay on the link as the
+  fill's state owner with the thread's session, mirrored per partial;
+  the job is re-targeted at the page card so the page shows the working
+  state; the replies clear off the link and the session closes once
+  everything has settled), a failed fill shows the error with Retry on
+  the page, and second opinions move to the page with the answers — met
+  (`conversation.test.ts` “promote mid-fill” with `promotedReplies`,
+  `guide/CardViewPromoted.test.tsx`, `e2e/promote-midfill.spec.ts`).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from
   the anchor-keyed entry instead of the “Working…” fallback, and
   content-needing controls (depth, examples, diagram, second opinion) stay
   off until the text arrives (`guide/inflight.ts` `anchorEntryForConversation`,
-  `ExpansionCard.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
+  `comments/ThreadView.tsx`, `comments/doubleIndicator.test.tsx` “Explain”,
   `guide/inflight.test.ts` anchor-entry cases). First and later Explains
   take the same code path; the first only looks different because agent
   session setup stretches the patch-before-response window.
-- Follow-up suggestions stay on Explain answers; clicking one sends it as
-  the next turn in the same conversation (the item stays, like reply-box
-  text) — met (`actions/followup.ts` conversation branch,
-  `ConversationCard.test.tsx` suggestion case). On guide cards a click
-  still consumes the item and opens a new conversation card.
+- Follow-up suggestions stay on agent replies; clicking one sends it as
+  the next agent reply in the same thread (the item stays, like
+  reply-box text) — met (`actions/followup.ts` thread branch, journey
+  J273 covers suggestion-free flows; suggestion cases in
+  `actions-ask-followups.test.ts`). On guide cards a click still
+  consumes the item and opens a new thread.
 - The card is never submitted to GitHub and carries no Outbox control —
   met (no `post` on conversations; submit posts threads only).
 - Explanations nest (#116, #136): an Explain on text inside an answer
@@ -627,45 +645,57 @@ needed (that deviation is closed, not added).
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
 
-### §4.8 Comments — all met (#136 slice 2: threads are comments only)
+### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread)
 
-- Ask… opens the conversation card (§4.7) on the selection's anchor,
-  with the question as its first turn; Comment starts a comment thread
-  with no agent reply — met (the old `ask.ts`/`explain.ts` are merged
-  into `actions/conversation.ts`, `NewThreadComposer.tsx`,
-  `ask-service.spec.ts`). Only Ask sends text to the agent; clicking a
-  diff line opens a Comment. Only comments are submitted — conversation
-  cards carry no Outbox control and the submit path skips them (issue
-  #135). A Comment from an agent answer quotes the selection as a
-  Markdown blockquote. A comment offers “Ask the agent about this”: the
-  usual Ask card on the comment's anchor, quoting the comment — the only
-  way a comment leads to an agent reply, and the answer is never
-  submitted.
-- Follow-up suggestions live on conversation answers, never in comment
-  threads: one behaviour for every answer — the model may end any answer
-  with suggestions, they render as chips on that answer, and clicking one
-  sends it as the next turn in the same conversation (`actions-ask-followups.test.ts`,
-  `ConversationCard.test.tsx` suggestion case).
-- Thread header (quote/`file:line`, Outbox toggle filled when on,
-  Delete, Close) — met (`comments/threads.test.ts`,
-  `ThreadView.test.tsx`, walk screenshot shows “Agent · suggested
-  comment” threads with Reply/Discard).
-- Reply box always visible, Discard/Reply, typed text survives rerender;
-  Discard stays disabled on an existing thread until there is a draft —
-  met (`comments/ThreadView.test.tsx`, `comments.spec.ts`). Replies are
-  reviewer-written only, never agent answers.
+- Ask… starts a thread (§4.7) on the selection's anchor, with the
+  question as its first reply; Comment starts a thread with a reviewer
+  comment reply and no agent reply — met (`actions/conversation.ts`,
+  `NewThreadComposer.tsx` with in-thread `threadId`, journeys J2/J273).
+  Only Ask sends text to the agent; clicking a diff line opens a
+  Comment. Only comment-kind replies are submitted — pure agent threads
+  stay out of the Outbox and the submit path skips threads without
+  comment replies (issue #135). A Comment from inside a thread quotes
+  the selection as a Markdown blockquote. A comment offers “Ask about
+  this”: an Ask reply appended inside the same thread, quoting the
+  comment — the only way a comment leads to an agent reply, and the
+  answer is never submitted.
+- Follow-up suggestions live on agent replies: one behaviour for every
+  reply — the model may end any reply with suggestions, they render as
+  chips on that reply, and clicking one sends it as the next agent reply
+  in the same thread (the item stays, like typed reply text)
+  (`actions-ask-followups.test.ts`, ThreadView suggestion coverage).
+- Thread header (quote/`file:line`, reply count, Open as page, Outbox
+  toggle filled when on, Delete, Close) — met
+  (`comments/threads.test.ts`, `ThreadView.test.tsx`, journey J273,
+  visual-tour thread frames).
+- Reply boxes: the comment Reply box is always visible (Discard/Reply,
+  typed text survives rerender; Discard stays disabled on an existing
+  thread until there is a draft) and the Ask follow-up box appears once
+  the thread has agent replies (hidden while the first answer fills,
+  Send disabled with “Wait for the answer” while a follow-up pends —
+  #271) — met (`comments/ThreadView.test.tsx`,
+  `comments/ReplyBox.test.tsx`, journeys J271/J273, visual-tour
+  ask-pending/writing-state frames). Reviewer comments live alongside
+  agent answers as `kind: "comment"` replies, badged by kind.
 - Placement (guide closed + hover outline; diff under line + line-number
-  reopen + click-number starts; description under paragraph) — met
-  (`comments.spec.ts` “diff line click starts a comment; close leaves an
-  icon; reopen works”). The hover outline clears only its own marks and
-  cards/threads (issue #111), never the depth stepper pips
-  (`guide/expansions/hoverOutline.test.tsx`).
-- One box while asking (issue #97) — met: the Ask composer hides as soon
-  as its card is in the snapshot, and the card's working row uses the
-  fixed Ask label instead of the “Reading the diff…” fallback
-  (`comments/NewThreadComposer.tsx`,
-  `guide/expansions/ExpansionCard.tsx`,
-  `comments/doubleIndicator.test.tsx` “Ask”).
+  reopen + click-number starts; description under paragraph; code/file
+  tab under cited lines) — threads render inline under the card,
+  description block or diff line they started from (owner decision #273)
+  — met (journeys J2/J214/J223, `comments.spec.ts` “diff line click
+  starts a comment; close leaves an icon; reopen works”). The hover
+  outline clears only its own marks and threads (issue #111), never the
+  depth stepper pips (`guide/expansions/hoverOutline.test.tsx`).
+- One composer while asking (issue #97) — met: the Ask composer hides
+  as soon as its thread is in the snapshot (an in-thread Ask composes
+  inside the thread itself), and the thread's working row uses the fixed
+  Ask label instead of the “Reading the diff…” fallback
+  (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
+  `comments/doubleIndicator.test.tsx` “Ask”, journey J273).
+- Collapse-all threads (issue #268, built in #273): the guide pane
+  header control collapses every thread, comments included, to one-line
+  rows (quote · question · latest snippet · reply count); expanding a
+  row restores that thread — met (store `collapseAll`/`expandedThreads`,
+  `ThreadCollapsedRow`, journey J273, visual-tour collapsed frames).
 - Comments menu (two counted tabs in the segmented control — Comments
   (This review + On GitHub) and Outbox (#236; opening shows Comments,
   the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep
@@ -1165,18 +1195,20 @@ needed (that deviation is closed, not added).
 ## §7 Data model and IDs — all met
 
 - Entities per §7.1 table — met (`shared/src/entities.ts`;
-  #136 slices 1+2: `ContentBody` (page card or answer), `Turn`
-  (`ans_…` + question + answer blocks), `Annotation` types
-  `conversation` (turns + one session id), `comment` (messages, `post`,
-  draft) and `link` (plus `promotedTurns` mapping moved turns to page
-  cards while unsettled, #152); `ExpansionState` and `Card.read`
+  #273 flat threads (from #268 spike): `ContentBody` (page card or
+  thread reply), `Reply` (`ans_…` + kind + question + answer blocks),
+  `Thread` (`anchor` + flat `replies[]`, `post`, draft, per-thread
+  session id) and `link` (plus `promotedReplies` mapping moved replies
+  to page cards while unsettled, #152); no backward compatibility —
+  stored reviews must be reset. `ExpansionState` and `Card.read`
   removed; single schema migration (001–005 collapsed under
   #137; dead `annotations`/`cards`/`blocks`/`hunk_states` tables and the
   unused `note_ack` prompt removed under #142) + sessions table;
   `store.test.ts`, `state.test.ts`).
 - ID grammar (§7.2 all eight forms) — met (`shared/src/ids.ts`,
   `links.ts`; `ids` unit tests). `card:` addresses a page card or one
-  conversation answer (`ans_…`).
+  thread reply (`ans_…`); the `ans_…` host form for new anchors is gone
+  (#273 — in-thread selections travel as `threadId`/`sourceReplyId`).
 - App assigns IDs; agents never invent them — met: every token validated
   (`validate/*`); unknown IDs fail/repair/unverified; unknown `concept:`
   slugs stay valid links whose page is written on open (`validate/validate.ts`, `validate.test.ts`).
