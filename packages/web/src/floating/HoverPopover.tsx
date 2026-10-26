@@ -36,7 +36,7 @@ const esc = (s: string): string =>
 
 const tick = (s: string): string => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 
-function renderMsgs(msgs: Annotation["messages"]): string {
+function renderMsgs(msgs: import("@unvibe/shared").Reply[]): string {
   // Author avatars are icons, not text (owner decision): a person icon
   // for the reviewer, the spark for the agent. Shapes come from
   // `components/Icon.tsx`. Screen-reader names follow the #45 glossary
@@ -47,7 +47,10 @@ function renderMsgs(msgs: Annotation["messages"]): string {
       const av = you ? "you" : "ai";
       const name = you ? "You" : "Agent";
       const inner = you ? PERSON_SVG_INNER : SPARK_SVG_INNER;
-      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${inner}</svg></span><div><p>${tick(m.text ?? "")}</p></div></div>`;
+      const text = m.kind === "comment"
+        ? (m.blocks ?? []).map((b) => b.type === "paragraph" ? b.text.standard : "").join(" ")
+        : (m.question ?? "");
+      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${inner}</svg></span><div><p>${tick(text ?? "")}</p></div></div>`;
     })
     .join("");
 }
@@ -90,7 +93,7 @@ function previewThreadInner(thread: Annotation): string {
     : "";
   return (
     outdated +
-    `<div class="pv">${thread.anchor.quotedText ? `<div class="q">“${esc(thread.anchor.quotedText)}”</div>` : ""}${renderMsgs(thread.messages.slice(0, 2))}${thread.messages.length > 2 ? `<span class="hint">+${thread.messages.length - 2} more</span>` : ""}</div>`
+    `<div class="pv">${thread.anchor.quotedText ? `<div class="q">“${esc(thread.anchor.quotedText)}”</div>` : ""}${renderMsgs(thread.replies.slice(0, 2))}${thread.replies.length > 2 ? `<span class="hint">+${thread.replies.length - 2} more</span>` : ""}</div>`
   );
 }
 
@@ -102,7 +105,7 @@ function pagePreview(page: Page): string {
 /** Closed conversation-card preview: quoted text + first paragraph (PRD §4.7). */
 function previewExpansion(expansion: Annotation | undefined): string {
   if (!expansion) return "";
-  const firstTurn = (expansion.turns ?? [])[0];
+  const firstTurn = (expansion.replies ?? [])[0];
   const blocks = firstTurn?.blocks ?? [];
   const level = firstTurn?.level ?? "standard";
   let first = "";
@@ -236,7 +239,7 @@ export function HoverPopover() {
     } else if (ds.jump) {
       const id = ds.jump;
       const found = snap.annotations.find((a) => a.id === id);
-      if (found && (found.type === "conversation" || found.type === "link")) {
+      if (found && (found.type === "thread" || found.type === "link")) {
         if (found.promotedToPage) {
           const page = lookup(found.promotedToPage);
           content = page

@@ -16,7 +16,7 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { Annotation, Card, DepthLevel, Page, Turn } from "@unvibe/shared";
+import type { Annotation, Card, DepthLevel, Page, Reply } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -119,12 +119,12 @@ function runCardAction(reviewId: string, action: Parameters<typeof performAction
 function promotedFillFor(
   annotations: Annotation[],
   card: Card,
-): { linkId: string; turn: Turn } | null {
+): { linkId: string; turn: Reply } | null {
   for (const a of annotations) {
     if (a.type !== "link" || a.promotedToPage !== card.pageId) continue;
-    const mapping = (a.promotedTurns ?? []).find((m) => m.cardId === card.id);
+    const mapping = (a.promotedReplies ?? []).find((m) => m.cardId === card.id);
     if (!mapping) continue;
-    const turn = (a.turns ?? []).find((t) => t.id === mapping.turnId);
+    const turn = (a.replies ?? []).find((t) => t.id === mapping.replyId);
     if (!turn) continue;
     if ((turn.working ?? "") !== "" && turn.working !== null) return { linkId: a.id, turn };
     if ((turn.error ?? "") !== "" && turn.error !== null) return { linkId: a.id, turn };

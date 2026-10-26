@@ -283,7 +283,7 @@ function mockPrincipleAside(): import("@unvibe/shared").Block {
 
 type MockCardRef =
   | { kind: "page"; pageId: string; card: import("@unvibe/shared").Card }
-  | { kind: "answer"; annotation: import("@unvibe/shared").Annotation; turn: import("@unvibe/shared").Turn };
+  | { kind: "answer"; annotation: import("@unvibe/shared").Annotation; turn: import("@unvibe/shared").Reply };
 
 function findMockCard(cardId: string): MockCardRef | null {
   for (const p of mockPages) {
@@ -291,7 +291,7 @@ function findMockCard(cardId: string): MockCardRef | null {
     if (card) return { kind: "page", pageId: p.id, card };
   }
   for (const annotation of annotations) {
-    const turn = (annotation.turns ?? []).find((t) => t.id === cardId);
+    const turn = (annotation.replies ?? []).find((t) => t.id === cardId);
     if (turn) return { kind: "answer", annotation, turn };
   }
   return null;
@@ -360,7 +360,7 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
     }
     const ann = annotations.find((a) => a.id === owner);
     if (ann) {
-      for (const t of ann.turns ?? []) {
+      for (const t of ann.replies ?? []) {
         const m = scan(t.blocks as never[], t.id);
         if (m) return m;
       }
@@ -374,7 +374,7 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
     }
   }
   for (const a of annotations) {
-    for (const t of a.turns ?? []) {
+    for (const t of a.replies ?? []) {
       const m = scan(t.blocks as never[], t.id);
       if (m) return m;
     }
@@ -577,7 +577,7 @@ let mockDiffFilter: DiffFilter | undefined;
 function seedAnnotations(): import("@unvibe/shared").Annotation[] {
   const list = JSON.parse(JSON.stringify(MOCK_ANNOTATIONS)) as import("@unvibe/shared").Annotation[];
   // Issue #204: conversation cards are pinned, like the service creates them.
-  for (const a of list) if (a.type === "conversation") a.pinned = true;
+  for (const a of list) if (a.type === "thread") a.pinned = true;
   return list;
 }
 let annotations: import("@unvibe/shared").Annotation[] = seedAnnotations();
@@ -1282,14 +1282,14 @@ function retargetMockJob(jobId: string, cardId: string): void {
  * mock keeps the service's shape — turns stay on the link while
  * unsettled, the page card is the visible copy).
  */
-function mirrorMockPromotedTurn(tid: string, turnId: string): void {
+function mirrorMockPromotedTurn(tid: string, replyId: string): void {
   const link = annotations.find((x) => x.id === tid);
   if (!link || link.type !== "link") return;
-  const mapping = ((link as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
-    (m) => m.turnId === turnId,
+  const mapping = ((link as { promotedReplies?: { replyId: string; cardId: string }[] }).promotedReplies ?? []).find(
+    (m) => m.replyId === replyId,
   );
   if (!mapping) return;
-  const turn = (link.turns ?? []).find((t) => t.id === turnId);
+  const turn = (link.replies ?? []).find((t) => t.id === replyId);
   if (!turn) return;
   for (const p of mockPages) {
     const card = p.cards.find((c) => c.id === mapping.cardId);
@@ -1309,13 +1309,13 @@ function mirrorMockPromotedTurn(tid: string, turnId: string): void {
  * (issue #152, mirrors the service: the page holds the content).
  */
 function dropSettledMockPromotedTurns(tid: string): void {  const link = annotations.find((x) => x.id === tid);
-  if (!link || link.type !== "link" || (link.turns?.length ?? 0) === 0) return;
-  const unsettled = (link.turns ?? []).some(
+  if (!link || link.type !== "link" || (link.replies?.length ?? 0) === 0) return;
+  const unsettled = (link.replies ?? []).some(
     (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
   );
   if (unsettled) return;
-  delete (link as { turns?: unknown }).turns;
-  delete (link as { promotedTurns?: unknown }).promotedTurns;
+  delete (link as { replies?: unknown }).replies;
+  delete (link as { promotedReplies?: unknown }).promotedReplies;
   emitAnnotations();
 }
 
@@ -1325,7 +1325,7 @@ function dropSettledMockPromotedTurns(tid: string): void {  const link = annotat
  * first turn carries the summary as a paragraph block. Reuses and
  * reopens the stored card when already activated.
  */
-function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string; turnId: string; blockId: string } {
+function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string; replyId: string; blockId: string } {
   const file = MOCK_FILES.find((f) => f.fileKey === fileKey);
   if (!file?.hunks.some((h) => h.contentHash === contentHash)) {
     throw new Error(`unknown hunk ${fileKey}:${contentHash}`);
@@ -1334,7 +1334,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
   if (!summary) throw new Error(`hunk ${fileKey}:${contentHash} has no summary yet`);
   const existing = annotations.find(
     (x) =>
-      x.type === "conversation" &&
+      x.type === "thread" &&
       (x.anchor.host as { kind?: string }).kind === "hunk" &&
       (x.anchor.host as { fileKey?: string }).fileKey === fileKey &&
       (x.anchor.host as { contentHash?: string }).contentHash === contentHash,
@@ -1344,13 +1344,13 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
       existing.open = true;
       emitAnnotations();
     }
-    const first = (existing.turns ?? [])[0] as unknown as { id: string; blocks: { id: string }[] } | undefined;
+    const first = (existing.replies ?? [])[0] as unknown as { id: string; blocks: { id: string }[] } | undefined;
     if (!first) throw new Error(`hunk card ${existing.id} has no turns`);
-    return { id: existing.id, turnId: first.id, blockId: first.blocks[0].id };
+    return { id: existing.id, replyId: first.id, blockId: first.blocks[0].id };
   }
   const stamp = Date.now().toString(36);
   const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
-  const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
+  const replyId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${stamp}`;
   const blockId = `b-hunk-${stamp}`;
   const safe = summary.replace(/</g, "&lt;");
   annotations.push({
@@ -1371,7 +1371,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
     working: null,
     turns: [
       {
-        id: turnId,
+        id: replyId,
         question: null,
         blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
         level: "standard",
@@ -1382,7 +1382,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
     ],
   } as unknown as import("@unvibe/shared").Annotation);
   emitAnnotations();
-  return { id, turnId, blockId };
+  return { id, replyId, blockId };
 }
 
 /**
@@ -1461,13 +1461,43 @@ function stripMockHtml(html: string): string {
     .trim();
 }
 
+function mockReplyText(reply: { blocks?: Array<{ type: string }> }): string {
+  const parts: string[] = [];
+  for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
+    if (b["type"] === "paragraph") {
+      const t = b["text"] as Record<string, unknown> | undefined;
+      const std = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      const plain = std.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (plain) parts.push(plain);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 function mockPostText(thread: import("@unvibe/shared").Annotation): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
-  const you = thread.messages.find((m) => m.who === "you" && m.text);
-  if (you?.text) return you.text;
-  const suggested = thread.messages.find((m) => m.suggested && m.text);
-  if (suggested?.text) return suggested.text;
-  return thread.messages.find((m) => m.text)?.text ?? "";
+  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
+  const you = comments.find((r) => r.who === "you" && mockReplyText(r) !== "");
+  if (you) return mockReplyText(you);
+  const suggested = comments.find((r) => r.suggested && mockReplyText(r) !== "");
+  if (suggested) return mockReplyText(suggested);
+  const first = comments.find((r) => mockReplyText(r) !== "");
+  return first ? mockReplyText(first) : "";
+}
+
+function mockCommentReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    id: `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}`,
+    kind: "comment",
+    who,
+    question: null,
+    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
+    level: "standard",
+    revision: 1,
+    undoStack: [],
+    ...(suggested ? { suggested: true } : {}),
+  };
 }
 
 /** Mock Submit preview: same shape as the service `buildPreview`. */
@@ -1475,10 +1505,10 @@ function buildMockPreview(): import("@unvibe/shared").SubmitPreview {
   // Mirrors the service's locatePendingThreads: only comments are
   // submitted, never conversation cards.
   const pending = annotations.filter(
-    (a) => a.type === "comment" && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
+    (a) => a.replies.some((r) => r.kind === "comment") && (a as import("@unvibe/shared").Annotation).post && !(a as import("@unvibe/shared").Annotation).postedAt,
   ) as import("@unvibe/shared").Annotation[];
   const alreadyPosted = annotations
-    .filter((a) => a.type === "comment" && a.post && a.postedAt)
+    .filter((a) => a.replies.some((r) => r.kind === "comment") && a.post && a.postedAt)
     .map((a) => a.id);
   const comments = pending.map((thread) => {
     const host = thread.anchor.host;
@@ -2487,13 +2517,13 @@ export const mockApi = {
     // Held while `unvibe.mock.turnFillHold` is set (issue #152), and
     // mirrored onto the promoted page card when the turn moved (issue
     // #152: Open as page mid-fill keeps filling the page).
-    const answerTurnLater = (tid: string, turnId: string, text: string, jobId: string): void => {
+    const answerTurnLater = (tid: string, replyId: string, text: string, jobId: string): void => {
       window.setTimeout(() => {
         void (async () => {
           await awaitTurnFillRelease();
           settleMockJob(jobId);
           const live = annotations.find((x) => x.id === tid);
-          const turn = live && (live.type === "conversation" || live.type === "link") ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          const turn = live && (live.type === "thread" || live.type === "link") ? (live.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (!live || !turn) return;
           turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
           turn.revision += 1;
@@ -2504,7 +2534,7 @@ export const mockApi = {
           live.error = null;
           live.jobId = undefined;
           delete live.reply;
-          mirrorMockPromotedTurn(tid, turnId);
+          mirrorMockPromotedTurn(tid, replyId);
           dropSettledMockPromotedTurns(tid);
           emitAnnotations();
         })();
@@ -2554,7 +2584,7 @@ export const mockApi = {
         // page cards store on the card.
         let storedOnAnswer = false;
         for (const ann of annotations) {
-          const turn = (ann.turns ?? []).find((t) => t.id === a.cardId);
+          const turn = (ann.replies ?? []).find((t) => t.id === a.cardId);
           if (!turn) continue;
           const rest = (turn.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
           turn.secondOpinions = [...rest, { ...result, cardId: turn.id } as never];
@@ -2598,7 +2628,7 @@ export const mockApi = {
         // Answer results first (stored on the turn).
         let removedExp = false;
         for (const ann of annotations) {
-          for (const turn of ann.turns ?? []) {
+          for (const turn of ann.replies ?? []) {
             const before = turn.secondOpinions ?? [];
             let after = before;
             if (m[1].startsWith("so-")) {
@@ -2662,15 +2692,17 @@ export const mockApi = {
       const newTurnId = (): string =>
         `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       if (a.kind === "ask") {
-        // Issue #138: a hunk anchor activates the summary into its card,
-        // then this same Ask runs nested on the summary block.
+        // Issue #138: a hunk anchor activates the summary into its thread.
+        const _anchor = (a as { anchor?: import("@unvibe/shared").ActionAnchor }).anchor;
+        if (!_anchor) throw new Error("quote and anchor are required");
         const anchor: import("@unvibe/shared").ActionAnchor =
-          a.anchor.where === "hunk"
+          _anchor.where === "hunk"
             ? (() => {
-                const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
-                return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+                const h = _anchor as { where: "hunk"; fileKey: string; contentHash: string };
+                const ensured = ensureMockHunkCard(h.fileKey, h.contentHash);
+                return { where: "block", blockId: ensured.blockId };
               })()
-            : a.anchor;
+            : _anchor;
         const host =
           anchor.where === "block"
             ? { kind: "block", blockId: qualifyMockBlock(anchor.blockId) }
@@ -2682,11 +2714,11 @@ export const mockApi = {
                   ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
                   : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
-        const turnId = newTurnId();
+        const replyId = newTurnId();
         const askJobId = `mock-ask-${id}`;
         annotations.push({
           id,
-          type: "conversation",
+          type: "thread",
           anchor: {
             host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
             quotedText: a.quote,
@@ -2710,7 +2742,7 @@ export const mockApi = {
           jobId: askJobId,
           turns: [
             {
-              id: turnId,
+              id: replyId,
               question: a.message,
               blocks: [],
               level: "standard",
@@ -2723,43 +2755,43 @@ export const mockApi = {
         } as unknown as import("@unvibe/shared").Annotation);
         emitAnnotations();
         trackMockJob(askJobId, "ask", { annotationId: id });
-        answerTurnLater(id, turnId, a.message, askJobId);
-        return { accepted: true, annotationId: id, turnId, jobId: askJobId };
+        answerTurnLater(id, replyId, a.message, askJobId);
+        return { accepted: true, annotationId: id, replyId, jobId: askJobId };
       }
       const annotationId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annotationId);
       // Retry also runs on promoted links still holding turns (issue #152);
       // reply stays conversation-only (pages have no reply box).
-      const fillable = found && (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0));
+      const fillable = found && (found.type === "thread" || (found.type === "link" && (found.replies?.length ?? 0) > 0));
       if (!fillable || !found) throw new Error(`unknown conversation ${annotationId}`);
       if (a.kind === "reply") {
-        if (found.type !== "conversation") throw new Error(`unknown conversation ${annotationId}`);
-        const lastTurn = (found.turns ?? [])[(found.turns ?? []).length - 1];
+        if (found.type !== "thread") throw new Error(`unknown conversation ${annotationId}`);
+        const lastTurn = (found.replies ?? [])[(found.replies ?? []).length - 1];
         // Mirrors the service: a failed turn must be retried explicitly.
         if (lastTurn?.error) throw new Error(`this conversation has a failed turn; retry it first`);
-        const turnId = newTurnId();
-        (found.turns ?? []).push({
-          id: turnId,
+        const replyId = newTurnId();
+        (found.replies ?? []).push({
+          id: replyId,
           question: (a as { message: string }).message,
           blocks: [],
           level: "standard",
           revision: 1,
           undoStack: [],
           working: "Writing answer",
-          jobId: `mock-reply-${found.id}-${turnId}`,
+          jobId: `mock-reply-${found.id}-${replyId}`,
         } as never);
         found.working = "Writing answer";
         found.error = null;
         found.open = true;
-        found.jobId = `mock-reply-${found.id}-${turnId}`;
+        found.jobId = `mock-reply-${found.id}-${replyId}`;
         delete found.reply;
         emitAnnotations();
-        const replyJobId = `mock-reply-${found.id}-${turnId}`;
+        const replyJobId = `mock-reply-${found.id}-${replyId}`;
         trackMockJob(replyJobId, "ask", { annotationId: found.id });
-        answerTurnLater(found.id, turnId, (a as { message: string }).message, replyJobId);
-        return { accepted: true, annotationId: found.id, turnId, jobId: replyJobId };
+        answerTurnLater(found.id, replyId, (a as { message: string }).message, replyJobId);
+        return { accepted: true, annotationId: found.id, replyId, jobId: replyJobId };
       }
-      const turns = found.turns ?? [];
+      const turns = found.replies ?? [];
       if (turns.length === 0) {
         throw new Error(`nothing to retry: this conversation has no turn to retry`);
       }
@@ -2776,7 +2808,7 @@ export const mockApi = {
       // Mirrors the service: a retry starts from empty blocks, never the
       // failed attempt's partials (#270).
       last.blocks = [];
-      if (found.type === "conversation") found.open = true;
+      if (found.type === "thread") found.open = true;
       const retryJobId = `mock-retry-${found.id}`;
       last.jobId = retryJobId;
       found.jobId = retryJobId;
@@ -2784,13 +2816,13 @@ export const mockApi = {
       trackMockJob(retryJobId, "ask", { annotationId: found.id });
       // A retry on a promoted link refills the page (issue #152).
       if (found.type === "link") {
-        const cardId = ((found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns ?? []).find(
-          (m) => m.turnId === last.id,
+        const cardId = ((found as { promotedReplies?: { replyId: string; cardId: string }[] }).promotedReplies ?? []).find(
+          (m) => m.replyId === last.id,
         )?.cardId;
         if (cardId) retargetMockJob(retryJobId, cardId);
       }
       answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId);
-      return { accepted: true, annotationId: found.id, turnId: last.id, jobId: retryJobId };
+      return { accepted: true, annotationId: found.id, replyId: last.id, jobId: retryJobId };
     }
     // M4 interaction (mock): explain, depth, examples, diagram, undo,
     // generate, followup, concept, promote, close + instant card state.
@@ -2804,7 +2836,7 @@ export const mockApi = {
         a.anchor.where === "hunk"
           ? (() => {
               const ensured = ensureMockHunkCard(a.anchor.fileKey, a.anchor.contentHash);
-              return { where: "block", blockId: `${ensured.turnId}#${ensured.blockId}` };
+              return { where: "block", blockId: ensured.blockId };
             })()
           : a.anchor;
       const host =
@@ -2818,7 +2850,7 @@ export const mockApi = {
                 ? { kind: "code", path: anchor.path, commit: anchor.commit, line: anchor.line, ...(anchor.endLine !== undefined ? { endLine: anchor.endLine } : {}) }
                 : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
-      const turnId = `ans_mock${Date.now().toString(36)}`;
+      const replyId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
       annotations.push({
         id,
@@ -2844,7 +2876,7 @@ export const mockApi = {
         jobId,
         turns: [
           {
-            id: turnId,
+            id: replyId,
             question: null,
             blocks: [],
             level: "standard",
@@ -2857,8 +2889,8 @@ export const mockApi = {
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
       trackMockJob(jobId, "ask", { annotationId: id });
-      answerTurnLater(id, turnId, a.quote, jobId);
-      return { accepted: true, annotationId: id, turnId, jobId };
+      answerTurnLater(id, replyId, a.quote, jobId);
+      return { accepted: true, annotationId: id, replyId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
       const res = mockCardControl(a as never);
@@ -2896,7 +2928,7 @@ export const mockApi = {
       // A suggestion on a conversation card is the next turn in the same
       // conversation (the item stays, like reply-box text).
       if (ref?.kind === "answer") {
-        const lastAnswerTurn = (ref.annotation.turns ?? [])[(ref.annotation.turns ?? []).length - 1];
+        const lastAnswerTurn = (ref.annotation.replies ?? [])[(ref.annotation.replies ?? []).length - 1];
         if (lastAnswerTurn?.error) throw new Error(`conversation ${ref.annotation.id} has a failed turn; retry it first`);
         const holderBlocks = mockCardBlocks(ref);
         const fblock = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
@@ -2905,9 +2937,9 @@ export const mockApi = {
         if (!fblock || !fblock.items[index]) throw new Error(`unknown follow-up ${index} on block ${blockId}`);
         const item = fblock.items[index];
         const message = item.ask ?? item.label;
-        const turnId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
-        (ref.annotation.turns ?? []).push({
-          id: turnId,
+        const replyId = `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
+        (ref.annotation.replies ?? []).push({
+          id: replyId,
           question: message,
           blocks: [],
           level: "standard",
@@ -2919,13 +2951,13 @@ export const mockApi = {
         ref.annotation.error = null;
         ref.annotation.open = true;
         emitAnnotations();
-        const answerJobId = `mock-followup-${ref.annotation.id}-${turnId}`;
+        const answerJobId = `mock-followup-${ref.annotation.id}-${replyId}`;
         trackMockJob(answerJobId, "ask", { annotationId: ref.annotation.id });
         const annId = ref.annotation.id;
         window.setTimeout(() => {
           settleMockJob(answerJobId);
           const live = annotations.find((x) => x.id === annId);
-          const turn = live?.type === "conversation" ? (live.turns ?? []).find((t) => t.id === turnId) : undefined;
+          const turn = live?.type === "thread" ? (live.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (!live || !turn) return;
           turn.blocks = mockExplainBlocks(message) as never;
           turn.revision += 1;
@@ -2933,7 +2965,7 @@ export const mockApi = {
           live.working = null;
           emitAnnotations();
         }, 700);
-        return { accepted: true, annotationId: annId, turnId, cardId, jobId: answerJobId };
+        return { accepted: true, annotationId: annId, replyId, cardId, jobId: answerJobId };
       }
       const holderBlocks = ref ? mockCardBlocks(ref) : [];
       const block = holderBlocks.find((b) => b.id === blockId && b.type === "follow-up") as
@@ -2944,7 +2976,7 @@ export const mockApi = {
       block.items.splice(index, 1);
       emitPages();
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
-      const turnId = `ans_mock${Date.now().toString(36)}`;
+      const replyId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-followup-${id}`;
       annotations.push({
         id,
@@ -2965,7 +2997,7 @@ export const mockApi = {
         post: false,
         working: "Writing answer",
         turns: [
-          { id: turnId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+          { id: replyId, question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Annotation);
       emitAnnotations();
@@ -2973,7 +3005,7 @@ export const mockApi = {
       window.setTimeout(() => {
         settleMockJob(jobId);
         const found = annotations.find((x) => x.id === id);
-        const turn = found?.type === "conversation" ? (found.turns ?? []).find((t) => t.id === turnId) : undefined;
+        const turn = found?.type === "thread" ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
         turn.blocks = mockExplainBlocks(item.label) as never;
         turn.revision += 1;
@@ -2981,7 +3013,7 @@ export const mockApi = {
         found.working = null;
         emitAnnotations();
       }, 700);
-      return { accepted: true, annotationId: id, turnId, cardId, jobId };
+      return { accepted: true, annotationId: id, replyId, cardId, jobId };
     }
     if (a.kind === "concept") {
       const slug = (a as { slug: string }).slug;
@@ -3038,12 +3070,12 @@ export const mockApi = {
       // Issue #138: the explicit hunk control. Activates (or reopens)
       // the summary card with no job.
       const ensured = ensureMockHunkCard(a.fileKey, a.contentHash);
-      return { accepted: true, annotationId: ensured.id, turnId: ensured.turnId };
+      return { accepted: true, annotationId: ensured.id, replyId: ensured.replyId };
     }
     if (a.kind === "promote") {
       const annId = (a as { annotationId: string }).annotationId;
       const found = annotations.find((x) => x.id === annId);
-      if (!found || found.type !== "conversation" || !found.turns) {
+      if (!found || found.type !== "thread" || !found.replies) {
         throw new Error(`annotation ${annId} is not a conversation`);
       }
       // Like the service (issue #152): no cancel — an unsettled turn
@@ -3053,14 +3085,14 @@ export const mockApi = {
       const title = quote.length > 60 ? `${quote.slice(0, 58)}…` : quote || "(untitled)";
       const pageId = `p-mock-${Date.now().toString(36)}`;
       const stamp = Date.now().toString(36);
-      const cardIds = (found.turns as unknown[]).map((_, i) => `c-mock-${stamp}-${i}`);
+      const cardIds = (found.replies as unknown[]).map((_, i) => `c-mock-${stamp}-${i}`);
       mockPages.push({
         id: pageId,
         kind: "opened-expansion",
         title,
         parent: "root",
-        cards: (found.turns as never[]).map((t, i) => {
-          const turn = t as unknown as import("@unvibe/shared").Turn;
+        cards: (found.replies as never[]).map((t, i) => {
+          const turn = t as unknown as import("@unvibe/shared").Reply;
           return {
             id: cardIds[i],
             pageId,
@@ -3074,22 +3106,22 @@ export const mockApi = {
           };
         }),
       });
-      const unsettled = (found.turns as unknown as import("@unvibe/shared").Turn[]).some(
+      const unsettled = (found.replies as unknown as import("@unvibe/shared").Reply[]).some(
         (t) => ((t.working ?? "") !== "" && t.working !== null) || ((t.error ?? "") !== "" && t.error !== null) || t.jobId !== undefined,
       );
-      const fillingIndex = (found.turns as unknown as import("@unvibe/shared").Turn[]).findIndex((t) => t.jobId !== undefined);
-      const fillingJob = fillingIndex >= 0 ? (found.turns as unknown as import("@unvibe/shared").Turn[])[fillingIndex].jobId : undefined;
+      const fillingIndex = (found.replies as unknown as import("@unvibe/shared").Reply[]).findIndex((t) => t.jobId !== undefined);
+      const fillingJob = fillingIndex >= 0 ? (found.replies as unknown as import("@unvibe/shared").Reply[])[fillingIndex].jobId : undefined;
       found.type = "link" as never;
       found.open = false;
       if (unsettled) {
-        (found as { promotedTurns?: { turnId: string; cardId: string }[] }).promotedTurns = (
-          found.turns as unknown as import("@unvibe/shared").Turn[]
-        ).map((turn, i) => ({ turnId: turn.id, cardId: cardIds[i] }));
+        (found as { promotedReplies?: { replyId: string; cardId: string }[] }).promotedReplies = (
+          found.replies as unknown as import("@unvibe/shared").Reply[]
+        ).map((turn, i) => ({ replyId: turn.id, cardId: cardIds[i] }));
       } else {
         found.working = null;
         found.error = null;
         found.jobId = undefined;
-        delete (found as { turns?: unknown }).turns;
+        delete (found as { replies?: unknown }).replies;
       }
       (found as { promotedToPage?: string }).promotedToPage = pageId;
       if (fillingJob && fillingIndex >= 0) retargetMockJob(fillingJob, cardIds[fillingIndex]);
@@ -3103,8 +3135,8 @@ export const mockApi = {
       if (!found) throw new Error(`unknown annotation ${annId}`);
       found.open = false;
       found.working = null;
-      if (found.type === "conversation" || (found.type === "link" && (found.turns?.length ?? 0) > 0)) {
-        for (const t of found.turns ?? []) t.working = null;
+      if (found.type === "thread" || (found.type === "link" && (found.replies?.length ?? 0) > 0)) {
+        for (const t of found.replies ?? []) t.working = null;
       }
       emitAnnotations();
       return { accepted: true, annotationId: annId };
@@ -3127,13 +3159,13 @@ export const mockApi = {
       }
       // …and on conversation cards (an answer id collapses its card).
       const ann = annotations.find((x) => x.id === (a as { cardId: string }).cardId);
-      if (ann?.type === "conversation") {
+      if (ann?.type === "thread") {
         ann.collapsed = (a as { collapsed: boolean }).collapsed;
         emitAnnotations();
         return { accepted: true };
       }
       for (const other of annotations) {
-        if ((other.turns ?? []).some((t) => t.id === (a as { cardId: string }).cardId)) {
+        if ((other.replies ?? []).some((t) => t.id === (a as { cardId: string }).cardId)) {
           other.collapsed = (a as { collapsed: boolean }).collapsed;
           emitAnnotations();
           return { accepted: true };
@@ -3265,7 +3297,7 @@ export const mockApi = {
               : { kind: "diff-line", fileKey: anchor.fileKey, line: anchor.line };
     const thread: import("@unvibe/shared").Annotation = {
       id: `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`,
-      type: "comment",
+      type: "thread",
       anchor: {
         host: host as import("@unvibe/shared").Annotation["anchor"]["host"],
         quotedText: body.quote ?? "",
@@ -3281,13 +3313,13 @@ export const mockApi = {
       },
       open: host.kind === "block" ? false : true,
       pinned: false,
-      messages: body.text ? [{ who: "you", text: body.text }] : [],
+      replies: body.text ? [mockCommentReply("you", body.text)] : [],
       // Mirrors the service: a Comment is for the PR by default; an Ask
       // is a conversation card, never a thread.
       post: true,
     };
     if (body.suggested && body.suggestionText) {
-      thread.messages = [{ who: "ai", text: body.suggestionText, suggested: true }];
+      thread.replies = [mockCommentReply("agent", body.suggestionText, true)];
       thread.post = false;
     }
     annotations.push(thread);
@@ -3297,8 +3329,8 @@ export const mockApi = {
 
   replyComment: async (_id: string, commentId: string, body: { text: string }) => {
     const thread = annotations.find((a) => a.id === commentId);
-    if (!thread || thread.type !== "comment") throw new Error("unknown comment");
-    thread.messages.push({ who: "you", text: body.text });
+    if (!thread) throw new Error("unknown comment");
+    thread.replies.push(mockCommentReply("you", body.text));
     delete thread.reply;
     thread.open = true;
     emitAnnotations();
@@ -3311,7 +3343,7 @@ export const mockApi = {
     // Issue #136: `open` and the reply-box draft (`reply`) apply to
     // conversation cards too (dotted-link click). Post/draft stay
     // comment-only.
-    if (thread.type === "conversation") {
+    if (thread.type === "thread") {
       if (body.open !== undefined) thread.open = body.open;
       if (body.pinned !== undefined) thread.pinned = body.pinned;
       if (body.post !== undefined || body.draft !== undefined) {
@@ -3322,7 +3354,7 @@ export const mockApi = {
       emitAnnotations();
       return { ok: true };
     }
-    if (thread.type !== "comment") throw new Error("unknown comment");
+    if (!thread.replies.some((r) => r.kind === "comment")) throw new Error("unknown comment");
     if (body.pinned !== undefined) throw new Error(`annotation ${commentId} is not a conversation`);
     if (body.post !== undefined) {
       thread.post = body.post;
@@ -3372,7 +3404,7 @@ export const mockApi = {
     const at = Date.now();
     for (const c of preview.comments) {
       const thread = annotations.find((a) => a.id === c.threadId);
-      if (thread && thread.type === "comment") {
+      if (thread && thread.replies.some((r) => r.kind === "comment")) {
         thread.postedAt = at;
         thread.postedUrl = "https://github.com/urllib3/urllib3/pull/5020#discussion_r-mock";
       }

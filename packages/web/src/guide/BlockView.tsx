@@ -305,7 +305,7 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       // the answer card holds its place, so the two never stack.
       const answerArrived = (snapshot?.annotations ?? []).some(
         (a) =>
-          a.type === "conversation" &&
+          a.type === "thread" &&
           a.open &&
           a.anchor.host.kind === "block" &&
           anchorMatchesBlock(a.anchor.host.blockId, cardId, block.id),

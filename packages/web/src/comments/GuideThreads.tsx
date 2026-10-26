@@ -111,7 +111,7 @@ export function GuideThreadHooks() {
     const page = document.getElementById("page");
     if (!page) return;
     const threads = (annotations ?? []).filter(
-      (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
+      (a): a is Annotation => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
     // Issue #166: anchors whose host text isn't there yet (a re-render
     // landing after this pass) are retried — bounded overall per effect
@@ -235,7 +235,7 @@ export function GuideThreadHooks() {
           const snap = useReview.getState().snapshot;
           const reviewId = snap?.review.id;
           const thread = snap?.annotations.find((a) => a.id === id);
-          if (!reviewId || !thread || thread.type !== "comment" || isReadOnlyVersionNow()) return;
+          if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment") || isReadOnlyVersionNow()) return;
           if (!thread.open) {
             api.updateComment(reviewId, id, { open: true }).catch(() => {});
           }
@@ -246,7 +246,7 @@ export function GuideThreadHooks() {
       const snap = useReview.getState().snapshot;
       const reviewId = snap?.review.id;
       const thread = snap?.annotations.find((a) => a.id === id);
-      if (!reviewId || !thread || thread.type !== "comment") return;
+      if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment")) return;
       if (isReadOnlyVersionNow()) {
         toast("Viewing an older version · read-only");
         return;
@@ -328,7 +328,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
 
   const threads = (annotations ?? []).filter(
     (a): a is Annotation =>
-      a.type === "comment" &&
+      a.replies.some((r) => r.kind === "comment") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
       a.open,
@@ -343,7 +343,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
   const arrived = (annotations ?? []).some(
     (a) =>
-      a.type === "conversation" &&
+      a.type === "thread" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),

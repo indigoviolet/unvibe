@@ -20,7 +20,7 @@
  *   outside the reply box, and preserves React keys, so other drafts are
  *   untouched.
  */
-import type { Annotation, Page, Turn } from "@unvibe/shared";
+import type { Annotation, Page, Reply } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../../comments/GuideThreads.js";
 import { ReplyBox } from "../../comments/ReplyBox.js";
@@ -135,7 +135,7 @@ function AnswerView({
 }: {
   reviewId: string;
   card: Annotation;
-  turn: Turn;
+  turn: Reply;
   isFirst: boolean;
   isLatest: boolean;
   /** Card-level busy (fills address the card; rewrites address the answer). */
@@ -235,7 +235,7 @@ function AnswerView({
         />
         <AnswerSecondOpinion
           reviewId={reviewId}
-          turnId={turn.id}
+          replyId={turn.id}
           lookupPage={lookupPage}
           disabled={!contentReady}
           busy={busyKind === "second_opinion"}
@@ -354,7 +354,7 @@ function hasWorkingTurn(card: Annotation): boolean {
 function fixedTurnLabel(
   snapshot: import("@unvibe/shared").ReviewSnapshot | null | undefined,
   card: Annotation,
-  turn: Turn,
+  turn: Reply,
   isFirst: boolean,
 ): string {
   if (isFollowupAnswer(snapshot, card)) return inflightLabel("followup");
@@ -370,7 +370,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
   const jobs = snapshot?.jobs ?? [];
   const turns = conversationTurns(expansion);
-  if (expansion.type !== "conversation") return null;
+  if (expansion.type !== "thread") return null;
 
   const stale = isAnchorStale(expansion);
   const cardBusy = busyForConversation(inflight, jobs, snapshot, expansion);
@@ -486,7 +486,7 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
         <ReplyBox
           reviewId={reviewId}
           annotationId={expansion.id}
-          serverReply={expansion.reply}
+          serverReply={expansion.reply ?? undefined}
           placeholder="Ask a follow-up…"
           ariaLabel="Ask a follow-up"
           sendLabel="Reply"
@@ -506,13 +506,13 @@ export function ExpansionCard({ reviewId, expansion, lookupPage, onOpenPage, onF
 
 function AnswerSecondOpinion({
   reviewId,
-  turnId,
+  replyId,
   lookupPage,
   disabled,
   busy,
 }: {
   reviewId: string;
-  turnId: string;
+  replyId: string;
   lookupPage: (pageId: string) => Page | undefined;
   disabled?: boolean;
   busy?: boolean;
@@ -524,7 +524,7 @@ function AnswerSecondOpinion({
   return (
     <SecondOpinionControl
       reviewId={reviewId}
-      card={{ id: turnId } as never}
+      card={{ id: replyId } as never}
       page={undefined}
       disabled={disabled}
       busy={busy}

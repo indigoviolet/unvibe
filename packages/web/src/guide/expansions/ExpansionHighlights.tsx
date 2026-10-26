@@ -63,7 +63,7 @@ export function ExpansionHighlights() {
     // bounded overall per effect run (#206), never re-armed per pass.
     const placeable = (annotations ?? []).filter(
       (a) =>
-        (a.type === "conversation" || a.type === "link") &&
+        (a.type === "thread" || a.type === "link") &&
         !isAnchorStale(a) &&
         !!a.anchor.quotedText &&
         a.anchor.host.kind === "block",
@@ -140,7 +140,7 @@ export function ExpansionHighlights() {
       }
       // Issue #214: comment-hosted cards mark inside their comment.
       for (const a of annotations ?? []) {
-        if (a.type !== "conversation" && a.type !== "link") continue;
+        if (a.type !== "thread" && a.type !== "link") continue;
         if (a.anchor.host.kind !== "comment" || isAnchorStale(a) || !a.anchor.quotedText) continue;
         const msgs = root.querySelectorAll(`[data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
         let placed = false;
@@ -225,7 +225,7 @@ export function ExpansionHighlights() {
         // Issue #214: cards on a comment mark their quote inside the
         // comment itself (their cards render under the comment's block).
         for (const a of annotations ?? []) {
-          if (a.type !== "conversation" && a.type !== "link") continue;
+          if (a.type !== "thread" && a.type !== "link") continue;
           if (a.anchor.host.kind !== "comment" || isAnchorStale(a) || !a.anchor.quotedText) continue;
           const msgs = root.querySelectorAll(`[data-comment="${CSS.escape(a.anchor.host.commentId)}"]`);
           for (const msg of msgs) {
@@ -265,7 +265,7 @@ export function ExpansionHighlights() {
       const reviewId = snap?.review.id;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!reviewId || !found) return;
-      if (found.type === "conversation" && !found.open) {
+      if (found.type === "thread" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -320,12 +320,12 @@ export function expansionsForBlock(
 ): import("@unvibe/shared").Annotation[] {
   if (!annotations) return [];
   return annotations.filter((a) => {
-    if (a.type !== "conversation" && a.type !== "link") return false;
+    if (a.type !== "thread" && a.type !== "link") return false;
     if (a.anchor.host.kind === "block") return anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId);
     // Issue #214: a card on a comment renders under that comment's block.
     if (a.anchor.host.kind === "comment") {
       const commentId = a.anchor.host.commentId;
-      const comment = annotations.find((x) => x.id === commentId && x.type === "comment");
+      const comment = annotations.find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
       return (
         comment?.anchor.host.kind === "block" && anchorMatchesBlock(comment.anchor.host.blockId, cardId, blockId)
       );

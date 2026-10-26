@@ -13,13 +13,28 @@
 import type { Annotation, ReviewSnapshot } from "@unvibe/shared";
 import { descriptionPaneName } from "../source/description/paneName.js";
 
+function replyText(reply: { blocks?: Array<{ type: string }> }): string {
+  const parts: string[] = [];
+  for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
+    if (b["type"] === "paragraph") {
+      const t = b["text"] as Record<string, unknown> | undefined;
+      const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      const plain = s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (plain) parts.push(plain);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 export function threadPostText(thread: Annotation): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
-  const you = thread.messages.find((m) => m.who === "you" && m.text);
-  if (you?.text) return you.text;
-  const suggested = thread.messages.find((m) => m.suggested && m.text);
-  if (suggested?.text) return suggested.text;
-  return thread.messages.find((m) => m.text)?.text ?? "";
+  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
+  const you = comments.find((r) => r.who === "you" && replyText(r) !== "");
+  if (you) return replyText(you);
+  const suggested = comments.find((r) => r.suggested && replyText(r) !== "");
+  if (suggested) return replyText(suggested);
+  const first = comments.find((r) => replyText(r) !== "");
+  return first ? replyText(first) : "";
 }
 
 /** Threads already posted to GitHub (skipped on retry, never pending). */
@@ -31,7 +46,7 @@ export function isPosted(thread: Annotation): boolean {
 export function outboxThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => a.type === "comment" && a.post && !isPosted(a as Annotation),
+    (a) => a.replies.some((r) => r.kind === "comment") && a.post && !isPosted(a as Annotation),
   ) as Annotation[];
 }
 
@@ -43,11 +58,11 @@ export function pendingCount(snapshot: ReviewSnapshot | null): number {
   return comments + desc;
 }
 
-/** All comments with at least one message (the Comments menu lists these). */
+/** All threads with comment replies that carry text (the Comments menu lists these). */
 export function listedThreads(snapshot: ReviewSnapshot | null): Annotation[] {
   if (!snapshot) return [];
-  return (snapshot.annotations ?? []).filter(
-    (a) => a.type === "comment" && (a as Annotation).messages.length > 0,
+  return (snapshot.annotations ?? []).filter((a) =>
+    (a.replies ?? []).some((r) => r.kind === "comment" && replyText(r) !== ""),
   ) as Annotation[];
 }
 

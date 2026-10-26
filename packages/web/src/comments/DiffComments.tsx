@@ -122,7 +122,7 @@ export function useDiffCommentBindings(reviewId: string): {
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
     for (const annotation of annotations ?? []) {
-      if (annotation.type !== "comment") continue;
+      if (annotation.type !== "thread" && annotation.type !== "link") continue;
       const thread = annotation as Annotation;
       const host = thread.anchor.host;
       if (host.kind !== "diff-line") continue;
@@ -213,7 +213,7 @@ export function useDiffCommentBindings(reviewId: string): {
     if (!readOnly) {
       const arrived = new Set<string>();
       for (const a of annotations ?? []) {
-        if (a.type !== "conversation" || !a.open) continue;
+        if (a.type !== "thread" || !a.open) continue;
         if (a.anchor.host.kind !== "diff-line") continue;
         arrived.add(slotKey(a.anchor.host.fileKey, a.anchor.host.line));
       }

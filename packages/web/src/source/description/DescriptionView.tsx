@@ -91,7 +91,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
   const descThreads = useMemo(
     () =>
       (annotations ?? []).filter(
-        (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "description",
+        (a): a is Annotation => a.replies.some((r) => r.kind === "comment") && a.anchor.host.kind === "description",
       ),
     [annotations],
   );
@@ -397,7 +397,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         // inline mark instead). When all of them are open a click
         // collapses them; otherwise a click opens the closed ones. The
         // tooltip states the action.
-        const markerThreads = threads.filter((t) => t.messages.length > 0 && !highlighted.has(t.id));
+        const markerThreads = threads.filter((t) => (t.replies ?? []).length > 0 && !highlighted.has(t.id));
         const allOpen = markerThreads.length > 0 && markerThreads.every((t) => t.open);
         const showPending =
           pending &&
@@ -453,7 +453,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
               if (incoming?.kind !== "explain") return null;
               const arrived = (snapshot?.annotations ?? []).some(
                 (a) =>
-                  a.type === "conversation" &&
+                  a.type === "thread" &&
                   a.open &&
                   a.anchor.host.kind === "description" &&
                   a.anchor.host.paragraphId === seg.id,

@@ -168,8 +168,8 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
           const n = i + 1;
           const cited = n >= hlStart && n <= hlEnd;
           const here = byLine.get(n) ?? [];
-          const openCards = here.filter((a) => a.type === "conversation" && a.open);
-          const openThreads = here.filter((a) => a.type === "comment" && a.open);
+          const openCards = here.filter((a) => a.type === "thread" && a.open);
+          const openThreads = here.filter((a) => a.replies.some((r) => r.kind === "comment") && a.open);
           const closed = here.filter((a) => !a.open && a.type !== "link");
           return (
             <div key={n}>
@@ -198,7 +198,7 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
                       });
                     }}
                   >
-                    {a.type === "comment" ? "Comment" : "Explanation"} on “{a.anchor.quotedText.slice(0, 60)}” — reopen
+                    {a.replies.some((r) => r.kind === "comment") ? "Comment" : "Explanation"} on “{a.anchor.quotedText.slice(0, 60)}” — reopen
                   </button>
                 </div>
               ))}

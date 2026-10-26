@@ -60,9 +60,9 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
     // line the comment renders first and the card after it.
     const commentHostedKeys = new Set<string>();
     for (const a of annotations ?? []) {
-      if (a.type !== "conversation" || a.anchor.host.kind !== "comment") continue;
+      if (a.type !== "thread" || a.anchor.host.kind !== "comment") continue;
       const commentId = a.anchor.host.commentId;
-      const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+      const comment = (annotations ?? []).find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
       if (comment?.anchor.host.kind === "diff-line") {
         commentHostedKeys.add(`${comment.anchor.host.fileKey}:${comment.anchor.host.line}`);
       }

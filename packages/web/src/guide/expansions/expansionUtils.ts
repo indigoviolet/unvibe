@@ -6,7 +6,7 @@
  * - card preview text (first paragraph HTML → plain text);
  * - grouping cards by host for guide/description/diff slots.
  */
-import type { Annotation, Block, DepthLevel, Turn } from "@unvibe/shared";
+import type { Annotation, Block, DepthLevel, Reply } from "@unvibe/shared";
 
 export interface ExpansionGroup {
   open: Annotation[];
@@ -16,17 +16,17 @@ export interface ExpansionGroup {
 
 /** All conversation/link annotations (closed cards stay as dotted links). */
 export function isExpansionLike(a: Annotation): boolean {
-  return a.type === "conversation" || a.type === "link";
+  return a.type === "thread" || a.type === "link";
 }
 
 /** Open conversation cards show the card in place. */
 export function isOpenExpansion(a: Annotation): boolean {
-  return a.type === "conversation" && a.open && !a.promotedToPage;
+  return a.type === "thread" && a.open && !a.promotedToPage;
 }
 
 /** Closed conversation cards render as dotted-link marks on the anchor text. */
 export function isClosedExpansion(a: Annotation): boolean {
-  return a.type === "conversation" && !a.open && !a.promotedToPage;
+  return a.type === "thread" && !a.open && !a.promotedToPage;
 }
 
 /** Promoted cards became a page link (type "link" or promotedToPage). */
@@ -40,8 +40,8 @@ export function isAnchorStale(a: Annotation): boolean {
 }
 
 /** Every turn of a conversation card, in order. */
-export function conversationTurns(a: Annotation): Turn[] {
-  return a.type === "conversation" ? (a.turns ?? []) : [];
+export function conversationTurns(a: Annotation): Reply[] {
+  return a.type === "thread" ? (a.replies ?? []) : [];
 }
 
 function stripTags(s: string): string {

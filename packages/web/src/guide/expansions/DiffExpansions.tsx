@@ -68,12 +68,12 @@ export function useDiffExpansionBindings(
   const byLine = useMemo(() => {
     const map = new Map<string, Annotation[]>();
     for (const a of annotations ?? []) {
-      if (a.type !== "conversation" && a.type !== "link") continue;
+      if (a.type !== "thread" && a.type !== "link") continue;
       // Issue #214: a card on a comment renders under that comment's line.
       let host = a.anchor.host;
       if (host.kind === "comment") {
         const commentId = host.commentId;
-        const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+        const comment = (annotations ?? []).find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
         if (!comment || comment.anchor.host.kind !== "diff-line") continue;
         host = comment.anchor.host;
       }
@@ -142,7 +142,7 @@ export function useDiffExpansionBindings(
         // Comment threads already reopen from their line-number icon,
         // so they get the highlight only.
         for (const a of annotations ?? []) {
-          if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
+          if (a.type !== "thread" && a.type !== "link" && !a.replies.some((r) => r.kind === "comment")) continue;
           if (a.anchor.host.kind !== "diff-line") continue;
           if (a.type === "link" && !a.promotedToPage) continue;
           const host = a.anchor.host;
@@ -163,7 +163,7 @@ export function useDiffExpansionBindings(
           // the annotation pending so the bounded repass (and the row
           // observer below) re-apply the range when they land.
           if (!complete) pending.add(a.id);
-          if (firstRow && a.type !== "comment") {
+          if (firstRow && !a.replies.some((r) => r.kind === "comment")) {
             firstRow.classList.add("rng-first");
             const cell = firstRow.querySelector("td.n");
             if (cell) cell.prepend(makeRangeMark(a.id, !a.open));
@@ -228,7 +228,7 @@ export function useDiffExpansionBindings(
     let scheduled = 0;
     const rangesSatisfied = (): boolean => {
       for (const a of annotations ?? []) {
-        if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
+        if (a.type !== "thread" && a.type !== "link" && !a.replies.some((r) => r.kind === "comment")) continue;
         if (a.anchor.host.kind !== "diff-line") continue;
         if (a.type === "link" && !a.promotedToPage) continue;
         const host = a.anchor.host;
@@ -241,7 +241,7 @@ export function useDiffExpansionBindings(
           if (!row.classList.contains("rng")) return false;
           if (!firstRow) firstRow = row;
         }
-        if (a.type !== "comment" && firstRow && !firstRow.querySelector("mark.anc.range")) return false;
+        if (!a.replies.some((r) => r.kind === "comment") && firstRow && !firstRow.querySelector("mark.anc.range")) return false;
       }
       return true;
     };
@@ -278,7 +278,7 @@ export function useDiffExpansionBindings(
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found || (found.anchor.host.kind !== "diff-line" && found.anchor.host.kind !== "comment")) return;
-      if (found.type === "conversation" && !found.open) {
+      if (found.type === "thread" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -295,7 +295,7 @@ export function useDiffExpansionBindings(
     const slots: LineSlots = {};
     for (const [key, exps] of byLine) {
       // Issue #204: open cards are pinned inline under their line.
-      const open = exps.filter((a) => a.type === "conversation" && a.open);
+      const open = exps.filter((a) => a.type === "thread" && a.open);
       if (open.length === 0) continue;
       slots[key] = (
         <>

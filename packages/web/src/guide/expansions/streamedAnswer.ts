@@ -22,7 +22,7 @@
  *   `unvibe:no-stream-paragraphs = "1"` restores all-at-once answers.
  */
 import { useEffect, useMemo } from "react";
-import type { Block, Turn } from "@unvibe/shared";
+import type { Block, Reply } from "@unvibe/shared";
 import { parseBlocks, splitStreamText } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 
@@ -53,7 +53,7 @@ export function streamingEnabled(): boolean {
  * Block ids (`stream-b1…`) are stable across stream updates because the
  * completed prefix only grows.
  */
-export function useProvisionalBlocks(cardId: string, turn: Turn, live: boolean): Block[] | null {
+export function useProvisionalBlocks(cardId: string, turn: Reply, live: boolean): Block[] | null {
   const stream = useReview((s) => s.streams[cardId]);
   const clearStream = useReview((s) => s.clearStream);
   const text = stream?.text ?? "";

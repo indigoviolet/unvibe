@@ -135,7 +135,7 @@ export function busyForConversation(
     }
     return direct;
   }
-  if (expansion.type === "conversation") {
+  if (expansion.type === "thread") {
     if (expansion.anchor.host.kind === "block") {
       const chip = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
       if (chip) return { kind: chip.kind, label: inflightLabel(chip.kind), rewriting: false };
@@ -163,7 +163,7 @@ export function anchorEntryForConversation(
   inflight: Record<string, InFlightAction>,
   expansion: Annotation,
 ): InFlightAction | undefined {
-  if (expansion.type !== "conversation") return undefined;
+  if (expansion.type !== "thread") return undefined;
   const host = expansion.anchor.host;
   for (const [key, entry] of Object.entries(inflight)) {
     if (entry.kind !== "explain") continue;
@@ -273,8 +273,8 @@ export function anchorBlockType(
     }
   }
   for (const a of snapshot?.annotations ?? []) {
-    if (a.type !== "conversation") continue;
-    for (const t of a.turns ?? []) {
+    if (a.type !== "thread") continue;
+    for (const t of a.replies ?? []) {
       if (owner !== null && a.id !== owner && t.id !== owner) continue;
       for (const b of t.blocks as { id: string; type: string }[]) {
         if (match(b.id)) return b.type;
@@ -290,7 +290,7 @@ export function isFollowupAnswer(
   expansion: Annotation,
 ): boolean {
   const host = expansion.anchor.host;
-  if (expansion.type !== "conversation" || host.kind !== "block") return false;
+  if (expansion.type !== "thread" || host.kind !== "block") return false;
   return anchorBlockType(snapshot, host.blockId) === "follow-up";
 }
 

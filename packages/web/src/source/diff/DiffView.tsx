@@ -300,7 +300,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     const current = new Set(files.flatMap((f) => f.hunks.map((h) => h.contentHash)));
     const map = new Map<string, import("@unvibe/shared").Annotation>();
     for (const a of snapshot?.annotations ?? []) {
-      if (a.type !== "conversation" || a.anchor.host.kind !== "hunk") continue;
+      if (a.type !== "thread" || a.anchor.host.kind !== "hunk") continue;
       if (!current.has(a.anchor.host.contentHash) || map.has(a.anchor.host.contentHash)) continue;
       map.set(a.anchor.host.contentHash, a);
     }

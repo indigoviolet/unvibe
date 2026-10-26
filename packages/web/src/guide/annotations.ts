@@ -54,7 +54,7 @@ export function closeBlockThreads(commentIds: string[], blockId: string): void {
   commentIds.forEach((id) => closeHandler?.(id, blockId));
 }
 
-/** All comment annotations anchored on a guide card + block. */
+/** All threads anchored on a guide card + block (issue #273: one thread kind). */
 export function blockThreads(
   annotations: Annotation[],
   cardId: string,
@@ -62,7 +62,7 @@ export function blockThreads(
 ): Annotation[] {
   return annotations.filter(
     (a) =>
-      a.type === "comment" &&
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
   );
@@ -76,7 +76,7 @@ export function blockExpansions(
 ): Annotation[] {
   return annotations.filter(
     (a) =>
-      a.type === "conversation" &&
+      a.type === "thread" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),

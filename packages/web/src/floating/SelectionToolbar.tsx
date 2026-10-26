@@ -215,7 +215,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (commentEl) {
     const id = (commentEl as HTMLElement).dataset.comment ?? "";
     const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
-    if (!found || found.type !== "comment") return null;
+    if (!found || !found.replies.some((r) => r.kind === "comment")) return null;
     return { anchor: { where: "comment", commentId: id } };
   }
   // Issue #163: a selection inside an agent-suggested comment anchors to
@@ -226,7 +226,7 @@ export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
   if (sug) {
     const id = (sug as HTMLElement).dataset.aiComment ?? "";
     const found = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
-    const host = found && found.type === "comment" ? found.anchor.host : null;
+    const host = found && found.replies.some((r) => r.kind === "comment") ? found.anchor.host : null;
     if (!host) return null;
     if (host.kind === "block") return { anchor: { where: "block", blockId: host.blockId } };
     if (host.kind === "description") return { anchor: { where: "description", paragraphId: host.paragraphId } };
@@ -477,7 +477,7 @@ export function blockquoteQuote(quote: string): string {
  */
 export function underlyingCommentAnchor(commentId: string): ActionAnchor | null {
   const found = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
-  if (!found || found.type !== "comment") return null;
+  if (!found || !found.replies.some((r) => r.kind === "comment")) return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };
@@ -498,8 +498,8 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
   const annotations = useReview.getState().snapshot?.annotations ?? [];
   const found =
     annotations.find((a) => a.id === owner) ??
-    annotations.find((a) => (a.turns ?? []).some((t) => t.id === owner));
-  if (!found || found.type !== "conversation") return null;
+    annotations.find((a) => (a.replies ?? []).some((t) => t.id === owner));
+  if (!found || (found.type !== "thread" && found.type !== "link")) return null;
   const host = found.anchor.host;
   if (host.kind === "block") return { where: "block", blockId: host.blockId };
   if (host.kind === "description") return { where: "description", paragraphId: host.paragraphId };

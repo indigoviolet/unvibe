@@ -47,17 +47,17 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
   const [, setTick] = useState(0);
 
   const exps = (annotations ?? []).filter((a) => {
-    if (a.type !== "conversation" && a.type !== "link") return false;
+    if (a.type !== "thread" && a.type !== "link") return false;
     if (a.anchor.host.kind === "description") return a.anchor.host.paragraphId === paragraphId;
     // Issue #214: a card on a comment renders under that comment's paragraph.
     if (a.anchor.host.kind === "comment") {
       const commentId = a.anchor.host.commentId;
-      const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+      const comment = (annotations ?? []).find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
       return comment?.anchor.host.kind === "description" && comment.anchor.host.paragraphId === paragraphId;
     }
     return false;
   });
-  const open = exps.filter((a) => a.type === "conversation" && a.open && !a.promotedToPage);
+  const open = exps.filter((a) => a.type === "thread" && a.open && !a.promotedToPage);
 
   useEffect(() => {
     const root = document.querySelector("#right .desc");
@@ -149,7 +149,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found) return;
-      if (found.type === "conversation" && !found.open) {
+      if (found.type === "thread" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });

@@ -50,9 +50,22 @@ import { groupGithubComments, isOutdatedComment, requestGithubThread, type Githu
 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 
+function replyPlain(reply: { blocks?: Array<{ type: string }> }): string {
+  for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
+    if (b["type"] === "paragraph") {
+      const t = b["text"] as Record<string, unknown> | undefined;
+      const std = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      const p = plain(std);
+      if (p) return p.slice(0, 140);
+    }
+  }
+  return "";
+}
+
 function excerpt(thread: Annotation): string {
-  const first = thread.messages[0];
-  return plain(first?.text ?? "").slice(0, 140);
+  const first = (thread.replies ?? []).find((r) => r.kind === "comment" && replyPlain(r) !== "") ?? thread.replies[0];
+  if (!first) return "";
+  return replyPlain(first).slice(0, 140);
 }
 
 function resolveFilePath(snapshot: ReviewSnapshot, key: string): string | null {
@@ -311,7 +324,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   const threads = useMemo(
     () =>
       ((snapshot?.annotations ?? []).filter(
-        (a) => a.type === "comment" && (a as Annotation).messages.length > 0,
+        (a) => a.replies.some((r) => r.kind === "comment"),
       ) as Annotation[]),
     [snapshot],
   );
