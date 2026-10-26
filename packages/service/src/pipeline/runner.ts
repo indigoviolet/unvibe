@@ -869,7 +869,15 @@ export class Pipeline {
     this.setStage(reviewId, "base", "pending");
     this.setStage(reviewId, "critic", "pending");
     this.setStage(reviewId, "hunk-pass", "pending");
-    await this.enqueueReader(reviewId);
+    try {
+      await this.enqueueReader(reviewId);
+    } catch (err) {
+      // The reader never got a job: surface the failed state with Retry
+      // instead of leaving the guide on "Building the guide" forever
+      // (#276). Resume retries the reader (its stage isn't done).
+      this.setStage(reviewId, "reader", "error", err instanceof Error ? err.message : String(err));
+      throw err;
+    }
     // #123: the hunk pass needs only the diff, so it starts at ingest
     // instead of waiting for the reader. Small-model jobs run in their own
     // queue bucket, never behind the critics. The CITED-BY-GUIDE hint is

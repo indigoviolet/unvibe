@@ -412,6 +412,22 @@ describe("dedupe", () => {
     expect(a.id).not.toBe(b.id);
     await queue.drain();
   });
+
+  it("identical requests in different reviews do not share a job (#276)", async () => {
+    const { queue } = makeQueue();
+    const gate = deferred();
+    // The reader key carries no review: two fresh reviews at the same
+    // base version enqueue the identical key.
+    const dedupe = { anchor: "guide", requestKind: "reader", baseVersion: "v1" };
+    const a = queue.enqueue(spec({ reviewId: "rA", dedupe, run: (ctx) => gate.promise.then(() => ctx.reportText("hi")) }));
+    const b = queue.enqueue(spec({ reviewId: "rB", dedupe, run: async () => {} }));
+    // B must get its own job: sharing A's would run the reader for A
+    // while B waits forever with no job row of its own.
+    expect(b.id).not.toBe(a.id);
+    expect(queue.get(b.id)?.reviewId).toBe("rB");
+    gate.resolve();
+    await queue.drain();
+  });
 });
 
 describe("usage, prompts and events", () => {
