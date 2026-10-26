@@ -21,8 +21,8 @@ test.describe("J10 suggested comments and questions", () => {
     const deadline = Date.now() + 90_000;
     for (;;) {
       const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-      const anns = (snap.json as { annotations?: { messages: { suggested?: boolean }[] }[] }).annotations ?? [];
-      if (anns.some((a) => a.messages.some((m) => m.suggested))) break;
+      const anns = (snap.json as { annotations?: { replies?: { suggested?: boolean }[] }[] }).annotations ?? [];
+      if (anns.some((a) => (a.replies ?? []).some((r) => r.suggested))) break;
       if (Date.now() > deadline) throw new Error("no suggested comment landed");
       await new Promise((r) => setTimeout(r, 500));
     }
@@ -53,10 +53,33 @@ test.describe("J10 suggested comments and questions", () => {
     await expect(page.locator("#page .follow", { hasText: label })).toHaveCount(0, { timeout: 60_000 });
 
     // Suggested comment in the diff: no reply box, agent-authored.
+    // Locate it through the API (suggested threads render like any thread).
+    const snapRes = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const sugHit = (
+      (snapRes.json as {
+        annotations?: {
+          id: string;
+          anchor?: { host?: { kind: string } };
+          replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[];
+        }[];
+      }).annotations ?? []
+    )
+      .filter((a) => a.anchor?.host?.kind === "diff-line")
+      .flatMap((a) => (a.replies ?? []).map((r) => ({ a, r })))
+      .find(({ r }) => r.suggested);
+    if (!sugHit) throw new Error("no suggested diff comment found");
+    const sugText = (sugHit.r.blocks ?? [])
+      .map((b) => (b.type === "paragraph" ? (b.text?.standard ?? "") : ""))
+      .join(" ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 40);
+    expect(sugText).not.toBe("");
     await page.locator('#right [role="tab"]').getByText("Diff").click();
-    const sugMsg = page.locator("[data-ai-comment]").first();
-    await expect(sugMsg).toBeVisible({ timeout: 60_000 });
-    const thread = page.locator(".ithread[data-thread]", { has: sugMsg }).first();
+    const thread = page.locator(`.ithread[data-thread="${sugHit.a.id}"]`).first();
+    await expect(thread).toBeVisible({ timeout: 60_000 });
+    expect(await thread.textContent()).toContain(sugText.slice(0, 20));
     await expect(thread.locator("textarea")).toHaveCount(0);
 
     // Accept: mark it for the PR.
@@ -69,7 +92,7 @@ test.describe("J10 suggested comments and questions", () => {
     // Edit its draft on the Comments menu's Outbox tab.
     await page.locator('#reviewbar [data-cm=""]').click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
-    const draft = page.locator(".cmenu textarea[id^='ob-']").first();
+    const draft = page.locator(".cmenu .cm-entry", { hasText: sugText.slice(0, 20) }).locator("textarea").first();
     if ((await draft.count()) > 0) {
       await draft.fill("Edited suggestion for the PR.");
       await page.waitForResponse(

@@ -8,7 +8,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Annotation, Card, Job, ReviewSnapshot } from "@unvibe/shared";
+import { MemoryRouter } from "react-router";
+import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -31,7 +32,7 @@ function card(over: Partial<Card> = {}): Card {
   } as unknown as Card;
 }
 
-function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[] = []): void {
+function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Thread[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -45,36 +46,6 @@ function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Annotation[]
     logTail: [],
     rev: 1,
   } as unknown as ReviewSnapshot);
-}
-
-function answerCard(): Annotation {
-  return {
-    id: "ann_ans",
-    type: "conversation",
-    anchor: {
-      host: { kind: "block", blockId: "c1#b-f" },
-      quotedText: "Why?",
-      prefix: "",
-      suffix: "",
-      position: 0,
-      version: 1,
-    },
-    open: true,
-    messages: [],
-    post: false,
-    working: "Writing answer",
-    turns: [
-      {
-        id: "ans_1",
-        question: "Why?",
-        blocks: [],
-        level: "standard",
-        revision: 1,
-        undoStack: [],
-        working: "Writing answer",
-      },
-    ],
-  } as unknown as Annotation;
 }
 
 function holdAction(): {
@@ -107,6 +78,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={pending}
@@ -114,6 +86,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
       // The Generate button is replaced by the placeholder indicator.
@@ -127,6 +100,7 @@ describe("CardView immediate feedback", () => {
   describe("pending cards while generating (issue #84)", () => {
     function renderPending(p: Card): void {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={p}
@@ -134,6 +108,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
     }
 
@@ -171,6 +146,7 @@ describe("CardView immediate feedback", () => {
       });
       seedSnapshot([first, second]);
       render(
+        <MemoryRouter>
         <>
           <CardView
             reviewId={REVIEW_ID}
@@ -187,6 +163,7 @@ describe("CardView immediate feedback", () => {
             onFollowUp={() => {}}
           />
         </>,
+        </MemoryRouter>
       );
       act(() => {
         useReview.getState().beginInflight("c1", "generate");
@@ -225,6 +202,7 @@ describe("CardView immediate feedback", () => {
         .mockResolvedValue(useReview.getState().snapshot!);
       try {
         render(
+          <MemoryRouter>
           <>
             <Toast />
             <CardView
@@ -235,6 +213,7 @@ describe("CardView immediate feedback", () => {
               onFollowUp={() => {}}
             />
           </>,
+          </MemoryRouter>
         );
         fireEvent.click(screen.getByRole("button", { name: "Generate" }));
         // The error surfaces the way every other card action error does.
@@ -260,6 +239,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={withFollow}
@@ -267,6 +247,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={(cardId, blockId, i) => performFollowUp(REVIEW_ID, cardId, blockId, i)}
         />,
+        </MemoryRouter>
       );
       const chip = screen.getByRole("button", { name: "Why?" });
       fireEvent.click(chip);
@@ -293,6 +274,7 @@ describe("CardView immediate feedback", () => {
     seedSnapshot([card()], [live]);
     expect(useReview.getState().inflight).toEqual({});
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={card()}
@@ -300,21 +282,40 @@ describe("CardView immediate feedback", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
     expect(screen.getByRole("status")).toHaveTextContent("Rewriting…");
     expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
   });
 
-  test("once the answer renders, the chip placeholder is replaced by its working state", () => {
+  test("once the answer thread arrives, the chip placeholder is gone", () => {
     const withFollow = card({
       blocks: [
         { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
-    seedSnapshot([withFollow], [], [answerCard()]);
+    seedSnapshot([withFollow], [], [
+      {
+        id: "ann_ans",
+        type: "thread",
+        anchor: {
+          host: { kind: "block", blockId: "c1#b-f" },
+          quotedText: "Why?",
+          prefix: "",
+          suffix: "",
+          position: 0,
+          version: 1,
+        },
+        open: true,
+        replies: [],
+        post: false,
+        working: "Writing answer",
+      } as unknown as Thread,
+    ]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={withFollow}
@@ -322,17 +323,17 @@ describe("CardView immediate feedback", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
-    // Chip entry set (answer rendered before the response retargets): no
-    // second indicator under the chips…
+    // Chip entry set (answer thread arrived before the response
+    // retargets): no second indicator under the chips. The answer
+    // thread itself carries the working state (#273: expansions are
+    // threads now, covered by journeys J15/J271) — nothing renders
+    // here.
     act(() => {
       useReview.getState().beginInflight("followup:c1:b-f:0", "followup");
     });
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
-    // …the answer expansion itself shows Writing answer, not the generic
-    // server text.
-    const exp = document.querySelector('[data-expansion="ann_ans"]');
-    expect(exp?.querySelector(".working")).toHaveTextContent("Writing answer");
   });
 
   test("depth marks the card as rewriting on click", () => {
@@ -340,6 +341,7 @@ describe("CardView immediate feedback", () => {
     const held = holdAction();
     try {
       render(
+        <MemoryRouter>
         <CardView
           reviewId={REVIEW_ID}
           card={card()}
@@ -347,6 +349,7 @@ describe("CardView immediate feedback", () => {
           onOpenPage={() => {}}
           onFollowUp={() => {}}
         />,
+        </MemoryRouter>
       );
       fireEvent.click(screen.getByRole("button", { name: "Deeper" }));
       const section = document.getElementById("C-c1");
@@ -379,6 +382,7 @@ describe("CardView titles (issue #49)", () => {
     });
     seedSnapshot([untitled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={untitled}
@@ -386,6 +390,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     const head = document.querySelector(".chead");
     expect(head).not.toBeNull();
@@ -400,6 +405,7 @@ describe("CardView titles (issue #49)", () => {
     const untitled = card({ title: null, collapsed: true });
     seedSnapshot([untitled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={untitled}
@@ -407,6 +413,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     // Empty blocks: no title and no preview — but the row is just the
     // chevron, never a blank-looking preview.
@@ -417,6 +424,7 @@ describe("CardView titles (issue #49)", () => {
     const titled = card({ title: "The problem" });
     seedSnapshot([titled]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={titled}
@@ -424,6 +432,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     expect(document.querySelector("h2.ct")).toHaveTextContent("The problem");
   });
@@ -440,9 +449,9 @@ describe("CardView titles (issue #49)", () => {
         },
       ],
     });
-    const closed: Annotation = {
+    const closed: Thread = {
       id: "ann_closed",
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "c1#b-p" },
         quotedText: "Draw the Stereo vs mono-mixdown with a very long quote",
@@ -452,11 +461,12 @@ describe("CardView titles (issue #49)", () => {
         version: 1,
       },
       open: false,
-      messages: [],
+      replies: [],
       post: false,
-    } as unknown as Annotation;
+    } as unknown as Thread;
     seedSnapshot([withPara], [], [closed]);
     render(
+      <MemoryRouter>
       <CardView
         reviewId={REVIEW_ID}
         card={withPara}
@@ -464,6 +474,7 @@ describe("CardView titles (issue #49)", () => {
         onOpenPage={() => {}}
         onFollowUp={() => {}}
       />,
+      </MemoryRouter>
     );
     // No full-width fallback rows.
     expect(document.querySelector(".linkstub")).toBeNull();

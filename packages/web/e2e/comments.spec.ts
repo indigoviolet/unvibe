@@ -101,7 +101,7 @@ test.skip("Explain creates an expansion without breaking", async ({ page }) => {
   await expect(page.locator('#C-central [data-expansion]').first()).toBeVisible({ timeout: 5000 });
 });
 
-test("an Ask card and a comment share one diff line", async ({ page }) => {
+test("an Ask thread and a comment share one diff line", async ({ page }) => {
   // Plain first paint (?nohl=1) keeps code text in whole nodes so the
   // single-range selection helper works on diff code.
   await page.goto("/review/demo?nohl=1");
@@ -115,12 +115,12 @@ test("an Ask card and a comment share one diff line", async ({ page }) => {
   await expect(composer).toBeVisible({ timeout: 5000 });
   await composer.locator("textarea").fill("Why here?");
   await composer.getByRole("button", { name: "Ask" }).click();
-  const card = page.locator(`${file} [data-expansion]`, { hasText: "Why here?" });
-  await expect(card).toBeVisible({ timeout: 8000 });
-  await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 8000 });
-  await expect(card.getByPlaceholder("Ask a follow-up…")).toBeVisible();
-  // A Comment on the same selection: the teal card and the sand thread
-  // render side by side under the line — neither hides the other.
+  const thread = page.locator(`${file} section.ithread[data-thread]`, { hasText: "Why here?" });
+  await expect(thread).toBeVisible({ timeout: 8000 });
+  await expect(thread.locator(".exp-b").first()).not.toBeEmpty({ timeout: 8000 });
+  await expect(thread.getByPlaceholder("Ask a follow-up…")).toBeVisible();
+  // A Comment on the same selection: the Ask thread and the comment
+  // thread render side by side under the line — neither hides the other.
   await selectText(page, `${file} table.diff`, "_OBSOLETE_FOLD_RE");
   await page.locator('#selbar [data-act="note"]').click();
   const noteComposer = page.locator(`${file} .ithread[data-pending-thread]`);
@@ -129,12 +129,12 @@ test("an Ask card and a comment share one diff line", async ({ page }) => {
   await noteComposer.getByRole("button", { name: "Save" }).click();
   const note = page.locator(`${file} .ithread[data-thread]`, { hasText: "A note here." });
   await expect(note).toBeVisible({ timeout: 8000 });
-  await expect(card).toBeVisible();
-  await expect(card).toHaveClass(/card child/);
-  await expect(note).toHaveClass(/ithread/);
+  await expect(thread).toBeVisible();
+  await expect(thread.locator('[data-reply][data-kind="ask"]')).toHaveCount(1);
+  await expect(note.locator('[data-reply][data-kind="comment"]')).toHaveCount(1);
 });
 
-test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #163)", async ({ page }) => {
+test("AI-suggested comments carry no reply box; Ask about this asks in the thread (issue #163)", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   // The seeded suggestion on the diff (agent text, not yet for the PR).
@@ -142,16 +142,19 @@ test("AI-suggested comments carry no reply box; Ask opens an Ask card (issue #16
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
   await expect(sug.locator("textarea")).toHaveCount(0);
-  // "Ask about this", as on user comments.
+  // "Ask about this", as on user comments: the Ask reply lands in the
+  // same thread.
   await sug.getByRole("button", { name: "Ask about this" }).click();
-  const card = page.locator('#right .dhunk [data-expansion]', { hasText: "quadratic case?" });
-  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
-  await card.getByRole("button", { name: "Close" }).click();
+  const askReply = sug.locator('[data-reply][data-kind="ask"]');
+  await expect(askReply).toBeVisible({ timeout: 8000 });
+  await expect(askReply.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
   // Selecting in the suggestion summons the toolbar, anchored to the comment.
-  await selectText(page, "#t-sgperf .msg", "quadratic");
+  await selectText(page, "#t-sgperf", "Suggested");
   await expect(page.locator("#selbar")).toBeVisible();
   await page.locator('#selbar [data-act="ask"]').click();
-  await expect(page.locator('#right .ithread[data-pending-thread]')).toBeVisible({ timeout: 5000 });
+  // Exactly one composer: inside the thread (no duplicate on the line).
+  await expect(page.locator('#right .ithread[data-pending-thread]')).toHaveCount(1);
+  await expect(page.locator('#t-sgperf .ithread[data-pending-thread]')).toBeVisible({ timeout: 5000 });
 });
 
 test("reply drafts survive unrelated re-renders; Discard clears", async ({ page }) => {

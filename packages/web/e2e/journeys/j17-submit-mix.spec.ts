@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { selectText } from "../select-text.js";
 import { apiJson, createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -74,21 +75,40 @@ test.describe("J17 submit a mix", () => {
     });
 
     // Wait for a suggested comment, then accept it (mark for the PR).
+    let sugId = "";
+    let sugText = "";
+    let sugLine = 0;
     const deadline = Date.now() + 90_000;
     for (;;) {
       const s = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-      const anns = (s.json as { annotations?: { messages: { suggested?: boolean }[] }[] }).annotations ?? [];
-      if (anns.some((a) => a.messages.some((m) => m.suggested))) break;
+      const anns = (s.json as { annotations?: { id: string; anchor?: { host?: { kind: string; line?: number } }; replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[] }[] }).annotations ?? [];
+      const hit = anns
+        .filter((a) => a.anchor?.host?.kind === "diff-line")
+        .flatMap((a) => (a.replies ?? []).map((r) => ({ a, r })))
+        .find(({ r }) => r.suggested);
+      if (hit) {
+        sugId = hit.a.id;
+        if (hit.a.anchor?.host?.kind === "diff-line" && hit.a.anchor.host.line) sugLine = hit.a.anchor.host.line;
+        sugText = (hit.r.blocks ?? [])
+          .map((b) => (b.type === "paragraph" ? (b.text?.standard ?? "") : ""))
+          .join(" ")
+          .replace(/<[^>]*>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 40);
+        break;
+      }
       if (Date.now() > deadline) throw new Error("no suggested comment landed");
       await new Promise((r) => setTimeout(r, 500));
     }
+    expect(sugText).not.toBe("");
+    expect(sugLine).toBeGreaterThan(0);
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
-    const sugMsg = page.locator("[data-ai-comment]").first();
-    await expect(sugMsg).toBeVisible({ timeout: 60_000 });
-    const sugText = (await sugMsg.innerText()).trim().slice(0, 40);
-    expect(sugText).not.toBe("");
-    const sugThread = page.locator(".ithread[data-thread]", { has: sugMsg }).first();
+    // Suggested threads start closed: open through the line's mark.
+    await page.locator(`[id="L-${CONN}-${sugLine}"] td.n`).first().click();
+    const sugThread = page.locator(`.ithread[data-thread="${sugId}"]`).first();
+    await expect(sugThread).toBeVisible({ timeout: 60_000 });
     await sugThread.getByRole("button", { name: "Add to Outbox" }).click();
     await expect(sugThread.getByRole("button", { name: /Remove from the Outbox/ })).toBeVisible({ timeout: 10_000 });
 
@@ -102,9 +122,18 @@ test.describe("J17 submit a mix", () => {
     await slot.getByRole("button", { name: "Save" }).click();
     const own = connFile.locator(".ithread[data-thread]", { hasText: "My own note on this hunk." });
     await expect(own).toBeVisible({ timeout: 15_000 });
-    await own.getByPlaceholder("Reply…").fill("And a reply to it.");
-    await own.getByRole("button", { name: "Reply" }).click();
-    await expect(own).toContainText("And a reply to it.", { timeout: 15_000 });
+    // The thread ends in the single agent Reply box — no comment box.
+    // A further comment goes through the selection toolbar's Comment
+    // path and lands as its own thread on the same hunk.
+    await expect(own.locator("textarea")).toHaveCount(1);
+    await selectText(page, `[id="F-${CONN}"] .ithread[data-thread]`, "My own note");
+    await page.locator('#selbar [data-act="note"]').click();
+    const slot2 = connFile.locator(".ithread[data-pending-thread]");
+    await expect(slot2).toBeVisible({ timeout: 15_000 });
+    await slot2.locator("textarea").fill("And a reply to it.");
+    await slot2.getByRole("button", { name: "Save" }).click();
+    const reply = connFile.locator(".ithread[data-thread]", { hasText: "And a reply to it." });
+    await expect(reply).toBeVisible({ timeout: 15_000 });
 
     // Submit: the preview lists the mix; exactly one review is posted.
     await page.locator("#submitSlot [data-submit]").click();

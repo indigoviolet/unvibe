@@ -86,9 +86,9 @@ async function waitForTurnSettled(ctx: App["ctx"], id: string, annotationId: str
   await waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; turns?: { working: string | null }[] }
+      | { working: string | null; replies?: { working: string | null }[] }
       | undefined;
-    return a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
+    return a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, 60000);
 }
 
@@ -159,7 +159,7 @@ describe("stuck writing turns (#272)", () => {
       // The failure is recorded despite the closed card: no stuck
       // working flag, no partial answer, banner state set.
       const snap = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const turn = (snap.turns ?? [])[0]!;
+      const turn = (snap.replies ?? [])[0]!;
       expect(turn.working).toBeNull();
       expect(turn.error).toBe("boom mid-stream");
       expect(turn.blocks).toEqual([]);
@@ -217,7 +217,7 @@ describe("stuck writing turns (#272)", () => {
 
       // Quiet: no banner — but no working flag, job link or partials.
       const snap = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-      const turn = (snap.turns ?? [])[0]!;
+      const turn = (snap.replies ?? [])[0]!;
       expect(turn.working).toBeNull();
       expect(turn.jobId).toBeUndefined();
       expect(turn.blocks).toEqual([]);
@@ -290,7 +290,7 @@ describe("stuck writing turns (#272)", () => {
       });
       try {
         const snap = ctx2.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-        const turn = (snap.turns ?? [])[0]!;
+        const turn = (snap.replies ?? [])[0]!;
         expect(turn.working).toBeNull();
         expect(turn.error).toMatch(/stopped because the service restarted/);
         expect(turn.blocks).toEqual([]);
@@ -301,7 +301,7 @@ describe("stuck writing turns (#272)", () => {
         expect(await waitForJob(ctx2, retry.json.jobId as string)).toBe("done");
         await waitForTurnSettled(ctx2, id, annotationId);
         const after = ctx2.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
-        const retried = (after.turns ?? [])[0]!;
+        const retried = (after.replies ?? [])[0]!;
         expect(retried.error).toBeFalsy();
         expect(JSON.stringify(retried.blocks)).toContain("Clean answer after restart.");
       } finally {

@@ -7,7 +7,7 @@
  * contribute their messages as before.
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import { StoreReviewReader } from "../src/mcp/reviewReader.js";
 import { setupReview } from "./m6-helpers.js";
@@ -17,10 +17,10 @@ describe("review reader turns (#143)", () => {
     const runner = new FakeCommandRunner();
     const { app, ctx, reviewId } = await setupReview(runner);
     try {
-      const annotations: Annotation[] = [
+      const annotations: Thread[] = [
         {
           id: "ann_conv",
-          type: "conversation",
+          type: "thread",
           anchor: {
             host: { kind: "diff-line", fileKey: "a-py", line: 2 },
             quotedText: "y = 2",
@@ -30,11 +30,12 @@ describe("review reader turns (#143)", () => {
             version: 1,
           },
           open: true,
-          messages: [],
           post: false,
-          turns: [
+          replies: [
             {
               id: "ans_1",
+              kind: "explain",
+              who: "agent",
               question: null,
               blocks: [
                 {
@@ -50,6 +51,8 @@ describe("review reader turns (#143)", () => {
             },
             {
               id: "ans_2",
+              kind: "ask",
+              who: "agent",
               question: "What about ordering?",
               blocks: [
                 {
@@ -64,10 +67,10 @@ describe("review reader turns (#143)", () => {
               undoStack: [],
             },
           ],
-        } as unknown as Annotation,
+        } as unknown as Thread,
         {
           id: "ann_note",
-          type: "comment",
+          type: "thread",
           anchor: {
             host: { kind: "diff-line", fileKey: "a-py", line: 1 },
             quotedText: "x = 1",
@@ -77,9 +80,9 @@ describe("review reader turns (#143)", () => {
             version: 1,
           },
           open: true,
-          messages: [{ who: "you", text: "Double-check this line." }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Double-check this line." }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
-        } as unknown as Annotation,
+        } as unknown as Thread,
       ];
       const snap = ctx.reviews.getSnapshot(reviewId)!;
       await ctx.reviews.mutate(reviewId, (draft) => {

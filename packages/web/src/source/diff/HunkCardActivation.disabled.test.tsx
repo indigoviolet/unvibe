@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import type { Annotation, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { FileSection } from "./FileSection.js";
 
@@ -37,10 +37,10 @@ function file(): ReviewFile {
   return { fileKey: FILE_KEY, path: "src/a.rs", category: "source", hunks: [hunk()] };
 }
 
-function card(open: boolean): Annotation {
+function card(open: boolean): Thread {
   return {
     id: "ann_hunk",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "hunk", fileKey: FILE_KEY, contentHash: HASH },
       quotedText: "",
@@ -50,7 +50,7 @@ function card(open: boolean): Annotation {
       version: 1,
     },
     open,
-    messages: [],
+    replies: [],
     post: false,
     turns: [
       {
@@ -70,10 +70,10 @@ function card(open: boolean): Annotation {
         working: null,
       },
     ],
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function seed(annotations: Annotation[]): void {
+function seed(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -106,7 +106,7 @@ function Harness({
   promoted,
   onOpenPage,
 }: {
-  cards: Map<string, Annotation>;
+  cards: Map<string, Thread>;
   promoted?: Map<string, string>;
   onOpenPage?: (pageId: string) => void;
 }): React.JSX.Element {
@@ -232,10 +232,10 @@ describe("hunk summary activation (issue #138)", () => {
         version: 1,
       },
       open: false,
-      messages: [],
+      replies: [],
       post: false,
       promotedToPage: "p-1",
-    } as unknown as Annotation;
+    } as unknown as Thread;
     seed([link]);
     const onOpenPage = vi.fn();
     render(<Harness cards={new Map()} promoted={new Map([[HASH, "p-1"]])} onOpenPage={onOpenPage} />);

@@ -1,4 +1,4 @@
-/** J214: Explain on text inside a comment card anchors to that comment — replay. */
+/** J214 (reworked #273): Explain inside a thread appends a reply there — replay. */
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,13 +9,18 @@ import { apiJson, createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
+interface Reply {
+  id: string;
+  kind: string;
+  blocks: unknown[];
+}
+
 interface Ann {
   id: string;
   type: string;
   open?: boolean;
   anchor: { host: { kind: string; commentId?: string }; quotedText?: string };
-  messages: { text?: string; suggested?: boolean; question?: boolean }[];
-  turns?: { blocks: unknown[] }[];
+  replies: Reply[];
   openQuestion?: unknown;
 }
 
@@ -34,7 +39,7 @@ async function waitFor<T>(fn: () => Promise<T | null>, timeoutMs = 90_000): Prom
   }
 }
 
-test.describe("J214 explain inside a comment", () => {
+test.describe("J214 explain inside a thread", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
@@ -43,11 +48,10 @@ test.describe("J214 explain inside a comment", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j214-data-"));
     svc = await startService(dataDir, { agent: "replay" });
     reviewId = await createDemoReview(svc);
-    // Wait for the suggested question (guide) and a suggested comment (diff).
     await waitFor(async () => {
       const anns = await annotations(svc!, reviewId);
       const q = anns.find((a) => a.openQuestion);
-      const ai = anns.find((a) => a.type === "comment" && a.messages.some((m) => m.suggested && !m.question));
+      const ai = anns.find((a) => a.replies.some((r) => (r as { suggested?: boolean }).suggested === true));
       return q && ai ? { q, ai } : null;
     });
   });
@@ -56,7 +60,7 @@ test.describe("J214 explain inside a comment", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("guide: explain inside a suggested-question comment anchors to that comment", async ({ page }) => {
+  test("guide: explain inside a thread appends a reply in the same thread", async ({ page }) => {
     test.setTimeout(300_000);
     if (!svc) throw new Error("no service");
     const anns = await annotations(svc, reviewId);
@@ -65,75 +69,57 @@ test.describe("J214 explain inside a comment", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Open the closed suggested-question comment from its block marker.
-    const thread = page.locator(`.ithread[data-thread="${q.id}"]`);
+    const thread = page.locator(`section.ithread[data-thread="${q.id}"]`);
     if ((await thread.count()) === 0 || !(await thread.isVisible().catch(() => false))) {
       await page.locator("#C-problem .lk.cm[data-threads]").first().click();
     }
     await expect(thread).toBeVisible({ timeout: 15_000 });
     await expect(thread).toContainText("Suggested question");
 
-    await selectText(page, `[data-thread="${q.id}"] [data-comment="${q.id}"]`, "folded values");
+    // Select text inside the thread's comment reply and Explain.
+    const body = thread.locator('[data-reply][data-kind="comment"]').first();
+    const word = await body.evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "folded");
+    await selectText(page, `[data-thread="${q.id}"] [data-reply][data-kind="comment"]`, word);
     await page.locator('#selbar [data-act="explain"]').click();
 
-    const conv = await waitFor(async () => {
-      const list = await annotations(svc!, reviewId);
-      return list.find((a) => a.type === "conversation" && a.anchor.host.kind === "comment" && a.anchor.host.commentId === q.id) ?? null;
-    });
-    const card = page.locator(`[data-expansion="${conv.id}"]`);
-    await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
-    // Anchored under that comment: the thread comes before the card in
-    // the same guide card, and the answer shows no internal ID.
-    const order = await page.evaluate(
-      ({ threadId, cardId }: { threadId: string; cardId: string }) => {
-        const t = document.querySelector(`[data-thread="${threadId}"]`);
-        const c = document.querySelector(`[data-expansion="${cardId}"]`);
-        if (!t || !c) return "missing";
-        return t.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING ? "after" : "before";
-      },
-      { threadId: q.id, cardId: conv.id },
-    );
-    expect(order).toBe("after");
-    await expect(card).not.toContainText(/ct_\d+/);
-    await expect(card.locator(".exp-b")).not.toContainText(/ct_\d+/);
+    // No nested box: the same thread gains an Explain reply.
+    await expect
+      .poll(async () => (await annotations(svc!, reviewId)).find((a) => a.id === q.id)?.replies.length ?? 0, {
+        timeout: 90_000,
+      })
+      .toBeGreaterThanOrEqual(2);
+    const updated = (await annotations(svc!, reviewId)).find((a) => a.id === q.id)!;
+    expect(updated.replies.some((r) => r.kind === "explain")).toBe(true);
+    // Still one thread on the page for this anchor (flat, never nested).
+    await expect(page.locator(`section.ithread[data-thread="${q.id}"]`)).toHaveCount(1);
+    await expect(page.locator(`[data-thread="${q.id}"] [data-expansion]`)).toHaveCount(0);
+    await expect(thread.locator('[data-reply][data-kind="explain"] .exp-b')).not.toBeEmpty({ timeout: 60_000 });
   });
 
-  test("diff: explain inside a suggested comment anchors to that comment", async ({ page }) => {
+  test("diff: explain inside a suggested thread appends a reply there", async ({ page }) => {
     test.setTimeout(300_000);
     if (!svc) throw new Error("no service");
     const anns = await annotations(svc, reviewId);
-    const ai = anns.find(
-      (a) => a.type === "comment" && a.messages.some((m) => m.suggested && !m.question && (m.text ?? "").includes("bare LF")),
-    );
+    const ai = anns.find((a) => a.replies.some((r) => (r as { suggested?: boolean }).suggested === true));
     if (!ai) throw new Error("no suggested comment");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     await page.locator('#right [role="tab"]').getByText("Diff").click();
-    const thread = page.locator(`.ithread[data-thread="${ai.id}"]`).first();
+    const thread = page.locator(`section.ithread[data-thread="${ai.id}"]`).first();
     await expect(thread).toBeVisible({ timeout: 60_000 });
 
-    await selectText(page, `[data-thread="${ai.id}"] [data-comment="${ai.id}"]`, "bare LF");
+    const body = thread.locator('[data-reply][data-kind="comment"]').first();
+    const word = await body.evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "bare");
+    await selectText(page, `[data-thread="${ai.id}"] [data-reply][data-kind="comment"]`, word);
     await page.locator('#selbar [data-act="explain"]').click();
 
-    const conv = await waitFor(async () => {
-      const list = await annotations(svc!, reviewId);
-      return list.find((a) => a.type === "conversation" && a.anchor.host.kind === "comment" && a.anchor.host.commentId === ai.id) ?? null;
-    });
-    const card = page.locator(`[data-expansion="${conv.id}"]`);
-    await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
-    const order = await page.evaluate(
-      ({ threadId, cardId }: { threadId: string; cardId: string }) => {
-        const t = document.querySelector(`[data-thread="${threadId}"]`);
-        const c = document.querySelector(`[data-expansion="${cardId}"]`);
-        if (!t || !c) return "missing";
-        return t.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING ? "after" : "before";
-      },
-      { threadId: ai.id, cardId: conv.id },
-    );
-    expect(order).toBe("after");
-    await expect(card).not.toContainText(/ct_\d+/);
-    await expect(card.locator(".exp-b")).not.toContainText(/ct_\d+/);
+    await expect
+      .poll(async () => (await annotations(svc!, reviewId)).find((a) => a.id === ai.id)?.replies.length ?? 0, {
+        timeout: 90_000,
+      })
+      .toBeGreaterThanOrEqual(2);
+    const updated = (await annotations(svc!, reviewId)).find((a) => a.id === ai.id)!;
+    expect(updated.replies.some((r) => r.kind === "explain")).toBe(true);
+    await expect(page.locator(`section.ithread[data-thread="${ai.id}"]`)).toHaveCount(1);
   });
 });

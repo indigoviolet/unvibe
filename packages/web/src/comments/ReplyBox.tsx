@@ -22,7 +22,7 @@ import { Button } from "../ui/index.js";
 interface Props {
   reviewId: string;
   annotationId: string;
-  /** Server draft (`Annotation.reply`); external edits flow back in. */
+  /** Server draft (`Thread.reply`); external edits flow back in. */
   serverReply: string | undefined;
   placeholder: string;
   /** Accessible name for the textarea. */
@@ -49,6 +49,8 @@ interface Props {
    * deletes the thread itself, so it must work before anything is typed).
    */
   allowEmptyDiscard?: boolean;
+  /** Issue #273: which server field this box persists to (`reply` or `followupDraft`). */
+  persistField?: "reply" | "followupDraft";
 }
 
 export function ReplyBox({
@@ -67,7 +69,9 @@ export function ReplyBox({
   allowEmptyDiscard,
   sendDisabled,
   sendDisabledTip,
+  persistField,
 }: Props) {
+  const field = persistField ?? "reply";
   const [draft, setDraft] = useState(serverReply ?? "");
   const [sending, setSending] = useState(false);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -113,7 +117,7 @@ export function ReplyBox({
       const current = draftRef.current;
       const consumed = clearedSeqRef.current >= seqRef.current && seqRef.current > 0;
       if (!consumed && current !== (serverReplyRef.current ?? "") && current.trim() !== "") {
-        api.updateComment(reviewId, annotationId, { reply: current }).catch(() => {});
+        api.updateComment(reviewId, annotationId, { [field]: current } as import("@unvibe/shared").UpdateCommentRequest).catch(() => {});
       }
     },
     [reviewId, annotationId],
@@ -130,7 +134,7 @@ export function ReplyBox({
       // A send or discard consumed this keystroke: the text is
       // consumed, never persist it back.
       if (seq <= clearedSeqRef.current) return;
-      const sent = api.updateComment(reviewId, annotationId, { reply: value }).catch(() => {
+      const sent = api.updateComment(reviewId, annotationId, { [field]: value } as import("@unvibe/shared").UpdateCommentRequest).catch(() => {
         // Local draft stays; a toast on every keystroke would be noise.
       });
       persistPromiseRef.current = sent;

@@ -6,7 +6,7 @@ import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { selectText } from "../select-text.js";
-import { createSeededDemoReview } from "./journey-helpers.js";
+import { apiJson, createSeededDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -38,15 +38,30 @@ test.describe("J266 scroll restore", () => {
     });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    // Open an expansion as a page so Contents lists it under linked pages.
-    await selectText(page, "#C-central", "fast path");
+    // Open a thread as a page so Contents lists it under linked pages.
+    // ("optional whitespace" is card-unique; "fast path" also appears in
+    // the seeded thread text, which would route in-thread under #273.)
+    const beforeIds = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await selectText(page, "#C-central", "optional whitespace");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator('#C-central [data-expansion]').first();
+    let threadId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+        const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+        threadId = ids.find((id) => !beforeIds.includes(id)) ?? null;
+        if (threadId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!threadId) throw new Error("new thread did not appear");
+    const card = page.locator(`#C-central [data-thread="${threadId}"]`).first();
     await expect(card.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
     await card.getByRole("button", { name: "Open as page" }).click();
     await expect(page).toHaveURL(/\/page\/p-/, { timeout: 15_000 });
     await expect(page.locator("#page nav.crumbs")).toContainText("Unfold obsolete", { timeout: 10_000 });
-    const pageId = page.url().match(/page\/(.+)$/)?.[1] ?? "";
+    const pageId = page.url().match(/page\/([^?#]+)/)?.[1] ?? "";
     await page.goBack();
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 15_000 });
     const link = page.locator(`nav.toc [data-node="${pageId}"]`);

@@ -11,27 +11,25 @@
  * - `pages[].cards[].blocks` (root / concept / finding / opened-expansion
  *   pages; go-deeper fills land here as ordinary cards)
  * - `pages[].cards[].secondOpinions[].blocks`
- * - `annotations[].turns[].blocks` (issue #136: every turn, so a diagram
- *   in a follow-up answer renders like any other)
- * - `annotations[].turns[].secondOpinions[].blocks`
+ * - `annotations[].replies[].blocks` (issue #273: every reply, so a
+ *   diagram in a follow-up answer renders like any other)
+ * - `annotations[].replies[].secondOpinions[].blocks`
  * - `aside.inner`, recursively, inside any of the above
  *
  * Deliberately excluded:
  * - `CardSnapshot` undo stacks (stale revisions, never rendered; restoring
  *   one makes it live again and therefore findable)
  * - `DepthText` variants (HTML strings, not blocks)
- * - thread `ChatMessage` HTML (ask replies carry the raw source as
- *   `<pre class="d2">`, not a `DiagramBlock`; separate case)
  *
  * Pure helpers only (no Node/DOM).
  */
-import type { Annotation, Block, DiagramBlock, Page } from "../entities.js";
+import type { Thread, Block, DiagramBlock, Page } from "../entities.js";
 import { canonicalizeD2Source } from "./d2.js";
 
 /** The snapshot slice the walker needs (structural, not the full type). */
 export interface BlockSnapshot {
   pages: Page[];
-  annotations: Annotation[];
+  annotations: Thread[];
 }
 
 /**
@@ -50,9 +48,9 @@ export function liveBlockLists(snapshot: BlockSnapshot): Block[][] {
     }
   }
   for (const ann of snapshot.annotations ?? []) {
-    for (const turn of ann.turns ?? []) {
-      if (turn.blocks) lists.push(turn.blocks);
-      for (const so of turn.secondOpinions ?? []) {
+    for (const reply of ann.replies ?? []) {
+      if (reply.blocks) lists.push(reply.blocks);
+      for (const so of reply.secondOpinions ?? []) {
         if (so.blocks) lists.push(so.blocks);
       }
     }

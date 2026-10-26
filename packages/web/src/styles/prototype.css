@@ -1218,3 +1218,114 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .so-b .prose { font-size: 15px; }
 .so-missed { font-size: 13px; color: var(--muted); margin: 6px 0 2px; }
 .so-missed b { color: var(--ink); font-weight: 600; }
+
+/* ---------- flat threads (issue #273, from the #268 spike) ---------- */
+/* One thread component for everything: flat replies with kind badges,
+   in-thread reply links, and one-line collapsed rows. Class names follow
+   the spike (`spike268`), tokens come from this file's prototype theme. */
+
+.spike-thread { margin-left: 0; container-type: inline-size; }
+
+.spike-thread .spike-reply { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.spike-thread .spike-reply:first-of-type { border-top: none; }
+.spike-thread .spike-reply .av { width: 22px; height: 22px; }
+.spike-thread .spike-reply-main { min-width: 0; flex: 1; }
+.spike-thread .spike-reply-main > p { margin: 4px 0 0; }
+.spike-thread .spike-reply-head { display: flex; align-items: baseline; gap: 8px; }
+
+/* Kind badges: teal pills for agent answers, amber for reviewer comments.
+   (Specificity beats the legacy `.thd .kind` label style.) */
+.spike-thread .thd .kind.kind-ask,
+.spike-thread .thd .kind.kind-explain,
+.spike-thread .spike-reply .kind.kind-ask,
+.spike-thread .spike-reply .kind.kind-explain {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+.spike-thread .thd .kind.kind-comment,
+.spike-thread .spike-reply .kind.kind-comment {
+  background: var(--note-soft);
+  color: var(--note);
+  border-color: transparent;
+}
+.spike-thread .kind.kind-ask,
+.spike-thread .kind.kind-explain,
+.spike-thread .kind.kind-comment,
+.spike-thread .kind.kind-persona {
+  flex: none;
+  font-family: var(--label-font);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.spike-thread .spike-reply .ans-q { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Thread header quote vs location (#273): the quote truncates with an
+   ellipsis, but never to a stub — below ~440px of thread width (the diff
+   pane at 960px) it hides entirely and the location stays. The query
+   reads the thread's own width: it is the nearest container for `.mq`. */
+.spike-thread .thd .thd-loc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 440px) {
+  .spike-thread .mq { display: none; }
+}
+
+/* In-thread reply link: the selected words hyperlinked inside the reply's
+   own text (dotted teal underline), jumping to the target reply. */
+.spike-thread .rlink {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Reply-link target highlight (set on click, cleared after ~2.4s). */
+.spike-thread .spike-reply.flash {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-4);
+  background: var(--accent-soft);
+}
+
+/* Collapsed one-line rows: quote (italic, muted) · question/kind label
+   (semibold) · latest-answer snippet (muted) · reply-count pill · chevron. */
+.spike-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  container-type: inline-size;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-6);
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.spike-row-q { flex: none; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; color: var(--muted); }
+.spike-row-first { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-label); }
+.spike-row-sep { color: var(--muted); flex: none; }
+.spike-row-snip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.spike-row-count { flex: none; font-family: var(--label-font); font-size: var(--text-label); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 8px; }
+.spike-row .ic { flex: none; color: var(--muted); }
+/* Narrow row: same rule as the header — a quote that can't show ~12
+   characters is dropped instead of truncating to a stub. */
+@container (max-width: 300px) {
+  .spike-row-q { display: none; }
+}
+
+/* "Collapse threads" / "Expand threads" control in the guide pane header:
+   single-line small button, right-aligned, never wrapping or crowding the title. */
+.ib.spike-collapse-all { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; width: auto; min-width: max-content; flex: none; white-space: nowrap; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-button); font-size: var(--text-label); color: var(--ink); }
+.spike-collapse-label { font-weight: var(--weight-label); }

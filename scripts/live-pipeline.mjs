@@ -271,15 +271,20 @@ async function runOnce(run, token) {
   }
   out.logUnverifiedSum = logUnverified;
 
-  // Critic: separate finding pages + suggested comments (threads with a
-  // suggested ai message, NOT marked for PR).
+  // Critic: separate finding pages + suggested comments (comment-kind
+  // replies carrying `suggested`, NOT marked for PR).
   const findingPages = (snap.pages ?? []).filter((p) => p.kind === "finding");
   out.findingPages = findingPages.map((p) => ({ id: p.id, title: p.title, confidence: p.confidence, cards: p.cards.length }));
-  const suggested = (snap.annotations ?? []).filter((a) => (a.messages ?? []).some((m) => m.suggested));
+  const replyText = (r) => {
+    const first = (r.blocks ?? []).find((b) => b && typeof b === "object" && b.type === "paragraph");
+    const s = first?.text?.standard;
+    return (typeof s === "string" ? s : "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  };
+  const suggested = (snap.annotations ?? []).filter((a) => (a.replies ?? []).some((r) => r.suggested));
   out.suggestedComments = suggested.map((a) => ({
     anchor: a.anchor?.host,
     post: a.post,
-    text: (a.messages.find((m) => m.suggested)?.text ?? "").slice(0, 120),
+    text: (replyText((a.replies ?? []).find((r) => r.suggested) ?? {}).slice(0, 120)),
   }));
   for (const s of suggested) {
     if (s.post !== false) out.failures.push(`suggested comment ${s.id} marked for PR`);

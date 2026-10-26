@@ -164,14 +164,14 @@ describe("document reviews (#222)", () => {
       method: "POST",
       url: `/api/reviews/${id}/actions`,
       headers: AUTH,
-      payload: { kind: "note", quote: "Hello world.", anchor: { where: "block", blockId: "document#p2" } },
+      payload: { kind: "note", quote: "Hello world.", anchor: { where: "block", blockId: "document#p2" }, text: "Please expand this part." },
     });
     expect(note.statusCode).toBe(200);
     const snap = (await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: AUTH })).json() as {
       annotations: { type: string; post: boolean; anchor: { host: { kind: string; blockId: string } } }[];
     };
     expect(snap.annotations).toHaveLength(1);
-    expect(snap.annotations[0].type).toBe("comment");
+    expect(snap.annotations[0].type).toBe("thread");
     expect(snap.annotations[0].post).toBe(true);
     expect(snap.annotations[0].anchor.host).toEqual({ kind: "block", blockId: "document#p2" });
 

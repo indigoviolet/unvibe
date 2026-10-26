@@ -22,7 +22,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import type { Annotation, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
+import { MemoryRouter } from "react-router";
+import type { Thread, Hunk, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../../state/store.js";
 import { useDiffExpansionBindings } from "../../guide/expansions/DiffExpansions.js";
 import { FileSection } from "./FileSection.js";
@@ -56,10 +57,10 @@ function file(): ReviewFile {
   return { fileKey: FILE_KEY, path: "src/a.rs", category: "source", hunks: [hunk()] };
 }
 
-function expansion(): Annotation {
+function expansion(): Thread {
   return {
     id: "ann_crash",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "diff-line", fileKey: FILE_KEY, line: 2 },
       quotedText: "computeTotal",
@@ -69,18 +70,18 @@ function expansion(): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
+    replies: [],
     post: false,
     note: false,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
-function otherExpansion(): Annotation {
+function otherExpansion(): Thread {
   const e = expansion();
-  return { ...e, id: "ann_other", anchor: { ...e.anchor, quotedText: "NoSuchQuoteInAnyRow" } } as Annotation;
+  return { ...e, id: "ann_other", anchor: { ...e.anchor, quotedText: "NoSuchQuoteInAnyRow" } } as Thread;
 }
 
-function seedSnapshot(annotations: Annotation[]): void {
+function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
@@ -127,7 +128,6 @@ function Harness({ tokens }: { tokens?: Tokens }): React.JSX.Element {
   const { lineSlots } = useDiffExpansionBindings(
     REVIEW_ID,
     () => undefined,
-    () => {},
     () => {},
   );
   return (
@@ -190,7 +190,7 @@ afterEach(() => {
 describe("issue #101: anchor marks vs diff highlight upgrade", () => {
   test("mark, re-mark, then token upgrade renders spans without throwing", async () => {
     seedSnapshot([expansion()]);
-    const r = render(<Harness />);
+    const r = render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     markedRow();
 
@@ -203,7 +203,7 @@ describe("issue #101: anchor marks vs diff highlight upgrade", () => {
 
     // The highlight upgrade swaps the cell content for spans.
     await act(async () => {
-      r.rerender(<Harness tokens={spans()} />);
+      r.rerender(<MemoryRouter><Harness tokens={spans()} /></MemoryRouter>);
     });
     const row = document.getElementById(`L-${FILE_KEY}-2`);
     expect(row).not.toBeNull();
@@ -212,11 +212,11 @@ describe("issue #101: anchor marks vs diff highlight upgrade", () => {
 
   test("a single marking pass followed by the upgrade renders without throwing", async () => {
     seedSnapshot([expansion()]);
-    const r = render(<Harness />);
+    const r = render(<MemoryRouter><Harness /></MemoryRouter>);
     await settle();
     markedRow();
     await act(async () => {
-      r.rerender(<Harness tokens={spans()} />);
+      r.rerender(<MemoryRouter><Harness tokens={spans()} /></MemoryRouter>);
     });
     const row = document.getElementById(`L-${FILE_KEY}-2`);
     expect(row).not.toBeNull();

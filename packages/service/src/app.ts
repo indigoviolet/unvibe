@@ -350,7 +350,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         const annotationId = job.annotationId;
         void reviews
           .mutate(reviewId, (draft) => {
-            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
               (a) => a.id === annotationId,
             );
             if (!ann) return;
@@ -360,7 +360,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
               ann.error = INTERRUPTED_MESSAGE;
               ann.jobId = undefined;
             }
-            for (const turn of ann.turns ?? []) {
+            for (const turn of ann.replies ?? []) {
               if (turn.jobId === job.id || (annMatches && (turn.working ?? null) !== null)) {
                 turn.working = null;
                 turn.error = INTERRUPTED_MESSAGE;

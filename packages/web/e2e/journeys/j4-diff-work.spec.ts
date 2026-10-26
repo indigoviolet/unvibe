@@ -154,13 +154,27 @@ test.describe("J4 diff work", () => {
     const dragSelect = async (fromLine: number, toLine: number): Promise<void> => {
       await selectDiffRows(page, CONN, fromLine, toLine);
     };
-    const explainAndClose = async (): Promise<void> => {
+    const explainAndClose = async (): Promise<string> => {
+      const beforeIds = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
       await page.locator('#selbar [data-act="explain"]').click();
-      const card = page.locator(".dhunk .ui-card.child[data-expansion]").first();
+      let newId: string | null = null;
+      {
+        const deadline = Date.now() + 60_000;
+        for (;;) {
+          const res = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+          const ids = ((res.json as { annotations: { id: string }[] }).annotations ?? []).map((a) => a.id);
+          newId = ids.find((id) => !beforeIds.includes(id)) ?? null;
+          if (newId || Date.now() > deadline) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+      if (!newId) throw new Error("new diff thread did not appear");
+      const card = page.locator(`.dhunk section.ithread[data-thread="${newId}"]`).first();
       await expect(card).toBeVisible({ timeout: 15_000 });
       await expect(card.locator(".working")).toHaveCount(0, { timeout: 30_000 });
       await card.getByRole("button", { name: "Close" }).click();
-      await expect(card).toBeHidden({ timeout: 10_000 });
+      await expect(page.locator(`.dhunk section.ithread[data-thread="${newId}"]`)).toBeHidden({ timeout: 10_000 });
+      return newId;
     };
 
     // Across three rows inside one hunk.
@@ -178,8 +192,8 @@ test.describe("J4 diff work", () => {
     expect(tip).toMatch(/Comment on line 87|Show comment/);
     // The marker reopens the card.
     await marker.click();
-    await expect(page.locator(".dhunk .ui-card.child[data-expansion]").first()).toBeVisible({ timeout: 15_000 });
-    await page.locator(".dhunk .ui-card.child[data-expansion]").first().getByRole("button", { name: "Close" }).click();
+    await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
+    await page.locator(".dhunk section.ithread[data-thread]").first().getByRole("button", { name: "Close" }).click();
 
     // Across a hunk boundary, over long lines: the selection runs to
     // several hundred characters, well past the old 300-char cap.
@@ -189,6 +203,6 @@ test.describe("J4 diff work", () => {
     await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
     await boundaryMarker.click();
-    await expect(page.locator(".dhunk .ui-card.child[data-expansion]").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
   });
 });

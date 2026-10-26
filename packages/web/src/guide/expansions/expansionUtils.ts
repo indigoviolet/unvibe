@@ -6,42 +6,42 @@
  * - card preview text (first paragraph HTML → plain text);
  * - grouping cards by host for guide/description/diff slots.
  */
-import type { Annotation, Block, DepthLevel, Turn } from "@unvibe/shared";
+import type { Thread, Block, DepthLevel, Reply } from "@unvibe/shared";
 
 export interface ExpansionGroup {
-  open: Annotation[];
-  closed: Annotation[];
-  links: Annotation[];
+  open: Thread[];
+  closed: Thread[];
+  links: Thread[];
 }
 
 /** All conversation/link annotations (closed cards stay as dotted links). */
-export function isExpansionLike(a: Annotation): boolean {
-  return a.type === "conversation" || a.type === "link";
+export function isExpansionLike(a: Thread): boolean {
+  return a.type === "thread" || a.type === "link";
 }
 
 /** Open conversation cards show the card in place. */
-export function isOpenExpansion(a: Annotation): boolean {
-  return a.type === "conversation" && a.open && !a.promotedToPage;
+export function isOpenExpansion(a: Thread): boolean {
+  return a.type === "thread" && a.open && !a.promotedToPage;
 }
 
 /** Closed conversation cards render as dotted-link marks on the anchor text. */
-export function isClosedExpansion(a: Annotation): boolean {
-  return a.type === "conversation" && !a.open && !a.promotedToPage;
+export function isClosedExpansion(a: Thread): boolean {
+  return a.type === "thread" && !a.open && !a.promotedToPage;
 }
 
 /** Promoted cards became a page link (type "link" or promotedToPage). */
-export function isPromotedLink(a: Annotation): boolean {
+export function isPromotedLink(a: Thread): boolean {
   return a.type === "link" || !!a.promotedToPage;
 }
 
 /** Anchor-stale fallback (PRD §4.7): show a collapsed card instead. */
-export function isAnchorStale(a: Annotation): boolean {
+export function isAnchorStale(a: Thread): boolean {
   return !!a.anchorStale;
 }
 
 /** Every turn of a conversation card, in order. */
-export function conversationTurns(a: Annotation): Turn[] {
-  return a.type === "conversation" ? (a.turns ?? []) : [];
+export function conversationTurns(a: Thread): Reply[] {
+  return a.type === "thread" ? (a.replies ?? []) : [];
 }
 
 function stripTags(s: string): string {
@@ -68,7 +68,7 @@ function blockPlainText(block: Block, level: DepthLevel): string {
 }
 
 /** Plain-text preview of a conversation card (first turn's first non-empty block). */
-export function expansionPreview(a: Annotation): string {
+export function expansionPreview(a: Thread): string {
   const first = conversationTurns(a)[0];
   const blocks = first?.blocks ?? [];
   const level = first?.level ?? "standard";
@@ -80,7 +80,7 @@ export function expansionPreview(a: Annotation): string {
 }
 
 /** First-paragraph HTML of a conversation card, for hover previews. */
-export function expansionPreviewHtml(a: Annotation): string | null {
+export function expansionPreviewHtml(a: Thread): string | null {
   const first = conversationTurns(a)[0];
   const blocks = first?.blocks ?? [];
   const level = first?.level ?? "standard";

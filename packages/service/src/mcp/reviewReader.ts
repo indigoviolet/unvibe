@@ -72,12 +72,11 @@ export class StoreReviewReader implements ReviewReader {
       id: a.id,
       type: a.type,
       anchorSummary: a.anchor.quotedText.slice(0, 80),
-      text:
-        a.type === "conversation"
-          ? (a.turns ?? [])
-              .map((t) => `${t.question === null ? "Explain this." : t.question}\n${plainText(renderMarkdown(t.blocks))}`)
-              .join("\n\n")
-          : a.messages.map((m) => m.text ?? "").join("\n"),
+      text: (a.replies ?? [])
+        .map((t) => t.kind === "comment"
+          ? `${t.who === "you" ? "Reader" : "Agent"}: ${plainText(renderMarkdown(t.blocks))}`
+          : `${t.question === null ? "Explain this." : t.question}\n${plainText(renderMarkdown(t.blocks))}`)
+        .join("\n\n"),
     }));
     const contributions = snap.contributions.flatMap((c) =>
       c.items.map((it) => ({

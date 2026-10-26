@@ -44,15 +44,17 @@ test.describe("J13 hunk summaries", () => {
     await expect(idle).toBeVisible({ timeout: 60_000 });
     const summariesBefore = await connFile.locator("p[data-hunksum]").count();
 
-    // Activate: clicking the idle summary opens it as a card.
+    // Activate: clicking the idle summary opens it as a thread.
     await idle.click();
-    const card = connFile.locator(".dhunk [data-expansion]").first();
+    const card = connFile.locator(".dhunk [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 30_000 });
+    const cardId = await card.getAttribute("data-thread");
 
-    // Delete: card and its summary are both gone.
+    // Delete: thread and its summary are both gone (seeded suggestion
+    // threads elsewhere in the file are untouched).
     await card.getByRole("button", { name: "Delete" }).click();
-    await expect(connFile.locator(".dhunk [data-expansion]")).toHaveCount(0, { timeout: 15_000 });
+    await expect(connFile.locator(`.dhunk section.ithread[data-thread="${cardId}"]`)).toHaveCount(0, { timeout: 15_000 });
     await expect(connFile.locator("p[data-hunksum]")).toHaveCount(summariesBefore - 1, { timeout: 15_000 });
 
     // Summarize on demand: the replay hunk pass writes it again as idle text.

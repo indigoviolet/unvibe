@@ -83,9 +83,9 @@ describe("performAction in-flight funnel", () => {
       await vi.advanceTimersByTimeAsync(1000);
       expect(useReview.getState().inflight).toEqual({});
       const card = useReview.getState().snapshot?.annotations.find((a) => a.id === answerKey);
-      expect(card?.type).toBe("conversation");
+      expect(card?.type).toBe("thread");
       expect(
-        card?.type === "conversation" ? (card.turns?.[0]?.blocks.length ?? 0) : 0,
+        card?.type === "thread" ? (card.replies?.[0]?.blocks.length ?? 0) : 0,
       ).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();
