@@ -170,9 +170,31 @@ test.describe("J297 start-page Load more + author search", () => {
     for (const d of [repoDir, dataDir, logDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
+  /**
+   * #297 follow-up: `checkLayout` has no sibling-overlap rule (it
+   * checks overflow, row heights and right edges), so the search box /
+   * Author select pair gets its own assertion: side by side with a gap
+   * past the 4px focus ring, or stacked with the search fully above.
+   */
+  async function expectSearchSelectSeparated(page: import("@playwright/test").Page): Promise<void> {
+    const searchBox = await page.getByLabel("Search author by login").boundingBox();
+    const triggerBox = await page.getByLabel("Author", { exact: true }).boundingBox();
+    expect(searchBox, "search box is visible").not.toBeNull();
+    expect(triggerBox, "Author select is visible").not.toBeNull();
+    const search = { left: searchBox!.x, right: searchBox!.x + searchBox!.width, top: searchBox!.y, bottom: searchBox!.y + searchBox!.height };
+    const trigger = { left: triggerBox!.x, right: triggerBox!.x + triggerBox!.width, top: triggerBox!.y, bottom: triggerBox!.y + triggerBox!.height };
+    const sameLine = search.top < trigger.bottom && trigger.top < search.bottom;
+    if (sameLine) {
+      expect(search.right + 5).toBeLessThanOrEqual(trigger.left);
+    } else {
+      expect(search.bottom + 5).toBeLessThanOrEqual(trigger.top);
+    }
+  }
+
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
   ] as const) {
     test(`load more pages past 30 and typing an author fetches them (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
@@ -194,6 +216,15 @@ test.describe("J297 start-page Load more + author search", () => {
       await expect(prBlock.getByText("Review ask 330")).toBeVisible();
       await expect(prBlock.getByText("Carol late ask 335")).toHaveCount(0);
       await expect(prBlock.getByText("Load more PRs")).toBeVisible();
+      // The search box and the Author select share the heading row with
+      // a gap and no overlap (or wrap without overlapping at narrow
+      // widths).
+      await expectSearchSelectSeparated(page);
+
+      // The Load more button, framed before it is used.
+      await prBlock.getByTestId("lists-load-more").scrollIntoViewIfNeeded();
+      await checkLayout(page, `start-pr-list-more-button-${combo.name}`);
+      await page.screenshot({ path: `${SHOTS}/start-pr-list-more-button-${combo.name}.png` });
 
       // The author list knows only the first page's authors.
       await expect(page.getByLabel("Author", { exact: true })).toContainText("All");
@@ -206,6 +237,10 @@ test.describe("J297 start-page Load more + author search", () => {
       await prBlock.getByTestId("lists-load-more").click();
       await expect(prBlock.getByText("Carol late ask 335")).toBeVisible({ timeout: 30_000 });
       await expect(prBlock.getByText("Load more PRs")).toHaveCount(0);
+      // The loaded-more list, framed with its new rows.
+      await prBlock.getByText("Carol late ask 335").scrollIntoViewIfNeeded();
+      await checkLayout(page, `start-pr-list-more-loaded-${combo.name}`);
+      await page.screenshot({ path: `${SHOTS}/start-pr-list-more-loaded-${combo.name}.png` });
       await page.getByLabel("Author", { exact: true }).click();
       await expect(openPopup(page).getByRole("option", { name: "carol (5)" })).toBeVisible({ timeout: 15_000 });
       await page.keyboard.press("Escape");
@@ -219,6 +254,9 @@ test.describe("J297 start-page Load more + author search", () => {
       await expect(page.getByLabel("Author", { exact: true })).toContainText("diana");
       const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
       expect(calls).toContain("--author diana");
+      // The committed search keeps its gap from the select (the input
+      // holds focus here, so its focus ring is drawn).
+      await expectSearchSelectSeparated(page);
 
       await checkLayout(page, `start-pr-list-more-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-pr-list-more-${combo.name}.png` });
