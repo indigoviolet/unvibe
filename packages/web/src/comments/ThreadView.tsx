@@ -13,7 +13,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
@@ -144,6 +144,38 @@ function replyHeading(reply: Reply, anchorQuote: string): string {
   return q ? `Ask · ${q.length > 100 ? `${q.slice(0, 99)}…` : q}` : "Ask";
 }
 
+/** Issue #293: an Ask question renders as a reviewer-styled entry from the
+ * stored `reply.question` — no stored change, so it never enters the
+ * Outbox/Submit path (those read only `kind === "comment"` replies). */
+function isAskWithQuestion(reply: Reply): boolean {
+  return reply.kind === "ask" && (reply.question?.trim() ?? "") !== "";
+}
+
+/** Reviewer-styled question entry for an Ask reply (#293). */
+function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
+  const question = (reply.question ?? "").trim();
+  return (
+    <div
+      className={`spike-reply ask-question${flash ? " flash" : ""}`}
+      id={`${reply.id}-question`}
+      data-reply={`${reply.id}-question`}
+      data-kind="comment"
+      data-ask-question={reply.id}
+    >
+      <span className="av you" role="img" aria-label="You">
+        <Icon name="person" />
+      </span>
+      <div className="spike-reply-main">
+        <div className="spike-reply-head">
+          <span className="kind kind-comment">comment</span>
+          <span className="ans-q">Reviewer comment</span>
+        </div>
+        <p>{question}</p>
+      </div>
+    </div>
+  );
+}
+
 /** One agent reply with its per-reply controls. */
 function AgentReplyView({
   reviewId,
@@ -154,6 +186,7 @@ function AgentReplyView({
   onFollowUp,
   flash,
   onLink,
+  hideQuestion,
 }: {
   reviewId: string;
   thread: Thread;
@@ -163,6 +196,9 @@ function AgentReplyView({
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
   flash: boolean;
   onLink: (targetId: string) => void;
+  /** Issue #293: Ask renders its question as a separate reviewer entry,
+   * so the answer reply carries no question heading. */
+  hideQuestion?: boolean;
 }) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
@@ -259,15 +295,22 @@ function AgentReplyView({
       />
     ));
 
+  const askAnswerClass = hideQuestion ? " ask-answer" : "";
   return (
-    <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind={reply.kind}>
+    <div
+      className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
+      id={reply.id}
+      data-reply={reply.id}
+      data-kind={reply.kind}
+      {...(hideQuestion ? { "data-ask-answer": reply.id } : {})}
+    >
       <span className="av ai" role="img" aria-label="Agent">
         <Icon name="spark" />
       </span>
       <div className="spike-reply-main">
         <div className="spike-reply-head">
           <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
-          <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>
+          {hideQuestion ? null : <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>}
           {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
           {awaitingAnswer ? null : (
             <div className="ctl">
@@ -709,10 +752,31 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           </Button>
         </div>
       ) : null}
-      {replies.map((r) =>
-        r.kind === "comment" || r.kind === "persona" ? (
-          <CommentReplyView key={r.id} reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} />
-        ) : (
+      {replies.map((r) => {
+        if (r.kind === "comment" || r.kind === "persona") {
+          return <CommentReplyView key={r.id} reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} />;
+        }
+        // Issue #293: an Ask question is a reviewer-styled entry with the
+        // answer as the reply directly under it (no stored change).
+        if (isAskWithQuestion(r)) {
+          return (
+            <Fragment key={r.id}>
+              <AskQuestionView reply={r} flash={flashId === `${r.id}-question`} />
+              <AgentReplyView
+                reviewId={reviewId}
+                thread={thread}
+                reply={r}
+                lookupPage={lp}
+                onOpenPage={op}
+                onFollowUp={of}
+                flash={flashId === r.id}
+                onLink={scrollToReply}
+                hideQuestion
+              />
+            </Fragment>
+          );
+        }
+        return (
           <AgentReplyView
             key={r.id}
             reviewId={reviewId}
@@ -724,8 +788,8 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             flash={flashId === r.id}
             onLink={scrollToReply}
           />
-        ),
-      )}
+        );
+      })}
       {inThreadPending && !readOnly ? (
         <NewThreadComposer
           key="in-thread-pending"

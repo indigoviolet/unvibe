@@ -40,7 +40,9 @@ test("1c. the reply box answers in the same thread (issue #136)", async ({ page 
   const answers = thread.locator('[data-reply][data-kind="explain"], [data-reply][data-kind="ask"]');
   await expect(answers).toHaveCount(2, { timeout: 8000 });
   await expect(answers.nth(1)).toContainText("Mock explanation", { timeout: 8000 });
-  await expect(answers.nth(1).locator(".ans-q")).toContainText("What about ordering?");
+  // Issue #293: a follow-up question is a reviewer entry before its answer.
+  await expect(thread.locator("[data-ask-question]").last()).toContainText("What about ordering?");
+  await expect(answers.nth(1).locator(".ans-q")).toHaveCount(0);
   // Per-reply controls address the reply: depth on the second reply.
   await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
   await expect(answers.nth(1).locator(".prose").first()).toContainText("is about unfolding folded header values", { timeout: 8000 });

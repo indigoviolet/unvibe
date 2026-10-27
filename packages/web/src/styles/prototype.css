@@ -1388,6 +1388,13 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 }
 .spike-thread .spike-reply .ans-q { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* Issue #293: an Ask question is a reviewer entry with its answer as the
+   reply directly under it — no rule and no blank gap between the two.
+   The answer keeps only its kind badge, so its toolbar stays right. */
+.spike-thread .spike-reply.ask-question { padding-bottom: 2px; }
+.spike-thread .spike-reply.ask-question + .spike-reply.ask-answer { border-top: none; padding-top: 2px; }
+.spike-thread .spike-reply.ask-answer .spike-reply-head .ctl { margin-left: auto; }
+
 /* Thread header quote vs location (#273): the quote truncates with an
    ellipsis, but never to a stub — below ~440px of thread width (the diff
    pane at 960px) it hides entirely and the location stays. The query

@@ -663,12 +663,20 @@ needed (that deviation is closed, not added).
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
 
-### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread)
+### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread; #293: Ask questions render as reviewer entries)
 
 - Ask… starts a thread (§4.7) on the selection's anchor, with the
   question as its first reply; Comment starts a thread with a reviewer
   comment reply and no agent reply — met (`actions/conversation.ts`,
   `NewThreadComposer.tsx` with in-thread `threadId`, journeys J2/J273).
+  Issue #293: the Ask question renders as a reviewer-styled comment entry
+  (author, normal text weight) with the answer as the reply directly under
+  it — no muted heading, no dashed rule, no gap (placeholder streams in the
+  reply position). Render-only from `reply.question`; stored shape unchanged,
+  so the question never enters the Outbox/Submit path (both read only
+  `kind === "comment"` replies) — met (`comments/ThreadView.tsx`
+  `AskQuestionView` + `ask-answer`, `prototype.css` gap rules, journey J273
+  #293 asserts).
   Only Ask sends text to the agent; clicking a diff line opens a
   Comment. Only comment-kind replies are submitted — pure agent threads
   stay out of the Outbox and the submit path skips threads without

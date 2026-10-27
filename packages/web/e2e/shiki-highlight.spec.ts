@@ -154,7 +154,9 @@ test("selection across token spans snaps to words and Ask opens a composer", asy
   const card = page.locator(`${connFile} section.ithread[data-thread]:has([data-reply][data-kind="ask"])`, { hasText: "Why this regex?" });
   await expect(card).toBeVisible({ timeout: 5000 });
   await expect(card.locator(".working")).toBeVisible({ timeout: 3000 });
-  await expect(card.locator(".ans-q").first()).toContainText("Why this regex?", { timeout: 8000 });
+  // Issue #293: the question is a reviewer entry, not a muted heading.
+  await expect(card.locator("[data-ask-question]").first()).toContainText("Why this regex?", { timeout: 8000 });
+  await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
   await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 8000 });
 });
 

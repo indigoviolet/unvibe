@@ -53,7 +53,8 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-    const pending = card.locator("[data-reply]").nth(1);
+    // Issue #293: questions are separate entries — answers are `ask-answer`.
+    const pending = card.locator("[data-ask-answer]").nth(1);
     await expect(pending.locator(".working")).toBeVisible({ timeout: 30_000 });
     await expect(pending.locator(".working")).toHaveText("Writing answer");
     const draft = card.getByPlaceholder(/Ask a follow-up/);
@@ -70,7 +71,8 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(pending.locator(".ctl")).toBeVisible({ timeout: 120_000 });
     await expect(send).toBeEnabled({ timeout: 30_000 });
     await send.click();
-    const third = card.locator("[data-reply]").nth(2);
+    // Issue #293: the follow-up question is its own reviewer entry.
+    const third = card.locator("[data-ask-question]").nth(2);
     await expect(third).toContainText("What about ordering?", { timeout: 60_000 });
     await expect(card.locator(".exp-b").nth(2)).not.toBeEmpty({ timeout: 60_000 });
   });
