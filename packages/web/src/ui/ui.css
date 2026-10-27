@@ -78,6 +78,37 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .ui-fields{display:grid;grid-template-columns:minmax(140px,max-content) minmax(0,1fr);gap:var(--space-2) var(--space-4)}
 .ui-fields>.ui-field{display:grid;grid-template-columns:subgrid;grid-column:1/-1;margin:0}
 /* Shared review-pane loading state (issue #232): processing indicator +
-   short label at body size, inside the pane's normal content padding. */
-.pane-loading{display:flex;align-items:center;gap:var(--space-2);margin:0;font-size:var(--text-base);color:var(--muted)}
+   short label at body size, inside the pane's normal content padding.
+   The 48px floor keeps the guide and diff rows the same height in the
+   preparing state (issue #284: the guide row carries the taller ball),
+   so the two labels stay vertically aligned per the #232 tour check. */
+.pane-loading{display:flex;align-items:center;gap:var(--space-2);margin:0;min-height:48px;font-size:var(--text-base);color:var(--muted)}
 .pane-loading-pad{padding:16px 20px}
+/* Guide-building indicator (issue #284): the disco ball from #275/#281
+   (`/disco-ball.svg`, whole chain shown) swinging gently as a pendulum
+   from its hook, about 40-48px tall. transform-origin at the top is the
+   chain's mount; a few degrees each way over 2.5s, ease-in-out. */
+.guide-ball{height:44px;width:auto;flex:none;transform-origin:50% 8%;animation:guide-swing 2.5s ease-in-out infinite}
+@keyframes guide-swing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+/* The ball's light (issue #284): 2-3 small pink glints reusing the
+   disco-ball art's sparkle paths. Same 2.5s cycle and easing as the
+   swing, in phase with it — drifting a little with the tilt and
+   brightest (opacity/scale peak) at the swing's ends (0%/50%/100%),
+   dimmest mid-swing. The diff state reuses these same elements and
+   keyframes on their own, as if the ball were just out of frame. */
+.loading-glints{display:inline-flex;align-items:center;gap:4px;flex:none}
+.loading-glints svg{display:block;overflow:visible;animation:guide-glint 2.5s ease-in-out infinite}
+.loading-glints svg:nth-child(1){height:10px;width:auto}
+.loading-glints svg:nth-child(2){height:6px;width:auto}
+.loading-glints svg:nth-child(3){height:8px;width:auto}
+@keyframes guide-glint{0%,100%{opacity:.95;transform:translateX(-1.5px) scale(1.15)}25%,75%{opacity:.35;transform:translateX(0) scale(.85)}50%{opacity:.95;transform:translateX(1.5px) scale(1.15)}}
+/* Pink glints pop on dark grounds: soften the whole cluster there. The
+   ball's pale fills also glow too bright on dark, so dim it slightly
+   (the small-size equivalent of #281's dark watermark treatment). */
+:root[data-theme="dark"] .loading-glints{opacity:.7}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .loading-glints{opacity:.7}}
+:root[data-theme="dark"] .guide-ball{filter:brightness(.82)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .guide-ball{filter:brightness(.82)}}
+/* Reduced motion (issue #284): the ball hangs still and the glints sit
+   static but visible — no animation at all. */
+@media (prefers-reduced-motion: reduce){.guide-ball,.loading-glints svg{animation:none}.guide-ball{transform:none}.loading-glints svg{opacity:.7;transform:none}}

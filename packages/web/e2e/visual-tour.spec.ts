@@ -1951,6 +1951,47 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await checkLayout(page, `review-preparing-${suffix}`);
       await shot(page, "review-preparing", suffix, "Loading the diff");
     });
+    // Issue #284: a still frame can't show motion, so freeze the swing
+    // at an extreme (0%: tilt maximal, glints bright) and at mid-swing
+    // (25%: tilt crossing centre, glints dim) via the Web Animations
+    // API and frame each. Paused times are in ms of the 2.5s cycle.
+    async function freezeSwing(page: Page, atMs: number): Promise<void> {
+      await page.evaluate((ms) => {
+        for (const el of document.querySelectorAll(".guide-ball, .loading-glints svg")) {
+          for (const a of el.getAnimations()) {
+            a.pause();
+            (a as Animation).currentTime = ms;
+          }
+        }
+      }, atMs);
+    }
+    test(`visual tour guide building swing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284: the ball and its glints swing together — no dots here.
+      await expect(page.locator('[data-testid="guide-empty"] .guide-ball')).toBeVisible();
+      await expect(page.locator('[data-testid="guide-empty"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="guide-empty"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-extreme-${suffix}.png`) });
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-mid-${suffix}.png`) });
+    });
     test(`visual tour guide building (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
       test.setTimeout(120_000);
@@ -1973,6 +2014,27 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await shot(page, "guide-building", suffix, "Building the guide");
     });
   }
+  // Issue #284: under reduced motion the ball hangs still and the
+  // glints sit static but visible — neither animates. (Commit 2 extends
+  // this to the diff pane's glints.)
+  test("visual tour loading indicators honour reduced motion (#284)", async ({ page }) => {
+    if (!svc232) throw new Error("preparing service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+    const ballAnim = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="guide-empty"] .guide-ball');
+      return el ? getComputedStyle(el).animationName : null;
+    });
+    expect(ballAnim, "guide ball animates under reduced motion").toBe("none");
+    const glintAnims = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="guide-empty"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
+    );
+    expect(glintAnims.length, "guide glints missing").toBe(3);
+    for (const name of glintAnims) expect(name, "guide glint animates under reduced motion").toBe("none");
+  });
 });
 // Issue #222: the start page's New document review form and a document
 // review (rendered blocks, an Explain answer, an Ask answer, a comment,
