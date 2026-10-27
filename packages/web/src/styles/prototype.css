@@ -783,7 +783,7 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .cnt { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--sunk); border-radius: 99px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
 /* #274 reviewed-progress bar beside the hunks-reviewed count. */
 .pw { display: inline-flex; align-items: center; gap: 10px; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.bar { display: block; height: 4px; width: 160px; border-radius: 99px; background: var(--sunk); overflow: hidden; }
+.bar { display: block; height: 4px; width: 160px; border-radius: 99px; background: var(--line); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--add-ink); }
 /* #274 repo picker as the page title: 24px head font, left-aligned. */
 .repo-title-select { width: auto; height: auto; padding: 4px 8px 4px 0; font: 600 24px/1.2 var(--serif); background: transparent; border-color: transparent; }

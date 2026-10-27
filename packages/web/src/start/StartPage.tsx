@@ -1589,8 +1589,11 @@ export function SessionRow({
             <>{s.ingestError ?? "No changes to review: the diff is empty."}</>
           ) : (
             <>
-              {/* #274: a thin progress bar next to the hunks-reviewed count. */}
+              {/* #274: the count sits at the row's left edge with a thin
+                  progress bar beside it (empty track at 0, filling in
+                  proportion). */}
               <span className="pw">
+                {s.reviewedHunks}/{s.totalHunks} hunks reviewed
                 <span className="bar" aria-hidden="true">
                   <i
                     style={{
@@ -1598,7 +1601,6 @@ export function SessionRow({
                     }}
                   />
                 </span>
-                {s.reviewedHunks}/{s.totalHunks} hunks reviewed
               </span>
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {s.guideStatus === "running" ? (
