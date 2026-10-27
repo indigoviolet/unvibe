@@ -927,16 +927,16 @@ export class PiAgentRunner implements AgentRunner {
     const now = Date.now();
     if (this.modelsCache && now - this.modelsCache.at < this.modelCacheMs) return this.modelsCache.models;
     let models: ModelInfo[] = [...PI_STATIC_MODELS];
-    const providers = new Map<string, string>();
-    // Static entries are Codex-subscription models; live entries carry
-    // their own provider (openai-codex preferred on collisions).
+    let providers = new Map<string, string>();
+    // Static entries are Codex-subscription models; a live listing replaces
+    // them, providers included, since it names the login pi actually has.
     for (const m of PI_STATIC_MODELS) providers.set(m.id, "openai-codex");
     try {
       const live = await this.ephemeralModels();
-      for (const [id, p] of live.providers) {
-        if (!providers.has(id) || p === "openai-codex") providers.set(id, p);
+      if (live.models.length > 0) {
+        models = live.models;
+        providers = live.providers;
       }
-      if (live.models.length > 0) models = live.models;
     } catch {
       // live listing failed; keep the static fallback
     }
