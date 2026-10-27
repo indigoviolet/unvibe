@@ -864,8 +864,18 @@ export function FileSection(props: SectionProps): ReactNode {
   // reach a first response otherwise: a single hunk starting at line 1
   // (no top or gap controls to click). Silent: failures just leave the
   // bottom control hidden.
+  // SPIKE #285 E: also probe when the total is unknown (any hunk count).
+  // Without the total there is no bottom region, so the last hunk's last
+  // row would show numbers instead of the v/vv pair even with hidden
+  // context below it. One cheap 1-line slice per file; failures stay
+  // silent as above. Non-E variants keep today's behaviour.
   const firstStart = file.hunks.length === 1 ? (file.isDeleted === true ? file.hunks[0].oldStart : file.hunks[0].newStart) : -1;
-  const needProbe = canExpand && expansion.totalLines === null && firstStart === 1 && visible && !props.folded;
+  const needProbe =
+    canExpand &&
+    expansion.totalLines === null &&
+    (firstStart === 1 || isGutterE()) &&
+    visible &&
+    !props.folded;
   const probeTotal = expansion.probeTotal;
   useEffect(() => {
     if (needProbe) void probeTotal();

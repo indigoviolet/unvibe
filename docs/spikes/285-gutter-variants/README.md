@@ -124,6 +124,12 @@ comment composer opens from the swapped-in icon.
   carets (a commented first/last row loses its icon); E2 keeps every number
   at rest but hides the carets until hover — discoverability for
   compactness, twice.
+- **Why hunk 2's last row needed a fix:** the file total (hence the bottom
+  region, hence any down control) is unknown until the first slice —
+  baseline behaviour, which is why the A–D round also has no bottom
+  expander under hunk 2. E probes the total up front (one silent 1-line
+  slice per file, E only), so the last row gets its `v`/`vv`. A real build
+  would get the total from ingest instead of probing.
 - **What didn't work:** the first E cut rendered the swap icon on deleted
   rows too (their numberless new cells missed the `.new` class the hide
   rules key on) — caught on the zoom crops, fixed, all frames re-shot.
