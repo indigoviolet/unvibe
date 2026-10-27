@@ -51,7 +51,14 @@ test.describe("J270 ask follow-up failure and retry", () => {
     await box.fill("Does a cookie header change this?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
     // Issue #293: questions are separate entries — answers are `ask-answer`.
-    const second = card.locator("[data-ask-answer]").nth(1);
+    // Wait for the follow-up pair to exist, then target the answer paired
+    // with its question (stable under load).
+    await expect(card.locator("[data-ask-answer]")).toHaveCount(2, { timeout: 30_000 });
+    const q2 = card.locator("[data-ask-question]", { hasText: "Does a cookie header change this?" });
+    await expect(q2).toBeVisible({ timeout: 30_000 });
+    const q2Id = await q2.getAttribute("data-ask-question");
+    expect(q2Id).toBeTruthy();
+    const second = card.locator(`[data-ask-answer="${q2Id}"]`);
     await expect(second.locator(".working")).toBeVisible({ timeout: 30_000 });
     svc.killHard();
     await page.waitForTimeout(500);
@@ -62,8 +69,16 @@ test.describe("J270 ask follow-up failure and retry", () => {
     const after = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" }).first();
     await expect(after).toBeVisible({ timeout: 30_000 });
     // The interrupted follow-up shows the failed banner with Retry — and
-    // no toolbar or reply box on that turn.
-    const failed = after.locator("[data-ask-answer]").nth(1);
+    // no toolbar or reply box on that turn. Wait for the reply to exist
+    // first, then target the answer paired with the follow-up question
+    // (stable under load; never an index into a half-rendered list).
+    await expect(after.locator("[data-ask-answer]")).toHaveCount(2, { timeout: 30_000 });
+    const afterQ = after.locator("[data-ask-question]", { hasText: "Does a cookie header change this?" });
+    await expect(afterQ).toBeVisible({ timeout: 30_000 });
+    const afterId = await afterQ.getAttribute("data-ask-question");
+    expect(afterId).toBeTruthy();
+    const failed = after.locator(`[data-ask-answer="${afterId}"]`);
+    await expect(failed).toBeVisible({ timeout: 15_000 });
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
     await page.screenshot({ path: "test-results/j270-failed.png" });
     await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 15_000 });
