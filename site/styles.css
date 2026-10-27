@@ -25,21 +25,38 @@ body {
 }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-/* Faint ball watermark: fixed, whole ball visible, tilted ~9deg CCW. */
+/* Faint ball watermark: fixed, whole ball visible, tilted ~9deg CCW.
+ * Desktop: the ceiling mount's left edge sits where "to understand." ends
+ * at full headline size (wrap left + 24px gutter + 678px), and the ball is
+ * sized to clear the install box (#290). Below 1304px the headline shrinks
+ * but the install box doesn't, so the mount stays put rather than follow
+ * the text onto the box. The .3249/.0493 factors place the rotated mount
+ * within the image box. */
 .watermark {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   pointer-events: none;
   z-index: 0;
 }
 .watermark img {
-  width: min(82vmin, 720px);
-  height: min(82vmin, 720px);
+  --ball: 500px;
+  position: absolute;
+  left: calc(max(0px, 50% - 560px) + 24px + 678px - .3249 * var(--ball));
+  top: calc(24px - .0493 * var(--ball));
+  width: var(--ball);
+  height: var(--ball);
   opacity: .16;
   transform: rotate(-9deg);
   mix-blend-mode: multiply;
+}
+/* Narrow screens: the ball stays centred, as before. */
+@media (max-width: 900px) {
+  .watermark { display: grid; place-items: center; }
+  .watermark img {
+    position: static;
+    width: min(82vmin, 720px);
+    height: min(82vmin, 720px);
+  }
 }
 .wrap {
   position: relative;
