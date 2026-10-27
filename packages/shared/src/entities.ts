@@ -928,11 +928,21 @@ export interface ExistingReviewComment {
  * count; `existingCommentsCollapsed` folds the section while it is shown.
  */
 export interface ReviewViewPrefs {
-  /** Show existing GitHub comments in the diff. */
+  /**
+   * Show existing GitHub comments in the diff. New reviews start with
+   * these hidden (issue #296); the reviewer can show them with the
+   * diff toolbar's show/hide control, remembered per review.
+   */
   showExistingComments: boolean;
   /** The comments menu's "Already on GitHub" section is collapsed. */
   existingCommentsCollapsed: boolean;
 }
+
+/** Default view prefs for a new review (issue #296): existing GitHub comments start hidden. */
+export const DEFAULT_REVIEW_VIEW_PREFS: ReviewViewPrefs = {
+  showExistingComments: false,
+  existingCommentsCollapsed: false,
+};
 
 export type JobKind =
   | "reader"

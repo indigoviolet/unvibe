@@ -24,7 +24,7 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION } from "@unvibe/shared";
+import { canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION, DEFAULT_REVIEW_VIEW_PREFS } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
@@ -435,7 +435,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     annotations,
     hunkStates,
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS },
     jobs: [
       { id: "job-reader", kind: "reader", model: "fixture", effort: "", priority: 1, state: "done" },
       { id: "job-critic", kind: "critic", model: "fixture", effort: "", priority: 2, state: "done" },

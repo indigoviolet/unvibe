@@ -32,7 +32,7 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { ingestStatusOf, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -262,7 +262,7 @@ async function runIngestBackground(
       annotations: [],
       hunkStates: [],
       fileStates: [],
-      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -303,7 +303,7 @@ async function runIngestBackground(
       draft.annotations = [];
       draft.hunkStates = [];
       draft.fileStates = [];
-      draft.viewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
+      draft.viewPrefs = { ...DEFAULT_REVIEW_VIEW_PREFS };
       draft.jobs = [];
       draft.contributions = [];
       draft.logTail = [];
@@ -474,7 +474,7 @@ async function beginReviewFromSource(
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -706,7 +706,7 @@ export async function registerReviews(
         annotations: [],
         hunkStates: [],
         fileStates: [],
-        viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+        viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -760,7 +760,7 @@ export async function registerReviews(
         annotations: [],
         hunkStates: [],
         fileStates: [],
-        viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+        viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS },
         jobs: [],
         contributions: [],
         logTail: [],

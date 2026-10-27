@@ -62,7 +62,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -568,7 +568,7 @@ function changesFetchError(): string | null {
 
 let rev = 1;
 /** Per-review diff view preferences (issue #168): the mock persists them. */
-let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
+let mockViewPrefs: import("@unvibe/shared").ReviewViewPrefs = { ...DEFAULT_REVIEW_VIEW_PREFS };
 const hunkStates = seedHunkStates();
 /** Per-file fold state (issue #162): the mock persists it like the service. */
 const fileStates = new Map<string, import("@unvibe/shared").FileState>();
@@ -929,7 +929,7 @@ export function resetMockState(): void {
   hunkStates.clear();
   for (const [k, v] of seedHunkStates()) hunkStates.set(k, v);
   fileStates.clear();
-  mockViewPrefs = { showExistingComments: true, existingCommentsCollapsed: false };
+  mockViewPrefs = { ...DEFAULT_REVIEW_VIEW_PREFS };
   annotations = seedAnnotations();
   mockPages = JSON.parse(JSON.stringify(MOCK_PAGES));
   seedMockD2Diagrams(mockPages);
