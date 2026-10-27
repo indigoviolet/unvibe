@@ -3267,3 +3267,24 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `prompt_cache_key` to the base's id (`before_provider_request`); forks
   use CLI `--fork`, resumes CLI `--session` (full path). Full gates not
   yet run.
+
+  Follow-up (empty-text live failure, branch `fix/279-pi-text-events`):
+  the post-SSE-fix live run returned empty text on the first prompt
+  (`expected '' to match /ready/i`). Reproduced offline against real pi
+  1.4.0 with a loopback fake model backend (scratch HOME, fake auth, no
+  spend): the happy-path event stream parses fine, so the runner now
+  treats every other pi shape defensively — provider errors from
+  `message_start`, `message_update` (`assistantMessageEvent` type
+  `error`), `message_end` and `turn_end` all surface as `error` events
+  (never silent empty text), and an assistant message whose text never
+  streamed as deltas is still yielded from its content (the authoritative
+  copy in `message_end`/`turn_end`). The fake pi emits the captured real
+  1.4.0 shapes (system/user framing, text_start/end, content-bearing
+  ends, toolcall_start/end, arg-less `tool_execution_end`, toolResult
+  messages, `turn_end`, full `agent_end`; scripted `{error}` and
+  `{text, noDeltas}` steps guard the new paths — 21 unit tests), and the
+  live test taps raw RPC events (`onRpcEvent`) and dumps them redacted
+  to a scratch file plus the test output on any failure. Offline
+  evidence: real `PiAgentRunner` + real pi 1.4.0 + fake backend + real MCP
+  mount returns "ready" (`text,usage,done`; input 90 net, 10 cached
+  read, 5 output). The live re-run still needs the owner's go.

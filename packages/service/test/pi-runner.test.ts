@@ -11,6 +11,9 @@
  * Covered, mirroring the spike's offline checks:
  * - the runner streams a reply; per-request usages aggregate with the
  *   #125 cache split intact;
+ * - provider errors surface as errors (never silent empty text), and a
+ *   turn with no text deltas still yields the reply from message content
+ *   (the live #279 symptom);
  * - scripted tool calls go through the runner's MCP env to the mount and
  *   stream tool start/end with the result;
  * - a fork passes the base's id as UNVIBE_PI_CACHE_KEY (the extension
@@ -165,16 +168,64 @@ describe("pi runner over a fake pi RPC process", () => {
       const tools = evs.filter((e) => e.type === "tool");
       // The result text comes from the real mount (registry dispatch),
       // through the real SSE transport, not a canned stub reply.
+      // toolCallIds mirror real pi 1.4.0 (`call_1|fc_1`); the end event
+      // carries no args, like the real `tool_execution_end`.
       const hunkText = "h:conn:9f2c\nfile: src/conn.py\n@@ -140,7 +147,7 @@\n147:  context foo\n148: -old line\n149: +new line";
       expect(tools).toEqual([
-        { type: "tool", name: "get_hunk", status: "start", id: "call-1", detail: '{"id":"h:conn:9f2c"}' },
-        { type: "tool", name: "get_hunk", status: "end", id: "call-1", detail: '{"id":"h:conn:9f2c"}', result: hunkText },
+        { type: "tool", name: "get_hunk", status: "start", id: "call_1|fc_1", detail: '{"id":"h:conn:9f2c"}' },
+        { type: "tool", name: "get_hunk", status: "end", id: "call_1|fc_1", result: hunkText },
       ]);
       expect(textOf(evs)).toBe("done");
       // Two provider requests (tool call + text) aggregate into one usage.
       const usages = evs.filter((e) => e.type === "usage");
       expect(usages).toHaveLength(1);
       expect(usages[0]).toMatchObject({ type: "usage", cachedReadTokens: 5 });
+    } finally {
+      await runner.dispose();
+    }
+  });
+
+  it("surfaces a provider error event as an error, not empty text", async () => {
+    // Real pi reports provider failures as assistant message_start/end +
+    // turn_end with stopReason "error" (captured offline against pi 1.4.0).
+    const runner = makeRunner({ UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ error: "Could not parse your authentication token. Please try signing in again." }]) });
+    try {
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const evs = await collect(runner.prompt(s, "pack"));
+      expect(textOf(evs)).toBe("");
+      const err = evs.find((e) => e.type === "error");
+      expect(err).toMatchObject({ type: "error", message: expect.stringMatching(/authentication token/i) });
+      // Auth failures are not retryable (same rule as the ACP adapters).
+      expect(err?.type === "error" && err.retryable).toBe(false);
+      expect(evs.at(-1)?.type).toBe("error");
+    } finally {
+      await runner.dispose();
+    }
+  });
+
+  it("recovers text from message content when no deltas stream", async () => {
+    // The live #279 symptom: a successful turn that settles with no text
+    // deltas must still yield the reply from the authoritative content.
+    const raw: unknown[] = [];
+    const runner = new PiAgentRunner({
+      binPath: FAKE_PI,
+      sessionDir,
+      env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, UNVIBE_FAKE_PI_VERSION: "9.9.9-fake", UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ text: "silent reply", noDeltas: true }]) },
+      onRpcEvent: (e) => raw.push(e),
+    });
+    try {
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const evs = await collect(runner.prompt(s, "pack"));
+      expect(textOf(evs)).toBe("silent reply");
+      expect(evs.at(-1)).toEqual({ type: "done", stopReason: "end_turn" });
+      // The tap saw the real-shaped stream (framing, deltas absent here,
+      // content-bearing end, turn_end, full agent_end, settled).
+      const types = raw.map((e) => (e as { type: string }).type);
+      expect(types).toContain("message_start");
+      expect(types).toContain("message_end");
+      expect(types).toContain("turn_end");
+      expect(types).toContain("agent_settled");
+      expect(types.filter((t) => t === "message_update").length).toBe(0);
     } finally {
       await runner.dispose();
     }
