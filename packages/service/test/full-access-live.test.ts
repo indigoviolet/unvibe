@@ -1,6 +1,15 @@
 /**
  * Live full-access check (issue #160) — excluded from `mise run check`,
- * run with `mise run test:live:full-access` (UNVIBE_LIVE=1).
+ * run with `mise run test:live:full-access` (UNVIBE_LIVE=1) and
+ * UNVIBE_LIVE_CAP=<usd> (required spend cap).
+ *
+ * Default provider is pi with muse-spark-1.3-contributor (issue #292);
+ * UNVIBE_LIVE_PROVIDERS keeps the other providers selectable. Free
+ * pre-checks (pi --list-models, pi catalogue pricing) run before any spend
+ * via the shared helper (scripts/live-pi-lib.mjs); priced spend is tracked
+ * turn by turn (failed jobs included — every usage event counts from the
+ * first token) and the run stops over the cap. The spend + per-provider
+ * report lands in test-results/live-full-access-*.json (gitignored).
  *
  * SMALL by design: one capability run (session + fork: `git log`, a
  * `gh` read, a web fetch, one review-tool call) plus one prompt-injection
@@ -23,7 +32,7 @@
  * - Made-up PR text only; nothing from any real repository under review
  *   appears in prompts, fixtures, or this file.
  */
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -34,24 +43,81 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AcpAgentRunner } from "../src/agent/acp/runner.js";
-import type { AgentEvent } from "@unvibe/shared";
+import { PiAgentRunner } from "../src/agent/pi/pi-runner.js";
+import type { AgentEvent, Session } from "@unvibe/shared";
+import {
+  LIVE_PI_DEFAULT,
+  assertPriced,
+  createSpendTracker,
+  fetchPiCatalog,
+  findCatalogEntry,
+  formatUsd,
+  precheckModelOffered,
+  preflightCap,
+  resolvePiCmd,
+  worstCaseTurnUsd,
+  writeLiveReport,
+} from "../../../scripts/live-pi-lib.mjs";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
 import { renderSystemPrompt } from "../src/prompts/access.js";
 
 const LIVE = process.env.UNVIBE_LIVE === "1";
-const PROVIDERS = (process.env.UNVIBE_LIVE_PROVIDERS ?? "claude,codex").split(",").map((s) => s.trim()).filter(Boolean);
+const PROVIDERS = (process.env.UNVIBE_LIVE_PROVIDERS ?? "pi").split(",").map((s) => s.trim()).filter(Boolean);
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_PROMPTS = resolve(TEST_DIR, "..", "..", "..", "prompts");
+const REPO_ROOT = resolve(TEST_DIR, "..", "..", "..");
 
-const MODELS: Record<string, string> = { claude: "sonnet", codex: "gpt-5.6-terra" };
+const MODELS: Record<string, string> = { claude: "sonnet", codex: "gpt-5.6-terra", pi: LIVE_PI_DEFAULT.model };
 
-async function collect(
-  runner: AcpAgentRunner,
-  session: { id: string; provider: string; model: string },
-  text: string,
-): Promise<AgentEvent[]> {
+// Shared live state (issue #292): catalogue rates when the pi model is
+// priced, a spend tracker counting every usage event from the first token
+// (failed jobs included), and cap breaches recorded for the report.
+let piRates: { input: number; output: number; cacheRead: number; cacheWrite: number } | null = null;
+let spend: ReturnType<typeof createSpendTracker> | null = null;
+const capBreaches: string[] = [];
+const acpTokens = { inputTokens: 0, outputTokens: 0 };
+
+type LiveRunner = AcpAgentRunner | PiAgentRunner;
+
+function makeRunner(provider: string, scopeDir: string): LiveRunner {
+  if (provider === "pi") {
+    const sessionDir = join(scopeDir, "pi-sessions");
+    mkdirSync(sessionDir, { recursive: true });
+    return new PiAgentRunner({ sessionDir });
+  }
+  return new AcpAgentRunner();
+}
+
+/** Fold a turn's usage events into the spend tracker (pi, priced) or the
+ * ACP token totals (reported without a USD conversion — no invented
+ * prices). Throws once priced spend passes the cap. */
+function trackUsage(provider: string, events: AgentEvent[]): void {
+  const usage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+  for (const e of events) {
+    if (e.type !== "usage") continue;
+    usage.inputTokens += e.inputTokens;
+    usage.cachedReadTokens += e.cachedReadTokens;
+    usage.cachedWriteTokens += e.cachedWriteTokens;
+    usage.outputTokens += e.outputTokens;
+  }
+  if (provider === "pi" && spend) {
+    spend.add(usage);
+    try {
+      spend.check(`live full-access (${provider})`);
+    } catch (err) {
+      capBreaches.push(err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  } else {
+    acpTokens.inputTokens += usage.inputTokens + usage.cachedReadTokens + usage.cachedWriteTokens;
+    acpTokens.outputTokens += usage.outputTokens;
+  }
+}
+
+async function collect(runner: LiveRunner, session: Session, text: string): Promise<AgentEvent[]> {
   const out: AgentEvent[] = [];
   for await (const e of runner.prompt(session, text)) out.push(e);
+  trackUsage(session.provider, out);
   return out;
 }
 
@@ -188,6 +254,10 @@ process.exit(1);
  * file. Returns what was carried (never values) for the report.
  */
 function carryAgentAuth(scratchHome: string, provider: string): string {
+  // pi keeps its own login in place: its credential layout must not be
+  // read or copied (see the #292 brief), so nothing is carried — the
+  // injection run below keeps the real HOME for pi only.
+  if (provider === "pi") return "pi login in place (never copied)";
   const realHome = process.env.HOME ?? "";
   if (provider === "claude" && process.env.ANTHROPIC_API_KEY) return "ANTHROPIC_API_KEY env";
   if (provider === "codex" && process.env.OPENAI_API_KEY) return "OPENAI_API_KEY env";
@@ -225,6 +295,54 @@ function lockdownSystemPrompt(): string {
 }
 
 describe.skipIf(!LIVE)("full-access live check (#160)", () => {
+  beforeAll(async () => {
+    // Required spend cap (issue #292): no live spend without the owner's go.
+    const capUsd = Number(process.env.UNVIBE_LIVE_CAP ?? "");
+    if (!Number.isFinite(capUsd) || capUsd <= 0) {
+      throw new Error(
+        `live full-access: UNVIBE_LIVE_CAP=<usd> is required (every live run needs an explicit spend cap). Got: ${process.env.UNVIBE_LIVE_CAP ?? "missing"}.`,
+      );
+    }
+    // Free pre-checks before any spend: pi must list the model, and the
+    // cap is priced from pi's own catalogue (no prompt, no spend).
+    if (PROVIDERS.includes("pi")) {
+      precheckModelOffered(resolvePiCmd(), { provider: "pi", model: MODELS["pi"] });
+      const catalog = await fetchPiCatalog(resolvePiCmd());
+      const entry = findCatalogEntry(catalog, { provider: "pi", model: MODELS["pi"] });
+      piRates = assertPriced(entry, { provider: "pi", model: MODELS["pi"], allowUnpriced: false });
+      const oneTurn = worstCaseTurnUsd(piRates, entry);
+      preflightCap({
+        capUsd,
+        worstCaseUsd: oneTurn === null ? null : oneTurn * PROVIDERS.length,
+        what: `${PROVIDERS.length} provider(s) worst case`,
+      });
+    } else {
+      console.log(`live pre-check: pi not selected; skipping pi --list-models and catalogue pricing`);
+    }
+    spend = createSpendTracker(piRates ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, capUsd);
+  });
+
+  afterAll(async () => {
+    const capUsd = Number(process.env.UNVIBE_LIVE_CAP ?? "0");
+    const totals = spend?.totals ?? { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+    const spendUsd = spend ? Math.round(spend.usd() * 10000) / 10000 : null;
+    const report = writeLiveReport({
+      dir: join(REPO_ROOT, "test-results"),
+      task: "full-access",
+      provider: PROVIDERS.join(","),
+      model: MODELS["pi"],
+      rates: piRates,
+      capUsd,
+      spendUsd,
+      tokens: { ...totals, acpTokens },
+      results: PROVIDERS.map((p) => ({ provider: p, model: MODELS[p] ?? "default" })),
+      failures: [...capBreaches],
+    });
+    console.log(
+      `FULLACCESS-LIVE priced pi spend ${spendUsd === null ? "(no pi runs)" : formatUsd(spendUsd)} of cap ${formatUsd(capUsd)} (failed jobs included); report ${report}`,
+    );
+  });
+
   for (const provider of PROVIDERS) {
     describe(provider, () => {
       it("ask reads code outside the diff straight from the worktree", { timeout: 300_000 }, async () => {
@@ -243,7 +361,7 @@ describe.skipIf(!LIVE)("full-access live check (#160)", () => {
         writeFileSync(join(dir, "notes.txt"), "baseline notes\nThe sprocket ratio is 7:1 (LIVE-NOTE).\n");
         git(["add", "."]);
         git(["commit", "-qm", "fixture: widget plus notes"]);
-        const runner = new AcpAgentRunner();
+        const runner = makeRunner(provider, dir);
         let input = 0;
         let output = 0;
         try {
@@ -287,7 +405,7 @@ describe.skipIf(!LIVE)("full-access live check (#160)", () => {
       it("session and fork can run git log, read gh, fetch the web, and call a review tool", { timeout: 300_000 }, async () => {
         const { dir, subjects } = makeFixtureRepo();
         const toolServer = await startToolServer();
-        const runner = new AcpAgentRunner();
+        const runner = makeRunner(provider, dir);
         let input = 0;
         let output = 0;
         try {
@@ -399,12 +517,18 @@ describe.skipIf(!LIVE)("full-access live check (#160)", () => {
           GH_TOKEN: process.env.GH_TOKEN,
         };
         const authCarried = carryAgentAuth(scratchHome, provider);
-        process.env.HOME = scratchHome;
-        process.env.XDG_CONFIG_HOME = join(scratchHome, ".config");
+        // pi keeps its own login in place (never copied): keep the real
+        // HOME so pi can authenticate, still with scrubbed tokens and the
+        // write-refusing fake gh first on PATH.
+        const homeSwapped = provider !== "pi";
+        if (homeSwapped) {
+          process.env.HOME = scratchHome;
+          process.env.XDG_CONFIG_HOME = join(scratchHome, ".config");
+        }
         process.env.PATH = `${fakeBin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`;
         delete process.env.GITHUB_TOKEN;
         delete process.env.GH_TOKEN;
-        const runner = new AcpAgentRunner();
+        const runner = makeRunner(provider, dir);
         let reply = "";
         let input = 0;
         let output = 0;
@@ -426,9 +550,11 @@ describe.skipIf(!LIVE)("full-access live check (#160)", () => {
           console.log(`FULLACCESS-LIVE provider=${provider} injection input=${input} output=${output} auth=${authCarried}`);
           console.log(`FULLACCESS-LIVE provider=${provider} reply=${JSON.stringify(reply.slice(0, 2000))}`);
           await runner.dispose();
-          process.env.HOME = savedEnv.HOME;
-          if (savedEnv.XDG_CONFIG_HOME === undefined) delete process.env.XDG_CONFIG_HOME;
-          else process.env.XDG_CONFIG_HOME = savedEnv.XDG_CONFIG_HOME;
+          if (homeSwapped) {
+            process.env.HOME = savedEnv.HOME;
+            if (savedEnv.XDG_CONFIG_HOME === undefined) delete process.env.XDG_CONFIG_HOME;
+            else process.env.XDG_CONFIG_HOME = savedEnv.XDG_CONFIG_HOME;
+          }
           process.env.PATH = savedEnv.PATH;
           if (savedEnv.GITHUB_TOKEN !== undefined) process.env.GITHUB_TOKEN = savedEnv.GITHUB_TOKEN;
           if (savedEnv.GH_TOKEN !== undefined) process.env.GH_TOKEN = savedEnv.GH_TOKEN;
