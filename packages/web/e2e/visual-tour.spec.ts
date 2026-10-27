@@ -1658,13 +1658,17 @@ for (const combo of [
     // 0.77em instead of 0.60em and "The" ran 9% wider than the stack's
     // fallback. Full Chromium shapes the true advances.
     const sansFamily = combo.theme === "studio" ? "Nunito Sans" : "Fira Sans";
+    // #274 stack B removed IBM Plex Sans, the old canvas reference: Inter
+    // Variable is bundled for every theme (main.tsx), so it is the stable
+    // reference now (true Nunito/Inter ~0.94, Fira/Inter ~0.91; the tPerEm
+    // check above stays the primary mis-shaping guard).
     const shaped = await page.evaluate((fam) => {
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return { tPerEm: 99, theRatio: 99 };
       ctx.font = `13px "${fam}"`;
       const t = ctx.measureText("T").width;
       const the = ctx.measureText("The").width;
-      ctx.font = `13px "IBM Plex Sans"`;
+      ctx.font = `13px "Inter Variable"`;
       const fallbackThe = ctx.measureText("The").width;
       return { tPerEm: t / 13, theRatio: the / fallbackThe };
     }, sansFamily);
