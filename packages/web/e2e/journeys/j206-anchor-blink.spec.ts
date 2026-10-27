@@ -165,7 +165,9 @@ test.describe("J206 anchor blink", () => {
 
     // Step to deep (stored levels: instant, no agent). The phrase is gone,
     // so the highlight drops and the chip appears on the citations line.
-    await page.locator("#C-central > .ctl").getByRole("button", { name: "Deeper" }).click();
+    // The toolbar reveals on card hover (#274).
+    await page.locator("#C-central").hover();
+    await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Deeper" }).click();
     await expect(page.locator(`#C-central mark.anc.exl[data-jump="${annId}"]:not(.fnote)`)).toHaveCount(0, {
       timeout: 15_000,
     });
@@ -189,7 +191,8 @@ test.describe("J206 anchor blink", () => {
     await expect(page.locator(`#C-central [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
 
     // Switching back restores the highlight and hides the chip.
-    await page.locator("#C-central > .ctl").getByRole("button", { name: "Simpler" }).click();
+    await page.locator("#C-central").hover();
+    await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Simpler" }).click();
     await expect(page.locator(`#C-central mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first()).toBeVisible({
       timeout: 15_000,
     });
