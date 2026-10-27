@@ -160,8 +160,10 @@ describe.skipIf(!LIVE)("pi live runner", () => {
         let forkId = "";
         try {
           const models = await runner.listModels("pi");
-          const model = process.env.UNVIBE_PI_LIVE_MODEL ?? models.find((m) => m.id.includes("sol"))?.id ?? models[0]?.id;
-          if (!model) throw new Error("live pi: no pi models offered (is pi logged in?)");
+          const model = process.env.UNVIBE_PI_LIVE_MODEL ?? "gpt-6.1-sol";
+          if (!models.some((m) => m.id === model)) {
+            throw new Error(`live pi: ${model} not offered; pi offers ${models.map((m) => m.id).join(", ") || "nothing (is pi logged in?)"}`);
+          }
           console.log(`[live-pi] model: ${model} (override with UNVIBE_PI_LIVE_MODEL)`);
 
           const totals = { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 };
