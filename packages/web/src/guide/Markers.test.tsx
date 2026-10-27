@@ -31,14 +31,14 @@ describe("BlockMarkers", () => {
     expect(container.querySelector(".lo")).toBeNull();
   });
 
-  it("renders one marker without a count for a single citation", () => {
+  it("renders one marker with a line-range label for a single citation (#274)", () => {
     render(<BlockMarkers citations={[rc("diff:conn:82")]} threads={[]} blockId="b" />);
     const marker = screen.getByRole("button", { name: "Source" });
     expect(marker).toHaveAttribute("data-refs", "diff:conn:82");
-    expect(marker.textContent).not.toMatch(/\d/);
+    expect(marker).toHaveTextContent("L82");
   });
 
-  it("groups verified citations into one marker with a count", () => {
+  it("groups verified citations into one marker with the first line range (#274)", () => {
     render(
       <BlockMarkers
         citations={[rc("diff:conn:82"), rc("diff:conn:86"), rc("desc:d-p1")]}
@@ -48,7 +48,15 @@ describe("BlockMarkers", () => {
     );
     const marker = screen.getByRole("button", { name: "3 sources" });
     expect(marker).toHaveAttribute("data-refs", "diff:conn:82|diff:conn:86|desc:d-p1");
-    expect(marker.textContent).toContain("3");
+    expect(marker).toHaveTextContent("L82");
+  });
+
+  it("falls back to the count when the first citation has no line range (#274)", () => {
+    render(
+      <BlockMarkers citations={[rc("desc:d-p1"), rc("desc:d-p2")]} threads={[]} blockId="b" />,
+    );
+    const marker = screen.getByRole("button", { name: "2 sources" });
+    expect(marker).toHaveTextContent("2");
   });
 
   it("renders no marker for unverified citations", () => {

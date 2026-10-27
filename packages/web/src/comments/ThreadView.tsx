@@ -268,46 +268,47 @@ function AgentReplyView({
         <div className="spike-reply-head">
           <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
           <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>
+          {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
+          {awaitingAnswer ? null : (
+            <div className="ctl">
+              <DepthControl
+                level={reply.level}
+                disabled={!contentReady}
+                depthBusy={depthBusy}
+                simplerAtLimit={safeDepthIndex <= 0}
+                onSimpler={() => run({ kind: "depth", cardId: reply.id, direction: "simpler" })}
+                onDeeper={() => run({ kind: "depth", cardId: reply.id, direction: "deeper" })}
+              />
+              <ControlButton
+                icon="bulb"
+                label="Use examples"
+                busy={busyKind === "examples"}
+                disabled={!contentReady}
+                onClick={() => performInsertAction(reviewId, reply.id, "examples")}
+              />
+              <ControlButton
+                icon="diagram"
+                label="Add diagram"
+                busy={busyKind === "diagram"}
+                disabled={!contentReady}
+                onClick={() => performInsertAction(reviewId, reply.id, "diagram")}
+              />
+              <ControlButton
+                icon="undo"
+                label="Undo"
+                disabled={!undoEnabled || controlsBusy}
+                onClick={() => run({ kind: "undo", cardId: reply.id })}
+              />
+              <SecondOpinionControl
+                reviewId={reviewId}
+                card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
+                page={undefined}
+                disabled={!contentReady}
+                busy={busyKind === "second_opinion"}
+              />
+            </div>
+          )}
         </div>
-        {awaitingAnswer ? null : (
-          <div className="ctl">
-            <DepthControl
-              level={reply.level}
-              disabled={!contentReady}
-              depthBusy={depthBusy}
-              simplerAtLimit={safeDepthIndex <= 0}
-              onSimpler={() => run({ kind: "depth", cardId: reply.id, direction: "simpler" })}
-              onDeeper={() => run({ kind: "depth", cardId: reply.id, direction: "deeper" })}
-            />
-            <ControlButton
-              icon="bulb"
-              label="Use examples"
-              busy={busyKind === "examples"}
-              disabled={!contentReady}
-              onClick={() => performInsertAction(reviewId, reply.id, "examples")}
-            />
-            <ControlButton
-              icon="diagram"
-              label="Add diagram"
-              busy={busyKind === "diagram"}
-              disabled={!contentReady}
-              onClick={() => performInsertAction(reviewId, reply.id, "diagram")}
-            />
-            <ControlButton
-              icon="undo"
-              label="Undo"
-              disabled={!undoEnabled || controlsBusy}
-              onClick={() => run({ kind: "undo", cardId: reply.id })}
-            />
-            <SecondOpinionControl
-              reviewId={reviewId}
-              card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
-              page={undefined}
-              disabled={!contentReady}
-              busy={busyKind === "second_opinion"}
-            />
-          </div>
-        )}
         {showWorking && !errorText ? <Working text={workingLabel} /> : null}
         {noAgent ? (
           <div className="perr" role="status">

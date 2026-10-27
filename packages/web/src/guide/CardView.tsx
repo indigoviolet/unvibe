@@ -257,6 +257,48 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           }
         />
         {title ? <h2 className="ct">{title}</h2> : null}
+        {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
+        <div className="ctl">
+          <DepthControl
+            level={card.level}
+            disabled={controlsBusy}
+            depthBusy={depthBusy}
+            simplerAtLimit={depthIndex <= 0}
+            onSimpler={() =>
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
+            }
+            onDeeper={() =>
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
+            }
+          />
+          <ControlButton
+            icon="bulb"
+            label="Use examples"
+            busy={examplesBusy}
+            disabled={controlsBusy}
+            onClick={() => performInsertAction(reviewId, card.id, "examples")}
+          />
+          <ControlButton
+            icon="diagram"
+            label="Add diagram"
+            busy={diagramBusy}
+            disabled={controlsBusy}
+            onClick={() => performInsertAction(reviewId, card.id, "diagram")}
+          />
+          <ControlButton
+            icon="undo"
+            label="Undo"
+            disabled={card.undoStack.length === 0 || controlsBusy}
+            onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
+          />
+          <SecondOpinionControl
+            reviewId={reviewId}
+            card={card}
+            page={lookupPage(card.pageId)}
+            disabled={controlsBusy}
+            busy={secondOpinionBusy}
+          />
+        </div>
       </CardHeader>
       {card.stale ? (
         <div className="stale" role="status">
@@ -275,47 +317,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           </button>
         </div>
       ) : null}
-      <div className="ctl">
-        <DepthControl
-          level={card.level}
-          disabled={controlsBusy}
-          depthBusy={depthBusy}
-          simplerAtLimit={depthIndex <= 0}
-          onSimpler={() =>
-            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
-          }
-          onDeeper={() =>
-            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
-          }
-        />
-        <ControlButton
-          icon="bulb"
-          label="Use examples"
-          busy={examplesBusy}
-          disabled={controlsBusy}
-          onClick={() => performInsertAction(reviewId, card.id, "examples")}
-        />
-        <ControlButton
-          icon="diagram"
-          label="Add diagram"
-          busy={diagramBusy}
-          disabled={controlsBusy}
-          onClick={() => performInsertAction(reviewId, card.id, "diagram")}
-        />
-        <ControlButton
-          icon="undo"
-          label="Undo"
-          disabled={card.undoStack.length === 0 || controlsBusy}
-          onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
-        />
-        <SecondOpinionControl
-          reviewId={reviewId}
-          card={card}
-          page={lookupPage(card.pageId)}
-          disabled={controlsBusy}
-          busy={secondOpinionBusy}
-        />
-      </div>
       {busy ? <Working text={busy.label} /> : null}
       {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
       {!busy && promoted?.turn.error ? (
