@@ -17,6 +17,14 @@
  * fire). `UNVIBE_PI_CACHE_KEY` is recorded per session so tests can assert
  * the fork's cache-key override reached the child.
  *
+ * Event shapes mirror real pi 1.4.0 (captured offline against the real CLI
+ * with a loopback fake model backend): system/user framing, text_start /
+ * text_delta / text_end updates, content-bearing message_end (stopReason
+ * "stop", tool calls "toolUse", errors "error"), toolcall_start/end,
+ * arg-less tool_execution_end, toolResult messages, turn_start/end and a
+ * full agent_end transcript (#279 follow-up: the fake's old shapes hid the
+ * live empty-text failure).
+ *
  * Prompt sources (`UNVIBE_FAKE_PI_MODE`):
  * - `script` (default): `UNVIBE_FAKE_PI_SCRIPT` is a JSON array of steps:
  *   `{text, cached?}` streams text (usage splits cache reads like pi),
@@ -345,39 +353,117 @@ function chunked(text) {
   return out.length > 0 ? out : [""];
 }
 
+// --- real pi 1.4.0 event shapes (captured offline: real pi CLI against a
+// loopback fake model backend; see the #279 follow-up). Usage carries
+// reasoning + cost on non-zero updates; assistant text arrives as
+// text_start/delta/end message_updates plus authoritative content on
+// message_end; tool calls stream toolcall_start/end, a toolUse message_end,
+// arg-less tool_execution_end, toolResult messages and a turn_start between
+// provider requests; errors ride message_start/end + turn_end with
+// stopReason "error".
+let toolSeq = 0;
+const MODEL_ID = () => session.model;
+function zeroUsage() {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+}
+function usageOf(input, output, cacheRead) {
+  return { input, output, cacheRead, cacheWrite: 0, reasoning: 0, totalTokens: input + output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+}
+function assistantStart() {
+  return { role: "assistant", content: [], api: "openai-codex-responses", provider: "openai-codex", model: MODEL_ID(), usage: zeroUsage(), stopReason: "pending", timestamp: Date.now(), responseId: "resp-fake" };
+}
+function systemPreamble() {
+  return arg("--system-prompt") ?? "";
+}
+function toolNames() {
+  return (arg("--tools") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+}
+function frameSystemUser(message) {
+  const sys = { role: "system", content: "", sections: { preamble: systemPreamble(), cwd: `<cwd>\n${process.cwd()}\n</cwd>` }, timestamp: Date.now(), toolsAdded: toolNames().map((name) => ({ name })) };
+  send({ type: "message_start", message: sys });
+  send({ type: "message_end", message: sys });
+  const user = { role: "user", content: [{ type: "text", text: message }], timestamp: Date.now() };
+  send({ type: "message_start", message: user });
+  send({ type: "message_end", message: user });
+}
+function agentTranscript() {
+  return session.messages.map((m) => {
+    if (m.role === "user") return { role: "user", content: [{ type: "text", text: m.text }] };
+    if (m.role === "tool") return { role: "toolResult", toolCallId: m.toolCallId ?? "", toolName: m.tool ?? "", content: [{ type: "text", text: m.text }] };
+    return { role: "assistant", content: [{ type: "text", text: m.text }] };
+  });
+}
+
 async function runPrompt(message) {
   session.messages.push({ role: "user", text: message });
   saveSession(session);
   send({ type: "agent_start" });
   send({ type: "turn_start" });
+  frameSystemUser(message);
   streaming = true;
   aborted = false;
 
-  const finishUsage = (input, output, cacheRead) => {
+  const finishTextUsage = (input, output, cacheRead) => {
     tokens.input += input;
     tokens.output += output;
     tokens.cacheRead += cacheRead;
+    return usageOf(input, output, cacheRead);
+  };
+
+  const endTextMessage = (reply, msgUsage) => {
     send({
       type: "message_end",
       message: {
-        role: "assistant",
-        stopReason: "end_turn",
-        usage: { input, output, cacheRead, cacheWrite: 0, totalTokens: input + output },
+        ...assistantStart(),
+        content: [{ type: "text", text: reply }],
+        usage: msgUsage,
+        stopReason: "stop",
+        rawStopReason: "completed",
+        durationMs: 1,
+        thinkingLevel: session.thinking || "off",
       },
     });
+  };
+
+  const endTurn = (lastMessage, toolResults) => {
+    send({ type: "turn_end", message: lastMessage, toolResults: toolResults ?? [] });
+  };
+
+  const settle = () => {
+    send({ type: "agent_end", messages: agentTranscript(), willRetry: false });
+    send({ type: "agent_settled", aborted });
+  };
+
+  const streamText = (reply) => {
+    // Null reply: the model settled with no text and no error (the live
+    // #279 symptom). Real message_end still carries content, so emit the
+    // end without any deltas and let the runner's content fallback apply.
+    send({ type: "message_start", message: assistantStart() });
+    if (reply !== null) {
+      const parts = chunked(reply);
+      parts.forEach((c, i) => {
+        if (aborted) return;
+        const u = zeroUsage();
+        if (i === 0) send({ type: "message_update", usage: u, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
+        send({ type: "message_update", usage: u, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: c } });
+      });
+      if (!aborted) send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "text_end", contentIndex: 0, content: reply } });
+    }
   };
 
   if (mode === "replay") {
     const reply = resolveReplay(message);
     const words = reply.length;
-    send({ type: "message_start", message: { role: "assistant", content: [] } });
-    for (const c of chunked(reply)) {
-      if (aborted) break;
-      send({ type: "message_update", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: c } });
-    }
+    streamText(reply);
     session.messages.push({ role: "assistant", text: reply });
     saveSession(session);
-    if (!aborted) finishUsage(Math.ceil((message.length + words) / 4), Math.ceil(words / 4), Math.ceil(words / 8));
+    let last = null;
+    if (!aborted) {
+      last = { ...assistantStart(), content: [{ type: "text", text: reply }], usage: finishTextUsage(Math.ceil((message.length + words) / 4), Math.ceil(words / 4), Math.ceil(words / 8)), stopReason: "stop", rawStopReason: "completed", durationMs: 1, thinkingLevel: session.thinking || "off" };
+      send({ type: "message_end", message: last });
+      endTurn(last, []);
+    }
+    settle();
   } else {
     let step = script.length > 0 ? script.shift() : { text: "ok" };
     // One turn: text (or history) ends it; tool calls continue it.
@@ -385,17 +471,27 @@ async function runPrompt(message) {
       if (aborted) break;
       if (step.text !== undefined || step.history !== undefined) {
         const reply = step.history !== undefined ? `history:${session.messages.length}` : String(step.text);
-        send({ type: "message_start", message: { role: "assistant", content: [] } });
-        for (const c of chunked(reply)) {
-          if (aborted) break;
-          send({ type: "message_update", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: c } });
-        }
+        // { text, noDeltas: true } reproduces the live #279 symptom shape:
+        // a successful turn whose reply arrives only in message content.
+        if (step.noDeltas) streamText(null);
+        else streamText(reply);
         session.messages.push({ role: "assistant", text: reply });
         saveSession(session);
+        let last = null;
         if (!aborted) {
           const cached = typeof step.cached === "number" ? step.cached : 0;
-          finishUsage(Math.ceil((message.length + reply.length) / 4) + 50, Math.ceil(reply.length / 4) + 7, cached);
+          last = { ...assistantStart(), content: [{ type: "text", text: reply }], usage: finishTextUsage(Math.ceil((message.length + reply.length) / 4) + 50, Math.ceil(reply.length / 4) + 7, cached), stopReason: "stop", rawStopReason: "completed", durationMs: 1, thinkingLevel: session.thinking || "off" };
+          send({ type: "message_end", message: last });
+          endTurn(last, []);
         }
+        break;
+      }
+      if (step.error !== undefined) {
+        const msg = String(step.error || "provider error");
+        const errMessage = { ...assistantStart(), content: [], stopReason: "error", errorMessage: msg, durationMs: 1, thinkingLevel: session.thinking || "off" };
+        send({ type: "message_start", message: { ...errMessage } });
+        send({ type: "message_end", message: errMessage });
+        send({ type: "turn_end", message: errMessage, toolResults: [] });
         break;
       }
       if (step.call) {
@@ -416,34 +512,47 @@ async function runPrompt(message) {
             isError = true;
           }
         }
-        send({ type: "tool_execution_start", toolCallId: "call-1", toolName: step.call, args: step.args ?? {} });        session.messages.push({ role: "tool", text: `${step.call}: ${text}` });
+        const toolCallId = `call_${++toolSeq}|fc_${toolSeq}`;
+        const toolCall = { type: "toolCall", id: toolCallId, name: step.call, arguments: step.args ?? {} };
+        const callUsage = finishTextUsage(60, 10, 5);
+        send({ type: "message_start", message: assistantStart() });
+        send({ type: "message_update", usage: callUsage, assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: toolCallId, toolName: step.call } });
+        send({ type: "message_update", usage: callUsage, assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall } });
+        const toolMessage = { ...assistantStart(), content: [toolCall], usage: callUsage, stopReason: "toolUse", rawStopReason: "completed", durationMs: 1, thinkingLevel: session.thinking || "off" };
+        send({ type: "message_end", message: toolMessage });
+        send({ type: "tool_execution_start", toolCallId, toolName: step.call, args: step.args ?? {} });
+        session.messages.push({ role: "tool", tool: step.call, toolCallId, text: `${step.call}: ${text}` });
         saveSession(session);
         send({
           type: "tool_execution_end",
-          toolCallId: "call-1",
+          toolCallId,
           toolName: step.call,
-          args: step.args ?? {},
-          result: { content: [{ type: "text", text }], details: {} },
+          result: { content: [{ type: "text", text }] },
           isError,
+          durationMs: 1,
         });
-        finishUsage(60, 10, 5);
+        const toolResult = { role: "toolResult", toolCallId, toolName: step.call, content: [{ type: "text", text }], isError, durationMs: 1, timestamp: Date.now() };
+        send({ type: "message_start", message: toolResult });
+        send({ type: "message_end", message: toolResult });
+        endTurn(toolMessage, [toolResult]);
+        send({ type: "turn_start" });
         step = script.length > 0 ? script.shift() : null;
         if (!step || aborted) break;
         continue;
       }
       if (step.hang !== undefined) {
-        send({ type: "message_start", message: { role: "assistant", content: [] } });
-        send({ type: "message_update", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "partial " } });
+        send({ type: "message_start", message: assistantStart() });
+        send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
+        send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "partial " } });
         // Stall until abort (or stdin close).
         while (!aborted) await new Promise((r) => setTimeout(r, 50));
         break;
       }
       break;
     }
+    settle();
   }
 
-  send({ type: "agent_end", messages: [], willRetry: false });
-  send({ type: "agent_settled", aborted });
   streaming = false;
 }
 
@@ -476,7 +585,8 @@ async function handle(cmd) {
   switch (cmd.type) {
     case "get_state":
       respond("get_state", {
-        model: session.model,
+        // Real pi reports the model as an object; the session file ends in .jsonl.
+        model: { id: session.model, name: session.model, api: "openai-codex-responses", provider: "openai-codex", baseUrl: "", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 0, maxTokens: 0, type: "chat" },
         thinkingLevel: session.thinking || "off",
         isStreaming: streaming,
         isCompacting: false,
