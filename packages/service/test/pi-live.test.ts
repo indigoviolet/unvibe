@@ -28,6 +28,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { AgentEvent } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner } from "../src/exec/runner.js";
@@ -63,6 +64,10 @@ const REVIEW: McpReviewData = {
   contributions: [],
   description: [{ id: "d1", text: "this PR adds backoff" }],
 };
+
+/** Reports land here (gitignored): the test's TMPDIR is deleted after the
+ * run, and vitest hides a passing test's console output. */
+const REPORT_DIR = fileURLToPath(new URL("../test-results/pi-live/", import.meta.url));
 
 function textOf(evs: AgentEvent[]): string {
   return evs.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
@@ -144,8 +149,8 @@ describe.skipIf(!LIVE)("pi live runner", () => {
         };
         const dumpRaw = (why: string): void => {
           try {
-            // Outside the scratch dir, which is deleted when the test ends.
-            const file = join(tmpdir(), `unvibe-pi-live-rpc-${Date.now()}.json`);
+            mkdirSync(REPORT_DIR, { recursive: true });
+            const file = join(REPORT_DIR, `rpc-${Date.now()}.json`);
             writeFileSync(file, JSON.stringify(rawTurns, redactRpc, 2));
             const count = rawTurns.reduce((n, t) => n + t.events.length, 0);
             console.log(`[live-pi] ${why}: dumped ${count} raw RPC events in ${rawTurns.length} turn(s) to ${file}`);
@@ -175,6 +180,8 @@ describe.skipIf(!LIVE)("pi live runner", () => {
             totals.output += u.outputTokens;
             const estimate = (totals.input * PRICE.input + totals.cachedRead * PRICE.cacheRead + totals.cachedWrite * PRICE.cacheWrite + totals.output * PRICE.output) / 1e6;
             console.log(`[live-pi] usage so far: ${JSON.stringify(totals)} ≈ $${estimate.toFixed(4)}`);
+            mkdirSync(REPORT_DIR, { recursive: true });
+            writeFileSync(join(REPORT_DIR, "cost.json"), JSON.stringify({ model, ...totals, usd: estimate }, null, 2));
             if (estimate > COST_CAP_USD) throw new Error(`live pi cost cap exceeded ($${estimate.toFixed(4)} > $${COST_CAP_USD})`);
           };
 
