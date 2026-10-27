@@ -150,8 +150,10 @@ test.describe("J225 start-page PR list", () => {
       // Your PRs (open + draft).
       await expect(page.getByText("Fix quadratic backtracking in OWS matching")).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("WIP: normalize folded headers on parse")).toBeVisible();
-      // Requested of you: empty sub-group, same indent treatment.
-      await expect(page.getByTestId("requested-direct-empty")).toContainText("No PRs requested of you.");
+      // Requested of you: empty sub-group shows a 0 count badge on the
+      // heading instead of an empty line (#274).
+      await expect(page.locator(".subhead", { hasText: "Requested of you" }).locator(".cnt")).toHaveText("0");
+      await expect(page.getByTestId("requested-direct-empty")).toHaveCount(0);
       // Requested of your team: the rest of the state mix.
       await expect(page.getByText("Bump minimum Python to 3.10")).toBeVisible();
       await expect(page.getByText("Drop the old compat shim")).toBeVisible();
@@ -174,8 +176,28 @@ test.describe("J225 start-page PR list", () => {
       await expect(page.getByRole("img", { name: "Open" })).toHaveCount(0);
       await expect(iconRow("Bump minimum Python to 3.10").locator('[data-testid="pr-badges"]')).toHaveCount(0);
       await expect(iconRow("Re-requested after changes").locator('[data-testid="pr-badges"]')).toHaveCount(0);
-      await page.getByText("No PRs requested of you.").scrollIntoViewIfNeeded();
+      await page.getByText("Requested of your team").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-pr-list-${combo.name}`);
     });
   }
+
+  test("quiet remove on session rows: hover and keyboard focus reveal it (#274)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    const created = await apiJson(svc, "POST", "/api/reviews", { repoId: "demo" });
+    const demoId = (created.json as { review: { id: string } }).review.id;
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    const row = page.locator(`[data-testid="session-${demoId}"]`);
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    const remove = row.getByRole("button", { name: "Remove this review" });
+    // Hidden until the row is hovered...
+    await expect(remove).toHaveCSS("opacity", "0");
+    await row.hover();
+    await expect(remove).toHaveCSS("opacity", "1");
+    // ...and still keyboard-reachable: focusing it reveals it via :focus-within.
+    await page.mouse.move(0, 0);
+    await remove.focus();
+    await expect(remove).toHaveCSS("opacity", "1");
+    await checkLayout(page, "start-quiet-remove");
+  });
 });
