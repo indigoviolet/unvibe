@@ -234,7 +234,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   if (!snapshot || !pages) {
     return (
       <div className="doc pane-loading-pad">
-        <PaneLoading label="Building the guide" />
+        <PaneLoading label="Building the guide" variant="guide" />
       </div>
     );
   }
@@ -246,7 +246,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   if (ingestStatus === "loading") {
     return (
       <div className="doc pane-loading-pad" data-testid="review-loading">
-        <PaneLoading label="Building the guide" />
+        <PaneLoading label="Building the guide" variant="guide" />
       </div>
     );
   }
@@ -294,7 +294,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     if (empty.kind === "building") {
       return (
         <div className="doc pane-loading-pad" data-testid="guide-empty" data-state="building">
-          <PaneLoading label="Building the guide" />
+          <PaneLoading label="Building the guide" variant="guide" />
         </div>
       );
     }
