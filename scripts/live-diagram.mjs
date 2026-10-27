@@ -3,9 +3,11 @@
 //   mise run test:live:diagram [--provider claude|codex|both] [--port N]
 //     [--cap 5] [--tasks containers,icons,...]
 //
-// Spins up the BUILT service with the default ACP runner (real claude/codex
-// logins; real token spend), creates the demo review (fast ingest, no git
-// needed), and runs one `ask` per D2 feature group per provider. Each ask
+// Builds the demo review once with the REPLAY runner (recorded fixture
+// sessions: no tokens), then restarts the BUILT service on the same data dir
+// with the default ACP runner (real claude/codex logins; real token spend)
+// and runs one `ask` per D2 feature group per provider on that one review.
+// Each ask starts a fresh agent session. Each ask
 // message steers the model at exactly one lifted feature; the reply's
 // fenced d2 goes through the real pipeline (cite validation +
 // compile-check + render + exactly one repair turn), and the harness
@@ -14,7 +16,9 @@
 // OUT OF SCOPE: animation and boards stay banned (filed as #287) — there
 // are no tasks for them.
 //
-// Cost control: the harness enforces its own $5 cap (override with --cap).
+// Cost control: the harness enforces its own $5 cap (override with --cap),
+// counting --spent-before (USD already spent against the same cap) from the
+// start and every job's usage from the first token, failures included.
 // Usage comes from `GET /api/jobs?review=:id` (TokenUsage per job); every
 // model is priced at the Opus list ceiling (over-estimate for Codex, so the
 // cap binds early). Before each generation the harness checks
@@ -50,6 +54,7 @@ const argOf = (name, dflt) => {
 const PORT = Number(argOf("--port", "4597"));
 const onlyProvider = argOf("--provider", "both");
 const CAP_USD = Number(argOf("--cap", "5"));
+const SPENT_BEFORE_USD = Number(argOf("--spent-before", "0"));
 const onlyTasks = argOf("--tasks", "")
   .split(",")
   .map((s) => s.trim())
@@ -172,6 +177,9 @@ const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-diagram-data-"))
 const ENV = { ...process.env, UNVIBE_DATA_DIR: DATA, UNVIBE_PORT: String(PORT), UNVIBE_IDLE_MS: "0" };
 delete ENV.UNVIBE_AGENT; // default ACP runner (real agents)
 ENV.UNVIBE_ALLOW_LIVE_AGENT = "1";
+/** Setup phase only: recorded sessions, no tokens. */
+const REPLAY_ENV = { ...ENV, UNVIBE_AGENT: "replay" };
+delete REPLAY_ENV.UNVIBE_ALLOW_LIVE_AGENT;
 
 function api(method, apiPath, body, token) {
   return new Promise((resolve, reject) => {
@@ -270,33 +278,90 @@ function allDiagrams(snap) {
   return out;
 }
 
-async function main() {
+/** Start the built service; resolves once it prints its token URL. */
+async function startService(env) {
   const child = spawn(process.execPath, [CLI, "start", "--port", String(PORT)], {
-    env: ENV,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let token = "";
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("service did not print a token URL")), 30000);
-    child.stdout.on("data", (d) => {
-      const m = String(d).match(/token=([A-Za-z0-9_-]+)/);
-      if (m && !token) {
-        token = m[1];
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-    child.stderr.on("data", () => {
-      // service logs drain here
-    });
-    child.on("exit", (c) => reject(new Error(`service exited ${c}`)));
-  });
   try {
-    await ready;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("service did not print a token URL")), 30000);
+      child.stdout.on("data", (d) => {
+        const m = String(d).match(/token=([A-Za-z0-9_-]+)/);
+        if (m && !token) {
+          token = m[1];
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+      child.stderr.on("data", () => {
+        // service logs drain here
+      });
+      child.on("exit", (c) => reject(new Error(`service exited ${c}`)));
+    });
   } catch (e) {
     child.kill("SIGKILL");
     throw e;
   }
+  return { child, token };
+}
+
+/** Stop a service child and wait for it to exit (frees the port and lock). */
+function stopService(child) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
+}
+
+async function main() {
+  // Pre-flight: refuse before any spend when the worst case can't fit.
+  const runs = PROVIDERS.length * TASKS.length;
+  const worst = SPENT_BEFORE_USD + runs * WORST_NEXT_USD;
+  console.log(
+    `live-diagram: ${runs} tasks; worst case $${SPENT_BEFORE_USD.toFixed(2)} spent + ${runs} × $${WORST_NEXT_USD} = $${worst.toFixed(2)} against the $${CAP_USD} cap`,
+  );
+  if (worst > CAP_USD && !args.includes("--partial")) {
+    const fit = Math.max(0, Math.floor((CAP_USD - SPENT_BEFORE_USD) / WORST_NEXT_USD));
+    console.error(`live-diagram: worst case is over the cap; at most ${fit} task(s) are sure to fit. Not starting (pass --partial to run until the cap stops it).`);
+    process.exit(3);
+  }
+
+  // Setup: the demo review, built by the replay runner (no tokens).
+  let svc = await startService(REPLAY_ENV);
+  let id;
+  try {
+    const created = await api("POST", "/api/reviews", { repoId: "demo" }, svc.token);
+    if (created.status !== 201) throw new Error(`create demo review: ${created.status} ${created.text}`);
+    id = created.json.review.id;
+    let filled = false;
+    for (let i = 0; i < 60 && !filled; i++) {
+      const snap = (await api("GET", `/api/reviews/${id}`, undefined, svc.token)).json;
+      filled = Boolean(snap?.pages?.find((p) => p.id === "root")?.cards?.find((c) => c.id === "central")?.blocks?.length);
+      if (!filled) await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (!filled) throw new Error("replay setup: central card never filled");
+    // Let the replay pipeline settle so no replay job is left to resume.
+    for (let i = 0; i < 60; i++) {
+      const jobs = (await api("GET", `/api/jobs?review=${id}`, undefined, svc.token)).json;
+      if (!(jobs.jobs ?? []).some((j) => !["done", "error", "cancelled"].includes(j.state))) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } finally {
+    await stopService(svc.child);
+  }
+  console.log(`live-diagram: demo review ${id} built by replay (no tokens)`);
+
+  // Live phase: same data dir, real agents.
+  svc = await startService(ENV);
+  const { child, token } = svc;
   const stop = () => {
     try {
       child.kill("SIGTERM");
@@ -314,7 +379,8 @@ async function main() {
     rates: { ...RATES, note: "Opus list ceiling applied to every model (over-estimate for Codex)" },
     tasks: TASKS.map((t) => t.id),
     providers: {},
-    totals: { costUsd: 0, rendersOk: 0, citesOk: 0, featureHits: 0, iconDrops: 0, iconDropUrls: [] },
+    spentBeforeUsd: SPENT_BEFORE_USD,
+    totals: { costUsd: SPENT_BEFORE_USD, rendersOk: 0, citesOk: 0, featureHits: 0, iconDrops: 0, iconDropUrls: [] },
     status: "complete",
   };
   const reportPath = path.join(
@@ -322,7 +388,8 @@ async function main() {
     "test-results",
     `live-diagram-286-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
   );
-  const seenJobs = new Set();
+  // Replay setup jobs are not spend: mark them counted.
+  const seenJobs = new Set(((await api("GET", `/api/jobs?review=${id}`, undefined, token)).json?.jobs ?? []).map((j) => j.id));
   const writeReport = () => {
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -346,21 +413,10 @@ async function main() {
         costUsd: 0,
         tasks: [],
       };
-      const created = await api("POST", "/api/reviews", { repoId: "demo" }, token);
-      if (created.status !== 201) throw new Error(`create demo review: ${created.status} ${created.text}`);
-      const id = created.json.review.id;
-
-      // Wait for the central card (reader on the default main provider).
-      let snap = null;
-      for (let i = 0; i < 120; i++) {
-        const r = await api("GET", `/api/reviews/${id}`, undefined, token);
-        snap = r.json;
-        if (snap?.pages?.find((p) => p.id === "root")?.cards?.find((c) => c.id === "central")?.blocks?.length) break;
-        await new Promise((r) => setTimeout(r, 5000));
-      }
-      const central = snap?.pages?.find((p) => p.id === "root")?.cards?.find((c) => c.id === "central");
-      if (!central) throw new Error(`${provider}: central card never filled`);
-      addCost(provider, await newUsage(token, id, seenJobs));
+      const snap0 = (await api("GET", `/api/reviews/${id}`, undefined, token)).json;
+      let snap = snap0;
+      const central = snap0?.pages?.find((p) => p.id === "root")?.cards?.find((c) => c.id === "central");
+      if (!central) throw new Error(`${provider}: demo review has no central card`);
 
       // Point the main role at this provider (keep the offered model).
       const settings = (await api("GET", "/api/settings", undefined, token)).json;
@@ -401,9 +457,12 @@ async function main() {
         if (acted.status !== 200) throw new Error(`${provider}/${task.id}: ask ${acted.status} ${acted.text}`);
         const annotationId = acted.json.annotationId;
         const jobId = acted.json.jobId;
-        if (jobId) await waitJob(token, id, jobId, `${provider}/${task.id}`);
-        await new Promise((r) => setTimeout(r, 3000));
-        addCost(provider, await newUsage(token, id, seenJobs));
+        try {
+          if (jobId) await waitJob(token, id, jobId, `${provider}/${task.id}`);
+          await new Promise((r) => setTimeout(r, 3000));
+        } finally {
+          addCost(provider, await newUsage(token, id, seenJobs));
+        }
         snap = (await api("GET", `/api/reviews/${id}`, undefined, token)).json;
         const fresh = allDiagrams(snap).filter((d) => !before.has(d.render?.hash));
         const dg = fresh.filter((d) => d.id !== undefined).pop() ?? fresh.pop();
