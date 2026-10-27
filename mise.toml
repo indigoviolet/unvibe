@@ -295,7 +295,7 @@ description = "Live second-opinion check: blind on one finding with real agents 
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-second-opinion.mjs"
 
 [tasks."test:live:diagram"]
-description = "Live D2 diagram check: real diagram action per provider with cite + render asserts (needs logins, d2; small token spend; never run by check)"
+description = "Live D2 feature run (#286): one ask per lifted feature group per provider through the real pipeline, self-enforced $5 cap (--cap N), report to test-results/ (needs logins, d2; real spend; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-diagram.mjs"
 
 [tasks."test:live:full-access"]

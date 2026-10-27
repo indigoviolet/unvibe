@@ -57,6 +57,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
 | `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
 | `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review | `claude` login; small spend |
+| `test:live:diagram` | D2 feature run (#286): one ask per lifted feature group per provider, self-enforced $5 cap, report to `test-results/` | Logins, `d2`; real spend (owner-approved cap) |
 | `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
 | `test:live:pi` | Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi | Owner's pi login + go; small spend |
