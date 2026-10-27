@@ -1992,6 +1992,36 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await freezeSwing(page, 625);
       await page.screenshot({ path: path.join(SHOTS, `guide-swing-mid-${suffix}.png`) });
     });
+    // Issue #284 (owner revision): the diff state shows the same glints
+    // on their own — no ball — drifting in the same rhythm, as if the
+    // ball were just out of frame. Freeze at an extreme (glints bright)
+    // and at mid-swing (glints dim) and frame each.
+    test(`visual tour diff loading glints (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284: glints only here — no ball, no dots.
+      await expect(page.locator('[data-testid="diff-loading"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+      await expect(page.locator('[data-testid="diff-loading"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-extreme-${suffix}.png`) });
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-mid-${suffix}.png`) });
+    });
     test(`visual tour guide building (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
       test.setTimeout(120_000);
@@ -2015,8 +2045,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     });
   }
   // Issue #284: under reduced motion the ball hangs still and the
-  // glints sit static but visible — neither animates. (Commit 2 extends
-  // this to the diff pane's glints.)
+  // glints sit static but visible — neither animates, in either pane.
   test("visual tour loading indicators honour reduced motion (#284)", async ({ page }) => {
     if (!svc232) throw new Error("preparing service not running");
     test.setTimeout(120_000);
@@ -2034,6 +2063,17 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     );
     expect(glintAnims.length, "guide glints missing").toBe(3);
     for (const name of glintAnims) expect(name, "guide glint animates under reduced motion").toBe("none");
+    // The diff pane's glints-only state is static too — and carries no
+    // ball and no dots in either loading pane.
+    await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+    const diffGlintAnims = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="diff-loading"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
+    );
+    expect(diffGlintAnims.length, "diff glints missing").toBe(3);
+    for (const name of diffGlintAnims) expect(name, "diff glint animates under reduced motion").toBe("none");
+    await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+    await expect(page.locator('.pane-loading .dots')).toHaveCount(0);
   });
 });
 // Issue #222: the start page's New document review form and a document
