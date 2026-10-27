@@ -3,7 +3,10 @@
  *
  * The runner drives a fake pi RPC process (`./fake-pi.mjs`, plain Node
  * speaking pi's JSONL protocol — no pi install, no login, no network
- * beyond loopback). The review tools are a stub MCP mount in this file.
+ * beyond loopback). The review tools are the real MCP mount
+ * (`McpRegistry` + the service's streamable-HTTP route), so tools/list
+ * and tools/call go through the exact SSE transport the live run uses
+ * (issue #279 follow-up: a plain-JSON stub hid the SSE parse failure).
  *
  * Covered, mirroring the spike's offline checks:
  * - the runner streams a reply; per-request usages aggregate with the
@@ -16,8 +19,8 @@
  * - read-only spawns `--tools read,ls,…`, full access the wider list;
  * - dead post-restart MCP secrets fail `load` fast (manager rebuilds).
  */
+import Fastify from "fastify";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
 import type { AgentEvent } from "@unvibe/shared";
 import { PiAgentRunner } from "../src/agent/pi/pi-runner.js";
+import { McpRegistry, registerMcp, type McpReviewData } from "../src/mcp/index.js";
 import { CompositeAgentRunner } from "../src/agent/pi/composite.js";
 import type { AcpAgentRunner } from "../src/agent/acp/index.js";
 import { probePiLogin } from "../src/readiness/checks.js";
@@ -33,110 +37,74 @@ import { piCheck } from "../src/readiness/checks.js";
 
 const FAKE_PI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fake-pi.mjs");
 
-interface StubMcp {
+/** Review fixture served by the real MCP mount (mirrors mcp.test.ts). */
+const REVIEW: McpReviewData = {
+  reviewId: "r1",
+  headSha: "abc123",
+  hunks: [
+    {
+      fileKey: "conn",
+      path: "src/conn.py",
+      contentHash: "9f2c",
+      header: "@@ -140,7 +147,7 @@",
+      newStart: 147,
+      newEnd: 149,
+      text: " context foo\n-old line\n+new line",
+    },
+  ],
+  cards: [{ id: "c-central", title: "Central change", text: "retries with backoff in src/conn.py" }],
+  annotations: [{ id: "a1", type: "thread", anchorSummary: "src/conn.py:148", text: "why backoff?" }],
+  contributions: [{ id: "k1", sourceSession: "s1", text: "fact: backoff is exponential" }],
+  description: [{ id: "d1", text: "this PR adds backoff" }],
+};
+
+interface RealMcp {
   url: string;
-  calls: { tool: string; args: unknown }[];
+  registry: McpRegistry;
   close(): Promise<void>;
 }
 
-function startStubMcp(): Promise<StubMcp> {
-  const calls: { tool: string; args: unknown }[] = [];
-  const sessions = new Set<string>();
-  const server = http.createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      const send = (obj: unknown, sessionId?: string) => {
-        if (sessionId) res.setHeader("mcp-session-id", sessionId);
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(obj));
-      };
-      if (req.method === "DELETE") {
-        const sid = req.headers["mcp-session-id"];
-        if (typeof sid === "string") sessions.delete(sid);
-        res.writeHead(200).end("{}");
-        return;
-      }
-      let body: { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: unknown } };
-      try {
-        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      } catch {
-        res.writeHead(400).end("bad json");
-        return;
-      }
-      if (body.method === "initialize") {
-        const id = `sess-${Math.random().toString(36).slice(2)}`;
-        sessions.add(id);
-        send({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "stub", version: "0" } } }, id);
-        return;
-      }
-      const sid = req.headers["mcp-session-id"];
-      if (typeof sid !== "string" || !sessions.has(sid)) {
-        res.writeHead(404).end("unknown session");
-        return;
-      }
-      if (body.method === "notifications/initialized") {
-        res.writeHead(202).end();
-        return;
-      }
-      if (body.method === "tools/list") {
-        send({
-          jsonrpc: "2.0",
-          id: body.id,
-          result: {
-            tools: [
-              {
-                name: "get_hunk",
-                description: "Return one diff hunk.",
-                inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
-              },
-            ],
-          },
-        });
-        return;
-      }
-      if (body.method === "tools/call") {
-        calls.push({ tool: body.params?.name ?? "", args: body.params?.arguments ?? {} });
-        send({
-          jsonrpc: "2.0",
-          id: body.id,
-          result: { content: [{ type: "text", text: `stub hunk ${(body.params?.arguments as { id?: string } | undefined)?.id ?? "?"}` }] },
-        });
-        return;
-      }
-      send({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "unknown method" } });
-    });
+/** The real MCP mount: a registry serving the fixture behind the service's
+ * own streamable-HTTP route. tools/list and tools/call go through the
+ * exact SSE transport the live run uses. */
+async function startRealMcp(): Promise<RealMcp> {
+  const registry = new McpRegistry({
+    reader: {
+      getReview: async (id) => (id === REVIEW.reviewId ? REVIEW : null),
+      getWorktreePath: () => dir,
+    },
+    commands: new FakeCommandRunner(),
   });
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
-      resolve({
-        url: `http://127.0.0.1:${port}/mcp-test`,
-        calls,
-        close: () =>
-          new Promise<void>((r) => {
-            server.closeAllConnections();
-            server.close(() => r());
-          }),
-      });
-    });
-  });
+  const app = Fastify({ logger: false });
+  await registerMcp(app, registry);
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const { port } = app.server.address() as AddressInfo;
+  const issued = registry.issueSession(REVIEW.reviewId, "sess-pi-test", "session");
+  return {
+    url: `http://127.0.0.1:${port}${issued.path}`,
+    registry,
+    close: async () => {
+      app.server.closeAllConnections();
+      await app.close();
+    },
+  };
 }
 
 let dir = "";
 let sessionDir = "";
 let logFile = "";
-let stub: StubMcp | null = null;
+let mount: RealMcp | null = null;
 
 beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-pi-runner-"));
   sessionDir = path.join(dir, "sessions");
   logFile = path.join(dir, "spawns.log");
-  stub = await startStubMcp();
+  mount = await startRealMcp();
 });
 
 afterEach(async () => {
-  await stub?.close();
-  stub = null;
+  await mount?.close();
+  mount = null;
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -152,7 +120,7 @@ function makeRunner(extraEnv: Record<string, string> = {}): PiAgentRunner {
 }
 
 function mcpServers() {
-  return [{ name: "unvibe", url: stub!.url }];
+  return [{ name: "unvibe", url: mount!.url }];
 }
 
 async function collect(it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
@@ -190,16 +158,18 @@ describe("pi runner over a fake pi RPC process", () => {
   });
 
   it("calls a review tool through the mount and streams tool events", async () => {
-    const runner = makeRunner({ UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ call: "get_hunk", args: { id: "h:abc" } }, { text: "done" }]) });
+    const runner = makeRunner({ UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ call: "get_hunk", args: { id: "h:conn:9f2c" } }, { text: "done" }]) });
     try {
       const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
       const evs = await collect(runner.prompt(s, "show it"));
       const tools = evs.filter((e) => e.type === "tool");
+      // The result text comes from the real mount (registry dispatch),
+      // through the real SSE transport, not a canned stub reply.
+      const hunkText = "h:conn:9f2c\nfile: src/conn.py\n@@ -140,7 +147,7 @@\n147:  context foo\n148: -old line\n149: +new line";
       expect(tools).toEqual([
-        { type: "tool", name: "get_hunk", status: "start", id: "call-1", detail: '{"id":"h:abc"}' },
-        { type: "tool", name: "get_hunk", status: "end", id: "call-1", detail: '{"id":"h:abc"}', result: "stub hunk h:abc" },
+        { type: "tool", name: "get_hunk", status: "start", id: "call-1", detail: '{"id":"h:conn:9f2c"}' },
+        { type: "tool", name: "get_hunk", status: "end", id: "call-1", detail: '{"id":"h:conn:9f2c"}', result: hunkText },
       ]);
-      expect(stub!.calls).toEqual([{ tool: "get_hunk", args: { id: "h:abc" } }]);
       expect(textOf(evs)).toBe("done");
       // Two provider requests (tool call + text) aggregate into one usage.
       const usages = evs.filter((e) => e.type === "usage");
@@ -328,13 +298,13 @@ describe("pi runner over a fake pi RPC process", () => {
   });
 
   it("dead post-restart MCP secrets fail load fast", async () => {
-    const dead = await startStubMcp();
+    const dead = await startRealMcp();
     const deadUrl = dead.url;
     await dead.close();
     const runner = makeRunner({ UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ text: "ok" }]) });
     try {
       // A sidecar pointing at a dead mount: load must throw, not run tool-less.
-      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: [{ name: "unvibe", url: stub!.url }] });
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: [{ name: "unvibe", url: mount!.url }] });
       await runner.dispose();
       const sidecarPath = path.join(sessionDir, "unvibe", `${s.id}.json`);
       const sidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
