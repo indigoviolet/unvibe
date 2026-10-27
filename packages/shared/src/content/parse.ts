@@ -123,9 +123,12 @@ inlineMd.inline.ruler.before("emphasis", "cx_token", (state, silent) => {
   if (state.src.charCodeAt(state.pos) !== 0x5b) return false; // `[`
   const toks = tokenizeLinks(state.src.slice(state.pos));
   if (toks.length === 0 || toks[0].start !== 0) return false;
-  if (silent) return true;
-  const token = state.push("cx_token", "", 0);
-  token.content = tokenHtml(toks[0], state.env.acc as InlineAcc);
+  // Silent mode (scanning a `[…]` label) must advance too, or markdown-it
+  // throws "inline rule didn't increment state.pos" (#291).
+  if (!silent) {
+    const token = state.push("cx_token", "", 0);
+    token.content = tokenHtml(toks[0], state.env.acc as InlineAcc);
+  }
   state.pos += toks[0].end;
   return true;
 });
