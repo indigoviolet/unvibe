@@ -4,6 +4,14 @@
  * go and a cost cap. Uses the owner's existing pi login; never logs in,
  * never reads `~/.pi` (detection is the binary + pi's own status command).
  *
+ * On any failure the test dumps the raw pi RPC events for every turn so
+ * far — redacted (see redactRpc) — to a scratch file (`pi-rpc-events.json`
+ * under the test's tmp dir) and the first 40 events to the test output, so
+ * a live failure is diagnosable without another run. The runner taps raw
+ * events through `PiAgentRunner({ onRpcEvent })`; nothing credential-like
+ * is expected in them (no tokens ride the RPC stream), and the dump
+ * redacts defensively anyway.
+ *
  * Spend: 4 short turns (subscription-billed). Expected < $0.05 at list
  * price for gpt-6.1-sol (input $2, cached read $0.1, cached write $2.5,
  * output $10 per M tokens). Cost cap: $0.50 — the test throws if the
@@ -17,7 +25,7 @@
  * single live runs are directional, not benchmarks).
  */
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -74,6 +82,25 @@ async function collect(it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return out;
 }
 
+/** Raw RPC events per turn, dumped (redacted) on failure. */
+interface RawTurn {
+  turn: string;
+  events: unknown[];
+}
+
+/** Redact anything credential-like and truncate long strings before the dump
+ * leaves the scratch dir (belt and braces: the RPC stream carries no tokens,
+ * but a future pi event shape might). */
+function redactRpc(key: string, value: unknown): unknown {
+  if (/token|secret|password|apikey|api_key|authorization|bearer|cookie|sessionid|session_id/i.test(key)) {
+    return "[redacted]";
+  }
+  if (typeof value === "string" && value.length > 2000) {
+    return `${value.slice(0, 2000)}…[truncated ${value.length - 2000} chars]`;
+  }
+  return value;
+}
+
 describe.skipIf(!LIVE)("pi live runner", () => {
   it("login, review tools in a fork, resume, usage split, cost report", async () => {
     // Owner prerequisites, plainly: pi on PATH, logged in via pi's /login.
@@ -103,11 +130,39 @@ describe.skipIf(!LIVE)("pi live runner", () => {
       const issued = registry.issueSession(REVIEW.reviewId, "live-base", "session");
       const mcpServers = [{ name: issued.path.split("/").pop() ?? "unvibe", url: `http://127.0.0.1:${addr.port}${issued.path}` }];
       try {
-        const runner = new PiAgentRunner({ sessionDir });
+        // Raw RPC tap: every event of every turn lands here, dumped
+        // redacted on failure (the #279 empty-text run had no dump).
+        const rawTurns: RawTurn[] = [];
+        let current: unknown[] = [];
+        const tap = (e: unknown): void => {
+          current.push(e);
+        };
+        const collectTurn = async (name: string, it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> => {
+          current = [];
+          const out = await collect(it);
+          rawTurns.push({ turn: name, events: current });
+          return out;
+        };
+        const dumpRaw = (why: string): void => {
+          try {
+            const file = join(dir, "pi-rpc-events.json");
+            writeFileSync(file, JSON.stringify(rawTurns, redactRpc, 2));
+            const count = rawTurns.reduce((n, t) => n + t.events.length, 0);
+            console.log(`[live-pi] ${why}: dumped ${count} raw RPC events in ${rawTurns.length} turn(s) to ${file}`);
+            for (const t of rawTurns) {
+              for (const e of t.events.slice(0, 40)) console.log(`[live-pi] [${t.turn}] ${JSON.stringify(e, redactRpc).slice(0, 2000)}`);
+            }
+          } catch (e) {
+            console.log(`[live-pi] raw dump failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        };
+        const runner = new PiAgentRunner({ sessionDir, onRpcEvent: tap });
+        let forkId = "";
         try {
           const models = await runner.listModels("pi");
           const model = process.env.UNVIBE_PI_LIVE_MODEL ?? models.find((m) => m.id.includes("sol"))?.id ?? models[0]?.id;
           if (!model) throw new Error("live pi: no pi models offered (is pi logged in?)");
+          console.log(`[live-pi] model: ${model} (override with UNVIBE_PI_LIVE_MODEL)`);
 
           const totals = { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 };
           const track = (evs: AgentEvent[]): void => {
@@ -121,33 +176,42 @@ describe.skipIf(!LIVE)("pi live runner", () => {
             if (estimate > COST_CAP_USD) throw new Error(`live pi cost cap exceeded ($${estimate.toFixed(4)} > $${COST_CAP_USD})`);
           };
 
-          // Turn 1: base session comes up on the subscription login.
-          const base = await runner.start({
-            provider: "pi",
-            model,
-            cwd: worktree,
-            systemPrompt: "You are Unvibe, a code reviewer. Reply exactly as asked.",
-            mcpServers,
-          });
-          const ready = await collect(runner.prompt(base, "Reply with exactly `ready` and nothing else. The task arrives next."));
-          expect(textOf(ready)).toMatch(/ready/i);
-          track(ready);
+          try {
+            // Turn 1: base session comes up on the subscription login.
+            const base = await runner.start({
+              provider: "pi",
+              model,
+              cwd: worktree,
+              systemPrompt: "You are Unvibe, a code reviewer. Reply exactly as asked.",
+              mcpServers,
+            });
+            const ready = await collectTurn("turn1-ready", runner.prompt(base, "Reply with exactly `ready` and nothing else. The task arrives next."));
+            expect(textOf(ready)).toMatch(/ready/i);
+            track(ready);
 
-          // Turn 2: a fork calls a review tool through the mount.
-          const fork = await runner.fork!(base);
-          expect(fork.id).not.toBe(base.id);
-          const answer = await collect(runner.prompt(fork, "Call get_hunk with id h:conn:9f2c, then quote the header line of the hunk in your reply."));
-          expect(textOf(answer)).toContain("@@");
-          track(answer);
+            // Turn 2: a fork calls a review tool through the mount.
+            const fork = await runner.fork!(base);
+            expect(fork.id).not.toBe(base.id);
+            forkId = fork.id;
+            const answer = await collectTurn("turn2-hunk", runner.prompt(fork, "Call get_hunk with id h:conn:9f2c, then quote the header line of the hunk in your reply."));
+            expect(textOf(answer)).toContain("@@");
+            track(answer);
+          } catch (e) {
+            dumpRaw("turn 1-2 failed");
+            throw e;
+          }
 
           // Turn 3: resume after a simulated restart keeps history.
           await runner.dispose();
-          const runner2 = new PiAgentRunner({ sessionDir });
+          const runner2 = new PiAgentRunner({ sessionDir, onRpcEvent: tap });
           try {
-            const reopened = await runner2.load(fork.id);
-            const resumed = await collect(runner2.prompt(reopened, "Reply with exactly `resumed` and nothing else."));
+            const reopened = await runner2.load(forkId);
+            const resumed = await collectTurn("turn3-resumed", runner2.prompt(reopened, "Reply with exactly `resumed` and nothing else."));
             expect(textOf(resumed)).toMatch(/resumed/i);
             track(resumed);
+          } catch (e) {
+            dumpRaw("turn 3 failed");
+            throw e;
           } finally {
             await runner2.dispose();
           }
