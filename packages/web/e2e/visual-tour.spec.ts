@@ -1957,7 +1957,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     // API and frame each. Paused times are in ms of the 2.5s cycle.
     async function freezeSwing(page: Page, atMs: number): Promise<void> {
       await page.evaluate((ms) => {
-        for (const el of document.querySelectorAll(".guide-ball, .loading-glints svg")) {
+        for (const el of document.querySelectorAll(".guide-scene, .loading-glints svg")) {
           for (const a of el.getAnimations()) {
             a.pause();
             (a as Animation).currentTime = ms;
@@ -2054,7 +2054,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
     await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
     const ballAnim = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="guide-empty"] .guide-ball');
+      const el = document.querySelector('[data-testid="guide-empty"] .guide-scene');
       return el ? getComputedStyle(el).animationName : null;
     });
     expect(ballAnim, "guide ball animates under reduced motion").toBe("none");

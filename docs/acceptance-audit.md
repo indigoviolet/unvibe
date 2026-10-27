@@ -2976,18 +2976,20 @@ hunk coverage) is reported for a separate issue, not fixed here.
 
 - **#284 (guide loading ball + glints; diff glints-only):** the
   guide-building state shows the #275/#281 disco ball (whole
-  `/disco-ball.svg`, 44px, hook at the top) swinging as a CSS-only
-  pendulum (`transform-origin` at the mount, ±4° over 2.5s
-  ease-in-out, infinite) with 2–3 small pink glints reusing the art's
-  own sparkle paths (`#FF38E9`/`#FF48F1`) — same 2.5s cycle and
-  easing, in phase with the swing, drifting slightly and brightest
-  at the swing's ends. The diff-loading state shows the same glints
-  on their own (one shared element/animation), as if the ball were
-  just out of frame. `PaneLoading` takes `variant="guide" | "diff"`;
-  every other dots indicator is unchanged. Reduced motion: ball and
-  glints static but visible. Dark mode softens the glint cluster
-  (opacity .7). Evidence: tour `guide-building-*` +
-  `guide-swing-extreme-*`/`guide-swing-mid-*` (WAAPI-frozen) +
+  `/disco-ball.svg`, 52px, the scene pendulums from the chain mount,
+  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints (6–9px,
+  art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
+  reflections around the sphere — same 2.5s cycle and easing, in phase
+  with the swing, drifting slightly and brightest at the swing's ends.
+  The diff-loading state shows the same glints in a loose staggered
+  cluster on their own (one shared element/animation), as if the ball
+  were just out of frame — never a straight row. `PaneLoading` takes
+  `variant="guide" | "diff"`; every other dots indicator is
+  unchanged. Reduced motion: scene and glints static but visible. Dark
+  mode remaps the ball to line-art-on-dark (lightness-inverted, hue
+  kept) and softens the glint cluster (opacity .7). Evidence: tour
+  `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
+  `diff-glint-extreme-*`/`diff-glint-mid-*` +
   `review-preparing-*` frames and the #284 reduced-motion test
   (all git-ignored).
 

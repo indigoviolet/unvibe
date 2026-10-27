@@ -145,8 +145,10 @@ export function PaneLoading({ label, variant }: { label: string; variant?: "guid
   if (variant === "guide") {
     return (
       <p className="pane-loading" role="status">
-        <img className="guide-ball" src="/disco-ball.svg" alt="" aria-hidden="true" />
-        <LoadingGlints />
+        <span className="guide-scene" aria-hidden="true">
+          <img className="guide-ball" src="/disco-ball.svg" alt="" />
+          <LoadingGlints placement="around" />
+        </span>
         <span>{label}</span>
       </p>
     );
@@ -154,7 +156,7 @@ export function PaneLoading({ label, variant }: { label: string; variant?: "guid
   if (variant === "diff") {
     return (
       <p className="pane-loading" role="status">
-        <LoadingGlints />
+        <LoadingGlints placement="loose" />
         <span>{label}</span>
       </p>
     );
@@ -170,14 +172,15 @@ export function PaneLoading({ label, variant }: { label: string; variant?: "guid
 /**
  * #284: the disco ball's pink four-point sparkles, reused from
  * `packages/web/public/disco-ball.svg` (exact path data, the art's
- * pinks) as tiny inline SVGs. In the guide state they read as light
- * thrown off the swinging ball; in the diff state the same glints show
- * on their own, as if the ball were just out of frame — one shared
- * element and animation, not a separate design. Decorative.
+ * pinks) as tiny inline SVGs. `around` scatters them over the ball as
+ * its reflections; `loose` staggers them in a loose cluster for the
+ * ball-less diff state, as if the ball were just out of frame up-left
+ * — never a straight row, so they never read as the old dots. One
+ * shared element and animation, not a separate design. Decorative.
  */
-function LoadingGlints(): React.JSX.Element {
+function LoadingGlints({ placement }: { placement: "around" | "loose" }): React.JSX.Element {
   return (
-    <span className="loading-glints" aria-hidden="true">
+    <span className={`loading-glints ${placement}`} aria-hidden="true">
       <svg viewBox="52.5 19.5 11.5 19.8">
         <path
           d="m58.02 20.21c-0.26 8.54 0.35 8.98-5.21 9.13 5.57 0.2 4.96 0.43 5.22 9.27 0.36-9.05-0.41-9.15 5.26-9.27-5.67-0.13-5.01-0.63-5.27-9.13z"
