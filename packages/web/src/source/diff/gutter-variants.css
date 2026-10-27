@@ -16,6 +16,11 @@
  * - C (c/d): no CSS of its own — `UnifiedRows` drops the `+`/`-` prefix
  *   (row tint + edge bar keep marking adds/removes).
  * - D (d): no CSS of its own — `hunkHide` forces a single number column.
+ * - E (e1/e2): tight two-column base from the bare-attr A block above, plus
+ *   the swap rules below. Comment icon replaces the new-side number (hover,
+ *   permanent on commented lines); first/last-row numbers give way to the
+ *   expand carets (E1 always, E2 on row hover). No `↪` anywhere: E ranges
+ *   are dotted text on every line (see DiffExpansions) + the `rng` border.
  *
  * Split view is untouched in every variant (fixed colgroups, never shared
  * the `--lnw` rules).
@@ -73,6 +78,78 @@
   top: 50%;
   transform: translateY(-50%);
   margin-right: 0;
+}
+
+/* ---------- E: comment swap + first/last-row expand controls ---------- */
+
+/* The swap icon starts hidden; the number shows. The icon is in-flow at
+   the number's right-aligned slot, so swapping never moves the code. */
+#right[data-gutter-variant="e1"] td.n.new .nic,
+#right[data-gutter-variant="e2"] td.n.new .nic {
+  display: none;
+}
+#right[data-gutter-variant="e1"] td.n.new .nic .ic,
+#right[data-gutter-variant="e2"] td.n.new .nic .ic {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+/* Resting commented lines: icon permanently instead of the number. */
+#right[data-gutter-variant="e1"] td.n.new.e-commented .nic,
+#right[data-gutter-variant="e2"] td.n.new.e-commented .nic {
+  display: inline;
+}
+#right[data-gutter-variant="e1"] td.n.new.e-commented .nnum,
+#right[data-gutter-variant="e2"] td.n.new.e-commented .nnum {
+  display: none;
+}
+/* Hover swap (not on rows carrying expand controls — controls win). */
+#right[data-gutter-variant="e1"] tr:not(.has-xup):not(.has-xdown):hover td.n.new .nic,
+#right[data-gutter-variant="e2"] tr:not(.has-xup):not(.has-xdown):hover td.n.new .nic {
+  display: inline;
+}
+#right[data-gutter-variant="e1"] tr:not(.has-xup):not(.has-xdown):hover td.n.new .nnum,
+#right[data-gutter-variant="e2"] tr:not(.has-xup):not(.has-xdown):hover td.n.new .nnum {
+  display: none;
+}
+
+/* First/last-row expand carets: one button per number cell (^/v old,
+   ^^/vv new). Hidden until needed; narrower than the 20px toolbar hit
+   area so the row keeps its height. */
+#right[data-gutter-variant="e1"] td.n .xbtns,
+#right[data-gutter-variant="e2"] td.n .xbtns {
+  display: none;
+  width: 100%;
+  justify-content: center;
+}
+#right[data-gutter-variant="e1"] td.n .xbtns .ib.xbtn,
+#right[data-gutter-variant="e2"] td.n .xbtns .ib.xbtn {
+  width: 22px;
+  height: 18px;
+}
+/* E1: controls always on; numbers (and any comment icon) never show.
+   (Qualified with .new to outrank the resting commented rules above;
+   the old cell renders the button instead of a number in React anyway.) */
+#right[data-gutter-variant="e1"] tr.has-xup td.n .xbtns,
+#right[data-gutter-variant="e1"] tr.has-xdown td.n .xbtns {
+  display: inline-flex;
+}
+#right[data-gutter-variant="e1"] tr.has-xup td.n .nnum,
+#right[data-gutter-variant="e1"] tr.has-xdown td.n .nnum,
+#right[data-gutter-variant="e1"] tr.has-xup td.n.new .nic,
+#right[data-gutter-variant="e1"] tr.has-xdown td.n.new .nic {
+  display: none;
+}
+/* E2: controls on row hover only; they win over the comment swap. */
+#right[data-gutter-variant="e2"] tr.has-xup:hover td.n .xbtns,
+#right[data-gutter-variant="e2"] tr.has-xdown:hover td.n .xbtns {
+  display: inline-flex;
+}
+#right[data-gutter-variant="e2"] tr.has-xup:hover td.n .nnum,
+#right[data-gutter-variant="e2"] tr.has-xup:hover td.n .nic,
+#right[data-gutter-variant="e2"] tr.has-xdown:hover td.n .nnum,
+#right[data-gutter-variant="e2"] tr.has-xdown:hover td.n .nic {
+  display: none;
 }
 
 /* ---------- B: expand carets ride the separator row's code cell ---------- */

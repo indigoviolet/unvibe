@@ -16,6 +16,9 @@ import { useEffect, useMemo, useReducer } from "react";
 import type { Thread, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
+// SPIKE #285 E (evaluation only, never merged): no gutter reopen marker;
+// the anchored text of every range line gets the dotted mark instead.
+import { isGutterE } from "../../source/diff/gutterVariant.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
@@ -43,6 +46,21 @@ function makeRangeMark(id: string, closed: boolean): HTMLElement {
   mark.textContent = "↪";
   mark.title = closed ? "Reopen the explanation" : "Explanation";
   return mark;
+}
+
+/**
+ * SPIKE #285 E: closed multi-line ranges show no gutter marker. True when
+ * the annotation is a closed-able multi-line diff-line range (same filter
+ * as the range highlight below).
+ */
+function isRangeAnnotation(a: Thread): boolean {
+  if (a.type !== "thread" && a.type !== "link" && !a.replies.some((r) => r.kind === "comment")) return false;
+  if (a.anchor.host.kind !== "diff-line") return false;
+  if (a.type === "link" && !a.promotedToPage) return false;
+  const host = a.anchor.host;
+  if (!host.endLine || host.endLine <= host.line) return false;
+  if (isAnchorStale(a)) return false;
+  return true;
 }
 
 function makePageLink(pageId: string): HTMLElement {
@@ -161,7 +179,9 @@ export function useDiffExpansionBindings(
           // the annotation pending so the bounded repass (and the row
           // observer below) re-apply the range when they land.
           if (!complete) pending.add(a.id);
-          if (firstRow && !a.replies.some((r) => r.kind === "comment")) {
+          // SPIKE #285 E: no gutter reopen marker (the per-line dotted
+          // marks below own the reopen). Other variants keep it.
+          if (firstRow && !a.replies.some((r) => r.kind === "comment") && !isGutterE()) {
             firstRow.classList.add("rng-first");
             const cell = firstRow.querySelector("td.n");
             if (cell) cell.prepend(makeRangeMark(a.id, !a.open));
@@ -175,6 +195,13 @@ export function useDiffExpansionBindings(
             clearMarks(cell, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
             for (const a of exps) {
               if (isAnchorStale(a) || !a.anchor.quotedText) continue;
+              // SPIKE #285 E: multi-line ranges are marked per line
+              // below (the whole quote never matches one cell); skip
+              // the single-cell attempt so it never pends.
+              if (isGutterE() && isRangeAnnotation(a)) {
+                pending.delete(a.id);
+                continue;
+              }
               try {
                 // Issue #166: the spot carries the recorded selection
                 // offsets, so a repeated phrase places exactly; without
@@ -201,6 +228,35 @@ export function useDiffExpansionBindings(
                 if (placeAnchorSpot(cell, spot, () => makeExpMark(a.id, !a.open)) > 0) {
                   pending.delete(a.id);
                 }
+              } catch {
+                // Ignore.
+              }
+            }
+          }
+        }
+        // SPIKE #285 E: dotted anchor text on EVERY line of a multi-line
+        // range (single-line behaviour), plus the `rng` row tint + left
+        // border from the range loop above. Each dotted piece reopens
+        // through the existing mark click handler below. The stored quote
+        // is whitespace-collapsed to one line, so per-line re-matching is
+        // hopeless; the harness selects full rows, making the whole code
+        // cell the anchored text — wrap it all (sign prefix included).
+        if (isGutterE()) {
+          for (const a of annotations ?? []) {
+            if (!isRangeAnnotation(a)) continue;
+            const host = a.anchor.host;
+            if (host.kind !== "diff-line") continue;
+            for (let n = host.line; n <= (host.endLine ?? host.line); n++) {
+              const row = document.getElementById(`L-${host.fileKey}-${n}`);
+              if (!row) continue;
+              const cell = row.querySelector("td.c");
+              if (!cell) continue;
+              clearMarks(cell, `mark.anc.ex[data-jump="${a.id}"], mark.anc.exl[data-jump="${a.id}"]`);
+              try {
+                const range = document.createRange();
+                range.selectNodeContents(cell);
+                range.surroundContents(makeExpMark(a.id, !a.open));
+                pending.delete(a.id);
               } catch {
                 // Ignore.
               }
@@ -238,6 +294,17 @@ export function useDiffExpansionBindings(
           if (!row) continue;
           if (!row.classList.contains("rng")) return false;
           if (!firstRow) firstRow = row;
+        }
+        // SPIKE #285 E: no gutter marker — satisfaction is the `rng`
+        // rows plus a dotted mark on every range line.
+        if (isGutterE()) {
+          for (let n = host.line; n <= host.endLine; n++) {
+            const row = document.getElementById(`L-${host.fileKey}-${n}`);
+            if (!row) continue;
+            const cell = row.querySelector("td.c");
+            if (!cell || !cell.querySelector("mark.anc.exl[data-jump], mark.anc.ex[data-jump]")) return false;
+          }
+          continue;
         }
         if (!a.replies.some((r) => r.kind === "comment") && firstRow && !firstRow.querySelector("mark.anc.range")) return false;
       }

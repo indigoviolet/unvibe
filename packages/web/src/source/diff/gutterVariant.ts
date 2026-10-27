@@ -2,22 +2,28 @@
  * SPIKE #285 — gutter width variants (evaluation only, NEVER merged).
  *
  * The variant comes from the `?gutter=` URL param (`baseline` when absent)
- * and is mirrored onto `#right` as `data-gutter-variant="a|b|c|d"` (the
- * diff root) so `gutter-variants.css` can key off it. `window.__setGutterVariant`
+ * and is mirrored onto `#right` as `data-gutter-variant="a|b|c|d|e1|e2"`
+ * (the diff root) so `gutter-variants.css` can key off it. `window.__setGutterVariant`
  * flips the attribute live for poking around; placement decisions that are
  * baked at render time (expand-control cell, dropped sign column) still
  * need a reload with the param.
  */
-export type GutterVariant = "baseline" | "a" | "b" | "c" | "d";
+export type GutterVariant = "baseline" | "a" | "b" | "c" | "d" | "e1" | "e2";
 
 export function gutterVariant(): GutterVariant {
   try {
     const g = new URLSearchParams(window.location.search).get("gutter");
-    if (g === "a" || g === "b" || g === "c" || g === "d") return g;
+    if (g === "a" || g === "b" || g === "c" || g === "d" || g === "e1" || g === "e2") return g;
   } catch {
     // Non-browser (unit tests): baseline.
   }
   return "baseline";
+}
+
+/** Variant E (E1 always-on controls, E2 controls on row hover). */
+export function isGutterE(): boolean {
+  const v = gutterVariant();
+  return v === "e1" || v === "e2";
 }
 
 /** Variant D (and only D) collapses to a single number column. */

@@ -25,7 +25,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Thread, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
-import { Icon } from "../../components/Icon.js";
+import { Icon, type IconName } from "../../components/Icon.js";
 import { Button, Card, DiffStat } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
@@ -46,7 +46,7 @@ import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
 // SPIKE #285 (evaluation only, never merged): gutter width variants.
 import type { LineTokens } from "./highlight/tokenize.js";
-import { gutterNoSign, gutterSingleColumn } from "./gutterVariant.js";
+import { gutterNoSign, gutterSingleColumn, isGutterE } from "./gutterVariant.js";
 import "./gutter-variants.css";
 import {
   ControlSeparator,
@@ -236,6 +236,33 @@ interface RowProps {
   /** Issue #261: hide the empty number column (added/deleted). Unified only. */
   hideOld?: boolean;
   hideNew?: boolean;
+  /** SPIKE #285 E: up/down expand controls for the first/last row. */
+  upControls?: GutterControl[] | null;
+  downControls?: GutterControl[] | null;
+  controlsPending?: boolean;
+}
+
+/** SPIKE #285 E: one expand caret replacing a first/last-row number. */
+function xControlIcon(c: GutterControl): IconName {
+  if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
+  return c.dir === "up" ? "upUp" : "downDown";
+}
+
+function XCellButton({ c, pending }: { c: GutterControl; pending: boolean }): ReactNode {
+  return (
+    <span className="xbtns">
+      <button
+        className="ib xbtn"
+        type="button"
+        data-tip={pending ? "Loading…" : c.label}
+        aria-label={pending ? "Loading…" : c.label}
+        disabled={pending}
+        onClick={c.onClick}
+      >
+        <Icon name={xControlIcon(c)} />
+      </button>
+    </span>
+  );
 }
 
 /**
@@ -279,13 +306,18 @@ function plainCommentClass(text: string, segs: LineTokens | null): string | unde
   return segs === null && /^\s*#/.test(text) ? "cm" : undefined;
 }
 
-function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks, hideOld, hideNew }: RowProps): ReactNode {
+function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks, hideOld, hideNew, upControls, downControls, controlsPending }: RowProps): ReactNode {
   const lines = hunk.lines;
   const cols = 3 - (hideOld ? 1 : 0) - (hideNew ? 1 : 0);
   // SPIKE #285 (evaluation only): C/D drop the `+`/`-` sign column; D shows
   // the new number, falling back to the old number on deleted lines.
   const noSign = gutterNoSign();
   const single = gutterSingleColumn();
+  // SPIKE #285 E (evaluation only): two tight columns; the comment icon
+  // swaps in for the new-side number (on hover, permanently on commented
+  // lines); first/last-row numbers give way to expand controls.
+  const e = isGutterE();
+  const pending = controlsPending ?? false;
   return (
     <>
       {lines.map((r, ri) => {
@@ -295,11 +327,54 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
         // Unified rows show the new-side tokens (the post-image under
         // review); deleted rows show the old side.
         const segs = toks ? (r.kind === "del" ? toks.old[ri] : toks.new[ri]) ?? null : null;
+        // Expand controls replace the first/last row's numbers (up wins
+        // the single-row tie; a dropped cell's button is dropped with it).
+        const showUp = e && ri === 0 && upControls !== undefined && upControls !== null && upControls.length > 0;
+        const showDown =
+          e &&
+          !showUp &&
+          ri === lines.length - 1 &&
+          downControls !== undefined &&
+          downControls !== null &&
+          downControls.length > 0;
+        const xc = showUp ? upControls : showDown ? downControls : null;
+        const xCls = showUp ? " has-xup" : showDown ? " has-xdown" : "";
         return (
           <Fragment key={`${r.kind}-${r.oldLine ?? ""}-${n ?? ""}-${ri}`}>
-            <tr className={`${r.kind}${hl ? " hl" : ""}`} id={n !== undefined ? `L-${fileKey}-${n}` : undefined}>
-              {hideOld ? null : <td className="n">{r.oldLine ?? ""}</td>}
-              {hideNew ? null : (
+            <tr className={`${r.kind}${hl ? " hl" : ""}${xCls}`} id={n !== undefined ? `L-${fileKey}-${n}` : undefined}>
+              {hideOld ? null : xc ? (
+                <td className="n">
+                  <span className="nnum">{r.oldLine ?? ""}</span>
+                  <XCellButton c={xc[0]} pending={pending} />
+                </td>
+              ) : (
+                <td className="n">{r.oldLine ?? ""}</td>
+              )}
+              {hideNew ? null : xc ? (
+                <td className={`n${n !== undefined ? " new" : ""}${commented ? " e-commented" : ""}`}>
+                  <span className="nnum">{n ?? ""}</span>
+                  {n !== undefined ? (
+                    <span className="nic">
+                      <Icon name="comment" />
+                    </span>
+                  ) : null}
+                  <XCellButton c={xc[1] ?? xc[0]} pending={pending} />
+                </td>
+              ) : e ? (
+                <td
+                  className={`n${n !== undefined ? " new" : ""}${commented ? " e-commented" : ""}`}
+                  data-line={n !== undefined ? `${fileKey}:${n}` : undefined}
+                  data-tip={n !== undefined ? lineTip(slots, commentedLines, fileKey, n) : undefined}
+                  onClick={n !== undefined && onLineClick ? () => onLineClick(fileKey, n) : undefined}
+                >
+                  <span className="nnum">{n ?? ""}</span>
+                  {n !== undefined ? (
+                    <span className="nic">
+                      <Icon name="comment" />
+                    </span>
+                  ) : null}
+                </td>
+              ) : (
                 <td
                   className={`n${n !== undefined ? " new" : ""}${commented ? " hc" : ""}`}
                   data-line={n !== undefined ? `${fileKey}:${n}` : undefined}
@@ -580,6 +655,10 @@ function HunkBlock(
     unitNext?: { label: string; tip: string } | null;
     unitPending?: boolean;
     onUnitExpand?: () => void;
+    /** SPIKE #285 E: up/down expand controls for the first/last row. */
+    upControls?: GutterControl[] | null;
+    downControls?: GutterControl[] | null;
+    controlsPending?: boolean;
   },
 ): ReactNode {
   const { file, index } = props;
@@ -613,6 +692,9 @@ function HunkBlock(
     toks: props.tokens?.get(h.contentHash) ?? null,
     hideOld: hide.hideOld,
     hideNew: hide.hideNew,
+    upControls: props.upControls,
+    downControls: props.downControls,
+    controlsPending: props.controlsPending,
   };
   const hunkCardState = props.hunkCards?.get(h.contentHash);
   // Issue #161: an open hunk card renders bare at the hunk's level (no
@@ -882,6 +964,12 @@ export function FileSection(props: SectionProps): ReactNode {
       const hcols = props.view === "split" ? 4 : hh.hideOld || hh.hideNew ? 2 : 3;
       const before: ReactNode[] = [];
       const after: ReactNode[] = [];
+      // SPIKE #285 E: up/down controls move into the first/last row's
+      // number cells (no separator rows). Collected here, rendered by
+      // UnifiedRows; E1 always on, E2 on row hover (see CSS).
+      const e = isGutterE();
+      let upC: GutterControl[] | null = null;
+      let downC: GutterControl[] | null = null;
       if (canExpand) {
         const deleted = file.isDeleted === true;
         const hs = deleted ? h.oldStart : h.newStart;
@@ -911,9 +999,12 @@ export function FileSection(props: SectionProps): ReactNode {
                 onClick: () => expansion.expandAll(above, "up"),
               },
             ];
-            before.push(
-              <ControlSeparator key={`xa-${file.fileKey}-${i}`} controls={controls} cols={hcols} pending={expansion.pending} hideOld={hh.hideOld} hideNew={hh.hideNew} />,
-            );
+            if (e) upC = controls;
+            else {
+              before.push(
+                <ControlSeparator key={`xa-${file.fileKey}-${i}`} controls={controls} cols={hcols} pending={expansion.pending} hideOld={hh.hideOld} hideNew={hh.hideNew} />,
+              );
+            }
           }
           if (i === 0) {
             const aboveLines = expansion.lines.filter((l) => l.line >= above.start && l.line <= above.end);
@@ -966,29 +1057,33 @@ export function FileSection(props: SectionProps): ReactNode {
             .filter((r) => r.end > he)
             .reduce((s, r) => s + r.end - r.start + 1, 0);
           if (remainingBelow > 0) {
-            after.push(
-              <ControlSeparator
-                key={`xb-${file.fileKey}-${i}`}
-                controls={[
-                  {
-                    kind: "step",
-                    dir: "down",
-                    label: `Show ${Math.min(20, remainingBelow)} more lines`,
-                    onClick: () => expansion.expandDown(h, i),
-                  },
-                  {
-                    kind: "all",
-                    dir: "down",
-                    label: `Show all ${remainingBelow} lines`,
-                    onClick: () => expansion.expandAll(below, "down"),
-                  },
-                ]}
-                cols={hcols}
-                pending={expansion.pending}
-                hideOld={hh.hideOld}
-                hideNew={hh.hideNew}
-              />,
-            );
+            const downControls: GutterControl[] = [
+              {
+                kind: "step",
+                dir: "down",
+                label: `Show ${Math.min(20, remainingBelow)} more lines`,
+                onClick: () => expansion.expandDown(h, i),
+              },
+              {
+                kind: "all",
+                dir: "down",
+                label: `Show all ${remainingBelow} lines`,
+                onClick: () => expansion.expandAll(below, "down"),
+              },
+            ];
+            if (e) downC = downControls;
+            else {
+              after.push(
+                <ControlSeparator
+                  key={`xb-${file.fileKey}-${i}`}
+                  controls={downControls}
+                  cols={hcols}
+                  pending={expansion.pending}
+                  hideOld={hh.hideOld}
+                  hideNew={hh.hideNew}
+                />,
+              );
+            }
           }
         }
         // The lower side's step-up + show-all-to-previous for the gap
@@ -1001,29 +1096,33 @@ export function FileSection(props: SectionProps): ReactNode {
               .filter((r) => r.start < hs)
               .reduce((s, r) => s + r.end - r.start + 1, 0);
             if (remainingRun > 0) {
-              before.push(
-                <ControlSeparator
-                  key={`xu-${file.fileKey}-${i}`}
-                  controls={[
-                    {
-                      kind: "step",
-                      dir: "up",
-                      label: `Show ${Math.min(20, remainingRun)} more lines`,
-                      onClick: () => expansion.expandUp(h, i),
-                    },
-                    {
-                      kind: "all",
-                      dir: "up",
-                      label: `Show all ${remainingRun} lines`,
-                      onClick: () => expansion.expandAll(gapAbove, "up"),
-                    },
-                  ]}
-                  cols={hcols}
-                  pending={expansion.pending}
-                  hideOld={hh.hideOld}
-                  hideNew={hh.hideNew}
-                />,
-              );
+              const gapUpControls: GutterControl[] = [
+                {
+                  kind: "step",
+                  dir: "up",
+                  label: `Show ${Math.min(20, remainingRun)} more lines`,
+                  onClick: () => expansion.expandUp(h, i),
+                },
+                {
+                  kind: "all",
+                  dir: "up",
+                  label: `Show all ${remainingRun} lines`,
+                  onClick: () => expansion.expandAll(gapAbove, "up"),
+                },
+              ];
+              if (e) upC = gapUpControls;
+              else {
+                before.push(
+                  <ControlSeparator
+                    key={`xu-${file.fileKey}-${i}`}
+                    controls={gapUpControls}
+                    cols={hcols}
+                    pending={expansion.pending}
+                    hideOld={hh.hideOld}
+                    hideNew={hh.hideNew}
+                  />,
+                );
+              }
             }
             const inGap = expansion.lines.filter((l) => l.line >= gapAbove.start && l.line <= gapAbove.end);
             const tailLines = partitionGap(inGap, expansion.splitFor(gapAbove)).lower;
@@ -1059,6 +1158,9 @@ export function FileSection(props: SectionProps): ReactNode {
           unitNext={u?.next ?? null}
           unitPending={u?.pending ?? false}
           onUnitExpand={u ? () => expansion.expandUnit(h) : undefined}
+          upControls={upC}
+          downControls={downC}
+          controlsPending={expansion.pending}
         />
       );
     });
