@@ -79,6 +79,34 @@ if (argv[0] === "auth" && argv[1] === "check") {
   process.exit(0);
 }
 
+// --- `pi --list-models [search]` (issue #292: free pre-check) ------------------
+// Table mirrors the real CLI (header + provider/model rows, exit 0 either
+// way; `No models matching "…"` when nothing matches). Models come from
+// UNVIBE_FAKE_PI_MODELS (same source as the RPC catalogue below).
+if (has("--list-models")) {
+  let models = [{ provider: "openai-codex", id: "fake-model" }];
+  try {
+    const parsed = JSON.parse(process.env.UNVIBE_FAKE_PI_MODELS ?? "null");
+    if (Array.isArray(parsed)) models = parsed;
+  } catch {
+    // default stands
+  }
+  const i = argv.indexOf("--list-models");
+  const search = i + 1 < argv.length && !argv[i + 1].startsWith("-") ? argv[i + 1].toLowerCase() : "";
+  const hits = models.filter((m) => {
+    const id = String(m?.id ?? "").toLowerCase();
+    const prov = String(m?.provider ?? "").toLowerCase();
+    return !search || id.includes(search) || `${prov}/${id}`.includes(search);
+  });
+  if (hits.length === 0) {
+    console.log(`No models matching "${search}"`);
+    process.exit(0);
+  }
+  console.log("provider  model");
+  for (const m of hits) console.log(`${m.provider}  ${m.id}`);
+  process.exit(0);
+}
+
 if (!argv.includes("--mode") || argv[argv.indexOf("--mode") + 1] !== "rpc") {
   console.error(`fake pi: unsupported invocation: ${argv.join(" ")}`);
   process.exit(2);
