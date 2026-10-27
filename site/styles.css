@@ -26,12 +26,11 @@ body {
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* Faint ball watermark: fixed, whole ball visible, tilted ~9deg CCW.
- * Desktop: the ceiling mount's left edge sits where "to understand." ends
- * at full headline size (wrap left + 24px gutter + 678px), and the ball is
- * sized to clear the install box (#290). Below 1304px the headline shrinks
- * but the install box doesn't, so the mount stays put rather than follow
- * the text onto the box. The .3249/.0493 factors place the rotated mount
- * within the image box. */
+ * Desktop (#290): the ceiling mount is centred over the final "d" of
+ * "to understand." at the height of the "to code." line. Both scale with
+ * the h1 size (--h1, same clamp as h1): the "d" is 10.83em from the hero's
+ * left edge, the line's middle 157px + .66em from the top. The .4049/.0656
+ * factors place the rotated mount's centre within the image box. */
 .watermark {
   position: fixed;
   inset: 0;
@@ -39,10 +38,11 @@ body {
   z-index: 0;
 }
 .watermark img {
-  --ball: 500px;
+  --ball: min(82vmin, 720px);
+  --h1: clamp(30px, 4.6vw, 60px);
   position: absolute;
-  left: calc(max(0px, 50% - 560px) + 24px + 678px - .3249 * var(--ball));
-  top: calc(24px - .0493 * var(--ball));
+  left: calc(max(0px, 50% - 560px) + 24px + 10.83 * var(--h1) - .4049 * var(--ball));
+  top: calc(157px + .66 * var(--h1) - .0656 * var(--ball));
   width: var(--ball);
   height: var(--ball);
   opacity: .16;
