@@ -744,7 +744,12 @@ needed (that deviation is closed, not added).
   arrive framed as other people's material, never instructions
   (`comments/GithubThreads.test.tsx`,
   `source/diff/DiffView.github.test.tsx`, `e2e/comments.spec.ts`
-  GitHub-thread cases, `service/test/context.test.ts` framing cases).
+  GitHub-thread cases, `service/test/context.test.ts` framing cases; issue
+  #296: new reviews start with existing comments hidden — the shared
+  default is `showExistingComments: false`, the toggle and its count are
+  unchanged, the choice is still remembered per review, and the agents'
+  context is untouched; journey J3 covers hidden-by-default plus the
+  toggle against the real service).
 
 ### §4.9 Findings — all met
 
