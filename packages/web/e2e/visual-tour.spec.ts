@@ -1195,9 +1195,6 @@ test.describe("visual tour passes", () => {
     await shot(page, "file-tree", suffix, "connection.py");
 
     // Comments menu, Comments tab: This review and On GitHub (#226, #236).
-    // Issue #296: new reviews hide existing comments, but the demo has
-    // none — show the section so this frame still covers its empty state.
-    await apiJson(svc.origin, svc.token, "PATCH", `/api/reviews/${reviewId}/view`, { showExistingComments: true });
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await expect(page.locator('.cmenu [data-cmtab="comments"]')).toBeVisible();
     await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
