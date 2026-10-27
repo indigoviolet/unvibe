@@ -14,6 +14,7 @@ import { Icon } from "../components/Icon.js";
 import { FullAccessMarker } from "./FullAccessMarker.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
 import { UpdateIcon } from "./UpdateIcon.js";
+import { Wordmark } from "./Wordmark.js";
 
 export interface Crumb {
   label: string;
@@ -34,8 +35,8 @@ export function ScreenTopBar({
 }): React.JSX.Element {
   return (
     <header className="top">
-      <Link className="brand" to="/" title="Back to the start page">
-        Unvibe
+      <Link className="brand" to="/" title="Back to the start page" aria-label="Unvibe">
+        <Wordmark />
       </Link>
       <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents">
         <Icon name="doc" />

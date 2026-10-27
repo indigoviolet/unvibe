@@ -934,7 +934,12 @@ export function StartPage(): React.JSX.Element {
         </p>
       ) : null}
       {prOffer && !cloningPr ? (
-        <div className="ci" data-testid="pr-clone-offer">
+          <div
+            className="ci"
+            data-testid="pr-clone-offer"
+            // #281: opaque box above the watermark (see the readiness callout).
+            style={{ background: "var(--surface)" }}
+          >
           <div style={{ minWidth: 0 }}>
             <span className="hint">
               {prOffer.owner}/{prOffer.name} isn&apos;t in your repos. Clone it and open #
@@ -1040,10 +1045,17 @@ export function StartPage(): React.JSX.Element {
     effectiveAuthor !== AUTHOR_ALL ? `No ${noun} by ${effectiveAuthor}.` : null;
 
   return (
-    <div className="app">
+    <div className="app start">
       <Toast />
       <Tooltip />
       <ScreenTopBar showBadge />
+      {/* Brain/disco-ball beside the start screen's content (issue #281,
+          variant A Watermark): #275's faint, tilted, off-centre, fixed
+          watermark. Static and pointer-transparent; the top bar and the
+          content below sit above it. */}
+      <div className="start-watermark" aria-hidden="true">
+        <img src="/disco-ball.svg" alt="" />
+      </div>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
@@ -1076,7 +1088,9 @@ export function StartPage(): React.JSX.Element {
                   key={c.id}
                   className="ci"
                   data-testid={`readiness-callout-${c.id}`}
-                  style={{ border: "1px solid var(--line)", alignItems: "center" }}
+                  // #281: opaque box above the watermark (the ball must
+                  // never show inside a card or notice box).
+                  style={{ border: "1px solid var(--line)", alignItems: "center", background: "var(--surface)" }}
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13 }}>
