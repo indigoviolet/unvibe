@@ -530,7 +530,11 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   // means hidden too (no fallback to the old shown default).
   const ghShown = snapshot?.viewPrefs.showExistingComments ?? DEFAULT_REVIEW_VIEW_PREFS.showExistingComments;
   const ghCollapsed = snapshot?.viewPrefs.existingCommentsCollapsed ?? false;
-  const ghOpen = ghShown && !ghCollapsed;
+  // Follow-up: with no existing comments at all, keep the empty-state
+  // message exactly as before — the hidden heading only applies when
+  // there is something to hide.
+  const ghEmpty = existing !== null && existing.length === 0;
+  const ghOpen = (ghShown && !ghCollapsed) || ghEmpty;
   const onGhHead = (): void => {
     const body = !ghShown
       ? { showExistingComments: true }
@@ -704,7 +708,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
             >
               <Icon name={ghOpen ? "down" : "right"} />
               <strong>On GitHub</strong> <Badge tone="neutral">{ghThreadCount}</Badge>
-              {ghShown ? null : <span className="hint">hidden</span>}
+              {ghShown || ghEmpty ? null : <span className="hint">hidden</span>}
             </button>
             {!ghOpen ? null : existing === null ? (
               <p className="hint" style={{ margin: 4 }}>
