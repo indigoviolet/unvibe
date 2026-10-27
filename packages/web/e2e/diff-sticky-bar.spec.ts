@@ -420,21 +420,19 @@ test("no vertical scroll container sits between a hunk header and the pane", asy
   expect(bad).toEqual([]);
 });
 
-test("hunk headers pin while their table is scrolled sideways", async ({ page }) => {
-  // A diff that really overflows horizontally (unified): at least one code
-  // table is wider than the pane.
+test("hunk headers pin while long lines wrap instead of scrolling sideways", async ({ page }) => {
+  // #274 soft-wrap: long code lines wrap, so no code table is wider than
+  // the pane and there is nothing to scroll sideways.
   const overflow = await page.evaluate(() => {
     const pane = document.getElementById("right") as HTMLElement;
     return Math.max(
+      0,
       ...[...pane.querySelectorAll(".dwrap")].map((w) => (w as HTMLElement).scrollWidth - (w as HTMLElement).clientWidth),
     );
   });
-  expect(overflow).toBeGreaterThan(50);
-  // Scroll every code table fully sideways, then pin a hunk header: the
-  // header is outside the scroller, so sideways position cannot matter.
-  await page.evaluate(() => {
-    for (const w of document.querySelectorAll("#right .dwrap")) w.scrollTo(9999, 0);
-  });
+  expect(overflow).toBeLessThanOrEqual(2);
+  // The headers still pin: scroll the pane down to a hunk. The header is
+  // outside the (now never-scrolled) sideways scroller.
   const s = await stack(page);
   await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
   await expectStuck(page, "hunk", "Hunk 2 of");

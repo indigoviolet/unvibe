@@ -235,7 +235,8 @@ function ModelPicker({
 
   return (
     <Card variant="raised" data-testid={`model-${role}`}>
-      <div className="frow" style={{ gap: 8 }}>
+      {/* #274 stacked group header: title over description, with a divider. */}
+      <div className="frow grouphead" style={{ gap: 8 }}>
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
       </div>
@@ -309,7 +310,7 @@ function ModelPicker({
               Couldn't load thinking levels ({thinkingError}) — Default stands.
             </span>
           ) : thinking === null ? (
-            <span className="hint">Loading thinking levels…</span>
+            <span className="hint settings-thinking">Loading thinking levels…</span>
           ) : (
             <>
               <Select

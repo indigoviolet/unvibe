@@ -226,17 +226,26 @@ test("concept page renders the example aside", async ({ page }) => {
   await expect(page.locator("#page .gen-aside")).toContainText("urllib3 now returns", { timeout: 15_000 });
 });
 
-test("narrow width keeps controls visible", async ({ page }) => {
+test("narrow width keeps controls reachable by hover or focus (#274)", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await gotoReview(page);
-  await expect(page.locator("#C-problem > .ctl").first()).toBeVisible();
+  // The toolbar lives in the heading row and reveals on hover or focus.
   // The problem card seeds a conversation underneath; scope to the card's
   // own control row so the answer's controls do not match.
-  await expect(page.locator("#C-problem > .ctl").getByRole("button", { name: "Use examples" })).toBeVisible();
+  const toolbar = page.locator("#C-problem .chead .ctl").first();
+  const examples = toolbar.getByRole("button", { name: "Use examples" });
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await page.locator("#C-problem").hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  // Keyboard: focusing a control reveals the row via :focus-within.
+  await page.mouse.move(0, 0);
+  await examples.focus();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await expect(examples).toBeEnabled();
 });
 
 test("control tooltips use the shared Tooltip", async ({ page }) => {
   await gotoReview(page);
-  await hoverFresh(page, page.locator("#C-problem > .ctl").getByRole("button", { name: "Use examples" }));
+  await hoverFresh(page, page.locator("#C-problem .chead .ctl").getByRole("button", { name: "Use examples" }));
   await expect(page.locator("#tip")).toContainText("Use examples", { timeout: 3000 });
 });

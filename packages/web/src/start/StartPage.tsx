@@ -1059,12 +1059,14 @@ export function StartPage(): React.JSX.Element {
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-              <span style={{ width: 320, maxWidth: "100%" }}>
+            // #274: the repo picker is the left-aligned page heading.
+            <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 4 }}>
+              <span style={{ maxWidth: "100%" }}>
                 <Select
                   aria-label="Repo"
                   value={selectedId}
                   title={selected?.localPath ?? ""}
+                  className="repo-title-select"
                   onValueChange={selectRepo}
                   options={[
                     ...(remembered.length > 0
@@ -1316,7 +1318,6 @@ export function StartPage(): React.JSX.Element {
                     error={listErrors.authoring}
                     errorTestId="changes-error-authoring"
                     opening={opening}
-                    empty="No open PRs."
                     emptyTestId="authoring-empty"
                     filteredNote={
                       authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null
@@ -1343,7 +1344,7 @@ export function StartPage(): React.JSX.Element {
                       Authors with counts come from the two groups; the
                       choice persists like the time filter. */}
                   <div className="prblock-head" style={{ marginTop: 14 }}>
-                    <h2 className="prblock-title">Waiting on your review</h2>
+                    <h2 className="prblock-title prblock-title-group">Waiting on your review</h2>
                     <div className="prblock-tools">
                       <span style={{ width: 170, flex: "none" }}>
                         <Select
@@ -1360,20 +1361,21 @@ export function StartPage(): React.JSX.Element {
                       {listErrors.requested}
                     </p>
                   ) : null}
-                  <div className="subhead">Requested of you</div>
+                  <div className="subhead">
+                    Requested of you
+                    {visibleDirect.length === 0 && directRequested.length === 0 && !listErrors.requested ? (
+                      <span className="cnt">0</span>
+                    ) : null}
+                  </div>
                   {visibleDirect.length === 0 ? (
-                    <p className="hint subempty" data-testid="requested-direct-empty">
-                      {directRequested.length === 0 ? (
-                        "No PRs requested of you."
-                      ) : (
-                        <>
-                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
-                            Show all
-                          </Button>
-                        </>
-                      )}
-                    </p>
+                    directRequested.length === 0 ? null : (
+                      <p className="hint subempty" data-testid="requested-direct-empty">
+                        {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                        <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                          Show all
+                        </Button>
+                      </p>
+                    )
                   ) : (
                     visibleDirect.map((c, i) => (
                       <ChangeRow
@@ -1395,20 +1397,21 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
-                  <div className="subhead">Requested of your team</div>
+                  <div className="subhead">
+                    Requested of your team
+                    {visibleTeam.length === 0 && teamRequested.length === 0 && !listErrors.requested ? (
+                      <span className="cnt">0</span>
+                    ) : null}
+                  </div>
                   {visibleTeam.length === 0 ? (
-                    <p className="hint subempty" data-testid="requested-team-empty">
-                      {teamRequested.length === 0 ? (
-                        "No PRs requested of your team."
-                      ) : (
-                        <>
-                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
-                            Show all
-                          </Button>
-                        </>
-                      )}
-                    </p>
+                    teamRequested.length === 0 ? null : (
+                      <p className="hint subempty" data-testid="requested-team-empty">
+                        {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                        <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                          Show all
+                        </Button>
+                      </p>
+                    )
                   ) : (
                     visibleTeam.map((c, i) => (
                       <ChangeRow
@@ -1436,7 +1439,6 @@ export function StartPage(): React.JSX.Element {
                     error={listErrors.branches}
                     errorTestId="changes-error-branches"
                     opening={opening}
-                    empty="No branches."
                     emptyTestId="branches-empty"
                     filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
                     onShowAll={() => selectRecency("all")}
@@ -1587,7 +1589,19 @@ export function SessionRow({
             <>{s.ingestError ?? "No changes to review: the diff is empty."}</>
           ) : (
             <>
-              {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+              {/* #274: the count sits at the row's left edge with a thin
+                  progress bar beside it (empty track at 0, filling in
+                  proportion). */}
+              <span className="pw">
+                {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+                <span className="bar" aria-hidden="true">
+                  <i
+                    style={{
+                      width: `${s.totalHunks > 0 ? Math.round((s.reviewedHunks / s.totalHunks) * 100) : 0}%`,
+                    }}
+                  />
+                </span>
+              </span>
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {s.guideStatus === "running" ? (
                 <>
@@ -1650,6 +1664,7 @@ export function SessionRow({
         <Button
           ref={btnRef}
           variant="secondary" size="sm"
+          className="rm"
           type="button"
           aria-label="Remove this review"
           aria-haspopup="dialog"
@@ -1708,39 +1723,56 @@ function ChangeRow({
   const open = opening === null ? (): void => onOpen(c, i) : undefined;
   return (
     <div className="ci">
-      <div className="cj" onClick={open}>
+      {/* #274: branch rows show the name once (the title); the date sits right. */}
+      <div className={c.kind === "branch" ? "cj cj-branch" : "cj"} onClick={open}>
         <span className="cw">
-          {prLabel !== null ? (
+          {c.kind === "branch" ? (
+            // #274: the title below already shows the branch name, so the
+            // meta keeps only author, date and size (the date sits right).
             <>
-              {prUrl !== null ? (
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Open PR ${prLabel} on GitHub`}
-                >
-                  {prLabel}
-                </a>
-              ) : (
-                prLabel
-              )}
-              {c.branch ? ` · ${c.branch}` : ""}
+              {c.author ?? ""}
+              {typeof c.updatedAt === "number" ? `${c.author ? " · " : ""}${timeAgo(c.updatedAt)}` : ""}
+              {hasSize ? (
+                <>
+                  {c.author || typeof c.updatedAt === "number" ? " · " : ""}
+                  {/* #224: the shared diff stat; the file count is not shown. */}
+                  <DiffStat added={c.additions} removed={c.deletions} />
+                </>
+              ) : null}
             </>
           ) : (
-            (c.branch ?? c.title)
-          )}
-          {c.author ? ` · ${c.author}` : ""}
-          {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
-            ? ` · ${timeAgo(c.updatedAt)}`
-            : ""}
-          {hasSize ? (
             <>
-              {" · "}
-              {/* #224: the shared diff stat; the file count is not shown. */}
-              <DiffStat added={c.additions} removed={c.deletions} />
+              {prLabel !== null ? (
+                <>
+                  {prUrl !== null ? (
+                    <a
+                      href={prUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Open PR ${prLabel} on GitHub`}
+                    >
+                      {prLabel}
+                    </a>
+                  ) : (
+                    prLabel
+                  )}
+                  {c.branch ? ` · ${c.branch}` : ""}
+                </>
+              ) : (
+                (c.branch ?? c.title)
+              )}
+              {c.author ? ` · ${c.author}` : ""}
+              {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+              {hasSize ? (
+                <>
+                  {" · "}
+                  {/* #224: the shared diff stat; the file count is not shown. */}
+                  <DiffStat added={c.additions} removed={c.deletions} />
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </span>
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
@@ -1764,7 +1796,6 @@ function ChangeSection({
   error,
   errorTestId,
   opening,
-  empty,
   emptyTestId,
   filteredNote,
   onShowAll,
@@ -1779,7 +1810,6 @@ function ChangeSection({
   error: string | null;
   errorTestId: string;
   opening: string | null;
-  empty: string;
   /** #131: test id for the empty state (authoring and branches need one). */
   emptyTestId?: string;
   /** #131: when the recency window hides every row, this note replaces the
@@ -1790,9 +1820,15 @@ function ChangeSection({
   owner: string | null;
   name: string | null;
 }): React.JSX.Element {
+  // #274 compact empty states: the heading carries a 0 count badge instead
+  // of a full empty line. Filter notes (with their Show-all way back) stay.
+  const genuinelyEmpty = changes.length === 0 && !error && !filteredNote;
   return (
     <>
-      <div className="divider">{title}</div>
+      <div className="divider">
+        {title}
+        {genuinelyEmpty ? <span className="cnt">0</span> : null}
+      </div>
       {error ? (
         <p className="hint" role="alert" data-testid={errorTestId}>
           {error}
@@ -1806,11 +1842,7 @@ function ChangeSection({
               Show all
             </Button>
           </p>
-        ) : (
-          <p className="hint subempty" data-testid={emptyTestId}>
-            {empty}
-          </p>
-        )
+        ) : null
       ) : (
         changes.map((c, i) => (
           <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} />

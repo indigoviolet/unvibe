@@ -54,18 +54,20 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
   // Issue #167: the demo seeds an open pinned thread under C-problem that
   // overlays the controls below it — close it first, as a reader would.
   await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
-  // Depth − is instant (the fixture stores all three levels).
+  // Depth − is instant (the fixture stores all three levels). The toolbar
+  // reveals on card hover (#274).
   const prose = card.locator(".prose").first();
   const before = await prose.innerText();
-  await card.locator("> .ctl").getByRole("button", { name: "Simpler" }).click();
+  await card.hover();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Simpler" }).click();
   await expect.poll(() => prose.innerText(), { timeout: 5000 }).not.toBe(before);
-  await card.locator("> .ctl").getByRole("button", { name: "Deeper" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Deeper" }).click();
   await expect.poll(() => prose.innerText(), { timeout: 5000 }).toBe(before);
   // Use examples inserts once; a second click says nothing more to add.
-  await card.locator("> .ctl").getByRole("button", { name: "Use examples" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Use examples" }).click();
   await expect(card.locator(".gen-aside").first()).toBeVisible({ timeout: 5000 });
   const asides = await card.locator(".gen-aside").count();
-  await card.locator("> .ctl").getByRole("button", { name: "Use examples" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Use examples" }).click();
   // The second click adds nothing — and toasts nothing either (the mock
   // answers accepted with no job and no reused flag, so no toast fires).
   // Negative wait: the duplicate path is fully synchronous in the mock,
@@ -73,16 +75,16 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
   await page.waitForTimeout(250);
   expect(await card.locator(".gen-aside").count()).toBe(asides);
   // Add diagram inserts after the paragraphs it relates to.
-  await card.locator("> .ctl").getByRole("button", { name: "Add diagram" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Add diagram" }).click();
   await expect(card.locator(".dg, .md, pre.code").first()).toBeVisible({ timeout: 5000 });
   // Undo is enabled and reverts the diagram; expansions survive it.
-  await expect(card.locator("> .ctl").getByRole("button", { name: "Undo" })).toBeEnabled();
+  await expect(card.locator("> .chead .ctl").getByRole("button", { name: "Undo" })).toBeEnabled();
   // Draft survival: type a reply, then undo, and the text stays.
   await selectText(page, "#C-central", "fast path");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator("#C-central .ithread[data-pending-thread] textarea, #C-central .composer textarea").first();
   await composer.fill("draft that must survive");
-  await card.locator("> .ctl").getByRole("button", { name: "Undo" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Undo" }).click();
   await expect(composer).toHaveValue("draft that must survive");
   await page.keyboard.press("Escape");
   // Collapse chevron first, × last behaviour via the title row.
@@ -150,8 +152,15 @@ test("8. header conventions and narrow widths", async ({ page }) => {
   expect(await thdBtns.last().getAttribute("aria-label")).toBe("Close");
   const labels = await thdBtns.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
   expect(labels.indexOf("Delete")).toBeLessThan(labels.indexOf("Close"));
-  // Nothing disappears at narrow widths.
+  // Nothing disappears at narrow widths: the toolbar reveals on hover or
+  // keyboard focus (#274).
   await page.setViewportSize({ width: 800, height: 900 });
-  await expect(page.locator("#C-central > .ctl").first()).toBeVisible();
+  const toolbar = page.locator("#C-central > .chead .ctl").first();
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await page.locator("#C-central").hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await toolbar.getByRole("button", { name: "Use examples" }).focus();
+  await expect(toolbar).toHaveCSS("opacity", "1");
   await expect(thread.locator(".thd").getByRole("button", { name: "Close" })).toBeVisible();
 });
