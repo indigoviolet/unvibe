@@ -411,18 +411,17 @@ async function runPrompt(message) {
   };
 
   const endTextMessage = (reply, msgUsage) => {
-    send({
-      type: "message_end",
-      message: {
-        ...assistantStart(),
-        content: [{ type: "text", text: reply }],
-        usage: msgUsage,
-        stopReason: "stop",
-        rawStopReason: "completed",
-        durationMs: 1,
-        thinkingLevel: session.thinking || "off",
-      },
-    });
+    const message = {
+      ...assistantStart(),
+      content: [{ type: "text", text: reply }],
+      usage: msgUsage,
+      stopReason: "stop",
+      rawStopReason: "completed",
+      durationMs: 1,
+      thinkingLevel: session.thinking || "off",
+    };
+    send({ type: "message_end", message });
+    return message;
   };
 
   const endTurn = (lastMessage, toolResults) => {
@@ -459,8 +458,7 @@ async function runPrompt(message) {
     saveSession(session);
     let last = null;
     if (!aborted) {
-      last = { ...assistantStart(), content: [{ type: "text", text: reply }], usage: finishTextUsage(Math.ceil((message.length + words) / 4), Math.ceil(words / 4), Math.ceil(words / 8)), stopReason: "stop", rawStopReason: "completed", durationMs: 1, thinkingLevel: session.thinking || "off" };
-      send({ type: "message_end", message: last });
+      last = endTextMessage(reply, finishTextUsage(Math.ceil((message.length + words) / 4), Math.ceil(words / 4), Math.ceil(words / 8)));
       endTurn(last, []);
     }
     settle();
@@ -480,8 +478,7 @@ async function runPrompt(message) {
         let last = null;
         if (!aborted) {
           const cached = typeof step.cached === "number" ? step.cached : 0;
-          last = { ...assistantStart(), content: [{ type: "text", text: reply }], usage: finishTextUsage(Math.ceil((message.length + reply.length) / 4) + 50, Math.ceil(reply.length / 4) + 7, cached), stopReason: "stop", rawStopReason: "completed", durationMs: 1, thinkingLevel: session.thinking || "off" };
-          send({ type: "message_end", message: last });
+          last = endTextMessage(reply, finishTextUsage(Math.ceil((message.length + reply.length) / 4) + 50, Math.ceil(reply.length / 4) + 7, cached));
           endTurn(last, []);
         }
         break;
