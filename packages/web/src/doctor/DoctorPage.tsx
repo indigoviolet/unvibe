@@ -12,10 +12,10 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { DiagnosticsResponse } from "@unvibe/shared";
+import type { DiagnosticsResponse, ReadinessCheck } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { Button, Card } from "../ui/index.js";
+import { Badge, Button, Card } from "../ui/index.js";
 
 function redactForCopy(text: string): string {
   // Token redaction (defense in depth; the API never sends the token) +
@@ -70,12 +70,17 @@ export function DoctorPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Readiness in plain words (Settings → Environment shows the same checks;
+  // the pi row says whether pi is installed and logged in, issue #279).
+  const [checks, setChecks] = useState<ReadinessCheck[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setReport(await api.diagnostics());
+      const [diagnostics, readiness] = await Promise.all([api.diagnostics(), api.readiness()]);
+      setReport(diagnostics);
+      setChecks(readiness.checks);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -129,6 +134,22 @@ export function DoctorPage(): React.JSX.Element {
           {!report && !error ? <p className="hint">Loading diagnostics…</p> : null}
           {report ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }} data-testid="doctor-report">
+              {checks ? (
+                <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-checks">
+                  <b>Checks</b>
+                  {checks.map((c) => (
+                    <div key={c.id} className="frow" style={{ gap: 8, marginTop: 6 }} data-testid={`doctor-check-${c.id}`}>
+                      <Badge tone={c.status === "ok" ? "ok" : c.status === "warning" ? "warn" : "error"}>
+                        {c.status === "ok" ? "OK" : c.status === "warning" ? "!" : "×"}
+                      </Badge>
+                      <span style={{ fontSize: 13 }}>
+                        <b>{c.label}</b> — {c.summary}
+                        {c.fix ? <span className="hint"> {c.fix}</span> : null}
+                      </span>
+                    </div>
+                  ))}
+                </Card>
+              ) : null}
               {report.warnings.length > 0 ? (
                 <Card variant="plain" style={{ padding: "8px 14px" }} data-testid="doctor-warnings">
                   <b>Warnings</b>

@@ -682,8 +682,12 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .dhunk-h { position: sticky; top: var(--dhunk-top, 117px); z-index: 3; background: var(--sunk); }
 .dhunk-h.stuck { z-index: 7; }
 /* Hidden-hunk runs are plain blocks between the hunk sections: they scroll
-   under the pinned headers, never pin. The button spans the pane width. */
+   under the pinned headers, never pin. The button spans the pane width.
+   At rest the opaque band backing (`.dband`) overlaps the first file's
+   first rows (issue #283); a hidden row there is lifted above the backing
+   through `.stuck` (kept by `observeDiffPinned`), never while scrolling. */
 .dhid .hid { width: 100%; box-sizing: border-box; }
+.dhid.stuck { position: relative; z-index: 6; }
 .hh { display: flex; align-items: center; gap: 4px; padding: 3px 6px; background: var(--sunk); border-top: var(--border-width) solid var(--line); }
 .hh .hl2 { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .hh .hl2 b { color: var(--ink); font-weight: 500; }
@@ -697,11 +701,17 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 /* Idle hunk summaries (issue #161) are text only: the paragraph activates
    into its card on click, so it takes a pointer. */
 .fcard > p[data-hunksum] { margin: 0; cursor: pointer; }
-.hid { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; border: 0; border-top: var(--border-width) solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 1px 8px; text-align: left; }
+/* Hidden-hunk row (issue #283): the label and the summary flow as one
+   inline paragraph at full width — inline after the label when it fits,
+   continuing on full-width lines below when it doesn't — never a fixed
+   right column. Same 3px/6px padding and 26x24 chevron box as the hunk
+   headers (`.hh`/`.ib`) above, so a single-line row is the same 31px and
+   the `>` glyph centres on the same x as the header chevrons. */
+.hid { display: block; border: 0; border-top: var(--border-width) solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 3px 6px; text-align: left; }
 .hid:hover { color: var(--ink); }
-.hid .ic { align-self: center; }
-.hid .hidl { flex: none; white-space: nowrap; }
-.hid .hidb { min-width: 12em; flex: 1; font-style: italic; }
+.hid .hic { display: inline-grid; place-items: center; width: 26px; height: 24px; vertical-align: middle; margin-right: 6px; }
+.hid .hidl { margin-right: 6px; }
+.hid .hidb { font-style: italic; }
 .hid .hidb code { font-style: normal; font-size: 10.5px; }
 .x[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 /* Reviewed checkboxes (issue #162): native boxes, accent-tinted. */
@@ -836,21 +846,24 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .ui-card.child.collapsed .exp-b, .ui-card.child.collapsed .ctl { display: none; }
 .ui-card.child.on { box-shadow: 0 0 0 2px var(--accent-soft); }
 /* The pinned band's opaque backing: a sticky strip exactly the file
-   slot + hunk slot tall, sitting below the marked headers (7/8).
+   slot + hunk slot tall, sitting below the marked headers (6/7/8).
    During a file hand-off there are scroll offsets where no header
    physically covers a strip of the band; without this, content shows
    through those strips. It takes no flow space (negative margins).
-   The whole top stack is gapless: each sticky layer's `top` sits 2px
-   above its slot, so its box overlaps the layer above it (which has
-   the higher z-index and paints over the overlap), and no seam
-   between tab strip, actions bar and band can show at any scroll
-   offset. */
+   At rest it overlaps the first file's first rows: the headers there
+   are lifted above it through `.stuck` (issue #202), and so is a hidden
+   row (`.dhid.stuck`, issue #283) — rows anywhere else scroll under it
+   like every other content row. The whole top stack is gapless: each
+   sticky layer's `top` sits 2px above its slot, so its box overlaps the
+   layer above it (which has the higher z-index and paints over the
+   overlap), and no seam between tab strip, actions bar and band can
+   show at any scroll offset. */
 .dband {
   position: sticky;
   top: calc(var(--dfile-top, 83px) - 6px);
   height: calc(var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px) + 6px);
   margin-bottom: calc(-1 * (var(--dhunk-top, 117px) - var(--dfile-top, 83px) + var(--dhunk-h, 31px) + 6px));
-  z-index: 6;
+  z-index: 5;
   background: var(--surface);
 }
 .ui-card.pend { border-style: dashed; background: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; }

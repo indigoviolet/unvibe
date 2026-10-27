@@ -927,7 +927,14 @@ needed (that deviation is closed, not added).
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
-  live runs: “hide violations: none”). Hunk replies tolerate format slips
+  live runs: “hide violations: none”). Issue #283: the row is one
+  flowing line (label, then the summary at full width — inline or on a
+  full-width continuation, never a fixed right column), the chevron box
+  matches the hunk headers, and the label always shows: the opaque band
+  backing used to paint over the first file's row at rest (fixed by
+  lifting `.dhid` above the backing only there; rows still scroll under
+  it like other content) — met (`j283-hidden-hunks.spec.ts`, four
+  light/dark × narrow/wide frames, checkLayout green). Hunk replies tolerate format slips
   (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
   `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
   sites); JSON-looking text is never stored and long fallbacks cut on a
@@ -3205,4 +3212,30 @@ hunk coverage) is reported for a separate issue, not fixed here.
   commit positions"), `service/test/commits-193.test.ts` (bullets, never
   numbered), prompt goldens (`reader.md`, `base_pack.md`,
   `instructions.md`). No journey or tour (no UI change). Full gates not
+  yet run.
+
+## Addendum: #279 (native pi runner, RPC mode; branch `feat/279-pi-runner`)
+
+- **#279 (pi provider; §6 agent runner, §4.14 settings, §12 models):** a
+  second `AgentRunner` (`packages/service/src/agent/pi/`, no ACP import)
+  driving the user's own `pi` binary as `pi --mode rpc` (one child process
+  per Unvibe session). Nothing in the product depends on pi: it appears in
+  the model pickers (`GET /api/providers`) and as a readiness/Doctor check
+  only when its binary is detected; claude/codex behaviour is unchanged.
+  Evidence: `service/test/pi-runner.test.ts` (15 tests — fake pi RPC
+  process speaking pi's JSONL protocol: streaming, tool calls through a
+  real MCP mount, fork cache-key passing, resume after restart, cancel,
+  usage split, read-only vs full-access tool lists, dead-secret load
+  failure, unknown-model rejection, static fallback, effort levels, login
+  probes) plus `web/e2e/journeys/j279-pi.spec.ts` (real service with the
+  fake pi on PATH: providers list, Settings pickers, a demo review run,
+  Doctor rows; and the no-pi case). Live runs only through the new
+  `mise run test:live:pi` task (`service/test/pi-live.test.ts`, gated on
+  `UNVIBE_PI_LIVE=1`, not run here). Mechanism verified against real pi
+  1.4.0 offline (fake backend + stub MCP): the bundled extension
+  (`agent/pi/extension.ts`, shipped as a string, loaded with `-e`) bridges
+  the per-session MCP servers as bare tools, replaces `read`/`ls` with
+  worktree-bound versions in the read-only posture, and stamps the fork's
+  `prompt_cache_key` to the base's id (`before_provider_request`); forks
+  use CLI `--fork`, resumes CLI `--session` (full path). Full gates not
   yet run.
