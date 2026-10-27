@@ -2508,6 +2508,77 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
   }
 });
 
+// Issue #293: an Ask thread with one follow-up — the reviewer's question
+// shows as a comment with the answer as the reply under it. One frame
+// while the follow-up streams and one when done, in light and dark.
+test("visual tour ask thread (#293)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ask293-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator("[data-ask-question]").first()).toContainText(first, { timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 120_000 });
+      await expect(card.locator("[data-ask-answer] .working")).toHaveCount(0, { timeout: 30_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const followQ = card.locator("[data-ask-question]").nth(1);
+      await expect(followQ).toContainText(followUp, { timeout: 30_000 });
+      const followA = card.locator("[data-ask-answer]").nth(1);
+      await expect(followA.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await checkLayout(page, "ask-thread-streaming");
+      await shot(page, "ask-thread-streaming", `1440-${theme}`, followUp);
+      await expect(followA.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+      await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      await checkLayout(page, "ask-thread-done");
+      await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Issue #81 file tab. The demo review's commits resolve in no checkout,
 // so its files cannot be read; these frames use a scratch repo (three
 // small files written here, nothing external) on an agent-less service,
