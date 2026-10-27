@@ -45,6 +45,8 @@ export interface ReadinessDeps {
   loginPathValue?: string;
   /** Test override for the agent probe timeout. */
   timeoutMs?: number;
+  /** Service data dir (issue #279): probe dirs live under `<dataDir>/tmp/`). */
+  dataDir?: string;
 }
 
 interface Cached {
@@ -129,6 +131,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
           timeoutMs,
           runner: deps.runner,
           env: process.env,
+          ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
         }),
         {
           id: `agent:${role}`,
@@ -143,7 +146,13 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   );
 
   const d2 = await withTimeout(
-    d2Check({ pathValue, timeoutMs, runner: deps.runner, env: process.env }),
+    d2Check({
+      pathValue,
+      timeoutMs,
+      runner: deps.runner,
+      env: process.env,
+      ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
+    }),
     {
       id: "d2",
       label: "Diagrams · d2",
@@ -165,7 +174,13 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       // present (never blocks): ok when absent or logged in, warning when
       // installed but logged out.
       await withTimeout(
-        piCheck({ pathValue, timeoutMs, runner: deps.runner, env: process.env }),
+        piCheck({
+          pathValue,
+          timeoutMs,
+          runner: deps.runner,
+          env: process.env,
+          ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
+        }),
         {
           id: "pi",
           label: "Pi (ChatGPT via pi)",

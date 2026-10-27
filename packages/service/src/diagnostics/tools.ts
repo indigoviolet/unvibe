@@ -234,19 +234,40 @@ export interface DiagnoseOptions {
   env?: NodeJS.ProcessEnv;
   runner?: CommandRunner;
   timeoutMs?: number;
+  /**
+   * Service data dir (issue #279): the worktree-like probe dir is
+   * created under `<dataDir>/tmp/` so a SIGKILLed service's leftovers
+   * live in its own data dir (removed with it in tests, swept at
+   * startup in production) instead of the shared temp dir. Omitted
+   * only by pure unit tests of the probe, which fall back to
+   * `os.tmpdir()`; the service always passes its data dir.
+   */
+  dataDir?: string;
+}
+
+/**
+ * Parent dir for worktree-like probe dirs (issue #279): inside the
+ * service's own data dir (`<dataDir>/tmp/`) when one is given, else the
+ * OS temp dir (pure unit tests of the probe only).
+ */
+function probeParentDir(dataDir?: string): string {
+  if (dataDir) return path.join(dataDir, "tmp");
+  return os.tmpdir();
 }
 
 /**
  * A directory shaped like a review worktree (issue #105): it holds the
  * kind of version-manager config a reviewed repo ships (`.mise.toml`,
- * `.tool-versions`). Created in the OS temp dir, used as the version-
- * probe cwd for the agent CLIs so a shim fails here exactly as it would
- * in a review copy, and removed after. The files are ours and are never
- * trusted — they only observe shim behaviour.
+ * `.tool-versions`). Created under `<dataDir>/tmp/` (issue #279), used
+ * as the version-probe cwd for the agent CLIs so a shim fails here
+ * exactly as it would in a review copy, and removed after. The files
+ * are ours and are never trusted — they only observe shim behaviour.
  */
-function makeWorktreeLikeDir(): string | undefined {
+function makeWorktreeLikeDir(dataDir?: string): string | undefined {
   try {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-probe-"));
+    const parent = probeParentDir(dataDir);
+    fs.mkdirSync(parent, { recursive: true });
+    const dir = fs.mkdtempSync(path.join(parent, "unvibe-probe-"));
     fs.writeFileSync(path.join(dir, ".mise.toml"), '[tools]\nnode = "24"\n');
     fs.writeFileSync(path.join(dir, ".tool-versions"), "nodejs 24.0.0\n");
     return dir;
@@ -299,7 +320,7 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
   // directory (unless an explicit override wins, which is honoured
   // unchanged). Other tools keep today's behaviour.
   const hasExplicitOverride = spec.overrideEnvs.some((n) => (env[n] ?? "").trim() !== "");
-  const probeCwd = spec.probeFromWorktreeLike === true && !hasExplicitOverride ? makeWorktreeLikeDir() : undefined;
+  const probeCwd = spec.probeFromWorktreeLike === true && !hasExplicitOverride ? makeWorktreeLikeDir(opts.dataDir) : undefined;
   // Verified versions of resolved real paths (shim path → real version),
   // for choice and display. Filled by the resolution pass below.
   const resolvedVersions = new Map<string, string>();
@@ -564,36 +585,34 @@ export async function diagnoseTool(spec: ToolSpec, opts: DiagnoseOptions): Promi
 }
 
 /**
- * Remove our own orphaned probe dirs (`unvibe-probe-*`, issue #279
- * follow-up): a SIGKILLed service never runs the finally above, so
- * leftovers are swept here at startup instead. Only entries older than
- * `olderThanMs` (default 10 min; a live probe lasts seconds) are removed,
- * so a concurrent diagnosis on this machine is never touched.
+ * Remove our own orphaned probe dirs (`<dataDir>/tmp/unvibe-probe-*`,
+ * issue #279): a SIGKILLed service never runs the diagnoseTool finally,
+ * so leftovers are swept here at startup instead. Any age is removed:
+ * the sweep runs before this process diagnoses anything, and every
+ * service owns its own data dir, so nothing concurrent is touched.
  * Best-effort, never throws; returns what was removed.
  */
-export function sweepStaleProbeDirs(opts: { tmpRoot?: string; olderThanMs?: number; now?: number } = {}): string[] {
+export function sweepProbeTmp(dataDir: string): string[] {
   const removed: string[] = [];
-  let root: string;
+  if (!dataDir) return removed;
+  let dir: string;
   try {
-    root = opts.tmpRoot ?? os.tmpdir();
+    dir = path.join(dataDir, "tmp");
   } catch {
     return removed;
   }
-  const olderThanMs = opts.olderThanMs ?? 10 * 60_000;
-  const now = opts.now ?? Date.now();
   let entries: string[];
   try {
-    entries = fs.readdirSync(root);
+    entries = fs.readdirSync(dir);
   } catch {
     return removed;
   }
   for (const e of entries) {
     if (!e.startsWith("unvibe-probe-")) continue;
-    const full = path.join(root, e);
+    const full = path.join(dir, e);
     try {
       const st = fs.statSync(full);
       if (!st.isDirectory()) continue;
-      if (now - st.mtimeMs < olderThanMs) continue;
       fs.rmSync(full, { recursive: true, force: true });
       removed.push(full);
     } catch {

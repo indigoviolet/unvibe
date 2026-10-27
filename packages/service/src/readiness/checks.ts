@@ -362,6 +362,7 @@ export async function agentCheck(opts: {
   timeoutMs?: number;
   runner?: CommandRunner;
   env?: NodeJS.ProcessEnv;
+  dataDir?: string;
 }): Promise<ReadinessCheck> {
   const { role, pick, agents } = opts;
   const timeoutMs = opts.timeoutMs ?? 10000;
@@ -433,6 +434,7 @@ export async function agentCheck(opts: {
       env,
       ...(opts.runner ? { runner: opts.runner } : {}),
       timeoutMs: Math.min(timeoutMs, 8000),
+      ...(opts.dataDir ? { dataDir: opts.dataDir } : {}),
     });
   } catch {
     diag = null;
@@ -731,6 +733,7 @@ export async function piCheck(opts: {
   timeoutMs?: number;
   runner?: CommandRunner;
   env?: NodeJS.ProcessEnv;
+  dataDir?: string;
 }): Promise<ReadinessCheck> {
   const timeoutMs = opts.timeoutMs ?? 10000;
   const pathValue = opts.pathValue ?? process.env.PATH ?? "";
@@ -743,6 +746,7 @@ export async function piCheck(opts: {
       env,
       ...(opts.runner ? { runner: opts.runner } : {}),
       timeoutMs: Math.min(timeoutMs, 8000),
+      ...(opts.dataDir ? { dataDir: opts.dataDir } : {}),
     });
   } catch {
     diag = null;
@@ -844,6 +848,7 @@ export async function d2Check(opts: {
   timeoutMs?: number;
   runner?: CommandRunner;
   env?: NodeJS.ProcessEnv;
+  dataDir?: string;
 }): Promise<ReadinessCheck> {
   const pathValue = opts.pathValue ?? process.env.PATH ?? "";
   const env = opts.env ?? process.env;
@@ -856,6 +861,7 @@ export async function d2Check(opts: {
       env,
       ...(opts.runner ? { runner: opts.runner } : {}),
       timeoutMs: Math.min(opts.timeoutMs ?? 8000, 8000),
+      ...(opts.dataDir ? { dataDir: opts.dataDir } : {}),
     });
   } catch {
     diag = null;

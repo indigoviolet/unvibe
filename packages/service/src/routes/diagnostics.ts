@@ -113,10 +113,12 @@ export async function registerDiagnostics(
   });
 
   app.post("/api/reload", async () => {
+    const reloadDataDir = (ctx as unknown as { dataDir?: string }).dataDir ?? serviceIdentity().dataDir;
     const before = await collectDiagnostics({
       runner: ctx.runner,
       ...probeOverride,
-      service: { ...serviceIdentity(), dataDir: (ctx as unknown as { dataDir?: string }).dataDir ?? serviceIdentity().dataDir },
+      dataDir: reloadDataDir,
+      service: { ...serviceIdentity(), dataDir: reloadDataDir },
     });
     const changes: string[] = [];
     const detail: string[] = [];
@@ -181,6 +183,7 @@ export async function registerDiagnostics(
           agents: full.agents,
           settings: full.settings,
           models: full.models ?? null,
+          dataDir: (full as unknown as { dataDir?: string }).dataDir ?? reloadDataDir,
         },
         { force: true },
       );
@@ -193,7 +196,8 @@ export async function registerDiagnostics(
     const after = await collectDiagnostics({
       runner: ctx.runner,
       ...probeOverride,
-      service: { ...serviceIdentity(), dataDir: (ctx as unknown as { dataDir?: string }).dataDir ?? serviceIdentity().dataDir },
+      dataDir: reloadDataDir,
+      service: { ...serviceIdentity(), dataDir: reloadDataDir },
       ...(await modelsForDiagnostics({ ...ctx, ...deps } as RouteDeps).then((m) => (m ? { models: m } : {}))),
     });
 

@@ -43,6 +43,8 @@ import { isPiAvailable } from "./pi/detect.js";
 
 export interface CreateRunnerOptions {
   env?: NodeJS.ProcessEnv;
+  /** Service data dir (issue #279): probe dirs live under `<dataDir>/tmp/`). */
+  dataDir?: string;
   /** Override for tests. */
   fixturesDir?: string;
   /** Streaming delay for demo realism (ms between chunks). */
@@ -122,7 +124,7 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   // start real agents and spend tokens, so it fails loudly unless the
   // product entry or a test:live:* task set UNVIBE_ALLOW_LIVE_AGENT=1.
   assertLiveAgentAllowed(env);
-  const acp = createAcpRunner({ env });
+  const acp = createAcpRunner({ env, ...(opts.dataDir ? { dataDir: opts.dataDir } : {}) });
   // Issue #279: when a `pi` binary is detected, `pi` is offered as a
   // provider for OpenAI/Codex models through the native pi runner; claude
   // and codex keep going through ACP unchanged. Without pi the factory
