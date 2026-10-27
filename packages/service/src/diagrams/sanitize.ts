@@ -2,13 +2,17 @@
  * D2 SVG post-processing + sanitisation.
  *
  * The source is agent-written, so the SVG is untrusted. Pipeline:
- * 1. Rewrite citation anchors `<a href="diff:…">` → the app's hover/reveal
+ * 1. Mask `<image>` elements whose `href` is a `data:image/*` embed (d2
+ *    embeds staged local icons as `data:` even with `--bundle=false`),
+ *    restoring them after sanitising; every other `<image>` is dropped.
+ * 2. Rewrite citation anchors `<a href="diff:…">` → the app's hover/reveal
  *    attributes (`href="#" data-refs/data-src`, plus `data-unverified`).
  *    No other `href` survives.
  * 2. Drop `<title>` tooltips containing token patterns (native tooltips
  *    would fight the app's rich hover preview).
  * 3. Strict allowlist sanitisation (no `script`, no `foreignObject`, no
- *    event handlers, no external URLs, fonts only as embedded `data:`).
+ *    event handlers, no external URLs, no remote `<image>`, fonts only as
+ *    embedded `data:`).
  * 4. Namespace `id`s per diagram (D2's `--salt` already does most of this;
  *    the sanitiser prefixes any remaining bare ids with the hash so two
  *    inlined diagrams can never collide).
@@ -31,6 +35,30 @@ export type CitationMap = Map<string, CitationRewrite>;
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/**
+ * Mask `<image>` elements with a `data:image/*` href through sanitising:
+ * they are replaced by placeholder `<g data-d2icon="<n>">` tags (which
+ * survive the allowlist pass), then restored scrubbed to geometry + href
+ * only. Any other `<image>` (remote href, no href) is dropped here.
+ */
+function maskDataImages(svg: string): { masked: string; kept: string[] } {
+  const kept: string[] = [];
+  const masked = svg.replace(/<image\b[^>]*>([\s\S]*?<\/image\s*>)?/gi, (m) => {
+    const hrefM = m.match(/\bhref\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i);
+    const xhrefM = m.match(/\bxlink:href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i);
+    const raw = hrefM ? stripQuotes(hrefM[1]) : xhrefM ? stripQuotes(xhrefM[1]) : "";
+    if (!/^data:image\//i.test(raw)) return "";
+    const attrs: string[] = [];
+    for (const a of ["x", "y", "width", "height"]) {
+      const mm = m.match(new RegExp(`\\b${a}\\s*=\\s*("[^"]*"|'[^']*')`, "i"));
+      if (mm) attrs.push(`${a}=${mm[1]}`);
+    }
+    kept.push(`<image ${attrs.join(" ")} href="${escapeAttr(raw)}"/>`);
+    return `<g data-d2icon="${kept.length - 1}"></g>`;
+  });
+  return { masked, kept };
 }
 
 /** True when the href looks like a citation token (not a URL). */
@@ -254,13 +282,18 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * Full post-processing: anchor rewriting → title stripping → sanitising →
- * id namespacing. `hash` is the diagram content hash (for namespacing).
+ * Full post-processing: image masking → anchor rewriting → title
+ * stripping → sanitising → id namespacing → image restoring.
+ * `hash` is the diagram content hash (for namespacing).
  */
 export function postProcessSvg(svg: string, citations: CitationMap, hash: string): string {
-  let out = rewriteCitationAnchors(svg, citations);
+  const { masked, kept } = maskDataImages(svg);
+  let out = rewriteCitationAnchors(masked, citations);
   out = stripTokenTitles(out);
   out = sanitizeSvg(out);
   out = namespaceIds(out, hash);
+  kept.forEach((tag, i) => {
+    out = out.replace(`<g data-d2icon="${i}"></g>`, tag);
+  });
   return out;
 }
