@@ -133,7 +133,7 @@ export function SourcePane({ reviewId, tab, onTab }: Props) {
   if (ingestStatus === "loading") {
     return (
       <div className="pane-loading-pad" data-testid="diff-loading">
-        <PaneLoading label="Loading the diff" />
+        <PaneLoading label="Loading the diff" variant="diff" />
       </div>
     );
   }
