@@ -129,6 +129,33 @@ export type PickFolderResponse =
 
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
+/**
+ * Start-page PR paging (issue #297): `gh pr list` has no offset, so a
+ * larger `--limit` re-fetch is the paging mechanism. The default keeps
+ * the old cap of 30; the ceiling keeps one listing cheap.
+ */
+export const CHANGES_DEFAULT_LIMIT = 30;
+export const CHANGES_MAX_LIMIT = 200;
+
+/** Clamp a `limit` query value onto `[1, CHANGES_MAX_LIMIT]` (default 30). Pure. */
+export function normalizeChangesLimit(v: unknown): number {
+  if (typeof v === "string") {
+    if (v.trim() === "") return CHANGES_DEFAULT_LIMIT;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return CHANGES_DEFAULT_LIMIT;
+    return Math.min(CHANGES_MAX_LIMIT, Math.max(1, Math.floor(n)));
+  }
+  if (typeof v !== "number" || !Number.isFinite(v)) return CHANGES_DEFAULT_LIMIT;
+  return Math.min(CHANGES_MAX_LIMIT, Math.max(1, Math.floor(v)));
+}
+
+/** Trim an `author` query value; null when absent/blank. Pure. */
+export function normalizeChangesAuthor(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const login = v.trim();
+  return login === "" ? null : login;
+}
+
 export interface RepoChange {
   kind: "pr" | "branch" | "review" | "demo";
   title: string;
@@ -192,6 +219,12 @@ export interface RepoChangesResponse {
    * shows this note instead of failing.
    */
   fetchError?: string;
+  /**
+   * #297: true when a PR list returned exactly the requested `limit`
+   * rows, so more PRs may exist. The start page offers Load more then
+   * (a larger `--limit` re-fetch — `gh pr list` has no offset).
+   */
+  hasMore: boolean;
 }
 
 // --- reviews -------------------------------------------------------------

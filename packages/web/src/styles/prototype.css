@@ -810,8 +810,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prblock-title { font-size: 16px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* #274 Waiting on your review is a group head (14px), not a page section. */
 .prblock-title-group { font-size: 14px; }
-.prblock-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.prblock-tools { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; }
 .prblock-tools select.tbtn { font-size: 12px; padding: 2px 6px; max-width: 160px; }
+/* #297: the author search input and select sit in fixed-width spans: with
+   the content-box `.ui-input`/`.ui-select` base (width:100% plus padding)
+   they bled past their spans into each other. Border-box keeps both
+   inside their spans, so the 6px gap (past the 4px focus ring) always
+   holds; the row wraps instead of overflowing at narrow widths. */
+.prblock-tools .ui-input, .prblock-tools .ui-select { box-sizing: border-box; }
 .spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
 @keyframes prspin { to { transform: rotate(360deg); } }
 /* Reduced motion: the refresh icon stays still while fetching (the tooltip

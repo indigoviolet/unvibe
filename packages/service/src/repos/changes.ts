@@ -16,7 +16,12 @@
  * offline or logged-out `gh` still yields branches + previous reviews.
  */
 import type { ChangesFilter, Repo, RepoChange } from "@unvibe/shared";
-import { displayedReviewDecision, prStateFromGh } from "@unvibe/shared";
+import {
+  displayedReviewDecision,
+  normalizeChangesAuthor,
+  normalizeChangesLimit,
+  prStateFromGh,
+} from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -27,7 +32,19 @@ export interface ChangesDeps {
 }
 
 const BRANCH_LIMIT = 30;
-const PR_LIMIT = 30;
+
+/** Options for #297: page size and server-side author search. */
+export interface ChangesOptions {
+  /** Raw `limit` query value; normalized onto `[1, 200]` (default 30). */
+  limit?: unknown;
+  /**
+   * Raw `author` query value. When set, the review-requested searches
+   * carry `--author <login>` so a typed login fetches that author's PRs
+   * from GitHub instead of filtering the loaded rows. "Your PRs"
+   * (`--author @me`) never takes it.
+   */
+  author?: unknown;
+}
 
 interface GhReviewRequest {
   __typename?: string;
@@ -65,8 +82,9 @@ async function listPrs(
   runner: CommandRunner,
   repo: Repo,
   extra: string[],
-): Promise<GhPr[] | null> {
-  if (repo.owner === "local") return [];
+  limit: number,
+): Promise<{ prs: GhPr[] | null; truncated: boolean }> {
+  if (repo.owner === "local") return { prs: [], truncated: false };
   const args = [
     "pr",
     "list",
@@ -76,16 +94,18 @@ async function listPrs(
     "--json",
     PR_FIELDS,
     "--limit",
-    String(PR_LIMIT),
+    String(limit),
   ];
   try {
     const res = await runGh(runner, args, { args, cwd: repo.localPath });
-    if (res.code !== 0) return null;
+    if (res.code !== 0) return { prs: null, truncated: false };
     const prs = JSON.parse(res.stdout) as GhPr[];
-    if (!Array.isArray(prs)) return null;
-    return prs;
+    if (!Array.isArray(prs)) return { prs: null, truncated: false };
+    // `gh` returns at most `limit` rows with no offset: a full page
+    // means more PRs may exist (#297 — the caller re-fetches bigger).
+    return { prs, truncated: prs.length >= limit };
   } catch {
-    return null;
+    return { prs: null, truncated: false };
   }
 }
 
@@ -354,72 +374,112 @@ async function listPreviousReviews(
  * plus team requests (`review-requested:@me` minus the direct ones — a PR
  * asking both shows once, as direct). One `gh` call per list, never per
  * PR. When the direct call fails the distinction is unknown and rows
- * carry no scope (the web shows them as direct, as before).
+ * carry no scope (the web shows them as direct, as before). #297: with
+ * `author` set, both searches carry `--author <login>` so a typed login
+ * fetches that author's PRs from GitHub.
  */
-async function requestedPrs(runner: CommandRunner, repo: Repo): Promise<RepoChange[]> {
+async function requestedPrs(
+  runner: CommandRunner,
+  repo: Repo,
+  limit: number,
+  author: string | null,
+): Promise<{ changes: RepoChange[]; truncated: boolean }> {
+  const authorArgs = author !== null ? ["--author", author] : [];
   const [direct, all] = await Promise.all([
-    listPrs(runner, repo, ["--search", "user-review-requested:@me"]),
-    listPrs(runner, repo, ["--search", "review-requested:@me"]),
+    listPrs(runner, repo, ["--search", "user-review-requested:@me", ...authorArgs], limit),
+    listPrs(runner, repo, ["--search", "review-requested:@me", ...authorArgs], limit),
   ]);
-  if (all === null) {
+  const truncated = direct.truncated || all.truncated;
+  if (all.prs === null) {
     // The team-inclusive call failed: fall back to the direct rows alone
     // (also [] when that call failed) rather than an empty list.
-    return (direct ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc);
+    return {
+      changes: (direct.prs ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc),
+      truncated,
+    };
   }
-  if (direct === null) {
+  if (direct.prs === null) {
     // The distinction is unknown: return the rows without a scope (the
     // web shows unscoped rows as direct, as before) rather than
     // mislabelled.
-    return all.map(toChange).sort(byUpdatedDesc);
+    return { changes: all.prs.map(toChange).sort(byUpdatedDesc), truncated };
   }
-  const directNumbers = new Set(direct.map((pr) => pr.number));
-  return all
-    .map((pr) => ({
-      ...toChange(pr),
-      reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
-    }))
-    .sort(byUpdatedDesc);
+  const directNumbers = new Set(direct.prs.map((pr) => pr.number));
+  return {
+    changes: all.prs
+      .map((pr) => ({
+        ...toChange(pr),
+        reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
+      }))
+      .sort(byUpdatedDesc),
+    truncated,
+  };
 }
 
 /**
  * Changes for the start page. `filter` narrows the sections:
  * `authoring` (one `gh` call), `review-requested` (two `gh` calls: direct
  * + team-inclusive, #95), `branches` (git only), `recent` (branches +
- * previous reviews), `all` (default).
+ * previous reviews), `all` (default). #297: `opts.limit` sizes every PR
+ * list (a larger `--limit` re-fetch pages — `gh` has no offset) and
+ * `opts.author` narrows the review-requested searches to that login.
+ * `hasMore` is true when a PR list filled its page.
  */
 export async function repoChanges(
   deps: ChangesDeps,
   repo: Repo,
   filter: ChangesFilter = "all",
-): Promise<RepoChange[]> {
+  opts: ChangesOptions = {},
+): Promise<{ changes: RepoChange[]; hasMore: boolean }> {
+  const limit = normalizeChangesLimit(opts.limit);
+  const author = normalizeChangesAuthor(opts.author);
   // #149: one DB read per listing; PR/branch rows that already have a
   // review carry its id (previous-review rows already carry their own).
   const marks = reviewMarksFor(deps.db, repo.id);
   switch (filter) {
-    case "authoring":
-      return attachReviewMarks(
-        ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
-        marks,
-      );
-    case "review-requested":
-      return attachReviewMarks(await requestedPrs(deps.runner, repo), marks);
-    case "branches":
-      return attachReviewMarks(await listBranches(deps.runner, repo), marks);
-    case "recent":
-      return [
-        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
-        ...(await listPreviousReviews(deps.runner, deps.db, repo)),
-      ];
-    case "all":
-    default:
-      return [
-        ...attachReviewMarks(
-          ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
+    case "authoring": {
+      const listed = await listPrs(deps.runner, repo, ["--author", "@me"], limit);
+      return {
+        changes: attachReviewMarks(
+          (listed.prs ?? []).map(toChange).sort(byUpdatedDesc),
           marks,
         ),
-        ...attachReviewMarks(await requestedPrs(deps.runner, repo), marks),
-        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
-        ...(await listPreviousReviews(deps.runner, deps.db, repo)),
-      ];
+        hasMore: listed.truncated,
+      };
+    }
+    case "review-requested": {
+      const { changes, truncated } = await requestedPrs(deps.runner, repo, limit, author);
+      return { changes: attachReviewMarks(changes, marks), hasMore: truncated };
+    }
+    case "branches":
+      return { changes: attachReviewMarks(await listBranches(deps.runner, repo), marks), hasMore: false };
+    case "recent":
+      return {
+        changes: [
+          ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
+          ...(await listPreviousReviews(deps.runner, deps.db, repo)),
+        ],
+        // Branches are git-local and uncapped; PR lists are not fetched here.
+        hasMore: false,
+      };
+    case "all":
+    default: {
+      const [authoring, requested] = await Promise.all([
+        listPrs(deps.runner, repo, ["--author", "@me"], limit),
+        requestedPrs(deps.runner, repo, limit, author),
+      ]);
+      return {
+        changes: [
+          ...attachReviewMarks(
+            (authoring.prs ?? []).map(toChange).sort(byUpdatedDesc),
+            marks,
+          ),
+          ...attachReviewMarks(requested.changes, marks),
+          ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
+          ...(await listPreviousReviews(deps.runner, deps.db, repo)),
+        ],
+        hasMore: authoring.truncated || requested.truncated,
+      };
+    }
   }
 }

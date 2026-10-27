@@ -1918,7 +1918,11 @@ export const mockApi = {
     return { status: "picked", path: "/mock/picked/checkout" };
   },
 
-  repoChanges: async (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> => {
+  repoChanges: async (
+    id: string,
+    filter?: ChangesFilter,
+    opts?: { limit?: number; author?: string },
+  ): Promise<RepoChangesResponse> => {
     // Test-only hooks for the start page (all no-ops unless set):
     // - `unvibe.mock.repoChangesHold`: when present, hold every repo-lists
     //   response until the key is removed, so specs can observe the loading
@@ -2062,26 +2066,44 @@ export const mockApi = {
             demo: "urllib3-5020",
           },
         ],
+        hasMore: false,
       };
     }
+    // #297: honour the paging/author options like the service (the mock
+    // lists are short, so `limit` only truncates and `hasMore` mirrors it).
+    const limit =
+      typeof opts?.limit === "number" && Number.isFinite(opts.limit) ? Math.max(1, Math.floor(opts.limit)) : 30;
+    const author = typeof opts?.author === "string" && opts.author.trim() !== "" ? opts.author.trim() : null;
+    const scopedRequested =
+      author !== null ? requested.filter((c) => c.author === author) : requested;
+    const take = (rows: RepoChange[]): { rows: RepoChange[]; truncated: boolean } =>
+      rows.length > limit ? { rows: rows.slice(0, limit), truncated: true } : { rows, truncated: false };
     switch (filter) {
-      case "authoring":
-        return withFetchNote({ changes: markMockChanges(authoring, id) });
-      case "review-requested":
-        return withFetchNote({ changes: markMockChanges(requested, id) });
+      case "authoring": {
+        const { rows, truncated } = take(markMockChanges(authoring, id));
+        return withFetchNote({ changes: rows, hasMore: truncated });
+      }
+      case "review-requested": {
+        const { rows, truncated } = take(markMockChanges(scopedRequested, id));
+        return withFetchNote({ changes: rows, hasMore: truncated });
+      }
       case "branches":
-        return withFetchNote({ changes: markMockChanges(branches, id) });
+        return withFetchNote({ changes: markMockChanges(branches, id), hasMore: false });
       case "recent":
-        return withFetchNote({ changes: [...markMockChanges(branches, id), ...previous] });
-      default:
+        return withFetchNote({ changes: [...markMockChanges(branches, id), ...previous], hasMore: false });
+      default: {
+        const a = take(markMockChanges(authoring, id));
+        const r = take(markMockChanges(scopedRequested, id));
         return withFetchNote({
           changes: [
-            ...markMockChanges(authoring, id),
-            ...markMockChanges(requested, id),
+            ...a.rows,
+            ...r.rows,
             ...markMockChanges(branches, id),
             ...previous,
           ],
+          hasMore: a.truncated || r.truncated,
         });
+      }
     }
 
     /** Attach the stale-clone note when the `repoChangesFetchError` hook is set. */

@@ -62,9 +62,9 @@ import type {
   RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
-import { parseGitHubRepoInput } from "@unvibe/shared";
+import { CHANGES_DEFAULT_LIMIT, CHANGES_MAX_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
+import { Button, Card, DiffStat, Input, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
@@ -503,6 +503,15 @@ export function StartPage(): React.JSX.Element {
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
   // Author filter (#228): one single-select for the requested-review groups.
   const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
+  // #297: page size for the PR lists (`gh pr list` has no offset, so a
+  // larger `--limit` re-fetch pages) and the typed-login author search
+  // (fetched server-side via `gh pr list --author`, not just the loaded
+  // rows). The input holds the box text; the search holds the committed
+  // login once Enter is pressed.
+  const [prLimit, setPrLimit] = useState<number>(CHANGES_DEFAULT_LIMIT);
+  const [listsHaveMore, setListsHaveMore] = useState(false);
+  const [authorSearch, setAuthorSearch] = useState<string | null>(null);
+  const [authorInput, setAuthorInput] = useState("");
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -532,15 +541,18 @@ export function StartPage(): React.JSX.Element {
     // A background refresh shows its quiet sign; a first load keeps the
     // existing "Loading…" state (no kept age to describe).
     if (hadKept) setRefreshing(true);
+    // #297: the page size and the typed-login search ride every PR-list
+    // call (branches are git-local and ignore both).
+    const opts = { limit: prLimit, ...(authorSearch !== null ? { author: authorSearch } : {}) };
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
     // forever no matter how the requests stall.
     const settled = await Promise.race([
       Promise.allSettled([
-        api.repoChanges(id, "authoring"),
-        api.repoChanges(id, "review-requested"),
-        api.repoChanges(id, "recent"),
+        api.repoChanges(id, "authoring", opts),
+        api.repoChanges(id, "review-requested", opts),
+        api.repoChanges(id, "recent", opts),
       ]),
       new Promise<null>((resolve) => {
         window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
@@ -603,6 +615,10 @@ export function StartPage(): React.JSX.Element {
     setRequested(freshRequested);
     setBranches(freshBranches);
     setFetchNote(freshNote);
+    // #297: any full PR page means more PRs may exist (Load more below).
+    setListsHaveMore(
+      [a, r, rec].some((x) => x.status === "fulfilled" && x.value.hasMore === true),
+    );
     setListErrors({
       authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
       requested: r.status === "rejected" ? friendlyError(r.reason) : null,
@@ -612,8 +628,10 @@ export function StartPage(): React.JSX.Element {
     setListsError(rejected.length === 3 ? friendlyError(rejected[0].reason) : null);
     // Keep the last successful response per repo (failed filters reuse the
     // kept rows merged above). A total failure keeps the old entry and its
-    // age, so the status line still describes what is shown.
-    if (fulfilled > 0) {
+    // age, so the status line still describes what is shown. #297: an
+    // author search is never kept — it narrows the lists to one login,
+    // and a return visit must show the default view, not that search.
+    if (fulfilled > 0 && authorSearch === null) {
       try {
         const saved = setKeptLists(id, {
           authoring: freshAuthoring,
@@ -632,15 +650,19 @@ export function StartPage(): React.JSX.Element {
     // result, no extra calls) — reload the Reviews list so it shows the
     // fresh states. Best effort; list errors above already describe gh.
     if (fulfilled > 0) void loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, prLimit, authorSearch]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes
       underneath. Without kept rows the old lists clear as before, so a
       first load behaves exactly as today. The nonce bump guarantees the
-      effect fires a fresh load even when the id is unchanged. */
+      effect fires a fresh load even when the id is unchanged. A typed
+      author search (#297) never crosses repos, so it clears here. */
   const selectRepo = useCallback(
     (id: string) => {
+      setAuthorSearch(null);
+      setAuthorInput("");
+      setListsHaveMore(false);
       const kept = getKeptLists(id);
       if (kept) {
         setAuthoring(kept.authoring);
@@ -681,6 +703,10 @@ export function StartPage(): React.JSX.Element {
   const selectAuthor = useCallback((login: string) => {
     const next = login.trim() !== "" ? login : AUTHOR_ALL;
     setAuthorFilter(next);
+    // Picking from the list is the client-side filter (#228): it clears
+    // any server-side typed search (#297).
+    setAuthorSearch(null);
+    setAuthorInput("");
     try {
       localStorage.setItem(AUTHOR_KEY, next);
     } catch {
@@ -688,9 +714,40 @@ export function StartPage(): React.JSX.Element {
     }
   }, []);
 
-  /** Clear both list filters (#228's way back clears the pair). */
+  /**
+   * #297: commit the typed login as a server-side author search: the
+   * next load fetches that author's PRs from GitHub
+   * (`gh pr list --author`), instead of filtering the loaded rows.
+   * A login already in the list is just the client-side filter (#228).
+   */
+  const commitAuthorSearch = useCallback(() => {
+    const login = authorInput.trim();
+    if (login === "" || login === AUTHOR_ALL) {
+      setAuthorSearch(null);
+      setAuthorInput("");
+      selectAuthor(AUTHOR_ALL);
+      return;
+    }
+    setAuthorFilter(login);
+    setAuthorSearch(login);
+    try {
+      localStorage.setItem(AUTHOR_KEY, login);
+    } catch {
+      // Ignore: the choice simply does not persist.
+    }
+  }, [authorInput, selectAuthor]);
+
+  /** #297: Load more doubles the PR page (30 → 60 → 120 → 200). */
+  const loadMorePrs = useCallback(() => {
+    setPrLimit((l) => Math.min(CHANGES_MAX_LIMIT, l >= CHANGES_MAX_LIMIT ? l : l * 2));
+  }, []);
+
+  /** Clear both list filters (#228's way back clears the pair) and the
+      typed author search (#297). */
   const showAllLists = useCallback(() => {
     selectRecency("all");
+    setAuthorSearch(null);
+    setAuthorInput("");
     selectAuthor(AUTHOR_ALL);
   }, [selectRecency, selectAuthor]);
 
@@ -1014,13 +1071,20 @@ export function StartPage(): React.JSX.Element {
   // #228: author options (with counts) from the requested-review
   // groups only — the only lists the filter reads. Computed from the
   // unfiltered groups, so the options stay stable while either filter
-  // is active. Sorted by login.
+  // is active. Sorted by login. #297: a committed typed login rides as
+  // an extra option so the select keeps showing it (the server already
+  // narrowed the rows to it).
   const authorOptions = (() => {
     const counts = authorCounts(requested);
     const logins = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    if (authorSearch !== null && !counts.has(authorSearch)) logins.push(authorSearch);
+    logins.sort((a, b) => a.localeCompare(b));
     return [
       { value: AUTHOR_ALL, label: "All" },
-      ...logins.map((login) => ({ value: login, label: `${login} (${counts.get(login)})` })),
+      ...logins.map((login) => ({
+        value: login,
+        label: login === authorSearch && !counts.has(login) ? login : `${login} (${counts.get(login)})`,
+      })),
     ];
   })();
   // When a picked author is gone from the lists (repo switch, refresh),
@@ -1346,6 +1410,20 @@ export function StartPage(): React.JSX.Element {
                   <div className="prblock-head" style={{ marginTop: 14 }}>
                     <h2 className="prblock-title prblock-title-group">Waiting on your review</h2>
                     <div className="prblock-tools">
+                      {/* #297: typing a login and pressing Enter fetches
+                          that author's PRs from GitHub (`gh pr list
+                          --author`) instead of filtering the loaded rows. */}
+                      <span style={{ width: 150, flex: "none" }}>
+                        <Input
+                          aria-label="Search author by login"
+                          placeholder="Type a login…"
+                          value={authorInput}
+                          onChange={(e) => setAuthorInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitAuthorSearch();
+                          }}
+                        />
+                      </span>
                       <span style={{ width: 170, flex: "none" }}>
                         <Select
                           aria-label="Author"
@@ -1433,6 +1511,20 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
+                  {/* #297: a committed typed login that matches no loaded
+                      rows: the server already narrowed the groups to it, so
+                      both stay empty and this names it (with the way back). */}
+                  {authorSearch !== null &&
+                  visibleDirect.length === 0 &&
+                  visibleTeam.length === 0 &&
+                  !listErrors.requested ? (
+                    <p className="hint subempty" data-testid="requested-author-search-empty">
+                      No PRs by {authorSearch}.{" "}
+                      <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                        Show all
+                      </Button>
+                    </p>
+                  ) : null}
                   <ChangeSection
                     title="Recent branches"
                     changes={visibleBranches}
@@ -1446,6 +1538,22 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
+                  {/* #297: a full PR page means more PRs may exist — a
+                      larger `--limit` re-fetch loads them, and the author
+                      list grows with the new rows. */}
+                  {listsHaveMore ? (
+                    <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        data-testid="lists-load-more"
+                        disabled={refreshing}
+                        onClick={loadMorePrs}
+                      >
+                        {refreshing ? "Loading…" : "Load more PRs"}
+                      </Button>
+                    </div>
+                  ) : null}
                 </Card>
               )}
             </>

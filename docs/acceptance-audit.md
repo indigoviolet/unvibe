@@ -3307,3 +3307,45 @@ hunk coverage) is reported for a separate issue, not fixed here.
   evidence: real `PiAgentRunner` + real pi 1.4.0 + fake backend + real MCP
   mount returns "ready" (`text,usage,done`; input 90 net, 10 cached
   read, 5 output). The live re-run still needs the owner's go.
+
+## Addendum: #297 (branch `feat/297-pr-list-more`)
+
+- **#297 (start-page PR paging + author search; §4.2):** the start
+  screen's PR lists were capped at 30 with no way past it, and the
+  author filter (#228) only knew the authors in the loaded rows.
+  Both halves are built (roughly equal effort — shared paging/search
+  plumbing plus one UI control each — so neither was a third or less
+  of the other): Load more re-fetches with a doubled page
+  (30 → 60 → 120 → 200; `gh pr list` has no offset, so a larger
+  `--limit` is the paging mechanism), and typing a login in the new
+  search box fetches that author's PRs from GitHub on Enter
+  (`gh pr list --author`) instead of filtering the loaded rows.
+- Contract (`packages/shared/src/api.ts`, changed first): `GET
+  /api/repos/:id/changes` takes `limit` (clamped to `[1, 200]` by the
+  pure `normalizeChangesLimit`, default 30) and `author` (trimmed by
+  `normalizeChangesAuthor`, blank means absent); every PR-list call
+  carries `--limit`, and the review-requested searches carry
+  `--author <login>` when set ("Your PRs" stays `--author @me`).
+  `RepoChangesResponse` gains required `hasMore` (true when a PR list
+  filled its page). No stored data changes shape.
+- Web (`StartPage.tsx`): one "Load more PRs" button at the end of the
+  PR block while `hasMore` holds (the author options grow with the new
+  rows); a "Type a login…" box beside the Author select commits the
+  search on Enter (a listed login is just the #228 client-side filter;
+  picking from the list or Show-all clears the server search, which
+  never crosses repos and is never written to the kept lists in
+  `keptChanges.ts`). A search matching nothing names the login with a
+  Show-all way back. #228's select/counts/persistence and #281's
+  layout are untouched. Evidence: shared
+  `test/changes-query-297.test.ts`, service
+  `test/changes-paging-297.test.ts` (limit forwarded, `hasMore` on a
+  full page, clamp, author scoping of the requested searches only),
+  web `src/start/StartPage.loadmore297.test.tsx` (Load more doubles
+  the limit and grows the authors; Enter fetches the login; unknown
+  login names itself with a way back), journey
+  `e2e/journeys/j297-pr-list-more.spec.ts` (real service + fake `gh`
+  honouring `--limit`/`--author` over 35 made-up PRs: Load more
+  brings in rows past 30 with their new authors; typing an absent
+  login fetches that author's PRs; `checkLayout` on both frames),
+  tour frames `packages/web/visual-tour/start-pr-list-more-*`
+  (git-ignored). Full gates not yet run.
