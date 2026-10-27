@@ -22,6 +22,14 @@ async function gotoReview(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
 }
 
+/** Issue #296: new reviews hide existing comments; show them like a reviewer would. */
+async function showExisting(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Review filters" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+  await expect(page.locator("#gh-thread-101")).toBeVisible();
+  await page.keyboard.press("Escape");
+}
+
 
 
 test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }) => {
@@ -222,6 +230,7 @@ test("older versions are read-only: no toolbar, threads, drafts or submit", asyn
 
 test("existing GitHub comments render read-only under their own heading", async ({ page }) => {
   await gotoReview(page);
+  await showExisting(page);
   await page.locator('#reviewbar [data-cm=""]').click();
   await expect(page.locator(".cmenu")).toContainText("On GitHub");
   await expect(page.locator(".cmenu")).toContainText("teammate · 2 comments");
@@ -230,6 +239,7 @@ test("existing GitHub comments render read-only under their own heading", async 
 
 test("GitHub thread in the diff expands at its line; the menu item jumps to it", async ({ page }) => {
   await gotoReview(page);
+  await showExisting(page);
   const thread = page.locator("#gh-thread-101");
   await expect(thread).toBeVisible();
   await expect(thread).toContainText("teammate · 2 comments");
@@ -247,6 +257,7 @@ test("outdated threads sit at their file; removed-file threads at the end; hidin
   page,
 }) => {
   await gotoReview(page);
+  await showExisting(page);
   const conn = page.locator(`[id="F-${CONN}"]`);
   await expect(conn).toContainText("GitHub comments on lines no longer in the diff");
   await expect(page.locator("[data-gh-orphans]")).toContainText("review-bot · 1 comment");
@@ -288,6 +299,8 @@ test("hide in the filter menu collapses the menu section to its count; its headi
   page,
 }) => {
   await gotoReview(page);
+  // Existing comments start hidden (#296): show them first.
+  await showExisting(page);
   // Diff threads are shown to start with.
   await expect(page.locator("#gh-thread-101")).toBeVisible();
   // Hide existing GitHub comments from the diff's filter menu.
@@ -311,9 +324,12 @@ test("existing GitHub list: no sideways overflow and clamped rows at minimum wid
   // Narrow window: the menu sits at its minimum width.
   await page.setViewportSize({ width: 800, height: 700 });
   await gotoReview(page);
+  // Below the 900px dock width the source pane starts as a hidden
+  // overlay: open it first so the Review filters button is visible.
   if (!(await page.locator("#right").isVisible())) {
     await page.locator("#toggleRight").click();
   }
+  await showExisting(page);
   await page.locator('#reviewbar [data-cm=""]').click();
   const panel = page.locator(".cmenu");
   await expect(panel).toBeVisible();

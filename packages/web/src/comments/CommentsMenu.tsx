@@ -32,7 +32,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 import type { Thread, ExistingReviewComment, ReviewSnapshot } from "@unvibe/shared";
-import { isAiSuggested, isDocumentReview, parseId } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, isAiSuggested, isDocumentReview, parseId } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
@@ -526,7 +526,9 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   // diff). While shown, the heading's chevron folds the section alone,
   // remembered in `existingCommentsCollapsed`. #226 keeps this behaviour
   // under the strong "On GitHub" section heading.
-  const ghShown = snapshot?.viewPrefs.showExistingComments ?? true;
+  // Issue #296: new reviews start with existing comments hidden; absent
+  // means hidden too (no fallback to the old shown default).
+  const ghShown = snapshot?.viewPrefs.showExistingComments ?? DEFAULT_REVIEW_VIEW_PREFS.showExistingComments;
   const ghCollapsed = snapshot?.viewPrefs.existingCommentsCollapsed ?? false;
   const ghOpen = ghShown && !ghCollapsed;
   const onGhHead = (): void => {

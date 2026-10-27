@@ -18,7 +18,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -708,8 +708,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Issue #168: one show/hide control for existing GitHub comments,
   // remembered with the review. Hiding never removes them from the
   // agents' context; the comments menu's section follows this setting.
+  // Issue #296: absent means hidden (no fallback to the old shown default).
   const toggleGithubComments = useCallback(() => {
-    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? true;
+    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? DEFAULT_REVIEW_VIEW_PREFS.showExistingComments;
     api.updateView(reviewId, { showExistingComments: !current }).catch(() => {
       toast("Couldn't save that change");
     });
