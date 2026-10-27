@@ -223,9 +223,18 @@ async function waitJob(token, reviewId, jobId, what) {
 /** Sum usage over this review's jobs since `seen` (job ids already counted). */
 async function newUsage(token, reviewId, seen) {
   const jobs = (await api("GET", `/api/jobs?review=${reviewId}`, undefined, token)).json;
-  const usage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+  const usage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0, unmetered: 0 };
   for (const j of jobs.jobs ?? []) {
-    if (seen.has(j.id) || !j.usage) continue;
+    if (seen.has(j.id)) continue;
+    if (!j.usage) {
+      // A finished job that reports no usage still spent: count it at the
+      // worst case so the cap can't be undercounted.
+      if (["done", "error", "cancelled"].includes(j.state)) {
+        seen.add(j.id);
+        usage.unmetered += 1;
+      }
+      continue;
+    }
     seen.add(j.id);
     usage.inputTokens += j.usage.inputTokens ?? 0;
     usage.cachedReadTokens += j.usage.cachedReadTokens ?? 0;
@@ -319,7 +328,7 @@ async function main() {
     fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   };
   const addCost = (prov, u) => {
-    const c = costOf(u);
+    const c = costOf(u) + (u.unmetered ?? 0) * WORST_NEXT_USD;
     report.providers[prov].costUsd = Math.round((report.providers[prov].costUsd + c) * 10000) / 10000;
     report.totals.costUsd = Math.round((report.totals.costUsd + c) * 10000) / 10000;
     const t = report.providers[prov].usage;
