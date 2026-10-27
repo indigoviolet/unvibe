@@ -156,6 +156,12 @@ mark.tm {
   font-family: var(--mono);
   font-size: 12px;
 }
+/* #274 keep fixed-width field inputs inside their column: border-box so the
+   13px labels never push a control past the panel (checkLayout stays green). */
+.settings-doc .ui-field .ui-input {
+  box-sizing: border-box;
+  min-width: 0;
+}
 /* #274 side navigation: tabs become a left list with a page heading at
    wide widths, stacking on narrow ones. Routing (?tab=) is unchanged. */
 .settings-layout {
