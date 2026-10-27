@@ -2,7 +2,8 @@
 
 A second `AgentRunner` (`packages/service/src/agent/pi/`) driving the
 user's own `pi` binary as `pi --mode rpc` — one child process per Unvibe
-session. It is how OpenAI/Codex-subscription models run when `pi` is
+session. It runs every model the user's pi offers, from any provider
+(OpenAI/Codex subscriptions, `meta/*` and the rest), when `pi` is
 installed. Nothing in the product depends on pi: no package dependency,
 no install script, no compiler. The service stays loopback-only; only the
 pi child (under the user's own login) reaches the network.
@@ -76,8 +77,10 @@ session manager rebuilds from the base instead of running tool-less.
 ## Settings, Doctor, models
 
 - `GET /api/providers` lists `claude,codex` plus `pi` only when the `pi`
-  binary is detected (`UNVIBE_PI_BIN` or login-shell PATH). The Settings
-  model pickers show exactly that list; effort comes from pi's
+  binary is detected (`UNVIBE_PI_BIN` or login-shell PATH). For pi, the
+  Settings model pickers list every model pi's `get_available_models`
+  offers, whatever its provider (an id offered twice is listed once,
+  `openai-codex` winning); each starts on the provider pi names for it; effort comes from pi's
   `get_available_thinking_levels`. Claude and Codex are unchanged (pi never
   becomes a live default).
 - Readiness has a `pi` check (installed + logged in, in plain words) plus
