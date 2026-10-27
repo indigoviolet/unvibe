@@ -205,6 +205,12 @@ function isRetryablePiError(message: string): boolean {
   return true;
 }
 
+/** The last of pi's stderr, appended to a turn error so the cause shows. */
+function stderrTail(child: RpcProcess): string {
+  const tail = child.stderr.join("").trim().slice(-500);
+  return tail === "" ? "" : `; pi stderr: ${tail}`;
+}
+
 type RpcEvent = Record<string, unknown>;
 
 /**
@@ -719,7 +725,7 @@ export class PiAgentRunner implements AgentRunner {
       accepted = await child.call({ type: "prompt", message: text }, 60000);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      yield { type: "error", message: `pi prompt not accepted: ${message}`, retryable: isRetryablePiError(message) };
+      yield { type: "error", message: `pi prompt not accepted: ${message}${stderrTail(child)}`, retryable: isRetryablePiError(message) };
       return;
     }
     const disposition = (accepted["data"] as { disposition?: string } | undefined)?.disposition;
@@ -863,7 +869,7 @@ export class PiAgentRunner implements AgentRunner {
           await child.waitForCount(cursor + 1, 600000);
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          yield { type: "error", message: `pi turn failed: ${message}`, retryable: isRetryablePiError(message) };
+          yield { type: "error", message: `pi turn failed: ${message}${stderrTail(child)}`, retryable: isRetryablePiError(message) };
           return;
         }
       }
@@ -872,7 +878,7 @@ export class PiAgentRunner implements AgentRunner {
     }
 
     if (!settled) {
-      yield { type: "error", message: "pi turn ended without settling", retryable: true };
+      yield { type: "error", message: `pi turn ended without settling${stderrTail(child)}`, retryable: true };
       return;
     }
     if (failed) {
@@ -921,16 +927,16 @@ export class PiAgentRunner implements AgentRunner {
     const now = Date.now();
     if (this.modelsCache && now - this.modelsCache.at < this.modelCacheMs) return this.modelsCache.models;
     let models: ModelInfo[] = [...PI_STATIC_MODELS];
-    const providers = new Map<string, string>();
-    // Static entries are Codex-subscription models; live entries carry
-    // their own provider (openai-codex preferred on collisions).
+    let providers = new Map<string, string>();
+    // Static entries are Codex-subscription models; a live listing replaces
+    // them, providers included, since it names the login pi actually has.
     for (const m of PI_STATIC_MODELS) providers.set(m.id, "openai-codex");
     try {
       const live = await this.ephemeralModels();
-      for (const [id, p] of live.providers) {
-        if (!providers.has(id) || p === "openai-codex") providers.set(id, p);
+      if (live.models.length > 0) {
+        models = live.models;
+        providers = live.providers;
       }
-      if (live.models.length > 0) models = live.models;
     } catch {
       // live listing failed; keep the static fallback
     }
