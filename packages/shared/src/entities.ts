@@ -400,6 +400,12 @@ export interface DiagramRenderState {
   hash: string;
   status: DiagramRenderStatus;
   error?: string;
+  /**
+   * Non-fatal render notes (issue #286): one entry per stripped icon
+   * (`icon stripped: <url>: <reason>`), so the miss rate is countable.
+   * Notes never trigger a repair turn; the diagram renders without the icon.
+   */
+  notes?: string[];
 }
 
 export interface DiagramBlock {

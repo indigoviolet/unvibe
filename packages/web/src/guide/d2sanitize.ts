@@ -8,7 +8,9 @@
  *
  * - the document must contain exactly one root `<svg>` (else reject);
  * - drop `script`, `foreignObject`, `iframe`, `object`, `embed`, `link`,
- *   `meta`, `audio`, `video` and `image` elements (remote-load risk);
+ *   `meta`, `audio`, `video` elements (remote-load risk); `<image>` is
+ *   kept only when its `href` is a `data:image/*` embed (d2 embeds staged
+ *   local icons as `data:`) — any other `<image>` is dropped;
  * - drop every event-handler attribute (`on*`, case-insensitive);
  * - drop every `href` / `xlink:href` that is not `#` or an internal
  *   `#fragment` (citation anchors per the contract use `href="#"`);
@@ -43,8 +45,10 @@ const DROP_ELEMENTS = new Set([
   "meta",
   "audio",
   "video",
-  "image",
 ]);
+
+/** Attributes an adopted `<image>` may keep (geometry + the data: href). */
+const IMAGE_ATTRS = new Set(["x", "y", "width", "height", "href"]);
 
 let uidCounter = 0;
 
@@ -132,6 +136,21 @@ export function sanitizeD2Svg(svgText: string, uid?: string): SVGSVGElement | nu
   // 3. Scrub attributes element by element.
   for (const el of [...doc.getElementsByTagName("*")]) {
     const tag = el.tagName.toLowerCase();
+    if (tag === "image") {
+      // Embedded icons only: d2 emits staged local icons as
+      // `<image href="data:image/…">`. Anything else (remote href, no
+      // href) is a remote load and goes.
+      const href = el.getAttribute("href") ?? el.getAttribute("xlink:href");
+      if (!href || !/^data:image\//i.test(href)) {
+        el.remove();
+        continue;
+      }
+      for (const attr of [...el.attributes]) {
+        if (!IMAGE_ATTRS.has(attr.name.toLowerCase())) el.removeAttribute(attr.name);
+      }
+      if (el.getAttribute("href") !== href) el.setAttribute("href", href);
+      continue;
+    }
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
       if (name.startsWith("on")) {

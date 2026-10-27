@@ -117,7 +117,7 @@ Underlying-principle inserts. Inner content is ordinary Markdown.
 Diagrams are fenced `d2` blocks (D2; Mermaid was removed — a `mermaid`
 fence is ordinary code, not a diagram). Citations are written on
 shapes/connections as `link: "diff:<fileKey>:<lines>"` (also `code:` and
-`desc:` forms): a quoted bare token, no `[[ ]]`, no `tooltip:`, always
+`desc:` forms): a quoted bare token, no `[[ ]]`, always
 inline in braces (a `link:` on its own indented line is silently dropped).
 An optional `Caption: …` paragraph right after the fence becomes the
 caption:
@@ -132,11 +132,14 @@ norm: "_normalize_header_values" {link: "diff:conn:80-88"}
 Caption: Where response headers go after parsing.
 ````
 
-Limits: at most 12 shapes and 16 connections; no `icon:`, no
-`shape: image`, no imports, no Markdown/LaTeX/code-block labels, no
-`vars`/`d2-config`, no `classes:` stanzas (mark good/bad states with the
-built-in `*.class: [ok]` / `[bad]`), no layers/scenarios/steps/boards, no
-`tooltip:`. Choose `direction:` to suit the flow (`right` for pipelines,
+Limits: at most 40 shapes and 48 connections; icons only as
+`icon: https://icons.terrastruct.com/<set>%2F<name>.svg` (any other host
+is rejected; a missing icon is dropped and the diagram renders without
+it); no imports, no layers/scenarios/steps/boards, no `style.animated`, no
+`animate-interval`. `|md` / `|latex` labels (links inside are stripped),
+`vars:`, `d2-config:`, `classes:` stanzas (mark good/bad states with the
+built-in `*.class: [ok]` / `[bad]` — state travels in classes, never in
+hard-coded colours) and short `tooltip:` glosses are allowed. Choose `direction:` to suit the flow (`right` for pipelines,
 `down` for chains); sequences use `shape: sequence_diagram`. Keep every
 label short (a few words, at most two lines); cite each code-mapped
 shape/connection. The full convention lives in

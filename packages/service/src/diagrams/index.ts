@@ -34,6 +34,16 @@ export {
 } from "./render.js";
 export type { RenderOpts, RenderResult } from "./render.js";
 export {
+  ICON_ALLOW_HOST,
+  ICON_FETCH_TIMEOUT_MS,
+  ICON_MAX_BYTES,
+  defaultFetchIcon,
+  extractIconUrls,
+  stageIcons,
+  validateIconUrl,
+} from "./icons.js";
+export type { IconFetchFail, IconFetchOk, IconFetcher, IconStrip, StagedIcons } from "./icons.js";
+export {
   postProcessSvg,
   rewriteCitationAnchors,
   sanitizeSvg,

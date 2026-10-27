@@ -386,7 +386,13 @@ needed (that deviation is closed, not added).
   (`pipeline/actions/diagram-finalize.ts`); unambiguous `steps:`-like
   shapes are renamed (`steps_box`) and inline `{.class: …}` is rejected
   with the legal line form named (`myid.class: [ok]`), with the prompts
-  updated to match.
+  updated to match. Since #286 the bans are lifted for `|md` / `|latex`
+  labels, `vars:`, `d2-config:`, `classes:` stanzas, `tooltip:`,
+  containers, edge styles, grids, `sql_table`/`class` and sequence
+  features (caps 40 shapes / 48 connections); icons render embedded from
+  `icons.terrastruct.com` only (pre-fetched, staged, kept as `data:` — a
+  failed fetch strips the icon with a countable `render.notes` entry,
+  never a repair). Animation and boards stay banned.
 - Diagrams zoom inline (#47, round two) — met: blocks fit by default
   (no scrollbars, never above natural size) with +/−/Reset beside
   Expand on the same shared hook (`panZoom.ts`, `usePanZoom.ts`,
