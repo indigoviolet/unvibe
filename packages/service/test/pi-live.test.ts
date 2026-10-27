@@ -76,12 +76,6 @@ function usageOf(evs: AgentEvent[]): { inputTokens: number; cachedReadTokens: nu
   return u;
 }
 
-async function collect(it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
-  const out: AgentEvent[] = [];
-  for await (const e of it) out.push(e);
-  return out;
-}
-
 /** Raw RPC events per turn, dumped (redacted) on failure. */
 interface RawTurn {
   turn: string;
@@ -139,13 +133,19 @@ describe.skipIf(!LIVE)("pi live runner", () => {
         };
         const collectTurn = async (name: string, it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> => {
           current = [];
-          const out = await collect(it);
-          rawTurns.push({ turn: name, events: current });
+          const out: AgentEvent[] = [];
+          try {
+            for await (const e of it) out.push(e);
+          } finally {
+            // Kept even when the turn throws, with the runner's own events.
+            rawTurns.push({ turn: name, events: [...current, ...out.map((e) => ({ unvibeEvent: e }))] });
+          }
           return out;
         };
         const dumpRaw = (why: string): void => {
           try {
-            const file = join(dir, "pi-rpc-events.json");
+            // Outside the scratch dir, which is deleted when the test ends.
+            const file = join(tmpdir(), `unvibe-pi-live-rpc-${Date.now()}.json`);
             writeFileSync(file, JSON.stringify(rawTurns, redactRpc, 2));
             const count = rawTurns.reduce((n, t) => n + t.events.length, 0);
             console.log(`[live-pi] ${why}: dumped ${count} raw RPC events in ${rawTurns.length} turn(s) to ${file}`);
@@ -160,8 +160,10 @@ describe.skipIf(!LIVE)("pi live runner", () => {
         let forkId = "";
         try {
           const models = await runner.listModels("pi");
-          const model = process.env.UNVIBE_PI_LIVE_MODEL ?? models.find((m) => m.id.includes("sol"))?.id ?? models[0]?.id;
-          if (!model) throw new Error("live pi: no pi models offered (is pi logged in?)");
+          const model = process.env.UNVIBE_PI_LIVE_MODEL ?? "gpt-6.1-sol";
+          if (!models.some((m) => m.id === model)) {
+            throw new Error(`live pi: ${model} not offered; pi offers ${models.map((m) => m.id).join(", ") || "nothing (is pi logged in?)"}`);
+          }
           console.log(`[live-pi] model: ${model} (override with UNVIBE_PI_LIVE_MODEL)`);
 
           const totals = { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 };

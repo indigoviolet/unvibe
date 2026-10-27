@@ -458,6 +458,20 @@ describe("pi runner over a fake pi RPC process", () => {
     }
   });
 
+  it("starts a static-list model on the provider the live listing names", async () => {
+    // pi offers gpt-6.1-sol under "openai" on an API-key login; the static
+    // list's "openai-codex" must not win (live #279 run: "No API key found").
+    const runner = makeRunner({ UNVIBE_FAKE_PI_MODELS: JSON.stringify([{ provider: "openai", id: "gpt-6.1-sol", name: "Sol" }]) });
+    try {
+      await runner.start({ provider: "pi", model: "gpt-6.1-sol", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const line = spawnLines().find((l) => l.includes("--system-prompt"))!;
+      const argv = JSON.parse(line.split("argv=")[1].split(" cachekey=")[0]) as string[];
+      expect(argv[argv.indexOf("--provider") + 1]).toBe("openai");
+    } finally {
+      await runner.dispose();
+    }
+  });
+
   it("lists live models with a static fallback, and [] without a binary", async () => {
     const runner = makeRunner({
       UNVIBE_FAKE_PI_MODELS: JSON.stringify([
