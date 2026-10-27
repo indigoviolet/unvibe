@@ -76,6 +76,11 @@ export interface PiRunnerOptions {
   extensionSource?: string;
   /** Model/thinking catalog cache (default 5 min, like the ACP runner). */
   modelCacheMs?: number;
+  /** Raw RPC event tap (live-test diagnostics): called for every event
+   * seen during a `prompt` turn, including the prompt response. The
+   * runner never reads credentials from events; callers dumping them
+   * must still redact before logging (see pi-live.test.ts). */
+  onRpcEvent?: (event: RpcEvent) => void;
 }
 
 interface PiSessionRecord {
@@ -359,6 +364,7 @@ export class PiAgentRunner implements AgentRunner {
   private readonly binPath?: string;
   private readonly extensionSource: string;
   private readonly modelCacheMs: number;
+  private readonly onRpcEvent?: (event: RpcEvent) => void;
   private readonly live = new Map<string, PiSessionRecord>();
   private readonly chains = new Map<string, Promise<unknown>>();
   private extensionPath: string | null = null;
@@ -373,6 +379,7 @@ export class PiAgentRunner implements AgentRunner {
     this.binPath = opts.binPath;
     this.extensionSource = opts.extensionSource ?? PI_EXTENSION_SOURCE;
     this.modelCacheMs = opts.modelCacheMs ?? 5 * 60_000;
+    this.onRpcEvent = opts.onRpcEvent;
     // Direct construction with no fake binary would spawn the user's real
     // pi and spend subscription usage (#188): require the live flag eagerly.
     if (!this.binPath) assertLiveAgentAllowed(this.env);
@@ -737,21 +744,55 @@ export class PiAgentRunner implements AgentRunner {
     let outputTokens = 0;
     let usageEvents = 0;
     let failed: { message: string; retryable: boolean } | null = null;
+    const fail = (message: string): void => {
+      if (!failed) failed = { message, retryable: isRetryablePiError(message) };
+    };
+    // Fallback text: real pi streams every reply as text_deltas (verified
+    // offline against pi 1.4.0), but a turn that settles with no deltas and
+    // no error must never come back as silent empty text. Each assistant
+    // message_end/turn_end carries the authoritative content, so when no
+    // delta was seen for that message its text blocks are yielded instead.
+    let messageTextSeen = false;
+    const contentText = (message: unknown): string => {
+      const content = (message as { content?: unknown } | undefined)?.content;
+      if (typeof content === "string") return content;
+      if (!Array.isArray(content)) return "";
+      return content
+        .filter((c) => c?.type === "text" && typeof c.text === "string" && c.text !== "")
+        .map((c) => (c as { text: string }).text)
+        .join("\n");
+    };
     let cursor = from;
     try {
       for (;;) {
         const batch = child.since(cursor);
         cursor = child.eventCount;
         for (const e of batch) {
+          this.onRpcEvent?.(e);
           const type = e["type"] as string;
-          if (type === "message_update") {
-            const update = e["assistantMessageEvent"] as { type?: string; delta?: string } | undefined;
+          if (type === "message_start") {
+            const message = e["message"] as { role?: string; stopReason?: string; errorMessage?: string } | undefined;
+            if (message?.role === "assistant") messageTextSeen = false;
+            if (message?.role === "assistant" && message.stopReason === "error") {
+              fail(message.errorMessage ?? "provider error");
+            }
+          } else if (type === "message_update") {
+            const update = e["assistantMessageEvent"] as { type?: string; delta?: string; reason?: string; error?: unknown; message?: unknown } | undefined;
             if (update?.type === "text_delta" && typeof update.delta === "string" && update.delta !== "") {
+              messageTextSeen = true;
               yield { type: "text", delta: update.delta };
+            } else if (update?.type === "error") {
+              const err = update.error as { message?: string; errorMessage?: string } | undefined;
+              fail(
+                (typeof err?.message === "string" && err.message) ||
+                  (typeof err?.errorMessage === "string" && err.errorMessage) ||
+                  (typeof update.reason === "string" && update.reason) ||
+                  "provider error",
+              );
             }
           } else if (type === "message_end") {
             const message = e["message"] as
-              | { role?: string; stopReason?: string; errorMessage?: string; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } }
+              | { role?: string; stopReason?: string; errorMessage?: string; content?: unknown; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } }
               | undefined;
             if (message?.role === "assistant") {
               const u = message.usage;
@@ -763,8 +804,24 @@ export class PiAgentRunner implements AgentRunner {
                 usageEvents += 1;
               }
               if (message.stopReason === "error") {
-                const msg = message.errorMessage ?? "provider error";
-                failed = { message: msg, retryable: isRetryablePiError(msg) };
+                fail(message.errorMessage ?? "provider error");
+              } else {
+                const text = contentText(message);
+                if (text !== "" && !messageTextSeen) {
+                  messageTextSeen = true;
+                  yield { type: "text", delta: text };
+                }
+              }
+            }
+          } else if (type === "turn_end") {
+            const message = e["message"] as { role?: string; stopReason?: string; errorMessage?: string; content?: unknown } | undefined;
+            if (message?.stopReason === "error") {
+              fail(message.errorMessage ?? "provider error");
+            } else if (message?.role === "assistant") {
+              const text = contentText(message);
+              if (text !== "" && !messageTextSeen) {
+                messageTextSeen = true;
+                yield { type: "text", delta: text };
               }
             }
           } else if (type === "tool_execution_start") {
@@ -791,6 +848,7 @@ export class PiAgentRunner implements AgentRunner {
           } else if (type === "extension_error") {
             // Recorded, not yielded yet: the single error goes out at
             // settle time so a turn yields at most one error, then ends.
+            // Overwrites a provider error: a down bridge is never retryable.
             failed = {
               message: `pi extension error (${String(e["event"] ?? "event")}): ${String(e["error"] ?? "unknown")}`.slice(0, 500),
               retryable: false,
