@@ -1447,6 +1447,166 @@ test.describe("visual tour diff expansion up (#265)", () => {
   });
 });
 
+/**
+ * Hidden-hunk rows (issue #283): a hidden-only first file and a mixed
+ * file, at 1440px and 960px in light and dark. Own scratch repo and
+ * agent-none service (the main tour review has no hidden-only first
+ * file): docs-only change first, then an imports hunk hidden beside a
+ * shown code hunk, with long summaries PATCHed on (what the hunk pass
+ * writes). The full generic checks run on both scenes, plus the
+ * regression asserts: every label topmost (never under the band
+ * backing), the summary at full width, and the `>` box lined up with
+ * the hunk-header chevrons.
+ */
+test.describe("visual tour hidden-hunk rows (#283)", () => {
+  test.describe.configure({ mode: "serial" });
+  let dir283 = "";
+  let data283 = "";
+  let svc283: RunningService | null = null;
+  let review283 = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-repo-"));
+    mkdirSync(path.join(dir283, "a-docs"), { recursive: true });
+    mkdirSync(path.join(dir283, "src"), { recursive: true });
+    await journeyGit(dir283, "init", "-b", "main");
+    await journeyGit(dir283, "config", "user.email", "t@example.com");
+    await journeyGit(dir283, "config", "user.name", "T");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Alpha line one.", "Alpha line two.", "Alpha line three.", "Alpha line four.", ""].join("\n"),
+    );
+    const codeBase = [
+      "import os",
+      "import re",
+      ...Array.from({ length: 78 }, (_, i) => `value_${String(i + 1).padStart(2, "0")} = ${i + 1}`),
+      `tail_marker = "end"`,
+    ].join("\n") + "\n";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeBase);
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "base");
+    await journeyGit(dir283, "checkout", "-b", "feature");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Beta line one revised.", "Beta line two revised.", "Beta line three revised.", "Beta line four revised.", ""].join("\n"),
+    );
+    const codeLines = codeBase.split("\n");
+    codeLines[0] = "import sys";
+    codeLines[1] = "import json";
+    codeLines[70] = "value_69 = 6900  # changed";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeLines.join("\n"));
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "feature work");
+    data283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-data-"));
+    svc283 = await startService(data283, { agent: "none" });
+    review283 = await createJourneyReview(svc283, dir283);
+    const deadline = Date.now() + 90_000;
+    let hashes: { docs: string; imports: string } | null = null;
+    for (;;) {
+      const snap = (await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`)) as {
+        files: { path: string; hunks: { contentHash: string; hiddenReason?: string }[] }[];
+      };
+      const docs = snap.files?.find((f) => f.path === "a-docs/notes.md")?.hunks[0];
+      const mixed = snap.files?.find((f) => f.path === "src/app.py")?.hunks ?? [];
+      if (docs?.hiddenReason && mixed.length === 2 && mixed[0].hiddenReason && !mixed[1].hiddenReason) {
+        hashes = { docs: docs.contentHash, imports: mixed[0].contentHash };
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("hidden review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.docs}`, {
+      summary:
+        "Rewords the four onboarding notes for the new checkout flow, keeping every " +
+        "heading and the step order exactly as documented so downstream links hold.",
+    });
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.imports}`, {
+      summary:
+        "Swaps the two stdlib imports the helper module needs for the new value " +
+        "formatting path, leaving every call site untouched and sorted in place.",
+    });
+    const echoDeadline = Date.now() + 30_000;
+    for (;;) {
+      const snap = await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`) as {
+        hunkStates: { contentHash: string; summary?: string }[];
+      };
+      const got = new Set((snap.hunkStates ?? []).filter((s) => s.summary).map((s) => s.contentHash));
+      if (got.has(hashes.docs) && got.has(hashes.imports)) break;
+      if (Date.now() > echoDeadline) throw new Error("hidden summaries did not land");
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc283?.stop().catch(() => {});
+    svc283 = null;
+    for (const d of [dir283, data283]) rmSync(d, { recursive: true, force: true });
+  });
+
+  /** The #283 regression asserts for one hidden row: label topmost,
+   * summary at full width, `>` box lined up with the hunk chevrons. */
+  async function expectHiddenRow(page: Page, row: Locator, step: string): Promise<void> {
+    const rowBox = (await row.boundingBox())!;
+    const label = row.locator(".hidl");
+    await expect(label).toContainText(/Hunks? \d+.*hidden/, { timeout: 10_000 });
+    const labelBox = (await label.boundingBox())!;
+    const topmost = await page.evaluate(({ x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
+    }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
+    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/hidden\. Show these hunks/);
+    const briefBox = (await row.locator(".hidb").boundingBox())!;
+    expect(
+      briefBox.width > rowBox.width * 0.5 || briefBox.x <= rowBox.x + 14,
+      `${step}: summary squeezed (box ${JSON.stringify(briefBox)} row ${JSON.stringify(rowBox)})`,
+    ).toBe(true);
+    const headerBox = (await page.locator(".dhunk-h .ib").first().boundingBox())!;
+    const hicBox = (await row.locator(".hic").boundingBox())!;
+    expect(Math.abs(hicBox.x - headerBox.x), `${step}: chevron x ${hicBox.x} vs header ${headerBox.x}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(hicBox.width - headerBox.width), `${step}: chevron width`).toBeLessThanOrEqual(1);
+  }
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    test(`visual tour hidden-hunk rows (#283, ${combo.name})`, async ({ page }) => {
+      if (!svc283) throw new Error("hidden-hunk service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${svc283.origin}/review/${review283}?token=${svc283.token}`);
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      // First file: hidden-only. Its row sits directly under its file
+      // header (no blank band), label showing.
+      const first = page.locator(".dfile").first();
+      await first.scrollIntoViewIfNeeded();
+      await expect(first.getByText(/Hunk 1 of 1 hidden/)).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      const firstHead = (await first.locator(".dfile-h").boundingBox())!;
+      const firstTop = (await first.locator("button.hid").boundingBox())!.y;
+      expect(firstTop - (firstHead.y + firstHead.height), "hidden-first: blank band above the row").toBeLessThanOrEqual(2);
+      await expectHiddenRow(page, first.locator("button.hid"), "hidden-first");
+      await stepChecks(page, "diff-hidden-first");
+      await shot(page, "diff-hidden-first", suffix, "Hunk 1 of 1 hidden");
+      // Mixed file: hidden imports hunk above a shown code hunk.
+      const mixed = page.locator('[id="F-src-app.py"]');
+      await mixed.getByText(/Hunk 1 of 2 hidden/).scrollIntoViewIfNeeded();
+      await expect(mixed.getByText(/Hunk 1 of 2 hidden/)).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      await expectHiddenRow(page, mixed.locator("button.hid"), "hidden-mixed");
+      await stepChecks(page, "diff-hidden-mixed");
+      await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
+    });
+  }
+});
+
+
 // Studio and Console themes (issues #196/#164): one scene set per
 
 // Studio and Console themes (issues #196/#164): one scene set per

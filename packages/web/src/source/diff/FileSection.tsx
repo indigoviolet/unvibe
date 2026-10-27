@@ -534,7 +534,9 @@ function HiddenRow({
         aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
         onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
       >
-        <Icon name="right" />
+        <span className="hic" aria-hidden="true">
+          <Icon name="right" />
+        </span>
         <span className="hidl">
           {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
         </span>

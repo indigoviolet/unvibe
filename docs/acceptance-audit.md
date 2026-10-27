@@ -927,7 +927,14 @@ needed (that deviation is closed, not added).
   run with reason, click reveals; one-line never hidden; cited never
   hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
-  live runs: “hide violations: none”). Hunk replies tolerate format slips
+  live runs: “hide violations: none”). Issue #283: the row is one
+  flowing line (label, then the summary at full width — inline or on a
+  full-width continuation, never a fixed right column), the chevron box
+  matches the hunk headers, and the label always shows: the opaque band
+  backing used to paint over the first file's row at rest (fixed by
+  lifting `.dhid` above the backing only there; rows still scroll under
+  it like other content) — met (`j283-hidden-hunks.spec.ts`, four
+  light/dark × narrow/wide frames, checkLayout green). Hunk replies tolerate format slips
   (issue #99): bare/unfenced `{"hunk": …}` still yields summary +
   `hiddenReason` (`shared/src/content/hunk.ts`, one helper for both call
   sites); JSON-looking text is never stored and long fallbacks cut on a
