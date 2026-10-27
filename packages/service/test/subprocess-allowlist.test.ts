@@ -124,11 +124,17 @@ describe("subprocess allowlist", () => {
           offenders.push(`${rel}:${i + 1}: dynamic execFile ${line.trim().slice(0, 80)}`);
           return;
         }
-        if (/spawn\s*\(/.test(line) && !/process\.execPath/.test(line)) {
-          // cli/commands.ts spawns the opener (open/xdg-open variable) + the
-          // service entry (process.execPath, handled above).
-          if (/cli\/commands/.test(rel) && /opener/.test(line)) return;
-          if (/exec\/runner/.test(rel) && /spawn\(\s*cmd/.test(line)) return; // RealCommandRunner dispatcher
+          if (/spawn\s*\(/.test(line) && !/process\.execPath/.test(line)) {
+            // cli/commands.ts spawns the opener (open/xdg-open variable) + the
+            // service entry (process.execPath, handled above).
+            if (/cli\/commands/.test(rel) && /opener/.test(line)) return;
+            if (/exec\/runner/.test(rel) && /spawn\(\s*cmd/.test(line)) return; // RealCommandRunner dispatcher
+            // Native pi runner (issue #279): one `pi --mode rpc` child per
+            // session. The binary is the user's installed pi (absolute path
+            // from the login-shell PATH or UNVIBE_PI_BIN; never a bundle);
+            // the call site passes it as a variable on the next line, so
+            // match the bare `spawn(` here.
+            if (/agent\/pi\//.test(rel) && /spawn\(\s*$/.test(line)) return;
           // update/helper-entry.ts drives the service manager for a
           // login-managed restart (launchctl/systemctl argv only, built by
           // update/service-manager.ts; 30 s bound, never the service PID).
