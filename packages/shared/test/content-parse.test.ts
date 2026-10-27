@@ -236,6 +236,12 @@ describe("renderInline (Markdown inside a block)", () => {
     expect(r.links).toEqual([]);
   });
 
+  it("renders a citation inside square brackets instead of throwing (#291)", () => {
+    for (const s of ["see [the fix [[h:conn:9f2c]]](https://x.y)", "[a [[h:conn:9f2c]] b]", "[[[h:conn:9f2c]]]"]) {
+      expect(renderInline(s).citations.map((c) => c.target)).toEqual(["h:conn:9f2c"]);
+    }
+  });
+
   it("honours backslash escapes", () => {
     expect(renderInline("\\*not em\\*").html).toBe("*not em*");
   });
