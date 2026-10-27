@@ -1,0 +1,9 @@
+direction: right
+q1: "retry queue" {shape: queue}
+p1: "wheel file" {shape: package}
+s1: "unfold step" {shape: step}
+c1: "see Requests" {shape: callout}
+s2: "cookies kept" {shape: stored_data}
+u1: "maintainer" {shape: person}
+q1 -> s1: drain {link: "diff:conn:650-651"}
+s1 -> s2: emit {link: "diff:conn:91-110"}

@@ -1,0 +1,7 @@
+shape: sequence_diagram
+client
+norm: "_normalize_header_values"
+hdict: "HTTPHeaderDict"
+client -> norm: parse {link: "diff:conn:650-651"}
+norm -> norm: collapse OWS CRLF RWS {link: "diff:conn:80-88"}
+norm -> hdict: sync {link: "diff:conn:91-110"}

@@ -1,0 +1,9 @@
+direction: right
+r1: "request" {shape: rectangle}
+s1: "cache key" {shape: square}
+p1: "printed log" {shape: page}
+p2: "folded line" {shape: parallelogram}
+d1: "raw message" {shape: document}
+c1: "header store" {shape: cylinder}
+r1 -> s1: hash {link: "diff:conn:650-651"}
+s1 -> c1: lookup {link: "diff:conn:91-110"}

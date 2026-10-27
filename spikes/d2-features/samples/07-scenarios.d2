@@ -1,0 +1,9 @@
+direction: right
+scenarios: {
+  fast: {
+    norm -> hdict: fast path {link: "diff:conn:91-110"}
+  }
+  slow: {
+    norm -> pat: linear pattern {link: "diff:conn:91-110"}
+  }
+}

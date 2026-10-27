@@ -1,0 +1,6 @@
+shape: sequence_diagram
+client
+norm: "_normalize_header_values"
+client -> norm: parse value {link: "diff:conn:650-651"}
+norm -> norm.t: hold span
+client -> norm.t2: second call {link: "diff:conn:91-110"}

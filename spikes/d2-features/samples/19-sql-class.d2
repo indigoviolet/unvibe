@@ -1,0 +1,13 @@
+direction: right
+hdict: {
+  shape: sql_table
+  id: int {link: "diff:conn:91-110"}
+  name: string
+}
+msg: {
+  shape: class
+  +value: str {link: "diff:conn:650-651"}
+  +defects: list
+  -unfold(): str
+}
+hdict -> msg: sync {link: "diff:conn:91-110"}

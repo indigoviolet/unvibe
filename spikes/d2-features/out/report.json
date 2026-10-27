@@ -1,0 +1,340 @@
+[
+  {
+    "sample": "01-baseline",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88",
+      "diff:conn:91-110"
+    ],
+    "ms": 52,
+    "lightBytes": 14750,
+    "darkBytes": 14750,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "02-icon-remote",
+    "precheck": "`icon` is not allowed (it fetches remote/local images)",
+    "rendered": false
+  },
+  {
+    "sample": "03-shape-image",
+    "precheck": "`shape: image` is not allowed (it fetches image URLs)",
+    "rendered": false
+  },
+  {
+    "sample": "04-import",
+    "precheck": "imports (`...@`, `@file`) are not allowed (they read local files)",
+    "rendered": false
+  },
+  {
+    "sample": "05-md-label",
+    "precheck": "`|md` Markdown labels are not allowed",
+    "rendered": false
+  },
+  {
+    "sample": "06-layers",
+    "precheck": "layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; rename the shape instead (e.g. a box called `steps` becomes `steps_box`)",
+    "rendered": false
+  },
+  {
+    "sample": "07-scenarios",
+    "precheck": "layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; rename the shape instead (e.g. a box called `steps` becomes `steps_box`)",
+    "rendered": false
+  },
+  {
+    "sample": "08-steps-animate",
+    "precheck": "layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; rename the shape instead (e.g. a box called `steps` becomes `steps_box`)",
+    "rendered": false
+  },
+  {
+    "sample": "09-vars",
+    "precheck": "`vars:` is not allowed",
+    "rendered": false
+  },
+  {
+    "sample": "10-classes",
+    "precheck": "`classes:` is not allowed",
+    "rendered": false
+  },
+  {
+    "sample": "11-tooltip",
+    "precheck": "`tooltip:` is not allowed (citations use link:, never tooltips)",
+    "rendered": false
+  },
+  {
+    "sample": "16-containers",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88",
+      "diff:conn:91-110"
+    ],
+    "ms": 42,
+    "lightBytes": 26902,
+    "darkBytes": 26932,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "17-edge-styles",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88",
+      "diff:conn:91-110"
+    ],
+    "ms": 42,
+    "lightBytes": 13760,
+    "darkBytes": 13729,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "18-grid",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:91-110",
+      "diff:conn:80-88"
+    ],
+    "ms": 37,
+    "lightBytes": 22312,
+    "darkBytes": 22312,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "19-sql-class",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:91-110",
+      "diff:conn:650-651"
+    ],
+    "ms": 45,
+    "lightBytes": 16968,
+    "darkBytes": 16968,
+    "citesMissing": [
+      "diff:conn:650-651"
+    ],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "20a-shapes",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:91-110"
+    ],
+    "ms": 39,
+    "lightBytes": 12997,
+    "darkBytes": 12975,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "20b-shapes",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:91-110"
+    ],
+    "ms": 42,
+    "lightBytes": 12718,
+    "darkBytes": 12718,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "20c-shapes",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:91-110"
+    ],
+    "ms": 39,
+    "lightBytes": 15012,
+    "darkBytes": 15012,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "21-code-label",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:80-88",
+      "diff:conn:650-651",
+      "diff:conn:91-110"
+    ],
+    "ms": 50,
+    "lightBytes": 27268,
+    "darkBytes": 27240,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "22-seq-spans",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:91-110"
+    ],
+    "ms": 45,
+    "lightBytes": 12158,
+    "darkBytes": 12158,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "23-seq-groups-notes",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88",
+      "diff:conn:91-110"
+    ],
+    "ms": 39,
+    "lightBytes": 14619,
+    "darkBytes": 14644,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "24-seq-selfmsg",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88",
+      "diff:conn:91-110"
+    ],
+    "ms": 38,
+    "lightBytes": 13171,
+    "darkBytes": 13171,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "26-animated-edge",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88"
+    ],
+    "ms": 35,
+    "lightBytes": 14473,
+    "darkBytes": 14454,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": true
+  },
+  {
+    "sample": "27-style-tokens",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:80-88"
+    ],
+    "ms": 43,
+    "lightBytes": 8194,
+    "darkBytes": 8194,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "28-near-legend",
+    "precheck": "ok",
+    "rendered": true,
+    "cites": [
+      "diff:conn:650-651",
+      "diff:conn:80-88"
+    ],
+    "ms": 42,
+    "lightBytes": 14725,
+    "darkBytes": 14725,
+    "citesMissing": [],
+    "externalAnchors": [],
+    "hasForeignObject": false,
+    "animated": false
+  },
+  {
+    "sample": "29-latex-label",
+    "precheck": "`|latex` labels are not allowed (they produce foreignObject HTML)",
+    "rendered": false
+  },
+  {
+    "sample": "30-d2config",
+    "precheck": "`d2-config` is not allowed",
+    "rendered": false
+  },
+  {
+    "sample": "31-tooltip-render",
+    "precheck": "`tooltip:` is not allowed (citations use link:, never tooltips)",
+    "rendered": false
+  },
+  {
+    "sample": "gen-cap-12",
+    "precheck": "too many shapes (13 > 12); keep diagrams to ≤12 shapes",
+    "rendered": false
+  },
+  {
+    "sample": "gen-cap-20",
+    "precheck": "too many connections (19 > 16); keep diagrams to ≤16 connections",
+    "rendered": false
+  },
+  {
+    "sample": "gen-cap-30",
+    "precheck": "too many connections (29 > 16); keep diagrams to ≤16 connections",
+    "rendered": false
+  },
+  {
+    "sample": "gen-cap-50",
+    "precheck": "too many connections (49 > 16); keep diagrams to ≤16 connections",
+    "rendered": false
+  },
+  {
+    "sample": "gen-cap-80",
+    "precheck": "too many connections (79 > 16); keep diagrams to ≤16 connections",
+    "rendered": false
+  }
+]

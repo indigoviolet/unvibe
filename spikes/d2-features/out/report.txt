@@ -1,0 +1,33 @@
+01-baseline: precheck=ok rendered=true light=14750 dark=14750 ms=52
+02-icon-remote: precheck=`icon` is not allowed (it fetches remote/local images) rendered=false
+03-shape-image: precheck=`shape: image` is not allowed (it fetches image URLs) rendered=false
+04-import: precheck=imports (`...@`, `@file`) are not allowed (they read local files) rendered=false
+05-md-label: precheck=`|md` Markdown labels are not allowed rendered=false
+06-layers: precheck=layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; re rendered=false
+07-scenarios: precheck=layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; re rendered=false
+08-steps-animate: precheck=layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; re rendered=false
+09-vars: precheck=`vars:` is not allowed rendered=false
+10-classes: precheck=`classes:` is not allowed rendered=false
+11-tooltip: precheck=`tooltip:` is not allowed (citations use link:, never tooltips) rendered=false
+16-containers: precheck=ok rendered=true light=26902 dark=26932 ms=42
+17-edge-styles: precheck=ok rendered=true light=13760 dark=13729 ms=42
+18-grid: precheck=ok rendered=true light=22312 dark=22312 ms=37
+19-sql-class: precheck=ok rendered=true light=16968 dark=16968 ms=45 MISSING=diff:conn:650-651
+20a-shapes: precheck=ok rendered=true light=12997 dark=12975 ms=39
+20b-shapes: precheck=ok rendered=true light=12718 dark=12718 ms=42
+20c-shapes: precheck=ok rendered=true light=15012 dark=15012 ms=39
+21-code-label: precheck=ok rendered=true light=27268 dark=27240 ms=50
+22-seq-spans: precheck=ok rendered=true light=12158 dark=12158 ms=45
+23-seq-groups-notes: precheck=ok rendered=true light=14619 dark=14644 ms=39
+24-seq-selfmsg: precheck=ok rendered=true light=13171 dark=13171 ms=38
+26-animated-edge: precheck=ok rendered=true light=14473 dark=14454 ms=35 ANIMATED
+27-style-tokens: precheck=ok rendered=true light=8194 dark=8194 ms=43
+28-near-legend: precheck=ok rendered=true light=14725 dark=14725 ms=42
+29-latex-label: precheck=`|latex` labels are not allowed (they produce foreignObject HTML) rendered=false
+30-d2config: precheck=`d2-config` is not allowed rendered=false
+31-tooltip-render: precheck=`tooltip:` is not allowed (citations use link:, never tooltips) rendered=false
+gen-cap-12: precheck=too many shapes (13 > 12); keep diagrams to ≤12 shapes rendered=false
+gen-cap-20: precheck=too many connections (19 > 16); keep diagrams to ≤16 connections rendered=false
+gen-cap-30: precheck=too many connections (29 > 16); keep diagrams to ≤16 connections rendered=false
+gen-cap-50: precheck=too many connections (49 > 16); keep diagrams to ≤16 connections rendered=false
+gen-cap-80: precheck=too many connections (79 > 16); keep diagrams to ≤16 connections rendered=false

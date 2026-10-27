@@ -1,0 +1,11 @@
+shape: sequence_diagram
+client
+msg: "HTTPMessage"
+norm: "_normalize_header_values"
+client -> msg: feed lines {link: "diff:conn:650-651"}
+msg.note: "folded Set-Cookie arrives"
+msg -> norm: raw value {link: "diff:conn:80-88"}
+unfold_box: {
+  label: "unfold"
+  msg -> norm: collapse {link: "diff:conn:91-110"}
+}

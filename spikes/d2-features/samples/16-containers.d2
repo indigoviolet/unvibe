@@ -1,0 +1,8 @@
+direction: right
+parser: {
+  msg: "HTTPMessage" {link: "diff:conn:650-651"}
+  norm: "_normalize_header_values" {link: "diff:conn:80-88"}
+  msg -> norm: raw value {link: "diff:conn:91-110"}
+}
+parser -> hdict: sync {link: "diff:conn:91-110"}
+hdict: "HTTPHeaderDict" {link: "diff:conn:91-110"}
