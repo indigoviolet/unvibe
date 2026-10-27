@@ -263,9 +263,11 @@ test.describe("J2 explain ask follow-up nested", () => {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
-    await expect(card.locator(".ans-q").first()).toContainText("Does the fast path still catch a fold", {
+    // Issue #293: the question is a reviewer entry, not a muted heading.
+    await expect(card.locator("[data-ask-question]").first()).toContainText("Does the fast path still catch a fold", {
       timeout: 30_000,
     });
+    await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
     const marker = card.locator(".lk[data-refs]");
     await expect(marker.first()).toBeVisible({ timeout: 30_000 });
     await expect(marker.first()).toHaveAttribute("data-refs", /diff:/);

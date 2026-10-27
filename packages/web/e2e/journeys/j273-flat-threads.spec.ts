@@ -70,6 +70,32 @@ test.describe("J273 flat threads", () => {
     const threadId = await thread.getAttribute("data-thread");
     expect(threadId).toBeTruthy();
 
+    // Issue #293: the question shows as a reviewer comment with the
+    // answer as the reply directly under it — no muted heading, no gap.
+    const q1 = thread.locator('[data-ask-question]').first();
+    await expect(q1).toContainText("What is line folding?", { timeout: 30_000 });
+    await expect(q1.locator(".av.you")).toBeVisible();
+    await expect(q1.locator(".kind-comment")).toBeVisible();
+    await expect(q1).toContainText("Reviewer comment");
+    const a1 = thread.locator('[data-ask-answer]').first();
+    await expect(a1).toBeVisible({ timeout: 30_000 });
+    await expect(a1.locator(".av.ai")).toBeVisible();
+    // The answer carries no question heading.
+    await expect(a1.locator(".ans-q")).toHaveCount(0);
+    // Question sits directly before its answer (no gap between them).
+    const order1 = await thread.evaluate((el) =>
+      [...el.querySelectorAll("[data-ask-question],[data-ask-answer]")].map((n) =>
+        n.getAttribute("data-ask-question") ? `q:${n.getAttribute("data-ask-question")}` : `a:${n.getAttribute("data-ask-answer")}`,
+      ),
+    );
+    expect(order1.slice(0, 2)).toEqual([`q:${await a1.getAttribute("data-ask-answer")}`, `a:${await a1.getAttribute("data-ask-answer")}`]);
+    // The question never enters the Outbox: stored replies stay ask-only.
+    const snapAsk = await threads(svc!, reviewId);
+    const askThread = snapAsk.find((t) => t.id === threadId);
+    expect(askThread).toBeTruthy();
+    expect(askThread!.replies.map((r) => r.kind)).not.toContain("comment");
+    expect((askThread as unknown as { post: boolean }).post).toBe(false);
+
     // Exactly one thread for this anchor (flat, never nested boxes).
     const threadCount = await page.locator('#C-problem section.ithread[data-thread]').count();
     expect(threadCount).toBeGreaterThanOrEqual(1);
@@ -122,6 +148,30 @@ test.describe("J273 flat threads", () => {
       })
       .toBeGreaterThanOrEqual(3);
     await expect(thread.locator('[data-reply][data-kind="ask"]')).toHaveCount(2, { timeout: 60_000 });
+
+    // Issue #293 follow-up: each question is a comment, each answer a reply.
+    await expect(thread.locator("[data-ask-question]")).toHaveCount(2, { timeout: 30_000 });
+    await expect(thread.locator("[data-ask-answer]")).toHaveCount(2, { timeout: 30_000 });
+    await expect(thread.locator("[data-ask-question]").nth(1)).toContainText("Does a cookie header change this?", { timeout: 30_000 });
+    await expect(thread.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
+    // Explain keeps its own heading (only Ask splits into comment + reply).
+    await expect(thread.locator('[data-reply][data-kind="explain"] .ans-q').first()).toContainText("Explain", { timeout: 30_000 });
+    const order2 = await thread.evaluate((el) =>
+      [...el.querySelectorAll("[data-ask-question],[data-ask-answer]")].map((n) =>
+        n.getAttribute("data-ask-question") ? `q:${n.getAttribute("data-ask-question")}` : `a:${n.getAttribute("data-ask-answer")}`,
+      ),
+    );
+    expect(order2.length).toBe(4);
+    for (let i = 0; i < order2.length; i += 2) {
+      expect(order2[i].slice(0, 2)).toBe("q:");
+      expect(order2[i + 1].slice(0, 2)).toBe("a:");
+      expect(order2[i].slice(2)).toBe(order2[i + 1].slice(2));
+    }
+    const snapFollow = await threads(svc!, reviewId);
+    const followThread = snapFollow.find((t) => t.id === threadId);
+    expect(followThread).toBeTruthy();
+    expect(followThread!.replies.filter((r) => r.kind === "comment")).toHaveLength(0);
+    expect((followThread as unknown as { post: boolean }).post).toBe(false);
 
     // Collapse-all turns every thread into one row; expanding restores this one.
     await page.locator('[data-testid="collapse-threads"]').click();

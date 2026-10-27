@@ -55,7 +55,8 @@ test.describe("J272 closed-card failure is recorded", () => {
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-    const pending = card.locator("[data-reply]").nth(1);
+    // Issue #293: questions are separate entries — answers are `ask-answer`.
+    const pending = card.locator("[data-ask-answer]").nth(1);
     await expect(pending.locator(".working")).toBeVisible({ timeout: 30_000 });
     // Kill only once the server-side turn is filling, so the restart
     // reliably marks it failed.
@@ -84,7 +85,7 @@ test.describe("J272 closed-card failure is recorded", () => {
     await page.locator(`mark.anc.exl[data-jump="${annotationId}"]`).first().click();
     const after = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" }).first();
     await expect(after).toBeVisible({ timeout: 30_000 });
-    const failed = after.locator("[data-reply]").nth(1);
+    const failed = after.locator("[data-ask-answer]").nth(1);
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
     await expect(after.locator(".working")).toHaveCount(0);
     await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 15_000 });
