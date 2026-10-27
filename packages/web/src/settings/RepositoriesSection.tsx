@@ -151,7 +151,7 @@ export function RepositoriesSection(): React.JSX.Element {
                   <div style={{ fontSize: 13 }}>
                     {r.owner}/{r.name}
                   </div>
-                  <div className="hint" title={r.localPath}>
+                  <div className="hint mono-path" title={r.localPath}>
                     {r.localPath}
                     {r.managed ? " · Cloned by Unvibe" : ""}
                   </div>
@@ -222,7 +222,7 @@ export function RepositoriesSection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void add();
           }}
-          className="ui-input"
+          className="ui-input mono-path"
           style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "none" }}
         />
         <Button variant="primary" type="button" onClick={() => void add()} disabled={adding}>

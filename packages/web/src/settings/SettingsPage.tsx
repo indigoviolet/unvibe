@@ -93,7 +93,7 @@ export function SettingsPage(): React.JSX.Element {
       <Toast />
       <ScreenTopBar crumbs={[{ label: "Settings" }]} showBadge hideSettings />
       <main className="col" style={{ padding: 24 }}>
-        <div className="doc">
+        <div className="doc settings-doc">
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}
@@ -101,7 +101,9 @@ export function SettingsPage(): React.JSX.Element {
           ) : null}
           {!settings && !error ? <p className="hint">Loading settings…</p> : null}
           {settings ? (
-            <>
+            // #274 side navigation: the tab strip becomes a left list with
+            // a page heading at wide widths. Routing (?tab=) is unchanged.
+            <div className="settings-layout">
               <Tabs
                 label="Settings sections"
                 tabs={SETTING_TABS}
@@ -109,6 +111,8 @@ export function SettingsPage(): React.JSX.Element {
                 onSelect={setTab}
                 idPrefix="settings"
               />
+              <div className="settings-panel">
+                <h2 className="settings-title">{SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
               <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
                 <AppearanceSection settings={settings} onSaved={setSettings} />
               </TabPanel>
@@ -136,7 +140,8 @@ export function SettingsPage(): React.JSX.Element {
               <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
                 <DataSection />
               </TabPanel>
-            </>
+              </div>
+            </div>
           ) : null}
         </div>
       </main>
