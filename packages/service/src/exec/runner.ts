@@ -104,10 +104,11 @@ export class FakeCommandRunner implements CommandRunner {
 
 /**
  * Basenames that must never be spawned by the unit suite: the GitHub CLI
- * and the agent CLIs. Tests reach GitHub only through the Submit path
- * (always faked) and reach agents only through an injected `AgentRunner`.
+ * and the agent CLIs (including pi, issue #279). Tests reach GitHub only
+ * through the Submit path (always faked) and reach agents only through an
+ * injected `AgentRunner`.
  */
-const TEST_BLOCKED_COMMANDS = new Set(["gh", "claude", "codex"]);
+const TEST_BLOCKED_COMMANDS = new Set(["gh", "claude", "codex", "pi"]);
 
 /**
  * Test backstop for the injectable command runner (issue #119): refuses

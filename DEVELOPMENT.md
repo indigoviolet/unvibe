@@ -59,6 +59,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review | `claude` login; small spend |
 | `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
 | `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
+| `test:live:pi` | Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi | Owner's pi login + go; small spend |
 
 `test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
 runs on `ubuntu-latest` for every branch push except `spike/**`, and on

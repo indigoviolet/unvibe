@@ -8,7 +8,9 @@
  *
  * Conventions (AGENTS.md / DEVELOPMENT.md):
  * - `UNVIBE_AGENT` is always explicit (`none` unless the spec passes
- *   `agent: "replay"`): no spec may start real agents.
+ *   `agent: "replay"`): no spec may start real agents — except the pi
+ *   journey (`liveRunner: true`), which boots the real factory against a
+ *   fake `pi` on PATH (no login, no spend, loopback only).
  * - `GITHUB_TOKEN` is never passed through: `gh` must use the login, never
  *   the ambient CI token (PRD §15).
  */
@@ -34,6 +36,20 @@ export interface RunningService {
 export interface StartServiceOptions {
   /** Agent mode for the spawned service. Default `"none"` (pipeline disabled). */
   agent?: string;
+  /**
+   * Issue #279: boot the real agent factory against a fake `pi` on PATH
+   * (hermetic: no login, no spend, loopback only — the fake answers from
+   * fixtures). Requires `agent` unset (the live default). Sets
+   * `UNVIBE_ALLOW_LIVE_AGENT=1` for the child only. The only user is the
+   * pi journey; every other spec stays on `none`/`replay`.
+   */
+  liveRunner?: boolean;
+  /**
+   * Service port. Default `"0"` (ephemeral). The pi journey pins uncommon
+   * fixed ports: with `0` the service's MCP mount URL keeps the literal
+   * `:0`, so agent sessions cannot reach their review tools.
+   */
+  port?: string;
   /** Extra env entries for the child (e.g. the fake-gh SHELL/PATH stub). */
   extraEnv?: Record<string, string | undefined>;
   /** Log-file tag. Defaults to the data dir's basename. */
@@ -42,7 +58,11 @@ export interface StartServiceOptions {
 
 /** Spawn the built service on an ephemeral port; parse origin + token. */
 export async function startService(dataDir: string, opts: StartServiceOptions = {}): Promise<RunningService> {
-  if (opts.agent !== undefined && opts.agent !== "none" && opts.agent !== "replay") {
+  if (opts.liveRunner) {
+    if (opts.agent !== undefined && opts.agent !== "") {
+      throw new Error(`service-harness: liveRunner needs the live agent default (agent unset), got ${JSON.stringify(opts.agent)}`);
+    }
+  } else if (opts.agent !== undefined && opts.agent !== "none" && opts.agent !== "replay") {
     throw new Error(`service-harness: refusing non-hermetic agent mode ${JSON.stringify(opts.agent)} (#188)`);
   }
   if (!existsSync(SERVICE_ENTRY)) {
@@ -62,16 +82,23 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
 
   const env: Record<string, string | undefined> = { ...process.env, ...opts.extraEnv };
   delete env.GITHUB_TOKEN;
-  delete env.UNVIBE_ALLOW_LIVE_AGENT;
+  if (opts.liveRunner) {
+    // Hermetic live factory for the pi journey only (fake binary, no spend).
+    env.UNVIBE_ALLOW_LIVE_AGENT = "1";
+    log(`--- startService LIVE-RUNNER (fake pi, no spend) ---\n`);
+  } else {
+    delete env.UNVIBE_ALLOW_LIVE_AGENT;
+  }
   const proc = spawn(process.execPath, [SERVICE_ENTRY], {
     env: {
       ...env,
       UNVIBE_DATA_DIR: dataDir,
-      UNVIBE_PORT: "0",
+      UNVIBE_PORT: opts.port ?? "0",
       UNVIBE_REPO_ROOTS: "",
       // No agent behaviour under test unless the spec opts into replay:
       // a background pipeline must not mutate the review mid-test.
-      UNVIBE_AGENT: opts.agent ?? "none",
+      // liveRunner uses the live default (real factory, fake pi on PATH).
+      UNVIBE_AGENT: opts.liveRunner ? "" : (opts.agent ?? "none"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

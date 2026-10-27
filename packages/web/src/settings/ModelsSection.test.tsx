@@ -45,6 +45,10 @@ function mockModels(described?: Record<string, { id: string; description?: strin
   });
 }
 
+function mockProviders(providers: string[] = ["claude", "codex"]): void {
+  vi.spyOn(api, "providers").mockResolvedValue({ providers });
+}
+
 type ThinkingMap = Record<string, { value: string; name?: string }[]>;
 
 const THINKING_BOTH: ThinkingMap = {
@@ -328,6 +332,37 @@ describe("ModelsSection provider switch", () => {
       expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus", effort: "" } }),
     );
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
+  });
+
+  it("offers pi as a provider only when the service lists it (#279)", async () => {
+    mockReadiness();
+    mockThinking();
+    mockProviders(["claude", "codex", "pi"]);
+    vi.spyOn(api, "models").mockImplementation((provider: string) =>
+      Promise.resolve({
+        provider,
+        models: provider === "pi" ? [{ id: "gpt-6.1-sol" }] : (MODELS[provider] ?? []).map((id) => ({ id })),
+      } as ModelsResult),
+    );
+    render(<ModelsSection settings={SETTINGS} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    await choose(provSelect("small"), "pi");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a pi model…"));
+  });
+
+  it("keeps pi out of the provider list when the service does not list it (#279)", async () => {
+    mockReadiness();
+    mockModels();
+    mockThinking();
+    mockProviders(["claude", "codex"]);
+    render(<ModelsSection settings={SETTINGS} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    fireEvent.click(provSelect("small"));
+    const options = await screen.findAllByRole("option");
+    const labels = options.map((o) => o.textContent?.replace("✓", "").trim());
+    expect(labels).not.toContain("pi");
   });
 });
 
