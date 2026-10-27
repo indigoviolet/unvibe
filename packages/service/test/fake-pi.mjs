@@ -255,21 +255,50 @@ function resolveReplay(prompt) {
 }
 
 // --- MCP client (scripted tool calls hit the real test mount) -------------------
+// The service's streamable-HTTP mount answers POST with SSE
+// ("event: message\ndata: {...}\n\n"); plain JSON is also accepted.
+function parseMcpBody(text) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(text);
+  let last;
+  for (const line of text.split("\n")) {
+    let payload;
+    if (line.startsWith("data:")) {
+      payload = line.slice(5).replace(/^\s+/, "");
+    } else {
+      const t = line.trim();
+      if (t === "" || t.startsWith("event:") || t.startsWith("id:")) continue;
+      payload = t;
+    }
+    if (payload === "" || payload === "[DONE]") continue;
+    try {
+      last = JSON.parse(payload);
+    } catch {
+      // keep scanning: a later data: line carries the message
+    }
+  }
+  if (last === undefined) return JSON.parse(text);
+  return last;
+}
 async function mcpCall(url, tool, args) {
   const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
   const post = async (method, params, sessionId) => {
     const h = { ...headers };
     if (sessionId) h["mcp-session-id"] = sessionId;
+    // JSON-RPC notifications carry no id; the mount answers 202 with no body.
+    const notif = method.startsWith("notifications/");
     const res = await fetch(url, {
       method: "POST",
       headers: h,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params === undefined ? {} : { params }) }),
+      body: JSON.stringify(notif
+        ? { jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }
+        : { jsonrpc: "2.0", id: 1, method, ...(params === undefined ? {} : { params }) }),
     });
     if (!res.ok) throw new Error(`fake-pi mcp ${method} -> ${res.status}`);
     const sid = res.headers.get("mcp-session-id") ?? sessionId;
     const text = await res.text();
     if (res.status === 202 || text === "") return { sid, result: undefined };
-    const msg = JSON.parse(text);
+    const msg = parseMcpBody(text);
     if (msg.error) throw new Error(`fake-pi mcp ${method}: ${msg.error.message ?? msg.error.code}`);
     return { sid, result: msg.result };
   };

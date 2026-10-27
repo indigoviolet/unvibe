@@ -166,19 +166,65 @@ export default async function (pi) {
     });
   }
 
+  var LF = String.fromCharCode(10);
+  function isWs(c) { return c === 32 || c === 9 || c === 13 || c === 10; }
+  function trimWs(s) {
+    var a = 0;
+    var b = s.length - 1;
+    while (a <= b && isWs(s.charCodeAt(a))) a++;
+    while (b >= a && isWs(s.charCodeAt(b))) b--;
+    return a <= b ? s.slice(a, b + 1) : "";
+  }
+  function parseMcpBody(text) {
+    // The service's streamable-HTTP mount answers POST with SSE
+    // (event: message / data: {...} lines); plain JSON is also accepted.
+    var i = 0;
+    while (i < text.length && isWs(text.charCodeAt(i))) i++;
+    var first = text.charAt(i);
+    if (first === "{" || first === "[") return JSON.parse(text);
+    var last;
+    var lines = text.split(LF);
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var payload;
+      if (line.slice(0, 5) === "data:") {
+        payload = line.slice(5);
+        var k = 0;
+        while (k < payload.length && (payload.charCodeAt(k) === 32 || payload.charCodeAt(k) === 9)) k++;
+        payload = payload.slice(k);
+      } else {
+        var t = trimWs(line);
+        if (t === "" || t.slice(0, 6) === "event:" || t.slice(0, 3) === "id:") continue;
+        payload = t;
+      }
+      if (payload === "" || payload === "[DONE]") continue;
+      try {
+        last = JSON.parse(payload);
+      } catch (e) {
+        // keep scanning: a later data: line carries the message
+      }
+    }
+    if (last === undefined) return JSON.parse(text);
+    return last;
+  }
+
   async function mcp(url, method, params, sessionId) {
     var headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
     if (sessionId) headers["mcp-session-id"] = sessionId;
+    // JSON-RPC notifications carry no id; the mount answers 202 with no body.
+    var notif = method.slice(0, 14) === "notifications/";
     var res = await globalThis.fetch(url, {
       method: "POST",
       headers: headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: method, ...(params === undefined ? {} : { params: params }) }),
+      body: JSON.stringify(notif
+        ? { jsonrpc: "2.0", method: method, ...(params === undefined ? {} : { params: params }) }
+        : { jsonrpc: "2.0", id: 1, method: method, ...(params === undefined ? {} : { params: params }) }),
     });
     if (!res.ok) throw new Error("mcp " + method + " -> " + res.status);
     var sid = res.headers.get("mcp-session-id") ?? sessionId;
     var text = await res.text();
     if (res.status === 202 || text === "") return { sid: sid, result: undefined };
-    var msg = JSON.parse(text);
+    var msg = parseMcpBody(text);
     if (msg.error) throw new Error("mcp " + method + ": " + (msg.error.message ?? msg.error.code));
     return { sid: sid, result: msg.result };
   }

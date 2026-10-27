@@ -3222,19 +3222,26 @@ hunk coverage) is reported for a separate issue, not fixed here.
   per Unvibe session). Nothing in the product depends on pi: it appears in
   the model pickers (`GET /api/providers`) and as a readiness/Doctor check
   only when its binary is detected; claude/codex behaviour is unchanged.
-  Evidence: `service/test/pi-runner.test.ts` (15 tests — fake pi RPC
-  process speaking pi's JSONL protocol: streaming, tool calls through a
-  real MCP mount, fork cache-key passing, resume after restart, cancel,
-  usage split, read-only vs full-access tool lists, dead-secret load
-  failure, unknown-model rejection, static fallback, effort levels, login
-  probes) plus `web/e2e/journeys/j279-pi.spec.ts` (real service with the
-  fake pi on PATH: providers list, Settings pickers, a demo review run,
-  Doctor rows; and the no-pi case). Live runs only through the new
+  Evidence: `service/test/pi-runner.test.ts` (19 tests — fake pi RPC
+  process speaking pi's JSONL protocol: streaming, tool calls through the
+  real MCP mount (registry + streamable-HTTP route, no stub), fork
+  cache-key passing, resume after restart, cancel, usage split, read-only
+  vs full-access tool lists, dead-secret load failure, unknown-model
+  rejection, static fallback, effort levels, login probes) plus
+  `web/e2e/journeys/j279-pi.spec.ts` (real service with the fake pi on
+  PATH: providers list, Settings pickers, a demo review run, Doctor rows;
+  and the no-pi case). Live runs only through the new
   `mise run test:live:pi` task (`service/test/pi-live.test.ts`, gated on
   `UNVIBE_PI_LIVE=1`, not run here). Mechanism verified against real pi
-  1.4.0 offline (fake backend + stub MCP): the bundled extension
-  (`agent/pi/extension.ts`, shipped as a string, loaded with `-e`) bridges
-  the per-session MCP servers as bare tools, replaces `read`/`ls` with
+  1.4.0 offline (scratch HOME, no model calls): the pre-fix extension
+  fails to load against the real mount with the live-run error
+  (`Unexpected token 'e', "event: mes"... is not valid JSON` — the mount
+  answers POST with SSE, the extension parsed plain JSON); the fixed
+  extension (`agent/pi/extension.ts`, shipped as a string, loaded with
+  `-e`) parses SSE `data:` lines (plain JSON still accepted), sends
+  `notifications/initialized` without an id (the mount answers 404
+  otherwise), and loads cleanly. The bundled extension bridges the
+  per-session MCP servers as bare tools, replaces `read`/`ls` with
   worktree-bound versions in the read-only posture, and stamps the fork's
   `prompt_cache_key` to the base's id (`before_provider_request`); forks
   use CLI `--fork`, resumes CLI `--session` (full path). Full gates not
