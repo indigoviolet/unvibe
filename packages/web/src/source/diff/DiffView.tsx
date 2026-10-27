@@ -54,6 +54,8 @@ import {
   takePendingReveal,
   type RevealTarget,
 } from "./revealSource.js";
+// SPIKE #285 (evaluation only, never merged): gutter width variants.
+import { applyGutterVariant } from "./gutterVariant.js";
 
 export const WIDEN_EVENT = "unvibe:widen-pane";
 
@@ -560,6 +562,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // heights (a ResizeObserver, never a scroll listener); re-sample when the
   // snapshot or view changes, which mounts headers without resizing the pane.
   useEffect(() => observeDiffPinned(), []);
+  // SPIKE #285 (evaluation only): mirror `?gutter=` onto the diff root.
+  useEffect(() => {
+    applyGutterVariant();
+  }, []);
   useEffect(() => {
     refreshDiffPinned();
   }, [snapshot, prefs.view]);

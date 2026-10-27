@@ -44,7 +44,10 @@ import {
 import { slotKey, type LineSlots } from "./lineSlots.js";
 import { codeLineHtml } from "./highlight/codeHtml.js";
 import { useFileHighlight } from "./highlight/useFileHighlight.js";
+// SPIKE #285 (evaluation only, never merged): gutter width variants.
 import type { LineTokens } from "./highlight/tokenize.js";
+import { gutterNoSign, gutterSingleColumn } from "./gutterVariant.js";
+import "./gutter-variants.css";
 import {
   ControlSeparator,
   RevealedRows,
@@ -246,6 +249,8 @@ interface RowProps {
  * to unified tables only.
  */
 function hunkHide(file: Pick<ReviewFile, "isNew" | "isDeleted">, hunk: Hunk): { hideOld: boolean; hideNew: boolean } {
+  // SPIKE #285 variant D (evaluation only): one number column for every hunk.
+  if (gutterSingleColumn()) return { hideOld: true, hideNew: false };
   const hideOld = file.isNew === true || hunk.lines.every((l) => l.oldLine === undefined);
   const hideNew = file.isDeleted === true || hunk.lines.every((l) => l.newLine === undefined);
   return { hideOld, hideNew };
@@ -277,6 +282,10 @@ function plainCommentClass(text: string, segs: LineTokens | null): string | unde
 function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks, hideOld, hideNew }: RowProps): ReactNode {
   const lines = hunk.lines;
   const cols = 3 - (hideOld ? 1 : 0) - (hideNew ? 1 : 0);
+  // SPIKE #285 (evaluation only): C/D drop the `+`/`-` sign column; D shows
+  // the new number, falling back to the old number on deleted lines.
+  const noSign = gutterNoSign();
+  const single = gutterSingleColumn();
   return (
     <>
       {lines.map((r, ri) => {
@@ -294,18 +303,28 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
                 <td
                   className={`n${n !== undefined ? " new" : ""}${commented ? " hc" : ""}`}
                   data-line={n !== undefined ? `${fileKey}:${n}` : undefined}
-                  data-tip={n !== undefined ? lineTip(slots, commentedLines, fileKey, n) : undefined}
+                  data-tip={
+                    n !== undefined
+                      ? single && r.oldLine !== undefined && r.oldLine !== n
+                        ? `Comment on line ${n} (was ${r.oldLine})`
+                        : lineTip(slots, commentedLines, fileKey, n)
+                      : undefined
+                  }
                   onClick={n !== undefined && onLineClick ? () => onLineClick(fileKey, n) : undefined}
                 >
                   {commented ? <Icon name="comment" /> : null}
-                  {n ?? ""}
+                  {single ? (n ?? r.oldLine ?? "") : (n ?? "")}
                 </td>
               )}
               <td className="c">
                 <span
                   className={plainCommentClass(r.text, segs)}
                   dangerouslySetInnerHTML={{
-                    __html: codeCellHtml(r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ", r.text, segs),
+                    __html: codeCellHtml(
+                    noSign ? "" : r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ",
+                    r.text,
+                    segs,
+                  ),
                   }}
                 />
               </td>

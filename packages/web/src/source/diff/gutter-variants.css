@@ -1,0 +1,92 @@
+/**
+ * SPIKE #285 — gutter width variants (evaluation only, NEVER merged).
+ *
+ * Layers on top of the baseline rules in `styles/prototype.css` (#140, #261)
+ * and `expand.css` (#133). The attribute lives on `#right` (the diff root;
+ * see `gutterVariant.ts`). Variants are cumulative:
+ *
+ * - A (all variants): number-cell padding 8px -> 4px a side; the column
+ *   floors drop their affordance room (comment icon ~14px, reopen marker
+ *   ~18px) and both icons are absolutely positioned over the cell padding
+ *   instead, so appearing never shifts the code. Sticky offsets follow the
+ *   new floors.
+ * - B (b/c/d): no CSS of its own — `ControlSeparator` renders the expand
+ *   carets in the separator row's code cell (`.xsepctl`) instead of the
+ *   number gutter, so the first column keeps nobody's room.
+ * - C (c/d): no CSS of its own — `UnifiedRows` drops the `+`/`-` prefix
+ *   (row tint + edge bar keep marking adds/removes).
+ * - D (d): no CSS of its own — `hunkHide` forces a single number column.
+ *
+ * Split view is untouched in every variant (fixed colgroups, never shared
+ * the `--lnw` rules).
+ *
+ * Selector notes: `#right[...]` outranks every baseline gutter rule (ID
+ * wins). The A block uses the bare `[data-gutter-variant]` attribute so it
+ * covers a/b/c/d at once; B/C/D blocks enumerate their values.
+ */
+
+/* ---------- A: tight floors, overlay affordances (every variant) ---------- */
+
+/* Number-cell padding 8px -> 4px a side. Code cells keep their 8px. */
+#right[data-gutter-variant] table.diff:not(.split) td.n {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* Column floors: digits + 8px padding, no icon/marker room. Covers the
+   plain columns, the old column (+18px marker room at baseline), the
+   hidden-column tables (+14px icon room) and the clickable new column. */
+#right[data-gutter-variant] table.diff:not(.split) td.n {
+  min-width: calc(var(--lnw, 4ch) + 8px);
+}
+#right[data-gutter-variant] table.diff:not(.split):not(.hide-old) td.n:first-child {
+  min-width: calc(var(--lnw, 4ch) + 8px);
+}
+#right[data-gutter-variant] table.diff.hide-old:not(.split) td.n:first-child {
+  min-width: calc(var(--lnw, 4ch) + 8px);
+}
+#right[data-gutter-variant] table.diff:not(.split) td.n.new {
+  min-width: calc(var(--lnw, 4ch) + 8px);
+}
+/* The second column's sticky offset follows the tightened first column. */
+#right[data-gutter-variant] table.diff:not(.split):not(.hide-old):not(.hide-new) td.n:nth-child(2) {
+  left: calc(var(--lnw, 4ch) + 8px);
+}
+
+/* Comment icon: drawn over the cell's left padding, out of flow, so it
+   never takes (or releases) space when a thread opens/closes. The number
+   stays right-aligned; the icon floats at the cell's left edge. */
+#right[data-gutter-variant] table.diff td.n.hc .ic {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 0;
+}
+
+/* Reopen marker (#189): same treatment — over the first cell's padding,
+   never in flow. (The cell is already positioned via `sticky`, so it
+   anchors the absolute marker.) */
+#right[data-gutter-variant] table.diff mark.anc.range {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 0;
+}
+
+/* ---------- B: expand carets ride the separator row's code cell ---------- */
+
+#right[data-gutter-variant="b"] table.diff tr.xsep td.c.xsepctl,
+#right[data-gutter-variant="c"] table.diff tr.xsep td.c.xsepctl,
+#right[data-gutter-variant="d"] table.diff tr.xsep td.c.xsepctl {
+  position: relative;
+}
+
+#right[data-gutter-variant="b"] table.diff tr.xsep td.c.xsepctl .xicons,
+#right[data-gutter-variant="c"] table.diff tr.xsep td.c.xsepctl .xicons,
+#right[data-gutter-variant="d"] table.diff tr.xsep td.c.xsepctl .xicons {
+  /* The cell is otherwise empty, so auto width costs nothing and the
+     carets sit at the code column's left edge — left of the code. */
+  width: auto;
+}

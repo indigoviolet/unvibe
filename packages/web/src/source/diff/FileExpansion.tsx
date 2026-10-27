@@ -31,6 +31,8 @@ import { Icon, type IconName } from "../../components/Icon.js";
 import { slotKey, type LineSlots } from "./lineSlots.js";
 import { codeLineHtml } from "./highlight/codeHtml.js";
 import { cachedLines, highlightLines } from "./highlight/shiki.js";
+// SPIKE #285 (evaluation only, never merged): gutter width variants.
+import { gutterControlsInRow } from "./gutterVariant.js";
 import { waitForSelectionClear } from "./highlight/selectionGuard.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import {
@@ -583,6 +585,35 @@ export function ControlSeparator({
     if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
     return c.dir === "up" ? "upUp" : "downDown";
   };
+  const buttons = (keyPrefix: string): ReactNode => (
+    <span className="xicons">
+      {controls.map((c) => (
+        <button
+          key={`${keyPrefix}-${c.kind}-${c.dir}`}
+          className="ib xbtn"
+          type="button"
+          data-tip={pending ? "Loading…" : c.label}
+          aria-label={pending ? "Loading…" : c.label}
+          disabled={pending}
+          onClick={c.onClick}
+        >
+          <Icon name={icon(c)} />
+        </button>
+      ))}
+    </span>
+  );
+  // SPIKE #285 variant B/C/D (evaluation only): the expand carets move out
+  // of the number column into the separator row's code cell, left of the
+  // code. Split tables keep their own layout (untouched in every variant).
+  if (cols !== 4 && gutterControlsInRow()) {
+    return (
+      <tr className="xsep">
+        {hideOld === true ? null : <td className="n" />}
+        {hideNew === true ? null : <td className="n" />}
+        <td className="c xsepctl">{buttons("row")}</td>
+      </tr>
+    );
+  }
   // Unified with a hidden number column: the icon cell + code only (2
   // cols). The icons spill via `.xicons` (width 0, visible overflow),
   // so the narrow gutter still shows them without reserving number width.
@@ -590,21 +621,7 @@ export function ControlSeparator({
   return (
     <tr className="xsep">
       <td className="n xgutter">
-        <span className="xicons">
-          {controls.map((c) => (
-            <button
-              key={`${c.kind}-${c.dir}`}
-              className="ib xbtn"
-              type="button"
-              data-tip={pending ? "Loading…" : c.label}
-              aria-label={pending ? "Loading…" : c.label}
-              disabled={pending}
-              onClick={c.onClick}
-            >
-              <Icon name={icon(c)} />
-            </button>
-          ))}
-        </span>
+        {buttons("gutter")}
       </td>
       {cols === 4 ? (
         <>
@@ -649,7 +666,8 @@ function RevealedCells({
       return (
         <>
           <td className="n xhide-cell">
-            {line.newLine ?? ""}
+            {/* SPIKE #285 D: single column shows the old number when there is no new one. */}
+            {line.newLine ?? line.oldLine ?? ""}
             {hide}
           </td>
           <td className="c">
