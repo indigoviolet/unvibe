@@ -1046,9 +1046,11 @@ export class PiAgentRunner implements AgentRunner {
       }[];
       const models: ModelInfo[] = [];
       const providers = new Map<string, string>();
+      // Every model pi offers, whatever its provider; an id offered by
+      // several providers is listed once (openai-codex wins the tie).
       for (const m of listed) {
-        if ((m.provider === "openai-codex" || m.provider === "openai") && typeof m.id === "string" && m.id) {
-          models.push({ id: m.id, ...(m.name ? { name: m.name } : {}) });
+        if (typeof m.provider === "string" && m.provider && typeof m.id === "string" && m.id) {
+          if (!providers.has(m.id)) models.push({ id: m.id, ...(m.name ? { name: m.name } : {}) });
           if (!providers.has(m.id) || m.provider === "openai-codex") providers.set(m.id, m.provider);
         }
       }
@@ -1063,7 +1065,7 @@ export class PiAgentRunner implements AgentRunner {
     try {
       const res = await proc.call({ type: "get_available_models" }, 60000);
       const models = ((res["data"] as { models?: { provider?: string; id?: string }[] } | undefined)?.models ?? []).filter(
-        (m) => (m.provider === "openai-codex" || m.provider === "openai") && typeof m.id === "string",
+        (m) => typeof m.provider === "string" && typeof m.id === "string",
       );
       const first = models[0];
       if (!first?.provider || !first.id) return [];

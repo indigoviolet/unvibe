@@ -472,18 +472,33 @@ describe("pi runner over a fake pi RPC process", () => {
     }
   });
 
+  it("starts a non-OpenAI model on the provider pi names for it", async () => {
+    const runner = makeRunner({ UNVIBE_FAKE_PI_MODELS: JSON.stringify([{ provider: "meta", id: "muse-x", name: "Muse X" }]) });
+    try {
+      await runner.start({ provider: "pi", model: "muse-x", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const line = spawnLines().find((l) => l.includes("--system-prompt"))!;
+      const argv = JSON.parse(line.split("argv=")[1].split(" cachekey=")[0]) as string[];
+      expect(argv[argv.indexOf("--provider") + 1]).toBe("meta");
+    } finally {
+      await runner.dispose();
+    }
+  });
+
   it("lists live models with a static fallback, and [] without a binary", async () => {
     const runner = makeRunner({
       UNVIBE_FAKE_PI_MODELS: JSON.stringify([
         { provider: "openai-codex", id: "live-a", name: "Live A" },
         { provider: "openai", id: "live-b", name: "Live B" },
-        { provider: "other", id: "live-c" },
+        { provider: "meta", id: "live-c" },
+        { provider: "openai", id: "live-a", name: "Live A" },
       ]),
     });
     try {
+      // Every provider pi offers is listed; a shared id appears once.
       expect(await runner.listModels("pi")).toEqual([
         { id: "live-a", name: "Live A" },
         { id: "live-b", name: "Live B" },
+        { id: "live-c" },
       ]);
       expect(await runner.listModels("codex")).toEqual([]);
     } finally {
