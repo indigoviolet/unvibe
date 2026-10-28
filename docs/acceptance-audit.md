@@ -973,9 +973,14 @@ needed (that deviation is closed, not added).
   tightens the unified gutter to digits + 8px padding with zero
   affordance room (80px at 4-digit lines): the comment icon swaps in for
   the new-side number (on hover, permanently on commented lines) and the
-  expand carets replace the hunk's first/last row numbers (`^`/`^^` up,
-  `v`/`vv` down, on row hover with numbers at rest; up wins the
-  one-row tie; a hunk at line 1 or EOF keeps its numbers). Closed
+  expand carets ride the rows (`^`/`^^` up, `v`/`vv` down, on row hover
+  with numbers at rest; a hunk at line 1 or EOF keeps its numbers).
+  Issue #308 moves both with every expansion: expand-more sits on the
+  outermost visible row of each direction, the `fold` collapse chevron
+  ("Hide expanded lines above/below") on the next row in, until the
+  gap closes or the file's start or end; collapsing returns the side to
+  the hunk's edge and reopens a closed gap; a one-row hunk serving
+  both directions keeps up's expand pair and both chevrons. Closed
   multi-line ranges read as dotted anchor text on every line plus the
   tint and border (the #189 gutter `↪` marker is gone; clicking any
   dotted piece reopens), and drops the empty number column on
@@ -991,23 +996,26 @@ needed (that deviation is closed, not added).
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
   tests); quiet gutter caret icons (single = 20-line step, double =
-  whole run) ride the hunk's first/last row number cells (issue #285:
-  no separator rows in unified — `^`/`^^` on the first row, `v`/`vv`
-  on the last, transparent until row hover or keyboard focus; split
-  keeps its separator rows), pinned left while code scrolls, one
-  hidden run per gap sharing one remaining count from both ends, no
-  controls on continuous boundaries (fully revealed or zero-line gaps,
-  file edges; issue #288: the last hunk always offers an optimistic
-  bottom step before the total is known — the click fetches one assumed
-  step, teaches the total, and at EOF drops the control silently with no
-  error, no probe on load), and a
-  quiet fold icon on each revealed block's first gutter number instead
-  of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 14 tests, `FileExpansion.test.tsx` 18 tests,
-  `e2e/diff-expand.spec.ts` 8 tests, journeys `j265-expand-up.spec.ts` 3
-  tests, `j288-expand-down-last-hunk.spec.ts` 2 tests and the new
-  `j285-gutter-e2.spec.ts` 3 tests against the
-  real service); revealed rows are tinted context
+  whole run) ride the outermost visible row of each direction (issue
+  #308: expand-more moves outward with every expansion; unified E2
+  never renders separator rows — `^`/`^^` above, `v`/`vv` below,
+  transparent until row hover or keyboard focus; split keeps its
+  separator rows), pinned left while code scrolls, one hidden run per
+  gap sharing one remaining count from both ends, no expand controls
+  on continuous boundaries (fully revealed or zero-line gaps, file
+  edges; issue #288: the last hunk always offers an optimistic bottom
+  step before the total is known — the click fetches one assumed
+  step, teaches the total, and at EOF drops the control silently with
+  no error, no probe on load), and a `fold` collapse chevron on the
+  next row in ("Hide expanded lines above/below", hover like the
+  other controls, only once that side expanded; hiding returns the
+  side to the hunk's edge and reopens a closed gap)
+  (`web/src/source/diff/FileExpansion.tsx`, `expandLines.test.ts` 18
+  tests, `FileExpansion.test.tsx` 18 tests, `e2e/diff-expand.spec.ts`
+  8 tests, journeys `j265-expand-up.spec.ts` 3 tests,
+  `j288-expand-down-last-hunk.spec.ts` 2 tests, the new
+  `j308-expand-repeat.spec.ts` 6 tests and `j285-gutter-e2.spec.ts`
+  3 tests against the real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
   `diff-expand-full-gap`, plus the #285 `diff-gutter-e2-rest`,
