@@ -32,25 +32,28 @@ describe("repoChanges PR rows carry the head branch (#91)", () => {
   it("authoring PR rows carry branch from headRefName; omitted when gh omits it", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-ch91-"));
     await makeGitRepo(dir);
-    const fake = new FakeCommandRunner();
-    fake.enqueue({
-      cmd: "gh",
-      stdout: JSON.stringify([
-        {
-          number: 5011,
-          title: "Fix retry backoff",
-          author: { login: "you" },
-          updatedAt: "2026-10-01T00:00:00Z",
-          headRefName: "fix-retry-backoff",
-        },
-        { number: 5012, title: "Branch unknown to gh" },
-      ]),
-      stderr: "",
-      code: 0,
-    });
+    const graphqlNodes = [
+      {
+        __typename: "PullRequest",
+        number: 5011,
+        title: "Fix retry backoff",
+        author: { login: "you" },
+        updatedAt: "2026-10-01T00:00:00Z",
+        headRefName: "fix-retry-backoff",
+      },
+      { __typename: "PullRequest", number: 5012, title: "Branch unknown to gh" },
+    ];
     const runner = {
-      run: (cmd: string, opts: Parameters<FakeCommandRunner["run"]>[1]) =>
-        cmd === "gh" ? fake.run(cmd, opts) : real.run(cmd, opts),
+      run: (cmd: string, opts: Parameters<FakeCommandRunner["run"]>[1]) => {
+        if (cmd !== "gh") return real.run(cmd, opts);
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: graphqlNodes } },
+          }),
+          stderr: "",
+          code: 0,
+        });
+      },
     };
     const { app } = await createApp("tok", { runner, autoPipeline: false });
     const authed = { authorization: "Bearer tok" };
@@ -116,25 +119,19 @@ describe("repoChanges review markers (#149)", () => {
       stderr: "",
       code: 0,
     });
-    // Authoring list: PR #77 only.
-    fake.enqueue({
-      cmd: "gh",
-      args: [
-        "pr",
-        "list",
-        "--repo",
-        "acme/app",
-        "--author",
-        "@me",
-        "--json",
-        "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,state,isDraft,reviewDecision,reviewRequests,latestReviews",
-        "--limit",
-        "30",
-      ],
-      stdout: JSON.stringify([{ number: 77, title: "Feature PR", headRefName: "feature" }]),
+    // Authoring list: PR #77 only (answered as a GraphQL page).
+    const graphqlAuthoring = {
+      stdout: JSON.stringify({
+        data: {
+          search: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [{ __typename: "PullRequest", number: 77, title: "Feature PR", headRefName: "feature" }],
+          },
+        },
+      }),
       stderr: "",
       code: 0,
-    });
+    };
     // Issue #168: the ingest loads existing comments (none here), so the
     // scripted sequence above is never disturbed by the extra `gh` call.
     fake.enqueue({
@@ -147,7 +144,13 @@ describe("repoChanges review markers (#149)", () => {
     const { isGitFetch } = await import("./git-args.js");
     const runner = {
       run: (cmd: string, opts: Parameters<FakeCommandRunner["run"]>[1]) => {
-        if (cmd === "gh") return fake.run(cmd, opts);
+        if (cmd === "gh") {
+          const q = opts.args.find((a) => a.startsWith("q=")) ?? "";
+          if (opts.args[0] === "api" && opts.args[1] === "graphql" && q.includes("author:@me")) {
+            return Promise.resolve(graphqlAuthoring);
+          }
+          return fake.run(cmd, opts);
+        }
         if (cmd === "git" && isGitFetch(opts.args)) return Promise.resolve({ stdout: "", stderr: "", code: 0 });
         return real.run(cmd, opts);
       },

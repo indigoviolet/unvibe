@@ -14,6 +14,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { Repo, RepoChange, RepoChangesResponse } from "@unvibe/shared";
+import { decodeChangesCursor, encodeChangesCursor } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { StartPage } from "./StartPage.js";
 import { __resetKeptForTests, getKeptLists } from "./keptChanges.js";
@@ -25,13 +26,34 @@ function pr(n: number, title: string, author: string): RepoChange {
   return { kind: "pr", title, prNumber: n, branch: `b${n}`, author, updatedAt: Date.now() };
 }
 
-type ChangesOpts = { limit?: number; author?: string };
+type ChangesOpts = { limit?: number; author?: string; cursor?: string | null };
 const seen: { filter?: string; opts?: ChangesOpts }[] = [];
 let requestedRows: RepoChange[] = [];
 let requestedHasMore = false;
+/** Rows the mock serves as the next page once the client sends a cursor. */
+let nextPageRows: RepoChange[] = [];
+/** When true, a cursor-paged call rejects like a failed next page. */
+let failNextPage = false;
+/** When set, cursor-paged calls wait until the test releases them. */
+let nextPageGate: { wait: Promise<void>; open: () => void } | null = null;
+
+export function holdNextPage(): void {
+  let open!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  nextPageGate = { wait, open };
+}
+
+export function releaseNextPage(): void {
+  nextPageGate?.open();
+  nextPageGate = null;
+}
 
 function mockPage(): void {
   seen.length = 0;
+  failNextPage = false;
+  nextPageGate = null;
   vi.spyOn(api, "repos").mockResolvedValue({ repos: [REPO] });
   vi.spyOn(api, "reviews").mockResolvedValue({ reviews: [] });
   vi.spyOn(api, "readiness").mockResolvedValue({ checks: [], generatedAt: Date.now(), cached: false });
@@ -42,7 +64,7 @@ function mockPage(): void {
     filter?: string,
     opts?: ChangesOpts,
   ): Promise<RepoChangesResponse> => {
-    if (id === "demo") return { changes: [], hasMore: false };
+    if (id === "demo") return { changes: [], hasMore: false, cursor: null };
     seen.push({ filter, opts });
     if (filter === "review-requested") {
       // diana's PR lives only on the server: it answers `--author diana`.
@@ -53,9 +75,26 @@ function mockPage(): void {
               ...(opts.author === "diana" ? [pr(9, "Diana's ask", "diana")] : []),
             ]
           : requestedRows;
-      return { changes: rows, hasMore: requestedHasMore };
+      // #310: cursor paging like the service — a cursor fetches the next
+      // page only (the mock's second page), never a re-fetch. A flagged
+      // page rejects like a failed `gh` call (the service answers 502);
+      // a gated page waits.
+      if (opts?.cursor !== undefined && opts.cursor !== null) {
+        if (failNextPage) {
+          throw new Error(
+            `GET /api/repos/${id}/changes: 502 {"error":"couldn't load the next page from GitHub"}`,
+          );
+        }
+        if (nextPageGate) await nextPageGate.wait;
+        return { changes: nextPageRows, hasMore: false, cursor: null };
+      }
+      return {
+        changes: rows,
+        hasMore: requestedHasMore,
+        cursor: requestedHasMore ? encodeChangesCursor({ direct: "d1", team: "t1" }) : null,
+      };
     }
-    return { changes: [], hasMore: false };
+    return { changes: [], hasMore: false, cursor: null };
   }) as typeof api.repoChanges);
 }
 
@@ -93,11 +132,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Load more PRs (#297)", () => {
-  it("a full page offers Load more, which re-fetches doubled and grows the authors", async () => {
+describe("Load more PRs, one page per press (#310)", () => {
+  it("appends the next page with the cursor and grows the authors", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     requestedRows = [pr(1, "First ask", "alice"), pr(2, "Second ask", "bob")];
     requestedHasMore = true;
+    nextPageRows = [pr(3, "Third ask", "carol")];
     mockPage();
     renderPage();
 
@@ -105,21 +145,89 @@ describe("Load more PRs (#297)", () => {
     const more = await screen.findByTestId("lists-load-more");
     expect(more).toHaveTextContent("Load more PRs");
 
-    // The next page brings a new row by a new author.
-    requestedRows = [...requestedRows, pr(3, "Third ask", "carol")];
-    requestedHasMore = false;
     fireEvent.click(more);
+    // Loading state while the page is in flight, button locked.
+    expect(more).toHaveTextContent("Loading…");
+    expect(more).toBeDisabled();
     await screen.findByText("Third ask");
+    // Earlier rows stay; the list grew instead of re-fetching.
+    expect(screen.getByText("First ask")).toBeInTheDocument();
+    expect(screen.getByText("Second ask")).toBeInTheDocument();
     // The author list grew with the new rows.
     expect(authorInput()).toHaveValue("All");
     await openCombo();
     expect(await screen.findByRole("option", { name: "carol (1)" })).toBeInTheDocument();
     fireEvent.keyDown(authorInput(), { key: "Escape" });
     expect(authorInput()).toHaveValue("All");
-    // The reload re-fetched with the doubled limit.
-    const limits = seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.limit);
-    expect(limits).toContain(60);
+    // Exactly one follow-up requested call, carrying the cursor — the
+    // first page was never re-fetched.
+    const requestedCalls = seen.filter((s) => s.filter === "review-requested");
+    expect(requestedCalls).toHaveLength(2);
+    expect(requestedCalls[0].opts?.cursor).toBeUndefined();
+    expect(decodeChangesCursor(requestedCalls[1].opts?.cursor)).toEqual({
+      authoring: null,
+      direct: "d1",
+      team: "t1",
+    });
+    // The next page exhausted the mock: the button is gone.
     expect(screen.queryByTestId("lists-load-more")).not.toBeInTheDocument();
+  });
+
+  it("a failed page keeps the rows and offers Retry on the same cursor", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "First ask", "alice")];
+    requestedHasMore = true;
+    nextPageRows = [pr(2, "Second ask", "bob")];
+    mockPage();
+    failNextPage = true;
+    renderPage();
+
+    await screen.findByText("First ask");
+    fireEvent.click(await screen.findByTestId("lists-load-more"));
+    const note = await screen.findByTestId("lists-more-error");
+    expect(note).toHaveTextContent("couldn't load the next page from GitHub");
+    // Nothing was cleared: the first page still shows, with a Retry.
+    expect(screen.getByText("First ask")).toBeInTheDocument();
+    expect(screen.queryByText("Second ask")).not.toBeInTheDocument();
+    const retry = await screen.findByTestId("lists-load-more");
+    expect(retry).toHaveTextContent("Retry");
+    expect(retry).not.toBeDisabled();
+    // Retry re-fires the same cursor and this time lands the page.
+    failNextPage = false;
+    fireEvent.click(retry);
+    await screen.findByText("Second ask");
+    expect(screen.getByText("First ask")).toBeInTheDocument();
+    const cursors = seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.cursor);
+    expect(cursors[0]).toBeUndefined();
+    expect(cursors[1]).toEqual(cursors[2]);
+    expect(decodeChangesCursor(cursors[1])).toEqual({
+      authoring: null,
+      direct: "d1",
+      team: "t1",
+    });
+    expect(screen.queryByTestId("lists-load-more")).not.toBeInTheDocument();
+  });
+
+  it("ignores a second press while a page is in flight", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "First ask", "alice")];
+    requestedHasMore = true;
+    nextPageRows = [pr(2, "Second ask", "bob")];
+    mockPage();
+    holdNextPage();
+    renderPage();
+
+    await screen.findByText("First ask");
+    const more = await screen.findByTestId("lists-load-more");
+    fireEvent.click(more);
+    // Second press lands while disabled: no second fetch starts.
+    expect(more).toBeDisabled();
+    fireEvent.click(more);
+    await screen.findByText("First ask");
+    releaseNextPage();
+    await screen.findByText("Second ask");
+    const requestedCalls = seen.filter((s) => s.filter === "review-requested");
+    expect(requestedCalls).toHaveLength(2);
   });
 
   it("no Load more when nothing is truncated", async () => {

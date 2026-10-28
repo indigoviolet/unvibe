@@ -69,23 +69,52 @@ const TEAM: FakePr[] = [
   }),
 ];
 
-function writeFakeGhPrLists(binDir: string, logDir: string): void {
+/** A flat fixture PR as a GraphQL search node (what `gh api graphql` returns). */
+function toNode(p: FakePr): unknown {
+  const { reviewRequests, latestReviews, ...rest } = p;
+  return {
+    __typename: "PullRequest",
+    ...rest,
+    reviewRequests: {
+      nodes: (reviewRequests ?? []).map((r) => ({
+        requestedReviewer: {
+          __typename: "login" in r && r.login !== undefined ? "User" : "Team",
+          ...r,
+        },
+      })),
+    },
+    latestReviews: { nodes: latestReviews ?? [] },
+  };
+}
+
+function searchPage(rows: FakePr[]): string {
+  return JSON.stringify({
+    data: {
+      search: {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: rows.map(toNode),
+      },
+    },
+  });
+}
+
+function writeFakeGhPrLists(binDir: string, logDir: string, poolDir: string): void {
+  for (const [name, rows] of Object.entries({ authoring: AUTHORING, direct: [], team: TEAM }) as [string, FakePr[]][]) {
+    writeFileSync(path.join(poolDir, `${name}.json`), searchPage(rows));
+  }
   const script = `#!/bin/sh
+POOL="${poolDir}"
 LOG="${logDir}"
 mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
-if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
-    *"--author"*) cat <<EOF
-${JSON.stringify(AUTHORING)}
-EOF
-      exit 0 ;;
-    *"user-review-requested:@me"*) echo '[]'; exit 0 ;;
-    *"review-requested:@me"*) cat <<EOF
-${JSON.stringify(TEAM)}
-EOF
-      exit 0 ;;
+    *"user-review-requested:@me"*) cat "$POOL/direct.json" ;;
+    *"review-requested:@me"*) cat "$POOL/team.json" ;;
+    *"author:"*) cat "$POOL/authoring.json" ;;
+    *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; ;;
   esac
+  exit 0
 fi
 if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'reviewer'; exit 0; fi
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as reviewer"; exit 0; fi
@@ -98,6 +127,7 @@ test.describe("J225 start-page PR list", () => {
   let repoDir = "";
   let dataDir = "";
   let logDir = "";
+  let poolDir = "";
   let fakeBin = "";
   let svc: RunningService | null = null;
   let repoId = "";
@@ -106,10 +136,11 @@ test.describe("J225 start-page PR list", () => {
     repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225pr-repo-"));
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225pr-data-"));
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225pr-gh-"));
+    poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225pr-pool-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j225pr-bin-"));
     await makeScratchRepo(repoDir);
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
-    writeFakeGhPrLists(fakeBin, logDir);
+    writeFakeGhPrLists(fakeBin, logDir, poolDir);
     writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
@@ -125,7 +156,7 @@ test.describe("J225 start-page PR list", () => {
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    for (const d of [repoDir, dataDir, logDir, fakeBin]) rmSync(d, { recursive: true, force: true });
+    for (const d of [repoDir, dataDir, logDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
   for (const combo of [
