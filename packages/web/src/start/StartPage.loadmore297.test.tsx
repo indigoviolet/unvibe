@@ -16,7 +16,7 @@ import { MemoryRouter } from "react-router";
 import type { Repo, RepoChange, RepoChangesResponse } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { StartPage } from "./StartPage.js";
-import { __resetKeptForTests } from "./keptChanges.js";
+import { __resetKeptForTests, getKeptLists } from "./keptChanges.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 const REPO: Repo = { id: "r1", owner: "acme", name: "app", localPath: "/tmp/app", lastOpened: 0 };
@@ -190,6 +190,21 @@ describe("author combobox (#297 follow-up)", () => {
     expect(requestedAuthors().at(-1)).toBe("diana");
     // The fetched login joins the known authors, with its count.
     expect(authorInput()).toHaveValue("diana (1)");
+  });
+
+  it("a search never overwrites the kept default view (#307 rule-out)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "Alice asks", "alice")];
+    mockPage();
+    renderPage();
+
+    await screen.findByText("Alice asks");
+    // The default view is kept; the search below must not replace it —
+    // a kept empty requested list would read exactly like this bug.
+    fireEvent.change(authorInput(), { target: { value: "zed" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
+    await screen.findByTestId("requested-author-search-empty");
+    expect((getKeptLists("r1")?.requested ?? []).map((c) => c.title)).toContain("Alice asks");
   });
 
   it("an unknown login names itself with a way back, and Show all clears it", async () => {

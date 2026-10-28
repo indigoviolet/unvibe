@@ -38,12 +38,12 @@ interface FakePr {
   isDraft: boolean;
 }
 
-function pr(n: number, title: string, author: string): FakePr {
+function pr(n: number, title: string, author: string, updatedAt = new Date().toISOString()): FakePr {
   return {
     number: n,
     title,
     author: { login: author },
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     headRefName: `ask-branch-${n}`,
     additions: 10 + n,
     deletions: n,
@@ -58,21 +58,29 @@ function pr(n: number, title: string, author: string): FakePr {
 // 35 direct review requests: alice/bob share the first 30, carol owns the
 // last 5 (past the first page). diana owns one PR reachable only through
 // `--author diana` (typed search for a login the first page never shows).
-const DIRECT_FULL: FakePr[] = Array.from({ length: 35 }, (_, i) => {
+// #307: yara's direct request likewise sits in the direct pools but on no
+// team-inclusive page — and it is two days old, so the recency checks
+// below can tell a capped-page drop from a window filter. It must show
+// under All anyway (union of both searches).
+const DIRECT_CORE: FakePr[] = Array.from({ length: 35 }, (_, i) => {
   const n = 301 + i;
   const author = i < 30 ? (i % 2 === 0 ? "alice" : "bob") : "carol";
   return pr(n, author === "carol" ? `Carol late ask ${n}` : `Review ask ${n}`, author);
 });
+const YARA_UPDATED_AT = new Date(Date.now() - 2 * 86400_000).toISOString();
+const YARA: FakePr[] = [pr(336, "Yara's direct-only ask", "yara", YARA_UPDATED_AT)];
+const DIRECT_FULL: FakePr[] = [...YARA, ...DIRECT_CORE];
 const DIRECT_30 = DIRECT_FULL.slice(0, 30);
 const TEAM: FakePr[] = [pr(401, "Alice asks the team", "alice"), pr(402, "Bob asks the team", "bob")];
 const AUTHORING: FakePr[] = [pr(101, "My folded-header PR", "you"), pr(102, "My unfolding PR", "you")];
 const DIANA: FakePr[] = [pr(501, "Diana's special ask", "diana")];
-// Per-login direct pools (diana's PR exists only for `--author diana`).
+// Per-login direct pools (diana's and yara's PRs exist only for `--author`).
 const DIRECT_BY_LOGIN: Record<string, FakePr[]> = {
   alice: pool(DIRECT_FULL, "alice"),
   bob: pool(DIRECT_FULL, "bob"),
   carol: pool(DIRECT_FULL, "carol"),
   diana: DIANA,
+  yara: YARA,
 };
 
 function pool(rows: FakePr[], login: string): FakePr[] {
@@ -80,20 +88,24 @@ function pool(rows: FakePr[], login: string): FakePr[] {
 }
 
 function writeFakeGhPaging(binDir: string, logDir: string, poolDir: string): void {
-  const teamFull = [...DIRECT_FULL, ...TEAM];
+  const teamFull = [...DIRECT_CORE, ...TEAM];
+  const team30 = teamFull.slice(0, 30);
   const teamFor = (login: string): FakePr[] => [...(DIRECT_BY_LOGIN[login] ?? []), ...pool(TEAM, login)];
   for (const [name, rows] of Object.entries({
     authoring: AUTHORING,
     direct30: DIRECT_30,
     directFull: DIRECT_FULL,
     // The team-inclusive search is a superset: it returns the direct
-    // requests too (the service merges scopes from this call alone).
-    team30: DIRECT_30,
+    // requests too. Sliced from its own pool (not the direct page), so
+    // a direct-only PR (#307: yara) can sit on one page but past the other.
+    team30,
     teamFull,
     "direct-alice": DIRECT_BY_LOGIN.alice,
     "direct-bob": DIRECT_BY_LOGIN.bob,
     "direct-carol": DIRECT_BY_LOGIN.carol,
     "direct-diana": DIRECT_BY_LOGIN.diana,
+    "direct-yara": DIRECT_BY_LOGIN.yara,
+    "team-yara": teamFor("yara"),
     "team-alice": teamFor("alice"),
     "team-bob": teamFor("bob"),
     "team-carol": teamFor("carol"),
@@ -186,6 +198,15 @@ test.describe("J297 start-page Load more + author search", () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
   }
 
+  /** Pick an option from a Base UI Select by label (recency filter). */
+  async function pickSelectOption(page: import("@playwright/test").Page, label: string, option: string): Promise<void> {
+    await page.getByLabel(label, { exact: true }).click();
+    const target = openPopup(page).getByRole("option", { name: option });
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    await target.click();
+  }
+
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
@@ -219,6 +240,17 @@ test.describe("J297 start-page Load more + author search", () => {
       await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-author-combo-rest-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-author-combo-rest-${combo.name}.png` });
+
+      // #307: a direct request past the capped team-inclusive page still
+      // shows under All (the union of both searches), with a direct scope.
+      await expect(prBlock.getByText("Yara's direct-only ask")).toBeVisible();
+      // The recency window is not the cause: Yara's PR is two days old,
+      // so it hides under "Last day" by design — and returns under All.
+      await pickSelectOption(page, "Updated within", "Last day");
+      await expect(prBlock.getByText("Yara's direct-only ask")).toHaveCount(0);
+      await expect(prBlock.getByText("Review ask 301")).toBeVisible();
+      await pickSelectOption(page, "Updated within", "All");
+      await expect(prBlock.getByText("Yara's direct-only ask")).toBeVisible();
 
       // The Load more button, framed before it is used.
       await prBlock.getByTestId("lists-load-more").scrollIntoViewIfNeeded();

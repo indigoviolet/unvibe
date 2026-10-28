@@ -675,6 +675,13 @@ export function StartPage(): React.JSX.Element {
     const seq = ++loadSeq.current;
     const kept = getKeptLists(id);
     const hadKept = kept !== null;
+    // #297/#307: capture whether this load is a typed author search.
+    // A search-scoped response is never written to the kept lists —
+    // neither on the current repo nor (below) on a repo this load went
+    // stale for — so a return visit shows the default view, not a
+    // narrowed search (a search matching nothing would otherwise keep
+    // an empty requested list that reads exactly like this bug).
+    const searched = authorSearch !== null;
     // A background refresh shows its quiet sign; a first load keeps the
     // existing "Loading…" state (no kept age to describe).
     if (hadKept) setRefreshing(true);
@@ -731,7 +738,7 @@ export function StartPage(): React.JSX.Element {
     // Stale response for a previous repo: refresh its kept entry so a return
     // visit shows fresh rows, but never touch the current repo's state.
     if (loadSeq.current !== seq) {
-      if (fulfilled > 0) {
+      if (fulfilled > 0 && !searched) {
         try {
           setKeptLists(id, {
             authoring: freshAuthoring,
@@ -768,7 +775,7 @@ export function StartPage(): React.JSX.Element {
     // age, so the status line still describes what is shown. #297: an
     // author search is never kept — it narrows the lists to one login,
     // and a return visit must show the default view, not that search.
-    if (fulfilled > 0 && authorSearch === null) {
+    if (fulfilled > 0 && !searched) {
       try {
         const saved = setKeptLists(id, {
           authoring: freshAuthoring,
