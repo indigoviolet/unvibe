@@ -987,12 +987,16 @@ needed (that deviation is closed, not added).
   whole run) in thin separator rows frozen left while code scrolls, one
   hidden run per gap sharing one remaining count from both ends, no
   controls on continuous boundaries (fully revealed or zero-line gaps,
-  file edges; the total is probed up front for single-hunk files), and a
+  file edges; issue #288: the last hunk always offers an optimistic
+  bottom step before the total is known — the click fetches one assumed
+  step, teaches the total, and at EOF drops the control silently with no
+  error, no probe on load), and a
   quiet fold icon on each revealed block's first gutter number instead
   of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 13 tests, `FileExpansion.test.tsx` 15 tests,
-  `e2e/diff-expand.spec.ts` 8 tests, journey `j265-expand-up.spec.ts` 3
-  tests against the real service); revealed rows are tinted context
+  `expandLines.test.ts` 14 tests, `FileExpansion.test.tsx` 15 tests,
+  `e2e/diff-expand.spec.ts` 8 tests, journeys `j265-expand-up.spec.ts` 3
+  tests and `j288-expand-down-last-hunk.spec.ts` 2 tests against the
+  real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
   `diff-expand-full-gap`); revealed lines read in the section whose
