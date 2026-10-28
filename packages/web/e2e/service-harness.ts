@@ -14,7 +14,7 @@
  * - `GITHUB_TOKEN` is never passed through: `gh` must use the login, never
  *   the ambient CI token (PRD §15).
  */
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +101,11 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
       UNVIBE_AGENT: opts.liveRunner ? "" : (opts.agent ?? "none"),
     },
     stdio: ["ignore", "pipe", "pipe"],
+    // Own process group (issue #300): stop() signals and reaps the whole
+    // group, so version probes and login shells the service spawned (real
+    // agent CLIs' first-run state, mise, compinit dumps) cannot outlive the
+    // service and recreate a removed scratch HOME after cleanup.
+    detached: true,
   });
   let out = "";
   const started = new Promise<{ origin: string; token: string }>((resolve, reject) => {
@@ -134,15 +139,78 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
     token,
     logFile,
     killHard: () => proc.kill("SIGKILL"),
-    stop: () =>
-      new Promise<void>((resolve) => {
-        log(`--- stop at ${new Date().toISOString()} ---\n`);
-        proc.on("exit", () => resolve());
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill("SIGKILL");
-          resolve();
-        }, 5000).unref?.();
-      }),
+    stop: () => stopService(proc, log, label),
   };
+}
+
+/** Signal the service's whole process group (service + descendants). Never throws. */
+function signalGroup(pid: number, sig: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, sig);
+  } catch {
+    try {
+      process.kill(pid, sig);
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+/** True when no process remains in the group (ESRCH on signal 0). */
+function groupEmpty(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException)?.code === "ESRCH";
+  }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Stop the service and reap its whole process group (issue #300).
+ *
+ * `proc.kill("SIGTERM")` alone leaves the service's children behind:
+ * login-shell PATH probes, `mise which` shim resolutions and version
+ * probes of the real agent CLIs keep running reparented, and their
+ * first-run writes (a codex plugin clone, claude/pi/mise state, zsh
+ * completion dumps) can recreate a scratch HOME after the journey
+ * removes it, tripping the e2e temp guard. Signalling the group and
+ * waiting for it to drain makes the removal safe. Bounded throughout so
+ * a hung child cannot hang the suite; `killHard` stays process-only
+ * (it simulates a crash, where orphans are faithful).
+ */
+async function stopService(
+  proc: ChildProcess,
+  log: (chunk: string | Buffer) => void,
+  label: string,
+): Promise<void> {
+  const pid = proc.pid;
+  if (pid === undefined) return;
+  log(`--- stop ${label} pid=${pid} at ${new Date().toISOString()} ---\n`);
+  const exited = new Promise<void>((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) resolve();
+    else proc.once("exit", () => resolve());
+  });
+  signalGroup(pid, "SIGTERM");
+  const termed = await Promise.race([exited.then(() => true), sleep(8000).then(() => false)]);
+  if (!termed) {
+    log(`--- stop ${label}: service alive 8s after SIGTERM; SIGKILL group ---\n`);
+    signalGroup(pid, "SIGKILL");
+    await Promise.race([exited, sleep(5000)]);
+  }
+  let drained = groupEmpty(pid);
+  const drainUntil = Date.now() + 5000;
+  while (!drained && Date.now() < drainUntil) {
+    await sleep(100);
+    drained = groupEmpty(pid);
+  }
+  if (!drained) {
+    log(`--- stop ${label}: group not drained; SIGKILL group ---\n`);
+    signalGroup(pid, "SIGKILL");
+    const killUntil = Date.now() + 5000;
+    while (!groupEmpty(pid) && Date.now() < killUntil) await sleep(100);
+    if (!groupEmpty(pid)) log(`--- stop ${label}: WARNING group still alive; continuing ---\n`);
+  }
 }
