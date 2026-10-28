@@ -86,10 +86,11 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 /* Hero loading group (issue #284 follow-up): the guide ball and the
    diff glints stack their art above the label with the whole group
    centred in the pane — horizontally by the column layout, vertically
-   by centring the pad's contents in a viewport-tied floor. Both pads
-   share the same padding and floor, so the two groups stay aligned. */
+   by centring the pad's contents in a viewport-tied floor that fills
+   the visible pane below the top bars. Both pads share the same
+   padding and floor, so the two groups stay aligned. */
 .pane-loading[data-variant]{flex-direction:column;justify-content:center;align-items:center;gap:calc(var(--guide-ball-size) * 0.08);text-align:center}
-.pane-loading-pad:has(.pane-loading[data-variant]){display:grid;place-items:center;min-height:52vh;box-sizing:border-box}
+.pane-loading-pad:has(.pane-loading[data-variant]){display:grid;place-items:center;min-height:calc(100vh - 160px);box-sizing:border-box}
 /* Guide-building indicator (issue #284): the disco ball from #275/#281
    (`/disco-ball.svg`, whole chain shown) swinging gently as a pendulum
    with its reflections — the whole scene rotates a few degrees each way

@@ -3032,7 +3032,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   scale by the same ratio (~33–50px, sizes/offsets/drift as fractions
   of the ball size). Art stacks above the label with the group centred
   in the pane (column `PaneLoading[data-variant]`, pad centres in a
-  52vh floor); animation timing, sync, reduced motion and themes are
+  floor filling the visible pane); animation timing, sync, reduced motion and themes are
   unchanged. The tour asserts the hero art stays inside its pane at
   both swing extremes and the label is uncovered. Evidence: tour
   `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
