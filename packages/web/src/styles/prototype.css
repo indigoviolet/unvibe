@@ -677,35 +677,54 @@ table.diff:not(.split) td.n.new .nic .ic { width: 12px; height: 12px; vertical-a
 table.diff:not(.split) td.n.new.e-commented { color: var(--note); }
 table.diff:not(.split) td.n.new.e-commented .nic { display: inline; }
 table.diff:not(.split) td.n.new.e-commented .nnum { display: none; }
-table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):hover td.n.new .nic { display: inline; }
-table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):hover td.n.new .nnum { display: none; }
+table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):not(.has-xhide-up):not(.has-xhide-down):hover td.n.new .nic { display: inline; }
+table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):not(.has-xhide-up):not(.has-xhide-down):hover td.n.new .nnum { display: none; }
 /* Issue #285 (E2): expand controls replace the hunk's first/last row
-   numbers (`^`/`^^` up, `v`/`vv` down) — no separator rows. The buttons
+   numbers (`^`/`^^` up, `v`/`vv` down) — no separator rows. Issue #308
+   moves them outward with every expansion: expand-more rides the
+   outermost visible row of each direction, the `fold` collapse chevron
+   ("Hide expanded lines above/below") the next row in. The buttons
    ride an overlay pinned to the number cell, so they never take layout
    space: showing them never moves the code. Transparent at rest (the
    numbers show and every click falls through to the cell, so comment-on-
    line is untouched); row hover or keyboard focus swaps the numbers for
-   the carets. The buttons shrink into the tightened floor. A hunk
+   the controls. The buttons shrink into the tightened floor. A hunk
    starting at line 1 (or ending at EOF, once known) keeps its numbers
    — there is nothing hidden to expand there. */
 table.diff:not(.split) td.n .xbtns { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 2px; opacity: 0; pointer-events: none; }
 table.diff:not(.split) td.n .xbtns .ib.xbtn { flex: 1 1 0; min-width: 0; max-width: 22px; height: 18px; padding: 0; pointer-events: none; }
 table.diff:not(.split) tr.has-xup:hover td.n .xbtns,
 table.diff:not(.split) tr.has-xdown:hover td.n .xbtns,
+table.diff:not(.split) tr.has-xhide-up:hover td.n .xbtns,
+table.diff:not(.split) tr.has-xhide-down:hover td.n .xbtns,
 table.diff:not(.split) tr.has-xup:focus-within td.n .xbtns,
-table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns { opacity: 1; }
+table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns,
+table.diff:not(.split) tr.has-xhide-up:focus-within td.n .xbtns,
+table.diff:not(.split) tr.has-xhide-down:focus-within td.n .xbtns { opacity: 1; }
 table.diff:not(.split) tr.has-xup:hover td.n .xbtns .ib.xbtn,
 table.diff:not(.split) tr.has-xdown:hover td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xhide-up:hover td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xhide-down:hover td.n .xbtns .ib.xbtn,
 table.diff:not(.split) tr.has-xup:focus-within td.n .xbtns .ib.xbtn,
-table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns .ib.xbtn { pointer-events: auto; }
+table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xhide-up:focus-within td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xhide-down:focus-within td.n .xbtns .ib.xbtn { pointer-events: auto; }
 table.diff:not(.split) tr.has-xup:hover td.n .nnum,
 table.diff:not(.split) tr.has-xup:hover td.n.new .nic,
 table.diff:not(.split) tr.has-xdown:hover td.n .nnum,
 table.diff:not(.split) tr.has-xdown:hover td.n.new .nic,
+table.diff:not(.split) tr.has-xhide-up:hover td.n .nnum,
+table.diff:not(.split) tr.has-xhide-up:hover td.n.new .nic,
+table.diff:not(.split) tr.has-xhide-down:hover td.n .nnum,
+table.diff:not(.split) tr.has-xhide-down:hover td.n.new .nic,
 table.diff:not(.split) tr.has-xup:focus-within td.n .nnum,
 table.diff:not(.split) tr.has-xup:focus-within td.n.new .nic,
 table.diff:not(.split) tr.has-xdown:focus-within td.n .nnum,
-table.diff:not(.split) tr.has-xdown:focus-within td.n.new .nic { display: none; }
+table.diff:not(.split) tr.has-xdown:focus-within td.n.new .nic,
+table.diff:not(.split) tr.has-xhide-up:focus-within td.n .nnum,
+table.diff:not(.split) tr.has-xhide-up:focus-within td.n.new .nic,
+table.diff:not(.split) tr.has-xhide-down:focus-within td.n .nnum,
+table.diff:not(.split) tr.has-xhide-down:focus-within td.n.new .nic { display: none; }
 /* Split view keeps the reserved comment-icon room (untouched by #285). */
 table.diff.split td.n.hc { color: var(--note); }
 table.diff.split td.n.hc .ic { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
