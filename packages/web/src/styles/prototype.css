@@ -626,39 +626,82 @@ table.diff.split td.c { white-space: pre-wrap; overflow-wrap: anywhere; }
    cards — a card overlapping the gutter paints over the numbers. The
    gutter sticks to the left edge of its hunk's sideways scroller
    (`.dwrap`), so a hunk scrolled sideways keeps its numbers — and the
-   reopen marker (#189) that lives in the first gutter cell. Sticky
-   cells need their own opaque background, or code slides visibly
-   underneath them; add/del row tints below still win for their rows. */
+   expand controls (#285) that live in the first/last rows' number
+   cells. Sticky cells need their own opaque background, or code slides
+   visibly underneath them; add/del row tints below still win for their
+   rows. */
 table.diff td.n { color: var(--muted); text-align: right; width: 1%; user-select: none; position: sticky; z-index: 1; background: var(--surface); }
 /* Per-hunk tables share their file's line-number width (issue #140:
    `--lnw`, digit count, on `.dfile`), so code columns start at the same x
    in every hunk instead of sizing per hunk. The widths are floors
-   (border-box): the old column also reserves the reopen marker's slot
-   (#189, ~18px: the "↪" mark + its padding/margin) and the new column
-   the comment icon's (11px + 3px margin), so neither a marker nor
-   an icon can push one hunk's code column sideways. The floors are the
-   column widths, which makes the second column's sticky offset exact.
-   (Issue #261: tightened from +36/+46px to digits + 16px cell padding
-   + exactly the affordance room.) Split tables are fixed-layout with
-   identical colgroups already; their old gutter sticks at the edge and
-   the new-side gutter sticks beside it if the table ever scrolls
-   sideways. No `opacity` on these cells: it would blend the whole
-   cell — background included — with the code sliding underneath the
-   sticky gutter. */
-table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 16px); left: 0; }
-/* Old column (first child when present): digits + padding + the reopen
-   marker's room (~18px). Hidden-old tables have no old column — their
-   first child is the new column, sized by the `.new` rule below. */
-table.diff:not(.split):not(.hide-old) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 34px); }
-table.diff.hide-old:not(.split) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 30px); }
-table.diff:not(.split):not(.hide-old):not(.hide-new) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 34px); }
-table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 30px); }
+   (border-box): digits + 8px cell padding (4px a side), zero affordance
+   room. The comment icon swaps in for the new-side number (in-flow, in
+   the number's right-aligned slot) and the expand carets replace the
+   first/last rows' numbers, so appearing never pushes a hunk's code
+   column sideways. The floors are the column widths, which makes the
+   second column's sticky offset exact. (Issue #285: tightened from
+   digits + 16px padding + affordance room to digits + 8px; the #189
+   reopen marker is gone — closed ranges read as dotted text instead.)
+   Split tables are fixed-layout with identical colgroups already; their
+   old gutter sticks at the edge and the new-side gutter sticks beside
+   it if the table ever scrolls sideways. Split keeps its own `hc`
+   comment-icon room below; the swap below is unified only. No `opacity`
+   on these cells: it would blend the whole cell — background included
+   — with the code sliding underneath the sticky gutter. */
+table.diff:not(.split) td.n { box-sizing: border-box; min-width: calc(var(--lnw, 4ch) + 8px); left: 0; padding-left: 4px; padding-right: 4px; }
+/* Old column (first child when present): digits + padding. Hidden-old
+   tables have no old column — their first child is the new column,
+   sized by the `.new` rule below. */
+table.diff:not(.split):not(.hide-old) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 8px); }
+table.diff.hide-old:not(.split) td.n:first-child { min-width: calc(var(--lnw, 4ch) + 8px); }
+table.diff:not(.split):not(.hide-old):not(.hide-new) td.n:nth-child(2) { left: calc(var(--lnw, 4ch) + 8px); }
+table.diff:not(.split) td.n.new { min-width: calc(var(--lnw, 4ch) + 8px); }
 table.diff.split td.n:first-child { left: 0; }
 table.diff.split td.n:nth-child(3) { left: 3.6em; }
 table.diff td.n.new { cursor: pointer; }
-table.diff td.n.new:hover { color: var(--note); text-decoration: underline; }
-table.diff td.n.hc { color: var(--note); }
-table.diff td.n.hc .ic { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+table.diff td.n.new:hover { color: var(--note); }
+/* Issue #285 (E2): the comment icon replaces the new-side number — on
+   row hover for plain lines, permanently on commented lines. The icon
+   is in-flow at the number's right-aligned slot, so swapping never
+   moves the code column. Clicking it starts a comment exactly like
+   clicking the number (the cell owns the click). */
+table.diff:not(.split) td.n.new .nic { display: none; }
+table.diff:not(.split) td.n.new .nic .ic { width: 12px; height: 12px; vertical-align: -2px; }
+table.diff:not(.split) td.n.new.e-commented { color: var(--note); }
+table.diff:not(.split) td.n.new.e-commented .nic { display: inline; }
+table.diff:not(.split) td.n.new.e-commented .nnum { display: none; }
+table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):hover td.n.new .nic { display: inline; }
+table.diff:not(.split) tr:not(.has-xup):not(.has-xdown):hover td.n.new .nnum { display: none; }
+/* Issue #285 (E2): expand controls replace the hunk's first/last row
+   numbers (`^`/`^^` up, `v`/`vv` down) — no separator rows. The buttons
+   ride an overlay pinned to the number cell, so they never take layout
+   space: showing them never moves the code. Transparent at rest (the
+   numbers show and every click falls through to the cell, so comment-on-
+   line is untouched); row hover or keyboard focus swaps the numbers for
+   the carets. The buttons shrink into the tightened floor. A hunk
+   starting at line 1 (or ending at EOF, once known) keeps its numbers
+   — there is nothing hidden to expand there. */
+table.diff:not(.split) td.n .xbtns { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 2px; opacity: 0; pointer-events: none; }
+table.diff:not(.split) td.n .xbtns .ib.xbtn { flex: 1 1 0; min-width: 0; max-width: 22px; height: 18px; padding: 0; pointer-events: none; }
+table.diff:not(.split) tr.has-xup:hover td.n .xbtns,
+table.diff:not(.split) tr.has-xdown:hover td.n .xbtns,
+table.diff:not(.split) tr.has-xup:focus-within td.n .xbtns,
+table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns { opacity: 1; }
+table.diff:not(.split) tr.has-xup:hover td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xdown:hover td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xup:focus-within td.n .xbtns .ib.xbtn,
+table.diff:not(.split) tr.has-xdown:focus-within td.n .xbtns .ib.xbtn { pointer-events: auto; }
+table.diff:not(.split) tr.has-xup:hover td.n .nnum,
+table.diff:not(.split) tr.has-xup:hover td.n.new .nic,
+table.diff:not(.split) tr.has-xdown:hover td.n .nnum,
+table.diff:not(.split) tr.has-xdown:hover td.n.new .nic,
+table.diff:not(.split) tr.has-xup:focus-within td.n .nnum,
+table.diff:not(.split) tr.has-xup:focus-within td.n.new .nic,
+table.diff:not(.split) tr.has-xdown:focus-within td.n .nnum,
+table.diff:not(.split) tr.has-xdown:focus-within td.n.new .nic { display: none; }
+/* Split view keeps the reserved comment-icon room (untouched by #285). */
+table.diff.split td.n.hc { color: var(--note); }
+table.diff.split td.n.hc .ic { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
 table.diff td.add, table.diff tr.add td { background: var(--add); }
 table.diff td.c { font-variant-ligatures: var(--ligatures); }
 table.diff tr.add td.c { box-shadow: var(--diff-edge-add); }
@@ -976,17 +1019,15 @@ mark.anc.exl.on { outline: none; }
 #pop .xprev .dg > .dg-svg > svg { min-width: 0; }
 #pop .xprev pre.code { font-size: 11.5px; }
 mark.anc.on { outline: 2px solid var(--note); }
-/* Issue #189: a multi-line diff range cannot be wrapped in one cell,
-   so its rows are tinted end to end, with a gutter marker on the
-   first row that reopens the closed card (the marker is a mark.anc,
-   so the existing click-to-reopen handler owns it). */
+/* Issue #189: a multi-line diff range is tinted end to end (rows carry
+   `rng`), and every line's anchored text gets the dotted reopen mark
+   (issue #285: the gutter `↪` marker is gone — clicking any dotted
+   piece reopens the closed card through the existing mark handler). */
 #right tr.rng td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 /* Sticky gutter cells composite the range tint over the pane surface
    instead: a translucent cell would let scrolled code show through. */
 #right tr.rng td.n { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 #right tr.rng td.n:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-mark.anc.range { background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-6); padding: 0 3px; margin-right: 3px; font-size: 10px; line-height: 1.4; cursor: pointer; text-decoration: none; }
-mark.anc.range.closed { background: none; border: 1px solid var(--accent); }
 .ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: var(--radius-10); padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
 .dann { margin-top: 6px; }
 .dann .ui-card.child, .dann .ithread { margin-left: 0; }
