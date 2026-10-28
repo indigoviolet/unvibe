@@ -12,9 +12,13 @@
  * them (issue #265): up-steps (and show-all up) atop the clicked hunk,
  * down-steps below it; a fully revealed gap shows once, never in both
  * sections. Continuous boundaries
- * (fully revealed gaps, adjacent hunks, file edges) show no controls.
- * Revealed blocks collapse back through a hover gutter icon on their
- * first row — never a control row between continuous lines.
+ * (fully revealed gaps, adjacent hunks, file edges) show no expand
+ * controls. Unified E2 (issue #308) rides expand-more on the outermost
+ * visible row of each direction and the `fold` collapse chevron on the
+ * next row in — both move outward with every expansion, and collapse
+ * returns the side to the hunk's edge (reopening a closed gap). Split
+ * view keeps its separator controls; revealed blocks there collapse
+ * back through a hover gutter icon on their first row.
  *
  * Anchors: revealed lines keep the diff-line address (`fileKey` + line),
  * so Explain, Ask and GitHub work through the existing selection
@@ -35,6 +39,8 @@ import { waitForSelectionClear } from "./highlight/selectionGuard.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import {
   EXPAND_STEP,
+  collapseRangeAbove,
+  collapseRangeBelow,
   expandRegions,
   mapNewToOld,
   mergeRanges,
@@ -83,8 +89,16 @@ export interface FileExpansion {
   expandUp: (hunk: Hunk, index: number) => void;
   expandDown: (hunk: Hunk, index: number) => void;
   expandAll: (region: ExpandRegion, dir: "up" | "down") => void;
-  /** Hide one contiguous revealed block (hover gutter icon). */
+  /** Hide one contiguous revealed block (hover gutter icon, split view). */
   collapseInterval: (start: number, end: number) => void;
+  /**
+   * Hide everything the above side of one hunk revealed, back to the
+   * hunk's original edge (issue #308): gap sides stop at the partition
+   * split so the other side's expansion survives; a closed gap reopens.
+   */
+  collapseAbove: (hunk: Hunk, index: number) => void;
+  /** Mirror of `collapseAbove` below the hunk. */
+  collapseBelow: (hunk: Hunk, index: number) => void;
   regionAbove: (index: number) => ExpandRegion | null;
   regionBelow: (index: number, hunks: Hunk[]) => ExpandRegion | null;
   /**
@@ -503,7 +517,7 @@ export function useFileExpansion(
     [units],
   );
 
-  const collapseInterval = useCallback((start: number, end: number): void => {
+  const removeRevealed = useCallback((start: number, end: number): void => {
     setTexts((prev) => {
       const next = new Map(prev);
       for (let n = start; n <= end; n++) next.delete(n);
@@ -543,6 +557,42 @@ export function useFileExpansion(
     setFailedUnit(null);
   }, []);
 
+  const collapseInterval = useCallback(
+    (start: number, end: number): void => {
+      removeRevealed(start, end);
+    },
+    [removeRevealed],
+  );
+
+  /**
+   * Hide everything one hunk-side revealed (issue #308): the window
+   * runs back to the hunk's original edge, stopping at the gap
+   * partition split so the neighbouring hunk's expansion survives. If
+   * the gap had closed, removing the revealed lines reopens it (the
+   * expand controls return to the hunk's edge rows).
+   */
+  const collapseAbove = useCallback(
+    (hunk: Hunk, index: number): void => {
+      const region = regionAbove(index);
+      if (!region) return;
+      const { start } = edgeOf(hunk);
+      const window = collapseRangeAbove(region, start, splitFor(region));
+      if (window) removeRevealed(window.start, window.end);
+    },
+    [regionAbove, edgeOf, splitFor, removeRevealed],
+  );
+
+  const collapseBelow = useCallback(
+    (hunk: Hunk, index: number): void => {
+      const region = regionBelow(index, hunks);
+      if (!region) return;
+      const { end } = edgeOf(hunk);
+      const window = collapseRangeBelow(region, end, splitFor(region));
+      if (window) removeRevealed(window.start, window.end);
+    },
+    [regionBelow, hunks, edgeOf, splitFor, removeRevealed],
+  );
+
   const retry = useCallback((): void => {
     if (failed.length > 0) void fetchRanges(failed);
     else if (failedUnit) expandUnit(failedUnit);
@@ -576,6 +626,8 @@ export function useFileExpansion(
     expandDown,
     expandAll,
     collapseInterval,
+    collapseAbove,
+    collapseBelow,
     regionAbove,
     regionBelow,
     splitFor,
@@ -618,15 +670,72 @@ export function useRevealedTokens(
   return segs;
 }
 
-/** One gutter icon in a separator row. */
+/** One gutter icon in a separator row or an in-row number cell. */
 export interface GutterControl {
-  /** Single caret (one step) or double caret (the whole run). */
-  kind: "step" | "all";
-  /** Where revealed lines appear from this control. */
+  /**
+   * Single caret (one step), double caret (the whole run), or the
+   * collapse chevron (issue #308: hides what this side revealed).
+   */
+  kind: "step" | "all" | "collapse";
+  /** Where revealed lines appear from this control (collapse: which side it hides). */
   dir: "up" | "down";
   /** Words + count for the tooltip and accessible name. */
   label: string;
   onClick: () => void;
+}
+
+/**
+ * Row classes for in-row gutter controls (issue #308): expand pairs
+ * ride `has-xup`/`has-xdown` (hover reveals the carets, numbers yield),
+ * collapse chevrons `has-xhide-up`/`has-xhide-down`. A row can carry
+ * both (a single-row hunk serving both directions).
+ */
+export function gutterRowClass(cs: GutterControl[] | null | undefined): string {
+  if (!cs || cs.length === 0) return "";
+  let s = "";
+  if (cs.some((c) => c.dir === "up" && c.kind !== "collapse")) s += " has-xup";
+  if (cs.some((c) => c.dir === "down" && c.kind !== "collapse")) s += " has-xdown";
+  if (cs.some((c) => c.dir === "up" && c.kind === "collapse")) s += " has-xhide-up";
+  if (cs.some((c) => c.dir === "down" && c.kind === "collapse")) s += " has-xhide-down";
+  return s;
+}
+
+/** Gutter icon for an in-row or separator control (issue #308: collapse reuses `fold`). */
+export function gutterIcon(c: GutterControl): IconName {
+  if (c.kind === "collapse") return "fold";
+  if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
+  return c.dir === "up" ? "upUp" : "downDown";
+}
+
+/**
+ * Quiet gutter buttons for in-row number cells (issues #285, #308):
+ * transparent at rest so number clicks pass through, revealed on row
+ * hover/focus via the row's `has-x*` classes.
+ */
+export function GutterButtons({ cs, pending }: { cs: GutterControl[]; pending: boolean }): ReactNode {
+  if (cs.length === 0) return null;
+  return (
+    <span className="xbtns">
+      {cs.map((c) => (
+        <button
+          key={`${c.kind}-${c.dir}`}
+          className="ib xbtn"
+          type="button"
+          data-tip={pending ? "Loading…" : c.label}
+          aria-label={pending ? "Loading…" : c.label}
+          disabled={pending}
+          // The buttons sit inside the comment-start cell: expanding
+          // or collapsing must not also start a comment.
+          onClick={(e) => {
+            e.stopPropagation();
+            c.onClick();
+          }}
+        >
+          <Icon name={gutterIcon(c)} />
+        </button>
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -651,10 +760,7 @@ export function ControlSeparator({
   hideNew?: boolean;
 }): ReactNode {
   if (controls.length === 0) return null;
-  const icon = (c: GutterControl): IconName => {
-    if (c.kind === "step") return c.dir === "up" ? "hide" : "down";
-    return c.dir === "up" ? "upUp" : "downDown";
-  };
+  const icon = (c: GutterControl): IconName => gutterIcon(c);
   // Unified with a hidden number column: the icon cell + code only (2
   // cols). The icons spill via `.xicons` (width 0, visible overflow),
   // so the narrow gutter still shows them without reserving number width.
@@ -701,28 +807,45 @@ function RevealedCells({
   view,
   segs,
   hide,
+  controls,
+  pending,
   hideOld,
   hideNew,
 }: {
   line: RevealedLine;
   view: "unified" | "split";
   segs: LineTokens | null;
-  /** Hide control for the block's first row, overlaid on its gutter number. */
+  /** Hide control for the block's first row, overlaid on its gutter number (split view only). */
   hide: ReactNode;
+  /**
+   * In-row gutter controls for this row (unified E2, issue #308): the
+   * first rides the old cell, the rest the new cell — the same split
+   * hunk rows use. Plain numbers, no comment affordance (revealed
+   * lines offer no comment start).
+   */
+  controls?: GutterControl[] | null;
+  pending?: boolean;
   /** Issue #261: collapse the empty number column (unified only). */
   hideOld?: boolean;
   hideNew?: boolean;
 }): ReactNode {
   const html = escapeHtml(" ") + codeLineHtml(line.text, segs);
   if (view === "unified") {
-    // With a hidden column the Hide overlay rides the remaining number
-    // cell, so collapsing never needs the empty column back.
+    // Issue #308: in-row controls ride the number cells (the first in
+    // the old cell, the rest in the new one — the same split hunk
+    // rows use); at rest the numbers show, on row hover the controls.
+    const cs = controls ?? [];
+    const pendingBtns = pending ?? false;
+    const oldCs = hideOld === true ? [] : hideNew === true ? [...cs] : cs.slice(0, 1);
+    const newCs = hideNew === true ? [] : hideOld === true ? [...cs] : cs.slice(1);
+    const oldNum = line.oldLine ?? "";
+    const newNum = line.newLine ?? "";
     if (hideOld === true) {
       return (
         <>
-          <td className="n xhide-cell">
-            {line.newLine ?? ""}
-            {hide}
+          <td className="n">
+            <span className="nnum">{newNum}</span>
+            <GutterButtons cs={newCs} pending={pendingBtns} />
           </td>
           <td className="c">
             <span dangerouslySetInnerHTML={{ __html: html }} />
@@ -733,9 +856,9 @@ function RevealedCells({
     if (hideNew === true) {
       return (
         <>
-          <td className="n xhide-cell">
-            {line.oldLine ?? ""}
-            {hide}
+          <td className="n">
+            <span className="nnum">{oldNum}</span>
+            <GutterButtons cs={oldCs} pending={pendingBtns} />
           </td>
           <td className="c">
             <span dangerouslySetInnerHTML={{ __html: html }} />
@@ -745,11 +868,14 @@ function RevealedCells({
     }
     return (
       <>
-        <td className="n xhide-cell">
-          {line.oldLine ?? ""}
-          {hide}
+        <td className="n">
+          <span className="nnum">{oldNum}</span>
+          <GutterButtons cs={oldCs} pending={pendingBtns} />
         </td>
-        <td className="n">{line.newLine ?? ""}</td>
+        <td className="n">
+          <span className="nnum">{newNum}</span>
+          <GutterButtons cs={newCs} pending={pendingBtns} />
+        </td>
         <td className="c">
           <span dangerouslySetInnerHTML={{ __html: html }} />
         </td>
@@ -796,10 +922,19 @@ function RevealedCells({
 }
 
 /**
- * Revealed context rows. Lines render in order; each contiguous block
- * carries a quiet Hide icon on its first row's gutter number (words and
- * count in the tooltip), so collapsing never needs a control row
- * between continuous code lines.
+ * Revealed context rows. Lines render in order.
+ *
+ * Split view keeps its separator controls plus one quiet Hide icon on
+ * each contiguous block's first row (collapse needs no control row
+ * between continuous code lines).
+ *
+ * Unified E2 (issue #308) carries the controls in-row: expand-more
+ * (`^`/`^^`, `v`/`vv`) rides the outermost visible row in that
+ * direction, collapse (the `fold` chevron, "Hide expanded lines
+ * above/below") the next row in. Both move outward with every
+ * expansion until the gap closes or the file's start or end; the
+ * collapse returns the side to the hunk's original edge (reopening a
+ * closed gap). Expand-more is never replaced by collapse.
  */
 export function RevealedRows({
   fileKey,
@@ -811,6 +946,11 @@ export function RevealedRows({
   onHideBlock,
   hideOld,
   hideNew,
+  controlsPending,
+  leadControls,
+  secondControls,
+  trailControls,
+  secondLastControls,
 }: {
   fileKey: string;
   lines: RevealedLine[];
@@ -818,23 +958,40 @@ export function RevealedRows({
   tokens: ReadonlyMap<number, LineTokens | null>;
   slots: LineSlots;
   highlight: LineRange | null;
-  onHideBlock: (start: number, end: number) => void;
+  /** Split view only: hide one contiguous block (unified uses collapse controls instead). */
+  onHideBlock?: (start: number, end: number) => void;
   /** Issue #261: collapse the empty number column (unified only). */
   hideOld?: boolean;
   hideNew?: boolean;
+  /** Unified only: disable the in-row controls while a fetch is pending. */
+  controlsPending?: boolean;
+  /** Unified only: expand-more on the first row (outermost above). */
+  leadControls?: GutterControl[] | null;
+  /** Unified only: collapse on the second row (next row in above). */
+  secondControls?: GutterControl[] | null;
+  /** Unified only: expand-more on the last row (outermost below). */
+  trailControls?: GutterControl[] | null;
+  /** Unified only: collapse on the second-to-last row (next row in below). */
+  secondLastControls?: GutterControl[] | null;
 }): ReactNode {
   const hidden = view !== "split" && (hideOld === true || hideNew === true);
   const cols = view === "split" ? 4 : hidden ? 2 : 3;
+  const pending = controlsPending ?? false;
   const blocks: RevealedLine[][] = [];
   for (const l of lines) {
     const last = blocks[blocks.length - 1];
     if (last && l.line === last[last.length - 1].line + 1) last.push(l);
     else blocks.push([l]);
   }
+  // Global row positions across blocks (blocks are contiguous in
+  // practice; positions decide which rows carry controls).
+  let ordinal = -1;
   return (
     <>
       {blocks.flatMap((block) =>
         block.map((l, bi) => {
+          ordinal += 1;
+          const gi = ordinal;
           const num = l.newLine ?? l.oldLine;
           const hl = num !== null && num !== undefined && highlight !== null && num >= highlight.start && num <= highlight.end;
           // Ids address new-side lines (issue #134 reads them for the
@@ -842,8 +999,10 @@ export function RevealedRows({
           // rows stay id-less old-side lines, read from the number cell.
           const rowId =
             l.newLine !== null && l.newLine !== undefined ? `L-${fileKey}-${l.newLine}` : undefined;
+          // Split view: the quiet Hide icon rides the block's first
+          // row, as before (unified collapses through its second row).
           const hide =
-            bi === 0 ? (
+            view === "split" && bi === 0 && onHideBlock ? (
               <button
                 className="ib xhide"
                 type="button"
@@ -854,10 +1013,23 @@ export function RevealedRows({
                 <Icon name="fold" />
               </button>
             ) : null;
+          // Unified: expand-more outermost, collapse next row in.
+          // Single-line sides carry expand-more here while collapse
+          // sits on the hunk's edge row (passed via the hunk controls).
+          let controls: GutterControl[] | null = null;
+          if (view !== "split") {
+            const add = (cs?: GutterControl[] | null): void => {
+              if (cs && cs.length > 0) controls = [...(controls ?? []), ...cs];
+            };
+            if (gi === 0) add(leadControls);
+            if (gi === 1 && lines.length > 1) add(secondControls);
+            if (gi === lines.length - 1) add(trailControls);
+            if (gi === lines.length - 2 && lines.length > 1) add(secondLastControls);
+          }
           return (
             <Fragment key={`rev-${l.line}`}>
-              <tr className={hl ? "hl" : undefined} data-revealed="1" id={rowId}>
-                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} hideOld={hideOld} hideNew={hideNew} />
+              <tr className={`${hl ? "hl" : ""}${gutterRowClass(controls)}` || undefined} data-revealed="1" id={rowId}>
+                <RevealedCells line={l} view={view} segs={tokens.get(l.line) ?? null} hide={hide} controls={controls} pending={pending} hideOld={hideOld} hideNew={hideNew} />
               </tr>
               {num !== null && num !== undefined && slots[slotKey(fileKey, num)] != null ? (
                 <tr className="pr">
