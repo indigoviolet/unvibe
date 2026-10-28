@@ -2734,8 +2734,8 @@ export const mockApi = {
           inThreadId = ensured.id;
           hunkSource = ensured.replyId;
         }
-        // Issue #273: Ask inside a thread appends there (Ask about this,
-        // the toolbar's Ask on a selection inside a thread).
+        // Issue #273: Ask inside a thread appends there (the toolbar's
+        // Ask on a selection inside a thread; #301 removed Ask about this).
         if (inThreadId) {
           const target = annotations.find((x) => x.id === inThreadId);
           if (!target || target.type !== "thread") throw new Error(`unknown thread ${inThreadId}`);

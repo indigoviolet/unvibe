@@ -43,6 +43,8 @@
  * the DOM.
  */
 
+import { COMMENT_SVG_INNER } from "../components/Icon.js";
+
 export interface QuoteSegment {
   /** Index into the `texts` array. */
   node: number;
@@ -78,13 +80,23 @@ export function spotFromAnchor(a: {
  * Locate `quote` in `texts.join("")`. Returns the covering per-node
  * segments, or `null` when the quote is absent (callers fall back to the
  * comment marker). Empty quotes never match.
+ *
+ * Issue #303: matching is whitespace-insensitive on both sides (the
+ * stored quote is already collapsed; DOM text may carry newlines or
+ * indentation around inline elements), then mapped back to raw offsets —
+ * so quotes spanning code spans, emphasis or links resolve across element
+ * boundaries instead of falling back to the duplicate chip.
  */
 export function locateQuoteSegments(texts: string[], quote: string): QuoteSegment[] | null {
   if (!quote) return null;
-  const joined = texts.join("");
-  const at = joined.indexOf(quote);
+  const joined = normalizeWithMap(texts.join(""));
+  const needle = normalizeForCompare(quote);
+  if (!needle) return null;
+  const at = joined.text.indexOf(needle);
   if (at < 0) return null;
-  return segmentsAt(texts, at, quote.length);
+  const rawStart = joined.map[at] ?? 0;
+  const rawEnd = (joined.map[at + needle.length - 1] ?? rawStart) + 1;
+  return segmentsAt(texts, rawStart, rawEnd - rawStart);
 }
 
 /** Per-node segments covering `[at, at + length)` of `texts.join("")`. */
@@ -121,10 +133,25 @@ function allOccurrences(haystack: string, needle: string): number[] {
 }
 
 /**
+ * Map a raw-text offset to normalized coordinates (the longest normalized
+ * prefix whose raw text ends at or before `raw`). `map` is
+ * non-decreasing, so this is the normalized length consumed by `raw`.
+ */
+function rawToNormalized(map: number[], raw: number): number {
+  let n = 0;
+  for (let k = 0; k < map.length; k++) {
+    if ((map[k] ?? 0) <= raw) n = k;
+    else break;
+  }
+  return n;
+}
+
+/**
  * Locate `quote` at the occurrence nearest `near` (a recorded offset).
  * Returns the covering per-node segments, or `null` when absent. With
  * `near` 0 this is the first occurrence — today's behaviour for anchors
- * without recorded offsets.
+ * without recorded offsets. Whitespace-insensitive like
+ * `locateQuoteSegments` (issue #303).
  */
 export function locateNearestQuoteSegments(
   texts: string[],
@@ -132,19 +159,55 @@ export function locateNearestQuoteSegments(
   near: number,
 ): QuoteSegment[] | null {
   if (!quote) return null;
-  const joined = texts.join("");
-  const occ = allOccurrences(joined, quote);
+  const joined = normalizeWithMap(texts.join(""));
+  const needle = normalizeForCompare(quote);
+  if (!needle) return null;
+  const occ = allOccurrences(joined.text, needle);
   if (occ.length === 0) return null;
-  let best = occ[0];
+  // `near` is a raw-text offset; occurrences are normalized — convert.
+  const nearN = rawToNormalized(joined.map, near);
+  let best = occ[0] ?? 0;
   for (const at of occ) {
-    if (Math.abs(at - near) < Math.abs(best - near)) best = at;
+    if (Math.abs(at - nearN) < Math.abs(best - nearN)) best = at;
   }
-  return segmentsAt(texts, best, quote.length);
+  const rawStart = joined.map[best] ?? 0;
+  const rawEnd = (joined.map[best + needle.length - 1] ?? rawStart) + 1;
+  return segmentsAt(texts, rawStart, rawEnd - rawStart);
 }
 
 /** Collapse whitespace and trim (matches the toolbar's quote form). */
 function normalizeForCompare(s: string): string {
   return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Issue #303: normalize whitespace like `normalizeForCompare`, keeping a
+ * map from each normalized offset back to its raw offset — so a quote
+ * stored collapsed ("the foo() call") still matches DOM text split by
+ * newlines or indentation around inline elements, and the match maps back
+ * to exact per-node segments for wrapping.
+ */
+function normalizeWithMap(s: string): { text: string; map: number[] } {
+  const map: number[] = [];
+  let out = "";
+  let i = 0;
+  while (i < s.length && /\s/.test(s[i] ?? "")) i++;
+  let pendingSpace = false;
+  for (; i < s.length; i++) {
+    const ch = s[i] ?? "";
+    if (/\s/.test(ch)) {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace) {
+      out += " ";
+      map.push(i);
+      pendingSpace = false;
+    }
+    out += ch;
+    map.push(i);
+  }
+  return { text: out, map };
 }
 
 /** Plain text covered by `segments` of `texts`. */
@@ -222,6 +285,33 @@ export function markTextInElement(el: Element, quote: string, make: () => Elemen
   if (!segments) return 0;
   // Wrap from the last segment backwards so earlier offsets stay valid.
   return wrapSegments(nodes, segments, make);
+}
+
+/**
+ * Issue #302: collapsed-thread marks (`mark.anc.exl[data-jump]`) carry one
+ * small thread glyph after the text. A quote spanning inline markup wraps
+ * one mark per text node, so the glyph goes on the LAST mark of each
+ * thread only. Idempotent: groups that already have a glyph are left
+ * alone; re-marking unwraps the marks (glyph included) and the pass
+ * re-appends afterwards.
+ */
+export function ensureThreadGlyphs(root: ParentNode): void {
+  const groups = new Map<string, Element[]>();
+  for (const el of root.querySelectorAll('mark.anc.exl[data-jump]:not(.fnote)')) {
+    const id = (el as HTMLElement).dataset.jump ?? "";
+    if (!id) continue;
+    const list = groups.get(id) ?? [];
+    list.push(el);
+    groups.set(id, list);
+  }
+  for (const marks of groups.values()) {
+    if (marks.some((m) => m.querySelector(":scope > svg.thg"))) continue;
+    const last = marks[marks.length - 1];
+    const tpl = document.createElement("template");
+    tpl.innerHTML = `<svg class="ic thg" viewBox="0 0 16 16" aria-hidden="true">${COMMENT_SVG_INNER}</svg>`;
+    const svg = tpl.content.firstChild;
+    if (svg) last.appendChild(svg);
+  }
 }
 
 /**

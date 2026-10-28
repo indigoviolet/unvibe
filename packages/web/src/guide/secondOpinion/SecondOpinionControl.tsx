@@ -87,7 +87,7 @@ export function SecondOpinionControl({ reviewId, card, page, disabled, busy }: P
     return (
       <span className="so-ctl" data-so-ctl={card.id}>
         <button className="ib" type="button" data-tip="Second opinion needs a different model" aria-label="Second opinion needs a different model" disabled>
-          <Icon name="spark" />
+          <Icon name="second" />
         </button>
         <span className="so-warn" role="status">
           Needs a different model — <Link to="/settings?tab=models">Settings</Link>
@@ -121,7 +121,7 @@ export function SecondOpinionControl({ reviewId, card, page, disabled, busy }: P
             <i />
           </span>
         ) : (
-          <Icon name="spark" />
+          <Icon name="second" />
         )}
       </button>
       <button

@@ -670,7 +670,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     } else {
       toast(
         `Folded ${foldedNoun}. ` +
-          "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
+          "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
       );
     }
   }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter]);

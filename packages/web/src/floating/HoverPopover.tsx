@@ -21,6 +21,7 @@ import { useNavigate, useParams } from "react-router";
 import type { Anchor, Thread, Page } from "@unvibe/shared";
 import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
+import { citationRange } from "../guide/citations.js";
 import { api } from "../api/client.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
@@ -102,12 +103,17 @@ function pagePreview(page: Page): string {
   return `<b>${esc(page.title)}</b>${html ? `<div class="xprev">${html}</div>` : ""}`;
 }
 
-/** Closed conversation-card preview: quoted text + first paragraph (PRD §4.7). */
+/** Closed conversation-card preview (PRD §4.7). Issue #302: the header
+ * shows the thread as it looks pinned — kind badge, inline AI avatar
+ * and reply count — over the quoted text + first paragraph. Body styling
+ * matches the neutral thread look from #301. */
 function previewExpansion(expansion: Thread | undefined): string {
   if (!expansion) return "";
   const firstTurn = (expansion.replies ?? [])[0];
   const blocks = firstTurn?.blocks ?? [];
   const level = firstTurn?.level ?? "standard";
+  const kind = firstTurn?.kind ?? "explain";
+  const count = (expansion.replies ?? []).length;
   let first = "";
   for (const b of blocks) {
     if (b.type === "paragraph") {
@@ -125,7 +131,13 @@ function previewExpansion(expansion: Thread | undefined): string {
     : working
       ? `<span class="hint">${esc(working)}</span>`
       : `<span class="hint">Writing explanation</span>`;
-  return `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`;
+  return (
+    `<span class="pv-thr">` +
+    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
+    `<span class="kind kind-${kind}">${esc(kind)}</span>` +
+    `<span class="hint">${count} ${count === 1 ? "reply" : "replies"}</span></span>` +
+    `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`
+  );
 }
 
 const ANCHOR_SELECTOR =
@@ -255,19 +267,21 @@ export function HoverPopover() {
         }
       }
     } else if ((anchor as HTMLElement).dataset.glossary) {
-      // Issue #252: glossary term hover shows the definition and its
-      // citation, styled like the existing citation hover popover.
+      // Issues #252/#302/#304: glossary term hover shows the definition
+      // with a Glossary label, and the citation as the same compact prose
+      // chip used at the end of blocks (line range; click goes to the
+      // source the way prose chips do) — never a code snippet.
       const name = (anchor as HTMLElement).dataset.glossary ?? "";
       const term = snap.glossary?.find((g) => g.name === name);
       if (term) {
         const cite = resolveBlockCitations(snap, [{ target: term.citation }])[0];
-        const label = cite?.label ?? term.citation;
-        const snippet = cite?.snippet ?? "";
+        const chip =
+          cite && !cite.unverified
+            ? `<button class="lk" type="button" data-src="${esc(term.citation)}" aria-label="Source" data-tip="Show in source">${esc(citationRange(term.citation) ?? cite.label)}</button>`
+            : "";
         content =
-          `<b>${esc(term.name)}</b><div class="xdef">${esc(term.definition)}</div>` +
-          (cite
-            ? `<button class="cite" data-src="${esc(term.citation)}"><span class="loc">${esc(label)}${cite.unverified ? " · unverified" : ""}</span>${snippet ? `<span class="snip">${esc(snippet)}</span>` : ""}</button>`
-            : "") +
+          `<span class="pv-label">Glossary</span><b>${esc(term.name)}</b><div class="xdef">${esc(term.definition)}</div>` +
+          chip +
           `<span class="hint">Click to go to source</span>`;
       }
     } else if (anchor.matches("a.cx[data-node], a.cx[data-link]")) {

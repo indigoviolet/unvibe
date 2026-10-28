@@ -197,6 +197,24 @@ export function planExpandAll(region: ExpandRegion, revealed: RevealedRange[], c
 }
 
 /**
+ * Collapse window for one hunk-side (issue #308): everything this side
+ * revealed, back to the hunk's original edge. Gap sides stop at the
+ * partition split (the other side's expansion survives the collapse);
+ * top/bottom regions span to the region edge. Null when the window is
+ * empty (nothing revealed on this side).
+ */
+export function collapseRangeAbove(region: ExpandRegion, hunkStart: number, split: number): RevealedRange | null {
+  const lo = region.key.startsWith("gap-") ? split : region.start;
+  return lo < hunkStart ? { start: lo, end: hunkStart - 1 } : null;
+}
+
+/** Mirror of `collapseRangeAbove` below the hunk. */
+export function collapseRangeBelow(region: ExpandRegion, hunkEnd: number, split: number): RevealedRange | null {
+  const hi = region.key.startsWith("gap-") ? split - 1 : region.end;
+  return hunkEnd < hi ? { start: hunkEnd + 1, end: hi } : null;
+}
+
+/**
  * Old-side line for a revealed new-side line. Regions outside hunks are
  * unchanged, so each region maps by offset. Null for new files (no old
  * side) and for lines inside hunks (never revealed).
