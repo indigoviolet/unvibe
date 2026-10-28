@@ -55,9 +55,10 @@ function pr(n: number, title: string, author: string, updatedAt = new Date().toI
   };
 }
 
-// 35 direct review requests: alice/bob share the first 30, carol owns the
-// last 5 (past the first page). diana owns one PR reachable only through
-// `--author diana` (typed search for a login the first page never shows).
+// Direct review requests: alice/bob share the first 30, carol owns the
+// next 5 (past the first page); 60 more follow so Load more pages three
+// times before the stubbed failure. diana owns one PR reachable only
+// through `--author diana` (typed search for a login the first page never shows).
 // #307: yara's direct request likewise sits in the direct pools but on no
 // team-inclusive page — and it is two days old, so the recency checks
 // below can tell a capped-page drop from a window filter. It must show
@@ -69,11 +70,29 @@ const DIRECT_CORE: FakePr[] = Array.from({ length: 35 }, (_, i) => {
 });
 const YARA_UPDATED_AT = new Date(Date.now() - 2 * 86400_000).toISOString();
 const YARA: FakePr[] = [pr(336, "Yara's direct-only ask", "yara", YARA_UPDATED_AT)];
-const DIRECT_FULL: FakePr[] = [...YARA, ...DIRECT_CORE];
-const DIRECT_30 = DIRECT_FULL.slice(0, 30);
+// #310: enough rows for three Load more presses (30 per page) plus a
+// failing fourth page. Team-inclusive pages mirror the same ranges.
+const EXTRA: FakePr[] = Array.from({ length: 60 }, (_, i) => {
+  const n = 336 + i;
+  return pr(n, `Review ask ${n}`, i % 2 === 0 ? "alice" : "bob");
+});
 const TEAM: FakePr[] = [pr(401, "Alice asks the team", "alice"), pr(402, "Bob asks the team", "bob")];
 const AUTHORING: FakePr[] = [pr(101, "My folded-header PR", "you"), pr(102, "My unfolding PR", "you")];
 const DIANA: FakePr[] = [pr(501, "Diana's special ask", "diana")];
+const DIRECT_FULL: FakePr[] = [...YARA, ...DIRECT_CORE, ...EXTRA];
+const DIRECT_PAGES: FakePr[][] = [
+  DIRECT_FULL.slice(0, 30),
+  DIRECT_FULL.slice(30, 60),
+  DIRECT_FULL.slice(60, 90),
+  DIRECT_FULL.slice(90),
+];
+const TEAM_FULL: FakePr[] = [...DIRECT_CORE, ...EXTRA, ...TEAM];
+const TEAM_PAGES: FakePr[][] = [
+  TEAM_FULL.slice(0, 30),
+  TEAM_FULL.slice(30, 60),
+  TEAM_FULL.slice(60, 90),
+  TEAM_FULL.slice(90),
+];
 // Per-login direct pools (diana's and yara's PRs exist only for `--author`).
 const DIRECT_BY_LOGIN: Record<string, FakePr[]> = {
   alice: pool(DIRECT_FULL, "alice"),
@@ -87,55 +106,98 @@ function pool(rows: FakePr[], login: string): FakePr[] {
   return rows.filter((p) => p.author.login === login);
 }
 
+/**
+ * Fake `gh api graphql` answering paged `search` calls (#310). Each page
+ * carries up to 30 rows plus `pageInfo` (the service pages with `after:`,
+ * never re-fetching). A 0.2s sleep simulates a realistic round trip. The
+ * direct search fails on its fourth page, so Load more's third press
+ * surfaces the inline error + Retry with all earlier rows kept.
+ */
+function toNode(p: FakePr): unknown {
+  return {
+    __typename: "PullRequest",
+    number: p.number,
+    title: p.title,
+    author: p.author,
+    updatedAt: p.updatedAt,
+    headRefName: p.headRefName,
+    additions: p.additions,
+    deletions: p.deletions,
+    changedFiles: p.changedFiles,
+    url: p.url,
+    state: p.state,
+    isDraft: p.isDraft,
+    ...((p as { reviewDecision?: string }).reviewDecision ? { reviewDecision: (p as { reviewDecision?: string }).reviewDecision } : {}),
+    reviewRequests: {
+      nodes: (p.reviewRequests ?? []).map((r) => ({ requestedReviewer: r })),
+    },
+    latestReviews: { nodes: (p as { latestReviews?: unknown[] }).latestReviews ?? [] },
+  };
+}
+
+function searchPage(rows: FakePr[], endCursor: string | null, hasNextPage: boolean): string {
+  return JSON.stringify({
+    data: {
+      search: {
+        pageInfo: { hasNextPage, endCursor },
+        nodes: rows.map(toNode),
+      },
+    },
+  });
+}
+
 function writeFakeGhPaging(binDir: string, logDir: string, poolDir: string): void {
-  const teamFull = [...DIRECT_CORE, ...TEAM];
-  const team30 = teamFull.slice(0, 30);
   const teamFor = (login: string): FakePr[] => [...(DIRECT_BY_LOGIN[login] ?? []), ...pool(TEAM, login)];
-  for (const [name, rows] of Object.entries({
-    authoring: AUTHORING,
-    direct30: DIRECT_30,
-    directFull: DIRECT_FULL,
-    // The team-inclusive search is a superset: it returns the direct
-    // requests too. Sliced from its own pool (not the direct page), so
-    // a direct-only PR (#307: yara) can sit on one page but past the other.
-    team30,
-    teamFull,
-    "direct-alice": DIRECT_BY_LOGIN.alice,
-    "direct-bob": DIRECT_BY_LOGIN.bob,
-    "direct-carol": DIRECT_BY_LOGIN.carol,
-    "direct-diana": DIRECT_BY_LOGIN.diana,
-    "direct-yara": DIRECT_BY_LOGIN.yara,
-    "team-yara": teamFor("yara"),
-    "team-alice": teamFor("alice"),
-    "team-bob": teamFor("bob"),
-    "team-carol": teamFor("carol"),
-    "team-diana": teamFor("diana"),
-  }) as [string, FakePr[]][]) {
-    writeFileSync(path.join(poolDir, `${name}.json`), JSON.stringify(rows));
+  for (const [name, page, cursor, more] of [
+    ["authoring", AUTHORING, null, false],
+    ["direct-p1", DIRECT_PAGES[0], "d1", true],
+    ["direct-p2", DIRECT_PAGES[1], "d2", true],
+    ["direct-p3", DIRECT_PAGES[2], "d3", true],
+    ["team-p1", TEAM_PAGES[0], "t1", true],
+    ["team-p2", TEAM_PAGES[1], "t2", true],
+    ["team-p3", TEAM_PAGES[2], "t3", true],
+    ["team-p4", TEAM_PAGES[3], null, false],
+    ["direct-diana", DIRECT_BY_LOGIN.diana, null, false],
+    ["team-diana", teamFor("diana"), null, false],
+  ] as [string, FakePr[], string | null, boolean][]) {
+    writeFileSync(path.join(poolDir, `${name}.json`), searchPage(page, cursor, more));
   }
   const script = `#!/bin/sh
 POOL="${poolDir}"
 LOG="${logDir}"
 mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
-if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+sleep 0.2
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
-    *"--author @me"*) cat "$POOL/authoring.json"; exit 0 ;;
-    *"--author"*)
-      login=$(printf '%s' "$*" | sed -n 's/.*--author \\([^ ]*\\).*/\\1/p')
+    *"author:@me"*) cat "$POOL/authoring.json" ;;
+    *"author:"*)
+      login=$(printf '%s' "$*" | sed -n 's/.*author:\\([A-Za-z@-]*\\).*/\\1/p')
       case "$*" in
         *"user-review-requested:@me"*) f="$POOL/direct-$login.json" ;;
         *) f="$POOL/team-$login.json" ;;
       esac
-      if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi
-      exit 0 ;;
+      if [ -f "$f" ]; then cat "$f"; else echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; fi
+      ;;
     *"user-review-requested:@me"*)
-      case "$*" in *"--limit 30"*) cat "$POOL/direct30.json" ;; *) cat "$POOL/directFull.json" ;; esac
-      exit 0 ;;
+      case "$*" in
+        *"after=d1"*) cat "$POOL/direct-p2.json" ;;
+        *"after=d2"*) cat "$POOL/direct-p3.json" ;;
+        *"after=d3"*) echo "fake gh: review search page 4 is down" >&2; exit 1 ;;
+        *) cat "$POOL/direct-p1.json" ;;
+      esac
+      ;;
     *"review-requested:@me"*)
-      case "$*" in *"--limit 30"*) cat "$POOL/team30.json" ;; *) cat "$POOL/teamFull.json" ;; esac
-      exit 0 ;;
+      case "$*" in
+        *"after=t1"*) cat "$POOL/team-p2.json" ;;
+        *"after=t2"*) cat "$POOL/team-p3.json" ;;
+        *"after=t3"*) cat "$POOL/team-p4.json" ;;
+        *) cat "$POOL/team-p1.json" ;;
+      esac
+      ;;
+    *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; ;;
   esac
+  exit 0
 fi
 if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"reviewer"}'; exit 0; fi
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as reviewer"; exit 0; fi
@@ -275,10 +337,12 @@ test.describe("J297 start-page Load more + author search", () => {
       await page.keyboard.press("Escape");
       await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
 
-      // Load more brings in rows past 30, and their authors join the filter.
+      // Load more appends the next page per search (#310: one page,
+      // never a re-fetch), and new authors join the filter.
       await prBlock.getByTestId("lists-load-more").click();
       await expect(prBlock.getByText("Carol late ask 335")).toBeVisible({ timeout: 30_000 });
-      await expect(prBlock.getByText("Load more PRs")).toHaveCount(0);
+      await expect(prBlock.getByText("Review ask 360")).toBeVisible();
+      await expect(prBlock.getByText("Load more PRs")).toBeVisible();
       // The loaded-more list, framed with its new rows.
       await prBlock.getByText("Carol late ask 335").scrollIntoViewIfNeeded();
       await checkLayout(page, `start-pr-list-more-loaded-${combo.name}`);
@@ -287,15 +351,38 @@ test.describe("J297 start-page Load more + author search", () => {
       await expect(openPopup(page).getByRole("option", { name: "carol (5)" })).toBeVisible({ timeout: 15_000 });
       await page.keyboard.press("Escape");
 
+      // A second press appends the next page after that.
+      await prBlock.getByTestId("lists-load-more").click();
+      await expect(prBlock.getByText("Review ask 375")).toBeVisible({ timeout: 30_000 });
+
+      // A failing page (#310) keeps every shown row and offers Retry by
+      // the button: the third page of the direct search is down.
+      await prBlock.getByTestId("lists-load-more").click();
+      const moreError = prBlock.getByTestId("lists-more-error");
+      await expect(moreError).toHaveText("couldn't load the next page from GitHub");
+      expect(await prBlock.getByText("Review ask 391").count()).toBe(0);
+      await expect(prBlock.getByText("Review ask 375")).toBeVisible();
+      await expect(prBlock.getByText("Yara's direct-only ask")).toBeVisible();
+      const retry = prBlock.getByTestId("lists-load-more");
+      await expect(retry).toHaveText("Retry");
+      // Retry re-fires the same page and still fails: rows still kept.
+      await retry.click();
+      await expect(prBlock.getByTestId("lists-more-error")).toHaveText("couldn't load the next page from GitHub");
+      await expect(prBlock.getByText("Review ask 375")).toBeVisible();
+      // Frame the error state: every earlier row kept, Retry by the button.
+      await prBlock.getByTestId("lists-load-more").scrollIntoViewIfNeeded();
+      await checkLayout(page, `start-pr-list-more-error-${combo.name}`);
+      await page.screenshot({ path: `${SHOTS}/start-pr-list-more-error-${combo.name}.png` });
+
       // Typing a login absent from every loaded row fetches that author's
-      // PRs from GitHub (`gh pr list --author`).
+      // PRs from GitHub (`gh api graphql` with `author:`).
       await prBlock.getByLabel("Author", { exact: true }).fill("diana");
       await prBlock.getByLabel("Author", { exact: true }).press("Enter");
       await expect(prBlock.getByText("Diana's special ask")).toBeVisible({ timeout: 30_000 });
       await expect(prBlock.getByText("Review ask 301")).toHaveCount(0);
       await expect(page.getByLabel("Author", { exact: true })).toHaveValue("diana (1)");
       const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
-      expect(calls).toContain("--author diana");
+      expect(calls).toContain("author:diana");
       // The committed search keeps the single control inside the card.
       await expectAuthorControlFits(page);
 

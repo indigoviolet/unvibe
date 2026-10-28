@@ -302,13 +302,14 @@ const realApi = {
   repoChanges: (
     id: string,
     filter?: ChangesFilter,
-    opts?: { limit?: number; author?: string },
+    opts?: { limit?: number; author?: string; cursor?: string | null },
   ): Promise<RepoChangesResponse> => {
     const params = new URLSearchParams();
     if (filter) params.set("filter", filter);
     if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
     const author = opts?.author?.trim();
     if (author) params.set("author", author);
+    if (opts?.cursor) params.set("cursor", opts.cursor);
     const qs = params.toString();
     return get(`/api/repos/${encodeURIComponent(id)}/changes${qs ? `?${qs}` : ""}`);
   },
