@@ -128,23 +128,25 @@ export function ProcessingDots(): React.JSX.Element {
 }
 
 /**
- * Shared modest loading state for the review panes while a review is
- * being prepared (issue #232): the processing indicator plus a short
+ * Shared loading state for the review panes while a review is being
+ * prepared (issue #232): the processing indicator plus a short
  * label at body size. The indicator is the only "working" signal — no
  * trailing ellipses, no commentary sentences.
  *
  * #284: the guide-building state shows the disco ball swinging gently
  * with its pink glints instead of dots (`variant="guide"`); the
  * diff-loading state shows the same glints on their own
- * (`variant="diff"`). No variant keeps the legacy dots for every other
- * working state (Ask/Explain "Writing answer" and so on), which is
- * unchanged. The art is decorative (`aria-hidden`); the visible label
- * stays the accessible text via `role="status"`.
+ * (`variant="diff"`). The follow-up makes both hero-sized: the ball
+ * derives from the start page's ball (see `ui.css`), stacked above the
+ * label with the group centred in the pane. No variant keeps the legacy
+ * dots for every other working state (Ask/Explain "Writing answer" and
+ * so on), which is unchanged. The art is decorative (`aria-hidden`);
+ * the visible label stays the accessible text via `role="status"`.
  */
 export function PaneLoading({ label, variant }: { label: string; variant?: "guide" | "diff" }): React.JSX.Element {
   if (variant === "guide") {
     return (
-      <p className="pane-loading" role="status">
+      <p className="pane-loading" data-variant="guide" role="status">
         <span className="guide-scene" aria-hidden="true">
           <img className="guide-ball" src="/disco-ball.svg" alt="" />
           <LoadingGlints placement="around" />
@@ -155,7 +157,7 @@ export function PaneLoading({ label, variant }: { label: string; variant?: "guid
   }
   if (variant === "diff") {
     return (
-      <p className="pane-loading" role="status">
+      <p className="pane-loading" data-variant="diff" role="status">
         <LoadingGlints placement="loose" />
         <span>{label}</span>
       </p>
