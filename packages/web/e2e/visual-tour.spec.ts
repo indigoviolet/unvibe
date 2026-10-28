@@ -1429,7 +1429,8 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await expect(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
     const second = file.locator(".dhunk").nth(1);
     // ^ on the second hunk: the tail reads atop its own code.
-    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    // (#288 adds the optimistic bottom step below it, same label.)
+    await second.getByRole("button", { name: "Show 20 more lines" }).first().click();
     await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     await page.mouse.move(20, 400);
     await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();

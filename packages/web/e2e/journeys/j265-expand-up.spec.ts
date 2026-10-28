@@ -79,7 +79,9 @@ test.describe("J265 expand up", () => {
     const dhunks = bigFile.locator(".dhunk");
     const second = dhunks.nth(1);
     // The second hunk's own step-up (^): one 20-line step of the gap.
-    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    // (#288 adds the optimistic bottom step below it, same label — pick
+    // the gap's up control explicitly.)
+    await second.getByRole("button", { name: "Show 20 more lines" }).first().click();
     await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     // Nothing leaks into the previous hunk's section.
     await expect(dhunks.nth(0).locator("tr[data-revealed]")).toHaveCount(0);
