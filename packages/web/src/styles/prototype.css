@@ -273,7 +273,10 @@ code { font-family: var(--mono); font-size: .86em; }
    where the window edge cuts it, like the variant-A mock. At narrow widths with no side space it sits
    partly behind the content, still faint and legible, and — being fixed —
    never causes horizontal overflow. Multiply goes invisible on dark
-   grounds, so dark mode uses a plain low opacity instead. */
+   grounds, so dark mode uses a plain low opacity instead.
+   The width is the single source for the loading ball's size: #284's
+   guide ball derives from it (see `ui.css`), so the two stay in ratio. */
+:root { --start-ball: 640px; }
 .start-watermark {
   position: fixed;
   inset: 0;
@@ -284,7 +287,7 @@ code { font-family: var(--mono); font-size: .86em; }
   position: absolute;
   right: -150px;
   bottom: -110px;
-  width: 640px;
+  width: var(--start-ball);
   aspect-ratio: 52 / 76;
   object-fit: cover;
   object-position: center;
