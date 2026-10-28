@@ -50,31 +50,6 @@ async function depthAnimation(page: Page): Promise<string> {
   });
 }
 
-/**
- * Sample the computed `transform` of the first working dot five times.
- * Under reduced motion nothing may move: every sample is `none`.
- * Returns "missing" when the dots filled mid-sample (caller retries).
- */
-async function dotsTransforms(page: Page): Promise<string> {
-  return page.evaluate(
-    () =>
-      new Promise<string>((resolve) => {
-        const out: string[] = [];
-        const tick = (): void => {
-          const el = document.querySelector("#C-g-flow .dots i");
-          if (!el) {
-            resolve("missing");
-            return;
-          }
-          out.push(getComputedStyle(el).transform);
-          if (out.length >= 5) resolve(out.join(" / "));
-          else window.setTimeout(tick, 120);
-        };
-        tick();
-      }),
-  );
-}
-
 /** Six bounding boxes over ~1.8s (a full border-travel cycle): all identical. */
 async function pillBoxes(page: Page): Promise<string[]> {
   return page.evaluate(
@@ -179,10 +154,26 @@ test.describe("reduced motion", () => {
     // Still, not fading: the pill and its border carry no animation.
     await expect(count).toHaveCSS("animation-name", "none");
     await expect.poll(() => pillBorderAnimation(page), { timeout: 8000 }).toBe("none 0s");
+    // The mock answer fills ~700ms after the click and the dots go with it,
+    // so under load two separate reads can miss them (#295). Sample in the
+    // page from before the click, whenever the dots exist.
+    await page.evaluate(() => {
+      const w = window as unknown as { __dotSamples: string[] };
+      w.__dotSamples = [];
+      const id = window.setInterval(() => {
+        const el = document.querySelector("#C-g-flow .dots i");
+        if (!el) return;
+        const cs = getComputedStyle(el);
+        w.__dotSamples.push(`${cs.animationName} ${cs.animationDuration} ${cs.transform}`);
+      }, 40);
+      window.setTimeout(() => window.clearInterval(id), 8000);
+    });
     await page.locator("#C-g-flow .follow button").first().click();
-    await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("none 0s");
-    // And nothing moves.
-    await expect.poll(() => dotsTransforms(page), { timeout: 8000 }).toBe("none / none / none / none / none");
+    const samples = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { __dotSamples: string[] }).__dotSamples);
+    await expect.poll(async () => (await samples()).length, { timeout: 8000 }).toBeGreaterThan(0);
+    // No animation, and nothing moves: every sample is still.
+    expect(new Set(await samples())).toEqual(new Set(["none 0s none"]));
   });
 
   test("nothing inside the depth stepper animates", async ({ page }) => {
