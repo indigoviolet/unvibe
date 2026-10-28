@@ -3017,9 +3017,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
 
 - **#284 (guide loading ball + glints; diff glints-only):** the
   guide-building state shows the #275/#281 disco ball (whole
-  `/disco-ball.svg`, 52px, the scene pendulums from the chain mount,
-  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints (6–9px,
-  art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
+  `/disco-ball.svg`, the scene pendulums from the chain mount,
+  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints
+  (art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
   reflections around the sphere — same 2.5s cycle and easing, in phase
   with the swing, drifting slightly and brightest at the swing's ends.
   The diff-loading state shows the same glints in a loose staggered
@@ -3028,7 +3028,19 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `variant="guide" | "diff"`; every other dots indicator is
   unchanged. Reduced motion: scene and glints static but visible. Dark
   mode remaps the ball to line-art-on-dark (lightness-inverted, hue
-  kept) and softens the glint cluster (opacity .7). Evidence: tour
+  kept) and softens the glint cluster (opacity .7).
+- **#284 follow-up (hero-sized loading art):** both indicators are
+  large. The guide ball derives from the start page's ball —
+  `--start-ball: 640px` (the watermark width in `prototype.css`) with
+  `--guide-ball-size: calc(var(--start-ball) * 0.45)` (~288px: the ball
+  fills ~55% of the watermark, so 0.8 of the ball leaves swing room),
+  `max-width: 100%` shrinking it to fit narrow panes. The diff glints
+  scale by the same ratio (~33–50px, sizes/offsets/drift as fractions
+  of the ball size). Art stacks above the label with the group centred
+  in the pane (column `PaneLoading[data-variant]`, pad centres in a
+  floor filling the visible pane); animation timing, sync, reduced motion and themes are
+  unchanged. The tour asserts the hero art stays inside its pane at
+  both swing extremes and the label is uncovered. Evidence: tour
   `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
   `diff-glint-extreme-*`/`diff-glint-mid-*` +
   `review-preparing-*` frames and the #284 reduced-motion test
@@ -3394,24 +3406,30 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `--author <login>` when set ("Your PRs" stays `--author @me`).
   `RepoChangesResponse` gains required `hasMore` (true when a PR list
   filled its page). No stored data changes shape.
-- Web (`StartPage.tsx`): one "Load more PRs" button at the end of the
-  PR block while `hasMore` holds (the author options grow with the new
-  rows); a "Type a login…" box beside the Author select commits the
-  search on Enter (a listed login is just the #228 client-side filter;
-  picking from the list or Show-all clears the server search, which
-  never crosses repos and is never written to the kept lists in
-  `keptChanges.ts`). A search matching nothing names the login with a
-  Show-all way back. #228's select/counts/persistence and #281's
-  layout are untouched. Evidence: shared
+- Web (`StartPage.tsx`): one "Load more PRs" button right after the
+  last PR section (owner decision: after the requested-review groups,
+  before "Recent branches") while `hasMore` holds (the author options
+  grow with the new rows); one author combobox in the select's place,
+  at its size and style — at rest it shows the choice, typing filters
+  the known authors and picking one is the #228 client-side filter,
+  Enter on an unlisted login commits the server search (Show-all or
+  picking from the list clears it; the search never crosses repos and
+  is never written to the kept lists in `keptChanges.ts`; the draft
+  text is never saved, only the committed choice persists as before).
+  A search matching nothing names the login with a Show-all way back.
+  #228's counts/persistence and #281's layout are untouched. Evidence: shared
   `test/changes-query-297.test.ts`, service
   `test/changes-paging-297.test.ts` (limit forwarded, `hasMore` on a
   full page, clamp, author scoping of the requested searches only),
   web `src/start/StartPage.loadmore297.test.tsx` (Load more doubles
-  the limit and grows the authors; Enter fetches the login; unknown
-  login names itself with a way back), journey
+  the limit and grows the authors; typing filters the known authors
+  and Escape drops the draft; picking a listed login filters
+  client-side; Enter on an unlisted login fetches it; unknown login
+  names itself with a way back), journey
   `e2e/journeys/j297-pr-list-more.spec.ts` (real service + fake `gh`
   honouring `--limit`/`--author` over 35 made-up PRs: Load more
-  brings in rows past 30 with their new authors; typing an absent
-  login fetches that author's PRs; `checkLayout` on both frames),
-  tour frames `packages/web/visual-tour/start-pr-list-more-*`
-  (git-ignored). Full gates not yet run.
+  brings in rows past 30 with their new authors; typing filters the
+  dropdown; typing an absent login fetches that author's PRs; the
+  single control fits its card; `checkLayout` on every frame), tour
+  frames `packages/web/visual-tour/start-pr-list-more-*` and
+  `start-author-combo-*` (git-ignored). Full gates not yet run.

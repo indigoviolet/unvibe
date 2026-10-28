@@ -228,7 +228,7 @@ test.describe("J228 start-page author filter", () => {
   }
 
   async function expectTrigger(page: import("@playwright/test").Page, text: string): Promise<void> {
-    await expect(page.getByLabel("Author", { exact: true })).toContainText(text, { timeout: 15_000 });
+    await expect(page.getByLabel("Author", { exact: true })).toHaveValue(text, { timeout: 15_000 });
   }
 
   async function pickAuthor(page: import("@playwright/test").Page, option: string): Promise<void> {

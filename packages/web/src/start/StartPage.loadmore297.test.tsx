@@ -1,11 +1,13 @@
 /**
- * Start-page Load more + typed author search (#297).
+ * Start-page Load more + author combobox (#297, combobox follow-up).
  *
  * - A full PR page (`hasMore`) offers "Load more PRs", which re-fetches
  *   with a doubled limit; the author list grows with the new rows.
- * - Typing a login in the author search box and pressing Enter fetches
- *   that author's PRs server-side (the `author` query option, not just
- *   the loaded rows); an empty result names the login with a way back.
+ * - The single author combobox shows the choice at rest; typing filters
+ *   the known authors and picking one applies the client-side filter;
+ *   Enter on a login that isn't listed fetches that author's PRs
+ *   server-side (the `author` query option); an empty result names the
+ *   login with a way back.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -14,7 +16,7 @@ import { MemoryRouter } from "react-router";
 import type { Repo, RepoChange, RepoChangesResponse } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { StartPage } from "./StartPage.js";
-import { __resetKeptForTests } from "./keptChanges.js";
+import { __resetKeptForTests, getKeptLists } from "./keptChanges.js";
 
 const REPO_KEY = "unvibe.start.repoId";
 const REPO: Repo = { id: "r1", owner: "acme", name: "app", localPath: "/tmp/app", lastOpened: 0 };
@@ -43,8 +45,14 @@ function mockPage(): void {
     if (id === "demo") return { changes: [], hasMore: false };
     seen.push({ filter, opts });
     if (filter === "review-requested") {
+      // diana's PR lives only on the server: it answers `--author diana`.
       const rows =
-        opts?.author !== undefined ? requestedRows.filter((c) => c.author === opts.author) : requestedRows;
+        opts?.author !== undefined
+          ? [
+              ...requestedRows.filter((c) => c.author === opts.author),
+              ...(opts.author === "diana" ? [pr(9, "Diana's ask", "diana")] : []),
+            ]
+          : requestedRows;
       return { changes: rows, hasMore: requestedHasMore };
     }
     return { changes: [], hasMore: false };
@@ -57,6 +65,25 @@ function renderPage(): void {
       <StartPage />
     </MemoryRouter>,
   );
+}
+
+function authorInput(): HTMLElement {
+  return screen.getByLabelText("Author", { exact: true });
+}
+
+/** Open the combobox popup: Base UI opens on pointer press, not click. */
+async function openCombo(): Promise<void> {
+  const input = authorInput();
+  fireEvent.pointerDown(input, { pointerType: "mouse" });
+  fireEvent.mouseDown(input);
+  fireEvent.pointerUp(input, { pointerType: "mouse" });
+  fireEvent.mouseUp(input);
+  fireEvent.click(input);
+  await screen.findByRole("listbox");
+}
+
+function requestedAuthors(): (string | undefined)[] {
+  return seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.author);
 }
 
 afterEach(() => {
@@ -84,10 +111,11 @@ describe("Load more PRs (#297)", () => {
     fireEvent.click(more);
     await screen.findByText("Third ask");
     // The author list grew with the new rows.
-    const author = screen.getByLabelText("Author", { exact: true });
-    fireEvent.click(author);
+    expect(authorInput()).toHaveValue("All");
+    await openCombo();
     expect(await screen.findByRole("option", { name: "carol (1)" })).toBeInTheDocument();
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    fireEvent.keyDown(authorInput(), { key: "Escape" });
+    expect(authorInput()).toHaveValue("All");
     // The reload re-fetched with the doubled limit.
     const limits = seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.limit);
     expect(limits).toContain(60);
@@ -106,24 +134,77 @@ describe("Load more PRs (#297)", () => {
   });
 });
 
-describe("typed author search (#297)", () => {
-  it("Enter fetches that author's PRs and shows the login", async () => {
+describe("author combobox (#297 follow-up)", () => {
+  it("typing filters the known authors; Escape drops the draft", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "Alice asks", "alice"), pr(2, "Bob asks", "bob"), pr(3, "Second bob", "bob")];
+    mockPage();
+    renderPage();
+
+    await screen.findByText("Alice asks");
+    expect(authorInput()).toHaveValue("All");
+    // ArrowDown opens the full list (jsdom change events carry no
+    // inputType, so they never open it on their own — real typing does).
+    fireEvent.keyDown(authorInput(), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: "alice (1)" })).toBeInTheDocument();
+    fireEvent.change(authorInput(), { target: { value: "car" } });
+    // No carol in the lists yet: the dropdown empties with the Enter hint.
+    expect(await screen.findByText(/press Enter to search GitHub/)).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /alice/ })).not.toBeInTheDocument();
+    // Escape closes and drops the draft: the box shows the choice again.
+    fireEvent.keyDown(authorInput(), { key: "Escape" });
+    expect(authorInput()).toHaveValue("All");
+    // Typing alone fetched nothing.
+    expect(requestedAuthors().every((a) => a === undefined)).toBe(true);
+  });
+
+  it("picking a listed login applies the client-side filter", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     requestedRows = [pr(1, "Alice asks", "alice"), pr(2, "Bob asks", "bob")];
     mockPage();
     renderPage();
 
     await screen.findByText("Bob asks");
-    fireEvent.change(screen.getByLabelText("Search author by login"), { target: { value: "alice" } });
-    fireEvent.keyDown(screen.getByLabelText("Search author by login"), { key: "Enter" });
+    fireEvent.change(authorInput(), { target: { value: "alice" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
 
     await waitFor(() => expect(screen.queryByText("Bob asks")).not.toBeInTheDocument());
     expect(screen.getByText("Alice asks")).toBeInTheDocument();
-    // The server saw the author option on the requested-list call.
-    const authors = seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.author);
-    expect(authors.at(-1)).toBe("alice");
-    // The select keeps showing the typed login.
-    expect(screen.getByLabelText("Author", { exact: true })).toHaveTextContent("alice");
+    // A listed login filters client-side: no server search was sent.
+    expect(requestedAuthors().every((a) => a === undefined)).toBe(true);
+    expect(authorInput()).toHaveValue("alice (1)");
+  });
+
+  it("Enter on an unlisted login fetches that author's PRs", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "Alice asks", "alice"), pr(2, "Bob asks", "bob")];
+    mockPage();
+    renderPage();
+
+    await screen.findByText("Bob asks");
+    fireEvent.change(authorInput(), { target: { value: "diana" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
+
+    await screen.findByText("Diana's ask");
+    expect(screen.queryByText("Alice asks")).not.toBeInTheDocument();
+    expect(requestedAuthors().at(-1)).toBe("diana");
+    // The fetched login joins the known authors, with its count.
+    expect(authorInput()).toHaveValue("diana (1)");
+  });
+
+  it("a search never overwrites the kept default view (#307 rule-out)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "Alice asks", "alice")];
+    mockPage();
+    renderPage();
+
+    await screen.findByText("Alice asks");
+    // The default view is kept; the search below must not replace it —
+    // a kept empty requested list would read exactly like this bug.
+    fireEvent.change(authorInput(), { target: { value: "zed" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
+    await screen.findByTestId("requested-author-search-empty");
+    expect((getKeptLists("r1")?.requested ?? []).map((c) => c.title)).toContain("Alice asks");
   });
 
   it("an unknown login names itself with a way back, and Show all clears it", async () => {
@@ -133,15 +214,14 @@ describe("typed author search (#297)", () => {
     renderPage();
 
     await screen.findByText("Alice asks");
-    fireEvent.change(screen.getByLabelText("Search author by login"), { target: { value: "zed" } });
-    fireEvent.keyDown(screen.getByLabelText("Search author by login"), { key: "Enter" });
+    fireEvent.change(authorInput(), { target: { value: "zed" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
 
     const empty = await screen.findByTestId("requested-author-search-empty");
     expect(empty).toHaveTextContent("No PRs by zed.");
     fireEvent.click(empty.querySelector("button") as HTMLButtonElement);
     await screen.findByText("Alice asks");
-    expect(screen.getByLabelText("Author", { exact: true })).toHaveTextContent("All");
-    const authors = seen.filter((s) => s.filter === "review-requested").map((s) => s.opts?.author);
-    expect(authors.at(-1)).toBeUndefined();
+    expect(authorInput()).toHaveValue("All");
+    expect(requestedAuthors().at(-1)).toBeUndefined();
   });
 });

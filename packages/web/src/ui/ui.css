@@ -60,6 +60,7 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .ui-select-item[data-highlighted]{background:var(--sunk)}
 .ui-select-item[data-selected]{font-weight:var(--weight-semibold)}
 .ui-select-item[data-disabled]{opacity:.45;cursor:default}
+.ui-select-empty{padding:var(--space-2) var(--space-3);font:var(--text-sm) var(--sans);color:var(--text-secondary)}
 .ui-select-check{margin-left:auto;font-size:var(--text-xs);color:var(--accent);visibility:hidden}
 .ui-select-item[data-selected] .ui-select-check{visibility:visible}
 .ui-select-grouplabel{padding:var(--space-2) var(--space-3) var(--space-1);font-size:var(--text-xs);color:var(--text-muted);font-weight:var(--weight-semibold)}
@@ -79,21 +80,35 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .ui-fields>.ui-field{display:grid;grid-template-columns:subgrid;grid-column:1/-1;margin:0}
 /* Shared review-pane loading state (issue #232): processing indicator +
    short label at body size, inside the pane's normal content padding.
-   The 56px floor keeps the guide and diff rows the same height in the
-   preparing state (issue #284: the guide row carries the taller ball),
-   so the two labels stay vertically aligned per the #232 tour check. */
+   The 56px floor keeps the plain dots row at label height; the hero
+   guide/diff variants below are much taller and centre their group. */
 .pane-loading{display:flex;align-items:center;gap:var(--space-2);margin:0;min-height:56px;font-size:var(--text-base);color:var(--muted)}
 .pane-loading-pad{padding:16px 20px}
+/* Hero loading group (issue #284 follow-up): the guide ball and the
+   diff glints stack their art above the label with the whole group
+   centred in the pane — horizontally by the column layout, vertically
+   by centring the pad's contents in a viewport-tied floor that fills
+   the visible pane below the top bars. Both pads share the same
+   padding and floor, so the two groups stay aligned. */
+.pane-loading[data-variant]{flex-direction:column;justify-content:center;align-items:center;gap:calc(var(--guide-ball-size) * 0.08);text-align:center}
+.pane-loading-pad:has(.pane-loading[data-variant]){display:grid;place-items:center;min-height:calc(100vh - 160px);box-sizing:border-box}
 /* Guide-building indicator (issue #284): the disco ball from #275/#281
    (`/disco-ball.svg`, whole chain shown) swinging gently as a pendulum
    with its reflections — the whole scene rotates a few degrees each way
-   from the chain's mount over 2.5s, ease-in-out. About 52px: two to three
-   lines of text, with the line art legible. */
-.guide-scene{position:relative;display:inline-flex;flex:none;margin-right:10px;transform-origin:50% 8%;animation:guide-swing 2.5s ease-in-out infinite}
-.guide-ball{height:52px;width:auto;display:block}
+   from the chain's mount over 2.5s, ease-in-out.
+   Size derives from the start page's ball instead of a magic number:
+   `--start-ball` (prototype.css) is the watermark's width and the ball
+   fills about 55% of it, so 0.8 of the ball is ~0.45 of the watermark —
+   nearly the start page's ball, a bit smaller to leave swing room, with
+   `max-width` shrinking it to fit narrow panes rather than overflow. */
+:root{--guide-ball-size:calc(var(--start-ball, 640px) * 0.45)}
+.guide-scene{position:relative;display:inline-flex;flex:none;max-width:100%;transform-origin:50% 8%;animation:guide-swing 2.5s ease-in-out infinite}
+.guide-ball{height:var(--guide-ball-size);width:auto;max-width:100%;display:block}
 @keyframes guide-swing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
 /* The ball's light (issue #284): 3 small pink glints reusing the
-   disco-ball art's sparkle paths, 6-9px so the four-point star reads.
+   disco-ball art's sparkle paths. Sizes and offsets derive from the
+   ball size (same ratios as the original 52px scene, so the cluster
+   scales with the ball): the four-point stars stay legible at ~33-50px.
    Same 2.5s cycle and easing as the swing, in phase with it — drifting
    a little with the tilt and brightest (opacity/scale peak) at the
    swing's ends (0%/50%/100%), dimmest mid-swing. Around the ball they
@@ -104,15 +119,15 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .loading-glints svg{display:block;overflow:visible;animation:guide-glint 2.5s ease-in-out infinite}
 .loading-glints.around{position:absolute;inset:0;overflow:visible;pointer-events:none}
 .loading-glints.around svg{position:absolute}
-.loading-glints.around svg:nth-child(1){height:9px;width:auto;top:-7px;left:36px}
-.loading-glints.around svg:nth-child(2){height:6px;width:auto;top:22px;left:50px}
-.loading-glints.around svg:nth-child(3){height:8px;width:auto;top:40px;left:40px}
-.loading-glints.loose{display:inline-flex;align-items:flex-start;gap:6px}
+.loading-glints.around svg:nth-child(1){height:calc(var(--guide-ball-size) * 0.173);width:auto;top:-13%;left:69%}
+.loading-glints.around svg:nth-child(2){height:calc(var(--guide-ball-size) * 0.115);width:auto;top:42%;left:96%}
+.loading-glints.around svg:nth-child(3){height:calc(var(--guide-ball-size) * 0.154);width:auto;top:77%;left:77%}
+.loading-glints.loose{display:inline-flex;align-items:flex-start;gap:calc(var(--guide-ball-size) * 0.115)}
 .loading-glints.loose svg{position:relative}
-.loading-glints.loose svg:nth-child(1){height:9px;width:auto;top:-6px}
-.loading-glints.loose svg:nth-child(2){height:6px;width:auto;top:4px}
-.loading-glints.loose svg:nth-child(3){height:8px;width:auto;top:-2px}
-@keyframes guide-glint{0%,100%{opacity:.95;transform:translateX(-1.5px) scale(1.15)}25%,75%{opacity:.35;transform:translateX(0) scale(.85)}50%{opacity:.95;transform:translateX(1.5px) scale(1.15)}}
+.loading-glints.loose svg:nth-child(1){height:calc(var(--guide-ball-size) * 0.173);width:auto;top:calc(var(--guide-ball-size) * -0.115)}
+.loading-glints.loose svg:nth-child(2){height:calc(var(--guide-ball-size) * 0.115);width:auto;top:calc(var(--guide-ball-size) * 0.077)}
+.loading-glints.loose svg:nth-child(3){height:calc(var(--guide-ball-size) * 0.154);width:auto;top:calc(var(--guide-ball-size) * -0.038)}
+@keyframes guide-glint{0%,100%{opacity:.95;transform:translateX(calc(var(--guide-ball-size) * -0.03)) scale(1.15)}25%,75%{opacity:.35;transform:translateX(0) scale(.85)}50%{opacity:.95;transform:translateX(calc(var(--guide-ball-size) * 0.03)) scale(1.15)}}
 /* Dark grounds: the ball's pale fills would render as a flat grey blob,
    so remap it to line-art-on-dark (lightness-inverted, hue kept: pale
    fills go dark, indigo strokes go light lavender, pinks stay pink) and
