@@ -3356,24 +3356,30 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `--author <login>` when set ("Your PRs" stays `--author @me`).
   `RepoChangesResponse` gains required `hasMore` (true when a PR list
   filled its page). No stored data changes shape.
-- Web (`StartPage.tsx`): one "Load more PRs" button at the end of the
-  PR block while `hasMore` holds (the author options grow with the new
-  rows); a "Type a login…" box beside the Author select commits the
-  search on Enter (a listed login is just the #228 client-side filter;
-  picking from the list or Show-all clears the server search, which
-  never crosses repos and is never written to the kept lists in
-  `keptChanges.ts`). A search matching nothing names the login with a
-  Show-all way back. #228's select/counts/persistence and #281's
-  layout are untouched. Evidence: shared
+- Web (`StartPage.tsx`): one "Load more PRs" button right after the
+  last PR section (owner decision: after the requested-review groups,
+  before "Recent branches") while `hasMore` holds (the author options
+  grow with the new rows); one author combobox in the select's place,
+  at its size and style — at rest it shows the choice, typing filters
+  the known authors and picking one is the #228 client-side filter,
+  Enter on an unlisted login commits the server search (Show-all or
+  picking from the list clears it; the search never crosses repos and
+  is never written to the kept lists in `keptChanges.ts`; the draft
+  text is never saved, only the committed choice persists as before).
+  A search matching nothing names the login with a Show-all way back.
+  #228's counts/persistence and #281's layout are untouched. Evidence: shared
   `test/changes-query-297.test.ts`, service
   `test/changes-paging-297.test.ts` (limit forwarded, `hasMore` on a
   full page, clamp, author scoping of the requested searches only),
   web `src/start/StartPage.loadmore297.test.tsx` (Load more doubles
-  the limit and grows the authors; Enter fetches the login; unknown
-  login names itself with a way back), journey
+  the limit and grows the authors; typing filters the known authors
+  and Escape drops the draft; picking a listed login filters
+  client-side; Enter on an unlisted login fetches it; unknown login
+  names itself with a way back), journey
   `e2e/journeys/j297-pr-list-more.spec.ts` (real service + fake `gh`
   honouring `--limit`/`--author` over 35 made-up PRs: Load more
-  brings in rows past 30 with their new authors; typing an absent
-  login fetches that author's PRs; `checkLayout` on both frames),
-  tour frames `packages/web/visual-tour/start-pr-list-more-*`
-  (git-ignored). Full gates not yet run.
+  brings in rows past 30 with their new authors; typing filters the
+  dropdown; typing an absent login fetches that author's PRs; the
+  single control fits its card; `checkLayout` on every frame), tour
+  frames `packages/web/visual-tour/start-pr-list-more-*` and
+  `start-author-combo-*` (git-ignored). Full gates not yet run.
