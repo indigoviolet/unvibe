@@ -142,7 +142,7 @@ test.describe("J4 diff work", () => {
     await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
   });
 
-  test("multi-line Explain keeps a reopen marker when closed (#189)", async ({ page }) => {
+  test("multi-line Explain reopens from dotted range text, no gutter marker (#189/#285)", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -179,30 +179,34 @@ test.describe("J4 diff work", () => {
 
     // Across three rows inside one hunk.
     await dragSelect(86, 88);
-    await explainAndClose();
-    const marker = page.locator("mark.anc.range[data-jump]").first();
-    await expect(marker).toBeVisible({ timeout: 15_000 });
+    const rangeId = await explainAndClose();
+    // Issue #285: no gutter marker — every line of the range keeps its
+    // dotted anchor text plus the tint, and clicking any dotted piece
+    // reopens the card.
+    const rangeMarks = page.locator(`#right mark.anc.exl[data-jump="${rangeId}"]`);
+    await expect(rangeMarks).toHaveCount(3, { timeout: 15_000 });
     await expect(page.locator(`[id="L-${CONN}-87"]`)).toHaveClass(/rng/);
-    // Issue #261: the tightening keeps the gutter affordances — the
-    // reopen marker still lives in the first gutter cell, and the new
-    // numbers keep their comment tooltip.
-    const markerCell = await marker.evaluate((el) => (el.closest("td.n") as HTMLTableCellElement | null)?.cellIndex ?? -1);
-    expect(markerCell).toBe(0);
+    // The gutter holds no marker: the first cell keeps its number.
+    await expect(page.locator(`[id="L-${CONN}-87"] td.n mark`)).toHaveCount(0);
+    // The new numbers keep their comment affordance (hover swaps the
+    // number for the icon; the tooltip names it).
     const tip = await page.locator(`[id="L-${CONN}-87"] td.n.new`).getAttribute("data-tip");
     expect(tip).toMatch(/Comment on line 87|Show comment/);
-    // The marker reopens the card.
-    await marker.click();
+    // A dotted piece reopens the card.
+    await rangeMarks.first().click();
     await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
     await page.locator(".dhunk section.ithread[data-thread]").first().getByRole("button", { name: "Close" }).click();
 
     // Across a hunk boundary, over long lines: the selection runs to
     // several hundred characters, well past the old 300-char cap.
+    // Every rendered row of the range reads dotted; clicking one
+    // reopens the card.
     await dragSelect(108, 650);
-    await explainAndClose();
-    const boundaryMarker = page.locator("mark.anc.range[data-jump]").last();
-    await expect(boundaryMarker).toBeVisible({ timeout: 15_000 });
+    const boundaryId = await explainAndClose();
+    const boundaryMarks = page.locator(`#right mark.anc.exl[data-jump="${boundaryId}"]`);
+    await expect(boundaryMarks.first()).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`[id="L-${CONN}-650"]`)).toHaveClass(/rng/);
-    await boundaryMarker.click();
+    await boundaryMarks.first().click();
     await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
   });
 });

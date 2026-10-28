@@ -498,8 +498,9 @@ test("gutter is digits + padding; added files drop the empty column (#261)", asy
   // tables mount before measuring.
   await page.locator('[id="F-changelog-1362.bugfix.rst"]').scrollIntoViewIfNeeded();
   await expect(page.locator('[id="F-changelog-1362.bugfix.rst"] table.diff')).toBeVisible();
-  // Modified file: two number columns, each at most digits + padding +
-  // exactly its affordance room (marker ~18px old, icon 14px new).
+  // Modified file: two number columns, each at most digits + 8px
+  // padding with zero affordance room (issue #285: comment icon and
+  // expand carets swap in-flow; the #189 reopen marker is gone).
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   const mod = await page.evaluate((key) => {
     const file = document.getElementById(`F-${key}`)!;
@@ -533,8 +534,8 @@ test("gutter is digits + padding; added files drop the empty column (#261)", asy
   }, CONN);
   expect(mod.oldMax).toBeGreaterThan(0);
   expect(mod.nwMax).toBeGreaterThan(0);
-  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
-  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
+  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
   // Added file: the empty old column is gone (one number cell per row).
   const added = await page.evaluate(() => {
     const file = document.getElementById("F-changelog-1362.bugfix.rst");

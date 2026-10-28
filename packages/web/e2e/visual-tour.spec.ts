@@ -26,10 +26,20 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
+/**
+ * Issue #285 (E2): unified expand controls ride the hunk's first/last
+ * row and show on row hover — hover the button's row, then click. (At
+ * rest the buttons are transparent so number clicks pass through.)
+ */
+async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -515,9 +525,9 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
 /**
  * Generic check (diff scenes): every visible code row's line-number
  * cells sit inside the pane and are topmost at their centre — a hunk
- * scrolled sideways must keep its gutter (the #189 reopen marker
- * lives there). Floating cards and the pinned top stack may
- * legitimately cover the gutter; code rows may not.
+ * scrolled sideways must keep its gutter (the #285 expand controls live
+ * in the first/last rows' number cells). Floating cards and the pinned
+ * top stack may legitimately cover the gutter; code rows may not.
  */
 async function checkGutters(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -567,11 +577,12 @@ async function checkGutters(page: Page, step: string): Promise<void> {
 }
 
 /**
- * Issue #261: the unified gutter is at most digits + padding (+ exactly
- * the affordance room: 11px comment icon + 3px margin on the new side,
- * ~18px reopen marker on the old side). Added files drop the empty old
- * column; deleted files drop the new one. Returns the measured widths
- * (px) so the run logs before/after numbers.
+ * Issue #285 (E2): the unified gutter is at most digits + 8px padding
+ * with zero affordance room (the comment icon swaps in for the number,
+ * the expand carets replace the first/last rows' numbers, and the #189
+ * reopen marker is gone). Added files drop the empty old column;
+ * deleted files drop the new one. Returns the measured widths (px) so
+ * the run logs before/after numbers.
  */
 async function checkGutterWidth(page: Page, fileKey: string, step: string): Promise<{ old: number; nw: number; digits: number }> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
@@ -579,8 +590,8 @@ async function checkGutterWidth(page: Page, fileKey: string, step: string): Prom
     const file = document.getElementById(`F-${key}`);
     if (!file) return null;
     const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
-    // Measure padding on a code-row number cell, not the `xsep` icon
-    // cell (its left padding is 2px, code rows use 8px + 8px).
+    // Measure padding on a code-row number cell (code rows use 4px +
+    // 4px; split keeps its own layout and never enters this check).
     const sample = file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n");
     const probe = document.createElement("span");
     probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
@@ -634,21 +645,22 @@ async function checkGutterWidth(page: Page, fileKey: string, step: string): Prom
   }, fileKey);
   expect(info, `${step}: missing #F-${fileKey}`).not.toBeNull();
   const { digits, digitW, pad, oldMax, nwMax, hideOld, hideNew, isNew } = info!;
-  // Deleted files keep only the old column (no comment affordance there);
-  // added files keep only the new one.
+  // Deleted files keep only the old column; added files keep only the
+  // new one. Control buttons shrink into the floor, so first/last rows
+  // (transparent overlays at rest) measure the same as plain rows.
   if (isNew) expect(hideOld, `${step}: added file must hide the empty old column`).toBe(true);
   else expect(hideOld, `${step}: modified file must keep both number columns`).toBe(false);
   expect(hideNew, `${step}: this review has no deleted files`).toBe(false);
   const tol = 3;
   if (!hideOld) {
-    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding + marker`).toBeLessThanOrEqual(digits * digitW + pad + 18 + tol);
+    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
     expect(oldMax, `${step}: no old number cells measured`).toBeGreaterThan(0);
   } else {
     expect(oldMax, `${step}: hidden old column must measure 0`).toBe(0);
   }
-  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding + icon`).toBeLessThanOrEqual(digits * digitW + pad + 14 + tol);
+  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
   expect(nwMax, `${step}: no new number cells measured`).toBeGreaterThan(0);
-  console.log(`gutter-261 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
+  console.log(`gutter-285 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
   return { old: oldMax, nw: nwMax, digits };
 }
 
@@ -1067,9 +1079,10 @@ test.describe("visual tour passes", () => {
     await shot(page, "diff-long-file-h2", suffix);
     await closeCard(page, fileCard);
 
-    // Closed multi-line Explain keeps a visible reopen marker (#189):
-    // select across three rows, Explain, close — the range stays
-    // tinted with a gutter marker, and clicking it reopens the card.
+    // Closed multi-line Explain: select across three rows, Explain,
+    // close — every line of the range keeps its dotted anchor text plus
+    // the tint (issue #285: no gutter marker), and clicking any dotted
+    // piece reopens the card.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
     await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
@@ -1091,19 +1104,20 @@ test.describe("visual tour passes", () => {
     await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click();
     await expect(page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`)).toBeHidden({ timeout: 10_000 });
-    const mlMarker = page.locator("mark.anc.range[data-jump]").first();
-    await expect(mlMarker).toBeVisible({ timeout: 15_000 });
+    const mlMarks = page.locator(`#right mark.anc.exl[data-jump="${mlId}"]`);
+    await expect(mlMarks).toHaveCount(3, { timeout: 15_000 });
+    // No gutter marker: the first cell keeps its number.
+    await expect(page.locator('[id="L-src-urllib3-connection.py-87"] td.n mark')).toHaveCount(0);
     await stepChecks(page, "diff-multiline-closed");
-    await shot(page, "diff-multiline-closed", suffix, "↪");
+    await shot(page, "diff-multiline-closed", suffix);
     // One-shot DOM clicks, retried until the card is actually back:
-    // the marker remounts when the card reopens, so a retried
-    // Playwright click can land twice (open, then the retry toggles
-    // it shut) and starve on detach under load (#195).
+    // a retried Playwright click can land twice (open, then the retry
+    // toggles it shut) and starve on detach under load (#195).
     await expect
       .poll(
         async () => {
           if (await mlCard.isVisible().catch(() => false)) return true;
-          await mlMarker.evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+          await mlMarks.first().evaluate((el) => (el as HTMLElement).click()).catch(() => {});
           return mlCard.isVisible().catch(() => false);
         },
         { timeout: 15_000 },
@@ -1111,14 +1125,14 @@ test.describe("visual tour passes", () => {
       .toBe(true);
     await closeCard(page, mlCard);
 
-    // Sideways-scrolled hunk: the line-number gutter — and the #189
-    // reopen marker in its first cell — sticks to the pane's left
-    // edge instead of scrolling away with the code.
+    // Sideways-scrolled hunk: the line-number gutter — the #285 expand
+    // controls ride the first/last rows' number cells — sticks to the
+    // pane's left edge instead of scrolling away with the code.
     await page.locator('[id="F-src-urllib3-connection.py"] .dwrap').first().evaluate((el) => {
       el.scrollLeft = 260;
     });
     await stepChecks(page, "diff-hscroll");
-    await shot(page, "diff-hscroll", suffix, "↪");
+    await shot(page, "diff-hscroll", suffix);
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
@@ -1135,10 +1149,12 @@ test.describe("visual tour passes", () => {
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
 
-    // Issue #261 gutter tour: a modified file and an added file in the
+    // Issue #285 gutter tour: a modified file and an added file in the
     // narrow pane (the 960 combos run the guide beside the diff, so the
     // diff pane is narrow with the source pane open), before and after a
-    // sideways scroll (the sticky gutter must hold). Each frame runs the
+    // sideways scroll (the sticky gutter must hold). This review is
+    // no-content, so it renders no expand controls — the hover and EOF
+    // frames live in the dedicated #285 scene below. Each frame runs the
     // generic layout checks plus the gutter-width assert.
     const MOD = "src-urllib3-connection.py";
     const ADDED = "changelog-1362.bugfix.rst";
@@ -1430,7 +1446,7 @@ test.describe("visual tour diff expansion up (#265)", () => {
     const second = file.locator(".dhunk").nth(1);
     // ^ on the second hunk: the tail reads atop its own code.
     // (#288 adds the optimistic bottom step below it, same label.)
-    await second.getByRole("button", { name: "Show 20 more lines" }).first().click();
+    await clickRowControl(second, "Show 20 more lines", 0);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     await page.mouse.move(20, 400);
     await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
@@ -1438,7 +1454,7 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await shot(page, "diff-expand-up", suffix, "Hunk 2 of 2");
     // ⇞ to the previous hunk: the whole gap reads once, into the
     // hunk's first line (20 lines already revealed above).
-    await second.getByRole("button", { name: `Show all ${gapLen265 - 20} lines` }).click();
+    await clickRowControl(second, `Show all ${gapLen265 - 20} lines`);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen265, { timeout: 60_000 });
     await page.mouse.move(20, 400);
     await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
@@ -1446,6 +1462,96 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
     });
   });
+});
+
+/**
+ * Gutter E2 frames (issue #285): the tight two-column gutter at rest
+ * and on hover, plus the EOF case — light and dark at 1440px. Own
+ * scratch repo and agent-none service: the main tour review is
+ * no-content, so it renders no expand controls (the J285 journey
+ * asserts the same behaviour against the real service). The repo is the
+ * #265 gap shape plus a whole-file new `src/eof.py` (one hunk, 1–20).
+ */
+test.describe("visual tour gutter E2 (#285)", () => {
+  let dirE2 = "";
+  let dataE2 = "";
+  let svcE2: RunningService | null = null;
+  let reviewE2 = "";
+  let h1StartE2 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dirE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-repo-"));
+    await makeGapRepo(dirE2);
+    await makeEofFile(dirE2);
+    dataE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-data-"));
+    svcE2 = await startService(dataE2, { agent: "none" });
+    reviewE2 = await createJourneyReview(svcE2, dirE2);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svcE2.origin, svcE2.token, "GET", `/api/reviews/${reviewE2}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const big = snap.files?.find((f) => f.path === "src/big.py");
+      const eof = snap.files?.find((f) => f.path === "src/eof.py");
+      if (big && big.hunks.length === 2 && eof && eof.hunks.length === 1) {
+        h1StartE2 = big.hunks[0].newStart;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gutter E2 review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svcE2?.stop().catch(() => {});
+    svcE2 = null;
+    for (const d of [dirE2, dataE2]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`visual tour gutter E2 (#285, ${combo.name})`, async ({ page }) => {
+      if (!svcE2) throw new Error("gutter E2 service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      const BIG = "src-big.py";
+      const EOF = "src-eof.py";
+      await page.goto(`${svcE2.origin}/review/${reviewE2}?token=${svcE2.token}`);
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      const big = page.locator(`[id="F-${BIG}"]`);
+      await expect(big.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+      // At rest the first/last rows show their numbers (no controls).
+      await big.locator(".dfile-h").scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-rest");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-rest");
+      await shot(page, "diff-gutter-e2-rest", suffix, "Hunk 1 of 2");
+      // Row hover swaps the first row's numbers for the up pair.
+      const firstCode = page.locator(`[id="L-${BIG}-${h1StartE2}"]`);
+      await firstCode.scrollIntoViewIfNeeded();
+      await firstCode.hover();
+      await stepChecks(page, "diff-gutter-e2-hover");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-hover");
+      await shot(page, "diff-gutter-e2-hover", suffix, "Hunk 1 of 2");
+      await page.mouse.move(20, 400);
+      // EOF: the whole-file hunk starts at line 1 and ends at EOF. The
+      // optimistic step drops on click and the row keeps its number.
+      const eof = page.locator(`[id="F-${EOF}"]`);
+      await eof.scrollIntoViewIfNeeded();
+      await expect(eof.getByText("Hunk 1 of 1")).toBeVisible({ timeout: 30_000 });
+      await clickRowControl(eof.locator(".dhunk").nth(0), "Show 20 more lines");
+      await expect(eof.locator("tr[data-revealed]")).toHaveCount(0);
+      await expect(eof.locator("tr.has-xdown")).toHaveCount(0);
+      await page.locator(`[id="L-${EOF}-20"]`).scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-eof");
+      await checkGutterWidth(page, EOF, "diff-gutter-e2-eof");
+      await shot(page, "diff-gutter-e2-eof", suffix, "Hunk 1 of 1");
+    });
+  }
 });
 
 /**
