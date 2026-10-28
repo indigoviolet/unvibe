@@ -86,10 +86,13 @@ test.describe("J9 comment edges", () => {
     await expect(openThread).toBeVisible({ timeout: 10_000 });
     await openThread.getByRole("button", { name: "Close" }).click();
     await expect(openThread).toHaveCount(0, { timeout: 10_000 });
-    // Moved from comments.spec.ts (#258): closing leaves a comment icon
-    // on the line number; clicking the line reopens the thread.
-    await expect(page.locator(`[id="L-${appKey}-2"] td.n.hc`)).toBeVisible({ timeout: 10_000 });
-    await page.locator(`[id="L-${appKey}-2"] td.n.new`).click();
+    // Moved from comments.spec.ts (#258): closing leaves the comment
+    // icon permanently in place of the line number (issue #285 E2);
+    // clicking the line reopens the thread.
+    const numCell = page.locator(`[id="L-${appKey}-2"] td.n.new`);
+    await expect(numCell).toHaveClass(/e-commented/, { timeout: 10_000 });
+    await expect(numCell.locator(".nic")).toBeVisible({ timeout: 10_000 });
+    await numCell.click();
     await expect(openThread).toBeVisible({ timeout: 10_000 });
 
     // Delete removes them for good (both threads, leaving a clean slate).
@@ -109,8 +112,9 @@ test.describe("J9 comment edges", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
     const utilKey = fileKeyForPath("src/util.py");
-    // Modified file keeps both columns, tightened; the new numbers keep
-    // the comment affordance (click still opens the composer).
+    // Modified file: two number columns, each at most digits + 8px
+    // padding with zero affordance room (issue #285); the new numbers
+    // keep the comment affordance (click still opens the composer).
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     const mod = await page.evaluate((key) => {
       const file = document.getElementById(`F-${key}`)!;
@@ -143,8 +147,8 @@ test.describe("J9 comment edges", () => {
       return { digits, digitW, pad, oldMax, nwMax };
     }, appKey);
     expect(mod.oldMax).toBeGreaterThan(0);
-    expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
-    expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+    expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
+    expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
     await expect(page.locator(`[id="L-${appKey}-2"] td.n.new`)).toHaveAttribute("data-tip", /Comment on line 2/);
     // Added file: single number column.
     const added = await page.evaluate((key) => {
