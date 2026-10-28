@@ -769,7 +769,7 @@ function HunkBlock(
             aria-label="Summarize"
             onClick={() => props.actions.summarize(h.contentHash)}
           >
-            <Icon name="spark" />
+            <Icon name="summary" />
           </button>
         )}
         {props.unitNext ? (

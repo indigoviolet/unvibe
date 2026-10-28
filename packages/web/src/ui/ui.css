@@ -93,35 +93,29 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .pane-loading[data-variant]{flex-direction:column;justify-content:center;align-items:center;gap:calc(var(--guide-ball-size) * 0.08);text-align:center}
 .pane-loading-pad:has(.pane-loading[data-variant]){display:grid;place-items:center;min-height:calc(100vh - 160px);box-sizing:border-box}
 /* Guide-building indicator (issue #284): the disco ball from #275/#281
-   (`/disco-ball.svg`, whole chain shown) swinging gently as a pendulum
-   with its reflections — the whole scene rotates a few degrees each way
-   from the chain's mount over 2.5s, ease-in-out.
+   (`/disco-ball.svg`, whole chain shown) swinging gently as a pendulum —
+   the whole scene rotates a few degrees each way from the chain's mount
+   over 2.5s, ease-in-out. The ball's own painted highlights are its
+   reflections; no separate sparkles on the guide side (owner direction).
    Size derives from the start page's ball instead of a magic number:
    `--start-ball` (prototype.css) is the watermark's width and the ball
    fills about 55% of it, so 0.8 of the ball is ~0.45 of the watermark —
    nearly the start page's ball, a bit smaller to leave swing room, with
    `max-width` shrinking it to fit narrow panes rather than overflow. */
 :root{--guide-ball-size:calc(var(--start-ball, 640px) * 0.45)}
-.guide-scene{position:relative;display:inline-flex;flex:none;max-width:100%;transform-origin:50% 8%;animation:guide-swing 2.5s ease-in-out infinite}
+.guide-scene{display:inline-flex;flex:none;max-width:100%;transform-origin:50% 8%;animation:guide-swing 2.5s ease-in-out infinite}
 .guide-ball{height:var(--guide-ball-size);width:auto;max-width:100%;display:block}
 @keyframes guide-swing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-/* The ball's light (issue #284): 3 small pink glints reusing the
-   disco-ball art's sparkle paths. Sizes and offsets derive from the
-   ball size (same ratios as the original 52px scene, so the cluster
-   scales with the ball): the four-point stars stay legible at ~33-50px.
-   Same 2.5s cycle and easing as the swing, in phase with it — drifting
-   a little with the tilt and brightest (opacity/scale peak) at the
-   swing's ends (0%/50%/100%), dimmest mid-swing. Around the ball they
-   scatter as reflections (never a row); the diff state reuses the same
-   elements and keyframes in a loose staggered cluster, as if the ball
-   were just out of frame up-left. */
+/* The diff's light (issue #284): 3 small pink glints reusing the
+   disco-ball art's sparkle paths, shown only in the ball-less diff
+   state. Sizes and offsets derive from the ball size (same ratios as
+   the original 52px scene, so the cluster scales with the ball): the
+   four-point stars stay legible at ~33-50px. Same 2.5s cycle and easing
+   as the swing — drifting a little and brightest (opacity/scale peak)
+   at the swing's ends (0%/50%/100%), dimmest mid-swing — as if the ball
+   were just out of frame up-left, never a straight row. */
 .loading-glints{flex:none}
 .loading-glints svg{display:block;overflow:visible;animation:guide-glint 2.5s ease-in-out infinite}
-.loading-glints.around{position:absolute;inset:0;overflow:visible;pointer-events:none}
-.loading-glints.around svg{position:absolute}
-.loading-glints.around svg:nth-child(1){height:calc(var(--guide-ball-size) * 0.173);width:auto;top:-13%;left:69%}
-.loading-glints.around svg:nth-child(2){height:calc(var(--guide-ball-size) * 0.115);width:auto;top:42%;left:96%}
-.loading-glints.around svg:nth-child(3){height:calc(var(--guide-ball-size) * 0.154);width:auto;top:77%;left:77%}
 .loading-glints.loose{display:inline-flex;align-items:flex-start;gap:calc(var(--guide-ball-size) * 0.115)}
 .loading-glints.loose svg{position:relative}
 .loading-glints.loose svg:nth-child(1){height:calc(var(--guide-ball-size) * 0.173);width:auto;top:calc(var(--guide-ball-size) * -0.115)}

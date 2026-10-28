@@ -117,6 +117,21 @@ function onHtmlClick(
   handleHtmlLinkClick(e, pages, onOpenPage);
 }
 
+/**
+ * Issue #305: block-level list citations not already carried by an item
+ * (pure: resolved targets in, uncovered out). The caller renders the
+ * result inline at the end of the last item, so a whole-list source never
+ * grows a row of its own below the list — and sources every item already
+ * shows (issue #165) are never repeated.
+ */
+export function uncoveredListCitations(
+  blockLevel: ReturnType<typeof resolveBlockCitations>,
+  perItem: ReturnType<typeof resolveBlockCitations>[],
+): ReturnType<typeof resolveBlockCitations> {
+  const covered = new Set(perItem.flat().map((c) => c.target));
+  return blockLevel.filter((c) => !c.unverified && !covered.has(c.target));
+}
+
 export function BlockView({ block, level, threads, footnotes, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
@@ -145,10 +160,16 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       );
     }
     case "list": {
+      const perItemResolved = block.items.map((item) =>
+        snapshot ? resolveBlockCitations(snapshot, item.citations) : [],
+      );
+      // Issue #305: block-level citations not already shown on an item
+      // render once, inline at the end of the last item — never a row of
+      // their own below the list.
+      const uncovered = uncoveredListCitations(resolved, perItemResolved);
       const items = block.items.map((item, i) => {
-        const itemResolved = snapshot
-          ? resolveBlockCitations(snapshot, item.citations)
-          : [];
+        const itemResolved = perItemResolved[i] ?? [];
+        const lastExtras = i === block.items.length - 1 ? uncovered : [];
         return (
           <li key={i} id={`${id}-${i}`}>
             <span
@@ -157,15 +178,15 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
               dangerouslySetInnerHTML={{ __html: item.html }}
               onClick={(e) => onHtmlClick(e, pages, onOpenPage)}
             />
-            <BlockMarkers citations={itemResolved} threads={i === 0 ? threads : []} blockId={block.id} />
+            <BlockMarkers citations={[...itemResolved, ...lastExtras]} threads={i === 0 ? threads : []} blockId={block.id} />
           </li>
         );
       });
       const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
-      // Issue #165: no block-level citation union under a list — every
-      // source it counts already carries its own per-item chip next to
-      // the claim, so the `<> N` row only repeated them on a line of its
-      // own. Footnotes (which anchor on the block, not an item) keep
+      // Issue #165: no block-level citation union row under a list.
+      // Issue #305: list-level sources no item shows land inline at the
+      // end of the last item instead (see `uncoveredListCitations`).
+      // Footnotes (which anchor on the block, not an item) keep
       // their row.
       const hasFootnotes = (footnotes?.length ?? 0) > 0;
       return (

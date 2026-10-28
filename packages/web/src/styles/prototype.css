@@ -1009,6 +1009,16 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 a.gx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.gx:hover { color: var(--accent); }
 #pop .xdef { max-width: 400px; font-size: 13px; margin: 4px 0; }
+/* Issues #302/#304: a small Glossary label above the term, and the
+   pinned-thread header (inline AI avatar, kind badge, reply count).
+   Badge colours match the thread replies from #301. */
+#pop .pv-label { font-size: 10.5px; font-weight: var(--weight-label); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#pop .pv-thr { display: flex; align-items: center; gap: 8px; }
+#pop .pv-thr .av { width: 18px; height: 18px; }
+#pop .pv-thr .av .ic { width: 12px; height: 12px; }
+#pop .pv-thr .kind { flex: none; font-family: var(--label-font); font-size: var(--text-label); font-weight: var(--weight-label); border: 1px solid transparent; border-radius: var(--radius-pill); padding: 0 8px; text-transform: lowercase; letter-spacing: 0; }
+#pop .pv-thr .kind-ask, #pop .pv-thr .kind-explain { background: var(--accent-soft); color: var(--accent); }
+#pop .pv-thr .kind-comment, #pop .pv-thr .kind-persona { background: var(--note-soft); color: var(--note); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: var(--radius-4); padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */
@@ -1031,6 +1041,14 @@ a.gx:hover { color: var(--accent); }
 .lo mark.fnote.exl { text-decoration: none; }
 .lo mark.fnote.exl .q { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
 .lo mark.fnote.exl:hover { color: var(--accent); }
+/* Issue #303: the fallback chip (a collapsed thread whose quote is truly
+   gone) follows #301's neutral thread styling — a quiet bordered chip,
+   never amber. The dotted underline now belongs to glossary terms (#302).
+   Applies when the chip is shown (hidden chips stay hidden via the global
+   [hidden] rule). */
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]) { border: 1px solid var(--line); border-radius: var(--radius-4); background: var(--surface); }
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]) .q { text-decoration: none; }
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]):hover { color: var(--ink); background: var(--sunk); }
 .lo mark.fnote.th { color: var(--muted); }
 .lo mark.fnote.th:hover { color: var(--note); background: var(--note-soft); text-decoration: none; }
 .lo a.fnote { color: var(--muted); }
@@ -1050,6 +1068,14 @@ mark.anc.ex { background: var(--accent-soft); }
 mark.anc.exl { background: none; color: inherit; padding: 0; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
 mark.anc.exl:hover { color: var(--accent); }
 mark.anc.exl.on { outline: none; }
+/* Issue #302: in guide prose a collapsed thread reads differently from a
+   glossary term — a soft highlight behind the text plus a small thread
+   glyph after it, never the glossary's dotted underline. Hover/focus/
+   keyboard behaviour is unchanged (hover previews, click pins). Scoped to
+   #page so diff and description marks keep their dotted style. */
+#page mark.anc.exl[data-jump]:not(.fnote) { background: var(--accent-soft); text-decoration: none; border-radius: var(--radius-2); padding: 0 1px; }
+#page mark.anc.exl[data-jump]:not(.fnote):hover { color: var(--accent); }
+#page mark.anc.exl[data-jump]:not(.fnote) .thg { width: 12px; height: 12px; margin-left: 2px; color: var(--accent); }
 #pop .xprev { max-width: 400px; max-height: 50vh; overflow: auto; font-size: 13px; }
 #pop .xprev .prose { font-size: 14px; margin: 4px 0; }
 #pop .xprev .dg > .dg-svg > svg { min-width: 0; }
@@ -1064,14 +1090,18 @@ mark.anc.on { outline: 2px solid var(--note); }
    instead: a translucent cell would let scrolled code show through. */
 #right tr.rng td.n { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 #right tr.rng td.n:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-.ithread { background: var(--note-soft); border: 1px solid transparent; border-left: 3px solid var(--note); border-radius: var(--radius-10); padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
+/* Issue #301: threads use the neutral card surface with a thin line
+   border — no amber. The avatar and kind badge show who wrote what. */
+.ithread { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-10); padding: 8px 14px; margin: 8px 0 14px 10px; font-size: 13.5px; }
 .dann { margin-top: 6px; }
 .dann .ui-card.child, .dann .ithread { margin-left: 0; }
 .thd { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .thd .kind { color: var(--note); font-weight: var(--weight-label); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; flex: none; }
 .ib.pr[aria-pressed="true"] { color: var(--note); }
 .ib.pr[aria-pressed="true"] .ic { fill: currentColor; }
-#page .ithread.on { border-color: var(--note); }
+/* Issue #301: the focused thread stays clearly visible without amber —
+   an accent border plus a soft ring, legible in every theme and mode. */
+#page .ithread.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .cthr { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; border-left: 3px solid var(--note); background: var(--note-soft); border-radius: var(--radius-6); padding: 3px 10px; font: 12.5px var(--sans); color: var(--ink); text-align: left; }
 .cthr .ic { color: var(--note); }
 .cthr .n { font: 11px var(--mono); color: var(--note); }
@@ -1432,12 +1462,14 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
 .spike-thread { margin-left: 0; container-type: inline-size; }
 
-.spike-thread .spike-reply { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+/* Issue #301: the reply avatar sits inline in the first line, with the
+   badge — no 22px avatar column indenting the body. From the second
+   line on, the body uses the thread's normal padding. */
+.spike-thread .spike-reply { display: block; padding: 10px 0; border-top: 1px solid var(--line); }
 .spike-thread .spike-reply:first-of-type { border-top: none; }
-.spike-thread .spike-reply .av { width: 22px; height: 22px; }
-.spike-thread .spike-reply-main { min-width: 0; flex: 1; }
-.spike-thread .spike-reply-main > p { margin: 4px 0 0; }
-.spike-thread .spike-reply-head { display: flex; align-items: baseline; gap: 8px; }
+.spike-thread .spike-reply-head .av { width: 20px; height: 20px; }
+.spike-thread .spike-reply > p { margin: 4px 0 0; }
+.spike-thread .spike-reply-head { display: flex; align-items: center; gap: 8px; }
 
 /* Kind badges: teal pills for agent answers, amber for reviewer comments.
    (Specificity beats the legacy `.thd .kind` label style.) */

@@ -124,7 +124,7 @@ describe("BlockMarkers", () => {
     }
   });
 
-  it("quoted threads get footnote chips, not the bubble marker", () => {
+  it("quoted comment threads get footnote chips, not the bubble marker", () => {
     const threads: Thread[] = [
       {
         id: "tq",
@@ -139,7 +139,7 @@ describe("BlockMarkers", () => {
         },
         open: false,
         pinned: false,
-        replies: [],
+        replies: [mkReply("note tq")],
         post: false,
       },
       {
@@ -163,12 +163,49 @@ describe("BlockMarkers", () => {
     // Bare bubble holds only the never-quoted thread.
     const marker = screen.getByRole("button", { name: "1 comments" });
     expect(marker).toHaveAttribute("data-threads", "tn");
-    // Quoted thread is a hidden footnote chip with its quote.
+    // Quoted comment thread keeps its hidden footnote chip with its quote.
     const chip = container.querySelector("mark.fnote.th[data-thr='tq']");
     expect(chip).not.toBeNull();
     expect(chip?.getAttribute("data-tfallback")).toBe("tq");
     expect(chip?.getAttribute("title")).toBe("Draw the Stereo vs mono-mix");
     expect(chip?.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("quoted agent threads render no .th chip (issue #303: no duplicate thread)", () => {
+    const agent = (kind: "explain" | "ask"): Thread => ({
+      id: `t-${kind}`,
+      type: "thread",
+      anchor: {
+        host: { kind: "block", blockId: "b" },
+        quotedText: "Draw the Stereo vs mono-mix",
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+      open: false,
+      pinned: false,
+      replies: [
+        {
+          ...mkReply(`note ${kind}`),
+          kind,
+          question: kind === "ask" ? "why?" : null,
+        },
+      ],
+      post: false,
+    });
+    // Agent threads are marked by ExpansionHighlights with a `footnotes`
+    // fallback chip; a `.th` chip here too would show the thread twice,
+    // because GuideThreads only ever hides chips for comment threads.
+    for (const kind of ["explain", "ask"] as const) {
+      const { container, unmount } = render(
+        <BlockMarkers citations={[]} threads={[agent(kind)]} blockId="b" />,
+      );
+      expect(container.querySelector("mark.fnote.th")).toBeNull();
+      expect(container.querySelector("[data-tfallback]")).toBeNull();
+      expect(container.querySelector(".lo")).toBeNull();
+      unmount();
+    }
   });
 
   it("closed expansions and links render footnote chips on the same row", () => {
