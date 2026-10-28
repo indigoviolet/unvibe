@@ -2060,6 +2060,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(labelDy, `review-preparing-${suffix}: labels misaligned`).not.toBeNull();
       expect(labelDy as number, `review-preparing-${suffix}: labels misaligned`).toBeLessThanOrEqual(2);
       await checkLayout(page, `review-preparing-${suffix}`);
+      await checkHeroFits(page, `review-preparing-${suffix}`, "review-loading", ".guide-scene");
+      await checkHeroFits(page, `review-preparing-${suffix}`, "diff-loading", ".loading-glints");
       await shot(page, "review-preparing", suffix, "Loading the diff");
     });
     // Issue #284: a still frame can't show motion, so freeze the swing
@@ -2075,6 +2077,36 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
           }
         }
       }, atMs);
+    }
+    // Issue #284 follow-up: the hero art stays inside its pane at
+    // both swing extremes (mount, chain and ball for the guide; the
+    // glint cluster for the diff), and the label is not covered by
+    // the art — the group stacks art above text. The measured art box
+    // is the rotated one, so the check covers the swing's travel.
+    async function checkHeroFits(page: Page, step: string, scope: string, artSel: string): Promise<void> {
+      const bad = await page.evaluate(
+        ({ scope, artSel }: { scope: string; artSel: string }) => {
+          const root = document.querySelector(`[data-testid="${scope}"]`);
+          const art = root?.querySelector(artSel);
+          const label = root?.querySelector(".pane-loading > span:last-child");
+          if (!root || !art || !label) return "missing hero art or label";
+          const pane = art.closest(".col");
+          if (!pane) return "hero art has no pane column";
+          const pr = pane.getBoundingClientRect();
+          const ar = art.getBoundingClientRect();
+          if (ar.left < pr.left - 1 || ar.right > pr.right + 1) {
+            return `hero art outside its pane: art=${Math.round(ar.left)}-${Math.round(ar.right)} pane=${Math.round(pr.left)}-${Math.round(pr.right)}`;
+          }
+          const lr = label.getBoundingClientRect();
+          const hit = document.elementFromPoint(lr.left + lr.width / 2, lr.top + lr.height / 2);
+          if (!hit || !root.contains(hit)) {
+            return `hero label covered at its centre by ${hit ? `${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}` : "nothing"}`;
+          }
+          return null;
+        },
+        { scope, artSel },
+      );
+      expect(bad, `${step}: hero fit ${bad ?? ""}`).toBeNull();
     }
     test(`visual tour guide building swing (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
@@ -2100,8 +2132,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.locator('[data-testid="guide-empty"] .dots')).toHaveCount(0);
       await freezeSwing(page, 0);
       await page.screenshot({ path: path.join(SHOTS, `guide-swing-extreme-${suffix}.png`) });
+      await checkHeroFits(page, `guide-swing-extreme-${suffix}`, "guide-empty", ".guide-scene");
       await freezeSwing(page, 625);
       await page.screenshot({ path: path.join(SHOTS, `guide-swing-mid-${suffix}.png`) });
+      await checkHeroFits(page, `guide-swing-mid-${suffix}`, "guide-empty", ".guide-scene");
     });
     // Issue #284 (owner revision): the diff state shows the same glints
     // on their own — no ball — drifting in the same rhythm, as if the
@@ -2130,8 +2164,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.locator('[data-testid="diff-loading"] .dots')).toHaveCount(0);
       await freezeSwing(page, 0);
       await page.screenshot({ path: path.join(SHOTS, `diff-glint-extreme-${suffix}.png`) });
+      await checkHeroFits(page, `diff-glint-extreme-${suffix}`, "diff-loading", ".loading-glints");
       await freezeSwing(page, 625);
       await page.screenshot({ path: path.join(SHOTS, `diff-glint-mid-${suffix}.png`) });
+      await checkHeroFits(page, `diff-glint-mid-${suffix}`, "diff-loading", ".loading-glints");
     });
     test(`visual tour guide building (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
@@ -2152,6 +2188,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
       await checkLayout(page, `guide-building-${suffix}`);
+      await checkHeroFits(page, `guide-building-${suffix}`, "guide-empty", ".guide-scene");
       await shot(page, "guide-building", suffix, "Building the guide");
     });
   }
