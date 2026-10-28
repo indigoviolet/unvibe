@@ -15,8 +15,10 @@
  *   per issue #302, hover previews + click expands via the
  *   existing `ExpansionHighlights` handlers); promoted links become page
  *   links (`a.cx.pg[data-node]`, hover previews via `HoverPopover`, click
- *   opens via `onOpenPage`); threads become marks (`mark.anc[data-thr]`,
- *   click toggles via `GuideThreads`). All start `hidden` and are revealed
+ *   opens via `onOpenPage`); comment threads become marks (`mark.anc[data-thr]`,
+ *   click toggles via `GuideThreads`, which also owns their `.th` chips).
+ *   Agent (explain/ask) threads never grow `.th` chips (issue #303): their
+ *   marks and fallback chips come from `ExpansionHighlights` + `footnotes`. All start `hidden` and are revealed
  *   by the highlight passes when their quote is not found in the host text,
  *   so switching back to a level that contains the phrase hides them again.
  */
@@ -52,7 +54,15 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
     if (allOpen) closeBlockThreads(unquotedIds, blockId);
     else openBlockThreads(unquotedIds, blockId);
   };
-  const quotedThreads = threads.filter((t) => !!t.anchor.quotedText);
+  // Issue #303: `.th` chips belong to GuideThreads, which only tracks
+  // threads with a reviewer comment (its marks and chip toggle cover
+  // those alone). Agent (explain/ask) threads render their marks and
+  // fallback chips through ExpansionHighlights + `footnotes` instead —
+  // giving them a `.th` chip too shows the thread twice, because
+  // GuideThreads never hides a chip it doesn't track.
+  const quotedThreads = threads.filter(
+    (t) => !!t.anchor.quotedText && (t.replies ?? []).some((r) => r.kind === "comment"),
+  );
   const notes = footnotes ?? [];
   if (!verified.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
   return (

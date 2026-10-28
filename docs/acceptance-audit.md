@@ -3236,8 +3236,13 @@ hunk coverage) is reported for a separate issue, not fixed here.
   spanning code/emphasis/links resolve instead of raising the duplicate
   fallback chip (recorded-offset verification already normalized; the
   text-match path did not). The fallback chip itself is neutral, not
-  amber. Evidence: `anchor.test.ts` whitespace suite (3 fail pre-fix),
-  journey J303, tour frame.
+  amber. Quoted agent (explain/ask) threads also render no `.th` chip:
+  those chips belong to GuideThreads, which only tracks threads with a
+  reviewer comment — an agent thread showed its inline mark *and* a
+  `.th` quote chip (the thread twice). Evidence: `anchor.test.ts`
+  whitespace suite (3 fail pre-fix), `Markers.test.tsx` (comment thread
+  keeps its chip; explain/ask render none), journey J303 (no
+  `[data-fallback]` and no `[data-tfallback]`), tour frame.
 - **#304 (glossary chip):** the glossary popover shows the shared compact
   prose chip (`citationRange`, line range, click goes to source) instead
   of the label + snippet button; the Glossary label and hint stay.
