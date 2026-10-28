@@ -26,6 +26,16 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const bottomKey = fileKeyForPath("src/bottom.py");
 const eofKey = fileKeyForPath("src/eof.py");
 
+/**
+ * Issue #285 (E2): expand controls ride the hunk's first/last row and
+ * show on row hover — hover the button's row, then click.
+ */
+async function clickRowControl(scope: import("@playwright/test").Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
+
 test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 
 async function makeBottomEofRepo(dir: string): Promise<void> {
@@ -96,11 +106,11 @@ test.describe("J288 expand down last hunk", () => {
     const dhunks = file.locator(".dhunk");
     const last = dhunks.nth(1);
     // The last hunk carries two 20-line steps: the gap above (up) and
-    // the optimistic bottom below it (down) — visible even though no
-    // slice has taught the total yet. The bottom one rides after the code.
+    // the optimistic bottom below it (down, #285: `v` on the last row)
+    // — visible even though no slice has taught the total yet.
     const steps = last.getByRole("button", { name: "Show 20 more lines" });
     await expect(steps).toHaveCount(2, { timeout: 30_000 });
-    await steps.nth(1).click();
+    await clickRowControl(last, "Show 20 more lines", 1);
     // One 20-line step below the hunk, with no prior expansion.
     await expect(last.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     await expect(page.locator(`[id="L-${bottomKey}-${bottomEnd + 1}"]`)).toHaveCount(1);
@@ -126,12 +136,15 @@ test.describe("J288 expand down last hunk", () => {
     // unambiguous).
     await expect(only.getByRole("button", { name: "Show 20 more lines" })).toBeVisible({ timeout: 30_000 });
     await expect(file.locator("tr[data-revealed]")).toHaveCount(0);
-    await only.getByRole("button", { name: "Show 20 more lines" }).click();
-    // No lines added, no error, and the bottom control is gone — the top
-    // control above the hunk stays.
+    await clickRowControl(only, "Show 20 more lines");
+    // No lines added, no error, and the bottom control is gone — the row
+    // shows its number again (#285: no `has-xdown`), while the top
+    // control on the hunk's first row stays.
     await expect(file.locator("tr[data-revealed]")).toHaveCount(0, { timeout: 30_000 });
     await expect(only.getByRole("button", { name: "Show 20 more lines" })).toHaveCount(0, { timeout: 30_000 });
-    await expect(file.locator("tr.xsep")).toHaveCount(1, { timeout: 30_000 });
+    await expect(file.locator("tr.has-xdown")).toHaveCount(0, { timeout: 30_000 });
+    await expect(file.locator("tr.has-xup")).toHaveCount(1, { timeout: 30_000 });
+    await expect(file.locator("tr.xsep")).toHaveCount(0, { timeout: 30_000 });
     await expect(page.locator(".xerr")).toHaveCount(0);
   });
 });
