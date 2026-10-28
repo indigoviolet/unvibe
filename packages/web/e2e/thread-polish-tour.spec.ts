@@ -62,16 +62,19 @@ async function selectThreadQuote(page: import("@playwright/test").Page): Promise
     if (!sel2) throw new Error("no selection");
     sel2.removeAllRanges();
     const range = document.createRange();
-    if (code?.firstChild) {
-      const after: Text[] = [];
-      let node: Node | null = code.firstChild;
-      while (node && after.length < 3) {
-        node = node.nextSibling;
-        if (node?.nodeType === Node.TEXT_NODE && ((node as Text).data.trim() !== "")) after.push(node as Text);
-      }
-      const endText = after[after.length - 1];
-      if (endText) {
-        range.setStart(code.firstChild, 0);
+    if (code) {
+      // Texts after the code *element* (not its content's siblings).
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const texts: Text[] = [];
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) texts.push(t as Text);
+      const startIdx = texts.findIndex((t) => code.contains(t));
+      const after = (startIdx >= 0 ? texts.slice(startIdx + 1) : []).filter(
+        (t) => !code.contains(t) && t.data.trim() !== "",
+      );
+      const endText = after[Math.min(after.length - 1, 2)];
+      const startNode = startIdx >= 0 ? texts[startIdx] : undefined;
+      if (endText && startNode) {
+        range.setStart(startNode, 0);
         range.setEnd(endText, Math.min(14, endText.data.length));
         sel2.addRange(range);
         (endText.parentElement ?? document).dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
@@ -133,12 +136,10 @@ for (const combo of [
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
     // Explain thread on the picked paragraph (cross-code when possible).
+    // Explain fires immediately (no composer; Ask opens one): the thread
+    // lands with a placeholder, then the replay agent fills the answer.
     await selectThreadQuote(page);
     await page.locator('#selbar [data-act="explain"]').click();
-    const composer = page.locator("#page .ithread[data-pending-thread]");
-    await expect(composer).toBeVisible({ timeout: 10_000 });
-    await composer.locator("textarea").fill("test");
-    await composer.getByRole("button", { name: "Save" }).click();
     const thread = page.locator("#page section.ithread[data-thread]").first();
     await expect(thread).toBeVisible({ timeout: 30_000 });
     const threadId = await thread.getAttribute("data-thread");
@@ -193,21 +194,26 @@ for (const combo of [
 
     // Hunk toolbar with the new Summarize icon (#301): open an idle hunk
     // summary as a thread, delete it, and the Summarize button returns on
-    // that hunk (deterministic even once summaries have landed).
+    // that hunk (deterministic even once summaries have landed). Scoped to
+    // the file section, which survives the delete (a card-anchored locator
+    // would detach with the card).
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     const idle = page.locator('#right p[data-hunksum]').first();
     await expect(idle).toBeVisible({ timeout: 120_000 });
-    await idle.scrollIntoViewIfNeeded();
-    const knownThreads = await page
-      .locator("#right .dhunk [data-thread]")
+    const fileId = await idle.evaluate((el) => el.closest('[id^="F-"]')?.id ?? "");
+    expect(fileId).toBeTruthy();
+    const file = page.locator(`[id="${fileId}"]`);
+    const knownThreads = await file
+      .locator(".dhunk [data-thread]")
       .evaluateAll((els) => els.map((e) => (e as HTMLElement).getAttribute("data-thread") ?? ""));
+    await idle.scrollIntoViewIfNeeded();
     await idle.click();
     let hunkThreadId: string | null = null;
     await expect
       .poll(
         async () => {
-          const ids = await page
-            .locator("#right .dhunk [data-thread]")
+          const ids = await file
+            .locator(".dhunk [data-thread]")
             .evaluateAll((els) => els.map((e) => (e as HTMLElement).getAttribute("data-thread") ?? ""));
           hunkThreadId = ids.find((id) => id !== "" && !knownThreads.includes(id)) ?? null;
           return hunkThreadId;
@@ -215,12 +221,13 @@ for (const combo of [
         { timeout: 15_000 },
       )
       .toBeTruthy();
-    const hcard = page.locator(`#right .dhunk [data-thread="${hunkThreadId}"]`);
+    const hcard = file.locator(`.dhunk [data-thread="${hunkThreadId}"]`);
     await expect(hcard).toBeVisible({ timeout: 15_000 });
-    const hunk = hcard.locator("xpath=ancestor::div[contains(@class, 'dhunk')][1]");
     await hcard.getByRole("button", { name: "Delete" }).click();
     await expect(hcard).toHaveCount(0, { timeout: 15_000 });
-    const summarize = hunk.getByRole("button", { name: "Summarize" });
+    // Delete takes the summary with it (J13); the on-demand Summarize
+    // button is back on the hunk.
+    const summarize = file.getByRole("button", { name: "Summarize" }).first();
     await expect(summarize).toBeVisible({ timeout: 15_000 });
     await summarize.scrollIntoViewIfNeeded();
     await shot(page, "polish-hunk-toolbar", suffix);
