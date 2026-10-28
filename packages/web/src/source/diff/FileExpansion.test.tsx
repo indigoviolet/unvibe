@@ -12,6 +12,7 @@ import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
 import { FileSection } from "./FileSection.js";
+import { slotKey } from "./lineSlots.js";
 
 beforeEach(() => {
   localStorage.clear();
@@ -223,16 +224,18 @@ describe("DiffView unit expansion", () => {
     // From below (the lower hunk's step): the 4-line gap finishes at once.
     await fireEvent.click(steps[1]);
     await waitForRevealed(section, 4);
-    // No separator rows at the revealed boundary: hunk 1's table holds
-    // only its top-region control (above its code, ending on code line
-    // 9); hunk 2's table starts on the revealed gap lines (10-13, atop
-    // the clicked hunk per #265) and then its code, with only the next
-    // gap's control below.
+    // No separator rows at the revealed boundary (#285: controls ride the
+    // first/last rows, so hunk tables hold code rows only): hunk 1's
+    // table holds only its top-region control above its code (ending on
+    // code line 9); hunk 2's table starts on the revealed gap lines
+    // (10-13, atop the clicked hunk per #265) and then its code. The
+    // gap's show-all is gone (fully revealed); the quiet Hide icon sits
+    // on the run's first row instead.
     const [d0, d1] = section.querySelectorAll(".dhunk");
     const rows0 = [...d0.querySelectorAll("table.diff tbody tr")];
     expect(rows0[rows0.length - 1].id).toBe(`L-${TCONN}-9`);
     const rows1 = [...d1.querySelectorAll("table.diff tbody tr")];
-    expect(rows1[0].classList.contains("xsep")).toBe(false);
+    expect(rows1.some((tr) => tr.classList.contains("xsep"))).toBe(false);
     expect(rows1[0].id).toBe(`L-${TCONN}-10`);
     expect(rows1[4].id).toBe(`L-${TCONN}-14`);
     // The hover Hide sits on the run's first row instead.
@@ -430,7 +433,8 @@ describe("FileSection number width", () => {
       expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
       expect(slice).not.toHaveBeenCalled();
       // One click fetches the assumed step and reveals it, learning the
-      // total (show-all appears for the long tail).
+      // total (show-all appears for the long tail — riding the hunk's
+      // last code row per #285).
       await fireEvent.click(screen.getByRole("button", { name: "Show 20 more lines" }));
       await waitFor(() => {
         expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(20);
@@ -439,6 +443,13 @@ describe("FileSection number width", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
       });
+      // The pair rides the hunk's last row (step in the old cell,
+      // show-all in the new; numbers still at rest) — no separator row.
+      const lastRow = document.getElementById("L-one-3")!;
+      expect(lastRow.classList.contains("has-xdown")).toBe(true);
+      expect(lastRow.querySelector("td.n .nnum")?.textContent).toBe("3");
+      expect(lastRow.querySelectorAll("td.n .xbtns button")).toHaveLength(2);
+      expect(within(lastRow).getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
     } finally {
       slice.mockRestore();
     }
@@ -515,6 +526,10 @@ describe("FileSection number width", () => {
         expect(slice).toHaveBeenCalledWith("demo", { path: "one.py", commit: "abc1234", start: 4, end: 23 });
       });
       await waitFor(() => {
+        // Issue #285: no separator rows in unified — the control rode the
+        // hunk's last row, so at EOF the row drops `has-xdown` and shows
+        // its number again, with nothing revealed and no error.
+        expect(document.querySelectorAll("tr.has-xdown")).toHaveLength(0);
         expect(document.querySelectorAll("tr.xsep")).toHaveLength(0);
       });
       expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
@@ -576,5 +591,206 @@ describe("FileSection number width", () => {
       if (tr.classList.contains("xsep")) continue;
       expect(tr.querySelectorAll(":scope > td.n").length).toBe(1);
     }
+  });
+});
+
+describe("unified gutter E2 controls (issue #285)", () => {
+  const e2actions = {
+    toggleFold: () => {},
+    summarize: () => {},
+    deleteSummary: () => {},
+    beginNote: () => {},
+    changeNote: () => {},
+    saveNote: () => {},
+    discardNote: () => {},
+    deleteNote: () => {},
+    toggleReviewed: () => {},
+  };
+
+  function e2File(): ReviewFile {
+    const ctx = (line: number) => ({ kind: "ctx" as const, oldLine: line, newLine: line, text: `line ${line}` });
+    return {
+      fileKey: "e2",
+      path: "e2.py",
+      category: "source",
+      hunks: [
+        {
+          contentHash: "e2-h1",
+          header: "@@ -10,3 +10,3 @@",
+          newStart: 10,
+          newEnd: 12,
+          oldStart: 10,
+          oldEnd: 12,
+          added: 0,
+          removed: 0,
+          lines: [ctx(10), ctx(11), ctx(12)],
+        },
+        {
+          contentHash: "e2-h2",
+          header: "@@ -50,3 +50,3 @@",
+          newStart: 50,
+          newEnd: 52,
+          oldStart: 50,
+          oldEnd: 52,
+          added: 0,
+          removed: 0,
+          lines: [ctx(50), ctx(51), ctx(52)],
+        },
+      ],
+    };
+  }
+
+  function renderE2(commented: ReadonlySet<string> = new Set()): void {
+    render(
+      <FileSection
+        file={e2File()}
+        view="unified"
+        reviewed={0}
+        folded={false}
+        eager
+        busy={{}}
+        slots={{}}
+        commentedLines={commented}
+        highlight={null}
+        fileHighlighted={false}
+        reviewId="demo"
+        headCommit="abc1234"
+        baseCommit="def5678"
+        contentAvailable
+        briefs={null}
+        states={new Map()}
+        isHidden={() => false}
+        actions={e2actions}
+        onLineClick={undefined}
+        onToggleFileFold={() => {}}
+        onMarkFileReviewed={() => {}}
+        onUnhide={() => {}}
+      />,
+    );
+  }
+
+  it("rides the up pair on first rows and the down pair on last rows, with no separator rows", async () => {
+    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
+      path: params.path,
+      commit: params.commit,
+      start: params.start,
+      end: params.end,
+      totalLines: 100,
+      lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
+    }));
+    try {
+      renderE2();
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: "Show 20 more lines" }).length).toBeGreaterThan(0);
+      });
+      const section = document.getElementById("F-e2")!;
+      // No separator rows in unified (split keeps them; unified E2 never renders one).
+      expect(section.querySelectorAll("tr.xsep")).toHaveLength(0);
+      const first = document.getElementById("L-e2-10")!;
+      const mid = document.getElementById("L-e2-11")!;
+      const last1 = document.getElementById("L-e2-12")!;
+      const first2 = document.getElementById("L-e2-50")!;
+      const last2 = document.getElementById("L-e2-52")!;
+      // First rows: up pair (^ step + ^^ show-all); middle rows: none.
+      expect(first.classList.contains("has-xup")).toBe(true);
+      expect(mid.classList.contains("has-xup")).toBe(false);
+      expect(mid.classList.contains("has-xdown")).toBe(false);
+      expect(within(first).getByRole("button", { name: "Show 9 more lines" })).toBeInTheDocument();
+      expect(within(first).getByRole("button", { name: "Show all 9 lines" })).toBeInTheDocument();
+      // Last rows: down pair (v step + vv show-all); numbers still at rest.
+      expect(last1.classList.contains("has-xdown")).toBe(true);
+      expect(within(last1).getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+      expect(within(last1).getByRole("button", { name: "Show all 37 lines" })).toBeInTheDocument();
+      expect(last1.querySelector("td.n .nnum")?.textContent).toBe("12");
+      // The gap's lower side rides the second hunk's first row.
+      expect(first2.classList.contains("has-xup")).toBe(true);
+      expect(within(first2).getByRole("button", { name: "Show all 37 lines" })).toBeInTheDocument();
+      // The last hunk's last row offers the optimistic bottom step
+      // (#288) before the total is known — step only, no show-all.
+      expect(last2.classList.contains("has-xdown")).toBe(true);
+      expect(within(last2).getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+      expect(within(last2).queryByRole("button", { name: "Show all 48 lines" })).toBeNull();
+      // The in-row step expands like the old separator control did — and
+      // the fetch teaches the total, so the bottom show-all lands on the
+      // last row beside the revealed head.
+      await fireEvent.click(within(last1).getByRole("button", { name: "Show 20 more lines" }));
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(20);
+      });
+      expect(document.getElementById("L-e2-13")).not.toBeNull();
+      expect(document.getElementById("L-e2-32")).not.toBeNull();
+      await waitFor(() => {
+        expect(within(last2).getByRole("button", { name: "Show all 48 lines" })).toBeInTheDocument();
+      });
+    } finally {
+      slice.mockRestore();
+    }
+  });
+
+  it("swaps the comment icon in for the new-side number", () => {
+    renderE2(new Set([slotKey("e2", 11)]));
+    // Commented line: icon permanently replaces the number.
+    const commented = document.getElementById("L-e2-11")!;
+    const newCell = commented.querySelector("td.n.new")!;
+    expect(newCell.classList.contains("e-commented")).toBe(true);
+    expect(newCell.querySelector(".nic svg")).not.toBeNull();
+    expect(newCell.querySelector(".nnum")?.textContent).toBe("11");
+    // Plain line: the icon rides along (hidden until hover by CSS) and
+    // the number shows at rest.
+    const plain = document.getElementById("L-e2-10")!;
+    const plainCell = plain.querySelector("td.n.new")!;
+    expect(plainCell.classList.contains("e-commented")).toBe(false);
+    expect(plainCell.querySelector(".nic svg")).not.toBeNull();
+    expect(plainCell.querySelector(".nnum")?.textContent).toBe("10");
+  });
+
+  it("lets the up pair win a one-row hunk with hidden code on both sides", async () => {
+    const hunk: Hunk = {
+      contentHash: "e2-one",
+      header: "@@ -30 +30 @@",
+      newStart: 30,
+      newEnd: 30,
+      oldStart: 30,
+      oldEnd: 30,
+      added: 0,
+      removed: 0,
+      lines: [{ kind: "ctx", oldLine: 30, newLine: 30, text: "line 30" }],
+    };
+    const file: ReviewFile = { fileKey: "solo", path: "solo.py", category: "source", hunks: [hunk] };
+    render(
+      <FileSection
+        file={file}
+        view="unified"
+        reviewed={0}
+        folded={false}
+        eager
+        busy={{}}
+        slots={{}}
+        commentedLines={new Set()}
+        highlight={null}
+        fileHighlighted={false}
+        reviewId="demo"
+        headCommit="abc1234"
+        baseCommit="def5678"
+        contentAvailable
+        briefs={null}
+        states={new Map()}
+        isHidden={() => false}
+        actions={e2actions}
+        onLineClick={undefined}
+        onToggleFileFold={() => {}}
+        onMarkFileReviewed={() => {}}
+        onUnhide={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+    });
+    // Up wins the single-row tie: the optimistic down step never renders.
+    const row = document.getElementById("L-solo-30")!;
+    expect(row.classList.contains("has-xup")).toBe(true);
+    expect(row.classList.contains("has-xdown")).toBe(false);
+    expect(screen.getAllByRole("button", { name: "Show 20 more lines" })).toHaveLength(1);
+    expect(within(row).getByRole("button", { name: "Show all 29 lines" })).toBeInTheDocument();
   });
 });
