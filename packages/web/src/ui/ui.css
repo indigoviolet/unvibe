@@ -60,6 +60,7 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .ui-select-item[data-highlighted]{background:var(--sunk)}
 .ui-select-item[data-selected]{font-weight:var(--weight-semibold)}
 .ui-select-item[data-disabled]{opacity:.45;cursor:default}
+.ui-select-empty{padding:var(--space-2) var(--space-3);font:var(--text-sm) var(--sans);color:var(--text-secondary)}
 .ui-select-check{margin-left:auto;font-size:var(--text-xs);color:var(--accent);visibility:hidden}
 .ui-select-item[data-selected] .ui-select-check{visibility:visible}
 .ui-select-grouplabel{padding:var(--space-2) var(--space-3) var(--space-1);font-size:var(--text-xs);color:var(--text-muted);font-weight:var(--weight-semibold)}

@@ -64,7 +64,8 @@ import type {
 } from "@unvibe/shared";
 import { CHANGES_DEFAULT_LIMIT, CHANGES_MAX_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
-import { Button, Card, DiffStat, Input, PrBadges, ProcessingDots, Select } from "../ui/index.js";
+import { Combobox } from "@base-ui/react/combobox";
+import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
@@ -435,6 +436,144 @@ export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (
   );
 }
 
+export interface AuthorOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Single author control (#297 follow-up): a combobox in the select's
+ * place, at the select's size and style. At rest it shows the current
+ * choice ("All", or the chosen login) like the select did; typing
+ * filters the dropdown of known authors (the #228 list with counts)
+ * and picking one applies the client-side filter; Enter on a login that
+ * isn't in the list fetches that author's PRs from GitHub (`gh pr list
+ * --author`); "All" (or clearing the field + Enter) returns to all
+ * PRs and clears any server search. Arrows/Enter move through the list,
+ * Escape closes it — all native Base UI combobox behaviour with proper
+ * listbox/option ARIA. Typing never fetches (no extra requests, no
+ * prefetching); the draft text is never saved, only the committed
+ * choice persists like before.
+ *
+ * Enter handling: when keyboard navigation highlighted an item, Base UI
+ * commits it (and `stopEvent`s, so `!e.defaultPrevented` also holds) —
+ * the handler yields so the highlight wins and only one commit runs. A
+ * commit from anywhere (list pick, Show-all, repo switch) drops the
+ * draft via the `value` effect, so the box always settles back on the
+ * committed choice.
+ */
+function AuthorCombobox({
+  value,
+  options,
+  onPick,
+  onSearch,
+}: {
+  /** Committed choice: "all" or a login. */
+  value: string;
+  /** "All" plus the known authors (with counts), plus the committed
+      unknown login when a server search is active. */
+  options: AuthorOption[];
+  /** Pick a listed login (client-side filter, clears any server search). */
+  onPick: (login: string) => void;
+  /** Fetch an unlisted login's PRs from GitHub. */
+  onSearch: (login: string) => void;
+}): React.JSX.Element {
+  const display = options.find((o) => o.value === value)?.label ?? value;
+  const [draft, setDraft] = useState<string | null>(null);
+  // A commit from anywhere drops the draft: the box shows the choice.
+  useEffect(() => {
+    setDraft(null);
+  }, [value]);
+  const openRef = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // What keyboard navigation highlighted last (null when nothing is).
+  // The Enter handler yields to it so the highlight always wins.
+  const highlightRef = useRef<string | null>(null);
+  const commitDraft = (text: string): void => {
+    const t = text.trim();
+    // Untouched input: nothing to commit.
+    if (t === display) return;
+    if (t === "" || t === AUTHOR_ALL) onPick(AUTHOR_ALL);
+    else if (options.some((o) => o.value !== AUTHOR_ALL && o.value === t)) onPick(t);
+    else onSearch(t);
+    setDraft(null);
+  };
+  return (
+    <Combobox.Root
+      value={value}
+      items={options.map((o) => o.value)}
+      itemToStringLabel={(v) => options.find((o) => o.value === v)?.label ?? v}
+      onValueChange={(v) => {
+        if (typeof v === "string") {
+          onPick(v);
+          setDraft(null);
+        }
+      }}
+      inputValue={draft ?? display}
+      // The input doubles as the filter query: at rest it shows the
+      // committed choice, which must not filter the list down — only
+      // typed text filters (matched against the option labels).
+      filter={(item, query) => {
+        if (draft === null) return true;
+        const q = query.trim().toLowerCase();
+        if (q === "") return true;
+        const label = options.find((o) => o.value === item)?.label ?? item;
+        return label.toLowerCase().includes(q);
+      }}
+      onInputValueChange={(v) => {
+        // Escape with a closed popup clears the store input: ignore it
+        // (a commit from anywhere resets the draft instead).
+        if (v === "" && !openRef.current) return;
+        setDraft(v);
+      }}
+      onOpenChange={(open) => {
+        openRef.current = open;
+        if (!open) setDraft(null);
+      }}
+      onItemHighlighted={(v) => {
+        highlightRef.current = typeof v === "string" ? v : null;
+      }}
+      autoHighlight
+    >
+      <div className="author-combo" ref={boxRef}>
+        <Combobox.Input
+          aria-label="Author"
+          placeholder="Type a login…"
+          // At rest the box shows the choice; focusing selects it all
+          // so typing replaces it instead of appending to it.
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.defaultPrevented || highlightRef.current !== null) return;
+            e.preventDefault();
+            commitDraft(e.currentTarget.value);
+          }}
+        />
+        <Combobox.Trigger aria-label="Show authors">
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+        </Combobox.Trigger>
+      </div>
+      <Combobox.Portal>
+        <Combobox.Positioner anchor={boxRef} sideOffset={4} align="start" side="bottom" className="author-combo-positioner">
+          <Combobox.Popup className="ui-select-popup">
+            <Combobox.Empty className="ui-select-empty">No matching authors — press Enter to search GitHub</Combobox.Empty>
+            <Combobox.List>
+              {(login: string) => {
+                const label = options.find((o) => o.value === login)?.label ?? login;
+                return (
+                  <Combobox.Item key={login} value={login} className="ui-select-item">
+                    <span>{label}</span>
+                    <Combobox.ItemIndicator className="ui-select-check">✓</Combobox.ItemIndicator>
+                  </Combobox.Item>
+                );
+              }}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
+}
+
 export function StartPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -506,12 +645,10 @@ export function StartPage(): React.JSX.Element {
   // #297: page size for the PR lists (`gh pr list` has no offset, so a
   // larger `--limit` re-fetch pages) and the typed-login author search
   // (fetched server-side via `gh pr list --author`, not just the loaded
-  // rows). The input holds the box text; the search holds the committed
-  // login once Enter is pressed.
+  // rows). The search holds the committed login once Enter is pressed.
   const [prLimit, setPrLimit] = useState<number>(CHANGES_DEFAULT_LIMIT);
   const [listsHaveMore, setListsHaveMore] = useState(false);
   const [authorSearch, setAuthorSearch] = useState<string | null>(null);
-  const [authorInput, setAuthorInput] = useState("");
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -661,7 +798,6 @@ export function StartPage(): React.JSX.Element {
   const selectRepo = useCallback(
     (id: string) => {
       setAuthorSearch(null);
-      setAuthorInput("");
       setListsHaveMore(false);
       const kept = getKeptLists(id);
       if (kept) {
@@ -706,7 +842,6 @@ export function StartPage(): React.JSX.Element {
     // Picking from the list is the client-side filter (#228): it clears
     // any server-side typed search (#297).
     setAuthorSearch(null);
-    setAuthorInput("");
     try {
       localStorage.setItem(AUTHOR_KEY, next);
     } catch {
@@ -715,27 +850,24 @@ export function StartPage(): React.JSX.Element {
   }, []);
 
   /**
-   * #297: commit the typed login as a server-side author search: the
-   * next load fetches that author's PRs from GitHub
-   * (`gh pr list --author`), instead of filtering the loaded rows.
-   * A login already in the list is just the client-side filter (#228).
+   * #297: commit a login as a server-side author search: the next load
+   * fetches that author's PRs from GitHub (`gh pr list --author`),
+   * instead of filtering the loaded rows.
    */
-  const commitAuthorSearch = useCallback(() => {
-    const login = authorInput.trim();
-    if (login === "" || login === AUTHOR_ALL) {
-      setAuthorSearch(null);
-      setAuthorInput("");
+  const commitAuthorSearch = useCallback((login: string) => {
+    const t = login.trim();
+    if (t === "" || t === AUTHOR_ALL) {
       selectAuthor(AUTHOR_ALL);
       return;
     }
-    setAuthorFilter(login);
-    setAuthorSearch(login);
+    setAuthorFilter(t);
+    setAuthorSearch(t);
     try {
-      localStorage.setItem(AUTHOR_KEY, login);
+      localStorage.setItem(AUTHOR_KEY, t);
     } catch {
       // Ignore: the choice simply does not persist.
     }
-  }, [authorInput, selectAuthor]);
+  }, [selectAuthor]);
 
   /** #297: Load more doubles the PR page (30 → 60 → 120 → 200). */
   const loadMorePrs = useCallback(() => {
@@ -747,7 +879,6 @@ export function StartPage(): React.JSX.Element {
   const showAllLists = useCallback(() => {
     selectRecency("all");
     setAuthorSearch(null);
-    setAuthorInput("");
     selectAuthor(AUTHOR_ALL);
   }, [selectRecency, selectAuthor]);
 
@@ -1410,26 +1541,15 @@ export function StartPage(): React.JSX.Element {
                   <div className="prblock-head" style={{ marginTop: 14 }}>
                     <h2 className="prblock-title prblock-title-group">Waiting on your review</h2>
                     <div className="prblock-tools">
-                      {/* #297: typing a login and pressing Enter fetches
-                          that author's PRs from GitHub (`gh pr list
-                          --author`) instead of filtering the loaded rows. */}
-                      <span style={{ width: 150, flex: "none" }}>
-                        <Input
-                          aria-label="Search author by login"
-                          placeholder="Type a login…"
-                          value={authorInput}
-                          onChange={(e) => setAuthorInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") commitAuthorSearch();
-                          }}
-                        />
-                      </span>
+                      {/* #297 follow-up: one combobox in the select's place,
+                          at the select's size and style — the select and the
+                          typed box are a single control now. */}
                       <span style={{ width: 170, flex: "none" }}>
-                        <Select
-                          aria-label="Author"
+                        <AuthorCombobox
                           value={effectiveAuthor}
-                          onValueChange={(v) => selectAuthor(v)}
                           options={authorOptions}
+                          onPick={selectAuthor}
+                          onSearch={commitAuthorSearch}
                         />
                       </span>
                     </div>

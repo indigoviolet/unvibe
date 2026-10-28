@@ -171,30 +171,26 @@ test.describe("J297 start-page Load more + author search", () => {
   });
 
   /**
-   * #297 follow-up: `checkLayout` has no sibling-overlap rule (it
-   * checks overflow, row heights and right edges), so the search box /
-   * Author select pair gets its own assertion: side by side with a gap
-   * past the 4px focus ring, or stacked with the search fully above.
+   * #297 combobox follow-up: the separate search box is gone, so the
+   * old no-overlap assertion is moot. What remains is that the single
+   * control fits: fully inside the PR card, horizontally (checkLayout
+   * already asserts container overflow; this names the control).
    */
-  async function expectSearchSelectSeparated(page: import("@playwright/test").Page): Promise<void> {
-    const searchBox = await page.getByLabel("Search author by login").boundingBox();
-    const triggerBox = await page.getByLabel("Author", { exact: true }).boundingBox();
-    expect(searchBox, "search box is visible").not.toBeNull();
-    expect(triggerBox, "Author select is visible").not.toBeNull();
-    const search = { left: searchBox!.x, right: searchBox!.x + searchBox!.width, top: searchBox!.y, bottom: searchBox!.y + searchBox!.height };
-    const trigger = { left: triggerBox!.x, right: triggerBox!.x + triggerBox!.width, top: triggerBox!.y, bottom: triggerBox!.y + triggerBox!.height };
-    const sameLine = search.top < trigger.bottom && trigger.top < search.bottom;
-    if (sameLine) {
-      expect(search.right + 5).toBeLessThanOrEqual(trigger.left);
-    } else {
-      expect(search.bottom + 5).toBeLessThanOrEqual(trigger.top);
-    }
+  async function expectAuthorControlFits(page: import("@playwright/test").Page): Promise<void> {
+    await expect(page.getByLabel("Search author by login")).toHaveCount(0);
+    const box = await page.getByLabel("Author", { exact: true }).boundingBox();
+    const card = await page.getByTestId("pr-block").boundingBox();
+    expect(box, "author combobox is visible").not.toBeNull();
+    expect(card, "PR card is visible").not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(card!.x - 1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
   }
 
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
   ] as const) {
     test(`load more pages past 30 and typing an author fetches them (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
@@ -216,10 +212,13 @@ test.describe("J297 start-page Load more + author search", () => {
       await expect(prBlock.getByText("Review ask 330")).toBeVisible();
       await expect(prBlock.getByText("Carol late ask 335")).toHaveCount(0);
       await expect(prBlock.getByText("Load more PRs")).toBeVisible();
-      // The search box and the Author select share the heading row with
-      // a gap and no overlap (or wrap without overlapping at narrow
-      // widths).
-      await expectSearchSelectSeparated(page);
+      // The single author control fits inside the card; at rest it shows
+      // the choice like the select did.
+      await expectAuthorControlFits(page);
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
+      await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
+      await checkLayout(page, `start-author-combo-rest-${combo.name}`);
+      await page.screenshot({ path: `${SHOTS}/start-author-combo-rest-${combo.name}.png` });
 
       // The Load more button, framed before it is used.
       await prBlock.getByTestId("lists-load-more").scrollIntoViewIfNeeded();
@@ -227,11 +226,22 @@ test.describe("J297 start-page Load more + author search", () => {
       await page.screenshot({ path: `${SHOTS}/start-pr-list-more-button-${combo.name}.png` });
 
       // The author list knows only the first page's authors.
-      await expect(page.getByLabel("Author", { exact: true })).toContainText("All");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
       await page.getByLabel("Author", { exact: true }).click();
       await expect(openPopup(page).getByRole("option", { name: "alice (15)" })).toBeVisible({ timeout: 15_000 });
       await expect(openPopup(page).getByRole("option", { name: /carol/ })).toHaveCount(0);
       await page.keyboard.press("Escape");
+
+      // Typing filters the dropdown to the matching authors (focusing
+      // selects the shown choice, so typing replaces it) and opens it.
+      await page.getByLabel("Author", { exact: true }).pressSequentially("ali");
+      await expect(openPopup(page).getByRole("option", { name: "alice (15)" })).toBeVisible({ timeout: 15_000 });
+      await expect(openPopup(page).getByRole("option", { name: /bob/ })).toHaveCount(0);
+      // Capture the open filtered list before anything else runs.
+      await page.screenshot({ path: `${SHOTS}/start-author-combo-typing-${combo.name}.png` });
+      await checkLayout(page, `start-author-combo-typing-${combo.name}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
 
       // Load more brings in rows past 30, and their authors join the filter.
       await prBlock.getByTestId("lists-load-more").click();
@@ -247,16 +257,15 @@ test.describe("J297 start-page Load more + author search", () => {
 
       // Typing a login absent from every loaded row fetches that author's
       // PRs from GitHub (`gh pr list --author`).
-      await prBlock.getByLabel("Search author by login").fill("diana");
-      await prBlock.getByLabel("Search author by login").press("Enter");
+      await prBlock.getByLabel("Author", { exact: true }).fill("diana");
+      await prBlock.getByLabel("Author", { exact: true }).press("Enter");
       await expect(prBlock.getByText("Diana's special ask")).toBeVisible({ timeout: 30_000 });
       await expect(prBlock.getByText("Review ask 301")).toHaveCount(0);
-      await expect(page.getByLabel("Author", { exact: true })).toContainText("diana");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("diana (1)");
       const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
       expect(calls).toContain("--author diana");
-      // The committed search keeps its gap from the select (the input
-      // holds focus here, so its focus ring is drawn).
-      await expectSearchSelectSeparated(page);
+      // The committed search keeps the single control inside the card.
+      await expectAuthorControlFits(page);
 
       await checkLayout(page, `start-pr-list-more-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-pr-list-more-${combo.name}.png` });
