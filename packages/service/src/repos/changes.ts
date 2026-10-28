@@ -376,7 +376,10 @@ async function listPreviousReviews(
  * PR. When the direct call fails the distinction is unknown and rows
  * carry no scope (the web shows them as direct, as before). #297: with
  * `author` set, both searches carry `--author <login>` so a typed login
- * fetches that author's PRs from GitHub.
+ * fetches that author's PRs from GitHub. #307: the rows are the UNION
+ * of both searches (deduplicated by PR number), not just the
+ * team-inclusive page — when team requests fill that page, direct
+ * requests past it still show (as direct) instead of being dropped.
  */
 async function requestedPrs(
   runner: CommandRunner,
@@ -405,8 +408,16 @@ async function requestedPrs(
     return { changes: all.prs.map(toChange).sort(byUpdatedDesc), truncated };
   }
   const directNumbers = new Set(direct.prs.map((pr) => pr.number));
+  // #307: union, not just the team-inclusive page. Rows both searches
+  // returned show once (as direct); direct rows past the capped team
+  // page are appended (also direct) instead of being dropped.
+  const byNumber = new Map<number, GhPr>();
+  for (const pr of all.prs) byNumber.set(pr.number, pr);
+  for (const pr of direct.prs) {
+    if (!byNumber.has(pr.number)) byNumber.set(pr.number, pr);
+  }
   return {
-    changes: all.prs
+    changes: [...byNumber.values()]
       .map((pr) => ({
         ...toChange(pr),
         reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",

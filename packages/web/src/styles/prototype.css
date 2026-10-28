@@ -274,6 +274,10 @@ code { font-family: var(--mono); font-size: .86em; }
    partly behind the content, still faint and legible, and — being fixed —
    never causes horizontal overflow. Multiply goes invisible on dark
    grounds, so dark mode uses a plain low opacity instead.
+   #297 follow-up (owner direction): the mount hangs from the top edge —
+   the image is top-anchored a few px below the top bar's bottom edge, so
+   the gap holds at any window height (bottom-anchoring only held at one
+   height). Size, tilt and horizontal position are unchanged.
    The width is the single source for the loading ball's size: #284's
    guide ball derives from it (see `ui.css`), so the two stay in ratio. */
 :root { --start-ball: 640px; }
@@ -286,7 +290,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .start-watermark img {
   position: absolute;
   right: -150px;
-  bottom: -110px;
+  top: 14px;
   width: var(--start-ball);
   aspect-ratio: 52 / 76;
   object-fit: cover;
@@ -858,12 +862,22 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prblock-title-group { font-size: 14px; }
 .prblock-tools { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; }
 .prblock-tools select.tbtn { font-size: 12px; padding: 2px 6px; max-width: 160px; }
-/* #297: the author search input and select sit in fixed-width spans: with
-   the content-box `.ui-input`/`.ui-select` base (width:100% plus padding)
-   they bled past their spans into each other. Border-box keeps both
-   inside their spans, so the 6px gap (past the 4px focus ring) always
-   holds; the row wraps instead of overflowing at narrow widths. */
-.prblock-tools .ui-input, .prblock-tools .ui-select { box-sizing: border-box; }
+/* #297 combobox: the single author control at the select's size and
+   style (an editable box with the select's chevron). Like the select it
+   must stay inside its fixed-width span: border-box throughout, so the
+   6px gap (past the 4px focus ring) always holds. The row wraps instead
+   of overflowing at narrow widths. */
+.prblock-tools .author-combo { box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: var(--space-2); height: var(--control-md); border: var(--border-width) solid var(--field-border); border-radius: var(--radius-control); padding: 0 var(--space-2) 0 var(--space-3); background: var(--field-surface); color: var(--ink); font: var(--text-sm) var(--sans); cursor: text; }
+.prblock-tools .author-combo > input { flex: 1 1 auto; min-width: 0; width: 100%; border: 0; background: none; padding: 0; font: inherit; color: inherit; outline: none; }
+.prblock-tools .author-combo > input::placeholder { color: var(--field-placeholder); }
+.prblock-tools .author-combo:focus-within { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.prblock-tools .author-combo > button { display: inline-flex; flex: none; align-items: center; justify-content: center; background: none; border: 0; padding: 0; margin: 0; color: var(--text-muted); cursor: pointer; }
+.prblock-tools .author-combo > button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); border-radius: var(--radius-4); }
+/* The dropdown lives in a body-level portal: like every other popover
+   it needs its own z-index to paint above the start page's `main`
+   stacking context (the option rows assert present but paint under the
+   card without it). Same level as the other popovers. */
+.author-combo-positioner { z-index: 30; }
 .spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
 @keyframes prspin { to { transform: rotate(360deg); } }
 /* Reduced motion: the refresh icon stays still while fetching (the tooltip

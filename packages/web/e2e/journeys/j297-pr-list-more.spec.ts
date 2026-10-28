@@ -38,12 +38,12 @@ interface FakePr {
   isDraft: boolean;
 }
 
-function pr(n: number, title: string, author: string): FakePr {
+function pr(n: number, title: string, author: string, updatedAt = new Date().toISOString()): FakePr {
   return {
     number: n,
     title,
     author: { login: author },
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     headRefName: `ask-branch-${n}`,
     additions: 10 + n,
     deletions: n,
@@ -58,21 +58,29 @@ function pr(n: number, title: string, author: string): FakePr {
 // 35 direct review requests: alice/bob share the first 30, carol owns the
 // last 5 (past the first page). diana owns one PR reachable only through
 // `--author diana` (typed search for a login the first page never shows).
-const DIRECT_FULL: FakePr[] = Array.from({ length: 35 }, (_, i) => {
+// #307: yara's direct request likewise sits in the direct pools but on no
+// team-inclusive page — and it is two days old, so the recency checks
+// below can tell a capped-page drop from a window filter. It must show
+// under All anyway (union of both searches).
+const DIRECT_CORE: FakePr[] = Array.from({ length: 35 }, (_, i) => {
   const n = 301 + i;
   const author = i < 30 ? (i % 2 === 0 ? "alice" : "bob") : "carol";
   return pr(n, author === "carol" ? `Carol late ask ${n}` : `Review ask ${n}`, author);
 });
+const YARA_UPDATED_AT = new Date(Date.now() - 2 * 86400_000).toISOString();
+const YARA: FakePr[] = [pr(336, "Yara's direct-only ask", "yara", YARA_UPDATED_AT)];
+const DIRECT_FULL: FakePr[] = [...YARA, ...DIRECT_CORE];
 const DIRECT_30 = DIRECT_FULL.slice(0, 30);
 const TEAM: FakePr[] = [pr(401, "Alice asks the team", "alice"), pr(402, "Bob asks the team", "bob")];
 const AUTHORING: FakePr[] = [pr(101, "My folded-header PR", "you"), pr(102, "My unfolding PR", "you")];
 const DIANA: FakePr[] = [pr(501, "Diana's special ask", "diana")];
-// Per-login direct pools (diana's PR exists only for `--author diana`).
+// Per-login direct pools (diana's and yara's PRs exist only for `--author`).
 const DIRECT_BY_LOGIN: Record<string, FakePr[]> = {
   alice: pool(DIRECT_FULL, "alice"),
   bob: pool(DIRECT_FULL, "bob"),
   carol: pool(DIRECT_FULL, "carol"),
   diana: DIANA,
+  yara: YARA,
 };
 
 function pool(rows: FakePr[], login: string): FakePr[] {
@@ -80,20 +88,24 @@ function pool(rows: FakePr[], login: string): FakePr[] {
 }
 
 function writeFakeGhPaging(binDir: string, logDir: string, poolDir: string): void {
-  const teamFull = [...DIRECT_FULL, ...TEAM];
+  const teamFull = [...DIRECT_CORE, ...TEAM];
+  const team30 = teamFull.slice(0, 30);
   const teamFor = (login: string): FakePr[] => [...(DIRECT_BY_LOGIN[login] ?? []), ...pool(TEAM, login)];
   for (const [name, rows] of Object.entries({
     authoring: AUTHORING,
     direct30: DIRECT_30,
     directFull: DIRECT_FULL,
     // The team-inclusive search is a superset: it returns the direct
-    // requests too (the service merges scopes from this call alone).
-    team30: DIRECT_30,
+    // requests too. Sliced from its own pool (not the direct page), so
+    // a direct-only PR (#307: yara) can sit on one page but past the other.
+    team30,
     teamFull,
     "direct-alice": DIRECT_BY_LOGIN.alice,
     "direct-bob": DIRECT_BY_LOGIN.bob,
     "direct-carol": DIRECT_BY_LOGIN.carol,
     "direct-diana": DIRECT_BY_LOGIN.diana,
+    "direct-yara": DIRECT_BY_LOGIN.yara,
+    "team-yara": teamFor("yara"),
     "team-alice": teamFor("alice"),
     "team-bob": teamFor("bob"),
     "team-carol": teamFor("carol"),
@@ -171,30 +183,35 @@ test.describe("J297 start-page Load more + author search", () => {
   });
 
   /**
-   * #297 follow-up: `checkLayout` has no sibling-overlap rule (it
-   * checks overflow, row heights and right edges), so the search box /
-   * Author select pair gets its own assertion: side by side with a gap
-   * past the 4px focus ring, or stacked with the search fully above.
+   * #297 combobox follow-up: the separate search box is gone, so the
+   * old no-overlap assertion is moot. What remains is that the single
+   * control fits: fully inside the PR card, horizontally (checkLayout
+   * already asserts container overflow; this names the control).
    */
-  async function expectSearchSelectSeparated(page: import("@playwright/test").Page): Promise<void> {
-    const searchBox = await page.getByLabel("Search author by login").boundingBox();
-    const triggerBox = await page.getByLabel("Author", { exact: true }).boundingBox();
-    expect(searchBox, "search box is visible").not.toBeNull();
-    expect(triggerBox, "Author select is visible").not.toBeNull();
-    const search = { left: searchBox!.x, right: searchBox!.x + searchBox!.width, top: searchBox!.y, bottom: searchBox!.y + searchBox!.height };
-    const trigger = { left: triggerBox!.x, right: triggerBox!.x + triggerBox!.width, top: triggerBox!.y, bottom: triggerBox!.y + triggerBox!.height };
-    const sameLine = search.top < trigger.bottom && trigger.top < search.bottom;
-    if (sameLine) {
-      expect(search.right + 5).toBeLessThanOrEqual(trigger.left);
-    } else {
-      expect(search.bottom + 5).toBeLessThanOrEqual(trigger.top);
-    }
+  async function expectAuthorControlFits(page: import("@playwright/test").Page): Promise<void> {
+    await expect(page.getByLabel("Search author by login")).toHaveCount(0);
+    const box = await page.getByLabel("Author", { exact: true }).boundingBox();
+    const card = await page.getByTestId("pr-block").boundingBox();
+    expect(box, "author combobox is visible").not.toBeNull();
+    expect(card, "PR card is visible").not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(card!.x - 1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
+  }
+
+  /** Pick an option from a Base UI Select by label (recency filter). */
+  async function pickSelectOption(page: import("@playwright/test").Page, label: string, option: string): Promise<void> {
+    await page.getByLabel(label, { exact: true }).click();
+    const target = openPopup(page).getByRole("option", { name: option });
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    await target.click();
   }
 
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
   ] as const) {
     test(`load more pages past 30 and typing an author fetches them (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
@@ -216,10 +233,24 @@ test.describe("J297 start-page Load more + author search", () => {
       await expect(prBlock.getByText("Review ask 330")).toBeVisible();
       await expect(prBlock.getByText("Carol late ask 335")).toHaveCount(0);
       await expect(prBlock.getByText("Load more PRs")).toBeVisible();
-      // The search box and the Author select share the heading row with
-      // a gap and no overlap (or wrap without overlapping at narrow
-      // widths).
-      await expectSearchSelectSeparated(page);
+      // The single author control fits inside the card; at rest it shows
+      // the choice like the select did.
+      await expectAuthorControlFits(page);
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
+      await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
+      await checkLayout(page, `start-author-combo-rest-${combo.name}`);
+      await page.screenshot({ path: `${SHOTS}/start-author-combo-rest-${combo.name}.png` });
+
+      // #307: a direct request past the capped team-inclusive page still
+      // shows under All (the union of both searches), with a direct scope.
+      await expect(prBlock.getByText("Yara's direct-only ask")).toBeVisible();
+      // The recency window is not the cause: Yara's PR is two days old,
+      // so it hides under "Last day" by design — and returns under All.
+      await pickSelectOption(page, "Updated within", "Last day");
+      await expect(prBlock.getByText("Yara's direct-only ask")).toHaveCount(0);
+      await expect(prBlock.getByText("Review ask 301")).toBeVisible();
+      await pickSelectOption(page, "Updated within", "All");
+      await expect(prBlock.getByText("Yara's direct-only ask")).toBeVisible();
 
       // The Load more button, framed before it is used.
       await prBlock.getByTestId("lists-load-more").scrollIntoViewIfNeeded();
@@ -227,11 +258,22 @@ test.describe("J297 start-page Load more + author search", () => {
       await page.screenshot({ path: `${SHOTS}/start-pr-list-more-button-${combo.name}.png` });
 
       // The author list knows only the first page's authors.
-      await expect(page.getByLabel("Author", { exact: true })).toContainText("All");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
       await page.getByLabel("Author", { exact: true }).click();
       await expect(openPopup(page).getByRole("option", { name: "alice (15)" })).toBeVisible({ timeout: 15_000 });
       await expect(openPopup(page).getByRole("option", { name: /carol/ })).toHaveCount(0);
       await page.keyboard.press("Escape");
+
+      // Typing filters the dropdown to the matching authors (focusing
+      // selects the shown choice, so typing replaces it) and opens it.
+      await page.getByLabel("Author", { exact: true }).pressSequentially("ali");
+      await expect(openPopup(page).getByRole("option", { name: "alice (15)" })).toBeVisible({ timeout: 15_000 });
+      await expect(openPopup(page).getByRole("option", { name: /bob/ })).toHaveCount(0);
+      // Capture the open filtered list before anything else runs.
+      await page.screenshot({ path: `${SHOTS}/start-author-combo-typing-${combo.name}.png` });
+      await checkLayout(page, `start-author-combo-typing-${combo.name}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("All");
 
       // Load more brings in rows past 30, and their authors join the filter.
       await prBlock.getByTestId("lists-load-more").click();
@@ -247,16 +289,15 @@ test.describe("J297 start-page Load more + author search", () => {
 
       // Typing a login absent from every loaded row fetches that author's
       // PRs from GitHub (`gh pr list --author`).
-      await prBlock.getByLabel("Search author by login").fill("diana");
-      await prBlock.getByLabel("Search author by login").press("Enter");
+      await prBlock.getByLabel("Author", { exact: true }).fill("diana");
+      await prBlock.getByLabel("Author", { exact: true }).press("Enter");
       await expect(prBlock.getByText("Diana's special ask")).toBeVisible({ timeout: 30_000 });
       await expect(prBlock.getByText("Review ask 301")).toHaveCount(0);
-      await expect(page.getByLabel("Author", { exact: true })).toContainText("diana");
+      await expect(page.getByLabel("Author", { exact: true })).toHaveValue("diana (1)");
       const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
       expect(calls).toContain("--author diana");
-      // The committed search keeps its gap from the select (the input
-      // holds focus here, so its focus ring is drawn).
-      await expectSearchSelectSeparated(page);
+      // The committed search keeps the single control inside the card.
+      await expectAuthorControlFits(page);
 
       await checkLayout(page, `start-pr-list-more-${combo.name}`);
       await page.screenshot({ path: `${SHOTS}/start-pr-list-more-${combo.name}.png` });
