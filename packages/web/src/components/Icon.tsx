@@ -236,6 +236,9 @@ export const PERSON_SVG_INNER =
   '<circle cx="8" cy="5.4" r="2.5"/><path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4"/>';
 export const SPARK_SVG_INNER =
   '<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z"/>';
+/** Raw inner-SVG markup for the comment bubble (issue #302: the glyph on
+ * collapsed-thread marks). Same shape as `comment` above. */
+export const COMMENT_SVG_INNER = '<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z"/>';
 
 export type IconName = keyof typeof PATHS;
 

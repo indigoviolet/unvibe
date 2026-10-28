@@ -973,6 +973,16 @@ a.cx.pg { text-decoration-style: solid; color: var(--accent); }
 a.gx { color: inherit; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; cursor: pointer; }
 a.gx:hover { color: var(--accent); }
 #pop .xdef { max-width: 400px; font-size: 13px; margin: 4px 0; }
+/* Issues #302/#304: a small Glossary label above the term, and the
+   pinned-thread header (inline AI avatar, kind badge, reply count).
+   Badge colours match the thread replies from #301. */
+#pop .pv-label { font-size: 10.5px; font-weight: var(--weight-label); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#pop .pv-thr { display: flex; align-items: center; gap: 8px; }
+#pop .pv-thr .av { width: 18px; height: 18px; }
+#pop .pv-thr .av .ic { width: 12px; height: 12px; }
+#pop .pv-thr .kind { flex: none; font-family: var(--label-font); font-size: var(--text-label); font-weight: var(--weight-label); border: 1px solid transparent; border-radius: var(--radius-pill); padding: 0 8px; text-transform: lowercase; letter-spacing: 0; }
+#pop .pv-thr .kind-ask, #pop .pv-thr .kind-explain { background: var(--accent-soft); color: var(--accent); }
+#pop .pv-thr .kind-comment, #pop .pv-thr .kind-persona { background: var(--note-soft); color: var(--note); }
 .src { display: inline; font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: var(--radius-4); padding: 0 4px; }
 .src:hover { text-decoration: underline; }
 /* Linkouts: small markers at the end of a block; hover previews, click opens. */
@@ -1014,6 +1024,14 @@ mark.anc.ex { background: var(--accent-soft); }
 mark.anc.exl { background: none; color: inherit; padding: 0; text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
 mark.anc.exl:hover { color: var(--accent); }
 mark.anc.exl.on { outline: none; }
+/* Issue #302: in guide prose a collapsed thread reads differently from a
+   glossary term — a soft highlight behind the text plus a small thread
+   glyph after it, never the glossary's dotted underline. Hover/focus/
+   keyboard behaviour is unchanged (hover previews, click pins). Scoped to
+   #page so diff and description marks keep their dotted style. */
+#page mark.anc.exl[data-jump]:not(.fnote) { background: var(--accent-soft); text-decoration: none; border-radius: var(--radius-2); padding: 0 1px; }
+#page mark.anc.exl[data-jump]:not(.fnote):hover { color: var(--accent); }
+#page mark.anc.exl[data-jump]:not(.fnote) .thg { width: 12px; height: 12px; margin-left: 2px; color: var(--accent); }
 #pop .xprev { max-width: 400px; max-height: 50vh; overflow: auto; font-size: 13px; }
 #pop .xprev .prose { font-size: 14px; margin: 4px 0; }
 #pop .xprev .dg > .dg-svg > svg { min-width: 0; }

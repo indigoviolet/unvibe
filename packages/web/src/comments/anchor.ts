@@ -43,6 +43,8 @@
  * the DOM.
  */
 
+import { COMMENT_SVG_INNER } from "../components/Icon.js";
+
 export interface QuoteSegment {
   /** Index into the `texts` array. */
   node: number;
@@ -222,6 +224,33 @@ export function markTextInElement(el: Element, quote: string, make: () => Elemen
   if (!segments) return 0;
   // Wrap from the last segment backwards so earlier offsets stay valid.
   return wrapSegments(nodes, segments, make);
+}
+
+/**
+ * Issue #302: collapsed-thread marks (`mark.anc.exl[data-jump]`) carry one
+ * small thread glyph after the text. A quote spanning inline markup wraps
+ * one mark per text node, so the glyph goes on the LAST mark of each
+ * thread only. Idempotent: groups that already have a glyph are left
+ * alone; re-marking unwraps the marks (glyph included) and the pass
+ * re-appends afterwards.
+ */
+export function ensureThreadGlyphs(root: ParentNode): void {
+  const groups = new Map<string, Element[]>();
+  for (const el of root.querySelectorAll('mark.anc.exl[data-jump]:not(.fnote)')) {
+    const id = (el as HTMLElement).dataset.jump ?? "";
+    if (!id) continue;
+    const list = groups.get(id) ?? [];
+    list.push(el);
+    groups.set(id, list);
+  }
+  for (const marks of groups.values()) {
+    if (marks.some((m) => m.querySelector(":scope > svg.thg"))) continue;
+    const last = marks[marks.length - 1];
+    const tpl = document.createElement("template");
+    tpl.innerHTML = `<svg class="ic thg" viewBox="0 0 16 16" aria-hidden="true">${COMMENT_SVG_INNER}</svg>`;
+    const svg = tpl.content.firstChild;
+    if (svg) last.appendChild(svg);
+  }
 }
 
 /**

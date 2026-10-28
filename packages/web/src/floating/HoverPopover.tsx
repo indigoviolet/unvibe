@@ -102,12 +102,17 @@ function pagePreview(page: Page): string {
   return `<b>${esc(page.title)}</b>${html ? `<div class="xprev">${html}</div>` : ""}`;
 }
 
-/** Closed conversation-card preview: quoted text + first paragraph (PRD §4.7). */
+/** Closed conversation-card preview (PRD §4.7). Issue #302: the header
+ * shows the thread as it looks pinned — kind badge, inline AI avatar
+ * and reply count — over the quoted text + first paragraph. Body styling
+ * matches the neutral thread look from #301. */
 function previewExpansion(expansion: Thread | undefined): string {
   if (!expansion) return "";
   const firstTurn = (expansion.replies ?? [])[0];
   const blocks = firstTurn?.blocks ?? [];
   const level = firstTurn?.level ?? "standard";
+  const kind = firstTurn?.kind ?? "explain";
+  const count = (expansion.replies ?? []).length;
   let first = "";
   for (const b of blocks) {
     if (b.type === "paragraph") {
@@ -125,7 +130,13 @@ function previewExpansion(expansion: Thread | undefined): string {
     : working
       ? `<span class="hint">${esc(working)}</span>`
       : `<span class="hint">Writing explanation</span>`;
-  return `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`;
+  return (
+    `<span class="pv-thr">` +
+    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
+    `<span class="kind kind-${kind}">${esc(kind)}</span>` +
+    `<span class="hint">${count} ${count === 1 ? "reply" : "replies"}</span></span>` +
+    `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`
+  );
 }
 
 const ANCHOR_SELECTOR =
