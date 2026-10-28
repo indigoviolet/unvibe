@@ -277,7 +277,10 @@ code { font-family: var(--mono); font-size: .86em; }
    #297 follow-up (owner direction): the mount hangs from the top edge —
    the image is top-anchored a few px below the top bar's bottom edge, so
    the gap holds at any window height (bottom-anchoring only held at one
-   height). Size, tilt and horizontal position are unchanged. */
+   height). Size, tilt and horizontal position are unchanged.
+   The width is the single source for the loading ball's size: #284's
+   guide ball derives from it (see `ui.css`), so the two stay in ratio. */
+:root { --start-ball: 640px; }
 .start-watermark {
   position: fixed;
   inset: 0;
@@ -288,7 +291,7 @@ code { font-family: var(--mono); font-size: .86em; }
   position: absolute;
   right: -150px;
   top: 14px;
-  width: 640px;
+  width: var(--start-ball);
   aspect-ratio: 52 / 76;
   object-fit: cover;
   object-position: center;
