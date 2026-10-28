@@ -442,13 +442,19 @@ needed (that deviation is closed, not added).
 
 - Dotted links (page preview → open; collapsed expansion preview →
   expand) — met (`e2e/guide.spec.ts` “dotted-link hover preview: timing
-  and content”).
+  and content”). Issue #302 reserves the dotted underline for glossary
+  terms: collapsed thread links in guide prose read as a soft highlight
+  plus a small thread glyph (no dotted underline), and their preview
+  shows the thread pinned-style (kind badge, inline AI avatar, reply
+  count). Glossary previews carry a Glossary label (journeys J302,
+  J252; thread-polish tour frames).
 - Citations (`<>` + count; hover previews lines; click opens source pane
   at spot w/ unfold + filter clear) — met (`guide-service.spec.ts`
   “citations reveal over the real API”, `validate/*`). Chips flow inline
   with their text and never wrap alone onto a line (issue #165); lists
-  carry per-item chips with no repeated block-level count row
-  (`guide/BlockView.list.test.tsx`).
+  carry per-item chips with no repeated block-level count row, and a
+  whole-list source no item shows lands inline at the end of the last
+  item (issue #305, `guide/BlockView.list.test.tsx` + journey J305).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
 - Unverified citations get no marker (issue #264) — met: the service
@@ -3206,6 +3212,45 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (hover shows definition + citation), `e2e/glossary-tour.spec.ts`
   (links + hover open, 1440/960 light/dark, `checkLayout`).
   Full gates not yet run.
+
+## Addendum: #301/#302/#303/#304/#305 (branch `feat/301-thread-polish`)
+
+- **#301 (thread polish):** the “Ask about this” header button is gone
+  (the Reply box asks the agent); reply avatars sit inline in the first
+  line with the kind badge and the body uses normal padding (no avatar
+  column); threads use the neutral card surface with a thin `--line`
+  border while the `.on` focus state keeps an accent border + soft ring
+  in every theme and mode; the sparkle stays only as the AI avatar and
+  Second opinion / Summarize get their own `second` / `summary` icons
+  (same 16x16 stroke style). Evidence: `ThreadView.test.tsx` (removal +
+  inline-avatar layout), `e2e/comments.spec.ts` (in-thread Ask flow),
+  thread-polish tour frames (rest, focused, Ask + follow-up, comment
+  thread, both new icons).
+- **#302 (thread links vs glossary):** collapsed-thread marks
+  (`mark.anc.exl[data-jump]`) in guide prose get the highlight + glyph
+  via `ensureThreadGlyphs`; the thread preview shows kind badge, avatar
+  and reply count; glossary previews get the Glossary label (chip change
+  is #304). Evidence: journey J302, tour frames.
+- **#303 (cross-node quotes):** the anchor matcher normalizes whitespace
+  on both sides and maps back to raw per-node segments, so quotes
+  spanning code/emphasis/links resolve instead of raising the duplicate
+  fallback chip (recorded-offset verification already normalized; the
+  text-match path did not). The fallback chip itself is neutral, not
+  amber. Evidence: `anchor.test.ts` whitespace suite (3 fail pre-fix),
+  journey J303, tour frame.
+- **#304 (glossary chip):** the glossary popover shows the shared compact
+  prose chip (`citationRange`, line range, click goes to source) instead
+  of the label + snippet button; the Glossary label and hint stay.
+  Evidence: J252 extension (label, chip, no snippet, click lands on the
+  source line), tour frame.
+- **#305 (list citations):** `uncoveredListCitations` (pure) finds
+  block-level sources no item shows; `BlockView` renders them inline at
+  the end of the last `li` — per-item chips stay, no row below the list
+  (both list kinds; nested markup and trailing code/links flow inline).
+  Note: the replay demo's lists are all fully covered per-item, so no
+  demo frame shows the new chip — placement is proven by the render
+  unit test. Evidence: `BlockView.list.test.tsx`, journey J305, tour
+  frame of a cited list.
 
 ## Addendum: #255 (branch `feat/255-code-highlight`)
 
