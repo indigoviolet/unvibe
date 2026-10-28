@@ -969,10 +969,17 @@ needed (that deviation is closed, not added).
   summary settles the request (issue #63; `DiffView.tsx` snapshot-rows
   effect, `source/diff/summarizeBusy.test.tsx`).
 - Unified sideways scroll; Split equal halves + wrap + widen; pinned rows
-  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #261 tightens
-  the unified gutter to digits + padding + exactly the affordance room
-  (old +34px with the reopen marker, new +30px with the comment icon)
-  and drops the empty number column on added/deleted files/hunks.
+  — met (`DiffView.test.tsx`, `diffLogic.test.ts`). Issue #285 (E2)
+  tightens the unified gutter to digits + 8px padding with zero
+  affordance room (80px at 4-digit lines): the comment icon swaps in for
+  the new-side number (on hover, permanently on commented lines) and the
+  expand carets replace the hunk's first/last row numbers (`^`/`^^` up,
+  `v`/`vv` down, on row hover with numbers at rest; up wins the
+  one-row tie; a hunk at line 1 or EOF keeps its numbers). Closed
+  multi-line ranges read as dotted anchor text on every line plus the
+  tint and border (the #189 gutter `↪` marker is gone; clicking any
+  dotted piece reopens), and drops the empty number column on
+  added/deleted files/hunks (from #261).
 - Syntax highlighting (issue #23): plain rows first, token colours after
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met
@@ -984,7 +991,10 @@ needed (that deviation is closed, not added).
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
   tests); quiet gutter caret icons (single = 20-line step, double =
-  whole run) in thin separator rows frozen left while code scrolls, one
+  whole run) ride the hunk's first/last row number cells (issue #285:
+  no separator rows in unified — `^`/`^^` on the first row, `v`/`vv`
+  on the last, transparent until row hover or keyboard focus; split
+  keeps its separator rows), pinned left while code scrolls, one
   hidden run per gap sharing one remaining count from both ends, no
   controls on continuous boundaries (fully revealed or zero-line gaps,
   file edges; issue #288: the last hunk always offers an optimistic
@@ -993,13 +1003,15 @@ needed (that deviation is closed, not added).
   error, no probe on load), and a
   quiet fold icon on each revealed block's first gutter number instead
   of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 14 tests, `FileExpansion.test.tsx` 15 tests,
+  `expandLines.test.ts` 14 tests, `FileExpansion.test.tsx` 18 tests,
   `e2e/diff-expand.spec.ts` 8 tests, journeys `j265-expand-up.spec.ts` 3
-  tests and `j288-expand-down-last-hunk.spec.ts` 2 tests against the
+  tests, `j288-expand-down-last-hunk.spec.ts` 2 tests and the new
+  `j285-gutter-e2.spec.ts` 3 tests against the
   real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
-  `diff-expand-full-gap`); revealed lines read in the section whose
+  `diff-expand-full-gap`, plus the #285 `diff-gutter-e2-rest`,
+  `diff-gutter-e2-hover` and `diff-gutter-e2-eof` frames); revealed lines read in the section whose
   control revealed them (issue #265: up-steps and show-all-up atop the
   clicked hunk, down-steps below it, a fully revealed gap once in
   exactly one section); deleted files expand on the old

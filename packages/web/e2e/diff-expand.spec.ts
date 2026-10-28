@@ -14,6 +14,18 @@ const TCONN = "test-test_connection.py";
 const connFile = `[id="F-${CONN}"]`;
 const tconnFile = `[id="F-${TCONN}"]`;
 
+/**
+ * Issue #285 (E2): unified expand controls ride the hunk's first/last
+ * row and show on row hover — hover the button's row, then click. (At
+ * rest the buttons are transparent so number clicks pass through; split
+ * view keeps its always-visible separator rows and needs no hover.)
+ */
+async function clickRowControl(scope: import("@playwright/test").Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
+
 async function scrollPaneTo(page: Page, sel: string, at: number): Promise<void> {
   await page.evaluate(
     ({ sel, at }: { sel: string; at: number }) => {
@@ -69,13 +81,13 @@ async function scrollDiffToBottom(page: Page): Promise<void> {
 
 test("expands above a hunk in steps and collapses back", async ({ page }) => {
   const conn = page.locator(connFile);
-  await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
+  await clickRowControl(conn, "Show 20 more lines", 0);
   const revealed = conn.locator("tr[data-revealed]");
   await expect(revealed).toHaveCount(20);
   await expect(page.locator(`[id="L-${CONN}-76"]`)).toBeVisible();
   await expect(page.locator(`[id="L-${CONN}-56"]`)).toHaveCount(0);
   // A second step continues upward.
-  await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
+  await clickRowControl(conn, "Show 20 more lines", 0);
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(40);
   await expect(page.locator(`[id="L-${CONN}-37"]`)).toBeVisible();
   // Collapse hides the region again.
@@ -90,7 +102,7 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
   const tconn = page.locator(tconnFile);
   // Issue #265: the gap's show-all rides both ends; the upper side's
   // (first in DOM order) keeps the old path here.
-  await tconn.getByRole("button", { name: "Show all 4 lines" }).first().click();
+  await clickRowControl(tconn, "Show all 4 lines", 0);
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
   for (const n of [10, 11, 12, 13]) {
     await expect(page.locator(`[id="L-${TCONN}-${n}"]`)).toBeVisible();
@@ -110,16 +122,17 @@ test("revealing a gap fully from below leaves no controls at the boundary", asyn
   // The small gap's lower step finishes it in one click.
   const steps = tconn.getByRole("button", { name: "Show 4 more lines" });
   await expect(steps).toHaveCount(2);
-  await steps.nth(1).click();
+  await clickRowControl(tconn, "Show 4 more lines", 1);
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
-  // No separator rows at the revealed boundary: hunk 1's table holds
-  // only its top-region control (above its code), hunk 2's table only
-  // the next gap's control (below its code).
+  // No separator rows at the revealed boundary (#285): hunk 1's table
+  // starts on its first code line (the top-region step rides that row),
+  // hunk 2's table starts on the revealed tail — controls live in rows,
+  // never between them.
   const [first, second] = await tconn.locator(".dhunk").all();
-  await expect(first.locator("tr.xsep")).toHaveCount(1);
-  await expect(second.locator("tr.xsep")).toHaveCount(1);
+  await expect(first.locator("tr.xsep")).toHaveCount(0);
+  await expect(second.locator("tr.xsep")).toHaveCount(0);
   const firstRowClass: string = await first.locator("table.diff tbody tr").first().getAttribute("class") ?? "";
-  expect(firstRowClass.split(" ")).toContain("xsep");
+  expect(firstRowClass.split(" ")).toContain("has-xup");
   const nums: number[] = await tconn.evaluate((el) => {
     const dhunks = [...el.querySelectorAll(".dhunk")].slice(0, 2);
     const out: number[] = [];
@@ -147,7 +160,7 @@ test("split view keeps both sides of revealed lines aligned", async ({ page }) =
 
 test("revealed lines offer no comment start", async ({ page }) => {
   const conn = page.locator(connFile);
-  await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
+  await clickRowControl(conn, "Show 20 more lines", 0);
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(20);
   // No comment affordance on revealed number cells…
   await expect(page.locator("tr[data-revealed] td.n.new")).toHaveCount(0);
@@ -180,7 +193,7 @@ test("hides the unit control when no unit encloses the hunk", async ({ page }) =
 test("headers still pin and code columns line up with expansion revealed", async ({ page }) => {
   const conn = page.locator(connFile);
   // Lines above and below the first hunk…
-  await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
+  await clickRowControl(conn, "Show 20 more lines", 0);
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(20);
   // …and a fully revealed gap in another file.
   await scrollDiffToBottom(page);
@@ -188,7 +201,7 @@ test("headers still pin and code columns line up with expansion revealed", async
   const tconn = page.locator(tconnFile);
   // Issue #265: the gap's show-all rides both ends; the upper side's
   // (first in DOM order) keeps the old path here.
-  await tconn.getByRole("button", { name: "Show all 4 lines" }).first().click();
+  await clickRowControl(tconn, "Show all 4 lines", 0);
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(4);
   // A revealed row scrolls under the pinned file + hunk headers. Scroll
   // to a line deep enough in the hunk that its header is genuinely stuck
