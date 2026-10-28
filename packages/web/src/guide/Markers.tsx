@@ -10,8 +10,9 @@
  *   had a quote (PRD §4.6). Threads whose quote is lost get a footnote chip
  *   instead (same row, with their quote).
  * - Footnote chips (`footnotes` + quoted threads): one quiet row shared with
- *   the citations chip. Closed expansions become dotted-link marks
- *   (`mark.anc.exl[data-jump]`, hover previews + click expands via the
+ *   the citations chip. Closed expansions become thread-link marks
+ *   (`mark.anc.exl[data-jump]`, soft highlight + thread glyph in the guide
+ *   per issue #302, hover previews + click expands via the
  *   existing `ExpansionHighlights` handlers); promoted links become page
  *   links (`a.cx.pg[data-node]`, hover previews via `HoverPopover`, click
  *   opens via `onOpenPage`); threads become marks (`mark.anc[data-thr]`,
@@ -19,23 +20,13 @@
  *   by the highlight passes when their quote is not found in the host text,
  *   so switching back to a level that contains the phrase hides them again.
  */
-import { parseId, type Thread } from "@unvibe/shared";
+import { type Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
-
-/**
- * #274 readable citations: the chip shows the first citation's line range
- * (L80–82) instead of the bare source count. Non-line targets (documents,
- * description blocks, hunk ids) and unparseable targets keep the count.
- */
-function citationRange(target: string): string | null {
-  const parsed = parseId(target);
-  if (!parsed || (parsed.kind !== "diff" && parsed.kind !== "code")) return null;
-  return parsed.start === parsed.end ? `L${parsed.start}` : `L${parsed.start}–${parsed.end}`;
-}
+import { citationRange } from "./citations.js";
 
 interface Props {
   citations: ResolvedCitation[];
