@@ -3009,20 +3009,20 @@ hunk coverage) is reported for a separate issue, not fixed here.
 
 ## Addendum: #284 (branch `fix/284-loading-ball`)
 
-- **#284 (guide loading ball + glints; diff glints-only):** the
+- **#284 (guide loading ball; diff glints-only):** the
   guide-building state shows the #275/#281 disco ball (whole
   `/disco-ball.svg`, the scene pendulums from the chain mount,
-  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints
-  (art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
-  reflections around the sphere — same 2.5s cycle and easing, in phase
-  with the swing, drifting slightly and brightest at the swing's ends.
-  The diff-loading state shows the same glints in a loose staggered
-  cluster on their own (one shared element/animation), as if the ball
-  were just out of frame — never a straight row. `PaneLoading` takes
-  `variant="guide" | "diff"`; every other dots indicator is
-  unchanged. Reduced motion: scene and glints static but visible. Dark
-  mode remaps the ball to line-art-on-dark (lightness-inverted, hue
-  kept) and softens the glint cluster (opacity .7).
+  ±4° over 2.5s ease-in-out, infinite) on its own — the ball's painted
+  highlights are its reflections; the separate pink sparkles were
+  dropped from the guide side by owner direction. The diff-loading
+  state keeps the same glints (art's own sparkle paths,
+  `#FF38E9`/`#FF48F1`) in a loose staggered cluster on their own,
+  as if the ball were just out of frame — never a straight row.
+  `PaneLoading` takes `variant="guide" | "diff"`; every other dots
+  indicator is unchanged. Reduced motion: scene and glints static but
+  visible. Dark mode remaps the ball to line-art-on-dark
+  (lightness-inverted, hue kept) and softens the glint cluster
+  (opacity .7).
 - **#284 follow-up (hero-sized loading art):** both indicators are
   large. The guide ball derives from the start page's ball —
   `--start-ball: 640px` (the watermark width in `prototype.css`) with
@@ -3032,8 +3032,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   scale by the same ratio (~33–50px, sizes/offsets/drift as fractions
   of the ball size). Art stacks above the label with the group centred
   in the pane (column `PaneLoading[data-variant]`, pad centres in a
-  floor filling the visible pane); animation timing, sync, reduced motion and themes are
-  unchanged. The tour asserts the hero art stays inside its pane at
+  floor filling the visible pane); animation timing, sync, reduced
+  motion and themes are unchanged. The tour asserts the hero art stays inside its pane at
   both swing extremes and the label is uncovered. Evidence: tour
   `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
   `diff-glint-extreme-*`/`diff-glint-mid-*` +
