@@ -67,11 +67,11 @@ function mockLists(requested: RepoChange[], authoring: RepoChange[] = [], branch
   vi.spyOn(api, "viewer").mockResolvedValue({ login: "you" });
   vi.spyOn(api, "createReview").mockResolvedValue({ review: { id: "rv1" } } as never);
   vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-    if (id === "demo") return { changes: [] };
-    if (filter === "authoring") return { changes: authoring };
-    if (filter === "review-requested") return { changes: requested };
-    if (filter === "recent") return { changes: branches };
-    return { changes: [] };
+    if (id === "demo") return { changes: [], hasMore: false };
+    if (filter === "authoring") return { changes: authoring, hasMore: false };
+    if (filter === "review-requested") return { changes: requested, hasMore: false };
+    if (filter === "recent") return { changes: branches, hasMore: false };
+    return { changes: [], hasMore: false };
   }) as typeof api.repoChanges);
 }
 
@@ -134,7 +134,8 @@ describe("StartPage requested split and filter (#95)", () => {
     mockLists([UNSCOPED]);
     renderPage();
     expect(await screen.findByText("Stored before scopes")).toBeInTheDocument();
-    expect(screen.queryByTestId("requested-team-empty")).toHaveTextContent("No PRs requested of your team.");
+    // #274 compact empty states: a 0 badge on the heading, no empty line.
+    expect(screen.queryByTestId("requested-team-empty")).not.toBeInTheDocument();
   });
 
   it("filters both groups by window and remembers the choice", async () => {
@@ -170,12 +171,13 @@ describe("StartPage requested split and filter (#95)", () => {
     expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs updated in the last week.");
   });
 
-  it("shows an empty state per section when nothing is requested", async () => {
+  it("shows a 0 count badge per section instead of an empty line when nothing is requested (#274)", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     mockLists([]);
     renderPage();
-    expect(await screen.findByTestId("requested-direct-empty")).toHaveTextContent("No PRs requested of you.");
-    expect(screen.getByTestId("requested-team-empty")).toHaveTextContent("No PRs requested of your team.");
+    expect(await screen.findByText("Requested of you")).toBeInTheDocument();
+    expect(screen.queryByTestId("requested-direct-empty")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("requested-team-empty")).not.toBeInTheDocument();
   });
 
   it("renders the diff size when known and omits it when unknown (#100)", async () => {

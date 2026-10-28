@@ -3,15 +3,16 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { initTokenFromUrl } from "./api/client.js";
 import { initSentry } from "./sentry.js";
-// Self-hosted fonts (no external requests, PRD §16): latin subsets only.
-import "@fontsource/ibm-plex-sans/latin-400.css";
-import "@fontsource/ibm-plex-sans/latin-500.css";
-import "@fontsource/ibm-plex-sans/latin-600.css";
-import "@fontsource/ibm-plex-mono/latin-400.css";
-import "@fontsource/ibm-plex-mono/latin-500.css";
-import "@fontsource/source-serif-4/latin-400.css";
-import "@fontsource/source-serif-4/latin-400-italic.css";
-import "@fontsource/source-serif-4/latin-600.css";
+// Self-hosted fonts (no external requests, PRD §16). Default theme is
+// stack B (issue #274): Literata variable (prose, enables the lighter
+// dark-mode weight), Inter variable (UI), JetBrains Mono variable (code).
+// Variable faces cover every weight in one file; latin is the subset the
+// browser downloads (unicode-range splits the rest). Italic only where
+// the old stack had it (prose).
+import "@fontsource-variable/literata";
+import "@fontsource-variable/literata/wght-italic.css";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import "./styles/prototype.css";
 import { currentUiTheme, ensureThemeFonts } from "./theme/theme.js";
 

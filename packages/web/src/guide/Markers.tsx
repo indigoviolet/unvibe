@@ -19,18 +19,29 @@
  *   by the highlight passes when their quote is not found in the host text,
  *   so switching back to a level that contains the phrase hides them again.
  */
-import type { Annotation } from "@unvibe/shared";
+import { parseId, type Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
 
+/**
+ * #274 readable citations: the chip shows the first citation's line range
+ * (L80–82) instead of the bare source count. Non-line targets (documents,
+ * description blocks, hunk ids) and unparseable targets keep the count.
+ */
+function citationRange(target: string): string | null {
+  const parsed = parseId(target);
+  if (!parsed || (parsed.kind !== "diff" && parsed.kind !== "code")) return null;
+  return parsed.start === parsed.end ? `L${parsed.start}` : `L${parsed.start}–${parsed.end}`;
+}
+
 interface Props {
   citations: ResolvedCitation[];
-  threads: Annotation[];
+  threads: Thread[];
   /** Closed expansions + promoted links anchored on this block. */
-  footnotes?: Annotation[];
+  footnotes?: Thread[];
   blockId: string;
   onOpenPage?: (pageId: string) => void;
 }
@@ -65,8 +76,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           data-tip="Show in source"
           onClick={() => revealSource(verified[0].target)}
         >
-          <Icon name="code" />
-          {verified.length > 1 ? verified.length : ""}
+          {citationRange(verified[0].target) ?? (verified.length > 1 ? verified.length : "")}
         </button>
       )}
       {unquoted.length > 0 && (

@@ -26,10 +26,20 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { selectDiffRows, selectText } from "./select-text.js";
+/**
+ * Issue #285 (E2): unified expand controls ride the hunk's first/last
+ * row and show on row hover — hover the button's row, then click. (At
+ * rest the buttons are transparent so number clicks pass through.)
+ */
+async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -81,13 +91,18 @@ test.beforeAll(async () => {
       UNVIBE_UPDATER_BACKEND: "fake",
     },
   });
+  reviewId = await createTourReview();
+});
+
+async function createTourReview(): Promise<string> {
+  if (!svc) throw new Error("service not running");
   const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
     review: { id: string };
   };
-  reviewId = created.review.id;
+  const id = created.review.id;
   const deadline = Date.now() + 90_000;
   for (;;) {
-    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as {
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${id}`)) as {
       pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
     };
     const root = snap.pages.find((p) => p.id === "root");
@@ -95,7 +110,8 @@ test.beforeAll(async () => {
     if (Date.now() > deadline) throw new Error("guide did not fill in time");
     await new Promise((r) => setTimeout(r, 1000));
   }
-});
+  return id;
+}
 
 test.afterAll(async () => {
   await svc?.stop().catch(() => {});
@@ -171,7 +187,7 @@ async function checkMenus(page: Page, step: string): Promise<void> {
 
 /** Generic check: open cards fully inside horizontally + topmost grid. */
 async function checkCards(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".ui-card.child:visible");
+  const cards = page.locator("section.ithread[data-thread]:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const r = cardEl.getBoundingClientRect();
@@ -212,7 +228,7 @@ async function checkCards(page: Page, step: string): Promise<void> {
           // its ancestor (a child above its parent). An ancestor — or
           // any part of it, such as its sticky reply footer — covering
           // a descendant, or an unrelated card covering this one, fails.
-          const hitCard = hit.closest(".ui-card.child");
+          const hitCard = hit.closest("section.ithread[data-thread]");
           if (hitCard && cardEl.contains(hitCard)) continue;
           // A header may cover a card only while it is actually stuck
           // in its pinned slot at the top of the pane (its top equals
@@ -239,10 +255,10 @@ async function checkCards(page: Page, step: string): Promise<void> {
  * its parent is the one allowed cover, as in the grid check).
  */
 async function checkReplyBoxes(page: Page, step: string): Promise<void> {
-  const boxes = page.locator(".ui-card.child textarea:visible");
+  const boxes = page.locator("section.ithread[data-thread] textarea:visible");
   for (let i = 0; i < (await boxes.count()); i++) {
     const bad = await boxes.nth(i).evaluate((ta: Element) => {
-      const card = ta.closest(".ui-card.child");
+      const card = ta.closest("section.ithread[data-thread]");
       if (!card) return "reply input not inside a floating card";
       const r = ta.getBoundingClientRect();
       const c = card.getBoundingClientRect();
@@ -253,6 +269,9 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
       // The footer must sit flush at the card's bottom: sample the
       // strip below the composer (if any) — answer content visible
       // there means scrolled text shows past the sticky footer.
+      // Issue #273: a thread carries two composers (comment Reply +
+      // Ask follow-up), so the other composer of the SAME thread below
+      // this one's footer is expected and allowed.
       const composer = ta.closest(".composer");
       if (composer) {
         const f = composer.getBoundingClientRect();
@@ -261,9 +280,11 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
             const hit = document.elementFromPoint(x, y);
             if (!hit) continue;
             if (composer.contains(hit) || hit === card) continue;
+            const hitComposer = (hit as Element).closest?.(".composer");
+            if (hitComposer && card.contains(hitComposer)) continue;
             // A descendant card over the strip is allowed; this
             // card's own answer content showing there is the bug.
-            const hitCard: Element | null = hit.closest(".ui-card.child");
+            const hitCard: Element | null = hit.closest("section.ithread[data-thread]");
             if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
             return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
           }
@@ -286,7 +307,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
         if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
         // Only a descendant card may cover this card's reply input;
         // an ancestor's footer (or anything else) over it fails.
-        const hitCard = hit.closest(".ui-card.child");
+        const hitCard = hit.closest("section.ithread[data-thread]");
         if (hitCard && card.contains(hitCard)) continue;
         return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
       }
@@ -303,7 +324,7 @@ async function checkReplyBoxes(page: Page, step: string): Promise<void> {
  * allowed cover is a descendant card, as in the grid check.
  */
 async function checkCardHeaders(page: Page, step: string): Promise<void> {
-  const cards = page.locator(".ui-card.child:visible");
+  const cards = page.locator("section.ithread[data-thread]:visible");
   for (let i = 0; i < (await cards.count()); i++) {
     const bad = await cards.nth(i).evaluate((cardEl: Element) => {
       const header = cardEl.querySelector(":scope > .exp-h");
@@ -350,13 +371,13 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         const hit = document.elementFromPoint(x, y);
         if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
         if (cardEl.contains(hit)) {
-          const hitCard = hit.closest(".ui-card.child");
+          const hitCard = hit.closest("section.ithread[data-thread]");
           if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
         }
         // The pinned top stack (and the app top bar) slides over
         // inline cards by design.
         if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
-        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest(".ui-card.child")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest("section.ithread[data-thread]")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
     });
@@ -449,7 +470,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".ui-card.child")) {
+        if (hit && hit.closest("section.ithread[data-thread]")) {
           return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
         }
       }
@@ -463,7 +484,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
-    const cards = [...pane.querySelectorAll(".ui-card.child")].map((c) => c.getBoundingClientRect());
+    const cards = [...pane.querySelectorAll("section.ithread[data-thread]")].map((c) => c.getBoundingClientRect());
     let coveredTo = bandTop;
     for (const r of cover) {
       if (r.top > coveredTo + 0.2) {
@@ -491,7 +512,7 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       const y = (layers[i].bottom + layers[i + 1].top) / 2;
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit.closest(".ui-card.child")) {
+        if (hit && hit.closest("section.ithread[data-thread]")) {
           return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
         }
       }
@@ -504,9 +525,9 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
 /**
  * Generic check (diff scenes): every visible code row's line-number
  * cells sit inside the pane and are topmost at their centre — a hunk
- * scrolled sideways must keep its gutter (the #189 reopen marker
- * lives there). Floating cards and the pinned top stack may
- * legitimately cover the gutter; code rows may not.
+ * scrolled sideways must keep its gutter (the #285 expand controls live
+ * in the first/last rows' number cells). Floating cards and the pinned
+ * top stack may legitimately cover the gutter; code rows may not.
  */
 async function checkGutters(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -546,7 +567,7 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       if (y < pv.top || y > pv.bottom) continue;
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
-      if (hit.closest(".ui-card.child")) continue;
+      if (hit.closest("section.ithread[data-thread]")) continue;
       if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
@@ -556,11 +577,12 @@ async function checkGutters(page: Page, step: string): Promise<void> {
 }
 
 /**
- * Issue #261: the unified gutter is at most digits + padding (+ exactly
- * the affordance room: 11px comment icon + 3px margin on the new side,
- * ~18px reopen marker on the old side). Added files drop the empty old
- * column; deleted files drop the new one. Returns the measured widths
- * (px) so the run logs before/after numbers.
+ * Issue #285 (E2): the unified gutter is at most digits + 8px padding
+ * with zero affordance room (the comment icon swaps in for the number,
+ * the expand carets replace the first/last rows' numbers, and the #189
+ * reopen marker is gone). Added files drop the empty old column;
+ * deleted files drop the new one. Returns the measured widths (px) so
+ * the run logs before/after numbers.
  */
 async function checkGutterWidth(page: Page, fileKey: string, step: string): Promise<{ old: number; nw: number; digits: number }> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
@@ -568,8 +590,8 @@ async function checkGutterWidth(page: Page, fileKey: string, step: string): Prom
     const file = document.getElementById(`F-${key}`);
     if (!file) return null;
     const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
-    // Measure padding on a code-row number cell, not the `xsep` icon
-    // cell (its left padding is 2px, code rows use 8px + 8px).
+    // Measure padding on a code-row number cell (code rows use 4px +
+    // 4px; split keeps its own layout and never enters this check).
     const sample = file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n");
     const probe = document.createElement("span");
     probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
@@ -623,21 +645,22 @@ async function checkGutterWidth(page: Page, fileKey: string, step: string): Prom
   }, fileKey);
   expect(info, `${step}: missing #F-${fileKey}`).not.toBeNull();
   const { digits, digitW, pad, oldMax, nwMax, hideOld, hideNew, isNew } = info!;
-  // Deleted files keep only the old column (no comment affordance there);
-  // added files keep only the new one.
+  // Deleted files keep only the old column; added files keep only the
+  // new one. Control buttons shrink into the floor, so first/last rows
+  // (transparent overlays at rest) measure the same as plain rows.
   if (isNew) expect(hideOld, `${step}: added file must hide the empty old column`).toBe(true);
   else expect(hideOld, `${step}: modified file must keep both number columns`).toBe(false);
   expect(hideNew, `${step}: this review has no deleted files`).toBe(false);
   const tol = 3;
   if (!hideOld) {
-    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding + marker`).toBeLessThanOrEqual(digits * digitW + pad + 18 + tol);
+    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
     expect(oldMax, `${step}: no old number cells measured`).toBeGreaterThan(0);
   } else {
     expect(oldMax, `${step}: hidden old column must measure 0`).toBe(0);
   }
-  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding + icon`).toBeLessThanOrEqual(digits * digitW + pad + 14 + tol);
+  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
   expect(nwMax, `${step}: no new number cells measured`).toBeGreaterThan(0);
-  console.log(`gutter-261 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
+  console.log(`gutter-285 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
   return { old: oldMax, nw: nwMax, digits };
 }
 
@@ -745,9 +768,9 @@ async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
  * the click — a card that will not close is a real failure here.
  */
 async function closeCard(page: Page, card: Locator): Promise<void> {
-  const id = await card.getAttribute("data-expansion");
+  const id = await card.getAttribute("data-thread");
   await card.getByRole("button", { name: "Close" }).click();
-  const gone = id ? page.locator(`[data-expansion="${id}"]`) : card;
+  const gone = id ? page.locator(`[data-thread="${id}"]`) : card;
   await expect(gone).toBeHidden({ timeout: 15_000 });
 }
 
@@ -786,7 +809,7 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   let last = "";
   for (let i = 0; i < 10; i++) {
     const now = await page.evaluate(() =>
-      [...document.querySelectorAll(".ui-card.child")].map((c) => {
+      [...document.querySelectorAll("section.ithread[data-thread]")].map((c) => {
         const r = c.getBoundingClientRect();
         return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
       }).join("|"),
@@ -807,15 +830,27 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   await checkMenus(page, step);
 }
 
-for (const combo of [
-  { name: "1440-light", width: 1440, dark: false },
-  { name: "1440-dark", width: 1440, dark: true },
-  { name: "960-light", width: 960, dark: false },
-  { name: "960-dark", width: 960, dark: true },
-] as const) {
+// The four passes share one service review, and every pass creates
+// threads with the same quotes plus a global collapse-all toggle: run
+// them serially so one pass never fills, selects inside, collapses or
+// outboxes another pass's threads mid-shot.
+test.describe("visual tour passes", () => {
+  test.describe.configure({ mode: "serial" });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
   test(`visual tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(240_000);
+    // A fresh review per pass: passes share identical selections, and
+    // the service dedupes identical explain/ask requests onto the same
+    // thread — a shared review would hand one pass another pass's
+    // thread (and its collapse-all/outbox state).
+    reviewId = await createTourReview();
     await page.setViewportSize({ width: combo.width, height: 900 });
     if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
     const suffix = combo.name;
@@ -840,28 +875,59 @@ for (const combo of [
     await page.locator("#C-problem").scrollIntoViewIfNeeded();
     // Open a pinned card the way a reader does: select guide text
     // and Explain it.
+    const beforeIds = (
+      (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
+    ).annotations.map((a) => a.id);
     await selectText(page, "#C-problem", "used to let a server continue");
     await page.locator('#selbar [data-act="explain"]').click();
-    const seedCard: Locator = page.locator("#page .ui-card.child").first();
+    let seedId: string | null = null;
+    await expect
+      .poll(async () => {
+        const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        seedId = snap.annotations.map((a) => a.id).find((id) => !beforeIds.includes(id)) ?? null;
+        return seedId;
+      }, { timeout: 30_000 })
+      .toBeTruthy();
+    const seedCard: Locator = page.locator(`#page section.ithread[data-thread="${seedId}"]`);
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-pinned");
     await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
 
-    // A card opened from inside the pinned card (guide).
-    await selectText(page, "#page .ui-card.child [data-answer]", "fold");
-    await page.locator('#selbar [data-act="ask"]').click();
-    const composer = page.locator("#page .ithread[data-pending-thread]");
-    await expect(composer).toBeVisible();
-    await composer.locator("textarea").fill("Why does this matter?");
-    await composer.getByRole("button", { name: "Ask" }).click();
-    const guideChild = page.locator("#page [data-expansion]", { hasText: "Why does this matter?" }).last();
-    await expect(guideChild).toBeVisible({ timeout: 15_000 });
+    // A reply inside the pinned thread (guide): Explain on selected text
+    // inside the reply appends to the same thread (flat, #273).
+    await expect(seedId).toBeTruthy();
+    const seedSelector = `#page section.ithread[data-thread="${seedId!}"] [data-reply]`;
+    await selectText(page, seedSelector, "fold");
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect
+      .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(2);
+    await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
     await stepChecks(page, "guide-nested");
-    await shot(page, "guide-nested", suffix, "Why does this matter?");
-    await closeCard(page, guideChild);
+    await shot(page, "guide-nested", suffix, "explain");
+    // #273 frames: the in-thread link, collapse-all, and expand-one.
+    const rlink = seedCard.locator('button.rlink[data-replylink]').first();
+    await expect(rlink).toBeVisible({ timeout: 30_000 });
+    await rlink.click();
+    await page.waitForTimeout(800);
+    await stepChecks(page, "thread-replylink");
+    await shot(page, "thread-replylink", suffix, "explain");
+    await page.locator('[data-testid="collapse-threads"]').click();
+    await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "threads-collapsed");
+    await shot(page, "threads-collapsed", suffix, "reply");
+    await page.locator(`button.spike-row[data-row="${seedId}"]`).click();
+    await expect(seedCard).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "thread-expanded");
+    await shot(page, "thread-expanded", suffix, "explain");
     await closeCard(page, seedCard);
+    expect(seedId).toBeTruthy();
+    // Collapse-all is global (store): switch it back off so later scenes
+    // start from expanded threads.
+    await page.locator('[data-testid="collapse-threads"]').click();
+    await expect(page.locator('[data-testid="collapse-threads"]')).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
 
     // PR description tab (#263): paragraphs, a bullet list, a numbered
     // list past 9 items and inline code, in the shared Card. No
@@ -889,33 +955,46 @@ for (const combo of [
     await checkTokenContrast(page, "diff-unified");
     await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
 
-    // Floating card + nested card in the diff.
-    await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
+    // Pinned thread + in-thread reply in the diff (flat, #273): use the
+    // seeded suggestion thread on this line (already visible under it)
+    // and Explain inside its comment reply — the answer appends there.
+    const sugAll = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string; anchor: { host: { kind: string; fileKey?: string } }; replies: { kind: string; suggested?: boolean }[] }[] }).annotations;
+    const diffId = sugAll.find((a) => a.anchor.host.kind === "diff-line" && String((a.anchor.host as { fileKey?: string }).fileKey ?? "").includes("conn") && a.replies.some((r) => r.kind === "comment" && r.suggested))?.id;
+    if (!diffId) throw new Error("no seeded diff suggestion thread");
+    const diffCard = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
+    await expect(diffCard).toBeVisible({ timeout: 30_000 });
+    await expect(diffCard.locator('[data-reply][data-kind="comment"]').first()).toBeVisible({ timeout: 30_000 });
+    const diffWord = await diffCard.locator('[data-reply][data-kind="comment"]').first().evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "bare");
+    await selectText(page, `.dhunk section.ithread[data-thread="${diffId}"] [data-reply][data-kind="comment"]`, diffWord);
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
-    await selectText(page, ".dhunk .ui-card.child [data-answer]", "fold");
-    await page.locator('#selbar [data-act="ask"]').click();
-    const dComposer = page.locator(".dhunk .ithread[data-pending-thread]");
-    await expect(dComposer).toBeVisible();
-    await dComposer.locator("textarea").fill("Why is this here?");
-    await dComposer.getByRole("button", { name: "Ask" }).click();
-    const diffChild = page.locator(".dhunk [data-expansion]", { hasText: "Why is this here?" }).last();
-    await expect(diffChild).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(1);
     await stepChecks(page, "diff-nested");
-    await shot(page, "diff-nested", suffix, "Why is this here?");
-    await closeCard(page, diffChild);
-    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
-    // No diff card may survive into the next step: the long
-    // card below is read through `.first()`, by DOM order.
-    await expect(page.locator(".dhunk .ui-card.child")).toHaveCount(0, { timeout: 15_000 });
+    await shot(page, "diff-nested", suffix, "explain");
+    await closeCard(page, diffCard);
+    // Our thread closed; seeded suggestion threads may remain open.
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`)).toHaveCount(0, { timeout: 15_000 });
 
     // Top-level diff card with a LONG answer (the dedicated replay
     // recording), scrolled to its middle and then its bottom inside
     // the card: the gutter must not paint over it and no answer text
     // may show below its sticky reply footer.
+    const beforeLong = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const longCard = page.locator(".dhunk .ui-card.child").first();
+    let longId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        longId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeLong.includes(id)) ?? null;
+        if (longId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!longId) throw new Error("long thread did not appear");
+    const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(longCard).toContainText("The tests around the helper mirror that split");
@@ -933,9 +1012,23 @@ for (const combo of [
 
     // Same long card in split view, scrolled inside its card.
     await page.getByRole("button", { name: "Split" }).click();
+    const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
-    const splitCard = page.locator(".dhunk .ui-card.child").first();
+    let splitId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        // Dedupe may reopen the long thread instead of creating one.
+        splitId = ids.find((id) => !beforeSplit.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (splitId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!splitId) throw new Error("split thread did not appear");
+    const splitCard = page.locator(`.dhunk section.ithread[data-thread="${splitId}"]`).first();
     await expect(splitCard).toBeVisible({ timeout: 15_000 });
     await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -951,9 +1044,22 @@ for (const combo of [
     // section: its header and rows must paint below the card too.
     // The call site sits in the file's folded last hunk; unfold all.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    const beforeFile = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right", "_normalize_header_values(http");
     await page.locator('#selbar [data-act="explain"]').click();
-    const fileCard = page.locator(".dhunk .ui-card.child").first();
+    let fileId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        fileId = ids.find((id) => !beforeFile.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (fileId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!fileId) throw new Error("file thread did not appear");
+    const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await expect(fileCard).toContainText("The tests around the helper mirror that split");
@@ -973,31 +1079,45 @@ for (const combo of [
     await shot(page, "diff-long-file-h2", suffix);
     await closeCard(page, fileCard);
 
-    // Closed multi-line Explain keeps a visible reopen marker (#189):
-    // select across three rows, Explain, close — the range stays
-    // tinted with a gutter marker, and clicking it reopens the card.
+    // Closed multi-line Explain: select across three rows, Explain,
+    // close — every line of the range keeps its dotted anchor text plus
+    // the tint (issue #285: no gutter marker), and clicking any dotted
+    // piece reopens the card.
     await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
     await waitPaneQuiet(page);
     await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
+    const beforeMl = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await page.locator('#selbar [data-act="explain"]').click();
-    const mlCard = page.locator(".dhunk .ui-card.child").first();
+    let mlId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        mlId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeMl.includes(id)) ?? null;
+        if (mlId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!mlId) throw new Error("multiline thread did not appear");
+    const mlCard = page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`).first();
     await expect(mlCard).toBeVisible({ timeout: 15_000 });
     await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
     await mlCard.getByRole("button", { name: "Close" }).click();
-    await expect(mlCard).toBeHidden({ timeout: 10_000 });
-    const mlMarker = page.locator("mark.anc.range[data-jump]").first();
-    await expect(mlMarker).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`)).toBeHidden({ timeout: 10_000 });
+    const mlMarks = page.locator(`#right mark.anc.exl[data-jump="${mlId}"]`);
+    await expect(mlMarks).toHaveCount(3, { timeout: 15_000 });
+    // No gutter marker: the first cell keeps its number.
+    await expect(page.locator('[id="L-src-urllib3-connection.py-87"] td.n mark')).toHaveCount(0);
     await stepChecks(page, "diff-multiline-closed");
-    await shot(page, "diff-multiline-closed", suffix, "↪");
+    await shot(page, "diff-multiline-closed", suffix);
     // One-shot DOM clicks, retried until the card is actually back:
-    // the marker remounts when the card reopens, so a retried
-    // Playwright click can land twice (open, then the retry toggles
-    // it shut) and starve on detach under load (#195).
+    // a retried Playwright click can land twice (open, then the retry
+    // toggles it shut) and starve on detach under load (#195).
     await expect
       .poll(
         async () => {
           if (await mlCard.isVisible().catch(() => false)) return true;
-          await mlMarker.evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+          await mlMarks.first().evaluate((el) => (el as HTMLElement).click()).catch(() => {});
           return mlCard.isVisible().catch(() => false);
         },
         { timeout: 15_000 },
@@ -1005,23 +1125,23 @@ for (const combo of [
       .toBe(true);
     await closeCard(page, mlCard);
 
-    // Sideways-scrolled hunk: the line-number gutter — and the #189
-    // reopen marker in its first cell — sticks to the pane's left
-    // edge instead of scrolling away with the code.
+    // Sideways-scrolled hunk: the line-number gutter — the #285 expand
+    // controls ride the first/last rows' number cells — sticks to the
+    // pane's left edge instead of scrolling away with the code.
     await page.locator('[id="F-src-urllib3-connection.py"] .dwrap').first().evaluate((el) => {
       el.scrollLeft = 260;
     });
     await stepChecks(page, "diff-hscroll");
-    await shot(page, "diff-hscroll", suffix, "↪");
+    await shot(page, "diff-hscroll", suffix);
 
     // Deep-anchored card in the long socket-level hunk.
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();
-    await expect(page.locator(".dhunk .ui-card.child").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "diff-deep");
     await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
-    await closeCard(page, page.locator(".dhunk .ui-card.child").first());
+    await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
 
     // Split.
     await page.getByRole("button", { name: "Split" }).click();
@@ -1029,10 +1149,12 @@ for (const combo of [
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
 
-    // Issue #261 gutter tour: a modified file and an added file in the
+    // Issue #285 gutter tour: a modified file and an added file in the
     // narrow pane (the 960 combos run the guide beside the diff, so the
     // diff pane is narrow with the source pane open), before and after a
-    // sideways scroll (the sticky gutter must hold). Each frame runs the
+    // sideways scroll (the sticky gutter must hold). This review is
+    // no-content, so it renders no expand controls — the hover and EOF
+    // frames live in the dedicated #285 scene below. Each frame runs the
     // generic layout checks plus the gutter-width assert.
     const MOD = "src-urllib3-connection.py";
     const ADDED = "changelog-1362.bugfix.rst";
@@ -1098,26 +1220,22 @@ for (const combo of [
     await shot(page, "menu-comments", suffix, "On GitHub");
     await page.keyboard.press("Escape");
 
-    // Outbox section with the Markdown export box (#223): mark one
-    // visible suggested comment, then open the menu — This review,
-    // Outbox (with drafts + Copy box) and On GitHub all populated.
-    // The four variants share one review, so an earlier variant may
-    // already have marked every rendered comment (no "Add to Outbox"
-    // left), and at 960 the diff threads can still be mounting when
-    // this step starts. Wait (bounded, with a clear message) for a
-    // toggle in either state, and only click when nothing is marked.
-    const addToOutbox = page.getByRole("button", { name: "Add to Outbox" }).first();
-    const inOutbox = page.getByRole("button", { name: "Remove from the Outbox" }).first();
-    await expect
-      .poll(async () => (await addToOutbox.count()) + (await inOutbox.count()), {
-        timeout: 15_000,
-        message: "menu-outbox: no comment Outbox toggle rendered yet (diff threads not mounted)",
-      })
-      .toBeGreaterThan(0);
-    if ((await inOutbox.count()) === 0) {
-      await addToOutbox.click({ timeout: 10_000 });
-      await expect(inOutbox, "menu-outbox: marking a comment did not flip its toggle").toBeVisible({ timeout: 10_000 });
-    }
+    // Outbox section with the Markdown export box (#223): write a fresh
+    // comment on a visible diff line (deterministic: earlier steps close
+    // every thread they open, and seeded threads may sit in folded
+    // hunks), mark it, then open the menu — This review, Outbox (with
+    // drafts + Copy box) and On GitHub all populated.
+    const connLine = page.locator('[id="F-src-urllib3-connection.py"] td.n.new').first();
+    await expect(connLine).toBeVisible({ timeout: 15_000 });
+    await connLine.click();
+    const outboxComposer = page.locator(".dhunk .ithread[data-pending-thread]").first();
+    await expect(outboxComposer).toBeVisible({ timeout: 15_000 });
+    await outboxComposer.locator("textarea").fill("Tour outbox probe.");
+    await outboxComposer.getByRole("button", { name: "Save" }).click();
+    const outboxThread = page.locator('.dhunk section.ithread[data-thread]', { hasText: "Tour outbox probe." }).first();
+    await expect(outboxThread).toBeVisible({ timeout: 30_000 });
+    const inOutbox = outboxThread.getByRole("button", { name: "Remove from the Outbox" });
+    await expect(inOutbox, "fresh comment threads start in the Outbox").toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: /Comments/ }).first().click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
     await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
@@ -1327,7 +1445,8 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await expect(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
     const second = file.locator(".dhunk").nth(1);
     // ^ on the second hunk: the tail reads atop its own code.
-    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    // (#288 adds the optimistic bottom step below it, same label.)
+    await clickRowControl(second, "Show 20 more lines", 0);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     await page.mouse.move(20, 400);
     await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
@@ -1335,14 +1454,267 @@ test.describe("visual tour diff expansion up (#265)", () => {
     await shot(page, "diff-expand-up", suffix, "Hunk 2 of 2");
     // ⇞ to the previous hunk: the whole gap reads once, into the
     // hunk's first line (20 lines already revealed above).
-    await second.getByRole("button", { name: `Show all ${gapLen265 - 20} lines` }).click();
+    await clickRowControl(second, `Show all ${gapLen265 - 20} lines`);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen265, { timeout: 60_000 });
     await page.mouse.move(20, 400);
     await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
     await stepChecks(page, "diff-expand-full-gap");
     await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
+    });
   });
 });
+
+/**
+ * Gutter E2 frames (issue #285): the tight two-column gutter at rest
+ * and on hover, plus the EOF case — light and dark at 1440px. Own
+ * scratch repo and agent-none service: the main tour review is
+ * no-content, so it renders no expand controls (the J285 journey
+ * asserts the same behaviour against the real service). The repo is the
+ * #265 gap shape plus a whole-file new `src/eof.py` (one hunk, 1–20).
+ */
+test.describe("visual tour gutter E2 (#285)", () => {
+  let dirE2 = "";
+  let dataE2 = "";
+  let svcE2: RunningService | null = null;
+  let reviewE2 = "";
+  let h1StartE2 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dirE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-repo-"));
+    await makeGapRepo(dirE2);
+    await makeEofFile(dirE2);
+    dataE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-data-"));
+    svcE2 = await startService(dataE2, { agent: "none" });
+    reviewE2 = await createJourneyReview(svcE2, dirE2);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svcE2.origin, svcE2.token, "GET", `/api/reviews/${reviewE2}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const big = snap.files?.find((f) => f.path === "src/big.py");
+      const eof = snap.files?.find((f) => f.path === "src/eof.py");
+      if (big && big.hunks.length === 2 && eof && eof.hunks.length === 1) {
+        h1StartE2 = big.hunks[0].newStart;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gutter E2 review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svcE2?.stop().catch(() => {});
+    svcE2 = null;
+    for (const d of [dirE2, dataE2]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`visual tour gutter E2 (#285, ${combo.name})`, async ({ page }) => {
+      if (!svcE2) throw new Error("gutter E2 service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      const BIG = "src-big.py";
+      const EOF = "src-eof.py";
+      await page.goto(`${svcE2.origin}/review/${reviewE2}?token=${svcE2.token}`);
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      const big = page.locator(`[id="F-${BIG}"]`);
+      await expect(big.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+      // At rest the first/last rows show their numbers (no controls).
+      await big.locator(".dfile-h").scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-rest");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-rest");
+      await shot(page, "diff-gutter-e2-rest", suffix, "Hunk 1 of 2");
+      // Row hover swaps the first row's numbers for the up pair.
+      const firstCode = page.locator(`[id="L-${BIG}-${h1StartE2}"]`);
+      await firstCode.scrollIntoViewIfNeeded();
+      await firstCode.hover();
+      await stepChecks(page, "diff-gutter-e2-hover");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-hover");
+      await shot(page, "diff-gutter-e2-hover", suffix, "Hunk 1 of 2");
+      await page.mouse.move(20, 400);
+      // EOF: the whole-file hunk starts at line 1 and ends at EOF. The
+      // optimistic step drops on click and the row keeps its number.
+      const eof = page.locator(`[id="F-${EOF}"]`);
+      await eof.scrollIntoViewIfNeeded();
+      await expect(eof.getByText("Hunk 1 of 1")).toBeVisible({ timeout: 30_000 });
+      await clickRowControl(eof.locator(".dhunk").nth(0), "Show 20 more lines");
+      await expect(eof.locator("tr[data-revealed]")).toHaveCount(0);
+      await expect(eof.locator("tr.has-xdown")).toHaveCount(0);
+      await page.locator(`[id="L-${EOF}-20"]`).scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-eof");
+      await checkGutterWidth(page, EOF, "diff-gutter-e2-eof");
+      await shot(page, "diff-gutter-e2-eof", suffix, "Hunk 1 of 1");
+    });
+  }
+});
+
+/**
+ * Hidden-hunk rows (issue #283): a hidden-only first file and a mixed
+ * file, at 1440px and 960px in light and dark. Own scratch repo and
+ * agent-none service (the main tour review has no hidden-only first
+ * file): docs-only change first, then an imports hunk hidden beside a
+ * shown code hunk, with long summaries PATCHed on (what the hunk pass
+ * writes). The full generic checks run on both scenes, plus the
+ * regression asserts: every label topmost (never under the band
+ * backing), the summary at full width, and the `>` box lined up with
+ * the hunk-header chevrons.
+ */
+test.describe("visual tour hidden-hunk rows (#283)", () => {
+  test.describe.configure({ mode: "serial" });
+  let dir283 = "";
+  let data283 = "";
+  let svc283: RunningService | null = null;
+  let review283 = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-repo-"));
+    mkdirSync(path.join(dir283, "a-docs"), { recursive: true });
+    mkdirSync(path.join(dir283, "src"), { recursive: true });
+    await journeyGit(dir283, "init", "-b", "main");
+    await journeyGit(dir283, "config", "user.email", "t@example.com");
+    await journeyGit(dir283, "config", "user.name", "T");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Alpha line one.", "Alpha line two.", "Alpha line three.", "Alpha line four.", ""].join("\n"),
+    );
+    const codeBase = [
+      "import os",
+      "import re",
+      ...Array.from({ length: 78 }, (_, i) => `value_${String(i + 1).padStart(2, "0")} = ${i + 1}`),
+      `tail_marker = "end"`,
+    ].join("\n") + "\n";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeBase);
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "base");
+    await journeyGit(dir283, "checkout", "-b", "feature");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Beta line one revised.", "Beta line two revised.", "Beta line three revised.", "Beta line four revised.", ""].join("\n"),
+    );
+    const codeLines = codeBase.split("\n");
+    codeLines[0] = "import sys";
+    codeLines[1] = "import json";
+    codeLines[70] = "value_69 = 6900  # changed";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeLines.join("\n"));
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "feature work");
+    data283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-data-"));
+    svc283 = await startService(data283, { agent: "none" });
+    review283 = await createJourneyReview(svc283, dir283);
+    const deadline = Date.now() + 90_000;
+    let hashes: { docs: string; imports: string } | null = null;
+    for (;;) {
+      const snap = (await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`)) as {
+        files: { path: string; hunks: { contentHash: string; hiddenReason?: string }[] }[];
+      };
+      const docs = snap.files?.find((f) => f.path === "a-docs/notes.md")?.hunks[0];
+      const mixed = snap.files?.find((f) => f.path === "src/app.py")?.hunks ?? [];
+      if (docs?.hiddenReason && mixed.length === 2 && mixed[0].hiddenReason && !mixed[1].hiddenReason) {
+        hashes = { docs: docs.contentHash, imports: mixed[0].contentHash };
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("hidden review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.docs}`, {
+      summary:
+        "Rewords the four onboarding notes for the new checkout flow, keeping every " +
+        "heading and the step order exactly as documented so downstream links hold.",
+    });
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.imports}`, {
+      summary:
+        "Swaps the two stdlib imports the helper module needs for the new value " +
+        "formatting path, leaving every call site untouched and sorted in place.",
+    });
+    const echoDeadline = Date.now() + 30_000;
+    for (;;) {
+      const snap = await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`) as {
+        hunkStates: { contentHash: string; summary?: string }[];
+      };
+      const got = new Set((snap.hunkStates ?? []).filter((s) => s.summary).map((s) => s.contentHash));
+      if (got.has(hashes.docs) && got.has(hashes.imports)) break;
+      if (Date.now() > echoDeadline) throw new Error("hidden summaries did not land");
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc283?.stop().catch(() => {});
+    svc283 = null;
+    for (const d of [dir283, data283]) rmSync(d, { recursive: true, force: true });
+  });
+
+  /** The #283 regression asserts for one hidden row: label topmost,
+   * summary at full width, `>` box lined up with the hunk chevrons. */
+  async function expectHiddenRow(page: Page, row: Locator, step: string): Promise<void> {
+    const rowBox = (await row.boundingBox())!;
+    const label = row.locator(".hidl");
+    await expect(label).toContainText(/Hunks? \d+.*hidden/, { timeout: 10_000 });
+    const labelBox = (await label.boundingBox())!;
+    const topmost = await page.evaluate(({ x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
+    }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
+    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/hidden\. Show these hunks/);
+    const briefBox = (await row.locator(".hidb").boundingBox())!;
+    expect(
+      briefBox.width > rowBox.width * 0.5 || briefBox.x <= rowBox.x + 14,
+      `${step}: summary squeezed (box ${JSON.stringify(briefBox)} row ${JSON.stringify(rowBox)})`,
+    ).toBe(true);
+    const headerBox = (await page.locator(".dhunk-h .ib").first().boundingBox())!;
+    const hicBox = (await row.locator(".hic").boundingBox())!;
+    expect(Math.abs(hicBox.x - headerBox.x), `${step}: chevron x ${hicBox.x} vs header ${headerBox.x}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(hicBox.width - headerBox.width), `${step}: chevron width`).toBeLessThanOrEqual(1);
+  }
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    test(`visual tour hidden-hunk rows (#283, ${combo.name})`, async ({ page }) => {
+      if (!svc283) throw new Error("hidden-hunk service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${svc283.origin}/review/${review283}?token=${svc283.token}`);
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      // First file: hidden-only. Its row sits directly under its file
+      // header (no blank band), label showing.
+      const first = page.locator(".dfile").first();
+      await first.scrollIntoViewIfNeeded();
+      await expect(first.getByText(/Hunk 1 of 1 hidden/)).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      const firstHead = (await first.locator(".dfile-h").boundingBox())!;
+      const firstTop = (await first.locator("button.hid").boundingBox())!.y;
+      expect(firstTop - (firstHead.y + firstHead.height), "hidden-first: blank band above the row").toBeLessThanOrEqual(2);
+      await expectHiddenRow(page, first.locator("button.hid"), "hidden-first");
+      await stepChecks(page, "diff-hidden-first");
+      await shot(page, "diff-hidden-first", suffix, "Hunk 1 of 1 hidden");
+      // Mixed file: hidden imports hunk above a shown code hunk.
+      const mixed = page.locator('[id="F-src-app.py"]');
+      await mixed.getByText(/Hunk 1 of 2 hidden/).scrollIntoViewIfNeeded();
+      await expect(mixed.getByText(/Hunk 1 of 2 hidden/)).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      await expectHiddenRow(page, mixed.locator("button.hid"), "hidden-mixed");
+      await stepChecks(page, "diff-hidden-mixed");
+      await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
+    });
+  }
+});
+
+
+// Studio and Console themes (issues #196/#164): one scene set per
 
 // Studio and Console themes (issues #196/#164): one scene set per
 // theme in light and dark at 1440px, applied before first paint
@@ -1393,13 +1765,17 @@ for (const combo of [
     // 0.77em instead of 0.60em and "The" ran 9% wider than the stack's
     // fallback. Full Chromium shapes the true advances.
     const sansFamily = combo.theme === "studio" ? "Nunito Sans" : "Fira Sans";
+    // #274 stack B removed IBM Plex Sans, the old canvas reference: Inter
+    // Variable is bundled for every theme (main.tsx), so it is the stable
+    // reference now (true Nunito/Inter ~0.94, Fira/Inter ~0.91; the tPerEm
+    // check above stays the primary mis-shaping guard).
     const shaped = await page.evaluate((fam) => {
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return { tPerEm: 99, theRatio: 99 };
       ctx.font = `13px "${fam}"`;
       const t = ctx.measureText("T").width;
       const the = ctx.measureText("The").width;
-      ctx.font = `13px "IBM Plex Sans"`;
+      ctx.font = `13px "Inter Variable"`;
       const fallbackThe = ctx.measureText("The").width;
       return { tPerEm: t / 13, theRatio: the / fallbackThe };
     }, sansFamily);
@@ -1438,6 +1814,41 @@ for (const combo of [
     await expect(page.locator('[data-testid="ui-theme"]')).toContainText(combo.theme === "studio" ? "Studio" : "Console", { timeout: 15_000 });
     await checkLayout(page, `theme-${combo.theme}-settings`);
     await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
+  });
+}
+
+// Issue #281 (variant A Watermark): the start screen in Studio, light
+// and dark, at 1440 and 960 (the default theme's start scenes run in the
+// four main passes above). One frame per combo: the wordmark top-bar
+// logo plus the faint centred ball behind the lists. Resets the theme
+// to default, like the theme loop above.
+for (const combo of [
+  { width: 1440, dark: false },
+  { width: 1440, dark: true },
+  { width: 960, dark: false },
+  { width: 960, dark: true },
+] as const) {
+  const suffix = `studio-${combo.width}-${combo.dark ? "dark" : "light"}`;
+  test(`visual tour start studio (${suffix})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: combo.width, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "studio" });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("unvibe:ui-theme", "studio");
+      } catch {
+        // Boot falls back to the default theme; the assert below fails.
+      }
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, `start-${suffix}`);
+    await shot(page, "start", suffix, "Open a PR by URL or number");
     await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
   });
 }
@@ -1651,6 +2062,77 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await checkLayout(page, `review-preparing-${suffix}`);
       await shot(page, "review-preparing", suffix, "Loading the diff");
     });
+    // Issue #284: a still frame can't show motion, so freeze the swing
+    // at an extreme (0%: tilt maximal, glints bright) and at mid-swing
+    // (25%: tilt crossing centre, glints dim) via the Web Animations
+    // API and frame each. Paused times are in ms of the 2.5s cycle.
+    async function freezeSwing(page: Page, atMs: number): Promise<void> {
+      await page.evaluate((ms) => {
+        for (const el of document.querySelectorAll(".guide-scene, .loading-glints svg")) {
+          for (const a of el.getAnimations()) {
+            a.pause();
+            (a as Animation).currentTime = ms;
+          }
+        }
+      }, atMs);
+    }
+    test(`visual tour guide building swing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284: the ball and its glints swing together — no dots here.
+      await expect(page.locator('[data-testid="guide-empty"] .guide-ball')).toBeVisible();
+      await expect(page.locator('[data-testid="guide-empty"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="guide-empty"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-extreme-${suffix}.png`) });
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-mid-${suffix}.png`) });
+    });
+    // Issue #284 (owner revision): the diff state shows the same glints
+    // on their own — no ball — drifting in the same rhythm, as if the
+    // ball were just out of frame. Freeze at an extreme (glints bright)
+    // and at mid-swing (glints dim) and frame each.
+    test(`visual tour diff loading glints (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284: glints only here — no ball, no dots.
+      await expect(page.locator('[data-testid="diff-loading"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+      await expect(page.locator('[data-testid="diff-loading"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-extreme-${suffix}.png`) });
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-mid-${suffix}.png`) });
+    });
     test(`visual tour guide building (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
       test.setTimeout(120_000);
@@ -1673,6 +2155,37 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await shot(page, "guide-building", suffix, "Building the guide");
     });
   }
+  // Issue #284: under reduced motion the ball hangs still and the
+  // glints sit static but visible — neither animates, in either pane.
+  test("visual tour loading indicators honour reduced motion (#284)", async ({ page }) => {
+    if (!svc232) throw new Error("preparing service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+    const ballAnim = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="guide-empty"] .guide-scene');
+      return el ? getComputedStyle(el).animationName : null;
+    });
+    expect(ballAnim, "guide ball animates under reduced motion").toBe("none");
+    const glintAnims = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="guide-empty"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
+    );
+    expect(glintAnims.length, "guide glints missing").toBe(3);
+    for (const name of glintAnims) expect(name, "guide glint animates under reduced motion").toBe("none");
+    // The diff pane's glints-only state is static too — and carries no
+    // ball and no dots in either loading pane.
+    await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+    const diffGlintAnims = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="diff-loading"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
+    );
+    expect(diffGlintAnims.length, "diff glints missing").toBe(3);
+    for (const name of diffGlintAnims) expect(name, "diff glint animates under reduced motion").toBe("none");
+    await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+    await expect(page.locator('.pane-loading .dots')).toHaveCount(0);
+  });
 });
 // Issue #222: the start page's New document review form and a document
 // review (rendered blocks, an Explain answer, an Ask answer, a comment,
@@ -1761,7 +2274,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     // An Explain answer on document text.
     await selectText(page, "#C-document", "folds obsolete headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const exp = page.locator("#C-document [data-expansion]").first();
+    const exp = page.locator("#C-document [data-thread]").first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
     await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
@@ -1776,7 +2289,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
     await askComposer.locator("textarea").fill("Why does it keep a fast path?");
     await askComposer.getByRole("button", { name: "Ask" }).click();
-    const askCard = page.locator("#C-document [data-expansion]", { hasText: "Why does it keep a fast path?" });
+    const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
@@ -1815,7 +2328,7 @@ test("visual tour document review (#222)", async ({ page }) => {
       const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
       seeded.annotations.push({
         id: "ann-doc-cite",
-        type: "conversation",
+        type: "thread",
         anchor: {
           host: { kind: "block", blockId: "document#p2" },
           quotedText: "folds obsolete headers",
@@ -1826,10 +2339,12 @@ test("visual tour document review (#222)", async ({ page }) => {
         },
         open: true,
         pinned: true,
-        messages: [],
         post: false,
-        turns: [
+        replies: [
           {
+            id: "ans_doc_cite1",
+            kind: "explain",
+            who: "agent",
             question: null,
             blocks: [
               {
@@ -1839,6 +2354,9 @@ test("visual tour document review (#222)", async ({ page }) => {
                 citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
               },
             ],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
           },
         ],
       });
@@ -1855,7 +2373,7 @@ test("visual tour document review (#222)", async ({ page }) => {
       extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
     });
     await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
-    const cited = page.locator("#C-document [data-expansion]", { hasText: "The widget constant lives in the second repo." });
+    const cited = page.locator("#C-document [data-thread]", { hasText: "The widget constant lives in the second repo." });
     await expect(cited.first()).toBeVisible({ timeout: 30_000 });
     await cited.first().getByRole("button", { name: "Source" }).click();
     await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
@@ -1912,7 +2430,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
     await selectText(page, "#C-central", "fast path");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-expansion]").first();
+    const card = page.locator("#C-central [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -1923,9 +2441,9 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.scrollIntoViewIfNeeded().catch(() => {});
     await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
-    // Once the answer arrives, the toolbar and reply box appear.
+    // Once the answer arrives, the toolbar and the reply box appear.
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
-    await expect(card.locator("textarea")).toBeVisible({ timeout: 30_000 });
+    await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
@@ -1988,7 +2506,7 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       // Fail the follow-up mid-answer, then restart on the same data dir.
@@ -1996,16 +2514,16 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await expect(box).toBeVisible({ timeout: 30_000 });
       await box.fill(followUp);
       await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-      const turn = card.locator(".ans").last();
+      const turn = card.locator("[data-reply]").last();
       await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
       svc.killHard();
       await page.waitForTimeout(500);
       svc = await startService(dir, { agent: "replay" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
       await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
-      const shotCard = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const shotCard = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(shotCard).toBeVisible({ timeout: 30_000 });
-      const failed = shotCard.locator(".ans").last();
+      const failed = shotCard.locator("[data-reply]").last();
       await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
       await shotCard.scrollIntoViewIfNeeded().catch(() => {});
       mkdirSync(SHOTS, { recursive: true });
@@ -2067,14 +2585,14 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       await expect(composer).toBeVisible({ timeout: 10_000 });
       await composer.locator("textarea").fill(first);
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator(`${host} .ui-card.child[data-expansion]`, { hasText: first }).first();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
       const box = card.getByPlaceholder(/Ask a follow-up/);
       await expect(box).toBeVisible({ timeout: 30_000 });
       await box.fill(followUp);
       await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-      const turn = card.locator(".ans").last();
+      const turn = card.locator("[data-reply]").last();
       await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
       await expect(turn.locator(".working")).toHaveText("Writing answer");
       // The box stays through the fill: type the next question already.
@@ -2089,6 +2607,77 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       await shot(page, "ask-pending", `1440-${theme}`, "And then?");
       // Let the answer land so the next theme starts settled.
       await expect(turn.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #293: an Ask thread with one follow-up — the reviewer's question
+// shows as a comment with the answer as the reply under it. One frame
+// while the follow-up streams and one when done, in light and dark.
+test("visual tour ask thread (#293)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ask293-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
+      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+    ] as const) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator("[data-ask-question]").first()).toContainText(first, { timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 120_000 });
+      await expect(card.locator("[data-ask-answer] .working")).toHaveCount(0, { timeout: 30_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const followQ = card.locator("[data-ask-question]").nth(1);
+      await expect(followQ).toContainText(followUp, { timeout: 30_000 });
+      const followA = card.locator("[data-ask-answer]").nth(1);
+      await expect(followA.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await checkLayout(page, "ask-thread-streaming");
+      await shot(page, "ask-thread-streaming", `1440-${theme}`, followUp);
+      await expect(followA.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+      await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      await checkLayout(page, "ask-thread-done");
+      await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
       if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
     }
   } finally {
@@ -2230,7 +2819,7 @@ test.describe("visual tour file tab (#81)", () => {
         ...(snap.annotations ?? []),
         {
           id: "ft-comment",
-          type: "comment",
+          type: "thread",
           anchor: {
             host: { kind: "code", path: "helper.py", commit: ftHead, line: 2, endLine: 3 },
             quotedText: "beta = 2\ngamma = 3",
@@ -2241,7 +2830,25 @@ test.describe("visual tour file tab (#81)", () => {
           },
           open: true,
           pinned: false,
-          messages: [{ who: "you", text: "Is beta still the right default?" }],
+          replies: [
+            {
+              id: "ans_ft1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b1",
+                  text: { standard: "Is beta still the right default?" },
+                  citations: [],
+                },
+              ],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
           post: true,
         },
       ];

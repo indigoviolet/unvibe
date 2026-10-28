@@ -87,3 +87,138 @@ mark.tm {
   overflow-wrap: anywhere;
 }
 
+/* #274 separate stacked cards (Models stacks three edge to edge). */
+.settings-doc section > .ui-card + .ui-card {
+  margin-top: 16px;
+}
+/* #274 stacked group headers: title over description, with a divider. */
+.settings-doc .grouphead {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: var(--border-width) solid var(--line);
+}
+.settings-doc .grouphead b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings-doc .grouphead .hint {
+  font-size: 13px;
+}
+/* #274 stronger field labels, vertically centred on the control. */
+.settings-doc .ui-field {
+  align-items: center;
+}
+.settings-doc .ui-field > label {
+  font-size: 13px;
+  color: var(--ink);
+  padding-top: 0;
+}
+/* #274 field-level errors: red border on the control, icon + tinted box. */
+.settings-doc .ui-field:has(.err) .ui-select {
+  border-color: var(--del-ink);
+}
+.settings-doc .ui-field .err {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--del);
+  border-radius: var(--radius-6);
+  padding: 8px 10px;
+}
+.settings-doc .ui-field .err::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  background-color: var(--del-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1.5 13 12H1zM7 5.5v3M7 10.2v.1' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1.5 13 12H1zM7 5.5v3M7 10.2v.1' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+/* #274 field-shaped loading placeholder: rows keep their shape. */
+.settings-thinking {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-md);
+  box-sizing: border-box;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+}
+/* #274 monospace repo paths and path input. */
+.settings-doc .mono-path {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+/* #274 keep fixed-width field inputs inside their column: border-box so the
+   13px labels never push a control past the panel (checkLayout stays green). */
+.settings-doc .ui-field .ui-input {
+  box-sizing: border-box;
+  min-width: 0;
+}
+/* #274 side navigation: tabs become a left list with a page heading at
+   wide widths, stacking on narrow ones. Routing (?tab=) is unchanged. */
+.settings-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.settings-layout .tabs {
+  flex: 0 0 168px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 0;
+  padding: 0;
+}
+.settings-layout .tab {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  height: 36px;
+  border-bottom: 0;
+  border-radius: var(--radius-6);
+  padding: 0 12px;
+}
+.settings-layout .tab[aria-selected="true"] {
+  background: var(--sunk);
+  border-color: transparent;
+}
+.settings-panel {
+  flex: 999 1 420px;
+  min-width: 0;
+}
+.settings-title {
+  font: 600 22px var(--serif);
+  margin: 4px 0 14px;
+}
+@media (max-width: 900px) {
+  .settings-layout {
+    display: block;
+  }
+  .settings-layout .tabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-bottom: var(--border-width) solid var(--line);
+    padding: var(--space-2) var(--space-4) 0;
+    margin-bottom: 16px;
+  }
+  .settings-layout .tab {
+    height: auto;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: var(--space-2) var(--space-3);
+  }
+  .settings-layout .tab[aria-selected="true"] {
+    background: none;
+    border-color: var(--accent);
+  }
+}
+

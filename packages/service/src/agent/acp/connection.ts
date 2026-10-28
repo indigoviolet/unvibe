@@ -310,7 +310,7 @@ export function connectClient(stream: acp.Stream): {
 /** Production transport: spawn the adapter over stdio. */
 export async function spawnAdapterTransport(
   provider: ProviderId,
-  opts?: { env?: Record<string, string>; onStderr?: (s: string) => void; readOnly?: boolean },
+  opts?: { env?: Record<string, string>; onStderr?: (s: string) => void; readOnly?: boolean; dataDir?: string },
 ): Promise<Transport> {
   const loginPath = await loginPathEnv();
   const basePath = process.env.PATH ?? "";
@@ -340,7 +340,13 @@ export async function spawnAdapterTransport(
       const spec = TOOL_SPECS.find((s) => s.tool === p);
       if (!spec) continue;
       try {
-        const diag = await diagnoseTool(spec, { pathValue: mergedPath, env: process.env, runner, timeoutMs: 8000 });
+        const diag = await diagnoseTool(spec, {
+          pathValue: mergedPath,
+          env: process.env,
+          runner,
+          timeoutMs: 8000,
+          ...(opts?.dataDir ? { dataDir: opts.dataDir } : {}),
+        });
         if (diag.chosen) {
           const chosen = { path: diag.chosen, source: diag.candidates.find((c) => c.path === diag.chosen)?.source ?? "login-shell PATH" };
           if (p === "claude") claudeBin = chosen;
@@ -371,7 +377,13 @@ export async function spawnAdapterTransport(
     try {
       const spec = TOOL_SPECS.find((s) => s.tool === provider);
       if (spec) {
-        const diag = await diagnoseTool(spec, { pathValue: mergedPath, env: process.env, runner: new RealCommandRunner(), timeoutMs: 5000 });
+        const diag = await diagnoseTool(spec, {
+          pathValue: mergedPath,
+          env: process.env,
+          runner: new RealCommandRunner(),
+          timeoutMs: 5000,
+          ...(opts?.dataDir ? { dataDir: opts.dataDir } : {}),
+        });
         if (diag.candidates.length > 0) {
           const first = diag.candidates[0];
           tried = `Tried ${first.path} (via ${first.source}, ${first.kind}): exit ${first.exitCode ?? "?"}${first.stderr ? ` — ${first.stderr.slice(0, 1000)}` : first.stdout ? ` — ${first.stdout.slice(0, 1000)}` : ""}. `;
@@ -506,7 +518,9 @@ export class ProviderConnection {
           this.stderrTail = (this.stderrTail + s).slice(-4000);
         },
         readOnly: ro,
+        ...(this.dataDir ? { dataDir: this.dataDir } : {}),
       }),
+    private dataDir?: string,
   ) {}
 
   /** The posture this connection spawns for ("lockdown" or "full"). */

@@ -181,12 +181,13 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   at most two lines); cite code with
   link: "diff:<fileKey>:<START>-<END>" inline in braces on each
   code-mapped shape or connection (at least 2, never on its own indented
-  line, never `[[ ]]`, never `tooltip:`); `myid.class: [ok]` / `[bad]` on
-  its own line for good/bad states (never inside `{ ... }`); never name a
-  shape `steps`, `layers`, `scenarios` or `boards`; at most 12 shapes and
-  16 connections; no
-  icon:, images, imports, markdown labels, layers, vars, `classes:`
-  stanzas. A
+  line, never `[[ ]]`); `myid.class: [ok]` / `[bad]` on its own line for
+  good/bad states (never inside `{ ... }`, never hard-coded colours);
+  never name a shape `steps`, `layers`, `scenarios` or `boards`; at most 40
+  shapes and 48 connections; icons only from the allowlisted host
+  (`https://icons.terrastruct.com/…`, no `?`/`#`), no imports, no boards,
+  no animation. `vars:`, `classes:` stanzas, `tooltip:` (short) and `|md` /
+  `|latex` labels are allowed. A
   `Caption: …` paragraph right after the fence becomes the caption, so
   never start an ordinary paragraph with `Caption:`.
 - Follow-up suggestions are a `### Follow-ups` heading plus a list. Items

@@ -197,8 +197,8 @@ test.describe("J81 code citations outside the diff", () => {
     const deadline = Date.now() + 30_000;
     for (;;) {
       const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-      const anns = (snap.json as unknown as { annotations: { type: string; anchor: { host: { kind: string; path?: string } } }[] }).annotations;
-      const thread = anns.find((a) => a.type === "comment" && a.anchor.host.kind === "code");
+      const anns = (snap.json as unknown as { annotations: { type: string; anchor: { host: { kind: string; path?: string } }; replies?: { kind?: string }[] }[] }).annotations;
+      const thread = anns.find((a) => a.type === "thread" && a.anchor.host.kind === "code" && (a.replies ?? []).some((r) => r.kind === "comment"));
       if (thread) {
         expect(thread.anchor.host.path).toBe("helper.py");
         break;

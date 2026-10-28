@@ -98,7 +98,7 @@ describe("actions inside a conversation answer (#116, #136)", () => {
       }
       const pexp = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === parentId)!;
       const parentTurnId = parent.json.turnId as string;
-      const parentTurn = (pexp.turns ?? []).find((t) => t.id === parentTurnId)!;
+      const parentTurn = (pexp.replies ?? []).find((t) => t.id === parentTurnId)!;
       expect(parentTurn.blocks.length).toBeGreaterThan(0);
       const hostBlock = parentTurn.blocks[0] as { id: string; text?: { standard: string } };
       const quote = (hostBlock.text?.standard ?? "").slice(0, 20).trim();
@@ -122,9 +122,9 @@ describe("actions inside a conversation answer (#116, #136)", () => {
         await new Promise((r) => setTimeout(r, 500));
       }
       const done = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === nestedId)!;
-      expect(done.type).toBe("conversation");
+      expect(done.type).toBe("thread");
       expect(done.anchor.host).toMatchObject({ kind: "block", blockId: host });
-      expect(done.turns?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
+      expect(done.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
 
       // Ask on the same answer block creates a nested conversation card.
       const ask = await postAction(app, id, {
@@ -144,9 +144,9 @@ describe("actions inside a conversation answer (#116, #136)", () => {
         await new Promise((r) => setTimeout(r, 500));
       }
       const askCard = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === askId)!;
-      expect(askCard.type).toBe("conversation");
+      expect(askCard.type).toBe("thread");
       expect(askCard.anchor.host).toMatchObject({ kind: "block", blockId: host });
-      expect((askCard.turns?.[0]?.blocks.length ?? 0)).toBeGreaterThan(0);
+      expect((askCard.replies?.[0]?.blocks.length ?? 0)).toBeGreaterThan(0);
 
       // Note on the same answer block stores a quiet comment.
       const note = await postAction(app, id, {

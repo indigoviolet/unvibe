@@ -75,6 +75,24 @@ export async function makeGapRepo(dir: string): Promise<{ dir: string; headSha: 
   return { dir, headSha: await git(dir, "rev-parse", "HEAD") };
 }
 
+/**
+ * Issue #285 (E2): append a whole-file new `src/eof.py` (20 lines) on
+ * top of the feature branch — one hunk, 1–20, ending at EOF. The last
+ * row offers the optimistic bottom step; the click teaches the total
+ * and the control drops silently.
+ */
+export async function makeEofFile(dir: string): Promise<void> {
+  const base = Array.from({ length: 20 }, (_, i) => `eof_${String(i + 1).padStart(2, "0")} = ${i + 1}`);
+  writeFileSync(path.join(dir, "src", "eof.py"), `${base.join("\n")}\n`);
+  await git(dir, "add", ".");
+  await git(dir, "commit", "-m", "eof base");
+  const feat = [...base];
+  feat[19] = "eof_20 = 9999  # changed";
+  writeFileSync(path.join(dir, "src", "eof.py"), `${feat.join("\n")}\n`);
+  await git(dir, "add", ".");
+  await git(dir, "commit", "-m", "eof change");
+}
+
 /** Finished demo snapshot fixture (issue #257): the same snapshot the
  * bundled demo replays from, seeded straight into the store. Journeys that
  * don't test guide generation start from this instead of waiting for the

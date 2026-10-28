@@ -19,6 +19,17 @@ import { apiJson, createScratchReview, makeGapRepo } from "./journey-helpers.js"
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const bigKey = fileKeyForPath("src/big.py");
 
+/**
+ * Issue #285 (E2): expand controls ride the hunk's first/last row and
+ * show on row hover — hover the button's row, then click. (At rest the
+ * buttons are transparent so number clicks pass through.)
+ */
+async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
+
 test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
 test.describe("J265 expand up", () => {
   let repoDir = "", dataDir = "";
@@ -79,17 +90,20 @@ test.describe("J265 expand up", () => {
     const dhunks = bigFile.locator(".dhunk");
     const second = dhunks.nth(1);
     // The second hunk's own step-up (^): one 20-line step of the gap.
-    await second.getByRole("button", { name: "Show 20 more lines" }).click();
+    // (#288 adds the optimistic bottom step below it, same label — pick
+    // the gap's up control explicitly.)
+    await clickRowControl(second, "Show 20 more lines", 0);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     // Nothing leaks into the previous hunk's section.
     await expect(dhunks.nth(0).locator("tr[data-revealed]")).toHaveCount(0);
     // The tail sits in this hunk's section, directly above its first
-    // code line and under its own header.
+    // code line and under its own header. No separator rows (#285: the
+    // step rides the first row, so the table starts on the revealed
+    // tail itself).
     const ids = await rowIds(second);
-    expect(ids[0]).toContain("xsep");
-    expect(ids[1]).toBe(`L-${bigKey}-${gapEnd - 19}`);
-    expect(ids[20]).toBe(`L-${bigKey}-${gapEnd}`);
-    expect(ids[21]).toBe(`L-${bigKey}-${h2Start}`);
+    expect(ids[0]).toBe(`L-${bigKey}-${gapEnd - 19}`);
+    expect(ids[19]).toBe(`L-${bigKey}-${gapEnd}`);
+    expect(ids[20]).toBe(`L-${bigKey}-${h2Start}`);
   });
 
   test("expand down adds lines to the bottom of the clicked hunk", async ({ page }) => {
@@ -103,18 +117,20 @@ test.describe("J265 expand up", () => {
     const first = dhunks.nth(0);
     // The gap step-down (v): the top step's count differs (6 lines), so
     // the 20-line step is unambiguous.
-    await first.getByRole("button", { name: "Show 20 more lines" }).click();
+    await clickRowControl(first, "Show 20 more lines");
     await expect(first.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
     await expect(dhunks.nth(1).locator("tr[data-revealed]")).toHaveCount(0);
-    // The head sits directly below this hunk's last code line.
+    // The head sits directly below this hunk's last code line (#285: no
+    // separator row after it — the revealed head ends the table while
+    // the gap still has lines hidden).
     const ids = await rowIds(first);
     const codeEnd = ids.indexOf(`L-${bigKey}-${h1End}`);
     expect(codeEnd).toBeGreaterThan(0);
-    expect(ids.slice(codeEnd, codeEnd + 22)).toEqual([
+    expect(ids.slice(codeEnd, codeEnd + 21)).toEqual([
       `L-${bigKey}-${h1End}`,
       ...Array.from({ length: 20 }, (_, k) => `L-${bigKey}-${gapStart + k}`),
-      expect.stringContaining("xsep"),
     ]);
+    expect(ids).toHaveLength(codeEnd + 21);
   });
 
   test("show-all up fills the gap once, atop the clicked hunk", async ({ page }) => {
@@ -128,7 +144,7 @@ test.describe("J265 expand up", () => {
     const dhunks = bigFile.locator(".dhunk");
     const second = dhunks.nth(1);
     // ⇞ to the previous hunk fills the whole gap at once.
-    await second.getByRole("button", { name: `Show all ${gapLen} lines` }).click();
+    await clickRowControl(second, `Show all ${gapLen} lines`);
     await expect(bigFile.locator("tr[data-revealed]")).toHaveCount(gapLen, { timeout: 60_000 });
     await expect(dhunks.nth(0).locator("tr[data-revealed]")).toHaveCount(0);
     await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen);

@@ -110,34 +110,56 @@ describe("d2 shared helpers", () => {
   });
 });
 
-// --- pre-check denylist (§9 table) -----------------------------------------
+// --- d2 precheck (#286 lifts) --------------------------------------------------
 
 describe("d2 precheck", () => {
   const ok = (s: string): boolean => precheckD2Source(s).ok;
   it("accepts the reference shapes", () => {
     expect(ok('direction: right\na -> b: go {link: "diff:conn:1-2"}')).toBe(true);
   });
-  it("rejects every denied construct", () => {
-    expect(ok('a: {icon: https://example.com/x.svg}\na -> b')).toBe(false);
-    expect(ok("a: {shape: image}\na -> b")).toBe(false);
+  it("passes the lifted features (#286: md/latex, vars, d2-config, classes, tooltip)", () => {
+    expect(ok('a: |md # hi [x](https://example.com/y) |\na -> b')).toBe(true);
+    expect(ok('a: |latex x^2 \\to space |\na -> b')).toBe(true);
+    expect(ok('a: |tex x^2 |\na -> b')).toBe(true);
+    expect(ok('norm: |python value.replace(pat, " ") |\na -> b')).toBe(true);
+    expect(ok("vars: {x: 1}\na -> b")).toBe(true);
+    expect(ok("d2-config: {theme: 0}\na -> b")).toBe(true);
+    expect(ok("classes: {hot: {style.fill: \"#ffee88\"}}\na -> b")).toBe(true);
+    expect(ok('a: {tooltip: short gloss}\na -> b')).toBe(true);
+  });
+  it("rejects every still-denied construct", () => {
     expect(ok("...@file.d2\na -> b")).toBe(false);
     expect(ok("x: @file.d2\na -> b")).toBe(false);
-    expect(ok("a: |md hello |\na -> b")).toBe(false);
-    expect(ok("a: |tex hello |\na -> b")).toBe(false);
-    expect(ok("a: |latex hello |\na -> b")).toBe(false);
-    expect(ok("vars: {x: 1}\na -> b")).toBe(false);
-    expect(ok("d2-config: {}\na -> b")).toBe(false);
-    expect(ok("classes: {x: {}}\na -> b")).toBe(false);
-    expect(ok('a: {tooltip: hi}\na -> b')).toBe(false);
+    expect(ok("a: |\nlabel\n|\na -> b")).toBe(false);
     expect(ok("layers: {x: {}}\na -> b")).toBe(false);
     expect(ok("scenarios: {x: {}}\na -> b")).toBe(false);
-    expect(ok("a -> b: https://example.com")).toBe(false);
+    expect(ok('a -> b: x {link: "diff:conn:1-2"}\na -> b: {style: {animated: true}}')).toBe(false);
+    expect(ok("animate-interval: 1000\na -> b")).toBe(false);
     expect(precheckD2Source("").ok).toBe(false);
   });
-  it("enforces the 12-shape / 16-connection caps", () => {
-    const manyShapes = Array.from({ length: 13 }, (_, i) => `n${i}: "N${i}"`).join("\n");
+  it("rejects non-allowlisted icon URLs and bare shape:image without an allowlisted src", () => {
+    expect(ok('a: {icon: https://example.com/x.svg}\na -> b')).toBe(false);
+    expect(ok('a: {icon: http://icons.terrastruct.com/essentials%2F304-archive.svg}\na -> b')).toBe(false);
+    expect(ok('a: {icon: https://icons.terrastruct.com/essentials%2F304-archive.svg?v=2}\na -> b')).toBe(false);
+    expect(ok('a: {icon: https://icons.terrastruct.com/essentials%2F304-archive.svg#frag}\na -> b')).toBe(false);
+    expect(ok('a: {icon: https://icons.terrastruct.com/essentials%2F304-archive.png}\na -> b')).toBe(false);
+    expect(ok('a: {icon: ./local.svg}\na -> b')).toBe(false);
+    expect(ok('a: {shape: image}\na -> b')).toBe(false);
+    expect(ok('a: {shape: image, src: https://example.com/x.svg}\na -> b')).toBe(false);
+    // Allowlisted forms pass the pre-check (fetching happens in the pipeline).
+    expect(ok('a: {icon: https://icons.terrastruct.com/essentials%2F304-archive.svg}\na -> b')).toBe(true);
+    expect(
+      ok('a: {shape: image, src: https://icons.terrastruct.com/essentials%2F304-archive.svg}\na -> b'),
+    ).toBe(true);
+  });
+  it("enforces the 40-shape / 48-connection caps", () => {
+    const okShapes = Array.from({ length: 40 }, (_, i) => `n${i}: "N${i}"`).join("\n");
+    expect(ok(okShapes)).toBe(true);
+    const manyShapes = Array.from({ length: 41 }, (_, i) => `n${i}: "N${i}"`).join("\n");
     expect(ok(manyShapes)).toBe(false);
-    const manyEdges = Array.from({ length: 17 }, (_, i) => `a${i} -> b${i}`).join("\n");
+    const okEdges = Array.from({ length: 48 }, () => `a -> b: go`).join("\n");
+    expect(ok(okEdges)).toBe(true);
+    const manyEdges = Array.from({ length: 49 }, () => `a -> b: go`).join("\n");
     expect(ok(manyEdges)).toBe(false);
   });
   it("renames an unambiguous reserved-word shape instead of rejecting (#130)", async () => {
@@ -165,6 +187,106 @@ describe("d2 precheck", () => {
     // The legal line form still passes (D2 passes the class through).
     expect(ok('direction: right\na: "x"\na.class: [ok]')).toBe(true);
     expect(ok('direction: right\na: "x"\n*.class: [ok]')).toBe(true);
+  });
+});
+
+// --- allowlisted icons (#286) --------------------------------------------------
+
+describe("d2 icons", () => {
+  const GOOD = "https://icons.terrastruct.com/essentials%2F304-archive.svg";
+  it("validates icon URLs against the allowlist", async () => {
+    const { extractIconUrls, validateIconUrl } = await import("../src/diagrams/icons.js");
+    expect(validateIconUrl(GOOD)).toEqual({ ok: true });
+    expect(validateIconUrl("https://example.com/x.svg").ok).toBe(false);
+    expect(validateIconUrl("http://icons.terrastruct.com/essentials%2F304-archive.svg").ok).toBe(false);
+    expect(validateIconUrl(`${GOOD}?v=2`).ok).toBe(false);
+    expect(validateIconUrl(`${GOOD}#frag`).ok).toBe(false);
+    expect(validateIconUrl("https://icons.terrastruct.com/essentials%2F304-archive.png").ok).toBe(false);
+    expect(validateIconUrl("./local.svg").ok).toBe(false);
+    expect(validateIconUrl("not a url").ok).toBe(false);
+    // Both `icon:` and `src:` keys are found, quoted or bare, deduped.
+    expect(extractIconUrls(`a: {icon: ${GOOD}}\nb: {shape: image, src: "${GOOD}"}`)).toEqual([GOOD]);
+    expect(extractIconUrls(`a: {icon: '${GOOD}'} \nb: {src: ${GOOD}}`)).toEqual([GOOD]);
+    expect(extractIconUrls("a -> b: go")).toEqual([]);
+  });
+  it("stages fetched icons and rewrites the source (stub fetcher)", async () => {
+    const { stageIcons } = await import("../src/diagrams/icons.js");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2icon-"));
+    try {
+      const bytes = new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>");
+      const r = await stageIcons(`direction: right\nwarn: "x" {icon: ${GOOD}}\nwarn -> norm: go`, {
+        dir: tmp,
+        fetcher: async (url) => (url === GOOD ? { ok: true, bytes } : { ok: false, reason: `HTTP 404 for ${url}` }),
+      });
+      expect(r.stripped).toEqual([]);
+      expect(r.staged).toHaveLength(1);
+      expect(r.source).toContain('{icon: "./icon-0.svg"}');
+      expect(r.source).not.toContain(GOOD);
+      expect(fs.existsSync(path.join(tmp, "icon-0.svg"))).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+  it("strips icons that fail to fetch and records the reason (stub fetcher)", async () => {
+    const { stageIcons } = await import("../src/diagrams/icons.js");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2icon-"));
+    try {
+      const bad = "https://icons.terrastruct.com/essentials%2Finvented-404.svg";
+      const r = await stageIcons(`direction: right\nwarn: "x" {icon: ${bad}, shape: oval}\nwarn -> norm: go`, {
+        dir: tmp,
+        fetcher: async (url) => ({ ok: false, reason: `HTTP 404 for ${url}` }),
+      });
+      expect(r.staged).toEqual([]);
+      expect(r.stripped).toHaveLength(1);
+      expect(r.stripped[0].url).toBe(bad);
+      expect(r.stripped[0].reason).toMatch(/404/);
+      expect(r.source).not.toContain(bad);
+      expect(r.source).not.toContain("icon:");
+      // The surviving shape still compiles: braces are balanced.
+      expect(r.source).toContain("{shape: oval}");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+  it("renders ok with a fetched icon and notes the stripped one (stub fetcher, fake binary)", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
+    try {
+      const fake = new FakeCommandRunner();
+      const lookup = lookupForCite({});
+      const bytes = new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>");
+      const fetchIcon = async (url: string): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: string }> =>
+        url.includes("invented")
+          ? { ok: false, reason: `HTTP 404 for ${url}` }
+          : { ok: true, bytes };
+      const src =
+        `direction: right\n` +
+        `warn: "long header" {icon: https://icons.terrastruct.com/essentials%2F304-archive.svg}\n` +
+        `gone: "missing" {icon: https://icons.terrastruct.com/essentials%2Finvented.svg}\n` +
+        `warn -> gone: fold {link: "diff:conn:1-2"}`;
+      const svg = `<svg><image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" x="1" y="2" width="3" height="4"/><a href="diff:conn:1-2"><text>fold</text></a></svg>`;
+      fake.enqueue({ cmd: "/fake/d2", stdout: "Success!", stderr: "", code: 0 });
+      fake.enqueue({ cmd: "/fake/d2", stdout: svg, stderr: "", code: 0 });
+      fake.enqueue({ cmd: "/fake/d2", stdout: svg, stderr: "", code: 0 });
+      const r = await finalizeDiagramBlock(src, undefined, {
+        runner: fake,
+        dataDir: tmp,
+        lookup,
+        d2bin: { path: "/fake/d2", source: "test" },
+        d2version: "0.9.0",
+        fetchIcon,
+      });
+      expect(r.needsRepair).toBe(false);
+      expect(r.block.render?.status).toBe("ok");
+      // One strip note (countable), naming the invented URL and the reason.
+      expect(r.block.render?.notes).toHaveLength(1);
+      expect(r.block.render?.notes?.[0]).toMatch(/invented.*404/);
+      // The staged (rewritten) source reached the binary, not the raw URL.
+      const renderedStdin = fake.calls.map((c) => String(c.opts.stdin ?? "")).join("\n");
+      expect(renderedStdin).toContain("./icon-0.svg");
+      expect(renderedStdin).not.toContain("304-archive.svg");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
@@ -213,6 +335,36 @@ describe("svg sanitiser", () => {
     const out = rewriteCitationAnchors('<svg><a href="https://x.example"><text>t</text></a></svg>', new Map());
     expect(out).not.toContain("<a");
     expect(out).toContain("t");
+  });
+
+  it("keeps data:-embedded icons and drops every other image", () => {
+    const svg =
+      `<svg><image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" x="1" y="2" width="3" height="4" onclick="evil()"/>` +
+      `<image href="https://evil.example/i.png" x="1" y="2" width="3" height="4"/>` +
+      `<image x="1" y="2" width="3" height="4"/></svg>`;
+    const out = postProcessSvg(svg, new Map(), "img1");
+    expect(out).toContain("<image");
+    expect(out).toContain('href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="');
+    expect(out).toContain('x="1"');
+    expect(out).not.toContain("evil.example");
+    expect(out).not.toContain("onclick");
+    // Exactly one image survives (the embedded one); geometry is scrubbed to x/y/width/height/href.
+    expect(out.match(/<image\b/g)).toHaveLength(1);
+  });
+
+  it("keeps xlink:href data: images as href", () => {
+    const svg = `<svg><image xlink:href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" x="1" y="2" width="3" height="4"/></svg>`;
+    const out = postProcessSvg(svg, new Map(), "img2");
+    expect(out).toContain("<image");
+    expect(out).toContain("data:image/svg+xml");
+    expect(out).not.toContain("xlink:href");
+  });
+
+  it("drops images nested in foreignObject with it", () => {
+    const svg = `<svg><foreignObject><image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="/></foreignObject></svg>`;
+    const out = postProcessSvg(svg, new Map(), "img3");
+    expect(out).not.toContain("<image");
+    expect(out).not.toContain("foreignObject");
   });
 
   it("keeps multi-line tspan positioning and edge-label masks (#16)", () => {
@@ -595,12 +747,12 @@ describe("conversation answer diagrams (#71, #136)", () => {
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.replies?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -672,10 +824,10 @@ aside-demo-a -> aside-demo-b: hi
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.replies?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.replies![0]!.blocks;
         const asideBlock = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { hash: string } }[];
         };
@@ -749,12 +901,12 @@ broken-shape: "x" {link: "diff:nope:999999"}
         }
         await waitFor(() => {
           const s = ctx.reviews.getSnapshot(id);
-          return (s?.annotations.find((a) => a.id === annotationId)?.turns?.[0]?.blocks.length ?? 0) > 0;
+          return (s?.annotations.find((a) => a.id === annotationId)?.replies?.[0]?.blocks.length ?? 0) > 0;
         }, 60000);
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -804,9 +956,9 @@ function waitForExpansion(
   return waitFor(() => {
     const s = ctx.reviews.getSnapshot(id);
     const a = s?.annotations.find((x) => x.id === annotationId) as unknown as
-      | { working: string | null; turns?: { blocks: unknown[]; working: string | null }[] }
+      | { working: string | null; replies?: { blocks: unknown[]; working: string | null }[] }
       | undefined;
-    return ((a?.turns?.[0]?.blocks.length ?? 0) > 0) && a?.working == null && (a?.turns ?? []).every((t) => t.working == null);
+    return ((a?.replies?.[0]?.blocks.length ?? 0) > 0) && a?.working == null && (a?.replies ?? []).every((t) => t.working == null);
   }, timeoutMs);
 }
 /** Explain reply carrying the owner's failing shape (inline `.class`). */
@@ -914,7 +1066,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           render?: { hash: string; status: string };
         };
         expect(dg).toBeDefined();
@@ -981,7 +1133,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1046,7 +1198,7 @@ describe("failed on-demand renders (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const dg = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "diagram") as unknown as {
           source: string;
           render?: { hash: string; status: string };
         };
@@ -1278,7 +1430,7 @@ describe("aside-nested diagrams (#130)", () => {
         const snap = ctx.reviews.getSnapshot(id)!;
         const aside = snap.annotations
           .find((a) => a.id === annotationId)!
-          .turns![0]!.blocks.find((b) => b.type === "aside") as unknown as {
+          .replies![0]!.blocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; source?: string; render?: { status: string } }[];
         };
         expect(aside).toBeDefined();
@@ -1333,7 +1485,7 @@ describe("aside-nested diagrams (#130)", () => {
         await waitForExpansion(ctx, id, annotationId);
         expect(agents.prompts.filter((p) => p.text.includes("failed validation"))).toHaveLength(1);
         const snap = ctx.reviews.getSnapshot(id)!;
-        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.turns![0]!.blocks;
+        const turnBlocks = snap.annotations.find((a) => a.id === annotationId)!.replies![0]!.blocks;
         const aside = turnBlocks.find((b) => b.type === "aside") as unknown as {
           inner: { type: string; render?: { status: string; error?: string } }[];
         };
@@ -1412,7 +1564,7 @@ describe("real d2 binary", () => {
     }
   });
 
-  it("icon: sources never reach the network (precheck blocks; probe sees zero)", async () => {
+  it("non-allowlisted icons never reach the network (precheck blocks; probe sees zero)", async () => {
     const real = await realBin();
     if (!real) {
       console.warn("SKIP real-d2 network: d2 not on PATH");
@@ -1433,11 +1585,76 @@ describe("real d2 binary", () => {
       const src = `a: {icon: http://127.0.0.1:${port}/icon.svg}\na -> b`;
       const r = await renderD2Theme(src, { runner, binPath: bin.path, salt: "probe", theme: D2_THEME_LIGHT });
       expect(r.ok).toBe(false);
-      expect(r.error).toMatch(/icon|URLs/);
+      expect(r.error).toMatch(/allowlisted|icon/);
       expect(hits).toBe(0);
     } finally {
       server.close();
     }
+  });
+
+  it("allowlisted icons embed as data: with a stub fetcher (real d2, no network)", async () => {
+    const real = await realBin();
+    if (!real) {
+      console.warn("SKIP real-d2 icon: d2 not on PATH");
+      return;
+    }
+    const { renderD2Theme, D2_THEME_LIGHT } = await import("../src/diagrams/render.js");
+    const { postProcessSvg } = await import("../src/diagrams/sanitize.js");
+    const { runner } = real;
+    const bin = { path: real.path };
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1 15 14H1Z"/></svg>',
+    );
+    const good = "https://icons.terrastruct.com/essentials%2F304-archive.svg";
+    const src =
+      `direction: right\nwarn: "long header" {icon: ${good}}\n` + `warn -> norm: unfold {link: "diff:conn:650-651"}`;
+    const r = await renderD2Theme(src, {
+      runner,
+      binPath: bin.path,
+      salt: "icon-probe",
+      theme: D2_THEME_LIGHT,
+      fetchIcon: async (url) => (url === good ? { ok: true, bytes } : { ok: false, reason: `HTTP 404 for ${url}` }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.iconNotes).toEqual([]);
+    expect(r.svg).toContain("<image");
+    expect(r.svg).toContain("data:image/svg+xml;base64,");
+    expect(r.svg).not.toContain("icons.terrastruct.com");
+    // The full post-processor keeps the embedded icon and the cite.
+    const cmap = new Map([["diff:conn:650-651", { canonical: "diff:conn:650-651" }]]);
+    const post = postProcessSvg(r.svg!, cmap, "icon-probe");
+    expect(post).toContain("<image");
+    expect(post).toContain("data:image/svg+xml");
+    expect(post).toContain('data-refs="diff:conn:650-651"');
+    expect(post).not.toContain("icons.terrastruct.com");
+  });
+
+  it("a failed icon fetch still renders without the icon (real d2, stub 404)", async () => {
+    const real = await realBin();
+    if (!real) {
+      console.warn("SKIP real-d2 icon-strip: d2 not on PATH");
+      return;
+    }
+    const { renderD2Theme, D2_THEME_LIGHT } = await import("../src/diagrams/render.js");
+    const { postProcessSvg } = await import("../src/diagrams/sanitize.js");
+    const { runner } = real;
+    const bin = { path: real.path };
+    const bad = "https://icons.terrastruct.com/essentials%2Finvented.svg";
+    const src = `direction: right\nwarn: "long header" {icon: ${bad}}\nwarn -> norm: unfold {link: "diff:conn:650-651"}`;
+    const r = await renderD2Theme(src, {
+      runner,
+      binPath: bin.path,
+      salt: "icon-strip",
+      theme: D2_THEME_LIGHT,
+      fetchIcon: async (url) => ({ ok: false, reason: `HTTP 404 for ${url}` }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.iconNotes).toHaveLength(1);
+    expect(r.iconNotes[0].url).toBe(bad);
+    expect(r.svg).not.toContain("<image");
+    const cmap = new Map([["diff:conn:650-651", { canonical: "diff:conn:650-651" }]]);
+    const post = postProcessSvg(r.svg!, cmap, "icon-strip");
+    expect(post).toContain('data-refs="diff:conn:650-651"');
   });
 
   it("imports cannot read files (precheck blocks; empty cwd fails direct runs)", async () => {

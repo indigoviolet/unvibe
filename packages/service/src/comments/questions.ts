@@ -25,13 +25,25 @@
  */
 import type {
   ActionAnchor,
-  Annotation,
-  ChatMessage,
+  Thread,
+  Reply,
   ReviewSnapshot,
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
 import { normalizeContributionText } from "../sharedctx/contributions.js";
-import { buildAnchor, newAnnotationId } from "./threads.js";
+import { buildAnchor, commentReply, newAnnotationId } from "./threads.js";
+
+/** Plain text of a comment reply. */
+function replyText(reply: Reply): string {
+  const parts: string[] = [];
+  for (const b of reply.blocks ?? []) {
+    if (b.type === "paragraph") {
+      const plain = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (plain) parts.push(plain);
+    }
+  }
+  return parts.join("\n\n");
+}
 
 export interface QuestionTurnContext {
   annotationId?: string;
@@ -66,7 +78,7 @@ function firstBlockOf(snapshot: ReviewSnapshot, cardId: string): { cardId: strin
   }
   // Answers host nested questions the same way (issue #116).
   for (const a of snapshot.annotations ?? []) {
-    for (const turn of a.turns ?? []) {
+    for (const turn of a.replies ?? []) {
       if (turn.id !== cardId) continue;
       const block = turn.blocks[0];
       if (!block) return null;
@@ -113,7 +125,7 @@ export function resolveQuestionAnchor(
 }
 
 /** Anchor-host identity for suggestion dedupe (issue #181). */
-export function questionHostKey(host: Annotation["anchor"]["host"]): string {
+export function questionHostKey(host: Thread["anchor"]["host"]): string {
   if (host.kind === "block") return `block:${host.blockId}`;
   if (host.kind === "description") return `description:${host.paragraphId}`;
   if (host.kind === "diff-line") return `diff-line:${host.fileKey}:${host.line}`;
@@ -123,13 +135,15 @@ export function questionHostKey(host: Annotation["anchor"]["host"]): string {
 }
 
 /** True when this annotation is already offered for this question. */
-function alreadyOffered(annotations: Annotation[], hostKey: string, question: string): boolean {
+function alreadyOffered(annotations: Thread[], hostKey: string, question: string): boolean {
   const want = normalizeContributionText(question);
   for (const a of annotations) {
-    if (a.type !== "comment") continue;
+    if (!a.replies.some((r) => r.kind === "comment")) continue;
     if (questionHostKey(a.anchor.host) !== hostKey) continue;
-    for (const m of a.messages as ChatMessage[]) {
-      if (m.who === "ai" && m.suggested && m.text && normalizeContributionText(m.text) === want) {
+    for (const m of a.replies as Reply[]) {
+      if (m.kind !== "comment") continue;
+      const text = replyText(m);
+      if (m.who === "agent" && m.suggested && text && normalizeContributionText(text) === want) {
         return true;
       }
     }
@@ -151,8 +165,8 @@ export interface SuggestQuestionsParams {
 export function suggestOpenQuestionsInDraft(
   draft: WritableDraft<ReviewSnapshot>,
   params: SuggestQuestionsParams,
-): Annotation[] {
-  const created: Annotation[] = [];
+): Thread[] {
+  const created: Thread[] = [];
   if (params.questions.length === 0) return created;
   const anchor = resolveQuestionAnchor(params.snapshot, params.ctx);
   if (!anchor) return created;
@@ -161,20 +175,21 @@ export function suggestOpenQuestionsInDraft(
     if (!text) continue;
     const built = buildAnchor(params.snapshot, anchor, "");
     const hostKey = questionHostKey(built.host);
-    if (alreadyOffered(draft.annotations as unknown as Annotation[], hostKey, text)) continue;
+    if (alreadyOffered(draft.annotations as unknown as Thread[], hostKey, text)) continue;
     if (alreadyOffered(created, hostKey, text)) continue;
-    const thread: Annotation = {
+    const reply = commentReply(text, { who: "agent", suggested: true, suggestedQuestion: true });
+    const thread: Thread = {
       id: newAnnotationId(),
-      type: "comment",
+      type: "thread",
       anchor: built,
       // Guide questions start closed (marker); diff/description start open.
       open: built.host.kind === "block" ? false : true,
       pinned: false,
-      messages: [{ who: "ai", text, suggested: true, question: true }],
+      replies: [reply],
       post: false,
       openQuestion: { contributionId: q.contributionId, itemIndex: q.itemIndex },
     };
-    (draft.annotations as unknown as Annotation[]).push(thread as Annotation);
+    (draft.annotations as unknown as Thread[]).push(thread as Thread);
     created.push(thread);
   }
   return created;

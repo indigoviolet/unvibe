@@ -5,12 +5,37 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 function writeFakeGh(binDir: string, logDir: string, headSha: string): void {
   const body = ["First paragraph of the PR body.", "", "Second paragraph with details."].join("\n");
+  // Issue #296: one two-comment thread already on GitHub, on a line far
+  // from the reviewer's own line-2 thread below (made-up comments only).
+  const existing = JSON.stringify([
+    {
+      id: 9001,
+      path: "src/app.py",
+      line: 5,
+      side: "RIGHT",
+      body: "Teammate note: does helper need to handle zero?",
+      user: { login: "teammate" },
+      created_at: "2026-10-01T00:00:00Z",
+      html_url: "https://example.invalid/repo/pull/1#discussion_r9001",
+    },
+    {
+      id: 9002,
+      path: "src/app.py",
+      line: 5,
+      side: "RIGHT",
+      body: "Author reply: good catch, will follow up.",
+      user: { login: "author" },
+      in_reply_to_id: 9001,
+      created_at: "2026-10-02T00:00:00Z",
+      html_url: "https://example.invalid/repo/pull/1#discussion_r9002",
+    },
+  ]);
   const script = `#!/bin/sh
 LOG="${logDir}"
 mkdir -p "$LOG"
@@ -22,7 +47,7 @@ EOF
   exit 0
 fi
 if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"author"}'; exit 0; fi
-case "$*" in *pulls/1/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *pulls/1/comments*) printf '%s\n' '${existing}' > "$LOG/comments.json"; cat "$LOG/comments.json"; exit 0 ;; esac
 case "$*" in *pulls/1/reviews*) cat > "$LOG/review-stdin.json"; echo '{"html_url":"https://example.invalid/pr/1"}'; exit 0 ;; esac
 if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then
   prev=""
@@ -115,5 +140,49 @@ test.describe("J3 comments and submit", () => {
     }
     const calls2 = readFileSync(path.join(logDir, "calls.log"), "utf8");
     expect(calls2.match(/pulls\/1\/reviews/g) ?? []).toHaveLength(1);
+  });
+
+  test("new reviews start with existing GitHub comments hidden; the filter toggle shows them (#296)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    // The stubbed gh served one two-comment thread; wait for ingest to store it.
+    await expect
+      .poll(async () => {
+        const snap = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+        return ((snap.json as { existingComments?: unknown[] }).existingComments ?? []).length;
+      }, { timeout: 60_000 })
+      .toBe(2);
+
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
+
+    // Hidden by default: no thread in the diff, and the menu section folds to its heading.
+    await expect(page.locator("#gh-thread-9001")).toHaveCount(0);
+    await page.locator('#reviewbar [data-cm=""]').click();
+    const menu = page.locator(".cmenu");
+    await expect(menu.locator("[data-ghhead]")).toContainText("hidden");
+    await expect(menu.locator('[data-ghjump="9001"]')).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    // The diff toolbar's show/hide control reveals them, in the diff...
+    await page.getByRole("button", { name: "Review filters" }).click();
+    await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+    const thread = page.locator("#gh-thread-9001");
+    await expect(thread).toBeVisible({ timeout: 10_000 });
+    await expect(thread).toContainText("teammate · 2 comments");
+    await thread.getByRole("button", { name: "Expand comments from teammate" }).click();
+    await expect(thread).toContainText("does helper need to handle zero?");
+
+    // ...and in the comments menu, where the item jumps back to the thread.
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await expect(menu.locator('[data-ghjump="9001"]')).toBeVisible();
+    await menu.locator('[data-ghjump="9001"]').click();
+    await expect(menu).toHaveCount(0);
+    await expect(thread).toContainText("does helper need to handle zero?");
+
+    // Remembered with the review: still shown after reload.
+    await page.reload();
+    await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#gh-thread-9001")).toBeVisible({ timeout: 10_000 });
   });
 });

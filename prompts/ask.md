@@ -72,9 +72,9 @@ conversation card that appears right under the block the text came from.
   (prompts/includes/d2-convention.md): short labels (at most two lines),
   `direction:` to suit the flow, link: "diff:…" cites inline on each
   code-mapped shape/connection (at least 2), `myid.class: [ok|bad]` on its
-  own line for good/bad states, ≤12 shapes/16 connections, never name a
-  shape steps/layers/scenarios/boards, no icon/imports/markdown
-  labels/layers/vars/`classes:` stanzas/tooltip:.
+  own line for good/bad states, ≤40 shapes/48 connections, never name a
+  shape steps/layers/scenarios/boards, icons only from the allowlisted
+  host, no imports/boards/animation.
 - You may end with a `Follow-ups` section suggesting what to ask next,
   following the shared follow-up rule in the instructions (deepen
   understanding or test the change, with a pre-baked question; never a

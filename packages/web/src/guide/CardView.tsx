@@ -16,7 +16,7 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { Annotation, Card, DepthLevel, Page, Turn } from "@unvibe/shared";
+import type { Thread, Card, DepthLevel, Page, Reply } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { Fragment } from "react";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -30,9 +30,8 @@ import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
-import { ExpansionCard } from "./expansions/ExpansionCard.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { isClosedExpansion, isOpenExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
+import { isClosedExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
 import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
@@ -117,14 +116,14 @@ function runCardAction(reviewId: string, action: Parameters<typeof performAction
  * it still carries a working flag or an error.
  */
 function promotedFillFor(
-  annotations: Annotation[],
+  annotations: Thread[],
   card: Card,
-): { linkId: string; turn: Turn } | null {
+): { linkId: string; turn: Reply } | null {
   for (const a of annotations) {
     if (a.type !== "link" || a.promotedToPage !== card.pageId) continue;
-    const mapping = (a.promotedTurns ?? []).find((m) => m.cardId === card.id);
+    const mapping = (a.promotedReplies ?? []).find((m) => m.cardId === card.id);
     if (!mapping) continue;
-    const turn = (a.turns ?? []).find((t) => t.id === mapping.turnId);
+    const turn = (a.replies ?? []).find((t) => t.id === mapping.replyId);
     if (!turn) continue;
     if ((turn.working ?? "") !== "" && turn.working !== null) return { linkId: a.id, turn };
     if ((turn.error ?? "") !== "" && turn.error !== null) return { linkId: a.id, turn };
@@ -175,7 +174,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   }
 
   const depthIndex = DEPTH_ORDER.indexOf(card.level);
-  const threadsFor = (blockId: string): Annotation[] =>
+  const threadsFor = (blockId: string): Thread[] =>
     blockThreads(annotations, card.id, blockId);
 
   // Issue #252: glossary terms link in card text (first mention per card).
@@ -184,7 +183,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
 
   const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
-    const open = exps.filter(isOpenExpansion);
     // Closed expansions + promoted links whose quote is gone become footnote
     // chips on the paragraph's citations line (via BlockView → BlockMarkers);
     // the highlight passes reveal them when the mark lands nowhere.
@@ -204,16 +202,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
         />
         <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
-        {open.map((e) => (
-          <ExpansionCard
-            key={e.id}
-            reviewId={reviewId}
-            expansion={e}
-            lookupPage={lookupPage}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        ))}
       </Fragment>
     );
   });
@@ -269,6 +257,48 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           }
         />
         {title ? <h2 className="ct">{title}</h2> : null}
+        {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
+        <div className="ctl">
+          <DepthControl
+            level={card.level}
+            disabled={controlsBusy}
+            depthBusy={depthBusy}
+            simplerAtLimit={depthIndex <= 0}
+            onSimpler={() =>
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
+            }
+            onDeeper={() =>
+              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
+            }
+          />
+          <ControlButton
+            icon="bulb"
+            label="Use examples"
+            busy={examplesBusy}
+            disabled={controlsBusy}
+            onClick={() => performInsertAction(reviewId, card.id, "examples")}
+          />
+          <ControlButton
+            icon="diagram"
+            label="Add diagram"
+            busy={diagramBusy}
+            disabled={controlsBusy}
+            onClick={() => performInsertAction(reviewId, card.id, "diagram")}
+          />
+          <ControlButton
+            icon="undo"
+            label="Undo"
+            disabled={card.undoStack.length === 0 || controlsBusy}
+            onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
+          />
+          <SecondOpinionControl
+            reviewId={reviewId}
+            card={card}
+            page={lookupPage(card.pageId)}
+            disabled={controlsBusy}
+            busy={secondOpinionBusy}
+          />
+        </div>
       </CardHeader>
       {card.stale ? (
         <div className="stale" role="status">
@@ -287,47 +317,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           </button>
         </div>
       ) : null}
-      <div className="ctl">
-        <DepthControl
-          level={card.level}
-          disabled={controlsBusy}
-          depthBusy={depthBusy}
-          simplerAtLimit={depthIndex <= 0}
-          onSimpler={() =>
-            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
-          }
-          onDeeper={() =>
-            runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
-          }
-        />
-        <ControlButton
-          icon="bulb"
-          label="Use examples"
-          busy={examplesBusy}
-          disabled={controlsBusy}
-          onClick={() => performInsertAction(reviewId, card.id, "examples")}
-        />
-        <ControlButton
-          icon="diagram"
-          label="Add diagram"
-          busy={diagramBusy}
-          disabled={controlsBusy}
-          onClick={() => performInsertAction(reviewId, card.id, "diagram")}
-        />
-        <ControlButton
-          icon="undo"
-          label="Undo"
-          disabled={card.undoStack.length === 0 || controlsBusy}
-          onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
-        />
-        <SecondOpinionControl
-          reviewId={reviewId}
-          card={card}
-          page={lookupPage(card.pageId)}
-          disabled={controlsBusy}
-          busy={secondOpinionBusy}
-        />
-      </div>
       {busy ? <Working text={busy.label} /> : null}
       {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
       {!busy && promoted?.turn.error ? (

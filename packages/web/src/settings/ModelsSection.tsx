@@ -25,7 +25,7 @@ const ROLES: { role: Role; label: string; blurb: string }[] = [
   { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main, for an independent take." },
 ];
 
-const KNOWN_PROVIDERS = ["claude", "codex"];
+const FALLBACK_PROVIDERS = ["claude", "codex"];
 
 export function ModelsSection({
   settings,
@@ -37,6 +37,23 @@ export function ModelsSection({
   // Same agent status as the front-screen callouts, shown inline per picker
   // (fills in after render; never blocks the pickers).
   const [statusByRole, setStatusByRole] = useState<Record<string, ReadinessCheck | undefined>>({});
+  // Providers the service offers (issue #279): pi appears only when its
+  // binary is detected. Falls back to the static pair when unknown.
+  const [providers, setProviders] = useState<string[]>(FALLBACK_PROVIDERS);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .providers()
+      .then((r) => {
+        if (!cancelled && Array.isArray(r.providers) && r.providers.length > 0) setProviders(r.providers);
+      })
+      .catch(() => {
+        // Provider list stays at the static fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     api
@@ -68,6 +85,7 @@ export function ModelsSection({
           settings={settings}
           onSaved={onSaved}
           status={statusByRole[role]}
+          providers={providers}
         />
       ))}
       {settings.secondOpinion.provider === settings.main.provider &&
@@ -88,6 +106,7 @@ function ModelPicker({
   settings,
   onSaved,
   status,
+  providers,
 }: {
   role: Role;
   label: string;
@@ -95,6 +114,7 @@ function ModelPicker({
   settings: Settings;
   onSaved: (next: Settings) => void;
   status?: ReadinessCheck;
+  providers: string[];
 }): React.JSX.Element {
   const pick: ModelPick = settings[role];
   const [provider, setProvider] = useState(pick.provider);
@@ -151,7 +171,7 @@ function ModelPicker({
     };
   }, [provider]);
 
-  const providers = KNOWN_PROVIDERS.includes(provider) ? KNOWN_PROVIDERS : [provider, ...KNOWN_PROVIDERS];
+  const providerOptions = providers.includes(provider) ? providers : [provider, ...providers];
 
   // The saved pick may have disappeared from the adapter's list (model
   // retired or renamed): flag it plainly instead of silently keeping it.
@@ -215,7 +235,8 @@ function ModelPicker({
 
   return (
     <Card variant="raised" data-testid={`model-${role}`}>
-      <div className="frow" style={{ gap: 8 }}>
+      {/* #274 stacked group header: title over description, with a divider. */}
+      <div className="frow grouphead" style={{ gap: 8 }}>
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
       </div>
@@ -240,7 +261,7 @@ function ModelPicker({
             setEffortReset(null);
             setProvider(v);
           }}
-          options={providers.map((p) => ({ value: p, label: p }))}
+          options={providerOptions.map((p) => ({ value: p, label: p }))}
         />
       </Field>
       <Field label="Model" htmlFor={`model-${role}`}>
@@ -289,7 +310,7 @@ function ModelPicker({
               Couldn't load thinking levels ({thinkingError}) — Default stands.
             </span>
           ) : thinking === null ? (
-            <span className="hint">Loading thinking levels…</span>
+            <span className="hint settings-thinking">Loading thinking levels…</span>
           ) : (
             <>
               <Select

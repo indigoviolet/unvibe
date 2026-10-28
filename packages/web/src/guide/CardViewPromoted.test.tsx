@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { Annotation, Card, Job, ReviewSnapshot, Turn } from "@unvibe/shared";
+import type { Thread, Card, Job, ReviewSnapshot, Reply } from "@unvibe/shared";
 import { CardView } from "./CardView.js";
 import { useReview } from "../state/store.js";
 
@@ -26,9 +26,11 @@ function card(): Card {
   } as unknown as Card;
 }
 
-function turn(over: Partial<Turn> = {}): Turn {
+function turn(over: Partial<Reply> = {}): Reply {
   return {
     id: "ans_1",
+    kind: "ask",
+    who: "agent",
     question: null,
     blocks: [],
     level: "standard",
@@ -36,10 +38,10 @@ function turn(over: Partial<Turn> = {}): Turn {
     undoStack: [],
     working: "Thinking…",
     ...over,
-  } as unknown as Turn;
+  } as unknown as Reply;
 }
 
-function link(turns: Turn[]): Annotation {
+function link(replies: Reply[]): Thread {
   return {
     id: "ann_1",
     type: "link",
@@ -52,15 +54,14 @@ function link(turns: Turn[]): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
     post: false,
     promotedToPage: "p-mock-1",
-    promotedTurns: [{ turnId: "ans_1", cardId: "c-mock-0" }],
-    turns,
-  } as unknown as Annotation;
+    promotedReplies: [{ replyId: "ans_1", cardId: "c-mock-0" }],
+    replies,
+  } as unknown as Thread;
 }
 
-function seed(cards: Card[], annotations: Annotation[], jobs: Job[] = []): void {
+function seed(cards: Card[], annotations: Thread[], jobs: Job[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
     review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },

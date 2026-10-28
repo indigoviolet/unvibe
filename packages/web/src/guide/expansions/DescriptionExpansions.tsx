@@ -9,12 +9,10 @@
  * - Promoted links highlight as page links (`a.cx.pg`).
  */
 import { useEffect, useState } from "react";
-import type { Annotation } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection, type AnchorSpot } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
 import { isAnchorStale } from "./expansionUtils.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import type { Page } from "@unvibe/shared";
@@ -42,22 +40,22 @@ interface Props {
   onFollowUp: (cardId: string, blockId: string, index: number) => void;
 }
 
-export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpenPage, onFollowUp }: Props) {
+export function DescriptionExpansions({ reviewId, paragraphId }: Props) {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const [, setTick] = useState(0);
 
   const exps = (annotations ?? []).filter((a) => {
-    if (a.type !== "conversation" && a.type !== "link") return false;
+    if (a.type !== "thread" && a.type !== "link") return false;
     if (a.anchor.host.kind === "description") return a.anchor.host.paragraphId === paragraphId;
     // Issue #214: a card on a comment renders under that comment's paragraph.
     if (a.anchor.host.kind === "comment") {
       const commentId = a.anchor.host.commentId;
-      const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+      const comment = (annotations ?? []).find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
       return comment?.anchor.host.kind === "description" && comment.anchor.host.paragraphId === paragraphId;
     }
     return false;
   });
-  const open = exps.filter((a) => a.type === "conversation" && a.open && !a.promotedToPage);
+  const open = exps.filter((a) => a.type === "thread" && a.open && !a.promotedToPage);
 
   useEffect(() => {
     const root = document.querySelector("#right .desc");
@@ -149,7 +147,7 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found) return;
-      if (found.type === "conversation" && !found.open) {
+      if (found.type === "thread" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -164,20 +162,9 @@ export function DescriptionExpansions({ reviewId, paragraphId, lookupPage, onOpe
     return () => document.removeEventListener("click", onClick);
   }, [reviewId]);
 
-  if (open.length === 0) return null;
-  return (
-    <>
-      {open.map((e) => (
-        <div className="dann" key={e.id}>
-          <ExpansionCard
-            reviewId={reviewId}
-            expansion={e as Annotation}
-            lookupPage={lookupPage}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        </div>
-      ))}
-    </>
-  );
+  // Issue #273: description threads render in DescriptionView itself (one
+  // thread component everywhere). This slot stays empty so the same thread
+  // is never rendered twice; the mark pass above still drives highlights.
+  void open;
+  return null;
 }

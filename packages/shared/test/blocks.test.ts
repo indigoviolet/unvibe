@@ -1,11 +1,11 @@
 /**
  * Block walker (issue #71, #136): the diagrams route must find diagram
  * blocks wherever the data model can hold them. One case per live
- * container — including every turn of a conversation card — plus the
- * deliberate exclusions (undo stacks, thread HTML).
+ * container — including every reply of a thread — plus the deliberate
+ * exclusions (undo stacks, thread plain-text paragraphs).
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation, Block, DiagramBlock, Page } from "../src/entities.js";
+import type { Block, DiagramBlock, Page, Thread } from "../src/entities.js";
 import {
   allDiagramBlocks,
   findDiagramByHash,
@@ -47,7 +47,7 @@ const SRC: Record<string, string> = {
   [UNDO_HASH]: "undo-a -> undo-b",
 };
 
-function snapshot(): { pages: Page[]; annotations: Annotation[] } {
+function snapshot(): { pages: Page[]; annotations: Thread[] } {
   const pages = [
     {
       id: "root",
@@ -89,7 +89,7 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
   const annotations = [
     {
       id: "ann_exp",
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "central#b1" },
         quotedText: "q",
@@ -99,12 +99,11 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
         version: 1,
       },
       open: true,
-      messages: [],
-      post: false,
-      note: false,
-      turns: [
+      replies: [
         {
           id: "ans_1",
+          kind: "explain",
+          who: "agent",
           question: null,
           blocks: [
             diagram(SRC[EXP_HASH], EXP_HASH),
@@ -128,9 +127,11 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
             },
           ],
         },
-        // A later turn is walked too (a diagram in a follow-up answer renders).
+        // A later reply is walked too (a diagram in a follow-up answer renders).
         {
           id: "ans_2",
+          kind: "ask",
+          who: "agent",
           question: "And then?",
           blocks: [diagram(SRC[TURN2_HASH], TURN2_HASH)],
           level: "standard",
@@ -140,7 +141,7 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
       ],
     },
     {
-      // Ask thread: the agent's diagram arrives as raw HTML, not a block.
+      // Reviewer comment: plain paragraph text, never a diagram container.
       id: "ann_thread",
       type: "thread",
       anchor: {
@@ -152,20 +153,30 @@ function snapshot(): { pages: Page[]; annotations: Annotation[] } {
         version: 1,
       },
       open: true,
-      messages: [{ who: "ai", html: '<pre class="d2">thread-a -&gt; thread-b</pre>' }],
-      post: false,
-      note: false,
+      replies: [
+        {
+          id: "ans_c1",
+          kind: "comment",
+          who: "you",
+          question: null,
+          blocks: [paragraph("c1")],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        },
+      ],
     },
-  ] as unknown as Annotation[];
+  ] as unknown as Thread[];
   return { pages, annotations };
 }
 
 describe("liveBlockLists", () => {
-  it("enumerates card, second-opinion and turn lists", () => {
+  it("enumerates card, second-opinion and reply lists", () => {
     const lists = liveBlockLists(snapshot());
-    // card blocks + card second-opinion blocks + turn-1 blocks +
-    // turn-1 second-opinion blocks + turn-2 blocks.
-    expect(lists).toHaveLength(5);
+    // card blocks + card second-opinion blocks + reply-1 blocks +
+    // reply-1 second-opinion blocks + reply-2 blocks + the reviewer
+    // comment's paragraph (a live list, but diagram-free).
+    expect(lists).toHaveLength(6);
   });
 });
 
@@ -178,13 +189,13 @@ describe("findDiagramByHash", () => {
     ["answer", EXP_HASH],
     ["answer aside", EXP_ASIDE_HASH],
     ["answer second opinion", EXP_SO_HASH],
-    ["second turn", TURN2_HASH],
+    ["second reply", TURN2_HASH],
   ])("finds a diagram in a %s", (_label, hash) => {
     const hit = findDiagramByHash(snapshot(), hash);
     expect(hit?.source).toBe(SRC[hash]);
   });
 
-  it("returns null for unknown hashes, undo history and thread HTML", () => {
+  it("returns null for unknown hashes, undo history and thread paragraphs", () => {
     const snap = snapshot();
     expect(findDiagramByHash(snap, "deadbeefdeadbeef")).toBeNull();
     // Undo-stack revisions are stale, never rendered: not addressable.

@@ -7,7 +7,7 @@
  * `prototype.html` (its code is a sketch — this is a port of behaviour and
  * class names, not code).
  */
-import type { Annotation, Block, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
+import type { Thread, Block, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { hunkMatchesFilter, hunkScoreRank, parseId } from "@unvibe/shared";
 
 // --- folder tree ---------------------------------------------------------
@@ -262,7 +262,7 @@ function blockCitations(blocks: Block[], out: string[]): void {
 export function citedHunkHashes(
   files: ReviewFile[],
   pages: Page[],
-  annotations: Annotation[],
+  annotations: Thread[],
 ): Set<string> {
   const targets: string[] = [];
   for (const p of pages) for (const c of p.cards ?? []) blockCitations(c.blocks ?? [], targets);

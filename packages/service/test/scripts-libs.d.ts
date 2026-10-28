@@ -58,3 +58,66 @@ declare module "*global-install-lib.mjs" {
   export function findRepoByPath<T>(repos: readonly T[] | null | undefined, localPath: string): T | null;
   export function isParserOutline(outline: unknown): boolean;
 }
+
+declare module "*live-pi-lib.mjs" {
+  export interface LivePick {
+    provider: string;
+    model: string;
+  }
+  export interface CostRates {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  }
+  export interface TokenUsage {
+    inputTokens?: number;
+    cachedReadTokens?: number;
+    cachedTokens?: number;
+    cachedWriteTokens?: number;
+    outputTokens?: number;
+  }
+  export interface CatalogEntry {
+    provider?: string;
+    id?: string;
+    name?: string;
+    cost?: Partial<CostRates>;
+    contextWindow?: number;
+    maxTokens?: number;
+  }
+  export interface SpendTracker {
+    totals: { inputTokens: number; cachedReadTokens: number; cachedWriteTokens: number; outputTokens: number };
+    add(usage: TokenUsage): { inputTokens: number; cachedReadTokens: number; cachedWriteTokens: number; outputTokens: number };
+    usd(): number;
+    check(what?: string): number;
+  }
+  export const LIVE_PI_DEFAULT: LivePick;
+  export function parseLiveArgs(argv: string[]): LivePick & { capUsd: number; allowUnpriced: boolean };
+  export function splitModelRef(ref: string): { provider: string | null; id: string };
+  export function resolvePiCmd(env?: NodeJS.ProcessEnv): string[];
+  export function runPiListModels(piCmd: string[], pattern: string, opts?: { env?: NodeJS.ProcessEnv; timeoutMs?: number }): string;
+  export function parseListModels(output: string): { provider: string; model: string }[];
+  export function precheckModelOffered(
+    piCmd: string[],
+    pick: LivePick,
+    opts?: { env?: NodeJS.ProcessEnv },
+  ): { provider: string; model: string };
+  export function fetchPiCatalog(piCmd: string[], opts?: { env?: NodeJS.ProcessEnv; timeoutMs?: number }): Promise<CatalogEntry[]>;
+  export function findCatalogEntry(catalog: CatalogEntry[], pick: LivePick): CatalogEntry | null;
+  export function assertPriced(
+    entry: CatalogEntry | null | undefined,
+    opts: LivePick & { allowUnpriced?: boolean },
+  ): CostRates;
+  export function costOf(usage: TokenUsage, rates: CostRates): number;
+  export function formatUsd(n: number): string;
+  export function worstCaseTurnUsd(rates: CostRates, entry: CatalogEntry | null | undefined): number | null;
+  export function preflightCap(args: { capUsd: number; worstCaseUsd: number | null; what?: string }): number | null;
+  export function createSpendTracker(rates: CostRates, capUsd: number): SpendTracker;
+  export function liveModelPatch(pick: LivePick, roles?: string[]): Record<string, LivePick>;
+  export function selectLiveModel(
+    putSettings: (patch: Record<string, LivePick>) => Promise<{ ok: boolean; status: number; detail: string; body: unknown }>,
+    pick: LivePick,
+    roles?: string[],
+  ): Promise<unknown>;
+  export function writeLiveReport(args: { dir: string; task: string } & Record<string, unknown>): string;
+}

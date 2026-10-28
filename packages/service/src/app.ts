@@ -203,6 +203,25 @@ export class AcpModelCatalog implements ModelCatalog {
     }
   }
 
+  /** Providers the pickers offer (issue #279): claude/codex, plus pi
+   * only when its binary is detected and not too old (checked live,
+   * cached). Falls back to the static pair when the runner says nothing
+   * (fake/test runners). */
+  async providers(): Promise<string[]> {
+    try {
+      const list = (
+        this.runner as unknown as { providers?: () => string[] | Promise<string[]> }
+      ).providers;
+      if (typeof list === "function") {
+        const res = await list.call(this.runner);
+        if (Array.isArray(res) && res.length > 0) return res;
+      }
+    } catch {
+      // ignore: static pair below
+    }
+    return ["claude", "codex"];
+  }
+
   /** Clear cached model listings (Reload everything). */
   clearCache(): void {
     try {
@@ -331,7 +350,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         const annotationId = job.annotationId;
         void reviews
           .mutate(reviewId, (draft) => {
-            const ann = (draft.annotations as unknown as import("@unvibe/shared").Annotation[]).find(
+            const ann = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
               (a) => a.id === annotationId,
             );
             if (!ann) return;
@@ -341,7 +360,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
               ann.error = INTERRUPTED_MESSAGE;
               ann.jobId = undefined;
             }
-            for (const turn of ann.turns ?? []) {
+            for (const turn of ann.replies ?? []) {
               if (turn.jobId === job.id || (annMatches && (turn.working ?? null) !== null)) {
                 turn.working = null;
                 turn.error = INTERRUPTED_MESSAGE;
@@ -372,7 +391,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   // Under vitest with no explicit runner and the default (real) factory
   // selection, substitute the fake instead of starting real agents (#119).
   const agents =
-    opts.agents ?? (needsTestAgents ? new FakeAgentRunner() : createAgentRunner({ fixturesDir }));
+    opts.agents ?? (needsTestAgents ? new FakeAgentRunner() : createAgentRunner({ fixturesDir, dataDir }));
   const models =
     opts.models ?? (needsTestAgents && opts.agents === undefined ? new StaticModelCatalog() : new AcpModelCatalog(agents));
 

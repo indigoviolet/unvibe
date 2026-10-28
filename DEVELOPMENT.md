@@ -53,12 +53,19 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
 | `release` | Self-contained release tree + tarball + local `release` branch; no push | `build` first |
 | `preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune]` | Publish branches as installable `preview/<slug>` refs (merged builds by default; pushes only with `--push`) | — |
-| `test:live` | Live adapter tests over real CLIs | `claude`/`codex` logins; small token spend |
-| `test:live:pipeline` | Full pipeline on real agents | Logins; token spend |
-| `test:live:second-opinion` | Second-opinion check with real agents | Logins; small spend |
-| `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review | `claude` login; small spend |
-| `test:live:installed` | Live sessions from the installed copy | Logins; tiny spend |
-| `test:live:submit` | Submit path against a scratch repo (draft PR only) | Login; opt-in, writes a draft PR |
+| `test:live` | Live adapter tests over real CLIs (stays on claude/codex) | `claude`/`codex` logins; small token spend |
+| `test:live:pipeline` | Full pipeline on real agents (default pi + muse-spark; `--provider`/`--model`/`--cap`) | Logins; token spend, capped |
+| `test:live:plotlines` | Hunk scores + plotlines on the demo and public PRs (default pi + muse-spark; read-only, never posts) | Logins; token spend, capped |
+| `test:live:second-opinion` | Second-opinion check with real agents (stays cross-provider) | Logins; small spend |
+| `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review (default pi + muse-spark) | Logins; small spend, capped |
+| `test:live:installed` | Live sessions from the installed copy (pi, claude, codex; `--provider`/`--cap`) | Logins; tiny spend, capped |
+| `test:live:submit` | Submit path against a scratch repo, pipeline agent turns on pi by default (draft PR only) | Login; opt-in, writes a draft PR; token spend, capped |
+| `test:live:full-access` | Full-access check with real agents (default pi + muse-spark; `UNVIBE_LIVE_PROVIDERS`/`UNVIBE_LIVE_CAP`) | Logins; small spend, capped |
+| `test:live:fork-tools` | Codex fork review-tools check (stays on Codex) | `codex` login; tiny spend |
+| `test:live:diagram` | D2 feature run (#286): one ask per lifted feature group per provider on one replay-built demo review, self-enforced cap, report to `test-results/` (#286 moves it to pi) | Logins, `d2`; real spend (owner-approved cap) |
+| `test:live:pi` | Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi (unchanged) | Owner's pi login + go; small spend |
+
+Switched tasks (issue #292) share `scripts/live-pi-lib.mjs`: `--provider` and `--model` override the pi + `muse-spark-1.3-contributor` default (pi's bare id; the runner maps it to provider `meta`), `pi --list-models` refuses before any spend when the model isn't offered, the spend cap is priced from pi's own catalogue (`get_available_models`; missing or all-zero cost refuses unless `--allow-unpriced` is passed, never assumed $0), `--cap` pre-flights the worst case and tracks spend from the first token (failed jobs included), and the spend + per-task report is written to `test-results/` (gitignored) as well as the console. Test-only tasks that need a cap read it from `UNVIBE_LIVE_CAP`. Only `test:live:*` may use real pi.
 
 `test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
 runs on `ubuntu-latest` for every branch push except `spike/**`, and on
@@ -216,7 +223,7 @@ Rules:
 | `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` | login-shell PATH | Override the agent executable (else `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`). |
 | `UNVIBE_REPO_ROOTS` | `~/src`, `~/dev`, … | `path.delimiter`-separated roots for checkout detection. |
 | `UNVIBE_PROMPTS_DIR` | repo `prompts/` | Override prompt templates (tests, debugging). |
-| `UNVIBE_LIVE` / `UNVIBE_LIVE_PROVIDERS` | — | `=1` enables live suites; providers `claude\|codex` (default both). |
+| `UNVIBE_LIVE` / `UNVIBE_LIVE_PROVIDERS` | — | `=1` enables live suites; providers `claude\|codex` (default both; `full-access` defaults to `pi`, `installed` to all three). `UNVIBE_LIVE_CAP=<usd>` is the required spend cap for the vitest live tasks (issue #292). |
 | `UNVIBE_TEST_SUITE` | both | `fast` / `slow`: run one vitest suite directly (`npm run test:fast` / `test:slow` set it). |
 | `UNVIBE_TEST_WORKERS` | `min(8, cores-1)` | Cap on vitest workers. |
 | `UNVIBE_E2E_WORKERS` | `min(4, cores/2)` | Cap on Playwright workers (`=8` when the machine is known to be free). |

@@ -15,7 +15,6 @@ import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { ThreadView } from "../../comments/ThreadView.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
-import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
 import { useReview } from "../../state/store.js";
 import "./file.css";
 
@@ -98,6 +97,10 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying line.
+      if (req.threadId) return;
       if (req.anchor.where !== "code") return;
       if (req.anchor.path !== path || req.anchor.commit !== commit) return;
       setPending({
@@ -168,8 +171,8 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
           const n = i + 1;
           const cited = n >= hlStart && n <= hlEnd;
           const here = byLine.get(n) ?? [];
-          const openCards = here.filter((a) => a.type === "conversation" && a.open);
-          const openThreads = here.filter((a) => a.type === "comment" && a.open);
+          const openCards = here.filter((a) => a.type === "thread" && a.open);
+          const openThreads = here.filter((a) => a.replies.some((r) => r.kind === "comment") && a.open);
           const closed = here.filter((a) => !a.open && a.type !== "link");
           return (
             <div key={n}>
@@ -179,7 +182,7 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
               </div>
               {openCards.map((a) => (
                 <div className="cf-slot" key={a.id}>
-                  <ExpansionCard reviewId={reviewId} expansion={a} lookupPage={lookupPage} onOpenPage={onOpenPage} onFollowUp={onFollowUp} />
+                  <ThreadView reviewId={reviewId} thread={a} lookupPage={lookupPage} onOpenPage={onOpenPage} onFollowUp={onFollowUp} />
                 </div>
               ))}
               {openThreads.map((a) => (
@@ -198,7 +201,7 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
                       });
                     }}
                   >
-                    {a.type === "comment" ? "Comment" : "Explanation"} on “{a.anchor.quotedText.slice(0, 60)}” — reopen
+                    {a.replies.some((r) => r.kind === "comment") ? "Comment" : "Explanation"} on “{a.anchor.quotedText.slice(0, 60)}” — reopen
                   </button>
                 </div>
               ))}

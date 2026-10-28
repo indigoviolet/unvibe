@@ -291,24 +291,35 @@ describe("hostile code text (issue #101)", () => {
       // The injected `</td><td>` smuggled in no rows or cells: the hunk's
       // code table holds exactly the one code row (2 cells unified — the
       // pure-add hunk drops the empty old column per #261, leaving new
-      // number + code — 4 split, a pair with an empty left)…
-      // (control rows carry `.pr`, so the count excludes the expand
-      // control below the hunk — an injected row would still show up as
-      // an extra non-control row or a third row overall).
-      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr)");
+      // number + code — 4 split, a pair with an empty left).
+      // (Issue #285: unified controls ride the hunk's first/last row
+      // (`has-xup`/`has-xdown`), so there is no control row to exclude;
+      // split keeps its `.xsep` separator row. An injected row would
+      // still show up as an extra code row.)
+      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr):not(.xsep)");
       expect(codeRows.length).toBe(1);
       expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 2);
       if (view === "unified") {
         expect(codeRows[0].closest("table")?.classList.contains("hide-old")).toBe(true);
+        // The one-row hunk starts at line 1 (no up controls) with an
+        // unknown total, so the optimistic bottom step (#288) rides its
+        // last row as `v` — the number shows at rest.
+        expect(codeRows[0].classList.contains("has-xup")).toBe(false);
+        expect(codeRows[0].classList.contains("has-xdown")).toBe(true);
+        expect(codeRows[0].querySelector("td.n .nnum")?.textContent).toBe("1");
       }
       // …the hunk header renders exactly once, outside any table…
       const headers = section.querySelectorAll(".dhunk-h");
       expect(headers.length).toBe(1);
       expect(headers[0].closest("table")).toBeNull();
       // …and no rows, cells or tables were injected anywhere in the section.
-      // The hunk starts at line 1 with an unknown total, so no expansion
-      // control renders either: exactly the one code row.
-      expect(section.querySelectorAll("tr").length).toBe(1);
+      // (#288: the last hunk always offers the optimistic bottom step;
+      // issue #285: unified rides it on the hunk's last row, so the
+      // section holds exactly the one code row — split keeps the one
+      // `.xsep` expand-control row beside it. An injected row would be
+      // a second code row, or a third row in split.)
+      expect(section.querySelectorAll("tr:not(.xsep)").length).toBe(1);
+      expect(section.querySelectorAll("tr.xsep").length).toBe(view === "split" ? 1 : 0);
       expect(section.querySelectorAll("table").length).toBe(1);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }

@@ -104,6 +104,11 @@ describe("static network guards", () => {
         reason: "HTTP+WS server bound to loopback only (listens; no client) plus the ::1 companion socket sharing the Fastify router (issue #108; listens, never dials out)",
       },
       {
+        file: "diagrams/icons.ts",
+        patterns: [/[^._a-zA-Z]fetch\s*\(/],
+        reason: "D2 icon pre-fetch (issue #286, owner decision): https GET to icons.terrastruct.com only, exact host, no query/fragment, .svg, 5 s / 100 KB caps; precheck rejects every other URL before this runs",
+      },
+      {
         file: "agent/acp/connection.ts",
         patterns: [/@agentclientprotocol\/sdk/],
         reason: "ACP stdio subprocesses (adapters spawn claude/codex CLIs; no sockets)",

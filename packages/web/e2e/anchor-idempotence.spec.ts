@@ -1,13 +1,15 @@
 /**
  * Anchor-highlight idempotence (issue #15) over mock mode.
  *
- * The demo snapshot seeds an open expansion (`x-seed`, quote "raw CRLF")
- * and an open thread (`t-seed`, quote "fast path"): both highlighters are
- * active on page load. Streaming many no-op annotation patches through the
- * WS-patch path (the same path live updates use) must not nest marks, and
- * the user's text selection + focused reply box must survive.
+ * The demo snapshot seeds an open explain thread (`x-seed`, quote
+ * "raw CRLF") and an open comment thread (`t-seed`, quote "fast path"):
+ * the expansion highlighter and the thread highlighter are both active
+ * on page load, each marking its own kind exactly once. Streaming many
+ * no-op annotation patches through the WS-patch path (the same path live
+ * updates use) must not nest marks, and the user's text selection +
+ * focused reply box must survive.
  *
- * Keeps every behaviour the rest of the suite covers (open-expansion
+ * Keeps every behaviour the rest of the suite covers (open-thread
  * styles, thread highlights); hover previews, click-to-expand and
  * fallbacks stay covered by interaction.spec.ts / guide.spec.ts.
  */

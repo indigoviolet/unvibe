@@ -144,7 +144,11 @@ describe("DiffView", () => {
     });
     const cell = document.querySelector(`[data-line="${CONN}:77"]`);
     expect(cell).not.toBeNull();
-    expect(cell!.classList.contains("hc")).toBe(true);
+    // Issue #285: the comment icon replaces the new-side number (class
+    // `e-commented`; `hc` survives on split view only).
+    expect(cell!.classList.contains("e-commented")).toBe(true);
+    expect(cell!.querySelector(".nic svg")).not.toBeNull();
+    expect(cell!.querySelector(".nnum")?.textContent).toBe("77");
     expect(screen.getByText("inline thread")).toBeInTheDocument();
     await fireEvent.click(cell!);
     expect(onLineClick).toHaveBeenCalledWith(CONN, 77);

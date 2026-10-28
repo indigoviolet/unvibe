@@ -244,9 +244,9 @@ const main = async () => {
     svc = await startService("restart after mid-ask SIGKILL");
     const t = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === askId);
     assert(!!t, "ask card survives SIGKILL");
-    console.log(`  card after restart: turns=${(t?.turns ?? []).length} working=${t?.working ?? null} error=${(t?.error ?? "").slice(0, 60) || null}`);
+    console.log(`  card after restart: replies=${(t?.replies ?? []).length} working=${t?.working ?? null} error=${(t?.error ?? "").slice(0, 60) || null}`);
     // Retry the failed fill (or reply when it already answered).
-    const hasAnswer = ((t?.turns ?? [])[0]?.blocks ?? []).length > 0;
+    const hasAnswer = ((t?.replies ?? [])[0]?.blocks ?? []).length > 0;
     const path = hasAnswer ? "reply" : "retry";
     const again = await api(
       token,
@@ -261,8 +261,8 @@ const main = async () => {
     for (let i = 0; i < 45 && !answered; i++) {
       await sleep(1000);
       const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === askId);
-      const turns = cur?.turns ?? [];
-      answered = turns.length >= (hasAnswer ? 2 : 1) && turns.every((x) => (x.blocks ?? []).length > 0) && !cur?.working;
+      const replies = cur?.replies ?? [];
+      answered = replies.length >= (hasAnswer ? 2 : 1) && replies.every((x) => (x.blocks ?? []).length > 0) && !cur?.working;
     }
     assert(answered, "conversation recovers after restart (no lost card)");
   }
@@ -284,7 +284,7 @@ const main = async () => {
     for (let i = 0; i < 45 && !firstFilled; i++) {
       await sleep(1000);
       const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
-      firstFilled = ((cur?.turns ?? [])[0]?.blocks ?? []).length > 0 && !cur?.working;
+      firstFilled = ((cur?.replies ?? [])[0]?.blocks ?? []).length > 0 && !cur?.working;
     }
     assert(firstFilled, "explain first turn fills");
     const follow = await api(token, "POST", `/api/reviews/${id}/actions`, {
@@ -297,9 +297,9 @@ const main = async () => {
     await kill9(svc, "mid-follow-up SIGKILL");
     svc = await startService("restart after mid-follow-up SIGKILL");
     const c = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
-    assert(!!c && (c.turns ?? []).length >= 1, "conversation card survives SIGKILL");
+    assert(!!c && (c.replies ?? []).length >= 1, "conversation card survives SIGKILL");
     console.log(
-      `  card after restart: turns=${(c?.turns ?? []).length} working=${c?.working ?? null} error=${(c?.error ?? "").slice(0, 60) || null} session=${c?.sessionId ? "yes" : "no"} questions=${JSON.stringify((c?.turns ?? []).map((t) => t.question))}`,
+      `  card after restart: replies=${(c?.replies ?? []).length} working=${c?.working ?? null} error=${(c?.error ?? "").slice(0, 60) || null} session=${c?.sessionId ? "yes" : "no"} questions=${JSON.stringify((c?.replies ?? []).map((t) => t.question))}`,
     );
     // Reply again on the same card: the session rebuilds from the stored turns.
     const again2 = await api(token, "POST", `/api/reviews/${id}/actions`, {
@@ -312,8 +312,8 @@ const main = async () => {
     for (let i = 0; i < 45 && !recovered; i++) {
       await sleep(1000);
       const cur = json((await api(token, "GET", `/api/reviews/${id}`)).body)?.annotations?.find((a) => a.id === cardId);
-      const turns = cur?.turns ?? [];
-      recovered = turns.length >= 3 && turns.every((t) => (t.blocks ?? []).length > 0) && !cur?.working;
+      const replies = cur?.replies ?? [];
+      recovered = replies.length >= 3 && replies.every((t) => (t.blocks ?? []).length > 0) && !cur?.working;
     }
     assert(recovered, "conversation recovers after restart (follow-up turns kept)");
   }

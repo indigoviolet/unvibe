@@ -420,21 +420,19 @@ test("no vertical scroll container sits between a hunk header and the pane", asy
   expect(bad).toEqual([]);
 });
 
-test("hunk headers pin while their table is scrolled sideways", async ({ page }) => {
-  // A diff that really overflows horizontally (unified): at least one code
-  // table is wider than the pane.
+test("hunk headers pin while long lines wrap instead of scrolling sideways", async ({ page }) => {
+  // #274 soft-wrap: long code lines wrap, so no code table is wider than
+  // the pane and there is nothing to scroll sideways.
   const overflow = await page.evaluate(() => {
     const pane = document.getElementById("right") as HTMLElement;
     return Math.max(
+      0,
       ...[...pane.querySelectorAll(".dwrap")].map((w) => (w as HTMLElement).scrollWidth - (w as HTMLElement).clientWidth),
     );
   });
-  expect(overflow).toBeGreaterThan(50);
-  // Scroll every code table fully sideways, then pin a hunk header: the
-  // header is outside the scroller, so sideways position cannot matter.
-  await page.evaluate(() => {
-    for (const w of document.querySelectorAll("#right .dwrap")) w.scrollTo(9999, 0);
-  });
+  expect(overflow).toBeLessThanOrEqual(2);
+  // The headers still pin: scroll the pane down to a hunk. The header is
+  // outside the (now never-scrolled) sideways scroller.
   const s = await stack(page);
   await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
   await expectStuck(page, "hunk", "Hunk 2 of");
@@ -500,8 +498,9 @@ test("gutter is digits + padding; added files drop the empty column (#261)", asy
   // tables mount before measuring.
   await page.locator('[id="F-changelog-1362.bugfix.rst"]').scrollIntoViewIfNeeded();
   await expect(page.locator('[id="F-changelog-1362.bugfix.rst"] table.diff')).toBeVisible();
-  // Modified file: two number columns, each at most digits + padding +
-  // exactly its affordance room (marker ~18px old, icon 14px new).
+  // Modified file: two number columns, each at most digits + 8px
+  // padding with zero affordance room (issue #285: comment icon and
+  // expand carets swap in-flow; the #189 reopen marker is gone).
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   const mod = await page.evaluate((key) => {
     const file = document.getElementById(`F-${key}`)!;
@@ -535,8 +534,8 @@ test("gutter is digits + padding; added files drop the empty column (#261)", asy
   }, CONN);
   expect(mod.oldMax).toBeGreaterThan(0);
   expect(mod.nwMax).toBeGreaterThan(0);
-  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
-  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
+  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
   // Added file: the empty old column is gone (one number cell per row).
   const added = await page.evaluate(() => {
     const file = document.getElementById("F-changelog-1362.bugfix.rst");

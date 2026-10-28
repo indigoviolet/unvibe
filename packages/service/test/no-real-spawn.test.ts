@@ -5,7 +5,7 @@
  * - `buildApp`/`createApp` without explicit fakes must substitute the
  *   `FakeAgentRunner` + `StaticModelCatalog` and guard the command runner,
  *   never silently fall back to the real ACP runner / `RealCommandRunner`.
- * - `TestCommandGuard` refuses `gh`/`claude`/`codex` loudly.
+ * - `TestCommandGuard` refuses `gh`/`claude`/`codex`/`pi` loudly.
  * - Tripwire: with recording shims installed as `UNVIBE_CLAUDE_BIN`,
  *   `UNVIBE_CODEX_BIN` and `gh` on PATH, the former worst call
  *   (`GET /api/settings` on a default app) must not execute any of them.
@@ -83,13 +83,13 @@ describe("no real agents or GitHub in unit tests (#119)", () => {
     expect(ctx.runner).toBe(runner);
   });
 
-  it("TestCommandGuard refuses gh/claude/codex and delegates everything else", async () => {
+  it("TestCommandGuard refuses gh/claude/codex/pi and delegates everything else", async () => {
     const inner = new FakeCommandRunner();
     inner.enqueue({ cmd: "git", args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
     const guard = new TestCommandGuard(inner);
     const git = await guard.run("git", { args: ["--version"] });
     expect(git.stdout).toContain("git version");
-    for (const cmd of ["gh", "claude", "codex", "/usr/bin/gh", "/opt/claude"]) {
+    for (const cmd of ["gh", "claude", "codex", "pi", "/usr/bin/gh", "/opt/claude", "/usr/local/bin/pi"]) {
       await expect(guard.run(cmd, { args: ["auth", "status"] })).rejects.toThrow(/FakeCommandRunner/);
     }
     expect(inner.calls.map((c) => c.cmd)).toEqual(["git"]);

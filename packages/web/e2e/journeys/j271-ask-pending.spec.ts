@@ -35,32 +35,33 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Turn 1: Ask.
+    // Reply 1: Ask.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" }).first();
+    const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" }).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
-    // Turn 2: while it is pending, the indicator carries the plain
+    // Reply 2: while it is pending, the indicator carries the plain
     // label (no stacked ellipsis) and the box stays: editable, with
     // Send disabled and the reason as its tooltip.
     const box = card.getByPlaceholder(/Ask a follow-up/);
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-    const pending = card.locator(".ans").nth(1);
+    // Issue #293: questions are separate entries — answers are `ask-answer`.
+    const pending = card.locator("[data-ask-answer]").nth(1);
     await expect(pending.locator(".working")).toBeVisible({ timeout: 30_000 });
     await expect(pending.locator(".working")).toHaveText("Writing answer");
     const draft = card.getByPlaceholder(/Ask a follow-up/);
     await expect(draft).toBeVisible();
     await draft.fill("What about ordering?");
     await expect(draft).toHaveValue("What about ordering?");
-    const send = card.getByRole("button", { name: "Reply" });
+    const send = card.getByRole("button", { name: "Reply" }).last();
     await expect(send).toBeDisabled();
     await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
     // The pending turn has no toolbar of its own.
@@ -70,7 +71,8 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(pending.locator(".ctl")).toBeVisible({ timeout: 120_000 });
     await expect(send).toBeEnabled({ timeout: 30_000 });
     await send.click();
-    const third = card.locator(".ans").nth(2);
+    // Issue #293: the follow-up question is its own reviewer entry.
+    const third = card.locator("[data-ask-question]").nth(2);
     await expect(third).toContainText("What about ordering?", { timeout: 60_000 });
     await expect(card.locator(".exp-b").nth(2)).not.toBeEmpty({ timeout: 60_000 });
   });
@@ -88,7 +90,7 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("Does the fast path still catch a fold?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-central .ui-card.child[data-expansion]", { hasText: "Does the fast path still catch a fold" }).first();
+    const card = page.locator("#C-central section.ithread[data-thread]", { hasText: "Does the fast path still catch a fold" }).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
@@ -98,7 +100,7 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(box).toBeVisible({ timeout: 30_000 });
     await box.fill("And a bare LF?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-    const pending = card.locator(".ans").last();
+    const pending = card.locator("[data-reply]").last();
     await expect(pending.locator(".working")).toBeVisible({ timeout: 30_000 });
     const draft = card.getByPlaceholder(/Ask a follow-up/);
     await expect(draft).toBeVisible();
@@ -113,14 +115,14 @@ test.describe("J271 pending follow-up keeps its input", () => {
           const snap = (await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as {
             annotations?: {
               reply?: string;
-              turns?: { question: string | null; working: string | null }[];
+              replies?: { question: string | null; working: string | null }[];
             }[];
           };
           const anns = snap.annotations ?? [];
           const filling = anns
-            .flatMap((a) => a.turns ?? [])
+            .flatMap((a) => a.replies ?? [])
             .some((t) => t.question === "And a bare LF?" && t.working !== null);
-          const drafted = anns.some((a) => a.reply === "One more thing about folds?");
+          const drafted = anns.some((a) => (a as { followupDraft?: string }).followupDraft === "One more thing about folds?");
           return filling && drafted;
         },
         { timeout: 60_000 },
@@ -132,10 +134,10 @@ test.describe("J271 pending follow-up keeps its input", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-    const after = page.locator("#C-central .ui-card.child[data-expansion]", { hasText: "Does the fast path still catch a fold" }).first();
+    const after = page.locator("#C-central section.ithread[data-thread]", { hasText: "Does the fast path still catch a fold" }).first();
     await expect(after).toBeVisible({ timeout: 30_000 });
     // Failed: the banner with Retry governs, and the box stays hidden.
-    const failed = after.locator(".ans").last();
+    const failed = after.locator("[data-reply]").last();
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
     await expect(after.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
     // Retry lands the answer; the box comes back with the kept draft.

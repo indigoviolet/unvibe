@@ -26,6 +26,12 @@ export interface OfferedThinking {
 export interface ModelCatalog {
   listModels(provider: string): ModelInfo[] | Promise<ModelInfo[]>;
   /**
+   * Providers the catalog serves (issue #279): `["claude", "codex"]` plus
+   * `"pi"` only when its binary is detected. The model pickers list exactly
+   * these; unknown providers 404 the same way unknown models do.
+   */
+  providers?(): string[] | Promise<string[]>;
+  /**
    * Live adapter offering, or null when unknown (adapter down, timed out,
    * or no live adapter). Null means "don't validate, keep static
    * defaults" — never "no models".

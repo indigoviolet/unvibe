@@ -123,16 +123,21 @@ describe("pipeline demo e2e (replay)", () => {
         expect(got.summary).toBe(want.summary);
       }
       // Suggested comments (agent drafts, NOT in the Outbox).
-      const sug = snap.annotations.filter((a) => a.messages.some((m) => m.suggested));
+      const sug = snap.annotations.filter((a) => a.replies.some((r) => r.kind === "comment" && r.suggested));
       expect(sug.length).toBeGreaterThanOrEqual(2);
       for (const a of sug) {
         expect(a.post).toBe(false);
-        expect(a.type).toBe("comment");
+        expect(a.type).toBe("thread");
       }
       // threads.ts assigns `ann_` ids (not the fixture seed ids); match
       // the bare-LF draft by its suggested text instead.
+      const replyText = (r: { blocks?: { type: string }[] }): string =>
+        ((r.blocks ?? []) as { type: string; text?: { standard?: string } }[])
+          .filter((b) => b.type === "paragraph")
+          .map((b) => b.text?.standard ?? "")
+          .join(" ");
       const tlf = snap.annotations.find((a) =>
-        a.messages.some((m) => m.suggested && (m.text ?? "").includes("bare LF")),
+        a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("bare LF")),
       );
       expect(tlf).toBeDefined();
       expect(tlf?.anchor.host).toMatchObject({ kind: "diff-line" });
@@ -146,7 +151,7 @@ describe("pipeline demo e2e (replay)", () => {
         expect(link, `${fid} links its suggested comment`).toBeDefined();
         if (link?.type === "comment-link") {
           const thread = snap.annotations.find((a) => a.id === link.threadId);
-          expect(thread?.messages.some((m) => m.suggested)).toBe(true);
+          expect(thread?.replies.some((r) => r.kind === "comment" && r.suggested)).toBe(true);
           expect(thread?.post).toBe(false);
           expect(link.diffRef).not.toMatch(/:(conn|tconn|tsock|log):/);
         }

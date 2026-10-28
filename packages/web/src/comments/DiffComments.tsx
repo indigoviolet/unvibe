@@ -13,7 +13,7 @@
  * - `slotKeyFor` re-exports the registry key helper.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -60,12 +60,17 @@ export function useDiffCommentBindings(reviewId: string): {
 } {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const inflight = useReview((s) => s.inflight);
+  const collapseAll = useReview((s) => s.collapseAll);
   const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<Pending | null>(null);
 
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying line.
+      if (req.threadId) return;
       if (req.anchor.where === "hunk") {
         // Issue #138: Ask on a hunk summary. The composer sits on the
         // hunk's first changed line; the send keeps the hunk anchor.
@@ -120,10 +125,10 @@ export function useDiffCommentBindings(reviewId: string): {
   }, []);
 
   const byLine = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const annotation of annotations ?? []) {
-      if (annotation.type !== "comment") continue;
-      const thread = annotation as Annotation;
+      if (annotation.type !== "thread" && annotation.type !== "link") continue;
+      const thread = annotation as Thread;
       const host = thread.anchor.host;
       if (host.kind !== "diff-line") continue;
       const key = slotKey(host.fileKey, host.line);
@@ -167,11 +172,13 @@ export function useDiffCommentBindings(reviewId: string): {
   const lineSlots = useMemo<LineSlots>(() => {
     const slots: LineSlots = {};
     for (const [key, threads] of byLine) {
-      const open = threads.filter((t) => t.open);
-      if (open.length === 0) continue;
+      // Collapse-all renders every thread on the line as a row, including
+      // closed ones (which otherwise show only as line icons).
+      const shown = threads.filter((t) => t.open || collapseAll);
+      if (shown.length === 0) continue;
       slots[key] = (
         <>
-          {open.map((t) => (
+          {shown.map((t) => (
             <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
           ))}
           {pending && !readOnly && slotKey(pending.fileKey, pending.line) === key ? (
@@ -213,7 +220,7 @@ export function useDiffCommentBindings(reviewId: string): {
     if (!readOnly) {
       const arrived = new Set<string>();
       for (const a of annotations ?? []) {
-        if (a.type !== "conversation" || !a.open) continue;
+        if (a.type !== "thread" || !a.open) continue;
         if (a.anchor.host.kind !== "diff-line") continue;
         arrived.add(slotKey(a.anchor.host.fileKey, a.anchor.host.line));
       }
@@ -226,7 +233,7 @@ export function useDiffCommentBindings(reviewId: string): {
       }
     }
     return slots;
-  }, [annotations, byLine, pending, reviewId, readOnly, inflight]);
+  }, [annotations, byLine, pending, reviewId, readOnly, inflight, collapseAll]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

@@ -28,20 +28,22 @@ async function gotoReview(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready).catch(() => {});
 }
 
-test("1c. the reply box answers in the same conversation (issue #136)", async ({ page }) => {
+test("1c. the reply box answers in the same thread (issue #136)", async ({ page }) => {
   await gotoReview(page);
   await selectText(page, "#C-central", "fast path");
   await page.locator('#selbar [data-act="explain"]').click();
-  const card = page.locator('#C-central [data-expansion]').first();
-  await expect(card.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
-  // Reply in the card's own box; a second answer lands on the same card.
-  await card.getByPlaceholder("Ask a follow-up…").fill("What about ordering?");
-  await card.getByRole("button", { name: "Reply", exact: true }).click();
-  const answers = card.locator("[data-answer]");
+  const thread = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
+  await expect(thread.locator(".exp-b").first()).toContainText("Mock explanation", { timeout: 8000 });
+  // Reply in the thread's own box; a second answer lands in the same thread.
+  await thread.getByPlaceholder("Ask a follow-up…").fill("What about ordering?");
+  await thread.getByRole("button", { name: "Reply", exact: true }).click();
+  const answers = thread.locator('[data-reply][data-kind="explain"], [data-reply][data-kind="ask"]');
   await expect(answers).toHaveCount(2, { timeout: 8000 });
   await expect(answers.nth(1)).toContainText("Mock explanation", { timeout: 8000 });
-  await expect(answers.nth(1).locator(".ans-q")).toContainText("What about ordering?");
-  // Per-answer controls address the answer: depth on the second answer.
+  // Issue #293: a follow-up question is a reviewer entry before its answer.
+  await expect(thread.locator("[data-ask-question]").last()).toContainText("What about ordering?");
+  await expect(answers.nth(1).locator(".ans-q")).toHaveCount(0);
+  // Per-reply controls address the reply: depth on the second reply.
   await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
   await expect(answers.nth(1).locator(".prose").first()).toContainText("is about unfolding folded header values", { timeout: 8000 });
 });
@@ -51,21 +53,23 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
 }) => {
   await gotoReview(page);
   const card = page.locator("#C-central");
-  // Issue #167: the demo seeds an open pinned card under C-problem that
+  // Issue #167: the demo seeds an open pinned thread under C-problem that
   // overlays the controls below it — close it first, as a reader would.
-  await page.locator('#C-problem [data-expansion]').getByRole("button", { name: "Close" }).click();
-  // Depth − is instant (the fixture stores all three levels).
+  await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
+  // Depth − is instant (the fixture stores all three levels). The toolbar
+  // reveals on card hover (#274).
   const prose = card.locator(".prose").first();
   const before = await prose.innerText();
-  await card.locator("> .ctl").getByRole("button", { name: "Simpler" }).click();
+  await card.hover();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Simpler" }).click();
   await expect.poll(() => prose.innerText(), { timeout: 5000 }).not.toBe(before);
-  await card.locator("> .ctl").getByRole("button", { name: "Deeper" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Deeper" }).click();
   await expect.poll(() => prose.innerText(), { timeout: 5000 }).toBe(before);
   // Use examples inserts once; a second click says nothing more to add.
-  await card.locator("> .ctl").getByRole("button", { name: "Use examples" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Use examples" }).click();
   await expect(card.locator(".gen-aside").first()).toBeVisible({ timeout: 5000 });
   const asides = await card.locator(".gen-aside").count();
-  await card.locator("> .ctl").getByRole("button", { name: "Use examples" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Use examples" }).click();
   // The second click adds nothing — and toasts nothing either (the mock
   // answers accepted with no job and no reused flag, so no toast fires).
   // Negative wait: the duplicate path is fully synchronous in the mock,
@@ -73,16 +77,16 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
   await page.waitForTimeout(250);
   expect(await card.locator(".gen-aside").count()).toBe(asides);
   // Add diagram inserts after the paragraphs it relates to.
-  await card.locator("> .ctl").getByRole("button", { name: "Add diagram" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Add diagram" }).click();
   await expect(card.locator(".dg, .md, pre.code").first()).toBeVisible({ timeout: 5000 });
   // Undo is enabled and reverts the diagram; expansions survive it.
-  await expect(card.locator("> .ctl").getByRole("button", { name: "Undo" })).toBeEnabled();
+  await expect(card.locator("> .chead .ctl").getByRole("button", { name: "Undo" })).toBeEnabled();
   // Draft survival: type a reply, then undo, and the text stays.
   await selectText(page, "#C-central", "fast path");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator("#C-central .ithread[data-pending-thread] textarea, #C-central .composer textarea").first();
   await composer.fill("draft that must survive");
-  await card.locator("> .ctl").getByRole("button", { name: "Undo" }).click();
+  await card.locator("> .chead .ctl").getByRole("button", { name: "Undo" }).click();
   await expect(composer).toHaveValue("draft that must survive");
   await page.keyboard.press("Escape");
   // Collapse chevron first, × last behaviour via the title row.
@@ -107,20 +111,20 @@ test("4. corrections show with accept/dismiss; no shared-context line on the rev
   await expect(page.getByText(/kept \d+ notes? from your conversations/)).toHaveCount(0);
 });
 
-test("5. second opinion works on expansions and survives depth", async ({ page }) => {
+test("5. second opinion works on replies and survives depth", async ({ page }) => {
   await gotoReview(page);
-  // The fixture seeds an open expansion on the problem card.
-  const exp = page.locator('#C-problem [data-expansion]').first();
-  await expect(exp).toBeVisible({ timeout: 5000 });
-  await exp.getByRole("button", { name: /Second opinion/ }).click();
-  await expect(exp.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
-  // Depth on the expansion leaves the result attached: wait for the depth
+  // The fixture seeds an open explain thread on the problem card.
+  const thread = page.locator('#C-problem section.ithread[data-thread]').first();
+  await expect(thread).toBeVisible({ timeout: 5000 });
+  await thread.getByRole("button", { name: /Second opinion/ }).click();
+  await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
+  // Depth on the reply leaves the result attached: wait for the depth
   // change itself (Undo enables only once the depth action lands — the
   // block is already visible, so waiting on it would prove nothing), then
   // check the result survived it.
-  await exp.getByRole("button", { name: "Simpler" }).click();
-  await expect(exp.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 5000 });
-  await expect(exp.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
+  await thread.getByRole("button", { name: "Simpler" }).click();
+  await expect(thread.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 5000 });
+  await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
 });
 
 test("6. filling never scrolls the page on its own", async ({ page }) => {
@@ -132,8 +136,8 @@ test("6. filling never scrolls the page on its own", async ({ page }) => {
   await page.locator('#selbar [data-act="explain"]').click();
   // Wait for the mock fill (700 ms) before comparing: the point is the
   // fill itself never scrolls the page.
-  const exp6 = page.locator("#C-central [data-expansion]").first();
-  await expect(exp6.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
+  const exp6 = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
+  await expect(exp6.locator(".exp-b").first()).toContainText("Mock explanation", { timeout: 8000 });
   expect(await scroller.evaluate((el) => el.scrollTop)).toBe(top);
 });
 
@@ -143,14 +147,22 @@ test("8. header conventions and narrow widths", async ({ page }) => {
   const buttons = head.getByRole("button");
   // Chevron first on the left.
   expect(await buttons.first().getAttribute("aria-label")).toMatch(/Collapse|Expand/);
-  // Expansion header: quote, Open as page, Delete, Close last.
-  const exp = page.locator('#C-problem [data-expansion]').first();
-  const expBtns = exp.locator(".exp-h button");
-  expect(await expBtns.last().getAttribute("aria-label")).toBe("Close");
-  const labels = await expBtns.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+  // Thread header: quote, location, count, actions with Close last.
+  const thread = page.locator('#C-problem section.ithread[data-thread]').first();
+  await expect(thread.locator(".mq").first()).toBeVisible();
+  const thdBtns = thread.locator(".thd button");
+  expect(await thdBtns.last().getAttribute("aria-label")).toBe("Close");
+  const labels = await thdBtns.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
   expect(labels.indexOf("Delete")).toBeLessThan(labels.indexOf("Close"));
-  // Nothing disappears at narrow widths.
+  // Nothing disappears at narrow widths: the toolbar reveals on hover or
+  // keyboard focus (#274).
   await page.setViewportSize({ width: 800, height: 900 });
-  await expect(page.locator("#C-central > .ctl").first()).toBeVisible();
-  await expect(exp.locator(".exp-h").getByRole("button", { name: "Close" })).toBeVisible();
+  const toolbar = page.locator("#C-central > .chead .ctl").first();
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await page.locator("#C-central").hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await toolbar.getByRole("button", { name: "Use examples" }).focus();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await expect(thread.locator(".thd").getByRole("button", { name: "Close" })).toBeVisible();
 });

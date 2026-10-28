@@ -8,8 +8,9 @@
  * - Deterministic flags: `--layout dagre --pad 20 --no-xml-tag
  *   --bundle=false`, no sketch, no animation. Theme `0` (light) / `200`
  *   (dark). `--salt <hash>` namespaces ids per diagram.
- * - `--bundle=false` disables asset bundling/fetching; the pre-check
- *   already rejected `icon:`/image/import sources. The subprocess env is
+ * - `--bundle=false` disables asset bundling/fetching; allowlisted icons
+ *   are pre-fetched and staged by the caller (see `stageIcons`), so the
+ *   binary only ever reads staged local files. The subprocess env is
  *   scrubbed with bogus proxy vars as defence-in-depth.
  */
 import fs from "node:fs";
@@ -17,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { canonicalizeD2Source, D2_RENDER_OPTIONS } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
+import { defaultFetchIcon, stageIcons, type IconFetcher, type IconStrip } from "./icons.js";
 import { precheckD2Source, renameReservedShapeKeys } from "./precheck.js";
 
 export const D2_INPUT_BYTE_CAP = 64 * 1024;
@@ -53,12 +55,16 @@ export interface RenderOpts {
   salt: string;
   theme: typeof D2_THEME_LIGHT | typeof D2_THEME_DARK;
   timeoutMs?: number;
+  /** Icon fetcher (issue #286). Defaults to the real network fetch. */
+  fetchIcon?: IconFetcher;
 }
 
 export interface RenderResult {
   ok: boolean;
   svg?: string;
   error?: string;
+  /** Icons stripped (fetch failed) instead of rendered, with reasons. */
+  iconNotes: IconStrip[];
 }
 
 /** Scrubbed env: minimal PATH, bogus proxies, no tokens. */
@@ -88,12 +94,17 @@ export async function renderD2Theme(source: string, opts: RenderOpts): Promise<R
   // `steps_box` before checking, so the binary sees the fixed source.
   const canon = renameReservedShapeKeys(canonicalizeD2Source(source)).source;
   if (Buffer.byteLength(canon, "utf8") > D2_INPUT_BYTE_CAP) {
-    return { ok: false, error: `diagram source exceeds ${D2_INPUT_BYTE_CAP} bytes` };
+    return { ok: false, error: `diagram source exceeds ${D2_INPUT_BYTE_CAP} bytes`, iconNotes: [] };
   }
   const pre = precheckD2Source(canon);
-  if (!pre.ok) return { ok: false, error: pre.reason };
+  if (!pre.ok) return { ok: false, error: pre.reason, iconNotes: [] };
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
+  // Allowlisted icons are pre-fetched and staged here, then rewritten to
+  // the staged files (d2 embeds local files as `data:` even with
+  // `--bundle=false`, so it never fetches). Failures strip the icon and
+  // are recorded — the diagram still renders.
+  const staged = await stageIcons(canon, { fetcher: opts.fetchIcon ?? defaultFetchIcon, dir: tmpDir });
   await acquire();
   try {
     const args = [
@@ -112,25 +123,25 @@ export async function renderD2Theme(source: string, opts: RenderOpts): Promise<R
         args,
         cwd: tmpDir,
         env: sandboxEnv(),
-        stdin: canon,
+        stdin: staged.source,
         timeoutMs: opts.timeoutMs ?? D2_TIMEOUT_MS,
       });
     } catch (e) {
-      return { ok: false, error: `d2 failed to run: ${(e as Error).message}` };
+      return { ok: false, error: `d2 failed to run: ${(e as Error).message}`, iconNotes: staged.stripped };
     }
     const out = res.stdout;
     if (res.code !== 0) {
       const msg = `${res.stderr}\n${res.stdout}`.split("\n").find((l) => l.trim()) ?? `d2 exited ${res.code}`;
-      return { ok: false, error: msg.slice(0, 500) };
+      return { ok: false, error: msg.slice(0, 500), iconNotes: staged.stripped };
     }
     if (Buffer.byteLength(out, "utf8") > D2_OUTPUT_BYTE_CAP) {
-      return { ok: false, error: `rendered SVG exceeds ${D2_OUTPUT_BYTE_CAP} bytes` };
+      return { ok: false, error: `rendered SVG exceeds ${D2_OUTPUT_BYTE_CAP} bytes`, iconNotes: staged.stripped };
     }
     if (!out.includes("<svg")) {
       const msg = `${res.stderr}`.split("\n").find((l) => l.trim()) ?? "d2 produced no SVG";
-      return { ok: false, error: msg.slice(0, 500) };
+      return { ok: false, error: msg.slice(0, 500), iconNotes: staged.stripped };
     }
-    return { ok: true, svg: out };
+    return { ok: true, svg: out, iconNotes: staged.stripped };
   } finally {
     release();
     try {
@@ -143,11 +154,13 @@ export async function renderD2Theme(source: string, opts: RenderOpts): Promise<R
 
 /**
  * Compile-check via `d2 validate -` (stdin). Fast; no SVG output.
- * Returns `{ ok: true }` or `{ ok: false, error }`.
+ * Allowlisted icons are staged first (like the render path) so validate
+ * never triggers a network fetch either. Returns `{ ok: true }` or
+ * `{ ok: false, error }`.
  */
 export async function checkD2Source(
   source: string,
-  opts: { runner: CommandRunner; binPath: string; timeoutMs?: number },
+  opts: { runner: CommandRunner; binPath: string; timeoutMs?: number; fetchIcon?: IconFetcher },
 ): Promise<{ ok: boolean; error?: string }> {
   const canon = renameReservedShapeKeys(canonicalizeD2Source(source)).source;
   if (Buffer.byteLength(canon, "utf8") > D2_INPUT_BYTE_CAP) {
@@ -157,6 +170,7 @@ export async function checkD2Source(
   if (!pre.ok) return { ok: false, error: pre.reason };
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-d2-"));
+  const staged = await stageIcons(canon, { fetcher: opts.fetchIcon ?? defaultFetchIcon, dir: tmpDir });
   await acquire();
   try {
     let res;
@@ -165,7 +179,7 @@ export async function checkD2Source(
         args: ["validate", "-"],
         cwd: tmpDir,
         env: sandboxEnv(),
-        stdin: canon,
+        stdin: staged.source,
         timeoutMs: opts.timeoutMs ?? D2_TIMEOUT_MS,
       });
     } catch (e) {

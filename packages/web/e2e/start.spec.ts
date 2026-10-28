@@ -34,7 +34,7 @@ test("repo selector lists remembered and detected repos, persisted", async ({ pa
   await expect(page.getByLabel("Repo", { exact: true })).toContainText("you/demo-lib");
 });
 
-test("repo selector sits centered above Reviews, outside the top bar", async ({ page }) => {
+test("repo selector is the left-aligned page title, outside the top bar (#274)", async ({ page }) => {
   await gotoStart(page);
   await expect(page.locator("header.top").getByLabel("Repo", { exact: true })).toHaveCount(0);
   const sel = page.getByLabel("Repo", { exact: true });
@@ -42,15 +42,19 @@ test("repo selector sits centered above Reviews, outside the top bar", async ({ 
   const headerBox = await page.locator("header.top").boundingBox();
   const selBox = await sel.boundingBox();
   const reviewsBox = await page.getByRole("heading", { name: "Reviews" }).boundingBox();
+  // Below the top bar, but above the Reviews section it titles.
   expect(selBox?.y).toBeGreaterThan(headerBox?.y ?? 0);
   expect(selBox && reviewsBox ? selBox.y + selBox.height : 0).toBeLessThanOrEqual(
     reviewsBox?.y ?? 0,
   );
-  // Centred in the content column.
+  // Left-aligned with the content column, not centred in it.
   const mainBox = await page.locator("main .doc").boundingBox();
+  expect(selBox?.x ?? 0).toBeLessThanOrEqual((mainBox?.x ?? 0) + 120);
   const selCenter = (selBox?.x ?? 0) + (selBox?.width ?? 0) / 2;
   const mainCenter = (mainBox?.x ?? 0) + (mainBox?.width ?? 0) / 2;
-  expect(Math.abs(selCenter - mainCenter)).toBeLessThanOrEqual(120);
+  expect(mainCenter - selCenter).toBeGreaterThan(0);
+  // Title-sized type.
+  expect(await sel.evaluate((el) => getComputedStyle(el).fontSize)).toBe("24px");
 });
 
 test("ready indicator shows as a quiet content line, not in the top bar", async ({ page }) => {

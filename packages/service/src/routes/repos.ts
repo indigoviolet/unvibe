@@ -195,7 +195,7 @@ export async function registerRepos(
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const query = req.query as { filter?: string };
+    const query = req.query as { filter?: string; limit?: string; author?: string };
     const rawFilter = query.filter ?? "all";
     if (!(FILTERS as string[]).includes(rawFilter)) {
       return reply.code(400).send({ error: `unknown filter: ${query.filter}` });
@@ -207,7 +207,7 @@ export async function registerRepos(
     // the demo never leaks into "authoring" / "review-requested" / branches.
     if (id === "demo") {
       if (rawFilter !== "all") {
-        return { changes: [] } satisfies RepoChangesResponse;
+        return { changes: [], hasMore: false } satisfies RepoChangesResponse;
       }
       return {
         changes: [
@@ -217,6 +217,7 @@ export async function registerRepos(
             demo: "urllib3-5020",
           },
         ],
+        hasMore: false,
       } satisfies RepoChangesResponse;
     }
     const filter = rawFilter as ChangesFilter;
@@ -230,15 +231,22 @@ export async function registerRepos(
     // branches are current. Best effort — offline degrades to stale data
     // with a visible note, never a failed listing. User checkouts are never
     // fetched implicitly.
+    // #297: `limit` sizes every PR list (larger `--limit` re-fetch pages),
+    // `author` narrows the review-requested searches to that login.
     const fetchError = await refreshManagedCheckout(ctx.runner, repo);
-    const changes = await repoChanges({ runner: ctx.runner, db: ctx.db }, repo, filter);
+    const { changes, hasMore } = await repoChanges(
+      { runner: ctx.runner, db: ctx.db },
+      repo,
+      filter,
+      { limit: query.limit, author: query.author },
+    );
     // #230: the Reviews list reuses this same `gh pr list` result — no
     // extra gh calls. Any review whose PR appears here takes its current
     // state/decision, and the stored review is updated. PRs not in the
     // result keep their stored state. Best effort: never fails the listing.
     await syncReviewsWithPrLists(ctx, changes);
-    if (fetchError) return { changes, fetchError } satisfies RepoChangesResponse;
-    return { changes } satisfies RepoChangesResponse;
+    if (fetchError) return { changes, hasMore, fetchError } satisfies RepoChangesResponse;
+    return { changes, hasMore } satisfies RepoChangesResponse;
   });
 }
 
