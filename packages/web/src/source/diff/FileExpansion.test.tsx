@@ -251,9 +251,12 @@ describe("DiffView unit expansion", () => {
     await fireEvent.click(tconn.getByRole("button", { name: "Show code" }));
     // Big gap (22-210, 189 lines): expand up from the lower hunk. The
     // revealed tail reads atop the clicked hunk (issue #265), not under
-    // the previous one.
-    const up = tconn.getAllByRole("button", { name: "Show 20 more lines" });
-    await fireEvent.click(up[up.length - 1]);
+    // the previous one. The last hunk also carries the optimistic bottom
+    // step (#288), so pick the gap's up control explicitly — not the
+    // file's last step button (which is the bottom control).
+    const dhunksBefore = section.querySelectorAll(".dhunk");
+    const lowerHunk = within(dhunksBefore[2] as HTMLElement);
+    await fireEvent.click(lowerHunk.getAllByRole("button", { name: "Show 20 more lines" })[0]);
     await waitForRevealed(section, 20);
     const dhunks = section.querySelectorAll(".dhunk");
     expect(revealedRows(dhunks[2])).toHaveLength(20);
@@ -367,7 +370,7 @@ describe("FileSection number width", () => {
     }
   });
 
-  it("learns the total up front for a single hunk starting at line 1", async () => {
+  it("shows the bottom step optimistically with no probe, then expands (#288)", async () => {
     const one: Hunk = {
       contentHash: "one-h",
       header: "@@ -1,3 +1,3 @@",
@@ -419,19 +422,29 @@ describe("FileSection number width", () => {
           onUnhide={() => {}}
         />,
       );
-      // No clicks: the probe learns the total, the bottom control
-      // appears, and nothing is revealed.
+      // No probe on load (#288): the optimistic bottom step appears
+      // without any fetch, and nothing is revealed.
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
       });
       expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
-      expect(slice).toHaveBeenCalledWith("demo", { path: "one.py", commit: "abc1234", start: 1, end: 1 });
+      expect(slice).not.toHaveBeenCalled();
+      // One click fetches the assumed step and reveals it, learning the
+      // total (show-all appears for the long tail).
+      await fireEvent.click(screen.getByRole("button", { name: "Show 20 more lines" }));
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(20);
+      });
+      expect(slice).toHaveBeenCalledWith("demo", { path: "one.py", commit: "abc1234", start: 4, end: 23 });
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
+      });
     } finally {
       slice.mockRestore();
     }
   });
 
-  it("shows no bottom control when the hunk ends at the file end", async () => {
+  it("drops the optimistic bottom step when the hunk ends at EOF (#288)", async () => {
     const one: Hunk = {
       contentHash: "one-h",
       header: "@@ -1,3 +1,3 @@",
@@ -448,14 +461,21 @@ describe("FileSection number width", () => {
       ],
     };
     const oneFile: ReviewFile = { fileKey: "one", path: "one.py", category: "source", hunks: [one] };
-    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => ({
-      path: params.path,
-      commit: params.commit,
-      start: params.start,
-      end: params.end,
-      totalLines: 3,
-      lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
-    }));
+    const slice = vi.spyOn(api, "fileSlice").mockImplementation(async (_id, params) => {
+      if (params.end > 3) {
+        throw new Error(
+          `GET /api/reviews/demo/file: 400 ${JSON.stringify({ error: `lines ${params.start}-${params.end} are outside one.py (3 lines)`, totalLines: 3 })}`,
+        );
+      }
+      return {
+        path: params.path,
+        commit: params.commit,
+        start: params.start,
+        end: params.end,
+        totalLines: 3,
+        lines: Array.from({ length: params.end - params.start + 1 }, (_, i) => `line ${params.start + i}`),
+      };
+    });
     try {
       render(
         <FileSection
@@ -483,14 +503,22 @@ describe("FileSection number width", () => {
           onUnhide={() => {}}
         />,
       );
-      // The probe learns total 3 == hunk end: no separator at all, and
-      // the unit control still offers the file level.
+      // Optimistic: the step shows before the total is known. Clicking
+      // it past EOF adds nothing, shows no error, and the control
+      // disappears once the total (3 == hunk end) is learned.
       await waitFor(() => {
-        expect(slice).toHaveBeenCalled();
+        expect(screen.getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+      });
+      expect(slice).not.toHaveBeenCalled();
+      await fireEvent.click(screen.getByRole("button", { name: "Show 20 more lines" }));
+      await waitFor(() => {
+        expect(slice).toHaveBeenCalledWith("demo", { path: "one.py", commit: "abc1234", start: 4, end: 23 });
       });
       await waitFor(() => {
         expect(document.querySelectorAll("tr.xsep")).toHaveLength(0);
       });
+      expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
+      expect(screen.queryByText(/Couldn't load/)).toBeNull();
     } finally {
       slice.mockRestore();
     }

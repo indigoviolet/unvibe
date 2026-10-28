@@ -759,16 +759,6 @@ export function FileSection(props: SectionProps): ReactNode {
     disabled: !canExpand,
   });
   const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
-  // Learn the file total up front for the one shape that could never
-  // reach a first response otherwise: a single hunk starting at line 1
-  // (no top or gap controls to click). Silent: failures just leave the
-  // bottom control hidden.
-  const firstStart = file.hunks.length === 1 ? (file.isDeleted === true ? file.hunks[0].oldStart : file.hunks[0].newStart) : -1;
-  const needProbe = canExpand && expansion.totalLines === null && firstStart === 1 && visible && !props.folded;
-  const probeTotal = expansion.probeTotal;
-  useEffect(() => {
-    if (needProbe) void probeTotal();
-  }, [needProbe, probeTotal]);
   // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
   // Revealed lines can carry more digits than the hunks (a 4-digit file
   // with 3-digit hunks), so they widen the shared width too.
@@ -947,23 +937,38 @@ export function FileSection(props: SectionProps): ReactNode {
             .filter((r) => r.end > he)
             .reduce((s, r) => s + r.end - r.start + 1, 0);
           if (remainingBelow > 0) {
+            // Issue #288: optimistic bottom (total unknown) offers only
+            // the step — the file end is not known, so no show-all count.
+            const optimistic =
+              expansion.totalLines === null && i === file.hunks.length - 1 && below.key === "bottom";
             after.push(
               <ControlSeparator
                 key={`xb-${file.fileKey}-${i}`}
-                controls={[
-                  {
-                    kind: "step",
-                    dir: "down",
-                    label: `Show ${Math.min(20, remainingBelow)} more lines`,
-                    onClick: () => expansion.expandDown(h, i),
-                  },
-                  {
-                    kind: "all",
-                    dir: "down",
-                    label: `Show all ${remainingBelow} lines`,
-                    onClick: () => expansion.expandAll(below, "down"),
-                  },
-                ]}
+                controls={
+                  optimistic
+                    ? [
+                        {
+                          kind: "step",
+                          dir: "down",
+                          label: `Show ${Math.min(20, remainingBelow)} more lines`,
+                          onClick: () => expansion.expandDown(h, i),
+                        },
+                      ]
+                    : [
+                        {
+                          kind: "step",
+                          dir: "down",
+                          label: `Show ${Math.min(20, remainingBelow)} more lines`,
+                          onClick: () => expansion.expandDown(h, i),
+                        },
+                        {
+                          kind: "all",
+                          dir: "down",
+                          label: `Show all ${remainingBelow} lines`,
+                          onClick: () => expansion.expandAll(below, "down"),
+                        },
+                      ]
+                }
                 cols={hcols}
                 pending={expansion.pending}
                 hideOld={hh.hideOld}

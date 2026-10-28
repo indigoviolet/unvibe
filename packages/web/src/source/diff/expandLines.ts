@@ -64,6 +64,25 @@ export function expandRegions(file: Pick<ReviewFile, "hunks" | "isDeleted">, tot
   return out;
 }
 
+/**
+ * Optimistic bottom region for a file whose total is not yet known
+ * (issue #288): the last hunk's end is known, the file end is not, so
+ * assume one step of hidden lines below it. The first click fetches
+ * `[lastEnd+1, lastEnd+step]`; success teaches the total and reveals,
+ * past-the-end teaches the total and the control disappears. Pure: the
+ * hook synthesises this region only while `totalLines` is null.
+ */
+export function optimisticBottomRegion(
+  file: Pick<ReviewFile, "hunks" | "isDeleted">,
+  step: number = EXPAND_STEP,
+): ExpandRegion | null {
+  if (file.hunks.length === 0) return null;
+  const deleted = file.isDeleted === true;
+  const last = file.hunks[file.hunks.length - 1];
+  const end = deleted ? last.oldEnd : last.newEnd;
+  return { key: "bottom", start: end + 1, end: end + step };
+}
+
 /** Merge overlapping/adjacent intervals, sorted. */
 export function mergeRanges(ranges: RevealedRange[]): RevealedRange[] {
   const sorted = [...ranges].sort((a, b) => a.start - b.start);

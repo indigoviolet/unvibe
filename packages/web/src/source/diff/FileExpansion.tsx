@@ -34,9 +34,11 @@ import { cachedLines, highlightLines } from "./highlight/shiki.js";
 import { waitForSelectionClear } from "./highlight/selectionGuard.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import {
+  EXPAND_STEP,
   expandRegions,
   mapNewToOld,
   mergeRanges,
+  optimisticBottomRegion,
   planExpandAll,
   planExpandDown,
   planExpandUp,
@@ -83,8 +85,6 @@ export interface FileExpansion {
   expandAll: (region: ExpandRegion, dir: "up" | "down") => void;
   /** Hide one contiguous revealed block (hover gutter icon). */
   collapseInterval: (start: number, end: number) => void;
-  /** Learn the file total without revealing anything (single-hunk files). */
-  probeTotal: () => void;
   regionAbove: (index: number) => ExpandRegion | null;
   regionBelow: (index: number, hunks: Hunk[]) => ExpandRegion | null;
   /**
@@ -177,25 +177,40 @@ export function useFileExpansion(
   }, []);
   const regionBelow = useCallback(
     (index: number, all: Hunk[]): ExpandRegion | null => {
-      if (index >= all.length - 1) return regions.find((r) => r.key === "bottom") ?? null;
-      return regions.find((r) => r.key === `gap-${index}`) ?? null;
+      if (index < all.length - 1) return regions.find((r) => r.key === `gap-${index}`) ?? null;
+      const known = regions.find((r) => r.key === "bottom") ?? null;
+      if (known) return known;
+      // Issue #288: optimistic bottom while the total is unknown — one
+      // assumed step below the last hunk. The click fetches it; EOF
+      // teaches the total and the control disappears.
+      if (totalLines !== null || all.length === 0) return null;
+      return optimisticBottomRegion({ hunks: all, isDeleted: file.isDeleted });
     },
-    [regions],
+    [regions, totalLines, file],
   );
 
-  const learnTotal = useCallback((err: unknown): void => {
+  const totalFromError = useCallback((err: unknown): number | null => {
     if (err instanceof Error) {
       const m = err.message.match(/: 400 ([\s\S]*)$/);
       if (m) {
         try {
           const body = JSON.parse(m[1]) as Partial<FileSliceRangeError>;
-          if (typeof body.totalLines === "number") setTotalLines(body.totalLines);
+          if (typeof body.totalLines === "number") return body.totalLines;
         } catch {
           // Not JSON: nothing to learn.
         }
       }
     }
+    return null;
   }, []);
+
+  const learnTotal = useCallback(
+    (err: unknown): void => {
+      const total = totalFromError(err);
+      if (total !== null) setTotalLines(total);
+    },
+    [totalFromError],
+  );
 
   const fetchRanges = useCallback(
     async (ranges: RevealedRange[]): Promise<void> => {
@@ -253,14 +268,89 @@ export function useFileExpansion(
     [edgeOf, regions, revealed, fetchRanges, claimSplit],
   );
 
+  /**
+   * Optimistic bottom step (issue #288): fetch `[end+1, end+step]`
+   * without a known total. Success reveals and teaches the total;
+   * past-the-end (400 with `totalLines`) teaches the total silently —
+   * EOF adds nothing and the control disappears, a short tail clamps
+   * to `[start, total]` and reveals. Other failures show as today.
+   */
+  const fetchOptimisticBottom = useCallback(
+    async (start: number, end: number): Promise<void> => {
+      if (opts.disabled) return;
+      const key = `${start}-${end}`;
+      setPendingKeys((prev) => new Set([...prev, key]));
+      setError(null);
+      try {
+        const res = await api.fileSlice(opts.reviewId, { path: src.path, commit: src.commit, start, end });
+        if (res.totalLines !== undefined) setTotalLines(res.totalLines);
+        setTexts((prev) => {
+          const next = new Map(prev);
+          res.lines.forEach((text, i) => next.set(start + i, text));
+          return next;
+        });
+        setRevealed((prev) => mergeRanges([...prev, { start, end }]));
+        setFailed([]);
+      } catch (err) {
+        const total = totalFromError(err);
+        if (total !== null) {
+          setTotalLines(total);
+          if (start > total) {
+            // Hunk ended at EOF: nothing to add, no error.
+            setFailed([]);
+            return;
+          }
+          // Short tail: the guess overshot; clamp and reveal.
+          const clamped: RevealedRange = { start, end: Math.min(end, total) };
+          try {
+            const res = await api.fileSlice(opts.reviewId, {
+              path: src.path,
+              commit: src.commit,
+              start: clamped.start,
+              end: clamped.end,
+            });
+            if (res.totalLines !== undefined) setTotalLines(res.totalLines);
+            setTexts((prev) => {
+              const next = new Map(prev);
+              res.lines.forEach((text, i) => next.set(clamped.start + i, text));
+              return next;
+            });
+            setRevealed((prev) => mergeRanges([...prev, clamped]));
+            setFailed([]);
+            return;
+          } catch (retryErr) {
+            learnTotal(retryErr);
+            setError(friendlyError(retryErr));
+            setFailed([clamped]);
+            return;
+          }
+        }
+        learnTotal(err);
+        setError(friendlyError(err));
+        setFailed([{ start, end }]);
+      } finally {
+        setPendingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [opts.reviewId, opts.disabled, src.path, src.commit, totalFromError, learnTotal],
+  );
+
   const expandDown = useCallback(
     (hunk: Hunk, index: number): void => {
       const { end } = edgeOf(hunk);
       const last = index >= hunks.length - 1;
+      if (last && totalLines === null) {
+        // Optimistic: no known total, no region yet — assume one step.
+        const hidden = revealed.filter((r) => r.end > end);
+        const start = Math.max(end + 1, hidden.length > 0 ? Math.min(...hidden.map((r) => r.start)) : end + 1);
+        void fetchOptimisticBottom(start, start + EXPAND_STEP - 1);
+        return;
+      }
       const region = last ? regions.find((r) => r.key === "bottom") : regions.find((r) => r.key === `gap-${index}`);
-      // No blind probing: the bottom control renders only once the total
-      // is known (learned from any slice/outline response, or the probe
-      // below for single-hunk files starting at line 1).
       if (!region) return;
       const plan = planExpandDown(end, region, revealed);
       if (!plan) return;
@@ -268,7 +358,7 @@ export function useFileExpansion(
       claimSplit(region, plan.end + 1);
       void fetchRanges([plan]);
     },
-    [edgeOf, hunks.length, regions, revealed, fetchRanges, claimSplit],
+    [edgeOf, hunks.length, regions, revealed, fetchRanges, fetchOptimisticBottom, claimSplit, totalLines],
   );
 
   const expandAll = useCallback(
@@ -281,23 +371,6 @@ export function useFileExpansion(
     },
     [revealed, fetchRanges, claimSplit],
   );
-
-  /**
-   * Learn the file total without revealing anything. Only needed for
-   * single-hunk files starting at line 1: every other shape reaches a
-   * slice or outline response (which carries the total) through its top
-   * or gap controls first. Silent: failures just leave the bottom
-   * control hidden.
-   */
-  const probeTotal = useCallback(async (): Promise<void> => {
-    if (opts.disabled || totalLines !== null) return;
-    try {
-      const res = await api.fileSlice(opts.reviewId, { path: src.path, commit: src.commit, start: 1, end: 1 });
-      setTotalLines(res.totalLines);
-    } catch (err) {
-      learnTotal(err);
-    }
-  }, [opts.disabled, opts.reviewId, totalLines, src.path, src.commit, learnTotal]);
 
   const chunkRange = useCallback(
     (start: number, end: number): void => {
@@ -503,7 +576,6 @@ export function useFileExpansion(
     expandDown,
     expandAll,
     collapseInterval,
-    probeTotal,
     regionAbove,
     regionBelow,
     splitFor,

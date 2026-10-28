@@ -10,6 +10,7 @@ import {
   mapNewToOld,
   maxLineDigits,
   mergeRanges,
+  optimisticBottomRegion,
   partitionGap,
   planExpandAll,
   planExpandDown,
@@ -48,6 +49,14 @@ describe("expandRegions", () => {
     const f = file([hunk(1, 5, 1, 5), hunk(6, 10, 6, 10)]);
     expect(expandRegions(f, null)).toEqual([]);
     expect(expandRegions(f, 10)).toEqual([]);
+  });
+
+  it("offers one optimistic step below the last hunk while the total is unknown (#288)", () => {
+    const f = file([hunk(77, 113, 77, 82), hunk(647, 654, 616, 622)]);
+    expect(optimisticBottomRegion(f)).toEqual({ key: "bottom", start: 655, end: 674 });
+    expect(optimisticBottomRegion(file([]))).toBeNull();
+    const del = file([hunk(1, 0, 10, 20)], { isDeleted: true });
+    expect(optimisticBottomRegion(del)).toEqual({ key: "bottom", start: 21, end: 40 });
   });
 
   it("expands old-side numbers for deleted files", () => {

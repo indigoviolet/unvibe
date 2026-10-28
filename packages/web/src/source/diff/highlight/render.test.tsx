@@ -292,10 +292,10 @@ describe("hostile code text (issue #101)", () => {
       // code table holds exactly the one code row (2 cells unified — the
       // pure-add hunk drops the empty old column per #261, leaving new
       // number + code — 4 split, a pair with an empty left)…
-      // (control rows carry `.pr`, so the count excludes the expand
-      // control below the hunk — an injected row would still show up as
-      // an extra non-control row or a third row overall).
-      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr)");
+      // (control rows carry `.pr` or `.xsep`, so the code-row count
+      // excludes the optimistic expand control below the hunk (#288) —
+      // an injected row would still show up as an extra code row).
+      const codeRows = section.querySelectorAll(".dhunk table.diff tbody tr:not(.pr):not(.xsep)");
       expect(codeRows.length).toBe(1);
       expect(codeRows[0].querySelectorAll("td").length).toBe(view === "split" ? 4 : 2);
       if (view === "unified") {
@@ -306,9 +306,12 @@ describe("hostile code text (issue #101)", () => {
       expect(headers.length).toBe(1);
       expect(headers[0].closest("table")).toBeNull();
       // …and no rows, cells or tables were injected anywhere in the section.
-      // The hunk starts at line 1 with an unknown total, so no expansion
-      // control renders either: exactly the one code row.
-      expect(section.querySelectorAll("tr").length).toBe(1);
+      // (#288: the last hunk always offers the optimistic bottom step,
+      // so the section holds the one code row plus the one `.xsep`
+      // expand-control row — an injected row would be a third row or a
+      // second code row.)
+      expect(section.querySelectorAll("tr:not(.xsep)").length).toBe(1);
+      expect(section.querySelectorAll("tr.xsep").length).toBe(1);
       expect(section.querySelectorAll("table").length).toBe(1);
       if (tokens) expect(section.querySelectorAll("td.c .shk-kw").length).toBeGreaterThan(0);
     }
