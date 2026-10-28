@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect x="16" y="16" width="480" height="480" rx="110" fill="#0d9488"/>
-  <path d="M168 148 v168 q0 52 88 52 q88 0 88 -52 v-168 h-60 v168 q0 22 -28 22 q-28 0 -28 -22 v-168 z" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Unvibe favicon (issue #299): the "u" from the wordmark
+       (site/unvibe-wordmark.svg), affine-placed from its own path
+       coordinates (scale 3.4 about the u's centre), in wordmark indigo
+       #38309E on a solid square of "vibe" pink #FF09B7 (plain square
+       corners; the square fills the whole icon, no border).
+       Regenerate the PNG fallbacks with: node site/render-favicon.mjs -->
+  <rect width="64" height="64" fill="#FF09B7"/>
+  <path d="M9.39 16.13V42.18L19.25 52.11H45.33L54.95 42.21V16.13H42.64V39.97H21.73V16.13Z" fill="#38309E"/>
 </svg>
