@@ -3,6 +3,7 @@ import {
   anchorScope,
   ensureThreadGlyphs,
   highlightAnchorInRoot,
+  locateNearestQuoteSegments,
   locateQuoteSegments,
   markTextInElement,
   placeAnchorSpot,
@@ -73,6 +74,41 @@ describe("locateQuoteSegments", () => {
   test("first occurrence wins when several threads share a block", () => {
     const segments = locateQuoteSegments(["fast path and fast path"], "fast path");
     expect(segments?.[0]).toEqual({ node: 0, start: 0, end: 9 });
+  });
+});
+
+describe("locateQuoteSegments whitespace (issue #303)", () => {
+  test("matches across a code span with a newline in the DOM", () => {
+    // Stored quotes are collapsed ("the foo() call"); stored block HTML
+    // may carry newlines or indentation around the inline element.
+    const texts = ["the ", "foo()", "\n  call"];
+    expect(locateQuoteSegments(texts, "the foo() call")).toEqual([
+      { node: 0, start: 0, end: 4 },
+      { node: 1, start: 0, end: 5 },
+      { node: 2, start: 0, end: 7 },
+    ]);
+  });
+
+  test("matches across emphasis with collapsed spaces", () => {
+    const texts = ["a  ", "bold", "   word"];
+    expect(locateQuoteSegments(texts, "a bold word")).toEqual([
+      { node: 0, start: 0, end: 3 },
+      { node: 1, start: 0, end: 4 },
+      { node: 2, start: 0, end: 7 },
+    ]);
+  });
+
+  test("still null when the quote is really absent (chip shows)", () => {
+    expect(locateQuoteSegments(["the ", "foo()", " call"], "the bar() call")).toBeNull();
+    expect(locateQuoteSegments(["  \n  "], "the foo() call")).toBeNull();
+  });
+
+  test("nearest occurrence wins, whitespace-insensitive", () => {
+    const texts = ["fast  path and fast\npath"];
+    const nearSecond = locateNearestQuoteSegments(texts, "fast path", 14);
+    expect(nearSecond?.[0]).toEqual({ node: 0, start: 15, end: 24 });
+    const nearFirst = locateNearestQuoteSegments(texts, "fast path", 0);
+    expect(nearFirst?.[0]).toEqual({ node: 0, start: 0, end: 10 });
   });
 });
 

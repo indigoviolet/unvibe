@@ -1005,6 +1005,14 @@ a.gx:hover { color: var(--accent); }
 .lo mark.fnote.exl { text-decoration: none; }
 .lo mark.fnote.exl .q { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 3px; }
 .lo mark.fnote.exl:hover { color: var(--accent); }
+/* Issue #303: the fallback chip (a collapsed thread whose quote is truly
+   gone) follows #301's neutral thread styling — a quiet bordered chip,
+   never amber. The dotted underline now belongs to glossary terms (#302).
+   Applies when the chip is shown (hidden chips stay hidden via the global
+   [hidden] rule). */
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]) { border: 1px solid var(--line); border-radius: var(--radius-4); background: var(--surface); }
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]) .q { text-decoration: none; }
+.lo mark.anc.exl.fnote[data-fallback]:not([hidden]):hover { color: var(--ink); background: var(--sunk); }
 .lo mark.fnote.th { color: var(--muted); }
 .lo mark.fnote.th:hover { color: var(--note); background: var(--note-soft); text-decoration: none; }
 .lo a.fnote { color: var(--muted); }
