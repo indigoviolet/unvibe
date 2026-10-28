@@ -8,6 +8,7 @@
  * screen) are additions in the same stroke style. #224 adds the PR
  * state/decision set (`pr-open`, `pr-draft`, `pr-merged`, `pr-closed`,
  * `request-changes`, `eye`) in the same style; approved reuses `check`.
+ * #301 adds `second` (second opinion) and `summary` in the same style.
  * Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
@@ -185,6 +186,25 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M2 8c1.6-3 3.6-4.5 6-4.5S12.4 5 14 8c-1.6 3-3.6 4.5-6 4.5S3.6 11 2 8z" />
       <circle cx="8" cy="8" r="1.5" />
+    </>
+  ),
+  /**
+   * Issue #301: Second opinion (a second voice on the same claim — two
+   * overlapping speech bubbles) and Summarize (tapering text lines, a
+   * condensing passage). Same 16x16 stroke style as the rest of the set.
+   */
+  second: (
+    <>
+      <path d="M2.5 3.5h7v5.5H6L3.8 11.2v-2H2.5z" />
+      <path d="M6.5 11.5h7V14H8.7l-2.2 1.5v-1.5" />
+    </>
+  ),
+  summary: (
+    <>
+      <path d="M2.5 3.5h11" />
+      <path d="M2.5 6.8h8" />
+      <path d="M2.5 10h11" />
+      <path d="M2.5 13.2h5.5" />
     </>
   ),
   doc: (

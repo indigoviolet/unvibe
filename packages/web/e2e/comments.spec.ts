@@ -142,7 +142,7 @@ test("an Ask thread and a comment share one diff line", async ({ page }) => {
   await expect(note.locator('[data-reply][data-kind="comment"]')).toHaveCount(1);
 });
 
-test("AI-suggested comments carry no reply box; Ask about this asks in the thread (issue #163)", async ({ page }) => {
+test("AI-suggested comments carry no reply box; selecting text asks in the thread (issue #163, #301)", async ({ page }) => {
   await gotoReview(page);
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   // The seeded suggestion on the diff (agent text, not yet for the PR).
@@ -150,19 +150,21 @@ test("AI-suggested comments carry no reply box; Ask about this asks in the threa
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
   await expect(sug.locator("textarea")).toHaveCount(0);
-  // "Ask about this", as on user comments: the Ask reply lands in the
-  // same thread.
-  await sug.getByRole("button", { name: "Ask about this" }).click();
-  const askReply = sug.locator('[data-reply][data-kind="ask"]');
-  await expect(askReply).toBeVisible({ timeout: 8000 });
-  await expect(askReply.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
-  // Selecting in the suggestion summons the toolbar, anchored to the comment.
+  // Issue #301 removed "Ask about this": selecting in the suggestion
+  // summons the toolbar, anchored to the comment, and Ask opens the
+  // composer inside the thread — the Ask reply lands in the same thread.
   await selectText(page, "#t-sgperf", "Suggested");
   await expect(page.locator("#selbar")).toBeVisible();
   await page.locator('#selbar [data-act="ask"]').click();
   // Exactly one composer: inside the thread (no duplicate on the line).
   await expect(page.locator('#right .ithread[data-pending-thread]')).toHaveCount(1);
-  await expect(page.locator('#t-sgperf .ithread[data-pending-thread]')).toBeVisible({ timeout: 5000 });
+  const composer = page.locator('#t-sgperf .ithread[data-pending-thread]');
+  await expect(composer).toBeVisible({ timeout: 5000 });
+  await composer.locator("textarea").fill("Why this suggestion?");
+  await composer.getByRole("button", { name: "Ask" }).click();
+  const askReply = sug.locator('[data-reply][data-kind="ask"]');
+  await expect(askReply).toBeVisible({ timeout: 8000 });
+  await expect(askReply.locator(".exp-b")).toContainText("Mock explanation", { timeout: 8000 });
 });
 
 test("reply drafts survive unrelated re-renders; Discard clears", async ({ page }) => {

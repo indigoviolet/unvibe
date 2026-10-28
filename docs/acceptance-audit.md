@@ -534,9 +534,9 @@ needed (that deviation is closed, not added).
   thread on the same host. New threads keep the comment composer box
   — met (`actions/conversation.ts`, `comments/ThreadView.tsx` +
   `ReplyBox.tsx` with `followupDraft`, `conversation.test.ts`,
-  journeys J2/J9/J15/J17/J273). “Ask about this” on a
-  comment appends an Ask reply inside the same thread — the only way a
-  comment leads to an agent reply, and the answer is never submitted.
+  journeys J2/J9/J15/J17/J273). Issue #301 removed “Ask about this”:
+  the Reply box is the only way a comment leads to an agent reply, and
+  the answer is never submitted.
   The header never shows an empty or near-empty quote: no quoted text
   (e.g. a line comment) shows only the location, and below ~440px of
   thread width (diff pane at 960px) the quote hides entirely via a
