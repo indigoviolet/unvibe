@@ -1525,6 +1525,25 @@ export function StartPage(): React.JSX.Element {
                       </Button>
                     </p>
                   ) : null}
+                  {/* Owner decision (#297 follow-up): the button sits right
+                      after the PR rows it loads (after the last PR section,
+                      before "Recent branches") — not at the bottom of the
+                      panel. A full PR page means more PRs may exist: a
+                      larger `--limit` re-fetch loads them, and the author
+                      list grows with the new rows. */}
+                  {listsHaveMore ? (
+                    <div style={{ display: "flex", justifyContent: "center", marginTop: 8, marginBottom: 8 }}>
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        data-testid="lists-load-more"
+                        disabled={refreshing}
+                        onClick={loadMorePrs}
+                      >
+                        {refreshing ? "Loading…" : "Load more PRs"}
+                      </Button>
+                    </div>
+                  ) : null}
                   <ChangeSection
                     title="Recent branches"
                     changes={visibleBranches}
@@ -1538,22 +1557,6 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
-                  {/* #297: a full PR page means more PRs may exist — a
-                      larger `--limit` re-fetch loads them, and the author
-                      list grows with the new rows. */}
-                  {listsHaveMore ? (
-                    <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        data-testid="lists-load-more"
-                        disabled={refreshing}
-                        onClick={loadMorePrs}
-                      >
-                        {refreshing ? "Loading…" : "Load more PRs"}
-                      </Button>
-                    </div>
-                  ) : null}
                 </Card>
               )}
             </>
