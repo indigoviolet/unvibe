@@ -90,8 +90,9 @@ test("expands above a hunk in steps and collapses back", async ({ page }) => {
   await clickRowControl(conn, "Show 20 more lines", 0);
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(40);
   await expect(page.locator(`[id="L-${CONN}-37"]`)).toBeVisible();
-  // Collapse hides the region again.
-  await conn.getByRole("button", { name: "Hide 40 lines" }).click();
+  // Collapse hides the revealed lines through the second row's chevron
+  // (issue #308: expand-more is never replaced).
+  await clickRowControl(conn, "Hide expanded lines above");
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(0);
 });
 
@@ -107,10 +108,10 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
   for (const n of [10, 11, 12, 13]) {
     await expect(page.locator(`[id="L-${TCONN}-${n}"]`)).toBeVisible();
   }
-  // Fully revealed: this gap's show-all is gone; the quiet Hide icon
-  // sits on the run's first row instead.
+  // Fully revealed: this gap's show-all is gone; the collapse chevron
+  // (issue #308) sits on the run's second row instead.
   await expect(tconn.getByRole("button", { name: "Show all 4 lines" })).toHaveCount(0);
-  await tconn.getByRole("button", { name: "Hide 4 lines" }).click();
+  await clickRowControl(tconn, "Hide expanded lines below");
   await expect(tconn.locator("tr[data-revealed]")).toHaveCount(0);
 });
 
