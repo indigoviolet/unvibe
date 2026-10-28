@@ -273,7 +273,11 @@ code { font-family: var(--mono); font-size: .86em; }
    where the window edge cuts it, like the variant-A mock. At narrow widths with no side space it sits
    partly behind the content, still faint and legible, and — being fixed —
    never causes horizontal overflow. Multiply goes invisible on dark
-   grounds, so dark mode uses a plain low opacity instead. */
+   grounds, so dark mode uses a plain low opacity instead.
+   #297 follow-up (owner direction): the mount hangs from the top edge —
+   the image is top-anchored a few px below the top bar's bottom edge, so
+   the gap holds at any window height (bottom-anchoring only held at one
+   height). Size, tilt and horizontal position are unchanged. */
 .start-watermark {
   position: fixed;
   inset: 0;
@@ -283,7 +287,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .start-watermark img {
   position: absolute;
   right: -150px;
-  bottom: -110px;
+  top: 14px;
   width: 640px;
   aspect-ratio: 52 / 76;
   object-fit: cover;
