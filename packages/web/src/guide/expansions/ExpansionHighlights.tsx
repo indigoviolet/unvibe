@@ -27,7 +27,7 @@ import { api, friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { anchorMatchesBlock } from "../guideUtils.js";
 import { useReview } from "../../state/store.js";
-import { anchorHostExists, anchorScope, highlightAnchorInRoot, placeAnchorSpot, probeAnchorInRoot, retryUntilSettled, withPreservedSelection, clearMarks, spotFromAnchor } from "../../comments/anchor.js";
+import { anchorHostExists, anchorScope, ensureThreadGlyphs, highlightAnchorInRoot, placeAnchorSpot, probeAnchorInRoot, retryUntilSettled, withPreservedSelection, clearMarks, spotFromAnchor } from "../../comments/anchor.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
@@ -249,6 +249,10 @@ export function ExpansionHighlights() {
           else if (id && highlighted.has(id)) (el as HTMLElement).hidden = true;
         }
         void pages;
+        // Issue #302: one thread glyph after each collapsed thread's text.
+        // Marks survive the `same` fast path above (classes unchanged), so
+        // the glyphs persist there too.
+        ensureThreadGlyphs(root);
       });
       if (pending.size === 0) recordUnplacedAnchors("Guide expansions", []);
       else retry.schedule();

@@ -34,7 +34,6 @@ import { revealSource } from "../source/reveal.js";
 import { ReplyBox } from "./ReplyBox.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
-import { threadPostText } from "./threads.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
 type Depth = (typeof DEPTH_ORDER)[number];
@@ -151,7 +150,9 @@ function isAskWithQuestion(reply: Reply): boolean {
   return reply.kind === "ask" && (reply.question?.trim() ?? "") !== "";
 }
 
-/** Reviewer-styled question entry for an Ask reply (#293). */
+/** Reviewer-styled question entry for an Ask reply (#293). Issue #301:
+ * the avatar sits inline in the first line, with the badge; the body
+ * below uses the thread's normal padding (no avatar column). */
 function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
   const question = (reply.question ?? "").trim();
   return (
@@ -162,16 +163,14 @@ function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): Re
       data-kind="comment"
       data-ask-question={reply.id}
     >
-      <span className="av you" role="img" aria-label="You">
-        <Icon name="person" />
-      </span>
-      <div className="spike-reply-main">
-        <div className="spike-reply-head">
-          <span className="kind kind-comment">comment</span>
-          <span className="ans-q">Reviewer comment</span>
-        </div>
-        <p>{question}</p>
+      <div className="spike-reply-head">
+        <span className="av you" role="img" aria-label="You">
+          <Icon name="person" />
+        </span>
+        <span className="kind kind-comment">comment</span>
+        <span className="ans-q">Reviewer comment</span>
       </div>
+      <p>{question}</p>
     </div>
   );
 }
@@ -296,6 +295,9 @@ function AgentReplyView({
     ));
 
   const askAnswerClass = hideQuestion ? " ask-answer" : "";
+  // Issue #301: the AI avatar sits inline at the start of the reply's
+  // first line, with the kind badge; the body below uses the thread's
+  // normal padding (no avatar column).
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
@@ -304,16 +306,15 @@ function AgentReplyView({
       data-kind={reply.kind}
       {...(hideQuestion ? { "data-ask-answer": reply.id } : {})}
     >
-      <span className="av ai" role="img" aria-label="Agent">
-        <Icon name="spark" />
-      </span>
-      <div className="spike-reply-main">
-        <div className="spike-reply-head">
-          <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
-          {hideQuestion ? null : <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>}
-          {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
-          {awaitingAnswer ? null : (
-            <div className="ctl">
+      <div className="spike-reply-head">
+        <span className="av ai" role="img" aria-label="Agent">
+          <Icon name="spark" />
+        </span>
+        <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
+        {hideQuestion ? null : <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>}
+        {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
+        {awaitingAnswer ? null : (
+          <div className="ctl">
               <DepthControl
                 level={reply.level}
                 disabled={!contentReady}
@@ -351,22 +352,22 @@ function AgentReplyView({
               />
             </div>
           )}
+      </div>
+      {showWorking && !errorText ? <Working text={workingLabel} /> : null}
+      {noAgent ? (
+        <div className="perr" role="status">
+          <span>{NO_AGENT_COPY}</span>
         </div>
-        {showWorking && !errorText ? <Working text={workingLabel} /> : null}
-        {noAgent ? (
-          <div className="perr" role="status">
-            <span>{NO_AGENT_COPY}</span>
-          </div>
-        ) : null}
-        {errorText && !noAgent ? (
-          <div className="perr" role="alert">
-            <span>Couldn't get an answer. Retry, or see Debug for details.</span>
-            <Button variant="primary" size="sm" type="button" data-retry={reply.id} disabled={controlsBusy} onClick={onRetry}>
-              {controlsBusy ? "Retrying…" : "Retry"}
-            </Button>
-          </div>
-        ) : null}
-        <div className={`exp-b${provisional ? " streaming" : ""}`} ref={bodyRef}>
+      ) : null}
+      {errorText && !noAgent ? (
+        <div className="perr" role="alert">
+          <span>Couldn't get an answer. Retry, or see Debug for details.</span>
+          <Button variant="primary" size="sm" type="button" data-retry={reply.id} disabled={controlsBusy} onClick={onRetry}>
+            {controlsBusy ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      ) : null}
+      <div className={`exp-b${provisional ? " streaming" : ""}`} ref={bodyRef}>
           {provisional?.map((block) => (
             <BlockView
               key={block.id}
@@ -392,7 +393,6 @@ function AgentReplyView({
             onFollowUp={onFollowUp}
           />
         ))}
-      </div>
     </div>
   );
 }
@@ -440,16 +440,14 @@ function CommentReplyView({
   }
   return (
     <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind="comment" data-comment={threadId}>
-      <span className="av you" role="img" aria-label="You">
-        <Icon name="person" />
-      </span>
-      <div className="spike-reply-main">
-        <div className="spike-reply-head">
-          <span className="kind kind-comment">comment</span>
-          <span className="ans-q">Reviewer comment</span>
-        </div>
-        {body}
+      <div className="spike-reply-head">
+        <span className="av you" role="img" aria-label="You">
+          <Icon name="person" />
+        </span>
+        <span className="kind kind-comment">comment</span>
+        <span className="ans-q">Reviewer comment</span>
       </div>
+      {body}
     </div>
   );
 }
@@ -635,21 +633,8 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     });
   };
 
-  const onAskAbout = (): void => {
-    const text = threadPostText(thread).trim();
-    if (!text) {
-      toast("Write the comment first, then ask about it");
-      return;
-    }
-    void performAction(
-      reviewId,
-      { kind: "ask", quote: text, threadId: thread.id, message: text } as import("@unvibe/shared").ReviewAction,
-      { toast: false },
-    ).catch((err: unknown) => {
-      toast(`Couldn't ask the agent: ${friendlyError(err)}`);
-    });
-  };
-
+  // Issue #301: removed the "Ask about this" header button — the Reply
+  // box at the end of every thread already asks the agent.
   const onAskFollowup = (text: string): Promise<unknown> => api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
 
   const onPromote = (): void => {
@@ -695,18 +680,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             onClick={togglePost}
           >
             <Icon name="send" />
-          </button>
-        ) : null}
-        {!isNew && !readOnly ? (
-          <button
-            className="ib"
-            type="button"
-            data-tip="Ask about this"
-            aria-label="Ask about this"
-            data-ask-about={thread.id}
-            onClick={onAskAbout}
-          >
-            <Icon name="spark" />
           </button>
         ) : null}
         {!isNew && !readOnly ? (

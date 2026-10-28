@@ -2,8 +2,8 @@
  * Comment thread behaviour against the mock API (`VITE_MOCK=1`):
  * typed text survives unrelated WS patches, Discard clears the box on an
  * existing comment (deletes a new one), Cmd/Ctrl+Enter sends through the
- * comments route, and "Ask about this" opens the usual Ask
- * card on the comment's anchor, quoting the comment.
+ * comments route. Issue #301 removed the "Ask about this" header button:
+ * the Reply box at the end of every thread is the way to ask the agent.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -157,35 +157,17 @@ describe("ThreadView reply box", () => {
   });
 });
 
-describe("ThreadView ask-about (issue #136)", () => {
-  test("asks the agent about the comment text on the comment anchor", async () => {
+describe("ThreadView ask-about removal (issue #301)", () => {
+  test("no Ask about this button: the Reply box already asks the agent", async () => {
     const commenting = thread({ replies: [mkReply("you", "Why is this so?")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [commenting] });
-    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
+    const actionSpy = vi.spyOn(api, "action");
     render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={commenting} /></MemoryRouter>);
     try {
-      fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
-      // Issue #273: Ask about a comment appends inside the same thread.
-      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
-        kind: "ask",
-        quote: "Why is this so?",
-        threadId: "ann_thread_test",
-        message: "Why is this so?",
-      });
-    } finally {
-      actionSpy.mockRestore();
-    }
-  });
-
-  test("no ask-about without comment text", async () => {
-    const empty = thread({ replies: [] });
-    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [empty] });
-    const actionSpy = vi.spyOn(api, "action");
-    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={empty} /></MemoryRouter>);
-    try {
-      // New (unsaved) comments offer no ask-about control.
       expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
       expect(actionSpy).not.toHaveBeenCalled();
+      // The Reply box is the way to ask.
+      expect(screen.getByLabelText("Reply")).toBeInTheDocument();
     } finally {
       actionSpy.mockRestore();
     }
@@ -201,6 +183,18 @@ describe("ThreadView authorship (owner decision: icons, not text)", () => {
     // No visible "Me"/"You" text: the icon alone is the marker.
     expect(avatar?.textContent).toBe("");
     expect(container.querySelector(".msg .who")).toBeNull();
+  });
+
+  test("avatars sit inline in the reply's first line; no avatar column (issue #301)", () => {
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
+    const reply = container.querySelector(".spike-reply");
+    expect(reply).not.toBeNull();
+    // No two-column avatar layout: the old main wrapper is gone and the
+    // avatar is the first child of the heading row.
+    expect(reply?.querySelector(".spike-reply-main")).toBeNull();
+    const head = reply?.querySelector(".spike-reply-head");
+    expect(head?.firstElementChild?.classList.contains("av")).toBe(true);
   });
 });
 
@@ -238,32 +232,14 @@ describe("ThreadView suggested comments (issue #163)", () => {
     expect(screen.getByText("Consider a boundary test.")).toBeInTheDocument();
   });
 
-  test("a suggestion keeps ask-about, Outbox, delete and close", () => {
+  test("a suggestion keeps Outbox, delete and close (no ask-about)", () => {
     const s = suggested();
     seedSuggested(s);
     render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
-    expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
     expect(screen.getByRole("button", { name: /Add to Outbox/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-  });
-
-  test("ask-about on a suggestion asks on the comment anchor, quoting the suggestion", () => {
-    const s = suggested();
-    seedSuggested(s);
-    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true, annotationId: "ann_new" });
-    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
-    try {
-      fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
-      expect(actionSpy).toHaveBeenCalledWith(REVIEW_ID, {
-        kind: "ask",
-        quote: "Consider a boundary test.",
-        threadId: "ann_thread_test",
-        message: "Consider a boundary test.",
-      });
-    } finally {
-      actionSpy.mockRestore();
-    }
   });
 
   test("a user comment keeps its reply box", () => {
@@ -281,8 +257,9 @@ describe("ThreadView suggested comments (issue #163)", () => {
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.getByText("Suggested question")).toBeInTheDocument();
     expect(container.querySelector("textarea")).toBeNull();
-    // Same suggestion controls as findings: ask-about, mark, delete, close.
-    expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
+    // Same suggestion controls as findings minus ask-about (#301):
+    // Outbox, delete, close.
+    expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
   });
 
   test("a finding suggestion carries no question tag", () => {
