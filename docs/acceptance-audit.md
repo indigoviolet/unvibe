@@ -3011,9 +3011,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
 
 - **#284 (guide loading ball + glints; diff glints-only):** the
   guide-building state shows the #275/#281 disco ball (whole
-  `/disco-ball.svg`, 52px, the scene pendulums from the chain mount,
-  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints (6–9px,
-  art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
+  `/disco-ball.svg`, the scene pendulums from the chain mount,
+  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints
+  (art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
   reflections around the sphere — same 2.5s cycle and easing, in phase
   with the swing, drifting slightly and brightest at the swing's ends.
   The diff-loading state shows the same glints in a loose staggered
@@ -3022,7 +3022,19 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `variant="guide" | "diff"`; every other dots indicator is
   unchanged. Reduced motion: scene and glints static but visible. Dark
   mode remaps the ball to line-art-on-dark (lightness-inverted, hue
-  kept) and softens the glint cluster (opacity .7). Evidence: tour
+  kept) and softens the glint cluster (opacity .7).
+- **#284 follow-up (hero-sized loading art):** both indicators are
+  large. The guide ball derives from the start page's ball —
+  `--start-ball: 640px` (the watermark width in `prototype.css`) with
+  `--guide-ball-size: calc(var(--start-ball) * 0.45)` (~288px: the ball
+  fills ~55% of the watermark, so 0.8 of the ball leaves swing room),
+  `max-width: 100%` shrinking it to fit narrow panes. The diff glints
+  scale by the same ratio (~33–50px, sizes/offsets/drift as fractions
+  of the ball size). Art stacks above the label with the group centred
+  in the pane (column `PaneLoading[data-variant]`, pad centres in a
+  floor filling the visible pane); animation timing, sync, reduced motion and themes are
+  unchanged. The tour asserts the hero art stays inside its pane at
+  both swing extremes and the label is uncovered. Evidence: tour
   `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
   `diff-glint-extreme-*`/`diff-glint-mid-*` +
   `review-preparing-*` frames and the #284 reduced-motion test

@@ -105,12 +105,13 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
  * service worker, icons, offline start page). The HTML shell, API and WS
  * stay gated. Query strings are ignored when matching.
  */
-const PUBLIC_STATIC_EXACT = new Set([
+export const PUBLIC_STATIC_EXACT = new Set([
   "/manifest.webmanifest",
   "/sw.js",
   "/start.html",
   "/start.js",
   "/icon.svg",
+  "/icon-32.png",
   "/icon-192.png",
   "/icon-512.png",
   "/icon-512-maskable.png",

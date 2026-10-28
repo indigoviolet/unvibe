@@ -25,21 +25,38 @@ body {
 }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-/* Faint ball watermark: fixed, whole ball visible, tilted ~9deg CCW. */
+/* Faint ball watermark: fixed, whole ball visible, tilted ~9deg CCW.
+ * Desktop (#290): the ceiling mount is centred over the final "d" of
+ * "to understand." at the height of the "to code." line. Both scale with
+ * the h1 size (--h1, same clamp as h1): the "d" is 10.83em from the hero's
+ * left edge, the line's middle 157px + .66em from the top. The .4049/.0656
+ * factors place the rotated mount's centre within the image box. */
 .watermark {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   pointer-events: none;
   z-index: 0;
 }
 .watermark img {
-  width: min(82vmin, 720px);
-  height: min(82vmin, 720px);
+  --ball: min(82vmin, 720px);
+  --h1: clamp(30px, 4.6vw, 60px);
+  position: absolute;
+  left: calc(max(0px, 50% - 560px) + 24px + 10.83 * var(--h1) - .4049 * var(--ball));
+  top: calc(157px + .66 * var(--h1) - .0656 * var(--ball));
+  width: var(--ball);
+  height: var(--ball);
   opacity: .16;
   transform: rotate(-9deg);
   mix-blend-mode: multiply;
+}
+/* Narrow screens: the ball stays centred, as before. */
+@media (max-width: 900px) {
+  .watermark { display: grid; place-items: center; }
+  .watermark img {
+    position: static;
+    width: min(82vmin, 720px);
+    height: min(82vmin, 720px);
+  }
 }
 .wrap {
   position: relative;
