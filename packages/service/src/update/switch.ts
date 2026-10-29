@@ -22,7 +22,8 @@
 import type { CommandRunner, RunResult } from "../exec/index.js";
 import { isPidAlive, readLock } from "../cli/lock.js";
 import { DB_RULE, backupChannel, channelSlotDir, restoreChannel } from "./data-backup.js";
-import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "@unvibe/shared";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "@unvibe/shared/data-format";
 import {
   fetchRefPackage,
   isChannelName,

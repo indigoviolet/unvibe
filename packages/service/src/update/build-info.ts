@@ -15,7 +15,9 @@
  * reported version.
  */
 import fs from "node:fs";
-import { DATA_FORMAT, type UpdateBuildInfo } from "@unvibe/shared";
+import type { UpdateBuildInfo } from "@unvibe/shared";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import { readInstalledBuild } from "./channels.js";
 import { defaultFakeChannels, type FakeInstalledOverride, loadFakeSpecs } from "./updater.js";
 import { fakeInstalledPath, readCurrentRef } from "./state.js";

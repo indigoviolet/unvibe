@@ -14,7 +14,9 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { DATA_FORMAT, type UpdateChannel } from "@unvibe/shared";
+import type { UpdateChannel } from "@unvibe/shared";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/gh.js";
 

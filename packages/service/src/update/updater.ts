@@ -13,7 +13,9 @@
  *   `<dataDir>/update/current-ref`. Never touches the network, npm or git.
  */
 import fs from "node:fs";
-import { DATA_FORMAT, type UpdateChannel } from "@unvibe/shared";
+import type { UpdateChannel } from "@unvibe/shared";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
