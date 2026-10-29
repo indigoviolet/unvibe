@@ -171,6 +171,10 @@ async function serveGeneration(
     process.exit(1);
   });
   console.log(`Unvibe listening on ${url}/?token=${token}`);
+  // #311: an ephemeral port (`UNVIBE_PORT=0`) must stay the same across
+  // a reset restart, or the browser's origin dies with the old generation.
+  const boundPort = Number(new URL(url).port);
+  if (Number.isSafeInteger(boundPort) && boundPort > 0) config.port = boundPort;
   // Stay until shutdown; a reset resolves true so `serve()` starts a
   // fresh generation, anything else exits the process in the hook above.
   const restarted = await generationDone;

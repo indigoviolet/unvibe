@@ -3155,3 +3155,47 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     });
   }
 });
+
+/**
+ * #311: the data-format reset notice, light and dark at 1440px. Its own
+ * service on a seeded old-format data dir (a DB with no format stamp);
+ * the notice is the whole page, so one frame per scheme is the scene.
+ */
+test.describe("data reset notice tour (#311)", () => {
+  let noticeDataDir = "";
+  let noticeSvc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    noticeDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notice-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(noticeDataDir, "unvibe.db"));
+    db.exec(
+      "CREATE TABLE review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL)",
+    );
+    db.close();
+    noticeSvc = await startService(noticeDataDir, { agent: "none" });
+  });
+
+  test.afterAll(async () => {
+    await noticeSvc?.stop().catch(() => {});
+    noticeSvc = null;
+    rmSync(noticeDataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", dark: false },
+    { name: "1440-dark", dark: true },
+  ] as const) {
+    test(`data reset notice (${combo.name})`, async ({ page }) => {
+      if (!noticeSvc) throw new Error("notice service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
+      await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, "data-reset-notice");
+      await shot(page, "data-reset-notice", combo.name, "This version can't read your existing reviews");
+    });
+  }
+});

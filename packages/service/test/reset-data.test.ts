@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runResetDataFlow } from "../src/cli/reset-data.js";
+import { runDoctor } from "../src/cli/doctor.js";
 import { migrate, openDatabase } from "../src/store/index.js";
 // @ts-expect-error plain-ESM script lib, typed in scripts-libs.d.ts by pattern
 import { dataResetSection, parseDataFormat } from "../../../scripts/release-notes-lib.mjs";
@@ -57,6 +58,17 @@ describe("runResetDataFlow", () => {
     expect(fs.existsSync(path.join(moved, "unvibe.db"))).toBe(true);
     expect(fs.readdirSync(dir)).toEqual([]);
   });
+});
+
+describe("unvibe doctor on a scratch data dir", () => {
+  it("reports the format mismatch with reset guidance", async () => {
+    const dir = tmp("unvibe-doctor-");
+    seedOldData(dir);
+    const checks = await runDoctor({ port: 0, dataDir: dir });
+    const fmt = checks.find((c) => c.name === "data format");
+    expect(fmt?.status).toBe("warn");
+    expect(fmt?.detail).toContain("unvibe reset-data");
+  }, 60_000);
 });
 
 describe("release-notes reset section", () => {
