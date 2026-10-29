@@ -41,6 +41,7 @@ import type {
   UpdateSwitchResponse,
 } from "@unvibe/shared";
 import { loadConfig } from "../config.js";
+import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "@unvibe/shared";
 import { readInstalledBuild } from "../update/channels.js";
 import { resolveBuildInfo } from "../update/build-info.js";
 import type { HelperArgs } from "../update/helper.js";
@@ -255,6 +256,17 @@ export async function registerUpdate(
     }
     const target = list.find((c) => c.ref === ref);
     if (!target) return reply.code(404).send({ error: `unknown update channel "${ref}"` });
+
+    // #311: a target build with a different data format resets the
+    // data on its first start. Refuse unless the user already saw the
+    // warning in the picker and chose to continue (`acceptDataReset`).
+    if (
+      compareDataFormat(DATA_FORMAT, target.dataFormat) === "changed" &&
+      target.dataFormat !== null &&
+      body.acceptDataReset !== true
+    ) {
+      return reply.code(409).send({ error: dataFormatResetWarning(DATA_FORMAT, target.dataFormat) });
+    }
 
     // Issue #231: releases are always switchable; previews need the
     // toggle on (the list above is unfiltered, so hidden previews land here).

@@ -1685,6 +1685,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
   {
@@ -1697,6 +1698,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: "main",
     baseCommit: "0011223344556677",
     builtAt: new Date(NOW - 3600_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
   {
@@ -1709,6 +1711,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 7200_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
 ];
@@ -1764,6 +1767,7 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
     baseCommit: found.baseCommit,
     commit: staleCommit ?? found.commit,
     builtAt: staleCommit ? new Date(NOW - 3 * 86400_000).toISOString() : found.builtAt,
+    dataFormat: found.dataFormat ?? 1,
   };
 }
 

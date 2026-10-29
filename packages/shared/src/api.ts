@@ -1657,6 +1657,12 @@ export interface UpdateSwitchRequest {
    * switch, the gate, and the installed-build check still refuse.
    */
   force?: boolean;
+  /**
+   * #311: the user saw the data-reset warning for a target build whose
+   * `DATA_FORMAT` differs and chose to continue anyway. Without it the
+   * switch is refused (409) when the formats differ.
+   */
+  acceptDataReset?: boolean;
 }
 
 /**
