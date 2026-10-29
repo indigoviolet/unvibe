@@ -12,7 +12,8 @@ import type { UpdateBuildInfo } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { badgeLabel, badgeTitle } from "../settings/versionFormat.js";
 
-export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX.Element | null {
+export function PreviewBuildBadge({ compact, disabled }: { compact?: boolean; disabled?: boolean }): React.JSX.Element | null {
+  const off = disabled ? { "aria-disabled": true as const, tabIndex: -1, onClick: (e: React.MouseEvent) => e.preventDefault() } : {};
   const [build, setBuild] = useState<UpdateBuildInfo | null>(null);
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX
         data-testid="preview-marker"
         to="/settings?tab=version"
         title={full}
+        {...off}
       >
         preview
       </Link>
@@ -50,6 +52,7 @@ export function PreviewBuildBadge({ compact }: { compact?: boolean }): React.JSX
       data-testid="preview-badge"
       to="/settings?tab=version"
       title={full}
+      {...off}
     >
       {badgeLabel(build)}
     </Link>

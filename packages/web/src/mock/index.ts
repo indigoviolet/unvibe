@@ -2389,9 +2389,10 @@ export const mockApi = {
   },
 
   // #311: mock data always matches this build's format.
-  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true }),
+  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount: 0, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" }),
   dataFormatOutbox: async () => ({ markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count: 0 }),
   resetDataFormat: async () => ({ ok: true as const, movedTo: "(mock) data moved aside" }),
+  goBackDataFormat: async () => ({ from: "release", to: "release" }),
 
   readiness: async (): Promise<ReadinessResponse> => {
     await wait(50);

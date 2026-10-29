@@ -11,7 +11,7 @@ import { Link } from "react-router";
 import { Icon } from "../components/Icon.js";
 import { getUpdateAvailable, subscribeUpdateCheck, type UpdateCheckState } from "./updateCheck.js";
 
-export function UpdateIcon(): React.JSX.Element | null {
+export function UpdateIcon({ disabled }: { disabled?: boolean } = {}): React.JSX.Element | null {
   const [state, setState] = useState<UpdateCheckState | null>(null);
 
   useEffect(() => {
@@ -38,6 +38,9 @@ export function UpdateIcon(): React.JSX.Element | null {
       aria-label={label}
       title={label}
       data-testid="update-available-icon"
+      {...(disabled
+        ? { "aria-disabled": true as const, tabIndex: -1, onClick: (e: React.MouseEvent) => e.preventDefault() }
+        : {})}
     >
       <Icon name="gift" />
     </Link>

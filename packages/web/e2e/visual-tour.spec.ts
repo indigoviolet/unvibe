@@ -3172,7 +3172,56 @@ test.describe("data reset notice tour (#311)", () => {
     db.exec(
       "CREATE TABLE review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL)",
     );
+    // One unposted draft, so the frame shows the Export card with its
+    // count, and a recorded previous build, so it shows Go back too.
+    const snapshot = {
+      review: { id: "rv_old", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
+      ingest: { status: "ready" },
+      pages: [{ id: "root", kind: "root", title: "Guide title", cards: [] }],
+      annotations: [
+        {
+          type: "thread",
+          id: "t1",
+          anchor: { host: { kind: "diff-line", fileKey: "fk1", line: 2 }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true,
+          pinned: false,
+          post: true,
+          replies: [
+            {
+              id: "r1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
+        },
+      ],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: {},
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    };
+    db.prepare("INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?)").run(
+      "rv_old",
+      1,
+      JSON.stringify(snapshot),
+      0,
+    );
     db.close();
+    mkdirSync(path.join(noticeDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(noticeDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "preview/previous", to: "release", finishedAt: "2026-10-29T00:00:00.000Z", fromVersion: "0.0.11" }) + "\n",
+    );
     noticeSvc = await startService(noticeDataDir, { agent: "none" });
   });
 

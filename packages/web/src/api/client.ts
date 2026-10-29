@@ -41,6 +41,7 @@ import type {
   RemoveRepoResponse,
   ResetDataResponse,
   DataFormatResetResponse,
+  DataFormatGoBackResponse,
   DataFormatStatusResponse,
   ReplyCommentRequest,
   ReposResponse,
@@ -340,6 +341,8 @@ const realApi = {
   dataFormatOutbox: (): Promise<OutboxResponse> => get("/api/data-format/outbox"),
   /** #311: move the data dir aside (never delete) and restart fresh. */
   resetDataFormat: (): Promise<DataFormatResetResponse> => post("/api/data-format/reset"),
+  /** #311: switch back to the previous build through the update path (data untouched). */
+  goBackDataFormat: (): Promise<DataFormatGoBackResponse> => post("/api/data-format/go-back"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>
