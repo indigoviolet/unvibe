@@ -367,10 +367,10 @@ export function createSpendTracker(rates, capUsd) {
   };
 }
 
-/** Settings patch putting every listed role on the selected model. */
+/** Settings patch putting every listed role on the selected model (effort "" = Default). */
 export function liveModelPatch({ provider, model }, roles = ["main", "small"]) {
   const patch = {};
-  for (const role of roles) patch[role] = { provider, model };
+  for (const role of roles) patch[role] = { provider, model, effort: "" };
   return patch;
 }
 
