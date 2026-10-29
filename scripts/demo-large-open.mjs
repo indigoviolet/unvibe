@@ -219,7 +219,11 @@ const main = async () => {
   if (opts.mode === "interactive") {
     // Point every role at pi + muse-spark (the cache was built that way;
     // re-assert after the copy so Ask/Explain/diagram spend on the cap).
-    const patch = { main: { ...DEMO_LARGE_MODEL }, small: { ...DEMO_LARGE_MODEL }, secondOpinion: { ...DEMO_LARGE_MODEL } };
+    const patch = {
+      main: { ...DEMO_LARGE_MODEL, effort: "" },
+      small: { ...DEMO_LARGE_MODEL, effort: "" },
+      secondOpinion: { ...DEMO_LARGE_MODEL, effort: "" },
+    };
     const r = await api(port, "PUT", "/api/settings", patch, token);
     if (r.code !== 200) {
       console.error(`demo-large open: settings refused pi model (HTTP ${r.code}): ${r.raw.slice(0, 200)}`);
