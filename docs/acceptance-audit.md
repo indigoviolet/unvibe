@@ -3475,8 +3475,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   the reset warning with an Export Outbox first button in the confirm
   step, sends `acceptDataReset`, and the switch route re-checks
   server-side (409 without it). An unreadable target format cannot
-  warn — the new build's own gate catches it on start, and the CLI
-  says so.
+  warn — the switch proceeds and the new build's own gate catches a
+  mismatch on start.
 - **Release notes:** `scripts/release-notes.mjs` adds a "Data reset
   needed" section (exact update + reset commands) whenever
   `DATA_FORMAT` at the new tag differs from the previous tag
