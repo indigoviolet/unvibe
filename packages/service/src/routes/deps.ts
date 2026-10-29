@@ -59,6 +59,12 @@ export interface RouteDeps {
   updater?: Updater;
   /** Switch spawn + shutdown wiring (provided by `serve()`). */
   updateHooks?: UpdateHooks;
+  /**
+   * Data-reset wiring (#311, provided by `serve()`): after a reset moved
+   * the data dir aside, restart into a fresh generation. Absent in tests —
+   * `POST /api/data-format/reset` then only moves the data.
+   */
+  onDataFormatReset?: () => void;
   /** SERVICE_VERSION, set by `server.ts` for build identity in update routes. */
   serviceVersion?: string;
   /**

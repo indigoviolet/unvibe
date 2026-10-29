@@ -13,7 +13,7 @@
  *   `<dataDir>/update/current-ref`. Never touches the network, npm or git.
  */
 import fs from "node:fs";
-import type { UpdateChannel } from "@unvibe/shared";
+import { DATA_FORMAT, type UpdateChannel } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
@@ -39,6 +39,8 @@ export interface SwitchToOptions {
    * database the new build may have migrated.
    */
   restoreBackupOf?: string;
+  /** #311: the user accepted the data-reset warning for a format-changing target. */
+  acceptDataReset?: boolean;
 }
 
 export interface Updater {
@@ -114,6 +116,7 @@ export class RealUpdater implements Updater {
       serviceVersion: this.serviceVersion,
       channel: ref,
       ...(opts?.restoreBackupOf ? { restoreBackupOf: opts.restoreBackupOf } : {}),
+      ...(opts?.acceptDataReset ? { acceptDataReset: true } : {}),
       env: this.env,
       ...(this.homeDir !== undefined ? { homeDir: this.homeDir } : {}),
       log: this.log,
@@ -136,6 +139,7 @@ export interface FakeChannelSpec {
   baseBranch?: string | null;
   baseCommit?: string | null;
   builtAt?: string | null;
+  dataFormat?: number | null;
 }
 
 function kindOf(ref: string): UpdateChannel["kind"] {
@@ -145,7 +149,7 @@ function kindOf(ref: string): UpdateChannel["kind"] {
 /** Built-in fake channels (used when no `fake-channels.json` is present). */
 export function defaultFakeChannels(): FakeChannelSpec[] {
   return [
-    { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null },
+    { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, builtAt: null, dataFormat: DATA_FORMAT },
     {
       ref: "preview/feat-x",
       kind: "preview",
@@ -153,6 +157,7 @@ export function defaultFakeChannels(): FakeChannelSpec[] {
       commit: "abc1234def5678",
       sourceBranch: "feat/x",
       builtAt: new Date(Date.now() - 3600_000).toISOString(),
+      dataFormat: DATA_FORMAT,
     },
   ];
 }
@@ -239,6 +244,7 @@ export class FakeUpdater implements Updater {
       baseBranch: c.baseBranch ?? null,
       baseCommit: c.baseCommit ?? null,
       builtAt: c.builtAt ?? null,
+      dataFormat: c.dataFormat ?? null,
       current: c.ref === current,
     }));
   }

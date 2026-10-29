@@ -126,7 +126,9 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/service/src/routes/update.ts` | Version-picker endpoints (status/channels/switch) + helper spawn |
 | `packages/web/src/settings/VersionSection.tsx` | Settings → Version: toggle, channel groups, switch + restart wait |
 | `packages/web/src/shell/PreviewBuildBadge.tsx` | Quiet preview pill (branch · commit) in the review/Settings/Start headers |
-| `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`, single-instance lock |
+| `packages/service/src/cli/` | `start`/`stop`/`status`/`setup`/`open`/`token`/`doctor`/`reset-data`, single-instance lock |
+| `packages/service/src/data-format.ts` + `src/routes/data-format.ts` | #311 format gate: `user_version` stamp check, move-aside reset (never deletes), combined Outbox export, blocked-start notice endpoints |
+| `packages/web/src/data-format/` | #311 full-page reset notice (Export Outbox first, Reset) shown instead of the normal UI on a format mismatch |
 | `packages/service/src/cli/setup/` | `unvibe://` handler (macOS helper, Linux desktop file) + start-at-login unit (launchd agent, systemd user unit, issue #108) |
 | `packages/service/src/cli/managed-cli.ts` | Manager-aware start/stop/status: through launchd/systemd while the login unit is installed, pid-direct otherwise (issue #108 follow-up) |
 | `packages/service/src/update/service-manager.ts` | Login-unit identity/paths/argv, staleness check, unit refresh; imported by the self-contained update-helper bundle |

@@ -19,6 +19,7 @@ import { isSwitchPending } from "./update/index.js";
 import { isAcpRunner } from "./agent/factory.js";
 import { dbFilePath } from "./store/index.js";
 import { migrate, openDatabase } from "./store/index.js";
+import { checkDataFormat, stampDataFormat } from "./data-format.js";
 import { initSentry } from "./telemetry/sentry.js";
 
 export async function serve(): Promise<void> {
@@ -28,6 +29,30 @@ export async function serve(): Promise<void> {
   // Dev-only error reporting (issue #29): on only with SENTRY_DSN_SERVICE.
   const sentry = await initSentry();
   const config = loadConfig();
+  // #311: a data-format reset restarts the service into a fresh
+  // generation (same process, same port) after moving the data aside.
+  for (;;) {
+    const restarted = await serveGeneration(config, sentry);
+    if (!restarted) return;
+  }
+}
+
+async function serveGeneration(
+  config: ReturnType<typeof loadConfig>,
+  sentry: Awaited<ReturnType<typeof initSentry>>,
+): Promise<boolean> {
+  // #311: check the stored format before touching anything. On a
+  // mismatch the old DB is never opened for writing (the app context
+  // runs on an in-memory DB) and the web app shows the reset notice;
+  // only the read-only Outbox export reads the stored DB.
+  const formatStatus = checkDataFormat(config.dataDir);
+  const blocked = formatStatus.state === "mismatch";
+  if (blocked) {
+    console.log(
+      `Unvibe: your stored data is format ${formatStatus.stored ?? "(unstamped)"} but this version reads format ${formatStatus.expected}. ` +
+        `Open the app to export your Outbox and reset, or run \`unvibe reset-data\`. Your data has not been touched.`,
+    );
+  }
   const token = loadOrCreateToken(config.dataDir);
 
   // macOS gotcha (PRD §14): pick up the login-shell PATH so gh/git/agents resolve.
@@ -40,11 +65,17 @@ export async function serve(): Promise<void> {
   // Orphaned probe dirs (issue #279): a SIGKILLed service never runs
   // the diagnoseTool finally, so sweep our own `<dataDir>/tmp/` entries
   // here at startup (each service owns its data dir, so nothing
-  // concurrent is touched).
-  sweepProbeTmp(config.dataDir);
+  // concurrent is touched). Skipped when blocked: the old data dir is
+  // left exactly as it was until the user resets it.
+  if (!blocked) sweepProbeTmp(config.dataDir);
 
-  const db = openDatabase(dbFilePath(config.dataDir));
-  migrate(db);
+  // Blocked generations pass no DB: `createApp` falls back to an
+  // in-memory one, so nothing opens the stored DB for writing.
+  const db = blocked ? undefined : openDatabase(dbFilePath(config.dataDir));
+  if (db) {
+    migrate(db);
+    stampDataFormat(db);
+  }
 
   // buildApp (via createApp) is the single composition root: agent runner
   // defaults to ACP (real subprocesses), replay only with UNVIBE_AGENT.
@@ -59,8 +90,15 @@ export async function serve(): Promise<void> {
   // closes over the context), safe to call twice — the second call waits
   // on the same run instead of tearing down twice.
   let shutdownAndExit: () => void = () => {};
+  // #311: resolves true when this generation shut down for a data reset
+  // (the caller starts a fresh generation instead of exiting).
+  let restartWanted = false;
+  let resolveGeneration: (restarted: boolean) => void = () => {};
+  const generationDone = new Promise<boolean>((resolve) => {
+    resolveGeneration = resolve;
+  });
   const created = await createApp(token, {
-    db,
+    ...(db ? { db } : {}),
     dataDir: config.dataDir,
     mcpBaseUrl: `http://127.0.0.1:${config.port}`,
     lifecycle: {
@@ -78,6 +116,11 @@ export async function serve(): Promise<void> {
       spawnHelper: makeDefaultSpawnHelper(config.dataDir),
       requestShutdown: () => shutdownAndExit(),
     },
+    // #311: after a reset moved the data aside, restart fresh in-process.
+    onDataFormatReset: () => {
+      restartWanted = true;
+      shutdownAndExit();
+    },
   });
   holder.ctx = created.ctx;
 
@@ -91,13 +134,19 @@ export async function serve(): Promise<void> {
   let shutdownRun: Promise<ServiceShutdownReport> | null = null;
   shutdownAndExit = () => {
     if (!shutdownRun) {
-      shutdownRun = shutdownService(buildShutdownSteps({ app: created.app, ctx: created.ctx }, db, sentry), {
-        onTimeout: (step) => console.error(`shutdown: step ${step} timed out, continuing to exit`),
-      }).finally(() => {
+      shutdownRun = shutdownService(
+        buildShutdownSteps({ app: created.app, ctx: created.ctx }, db ?? created.ctx.db, sentry),
+        {
+          onTimeout: (step) => console.error(`shutdown: step ${step} timed out, continuing to exit`),
+        },
+      ).finally(() => {
         removeOwnLock(config.dataDir, me);
       });
     }
-    void shutdownRun.then(() => process.exit(0));
+    void shutdownRun.then(() => {
+      if (restartWanted) resolveGeneration(true);
+      else process.exit(0);
+    });
   };
 
   // Foreground lock: lets `unvibe stop`/`status` find us. Only our own PID
@@ -122,6 +171,16 @@ export async function serve(): Promise<void> {
     process.exit(1);
   });
   console.log(`Unvibe listening on ${url}/?token=${token}`);
+  // #311: an ephemeral port (`UNVIBE_PORT=0`) must stay the same across
+  // a reset restart, or the browser's origin dies with the old generation.
+  const boundPort = Number(new URL(url).port);
+  if (Number.isSafeInteger(boundPort) && boundPort > 0) config.port = boundPort;
+  // Stay until shutdown; a reset resolves true so `serve()` starts a
+  // fresh generation, anything else exits the process in the hook above.
+  const restarted = await generationDone;
+  process.removeListener("SIGTERM", onSignal);
+  process.removeListener("SIGINT", onSignal);
+  return restarted;
 }
 
 /**

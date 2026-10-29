@@ -51,6 +51,8 @@ export interface SwitchPlan {
    * reload. Absent on unforced switches.
    */
   interruptedJobs?: number;
+  /** #311: the user accepted the data-reset warning in the picker (forwarded to the install). */
+  acceptDataReset?: boolean;
 }
 
 /** Recovery path when the app cannot come back on its own (docs + failure outcomes). */
@@ -293,7 +295,7 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
   }
 
   try {
-    const switched = await deps.switchTo(plan.to);
+    const switched = await deps.switchTo(plan.to, plan.acceptDataReset ? { acceptDataReset: true } : undefined);
     deps.log(`installed ${switched.to} (was ${switched.from})`);
   } catch (err) {
     return rollback(`install of ${plan.to} failed: ${(err as Error).message}`);

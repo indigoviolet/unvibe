@@ -24,6 +24,8 @@ import type {
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
+import { compareDataFormat, dataFormatResetWarning } from "@unvibe/shared";
+import { downloadOutboxMarkdown } from "../data-format/outboxDownload.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
 import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
@@ -202,8 +204,14 @@ export function VersionSection({
       setSwitchError(null);
       setDoneNote(null);
       setSwitchingTo(ref);
+      // #311: the confirm panel already showed the reset warning for a
+      // format-changing target; say so on the switch so the service
+      // does not refuse it. The service re-checks either way.
+      const targetChannel = channels?.find((c) => c.ref === ref);
+      const acceptDataReset =
+        compareDataFormat(status?.build?.dataFormat ?? 1, targetChannel?.dataFormat) === "changed";
       try {
-        const res = await api.updateSwitch(ref, force ? true : undefined);
+        const res = await api.updateSwitch(ref, force ? true : undefined, acceptDataReset ? true : undefined);
         if (res.unchanged) {
           if (!cancelled.current) {
             setSwitchingTo(null);
@@ -460,7 +468,7 @@ function VersionRow({
         trailing={trailing}
       />
       {confirming ? (
-        <p className="ver-note warnline">The service restarts. Your data is kept and backed up first.</p>
+        <ConfirmNote channel={c} build={build} verb={verb} />
       ) : isBlocked && blocked ? (
         <div className="ver-note">
           <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
@@ -515,5 +523,62 @@ function BlockedPanel({
         </Button>
       </span>
     </span>
+  );
+}
+
+/**
+ * Switch confirmation (#311): a target whose data format differs gets
+ * the reset warning and an Export Outbox first button; anything else
+ * keeps the plain restart note.
+ */
+function ConfirmNote({
+  channel,
+  build,
+  verb,
+}: {
+  channel: UpdateChannel;
+  build: UpdateBuildInfo | null;
+  verb: string;
+}): React.JSX.Element {
+  const [exported, setExported] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const changed = compareDataFormat(build?.dataFormat ?? 1, channel.dataFormat) === "changed";
+  if (!changed) {
+    return <p className="ver-note warnline">The service restarts. Your data is kept and backed up first.</p>;
+  }
+  return (
+    <div className="ver-note" data-testid="update-data-reset-warning">
+      <p className="warnline" style={{ margin: "0 0 6px" }}>
+        {dataFormatResetWarning(build?.dataFormat ?? 1, channel.dataFormat ?? 0)} The service restarts on the
+        new build, which will ask for that reset before it can open.
+      </p>
+      <span className="frow" style={{ gap: 6, alignItems: "center" }}>
+        <Button
+          variant="secondary"
+          size="sm"
+          type="button"
+          disabled={exporting}
+          onClick={() => {
+            setExporting(true);
+            void api
+              .dataFormatOutbox()
+              .then((out) => {
+                downloadOutboxMarkdown(out.markdown);
+                setExported(out.count);
+              })
+              .catch(() => setExported(-1))
+              .finally(() => setExporting(false));
+          }}
+        >
+          {exporting ? "Exporting…" : "Export Outbox first"}
+        </Button>
+        {exported !== null && exported >= 0 ? (
+          <span className="hint">Exported {exported} draft{exported === 1 ? "" : "s"}.</span>
+        ) : exported !== null ? (
+          <span className="hint">Couldn&apos;t export — open the app and copy the Outbox instead.</span>
+        ) : null}
+        <span className="hint">Then Confirm to {verb} anyway, or Cancel.</span>
+      </span>
+    </div>
   );
 }

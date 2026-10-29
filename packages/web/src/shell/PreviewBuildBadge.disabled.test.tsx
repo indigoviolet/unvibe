@@ -25,6 +25,7 @@ const PREVIEW: HealthResponse = {
     baseCommit: null,
     commit: "ffff000011112222",
     builtAt: new Date().toISOString(),
+    dataFormat: 1,
   },
 };
 
@@ -60,6 +61,7 @@ describe("PreviewBuildBadge", () => {
       baseCommit: "c562ed1bbbbbbb",
       commit: "ffff000011112222",
       builtAt: new Date().toISOString(),
+      dataFormat: 1,
     });
     render(
       <MemoryRouter initialEntries={["/"]}>
