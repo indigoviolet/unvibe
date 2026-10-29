@@ -3525,6 +3525,17 @@ hunk coverage) is reported for a separate issue, not fixed here.
   scratch HOME/data dir/prefix with byte-identical data), tour
   frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
   Full gates not yet run.
+- **Owner follow-up (branch `fix/311-notice-card-width`):** the
+  notice column is sized to the text's measure (720px, the heading's
+  single-line width) instead of the 760px start column, so the
+  Export / Go back / Reset cards' outer edges line up with the
+  heading and paragraphs instead of extending past the wrapped
+  text. One shared width rule (the `.doc` max-width in
+  `DataFormatNotice`); contents, buttons and behaviour unchanged.
+  The j311 journey asserts every card's left/right edges match the
+  heading's within 1px at 1440px and 800px, and the tour scene adds
+  `data-reset-notice-800-{light,dark}.png` frames. Full gates not
+  yet run.
 - **#314 (guide blocks from markdown-it tokens; §4.4):** the block layer
   (`parseBlocks` in `packages/shared/src/content/parse.ts`) is rebuilt on
   markdown-it's block tokens instead of the hand line scanner, so a blank
