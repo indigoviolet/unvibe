@@ -5,8 +5,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { createSeededDemoReview } from "./journey-helpers.js";
-import { DATA_FORMAT, parseBlocks } from "@unvibe/shared";
+import { createSeededDemoReview, stampDataFormat } from "./journey-helpers.js";
+import { parseBlocks } from "@unvibe/shared";
 import { fileURLToPath } from "node:url";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -47,11 +47,8 @@ test.describe("J314 loose numbered lists", () => {
         JSON.stringify(snapshot),
         reviewId,
       );
-      // The raw-SQL seed carries no format stamp (#311); stamp this test
-      // dir as the current format so the service opens it. (Unstamped
-      // seeds show the reset notice instead — pre-existing for every
-      // createSeededDemoReview journey, reported separately.)
-      db.exec(`PRAGMA user_version = ${DATA_FORMAT}`);
+      // Raw-SQL seeds bypass the service's stamp-on-create (#311).
+      stampDataFormat(db);
     } finally {
       db.close();
     }

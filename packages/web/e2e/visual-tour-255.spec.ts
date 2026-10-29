@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { apiJson, git, makeScratchRepo } from "./journeys/journey-helpers.js";
+import { apiJson, git, makeScratchRepo, stampDataFormat } from "./journeys/journey-helpers.js";
 
 const SHOTS = fileURLToPath(new URL("../visual-tour/255", import.meta.url));
 
@@ -118,6 +118,7 @@ test.beforeAll(async () => {
       JSON.stringify(seeded),
       guideReviewId,
     );
+    stampDataFormat(db);
   } finally {
     db.close();
   }

@@ -39,7 +39,7 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1985,6 +1985,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
         JSON.stringify(seeded),
         buildingId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }
@@ -2402,6 +2403,7 @@ test("visual tour document review (#222)", async ({ page }) => {
         JSON.stringify(seeded),
         docReviewId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }
@@ -2898,6 +2900,7 @@ test.describe("visual tour file tab (#81)", () => {
       // comments instead of the no-PR notice (preview is read-only;
       // nothing posts).
       db.prepare("UPDATE reviews SET pr_number = 7 WHERE id = ?").run(ftReview);
+      stampDataFormat(db);
     } finally {
       db.close();
     }

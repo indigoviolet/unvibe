@@ -15,7 +15,7 @@ import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, git, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, git, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
@@ -240,6 +240,7 @@ test.describe("J222 document review", () => {
         JSON.stringify(seeded),
         reviewId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }

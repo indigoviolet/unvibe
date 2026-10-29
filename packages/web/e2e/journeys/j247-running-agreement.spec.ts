@@ -22,7 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson } from "./journey-helpers.js";
+import { apiJson, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -169,6 +169,7 @@ test.describe("J247 start dots and review pill agree", () => {
           JSON.stringify(seeded),
           reviewId,
         );
+        stampDataFormat(db);
       } finally {
         db.close();
       }
