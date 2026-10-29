@@ -19,6 +19,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEMO_LARGE_BUILD_CAP_USD,
+  DEMO_LARGE_DEFAULT_PR,
+  DEMO_LARGE_DEFAULT_REPO,
   DEMO_LARGE_MODEL,
   demoLargeCacheDir,
   demoLargeMetaPath,
@@ -52,8 +54,8 @@ if (args.includes("--help") || args.includes("-h")) {
     "Usage: mise run demo:large:build -- --repo <owner/name|url> --pr <n> [--cap <usd>] [--port N]",
     "                                     [--budget-min M] [--allow-unpriced] [--force]",
     "",
-    "  --repo     public repo (owner/name or https URL); the owner picks the PR on #309",
-    "  --pr       PR number to build the review from",
+    "  --repo     public repo (owner/name or https URL; default python/cpython, owner pick on #309)",
+    "  --pr       PR number to build the review from (default 160318)",
     `  --cap      spend cap in USD (default ${DEMO_LARGE_BUILD_CAP_USD})`,
     "  --port     service port for the build (default 4597)",
     "  --budget-min  pipeline budget in minutes (default 45)",

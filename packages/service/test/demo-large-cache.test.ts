@@ -14,6 +14,8 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import {
   DEMO_LARGE_BUILD_CAP_USD,
+  DEMO_LARGE_DEFAULT_PR,
+  DEMO_LARGE_DEFAULT_REPO,
   DEMO_LARGE_MODEL,
   DEMO_LARGE_OPEN_CAP_USD,
   DEMO_LARGE_SCHEMA_VERSION,
@@ -129,14 +131,15 @@ describe("worktreeGitdirPointers (issue #309)", () => {
 });
 
 describe("arg parsing + repo source (issue #309)", () => {
-  it("build defaults the cap to $1 and requires the owner-picked source", () => {
+  it("build defaults the cap to $1 and the source to cpython#160318", () => {
     expect(DEMO_LARGE_BUILD_CAP_USD).toBe(1);
     expect(DEMO_LARGE_OPEN_CAP_USD).toBe(0.25);
     expect(DEMO_LARGE_MODEL).toEqual({ provider: "pi", model: "muse-spark-1.3-contributor" });
+    expect(DEMO_LARGE_DEFAULT_REPO).toBe("python/cpython");
+    expect(DEMO_LARGE_DEFAULT_PR).toBe(160318);
     const parsed = parseDemoLargeBuildArgs(["--repo", "acme/app", "--pr", "42"]);
     expect(parsed).toMatchObject({ pr: 42, capUsd: 1 });
-    expect(() => parseDemoLargeBuildArgs(["--pr", "42"])).toThrow(/--repo/);
-    expect(() => parseDemoLargeBuildArgs(["--repo", "acme/app"])).toThrow(/--pr/);
+    expect(parseDemoLargeBuildArgs([])).toMatchObject({ repo: "python/cpython", pr: 160318, capUsd: 1 });
     expect(() => parseDemoLargeBuildArgs(["--repo", "acme/app", "--pr", "0"])).toThrow(/--pr/);
   });
 

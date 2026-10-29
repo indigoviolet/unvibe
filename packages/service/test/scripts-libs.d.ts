@@ -71,6 +71,8 @@ declare module "*demo-large-lib.mjs" {
   export const DEMO_LARGE_BUILD_CAP_USD: number;
   export const DEMO_LARGE_OPEN_CAP_USD: number;
   export const DEMO_LARGE_MODEL: { provider: string; model: string };
+  export const DEMO_LARGE_DEFAULT_REPO: string;
+  export const DEMO_LARGE_DEFAULT_PR: number;
   export function demoLargeCacheDir(homeDir?: string): string;
   export function demoLargeMetaPath(cacheDir: string): string;
   export const DEMO_LARGE_CACHE_ENTRIES: string[];
@@ -95,7 +97,7 @@ declare module "*demo-large-lib.mjs" {
   export function worktreeHealthy(worktreePath: string): string | null;
   export function repairWorktrees(dataDir: string): number;
   export function parseDemoLargeBuildArgs(argv: string[]): {
-    repo: string | null;
+    repo: string;
     pr: number;
     capUsd: number;
     port: number;

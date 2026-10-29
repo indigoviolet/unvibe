@@ -26,6 +26,10 @@ export const DEMO_LARGE_OPEN_CAP_USD = 0.25;
 /** pi model every role uses (issue #309, same default as #292). */
 export const DEMO_LARGE_MODEL = { provider: "pi", model: "muse-spark-1.3-contributor" };
 
+/** Default review source (issue #309): owner pick python/cpython#160318. */
+export const DEMO_LARGE_DEFAULT_REPO = "python/cpython";
+export const DEMO_LARGE_DEFAULT_PR = 160318;
+
 /** User cache dir for the large demo, via `node:os` (macOS + Linux). */
 export function demoLargeCacheDir(homeDir = os.homedir()) {
   return path.join(homeDir, ".cache", "unvibe", "demo-large");
@@ -49,7 +53,7 @@ export function managedClonePath(dataDir, owner, name) {
  */
 export function normalizeRepoUrl(repo) {
   const trimmed = (repo ?? "").trim().replace(/\/+$/, "");
-  if (!trimmed) throw new Error("demo-large: --repo <owner/name|url> is required (the owner has not picked the PR yet)");
+  if (!trimmed) throw new Error(`demo-large: --repo <owner/name|url> is required (default ${DEMO_LARGE_DEFAULT_REPO})`);
   const m = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/.exec(trimmed);
   if (m) return { url: `https://github.com/${m[1]}/${m[2]}`, owner: m[1], name: m[2] };
   const short = /^([^/\s]+)\/([^/\s]+)$/.exec(trimmed);
@@ -200,7 +204,7 @@ export function repairWorktrees(dataDir) {
 }
 
 export function parseDemoLargeBuildArgs(argv) {
-  const out = { repo: null, pr: null, capUsd: DEMO_LARGE_BUILD_CAP_USD, port: 4597, allowUnpriced: false, force: false, budgetMin: 45 };
+  const out = { repo: DEMO_LARGE_DEFAULT_REPO, pr: DEMO_LARGE_DEFAULT_PR, capUsd: DEMO_LARGE_BUILD_CAP_USD, port: 4597, allowUnpriced: false, force: false, budgetMin: 45 };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--repo") out.repo = argv[++i] ?? null;
@@ -211,7 +215,7 @@ export function parseDemoLargeBuildArgs(argv) {
     else if (arg === "--allow-unpriced") out.allowUnpriced = true;
     else if (arg === "--force") out.force = true;
   }
-  if (!out.repo) throw new Error("demo-large build: --repo <owner/name|url> is required (the owner picks the PR on #309)");
+  if (!out.repo) throw new Error(`demo-large build: --repo <owner/name|url> is required (got nothing; default is ${DEMO_LARGE_DEFAULT_REPO})`);
   if (!Number.isSafeInteger(out.pr) || out.pr <= 0) {
     throw new Error(`demo-large build: --pr <n> is required (got ${argv.includes("--pr") ? "an invalid value" : "nothing"})`);
   }
