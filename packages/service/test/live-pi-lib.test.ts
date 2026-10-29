@@ -196,8 +196,9 @@ describe("cap pre-flight and spend tracker", () => {
 describe("model selection (single place, TODO #292)", () => {
   it("builds the patch for the requested roles", () => {
     expect(liveModelPatch({ provider: "pi", model: "m" }, ["main", "small"])).toEqual({
-      main: { provider: "pi", model: "m" },
-      small: { provider: "pi", model: "m" },
+      // `effort` is required by the settings contract ("" = provider default).
+      main: { provider: "pi", model: "m", effort: "" },
+      small: { provider: "pi", model: "m", effort: "" },
     });
   });
 
