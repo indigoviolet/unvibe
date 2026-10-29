@@ -185,7 +185,9 @@ inline text form. It renders as `Comment: [[ann:<thread>]] [[<diff:…>]]`.
 
 GitHub Markdown tables and `-`/`*`/`1.` lists. Every table cell and list
 item supports inline Markdown and tokens; a list item's citations attach to
-the item, and the block carries the union.
+the item, and the block carries the union. Blank lines never split a list
+(loose and tight lists are one block); ordered lists keep their start
+number (`3.` starts the numbering at 3).
 
 ## 9. Finding metadata and other structured fields
 

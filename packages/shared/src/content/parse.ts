@@ -32,8 +32,11 @@
  *   and `::: diagram` containers → `AsideBlock` kinds `Example`,
  *   `Underlying principle`, `Diagram`; inner Markdown is parsed recursively.
  * - Tables use GitHub Markdown syntax → `TableBlock.html`. Lists may be
- *   ordered or unordered; each item keeps its own `citations` and the block
- *   carries the union. Unknown `:::` kinds render as plain text.
+ *   ordered or unordered (ordered lists keep their start number in `start`,
+ *   absent means 1); each item keeps its own `citations` and the block
+ *   carries the union. Blank lines never split a list, and continuation
+ *   paragraphs, nested lists, fences and tables inside items stay inside
+ *   the item. Unknown `:::` kinds render as plain text.
  * - Tokens whose ID does not parse are kept as citations with the raw
  *   target so the validator can report them as unverified.
  *
@@ -48,6 +51,7 @@ import type {
   Citation,
   DepthText,
   FollowUpItem,
+  ListBlock,
   ListItem,
 } from "../entities.js";
 import { parseId, type ParsedId } from "../ids.js";
@@ -170,28 +174,7 @@ const FENCE_OPEN = /^```\s*([A-Za-z0-9_-]*)\s*$/;
 const FENCE_CLOSE = /^```\s*$/;
 const DIRECTIVE_OPEN = /^:::\s*([A-Za-z][\w-]*)\s*$/;
 const DIRECTIVE_CLOSE = /^:::\s*$/;
-const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
-const TABLE_ROW = /^\|.*\|\s*$/;
-const TABLE_DELIM_CELL = /^:?-+:?$/;
-const THEMATIC_BREAK = /^(-{3,}|\*{3,}|_{3,})\s*$/;
 const FINDING_LINE = /^finding:\s*(\[\[[^\]]+\]\])\s*$/i;
-
-function isTableDelim(line: string): boolean {
-  const cells = line
-    .trim()
-    .replace(/^\||\|$/g, "")
-    .split("|")
-    .map((c) => c.trim());
-  return cells.length > 0 && cells.every((c) => TABLE_DELIM_CELL.test(c));
-}
-
-function splitRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\||\|$/g, "")
-    .split("|")
-    .map((c) => c.trim());
-}
 
 function parseFollowItem(text: string): FollowUpItem {
   const pipe = text.indexOf("|");
@@ -223,9 +206,77 @@ function asideKindFor(name: string): AsideKind | "simple" | "deep" | null {
   }
 }
 
-interface ListAcc {
-  ordered: boolean;
-  items: { text: string }[];
+// Block structure follows markdown-it's block tokens (issue #314): tight
+// and loose lists, ordered start numbers, continuation paragraphs, nested
+// lists, tables, fences, headings and blockquotes. `:::` containers are not
+// Markdown — they are split out before block parsing (fence-aware, as the
+// old line scanner was) and handled by `closeDirective` unchanged.
+const blockMd = new MarkdownIt({ html: false, linkify: false, typographer: false });
+
+/** One token stream from `blockMd.parse` (the `Token` class it returns). */
+type BlockTokenStream = ReturnType<MarkdownIt["parse"]>;
+
+interface MdChunk {
+  type: "md";
+  text: string;
+}
+
+interface DirectiveChunk {
+  type: "directive";
+  kind: string;
+  lines: string[];
+}
+
+/**
+ * Split top-level `:::` containers out of the Markdown. markdown-it has no
+ * `:::` rule (it would read the markers as paragraph text), so containers
+ * are fenced off first — fence-aware, so a `:::` line inside a fenced code
+ * block stays code. An unclosed container runs to the end of input.
+ */
+function splitDirectives(markdown: string): (MdChunk | DirectiveChunk)[] {
+  const chunks: (MdChunk | DirectiveChunk)[] = [];
+  let md: string[] = [];
+  let fence = false;
+  let directive: { kind: string; lines: string[] } | null = null;
+  const pushMd = (): void => {
+    if (md.length > 0) {
+      chunks.push({ type: "md", text: md.join("\n") });
+      md = [];
+    }
+  };
+  for (const line of markdown.split("\n")) {
+    if (directive !== null) {
+      if (DIRECTIVE_CLOSE.test(line)) {
+        chunks.push({ type: "directive", kind: directive.kind, lines: directive.lines });
+        directive = null;
+      } else {
+        directive.lines.push(line);
+      }
+      continue;
+    }
+    if (fence) {
+      md.push(line);
+      if (FENCE_CLOSE.test(line)) fence = false;
+      continue;
+    }
+    if (FENCE_OPEN.test(line)) {
+      md.push(line);
+      fence = true;
+      continue;
+    }
+    const dirOpen = line.match(DIRECTIVE_OPEN);
+    if (dirOpen && line.trim().startsWith(":::")) {
+      pushMd();
+      directive = { kind: dirOpen[1].toLowerCase(), lines: [] };
+      continue;
+    }
+    md.push(line);
+  }
+  if (directive !== null) {
+    chunks.push({ type: "directive", kind: directive.kind, lines: directive.lines });
+  }
+  pushMd();
+  return chunks;
 }
 
 /**
@@ -238,26 +289,20 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
   let counter = 0;
   const nextId = (): string => `${prefix}b${++counter}`;
 
-  let para: string[] = [];
-  let list: ListAcc | null = null;
-  let followItems: string[] | null = null;
   let followUpNext = false;
-  let table: string[] | null = null;
-  let fence: { lang: string; lines: string[] } | null = null;
-  let directive: { kind: string; lines: string[] } | null = null;
   let diagramAwaitingCaption = false;
 
   const clearCaptionWait = (): void => {
     diagramAwaitingCaption = false;
   };
 
-  function flushPara(): void {
-    if (para.length === 0) return;
-    const raw = para.join(" ").trim();
-    para = [];
-    if (!raw) return;
+  function emitParagraph(raw: string): void {
+    // One logical paragraph: markdown-it's inline content joins wrapped
+    // lines with `\n`; the old scanner joined them with spaces.
+    const text = raw.replace(/\n/g, " ").trim();
+    if (!text) return;
     if (diagramAwaitingCaption) {
-      const m = raw.match(/^caption:\s*(.*)$/i);
+      const m = text.match(/^caption:\s*(.*)$/i);
       if (m) {
         const last = blocks[blocks.length - 1];
         if (last?.type === "diagram") {
@@ -270,7 +315,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       }
     }
     diagramAwaitingCaption = false;
-    const finding = raw.match(FINDING_LINE);
+    const finding = text.match(FINDING_LINE);
     if (finding) {
       const inner = finding[1].slice(2, -2);
       const pipe = inner.indexOf("|");
@@ -281,54 +326,12 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
         return;
       }
     }
-    const rendered = renderInline(raw);
-    const text: DepthText = { standard: rendered.html };
-    blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
+    const rendered = renderInline(text);
+    const paraText: DepthText = { standard: rendered.html };
+    blocks.push({ type: "paragraph", id: nextId(), text: paraText, citations: rendered.citations });
   }
 
-  function flushList(): void {
-    if (followItems !== null) {
-      const items = followItems.map(parseFollowItem).filter((i) => i.label);
-      followItems = null;
-      followUpNext = false;
-      if (items.length > 0) {
-        blocks.push({ type: "follow-up", id: nextId(), items, citations: [] });
-      }
-      clearCaptionWait();
-      return;
-    }
-    if (list === null) return;
-    const acc = list;
-    list = null;
-    if (acc.items.length === 0) return;
-    const renderedItems: ListItem[] = acc.items.map((it) => {
-      const r = renderInline(it.text);
-      return { html: r.html, citations: r.citations };
-    });
-    blocks.push({
-      type: "list",
-      id: nextId(),
-      ordered: acc.ordered,
-      items: renderedItems,
-      citations: unionCitations(renderedItems.map((i) => i.citations)),
-    });
-    clearCaptionWait();
-  }
-
-  function flushTable(): void {
-    if (table === null) return;
-    const rows = table;
-    table = null;
-    if (rows.length < 2) {
-      // Not a real table (no delimiter row): demote to a paragraph.
-      const rendered = renderInline(rows.join(" "));
-      const text: DepthText = { standard: rendered.html };
-      blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
-      clearCaptionWait();
-      return;
-    }
-    const header = splitRow(rows[0]);
-    const bodyRows = rows.slice(2).map(splitRow);
+  function buildTableHtml(header: string[], bodyRows: string[][]): { html: string; citations: Citation[] } {
     const cell = (content: string, tag: "th" | "td"): { html: string; citations: Citation[] } => {
       const r = renderInline(content);
       return { html: `<${tag}>${r.html || "&nbsp;"}</${tag}>`, citations: r.citations };
@@ -346,22 +349,231 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       html += "</tr>";
     }
     html += "</table>";
-    blocks.push({
-      type: "table",
-      id: nextId(),
+    return {
       html,
       citations: unionCitations([
         ...headerCells.map((c) => c.citations),
         ...bodyCells.flatMap((r) => r.map((c) => c.citations)),
       ]),
+    };
+  }
+
+  function emitTable(header: string[], bodyRows: string[][]): void {
+    if (header.length === 0) {
+      // No header (unreachable from real table tokens): demote to a
+      // paragraph, as the old scanner did without a delimiter row.
+      const rendered = renderInline(bodyRows.flat().join(" "));
+      const text: DepthText = { standard: rendered.html };
+      blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
+      clearCaptionWait();
+      return;
+    }
+    const t = buildTableHtml(header, bodyRows);
+    blocks.push({
+      type: "table",
+      id: nextId(),
+      html: t.html,
+      citations: t.citations,
     });
     clearCaptionWait();
   }
 
-  function flushAll(): void {
-    flushPara();
-    flushList();
-    flushTable();
+  function readTable(
+    tokens: BlockTokenStream,
+    openIdx: number,
+  ): { header: string[]; rows: string[][]; end: number } {
+    const end = findClose(tokens, openIdx);
+    const header: string[] = [];
+    const rows: string[][] = [];
+    let section: "head" | "body" | null = null;
+    let currentRow: string[] | null = null;
+    for (let i = openIdx + 1; i < end; i++) {
+      const t = tokens[i];
+      if (t.type === "thead_open") section = "head";
+      else if (t.type === "tbody_open") section = "body";
+      else if (t.type === "tr_open") currentRow = [];
+      else if (t.type === "tr_close") {
+        if (currentRow !== null && section === "body") rows.push(currentRow);
+        currentRow = null;
+      } else if (t.type === "inline") {
+        const prev = tokens[i - 1];
+        if (prev?.type === "th_open") header.push(t.content);
+        else if (prev?.type === "td_open") currentRow?.push(t.content);
+      }
+    }
+    return { header, rows, end };
+  }
+
+  /** Index of the close token matching the open token at `openIdx`. */
+  function findClose(tokens: BlockTokenStream, openIdx: number): number {
+    const base = tokens[openIdx].type.replace(/_open$/, "");
+    let depth = 0;
+    for (let i = openIdx; i < tokens.length; i++) {
+      if (tokens[i].type === `${base}_open`) depth++;
+      else if (tokens[i].type === `${base}_close`) {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return tokens.length - 1;
+  }
+
+  /** Index of the `list_item_close` matching the item open at `openIdx`. */
+  function findItemClose(tokens: BlockTokenStream, openIdx: number, bound: number): number {
+    let depth = 0;
+    for (let i = openIdx; i < bound; i++) {
+      if (tokens[i].type === "list_item_open") depth++;
+      else if (tokens[i].type === "list_item_close") {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return bound;
+  }
+
+  interface CollectedItem {
+    /** Raw joined text (for follow-up parsing and inline rendering). */
+    text: string;
+    /** Embedded HTML that has no block of its own (nested lists, fences). */
+    tailHtml: string;
+    /** Citations from the embedded HTML. */
+    tailCites: Citation[];
+  }
+
+  /**
+   * Collect one list item's content. The flat `Block[]` model has no
+   * nested blocks, so paragraphs join into the item text while nested
+   * lists, fences and tables embed as HTML inside the item (their
+   * citations bubble to the item and the block union).
+   */
+  function collectItem(tokens: BlockTokenStream, from: number, to: number): CollectedItem {
+    const texts: string[] = [];
+    const tailHtml: string[] = [];
+    const tailCites: Citation[][] = [];
+    let i = from;
+    while (i < to) {
+      const t = tokens[i];
+      if (t.type === "paragraph_open") {
+        const inline = tokens[i + 1];
+        if (inline?.type === "inline") texts.push(inline.content);
+        i += 3;
+      } else if (t.type === "heading_open") {
+        // Headings inside items demote to plain text, as at top level.
+        const inline = tokens[i + 1];
+        if (inline?.type === "inline") texts.push(inline.content);
+        i += 3;
+      } else if (t.type === "html_block") {
+        texts.push(t.content);
+        i += 1;
+      } else if (t.type === "fence") {
+        const lang = (t.info.trim().split(/\s+/)[0] ?? "").toLowerCase();
+        const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+        tailHtml.push(`<pre><code${cls}>${escapeHtml(t.content.replace(/\n$/, ""))}</code></pre>`);
+        i += 1;
+      } else if (t.type === "bullet_list_open" || t.type === "ordered_list_open") {
+        const nested = buildList(tokens, i);
+        const itemsHtml = nested.items.map((it) => `<li>${it.html}</li>`).join("");
+        const tag = nested.ordered
+          ? `ol${nested.start !== undefined && nested.start !== 1 ? ` start="${nested.start}"` : ""}`
+          : "ul";
+        tailHtml.push(`<${tag}>${itemsHtml}</${nested.ordered ? "ol" : "ul"}>`);
+        tailCites.push(nested.citations);
+        i = nested.end + 1;
+      } else if (t.type === "table_open") {
+        const table = readTable(tokens, i);
+        const built = buildTableHtml(table.header, table.rows);
+        tailHtml.push(built.html);
+        tailCites.push(built.citations);
+        i = table.end + 1;
+      } else if (t.type === "blockquote_open") {
+        const end = findClose(tokens, i);
+        const inner = collectItem(tokens, i + 1, end);
+        if (inner.text) texts.push(inner.text);
+        if (inner.tailHtml) tailHtml.push(inner.tailHtml);
+        tailCites.push(inner.tailCites);
+        i = end + 1;
+      } else {
+        i += 1;
+      }
+    }
+    return {
+      text: texts.join(" ").replace(/\n/g, " ").trim(),
+      tailHtml: tailHtml.join(""),
+      tailCites: unionCitations(tailCites),
+    };
+  }
+
+  interface BuiltList {
+    ordered: boolean;
+    start?: number;
+    /** Normalized raw text per item (for follow-up parsing). */
+    rawTexts: string[];
+    items: ListItem[];
+    citations: Citation[];
+    /** Index of the list_close token. */
+    end: number;
+  }
+
+  /**
+   * Build one markdown-it list (tight or loose — blank lines never split
+   * it) into a single `ListBlock`. A loose list growing by an item keeps
+   * its block ID, which `parseCardsPartial` and streaming rely on.
+   */
+  function buildList(tokens: BlockTokenStream, openIdx: number): BuiltList {
+    const open = tokens[openIdx];
+    const ordered = open.type === "ordered_list_open";
+    let start: number | undefined;
+    if (ordered) {
+      const raw = open.attrs?.find((a) => a[0] === "start")?.[1];
+      const n = raw === undefined ? 1 : Number(raw);
+      if (Number.isSafeInteger(n) && n !== 1) start = n;
+    }
+    const end = findClose(tokens, openIdx);
+    const collected: CollectedItem[] = [];
+    let i = openIdx + 1;
+    while (i < end) {
+      if (tokens[i].type === "list_item_open") {
+        const itemEnd = findItemClose(tokens, i, end);
+        collected.push(collectItem(tokens, i + 1, itemEnd));
+        i = itemEnd + 1;
+      } else {
+        i += 1;
+      }
+    }
+    const renderedItems: ListItem[] = collected.map((it) => {
+      const r = renderInline(it.text);
+      return { html: r.html + it.tailHtml, citations: unionCitations([r.citations, it.tailCites]) };
+    });
+    return {
+      ordered,
+      ...(start === undefined ? {} : { start }),
+      rawTexts: collected.map((c) => c.text),
+      items: renderedItems,
+      citations: unionCitations(renderedItems.map((r) => r.citations)),
+      end,
+    };
+  }
+
+  function emitList(bl: BuiltList): void {
+    if (followUpNext) {
+      followUpNext = false;
+      const items = bl.rawTexts.map(parseFollowItem).filter((it) => it.label);
+      if (items.length > 0) {
+        blocks.push({ type: "follow-up", id: nextId(), items, citations: [] });
+      }
+      clearCaptionWait();
+      return;
+    }
+    const block: ListBlock = {
+      type: "list",
+      id: nextId(),
+      ordered: bl.ordered,
+      ...(bl.start === undefined ? {} : { start: bl.start }),
+      items: bl.items,
+      citations: bl.citations,
+    };
+    blocks.push(block);
+    clearCaptionWait();
   }
 
   function closeFence(f: { lang: string; lines: string[] }): void {
@@ -432,142 +644,100 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
     clearCaptionWait();
   }
 
-  const lines = markdown.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    if (fence !== null) {
-      if (FENCE_CLOSE.test(line)) {
-        const f = fence;
-        fence = null;
-        closeFence(f);
-      } else {
-        fence.lines.push(line);
+  function walkRange(tokens: BlockTokenStream, from: number, to: number): void {
+    let i = from;
+    while (i < to) {
+      const t = tokens[i];
+      switch (t.type) {
+        case "paragraph_open": {
+          const inline = tokens[i + 1];
+          // A non-list line ends a pending Follow-ups heading with no list.
+          if (followUpNext) followUpNext = false;
+          emitParagraph(inline?.type === "inline" ? inline.content : "");
+          i += 3;
+          break;
+        }
+        case "fence": {
+          emitFenceToken(t.info, t.content);
+          i += 1;
+          break;
+        }
+        case "heading_open": {
+          const level = Number(t.tag.slice(1)) || 1;
+          const inline = tokens[i + 1];
+          const text = (inline?.type === "inline" ? inline.content : "").trim();
+          if (t.tag === "h2") {
+            // Card boundary: parseCards owns these; parseBlocks skips them.
+            clearCaptionWait();
+          } else if (
+            level >= 1 &&
+            level <= 4 &&
+            FOLLOW_UPS_HEADING.test(`${"#".repeat(level)} ${text}`)
+          ) {
+            followUpNext = true;
+            clearCaptionWait();
+          } else {
+            // Other headings render as plain text (only ## and Follow-ups
+            // are structural).
+            if (followUpNext) followUpNext = false;
+            emitParagraph(text);
+          }
+          i += 3;
+          break;
+        }
+        case "hr": {
+          clearCaptionWait();
+          i += 1;
+          break;
+        }
+        case "bullet_list_open":
+        case "ordered_list_open": {
+          emitList(buildList(tokens, i));
+          i = findClose(tokens, i) + 1;
+          break;
+        }
+        case "blockquote_open": {
+          // The old scanner stripped `>` markers into the surrounding
+          // text; walk the quoted content as ordinary blocks.
+          const end = findClose(tokens, i);
+          walkRange(tokens, i + 1, end);
+          i = end + 1;
+          break;
+        }
+        case "table_open": {
+          const table = readTable(tokens, i);
+          emitTable(table.header, table.rows);
+          i = table.end + 1;
+          break;
+        }
+        case "html_block": {
+          if (followUpNext) followUpNext = false;
+          emitParagraph(t.content);
+          i += 1;
+          break;
+        }
+        default: {
+          i += 1;
+          break;
+        }
       }
-      continue;
     }
-
-    if (directive !== null) {
-      if (DIRECTIVE_CLOSE.test(line)) {
-        const d = directive;
-        directive = null;
-        closeDirective(d.kind, d.lines);
-      } else {
-        directive.lines.push(line);
-      }
-      continue;
-    }
-
-    if (/^\s*$/.test(line)) {
-      flushPara();
-      flushTable();
-      if (list !== null || followItems !== null) flushList();
-      continue;
-    }
-
-    const fenceOpen = line.match(FENCE_OPEN);
-    if (fenceOpen) {
-      flushAll();
-      fence = { lang: (fenceOpen[1] ?? "").toLowerCase(), lines: [] };
-      continue;
-    }
-
-    const dirOpen = line.match(DIRECTIVE_OPEN);
-    if (dirOpen && line.trim().startsWith(":::")) {
-      flushAll();
-      directive = { kind: dirOpen[1].toLowerCase(), lines: [] };
-      continue;
-    }
-
-    const cardTitle = line.match(CARD_HEADING);
-    if (cardTitle && line.startsWith("## ")) {
-      // Card boundary: parseCards owns these; parseBlocks skips them.
-      flushAll();
-      clearCaptionWait();
-      continue;
-    }
-    if (FOLLOW_UPS_HEADING.test(line)) {
-      flushAll();
-      followUpNext = true;
-      clearCaptionWait();
-      continue;
-    }
-    if (/^#{1,6}\s+/.test(line)) {
-      // Other headings render as plain text (only ## and Follow-ups are structural).
-      flushList();
-      flushTable();
-      para.push(line.replace(/^#{1,6}\s+/, "").trim());
-      continue;
-    }
-    if (THEMATIC_BREAK.test(line.trim())) {
-      flushAll();
-      clearCaptionWait();
-      continue;
-    }
-
-    const listMatch = line.match(LIST_ITEM);
-    if (listMatch) {
-      flushPara();
-      flushTable();
-      const ordered = /^\d/.test(listMatch[2].trim());
-      const text = listMatch[3].trim();
-      if (followUpNext) {
-        if (followItems === null) followItems = [];
-        followItems.push(text);
-      } else {
-        if (list !== null && list.ordered !== ordered) flushList();
-        if (list === null) list = { ordered, items: [] };
-        list.items.push({ text });
-      }
-      continue;
-    }
-
-    if (TABLE_ROW.test(line)) {
-      const next = lines[i + 1] ?? "";
-      if (table !== null || isTableDelim(next)) {
-        flushPara();
-        if (list !== null || followItems !== null) flushList();
-        if (table === null) table = [];
-        table.push(line);
-        continue;
-      }
-      // A lone |…| line without a delimiter row: paragraph text.
-      if (table !== null) flushTable();
-      if (list !== null || followItems !== null) flushList();
-      para.push(line.trim());
-      continue;
-    }
-
-    // Ordinary text (or blockquote content).
-    if (table !== null) flushTable();
-    if (list !== null || (followItems !== null && !followUpNext)) {
-      // A non-list line ends an open list; a Follow-ups heading with no
-      // list after it is ignored.
-      if (followItems !== null) {
-        followItems = null;
-        followUpNext = false;
-      } else {
-        flushList();
-      }
-    } else if (followUpNext && followItems === null) {
-      followUpNext = false;
-    }
-    const quote = line.match(/^\s*>\s?(.*)$/);
-    para.push((quote ? quote[1] : line).trim());
   }
 
-  if (fence !== null) {
-    // Lenient full parse: an unclosed fence still yields its block.
-    const f = fence;
-    fence = null;
-    closeFence(f);
+  function emitFenceToken(info: string, content: string): void {
+    const lang = (info.trim().split(/\s+/)[0] ?? "").toLowerCase();
+    const lines = content.endsWith("\n") ? content.slice(0, -1).split("\n") : content.split("\n");
+    closeFence({ lang, lines });
   }
-  if (directive !== null) {
-    const d = directive;
-    directive = null;
-    closeDirective(d.kind, d.lines);
+
+  for (const chunk of splitDirectives(markdown)) {
+    if (chunk.type === "directive") {
+      closeDirective(chunk.kind, chunk.lines);
+    } else {
+      const tokens = blockMd.parse(chunk.text, {});
+      walkRange(tokens, 0, tokens.length);
+    }
   }
-  flushAll();
   return blocks;
 }
 
@@ -824,9 +994,10 @@ export function renderMarkdown(blocks: Block[]): string {
         if (b.text.simple) parts.push(`::: simple\n${inlineToMarkdown(b.text.simple)}\n:::`);
         if (b.text.deep) parts.push(`::: deep\n${inlineToMarkdown(b.text.deep)}\n:::`);
         break;
-      case "list":
+      case "list": {
+        const start = b.ordered ? (b.start ?? 1) : 1;
         b.items.forEach((it, i) => {
-          const marker = b.ordered ? `${i + 1}.` : "-";
+          const marker = b.ordered ? `${start + i}.` : "-";
           parts.push(`${marker} ${withCitations(inlineToMarkdown(it.html), it.citations)}`);
         });
         for (const c of b.citations) {
@@ -835,6 +1006,7 @@ export function renderMarkdown(blocks: Block[]): string {
           }
         }
         break;
+      }
       case "table":
         parts.push(withCitations(tableToMarkdown(b.html), b.citations));
         break;

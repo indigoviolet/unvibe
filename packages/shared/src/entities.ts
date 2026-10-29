@@ -372,6 +372,12 @@ export interface ListBlock {
   type: "list";
   id: string;
   ordered: boolean;
+  /**
+   * Issue #314: ordered lists keep their start number (rendered as
+   * `<ol start>`). Absent (or 1) means the list starts at 1, the HTML
+   * default — snapshots written before #314 render exactly as before.
+   */
+  start?: number;
   items: ListItem[];
   /** Block-level citations in addition to per-item ones. */
   citations: Citation[];

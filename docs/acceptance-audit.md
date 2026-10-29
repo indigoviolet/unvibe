@@ -3521,3 +3521,28 @@ hunk coverage) is reported for a separate issue, not fixed here.
   scratch HOME/data dir/prefix with byte-identical data), tour
   frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
   Full gates not yet run.
+- **#314 (guide blocks from markdown-it tokens; §4.4):** the block layer
+  (`parseBlocks` in `packages/shared/src/content/parse.ts`) is rebuilt on
+  markdown-it's block tokens instead of the hand line scanner, so a blank
+  line no longer ends a list: a loose numbered list ("1. a", blank line,
+  "2. b", …) is one `list` block rendering as one `<ol>` numbered 1–4,
+  not several one-item lists each rendering "1.". Ordered lists keep
+  their start number (`ListBlock.start`, absent means 1, rendered as
+  `<ol start>`), continuation paragraphs / nested lists / fences / tables
+  inside items stay inside the item, and every other convention is
+  unchanged (per-paragraph/item citations with the block union, `[[…]]`
+  tokens, d2 fences with `link:` cites and caption, mermaid as code,
+  asides, callouts, follow-ups, title fallback and echo strip, card
+  splitting). Block IDs stay stable on append (a growing loose list
+  keeps its ID). No stored-shape break: `start` is absent on older
+  snapshots, which render exactly as before, so `DATA_FORMAT` stays 1.
+  Evidence: shared `test/content-parse.test.ts` "parseBlocks lists"
+  (loose/tight ordered/unordered, continuation, nested, list+paragraph,
+  start 3 with round trip, fence in item, per-item citations, ID
+  stability, `:::` adjacency, citation round trip) and web
+  `BlockView.list.test.tsx` `<ol start>` rendering; journey
+  `e2e/journeys/j314-loose-lists.spec.ts` (real service over a seeded
+  review: one `<ol>` with four `<li>`, no `start`, texts 1–4 in order)
+  with tour frame `packages/web/visual-tour/314/loose-list.png`
+  (git-ignored), inspected. No existing parse test encoded the bug, so
+  none changed for it. Full gates not yet run.

@@ -217,6 +217,114 @@ describe("parseBlocks golden", () => {
   });
 });
 
+describe("parseBlocks lists (issue #314)", () => {
+  function listOf(md: string) {
+    const blocks = parseBlocks(md);
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0];
+    expect(list.type).toBe("list");
+    if (list.type !== "list") throw new Error("not a list");
+    return list;
+  }
+
+  it("keeps a loose numbered list in one block (the #314 bug)", () => {
+    const list = listOf("1. a\n\n2. b\n\n3. c\n\n4. d\n");
+    expect(list.ordered).toBe(true);
+    expect(list.start).toBeUndefined();
+    expect(list.items.map((it) => it.html)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("keeps tight ordered and unordered lists in one block", () => {
+    const ordered = listOf("1. a\n2. b\n");
+    expect(ordered.ordered).toBe(true);
+    expect(ordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+    const unordered = listOf("- a\n- b\n");
+    expect(unordered.ordered).toBe(false);
+    expect(unordered.start).toBeUndefined();
+    expect(unordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+    const looseUnordered = listOf("- a\n\n- b\n");
+    expect(looseUnordered.ordered).toBe(false);
+    expect(looseUnordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+  });
+
+  it("keeps an indented continuation paragraph inside its item", () => {
+    const list = listOf("1. a\n   continued here\n\n2. b\n");
+    expect(list.items.map((it) => it.html)).toEqual(["a continued here", "b"]);
+  });
+
+  it("nests inner lists as HTML inside the outer item", () => {
+    const list = listOf("- outer\n  - inner1\n  - inner2\n- outer2\n");
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].html).toBe("outer<ul><li>inner1</li><li>inner2</li></ul>");
+    expect(list.items[1].html).toBe("outer2");
+  });
+
+  it("parses a paragraph after a list as its own block", () => {
+    const blocks = parseBlocks("- a\n- b\n\nAfter the list.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["list", "paragraph"]);
+    expect(blocks[0].type).toBe("list");
+    if (blocks[0].type !== "list") return;
+    expect(blocks[0].items.map((it) => it.html)).toEqual(["a", "b"]);
+    expect(blocks[1].type).toBe("paragraph");
+    if (blocks[1].type !== "paragraph") return;
+    expect(blocks[1].text.standard).toBe("After the list.");
+  });
+
+  it("keeps an ordered list's start number", () => {
+    const list = listOf("3. a\n4. b\n");
+    expect(list.ordered).toBe(true);
+    expect(list.start).toBe(3);
+    const back = listOf(renderMarkdown([list]));
+    expect(back.start).toBe(3);
+    expect(back.items.map((it) => it.html)).toEqual(["a", "b"]);
+  });
+
+  it("keeps a fenced code block inside its list item", () => {
+    const list = listOf("- outer\n\n  ```python\n  x = 1\n  ```\n\n- outer2\n");
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].html).toContain("outer");
+    expect(list.items[0].html).toContain('<pre><code class="language-python">x = 1</code></pre>');
+    expect(list.items[1].html).toBe("outer2");
+  });
+
+  it("keeps per-item citations and the block union on a loose list", () => {
+    const list = listOf("- First [[diff:conn:91-110]]\n\n- Second\n");
+    expect(list.items[0].citations).toEqual([{ target: "diff:conn:91-110" }]);
+    expect(list.items[1].citations).toEqual([]);
+    expect(list.citations).toEqual([{ target: "diff:conn:91-110" }]);
+  });
+
+  it("keeps a loose list's ID stable when it grows by an item", () => {
+    const before = parseBlocks("1. a\n\n2. b\n");
+    const after = parseBlocks("1. a\n\n2. b\n\n3. c\n");
+    expect(before).toHaveLength(1);
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(before[0].id);
+    expect(after[0].type).toBe("list");
+    if (after[0].type !== "list") return;
+    expect(after[0].items.map((it) => it.html)).toEqual(["a", "b", "c"]);
+  });
+
+  it("parses a list next to a ::: container without merging", () => {
+    const blocks = parseBlocks("- a\n- b\n\n::: example\nAn example.\n:::\n");
+    expect(blocks.map((b) => b.type)).toEqual(["list", "aside"]);
+    const aside = blocks[1];
+    if (aside.type !== "aside") throw new Error("not an aside");
+    expect(aside.kind).toBe("Example");
+  });
+
+  it("round-trips a loose list with a start number through renderMarkdown", () => {
+    const blocks = parseBlocks("3. a [[diff:conn:1-2]]\n\n4. b\n");
+    const back = parseBlocks(renderMarkdown(blocks));
+    expect(back).toHaveLength(1);
+    expect(back[0].type).toBe("list");
+    if (back[0].type !== "list" || blocks[0].type !== "list") return;
+    expect(back[0].start).toBe(3);
+    expect(back[0].items.map((it) => it.html)).toEqual(blocks[0].items.map((it) => it.html));
+    expect(back[0].citations).toEqual(blocks[0].citations);
+  });
+});
+
 describe("renderInline (Markdown inside a block)", () => {
   it("renders bold, italic, strikethrough and code spans", () => {
     expect(renderInline("**Recording.** record_cmd picks").html).toBe(
