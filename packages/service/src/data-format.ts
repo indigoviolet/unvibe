@@ -151,8 +151,8 @@ export function exportOutboxFromDataDir(dataDir: string): { markdown: string; co
   }
 }
 
-/** `unvibe doctor` line for the format state (#311). */
-export function dataFormatDoctorCheck(status: DataFormatStatus): {
+/** `unvibe doctor` line for the format state (#311); `goBack` is the go-back command on a mismatch. */
+export function dataFormatDoctorCheck(status: DataFormatStatus, goBack?: string): {
   name: string;
   status: "ok" | "warn" | "fail";
   detail: string;
@@ -168,7 +168,8 @@ export function dataFormatDoctorCheck(status: DataFormatStatus): {
     status: "warn",
     detail:
       `stored data is format ${status.stored ?? "(unstamped, before the format stamp existed)"} but this build reads format ${status.expected}; ` +
-      `the app will ask for a reset on start. Export unposted Outbox drafts first, then run \`unvibe reset-data\` (moves the data aside, never deletes it) or use Reset in the app.`,
+      `the app will ask for a reset on start. Export unposted Outbox drafts first, then run \`unvibe reset-data\` (moves the data aside, never deletes it) or use Reset in the app.` +
+      (goBack ? ` To go back to the previous version instead (your data stays untouched): \`${goBack}\`, then \`unvibe start\`.` : ""),
   };
 }
 

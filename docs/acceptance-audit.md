@@ -3496,3 +3496,28 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (git-ignored), both inspected. No conversion or migration anywhere:
   unreadable data is moved aside, never read into the new shape.
   Full gates not yet run.
+- **Owner follow-ups (branch `fix/311-notice-in-app`):** the notice
+  now replaces the start page's content inside the normal app frame
+  (top bar visible but `aria-disabled`/unfocusable/unclickable and
+  muted, disco-ball art, 760px start column, existing Card/Button/
+  heading components); deep links land on the same notice; after a
+  Reset the browser lands on `/`. The Export card only shows when
+  the read-only count (`outboxCount` on `GET /api/data-format`) is
+  above 0, with the count in the button ("Export 1 unposted draft");
+  at 0 only Go back / Reset show — the pre-update confirm follows
+  the same rule. The switch outcome now records `fromVersion` /
+  `toVersion`, and the notice offers **Go back to <version>** from
+  that record through the existing update path (`POST
+  /api/data-format/go-back`: pending switch + helper + shutdown,
+  data untouched, `acceptDataReset`); when the previous build is
+  unknown it shows the copyable terminal command instead (era tag
+  for unstamped/format-1 data), and `unvibe doctor` prints the same
+  command on a mismatch. Evidence: service
+  `test/data-format-routes.test.ts` (count read-only — DB bytes
+  unchanged — previous picking known/unknown, go-back commits the
+  switch with nothing moved aside), journey
+  `e2e/journeys/j311-data-reset.spec.ts` (three cases: with drafts,
+  without drafts incl. deep link, and the go-back helper drill on a
+  scratch HOME/data dir/prefix with byte-identical data), tour
+  frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
+  Full gates not yet run.

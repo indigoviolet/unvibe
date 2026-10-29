@@ -542,6 +542,24 @@ function ConfirmNote({
 }): React.JSX.Element {
   const [exported, setExported] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  // #311: the Export offer follows the same rule as the reset notice —
+  // only when there are unposted drafts, with their count. Null while
+  // the count is unknown (still loading or unreachable).
+  const [draftCount, setDraftCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .dataFormat()
+      .then((s) => {
+        if (!cancelled) setDraftCount(s.outboxCount);
+      })
+      .catch(() => {
+        // Count unknown: the generic Export button below still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const changed = compareDataFormat(build?.dataFormat ?? 1, channel.dataFormat) === "changed";
   if (!changed) {
     return <p className="ver-note warnline">The service restarts. Your data is kept and backed up first.</p>;
@@ -553,6 +571,9 @@ function ConfirmNote({
         new build, which will ask for that reset before it can open.
       </p>
       <span className="frow" style={{ gap: 6, alignItems: "center" }}>
+        {draftCount === 0 ? (
+          <span className="hint">No unposted drafts to export.</span>
+        ) : (
         <Button
           variant="secondary"
           size="sm"
@@ -570,8 +591,9 @@ function ConfirmNote({
               .finally(() => setExporting(false));
           }}
         >
-          {exporting ? "Exporting…" : "Export Outbox first"}
+          {exporting ? "Exporting…" : draftCount !== null && draftCount > 0 ? `Export ${draftCount} unposted draft${draftCount === 1 ? "" : "s"}` : "Export Outbox first"}
         </Button>
+        )}
         {exported !== null && exported >= 0 ? (
           <span className="hint">Exported {exported} draft{exported === 1 ? "" : "s"}.</span>
         ) : exported !== null ? (

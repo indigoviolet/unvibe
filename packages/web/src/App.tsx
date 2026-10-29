@@ -48,7 +48,12 @@ export function App() {
       cancelled = true;
     };
   }, []);
-  if (format?.state === "mismatch") return <DataFormatNotice status={format} />;
+  if (format?.state === "mismatch")
+    return (
+      <BrowserRouter>
+        <DataFormatNotice status={format} />
+      </BrowserRouter>
+    );
   return (
     <BrowserRouter>
       <RouteShellBoundary>

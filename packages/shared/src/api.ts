@@ -1136,6 +1136,24 @@ export interface DataFormatStatusResponse {
   stored: number | null;
   /** True when the data dir holds any stored data at all. */
   hasData: boolean;
+  /**
+   * Unposted Outbox drafts across every review (#311: the Export card
+   * only shows when this is above 0). On a mismatch the service counts
+   * read-only from the stored DB — never by opening it for writing.
+   */
+  outboxCount: number;
+  /** Previous install ref recorded by the update helper (#311 go-back); null when unknown. */
+  previousRef: string | null;
+  /** Previous build's version when recorded; null when unknown. */
+  previousVersion: string | null;
+  /** Copyable terminal command that goes back to the previous build. */
+  goBackCommand: string;
+}
+
+/** `POST /api/data-format/go-back` (#311): a switch back to the previous build was committed. */
+export interface DataFormatGoBackResponse {
+  from: string;
+  to: string;
 }
 
 /** `POST /api/data-format/reset` (#311): the data dir was moved aside, never deleted. */
@@ -1734,6 +1752,10 @@ export interface SwitchOutcome {
   logPath?: string;
   /** ISO time the outcome was recorded. */
   finishedAt: string;
+  /** Version switched from (#311: the notice's "Go back to <version>"); absent on old outcomes. */
+  fromVersion?: string | null;
+  /** Version switched to; absent on old outcomes. */
+  toVersion?: string | null;
   /**
    * Jobs stopped by a forced switch (copied from the pending record,
    * #36 follow-up). The UI names the count after the reload.

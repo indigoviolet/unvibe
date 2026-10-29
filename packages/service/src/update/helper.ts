@@ -167,6 +167,10 @@ export async function runSwitchFlow(plan: SwitchPlan, deps: HelperDeps): Promise
     const full: SwitchOutcome = {
       ...outcome,
       ...(plan.interruptedJobs !== undefined ? { interruptedJobs: plan.interruptedJobs } : {}),
+      // #311: record both versions so a later format-blocked build can
+      // offer "Go back to <version>" from this record.
+      ...(plan.fromVersion ? { fromVersion: plan.fromVersion } : {}),
+      ...(plan.targetVersion ? { toVersion: plan.targetVersion } : {}),
       finishedAt: deps.nowIso(),
     };
     deps.log(`outcome: ${full.status} ${full.from} -> ${full.to}${full.reason ? ` (${full.reason})` : ""}`);
