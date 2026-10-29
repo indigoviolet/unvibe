@@ -21,7 +21,7 @@ import type { UpdateBuildInfo, UpdateChannel } from "@unvibe/shared";
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
 
 function channel(ref: string, kind: UpdateChannel["kind"], builtAt: string | null = null): UpdateChannel {
-  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt, current: false };
+  return { ref, kind, version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt, dataFormat: 1, current: false };
 }
 
 describe("versionFormat", () => {
@@ -55,7 +55,7 @@ describe("versionFormat", () => {
   });
 
   it("flags a newer published build on the installed channel only", () => {
-    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa", builtAt: null };
+    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa", builtAt: null, dataFormat: 1 };
     const row = (commit: string | null, current: boolean): UpdateChannel => ({
       ref: "preview/a",
       kind: "preview",
@@ -66,6 +66,7 @@ describe("versionFormat", () => {
       baseBranch: null,
       baseCommit: null,
       builtAt: null,
+      dataFormat: 1,
       current,
     });
     expect(isNewerAvailable(row("bbb", true), build)).toBe(true);
@@ -79,7 +80,7 @@ describe("versionFormat", () => {
     expect(buildLine(null, "0.0.1")).toBe("on 0.0.1");
     expect(
       buildLine(
-        { version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "abc1234def", builtAt: null },
+        { version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", sourceBranch: "feat/x", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "abc1234def", builtAt: null, dataFormat: 1 },
         "0.0.1",
       ),
     ).toBe("on 0.0.1-preview.feat-x.abc1234 (feat/x · abc1234)");
@@ -106,7 +107,7 @@ describe("versionFormat", () => {
     };
     expect(mergedProvenance(merged)).toBe("main@bbb2222 + feat/x@aaa1111");
     expect(
-      buildLine({ version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", ...merged, commit: "merge9999", builtAt: null }, "0.0.1"),
+      buildLine({ version: "0.0.1-preview.feat-x.abc1234", channel: "preview/feat-x", ...merged, commit: "merge9999", builtAt: null, dataFormat: 1 }, "0.0.1"),
     ).toBe("on 0.0.1-preview.feat-x.abc1234 (main@bbb2222 + feat/x@aaa1111)");
     expect(mergedProvenance(null)).toBeNull();
     expect(mergedProvenance({ ...merged, baseCommit: null })).toBeNull();
@@ -144,7 +145,7 @@ describe("versionFormat", () => {
   });
 
   it("classifies channel rows: up to date, newer available, other channel", () => {
-    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: "a", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa1111", builtAt: null };
+    const build = { version: "0.0.1", channel: "preview/a", sourceBranch: "a", sourceCommit: null, baseBranch: null, baseCommit: null, commit: "aaa1111", builtAt: null, dataFormat: 1 };
     const row = (commit: string | null, current: boolean): UpdateChannel => ({
       ref: "preview/a",
       kind: "preview",
@@ -155,6 +156,7 @@ describe("versionFormat", () => {
       baseBranch: null,
       baseCommit: null,
       builtAt: null,
+      dataFormat: 1,
       current,
     });
     expect(channelRowState(row("aaa1111", true), build)).toBe("installed");
@@ -172,6 +174,7 @@ describe("versionFormat", () => {
       baseCommit: "c562ed1bbbbbbb",
       commit: "ffff000011112222",
       builtAt: new Date(NOW - 3 * 3600_000).toISOString(),
+      dataFormat: 1,
     };
     expect(badgeLabel(build)).toBe("preview · main-rc · 6818b23");
     const title = badgeTitle(build, NOW);
@@ -202,7 +205,7 @@ describe("versionFormat", () => {
       sourceCommit: null,
       baseBranch: null,
       baseCommit: null,
-      builtAt,
+      builtAt, dataFormat: 1,
       current: false,
     });
     const channels = (version: string | null, builtAt: string | null): UpdateChannel[] => [release(version, builtAt)];
@@ -216,6 +219,7 @@ describe("versionFormat", () => {
       commit: "aaa1111",
       builtAt: T0,
       ...over,
+      dataFormat: over.dataFormat ?? 1,
     });
 
     // Release build, newer release published: the release channel.
@@ -229,11 +233,11 @@ describe("versionFormat", () => {
     );
     // Preview build, release published after the preview was built.
     expect(
-      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T0 }), channels("0.0.1", T1)),
+      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T0, dataFormat: 1 }), channels("0.0.1", T1)),
     ).toEqual(release("0.0.1", T1));
     // Preview build newer than the release: nothing.
     expect(
-      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T1 }), channels("0.0.1", T0)),
+      findUpdateAvailable(build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: T1, dataFormat: 1 }), channels("0.0.1", T0)),
     ).toBeNull();
     // Undeterminable: no icon, never an error.
     expect(findUpdateAvailable(null, channels("0.0.2", T1))).toBeNull();
@@ -241,17 +245,17 @@ describe("versionFormat", () => {
     expect(findUpdateAvailable(build({}), channels(null, T1))).toBeNull();
     expect(findUpdateAvailable(build({}), [])).toBeNull();
     // Release builds compare by version alone: missing build times don't matter.
-    expect(findUpdateAvailable(build({ builtAt: null }), channels("0.0.2", null))).toEqual(release("0.0.2", null));
+    expect(findUpdateAvailable(build({ builtAt: null, dataFormat: 1 }), channels("0.0.2", null))).toEqual(release("0.0.2", null));
     // Preview builds need both build times.
     expect(
       findUpdateAvailable(
-        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: null }),
+        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: null, dataFormat: 1 }),
         channels("0.0.1", T1),
       ),
     ).toBeNull();
     expect(
       findUpdateAvailable(
-        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: "bogus" }),
+        build({ version: "0.0.1-preview.x.abc", channel: "preview/x", builtAt: "bogus", dataFormat: 1 }),
         channels("0.0.1", T1),
       ),
     ).toBeNull();
@@ -268,6 +272,7 @@ describe("versionFormat", () => {
       baseBranch: null,
       baseCommit: null,
       builtAt: null,
+      dataFormat: 1,
       current: false,
     });
     const preview = (commit: string | null): UpdateChannel => ({
@@ -280,6 +285,7 @@ describe("versionFormat", () => {
       baseBranch: null,
       baseCommit: null,
       builtAt: null,
+      dataFormat: 1,
       current: false,
     });
     expect(channelRowMiddle(release("0.0.10", "b535a30ccccccc"))).toBe("v0.0.10");

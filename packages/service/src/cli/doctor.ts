@@ -24,6 +24,10 @@ import { ghAuthStatus as sharedGhAuth, gitVersion as sharedGitVersion } from "..
 import { RealCommandRunner } from "../exec/runner.js";
 import { ShimResolvingCommandRunner } from "../exec/shim-resolve.js";
 import { checkLoginUnit } from "../update/service-manager.js";
+import { checkDataFormat, dataFormatDoctorCheck } from "../data-format.js";
+import { goBackCommand, pickPreviousBuild } from "../update/previous.js";
+import { readSwitchOutcome } from "../update/state.js";
+import { readInstalledBuild } from "../update/channels.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assessBinReachability, binReachabilityAdvice, canonicalizeRealpath } from "./setup/bin-reachability.js";
@@ -217,6 +221,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   } catch (err) {
     checks.push({ name: "data dir", status: "fail", detail: `${opts.dataDir}: ${String(err)}` });
   }
+
+  const formatStatus = checkDataFormat(opts.dataDir);
+  const previous = pickPreviousBuild({
+    outcome: readSwitchOutcome(opts.dataDir),
+    currentChannel: readInstalledBuild(process.argv[1], "doctor").channel,
+  });
+  checks.push(dataFormatDoctorCheck(formatStatus, goBackCommand(previous, formatStatus)));
 
   const taken = await portTaken(opts.port);
   if (!taken) {

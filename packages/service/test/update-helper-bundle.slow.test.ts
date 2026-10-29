@@ -31,6 +31,7 @@ const ALLOWED_INPUTS: { prefix: string; reason: string }[] = [
   { prefix: "src/exec/runner.ts", reason: "RealCommandRunner for gh/npm (spawn only)" },
   { prefix: "src/exec/gh.ts", reason: "GITHUB_TOKEN-unset gh wrapper (type + runner only)" },
   { prefix: "src/store/paths.ts", reason: "dbFilePath for channel backups (fs/path only)" },
+  { prefix: "../shared/dist/data-format.js", reason: "DATA_FORMAT + compare/warning for the #311 pre-update check (pure, no imports)" },
 ];
 
 interface Metafile {

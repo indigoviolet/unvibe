@@ -8,7 +8,7 @@ import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import type { Locator } from "@playwright/test";
-import { apiJson, createDemoReview, createSeededDemoReview } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createSeededDemoReview, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -500,6 +500,7 @@ async function seedSecondOpinion(dataDir: string): Promise<void> {
       "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) " +
         "ON CONFLICT(id) DO NOTHING",
     ).run(SO_REVIEW_ID, "seed-repo", "main", 5020, 1, Date.now(), JSON.stringify({}));
+    stampDataFormat(db);
   } finally {
     db.close();
   }

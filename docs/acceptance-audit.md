@@ -3441,3 +3441,83 @@ hunk coverage) is reported for a separate issue, not fixed here.
   single control fits its card; `checkLayout` on every frame), tour
   frames `packages/web/visual-tour/start-pr-list-more-*` and
   `start-author-combo-*` (git-ignored). Full gates not yet run.
+
+## Addendum: #311 (branch `feat/311-data-reset-warning`)
+
+- **#311 (warn before and after an update that needs a data reset):**
+  `DATA_FORMAT = 1` (flat-threads shape, v0.0.12) lives in
+  `packages/shared/src/data-format.ts`, with the bump rule recorded in
+  `AGENTS.md` next to the no-backward-compatibility rule. The service
+  stamps it as SQLite `user_version` when it creates data
+  (`src/data-format.ts`: `checkDataFormat` / `stampDataFormat` /
+  `moveDataAside`, read-only checks — the stored DB is never opened
+  for writing on a mismatch).
+- **After an update:** on start a mismatch (different stamp, or data
+  with no stamp — every pre-#311 data dir) starts a blocked
+  generation: the app shows the full-page notice
+  (`packages/web/src/data-format/DataFormatNotice.tsx`) instead of
+  the normal UI, with **Export Outbox first** (combined #223 export
+  over all reviews, read read-only from the stored DB,
+  `GET /api/data-format/outbox`) and **Reset** (`POST
+  /api/data-format/reset`: the data dir is moved to a dated sibling
+  `*.bak-<timestamp>`, never deleted, the token is carried into the
+  fresh dir, and the service restarts in-process on the same port and
+  starts fresh). `unvibe doctor` reports match / mismatch / none;
+  `unvibe reset-data [--yes]` does the same move from the CLI,
+  refuses while the service runs with stop-first guidance, and asks
+  for confirmation without `--yes`.
+- **Before an update:** the target build's format rides its package
+  record (`unvibe.dataFormat`, written by `scripts/release.mjs` from
+  the shared constant) through `UpdateChannel.dataFormat` /
+  `UpdateBuildInfo.dataFormat`. The shared switch core refuses a
+  format-changing install until the user confirms; the CLI spells it
+  as `unvibe update <channel> --yes`, and Settings → Version shows
+  the reset warning with an Export Outbox first button in the confirm
+  step, sends `acceptDataReset`, and the switch route re-checks
+  server-side (409 without it). An unreadable target format cannot
+  warn — the switch proceeds and the new build's own gate catches a
+  mismatch on start.
+- **Release notes:** `scripts/release-notes.mjs` adds a "Data reset
+  needed" section (exact update + reset commands) whenever
+  `DATA_FORMAT` at the new tag differs from the previous tag
+  (unstamped counts as 0), via the pure helpers in
+  `scripts/release-notes-lib.mjs`.
+- Evidence: shared `test/data-format.test.ts`; service
+  `test/data-format.test.ts` (check states, stamp, move-aside never
+  deletes + collision, combined export, doctor line),
+  `test/reset-data.test.ts` (CLI flow incl. running-service refusal
+  and a real `runDoctor` on a scratch dir, notes section),
+  `test/update.test.ts` (format-changing target refused until
+  accepted; no npm run before that); journey
+  `e2e/journeys/j311-data-reset.spec.ts` (seeded unstamped data dir:
+  notice, Export download contains the draft, Reset moves the data
+  aside and the fresh start page loads, format then matches); tour
+  frames `packages/web/visual-tour/data-reset-notice-1440-{light,dark}.png`
+  (git-ignored), both inspected. No conversion or migration anywhere:
+  unreadable data is moved aside, never read into the new shape.
+  Full gates not yet run.
+- **Owner follow-ups (branch `fix/311-notice-in-app`):** the notice
+  now replaces the start page's content inside the normal app frame
+  (top bar visible but `aria-disabled`/unfocusable/unclickable and
+  muted, disco-ball art, 760px start column, existing Card/Button/
+  heading components); deep links land on the same notice; after a
+  Reset the browser lands on `/`. The Export card only shows when
+  the read-only count (`outboxCount` on `GET /api/data-format`) is
+  above 0, with the count in the button ("Export 1 unposted draft");
+  at 0 only Go back / Reset show — the pre-update confirm follows
+  the same rule. The switch outcome now records `fromVersion` /
+  `toVersion`, and the notice offers **Go back to <version>** from
+  that record through the existing update path (`POST
+  /api/data-format/go-back`: pending switch + helper + shutdown,
+  data untouched, `acceptDataReset`); when the previous build is
+  unknown it shows the copyable terminal command instead (era tag
+  for unstamped/format-1 data), and `unvibe doctor` prints the same
+  command on a mismatch. Evidence: service
+  `test/data-format-routes.test.ts` (count read-only — DB bytes
+  unchanged — previous picking known/unknown, go-back commits the
+  switch with nothing moved aside), journey
+  `e2e/journeys/j311-data-reset.spec.ts` (three cases: with drafts,
+  without drafts incl. deep link, and the go-back helper drill on a
+  scratch HOME/data dir/prefix with byte-identical data), tour
+  frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
+  Full gates not yet run.

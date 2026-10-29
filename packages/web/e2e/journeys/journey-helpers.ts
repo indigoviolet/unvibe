@@ -1,4 +1,5 @@
 /** Shared helpers for the #188 journeys (real built service only). */
+import { DATA_FORMAT } from "@unvibe/shared";
 import { execFile, execSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +9,18 @@ import { fileURLToPath } from "node:url";
 import type { RunningService } from "../service-harness.js";
 
 const exec = promisify(execFile);
+
+/**
+ * Stamp a directly-seeded data dir with the current data format (#311).
+ * Raw-SQL seeds bypass the service's own stamp-on-create, so without
+ * this the service refuses to open the dir and shows the reset notice.
+ * Call before closing the DB, after all tables and rows are written.
+ * Never call it on deliberately unstamped dirs (j311, the #311 notice
+ * tour scene).
+ */
+export function stampDataFormat(db: DatabaseSync): void {
+  db.exec(`PRAGMA user_version = ${DATA_FORMAT}`);
+}
 
 export async function apiJson(
   svc: RunningService,
@@ -166,6 +179,7 @@ export function createSeededDemoReview(dataDir: string, reviewId = "seeded-demo"
       "INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?) " +
         "ON CONFLICT(review_id) DO UPDATE SET rev = excluded.rev, snapshot = excluded.snapshot",
     ).run(reviewId, seeded.rev, JSON.stringify(seeded), Date.now());
+    stampDataFormat(db);
   } finally {
     db.close();
   }

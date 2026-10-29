@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./data-format": {
+      "types": "./dist/data-format.d.ts",
+      "default": "./dist/data-format.js"
     }
   },
   "scripts": {

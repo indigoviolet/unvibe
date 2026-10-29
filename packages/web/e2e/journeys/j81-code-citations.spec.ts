@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, git, writeFakeGh } from "./journey-helpers.js";
+import { apiJson, createScratchReview, git, stampDataFormat, writeFakeGh } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -134,6 +134,7 @@ test.describe("J81 code citations outside the diff", () => {
         JSON.stringify(snap),
         reviewId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }

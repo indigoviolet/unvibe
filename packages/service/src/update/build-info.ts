@@ -16,6 +16,8 @@
  */
 import fs from "node:fs";
 import type { UpdateBuildInfo } from "@unvibe/shared";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import { readInstalledBuild } from "./channels.js";
 import { defaultFakeChannels, type FakeInstalledOverride, loadFakeSpecs } from "./updater.js";
 import { fakeInstalledPath, readCurrentRef } from "./state.js";
@@ -70,6 +72,7 @@ export function fakeBuildInfo(dataDir: string): UpdateBuildInfo | null {
     baseCommit: strOrNull(over?.baseCommit) ?? (typeof found.baseCommit === "string" ? found.baseCommit : null),
     commit: strOrNull(over?.commit) ?? (typeof found.commit === "string" ? found.commit : null),
     builtAt: strOrNull(over?.builtAt) ?? (typeof found.builtAt === "string" ? found.builtAt : null),
+    dataFormat: typeof found.dataFormat === "number" ? found.dataFormat : DATA_FORMAT,
   };
 }
 
@@ -89,5 +92,6 @@ export function resolveBuildInfo(inputs: BuildInfoInputs): UpdateBuildInfo | nul
     baseCommit: installed.baseCommit,
     commit: installed.commit,
     builtAt: installed.builtAt,
+    dataFormat: installed.dataFormat,
   };
 }

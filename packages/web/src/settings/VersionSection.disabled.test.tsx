@@ -35,10 +35,10 @@ const SETTINGS: Settings = {
   fullAccessAcknowledgedAt: null,
 };
 
-const BUILD = { version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null };
+const BUILD = { version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, dataFormat: 1 };
 
 const CHANNELS: UpdateChannel[] = [
-  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, current: true },
+  { ref: "release", kind: "release", version: "0.0.1", commit: null, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, builtAt: null, dataFormat: 1, current: true },
   {
     ref: "preview/feat-x",
     kind: "preview",
@@ -49,6 +49,7 @@ const CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(Date.now() - 3600_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
 ];
@@ -75,6 +76,7 @@ describe("VersionSection installed and channel states", () => {
     baseCommit: "c562ed1bbbbbbb",
     commit: "6818b23aaaaaaa",
     builtAt: new Date(Date.now() - 3 * 86400_000).toISOString(),
+    dataFormat: 1,
   };
   const currentRow = (commit: string): UpdateChannel => ({
     ref: "preview/feat-x",
@@ -86,6 +88,7 @@ describe("VersionSection installed and channel states", () => {
     baseBranch: "main",
     baseCommit: "dddd4444eeee5555",
     builtAt: new Date(Date.now() - 3600_000).toISOString(),
+    dataFormat: 1,
     current: true,
   });
   const otherRow: UpdateChannel = {
@@ -98,6 +101,7 @@ describe("VersionSection installed and channel states", () => {
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(Date.now() - 7200_000).toISOString(),
+    dataFormat: 1,
     current: false,
   };
 

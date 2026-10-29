@@ -40,6 +40,9 @@ import type {
   ResumeReviewResponse,
   RemoveRepoResponse,
   ResetDataResponse,
+  DataFormatResetResponse,
+  DataFormatGoBackResponse,
+  DataFormatStatusResponse,
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
@@ -332,6 +335,14 @@ const realApi = {
   redoReview: (id: string): Promise<ReviewSnapshot> =>
     post(`/api/reviews/${encodeURIComponent(id)}/redo`),
   resetData: (): Promise<ResetDataResponse> => post("/api/reset"),
+  /** #311: stored data format vs this build's; `mismatch` gates the whole app on the reset notice. */
+  dataFormat: (): Promise<DataFormatStatusResponse> => get("/api/data-format"),
+  /** #311: combined Outbox export over every review (Export Outbox first). */
+  dataFormatOutbox: (): Promise<OutboxResponse> => get("/api/data-format/outbox"),
+  /** #311: move the data dir aside (never delete) and restart fresh. */
+  resetDataFormat: (): Promise<DataFormatResetResponse> => post("/api/data-format/reset"),
+  /** #311: switch back to the previous build through the update path (data untouched). */
+  goBackDataFormat: (): Promise<DataFormatGoBackResponse> => post("/api/data-format/go-back"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),
   review: (id: string, version?: number): Promise<ReviewSnapshot> =>
@@ -446,8 +457,12 @@ const realApi = {
    * `force` to switch anyway — the shutdown path stops the jobs and the
    * outcome records how many were interrupted.
    */
-  updateSwitch: async (ref: string, force?: boolean): Promise<UpdateSwitchResponse> => {
-    const body: UpdateSwitchRequest = force ? { ref, force: true } : { ref };
+  updateSwitch: async (ref: string, force?: boolean, acceptDataReset?: boolean): Promise<UpdateSwitchResponse> => {
+    const body: UpdateSwitchRequest = {
+      ref,
+      ...(force ? { force: true } : {}),
+      ...(acceptDataReset ? { acceptDataReset: true } : {}),
+    };
     try {
       return await post<UpdateSwitchResponse>("/api/update/switch", body);
     } catch (err) {

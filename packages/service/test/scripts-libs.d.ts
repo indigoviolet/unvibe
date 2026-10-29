@@ -32,6 +32,7 @@ declare module "*preview-lib.mjs" {
     sourceCommit: string | null;
     baseBranch: string | null;
     baseCommit: string | null;
+    dataFormat: number | null;
   }
   export function buildUnvibeField(field: {
     channel: string;
@@ -42,6 +43,7 @@ declare module "*preview-lib.mjs" {
     sourceCommit?: string | null;
     baseBranch?: string | null;
     baseCommit?: string | null;
+    dataFormat?: number | null;
   }): UnvibeField;
   export function selectPruneRefs(
     entries: { ref: string; sourceBranch?: string | null }[],
@@ -51,12 +53,59 @@ declare module "*preview-lib.mjs" {
   ): { ref: string; reason: string }[];
 }
 
+declare module "*release-notes-lib.mjs" {
+  export function parseDataFormat(source: string | null | undefined): number | null;
+  export function dataResetSection(prevFormat: number | null, nextFormat: number | null, version: string): string | null;
+}
+
 declare module "*global-install-lib.mjs" {
   export function platformBinaryPackages(platform?: string, arch?: string): string[];
   // The lib runtime-checks its inputs (non-objects answer null/false),
   // so callers may pass malformed values on purpose in tests.
   export function findRepoByPath<T>(repos: readonly T[] | null | undefined, localPath: string): T | null;
   export function isParserOutline(outline: unknown): boolean;
+}
+
+declare module "*demo-large-lib.mjs" {
+  export const DEMO_LARGE_SCHEMA_VERSION: number;
+  export const DEMO_LARGE_BUILD_CAP_USD: number;
+  export const DEMO_LARGE_OPEN_CAP_USD: number;
+  export const DEMO_LARGE_MODEL: { provider: string; model: string };
+  export const DEMO_LARGE_DEFAULT_REPO: string;
+  export const DEMO_LARGE_DEFAULT_PR: number;
+  export function demoLargeCacheDir(homeDir?: string): string;
+  export function demoLargeMetaPath(cacheDir: string): string;
+  export const DEMO_LARGE_CACHE_ENTRIES: string[];
+  export function managedClonePath(dataDir: string, owner: string, name: string): string;
+  export function normalizeRepoUrl(repo: string): { url: string; owner: string; name: string };
+  export function writeDemoLargeMeta(cacheDir: string, meta: Record<string, unknown>): Record<string, unknown>;
+  export function readDemoLargeMeta(cacheDir: string): Record<string, unknown> & {
+    schemaVersion: number;
+    reviewId: string;
+  };
+  export function copyCacheToScratch(cacheDir: string, dataDir: string): string[];
+  export function rewriteManagedPaths(db: { prepare(sql: string): unknown }, dataDir: string): number;
+  export function worktreeGitdirPointers(
+    worktreePath: string,
+    clonePath: string,
+    worktreeName: string,
+  ): {
+    worktreeGitFile: { file: string; want: string };
+    adminGitFile: { file: string; want: string };
+  };
+  export function rewriteWorktreePointers(worktreePath: string, clonePath: string, worktreeName: string): void;
+  export function worktreeHealthy(worktreePath: string): string | null;
+  export function repairWorktrees(dataDir: string): number;
+  export function parseDemoLargeBuildArgs(argv: string[]): {
+    repo: string;
+    pr: number;
+    capUsd: number;
+    port: number;
+    allowUnpriced: boolean;
+    force: boolean;
+    budgetMin: number;
+  };
+  export function parseDemoLargeOpenArgs(argv: string[]): { mode: string; port: number | null; capUsd: number };
 }
 
 declare module "*live-pi-lib.mjs" {

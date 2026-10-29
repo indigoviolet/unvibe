@@ -36,7 +36,8 @@ export const CLI_USAGE = [
   "  token                  print the app URL, including your token",
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
   "  update --list          list the channels you can install (release, preview/*)",
-  "  update <channel>       install that channel (npm install -g github:indigoviolet/unvibe#<channel>)",
+  "  update <channel> [--yes]  install that channel (npm install -g github:indigoviolet/unvibe#<channel>); --yes accepts a data-format reset warning",
+  "  reset-data [--yes]     move data this version cannot read aside (never deletes) and start fresh",
   "  version                print the installed version",
   "  (no command)           start the service in the foreground",
   "",
@@ -191,6 +192,44 @@ async function cmdToken(): Promise<number> {
   return 0;
 }
 
+async function cmdResetData(args: string[]): Promise<number> {
+  const { RESET_DATA_USAGE, runResetDataFlow, serviceIsRunning } = await import("./reset-data.js");
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(RESET_DATA_USAGE);
+    return 0;
+  }
+  const unknown = args.filter((a) => a.startsWith("-") && a !== "--yes");
+  if (unknown.length > 0) {
+    console.error(`unknown flag: ${unknown.join(" ")}\n\n${RESET_DATA_USAGE}`);
+    return 2;
+  }
+  const config = loadConfig();
+  const confirm = async (): Promise<boolean> => {
+    if (!process.stdin.isTTY) return false;
+    const { createInterface } = await import("node:readline");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`Move ${config.dataDir} aside and start fresh? Nothing is deleted. [y/N] `, resolve);
+      });
+      return /^y(es)?$/i.test(answer.trim());
+    } finally {
+      rl.close();
+    }
+  };
+  const outcome = await runResetDataFlow({
+    dataDir: config.dataDir,
+    yes: args.includes("--yes"),
+    isRunning: () => serviceIsRunning(config.dataDir),
+    confirm,
+  });
+  for (const line of outcome.lines) {
+    if (outcome.code === 0) console.log(line);
+    else console.error(line);
+  }
+  return outcome.code;
+}
+
 async function cmdDoctorCmd(args: string[]): Promise<number> {
   const strict = args.includes("--strict");
   const config = loadConfig();
@@ -277,7 +316,8 @@ async function cmdUpdate(args: string[]): Promise<number> {
     console.error(`missing channel.\n\n${UPDATE_USAGE}`);
     return 2;
   }
-  const unknown = args.filter((a) => a.startsWith("-"));
+  const acceptDataReset = args.includes("--yes");
+  const unknown = args.filter((a) => a.startsWith("-") && a !== "--yes");
   if (unknown.length > 0) {
     console.error(`unknown flag: ${unknown.join(" ")}\n\n${UPDATE_USAGE}`);
     return 2;
@@ -287,7 +327,7 @@ async function cmdUpdate(args: string[]): Promise<number> {
   // (mise's reshim step calls bare `mise`) find their binaries. Never
   // throws: falls back to the inherited PATH when no shell answers.
   const { resolveUpdatePathEnv } = await import("../update/update-env.js");
-  const outcome = await runUpdateChannelFlow({ ...deps, updateEnv: await resolveUpdatePathEnv() }, channel);
+  const outcome = await runUpdateChannelFlow({ ...deps, acceptDataReset, updateEnv: await resolveUpdatePathEnv() }, channel);
   for (const line of outcome.lines) {
     if (outcome.code === 0) console.log(line);
     else console.error(line);
@@ -332,6 +372,8 @@ export async function runCli(argv: string[]): Promise<number> {
       return cmdDoctorCmd(rest);
     case "update":
       return cmdUpdate(rest);
+    case "reset-data":
+      return cmdResetData(rest);
     case "--version":
     case "-v":
     case "version": {

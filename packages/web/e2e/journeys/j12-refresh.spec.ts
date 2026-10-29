@@ -6,7 +6,7 @@ import { expect, test } from "../network-guard.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createScratchReview, git } from "./journey-helpers.js";
+import { apiJson, createScratchReview, git, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -175,6 +175,7 @@ test.describe("J12 refresh with new commits", () => {
         JSON.stringify(snap),
         reviewId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }

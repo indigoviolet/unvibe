@@ -39,7 +39,7 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1985,6 +1985,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
         JSON.stringify(seeded),
         buildingId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }
@@ -2402,6 +2403,7 @@ test("visual tour document review (#222)", async ({ page }) => {
         JSON.stringify(seeded),
         docReviewId,
       );
+      stampDataFormat(db);
     } finally {
       db.close();
     }
@@ -2898,6 +2900,7 @@ test.describe("visual tour file tab (#81)", () => {
       // comments instead of the no-PR notice (preview is read-only;
       // nothing posts).
       db.prepare("UPDATE reviews SET pr_number = 7 WHERE id = ?").run(ftReview);
+      stampDataFormat(db);
     } finally {
       db.close();
     }
@@ -3152,6 +3155,99 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.keyboard.press("Escape");
       await expect(pop).toHaveCount(0);
       await expect(row).toBeVisible();
+    });
+  }
+});
+
+/**
+ * #311: the data-format reset notice, light and dark at 1440px. Its own
+ * service on a seeded old-format data dir (a DB with no format stamp);
+ * the notice is the whole page, so one frame per scheme is the scene.
+ */
+test.describe("data reset notice tour (#311)", () => {
+  let noticeDataDir = "";
+  let noticeSvc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    noticeDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notice-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(noticeDataDir, "unvibe.db"));
+    db.exec(
+      "CREATE TABLE review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL)",
+    );
+    // One unposted draft, so the frame shows the Export card with its
+    // count, and a recorded previous build, so it shows Go back too.
+    const snapshot = {
+      review: { id: "rv_old", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
+      ingest: { status: "ready" },
+      pages: [{ id: "root", kind: "root", title: "Guide title", cards: [] }],
+      annotations: [
+        {
+          type: "thread",
+          id: "t1",
+          anchor: { host: { kind: "diff-line", fileKey: "fk1", line: 2 }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true,
+          pinned: false,
+          post: true,
+          replies: [
+            {
+              id: "r1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
+        },
+      ],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: {},
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    };
+    db.prepare("INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?)").run(
+      "rv_old",
+      1,
+      JSON.stringify(snapshot),
+      0,
+    );
+    db.close();
+    mkdirSync(path.join(noticeDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(noticeDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "preview/previous", to: "release", finishedAt: "2026-10-29T00:00:00.000Z", fromVersion: "0.0.11" }) + "\n",
+    );
+    noticeSvc = await startService(noticeDataDir, { agent: "none" });
+  });
+
+  test.afterAll(async () => {
+    await noticeSvc?.stop().catch(() => {});
+    noticeSvc = null;
+    rmSync(noticeDataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", dark: false },
+    { name: "1440-dark", dark: true },
+  ] as const) {
+    test(`data reset notice (${combo.name})`, async ({ page }) => {
+      if (!noticeSvc) throw new Error("notice service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
+      await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, "data-reset-notice");
+      await shot(page, "data-reset-notice", combo.name, "This version can't read your existing reviews");
     });
   }
 });

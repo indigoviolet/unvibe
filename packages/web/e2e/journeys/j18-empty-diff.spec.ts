@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, git } from "./journey-helpers.js";
+import { apiJson, git, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -145,6 +145,7 @@ test.describe("J18 empty diff (#179)", () => {
           JSON.stringify(snap),
           reviewId,
         );
+        stampDataFormat(db);
       } finally {
         db.close();
       }

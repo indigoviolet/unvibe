@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createDemoReview, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createScratchReview, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -258,6 +258,7 @@ async function seedGuideFixture(dataDir: string): Promise<void> {
       "INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?) " +
         "ON CONFLICT(review_id) DO UPDATE SET rev = excluded.rev, snapshot = excluded.snapshot",
     ).run(GUIDE_REVIEW_ID, seeded.rev, JSON.stringify(seeded), Date.now());
+    stampDataFormat(db);
   } finally {
     db.close();
   }

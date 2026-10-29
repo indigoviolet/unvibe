@@ -22,6 +22,8 @@
 import type { CommandRunner, RunResult } from "../exec/index.js";
 import { isPidAlive, readLock } from "../cli/lock.js";
 import { DB_RULE, backupChannel, channelSlotDir, restoreChannel } from "./data-backup.js";
+// Subpath import: the update helper bundle must not pull in the shared barrel.
+import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "@unvibe/shared/data-format";
 import {
   fetchRefPackage,
   isChannelName,
@@ -50,6 +52,12 @@ export interface SwitchCoreRequest {
    * rolled back to, so the old build reopens its pre-switch database.
    */
   restoreBackupOf?: string;
+  /**
+   * #311: the user saw the data-reset warning for a format-changing
+   * target and chose to continue. Without it a changed format refuses
+   * before any backup or install.
+   */
+  acceptDataReset?: boolean;
   /**
    * Extra env for the npm spawns (issue #170): the login-shell-merged PATH
    * so version-manager wrappers (mise's reshim step) find their binaries.
@@ -206,6 +214,16 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
   // Remote metadata for the target: same-build compare and post-install
   // verification. Unreadable metadata only weakens the checks, never blocks.
   const remote = await fetchRefPackage(req.runner, req.channel);
+
+  // #311: warn before switching when the target build's data format
+  // differs from this build's. Unknown (unreadable) formats cannot
+  // warn; the new build's own format gate catches a mismatch on start.
+  if (compareDataFormat(DATA_FORMAT, remote.dataFormat) === "changed" && remote.dataFormat !== null && !req.acceptDataReset) {
+    log(dataFormatResetWarning(DATA_FORMAT, remote.dataFormat));
+    log("Export your Outbox first (open the app and use Export Outbox, or copy it from each review).");
+    log("Nothing was installed and your data is untouched. Confirm the reset to continue.");
+    return done(1, before);
+  }
 
   if (before.channel === req.channel) {
     return runSameChannelReinstall(req, log, done, before, remote.commit);

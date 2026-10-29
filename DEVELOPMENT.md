@@ -64,8 +64,12 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live:fork-tools` | Codex fork review-tools check (stays on Codex) | `codex` login; tiny spend |
 | `test:live:diagram` | D2 feature run (#286): one ask per lifted feature group per provider on one replay-built demo review, self-enforced cap, report to `test-results/` (#286 moves it to pi) | Logins, `d2`; real spend (owner-approved cap) |
 | `test:live:pi` | Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi (unchanged) | Owner's pi login + go; small spend |
+| `demo:large:build` | Live large-demo cache build (#309): pi + muse-spark over one owner-picked public PR, $1 cap, saves DB + clone + worktrees + schema version under `~/.cache/unvibe/demo-large/` | Logins; token spend, capped; never run by check |
+| `demo:large:open` | Open the cached large demo (#309): fresh scratch dir, temp port; browse mode free (`UNVIBE_AGENT=none`), interactive on pi with $0.25/pass cap | Build (auto); spend only in interactive mode |
 
 Switched tasks (issue #292) share `scripts/live-pi-lib.mjs`: `--provider` and `--model` override the pi + `muse-spark-1.3-contributor` default (pi's bare id; the runner maps it to provider `meta`), `pi --list-models` refuses before any spend when the model isn't offered, the spend cap is priced from pi's own catalogue (`get_available_models`; missing or all-zero cost refuses unless `--allow-unpriced` is passed, never assumed $0), `--cap` pre-flights the worst case and tracks spend from the first token (failed jobs included), and the spend + per-task report is written to `test-results/` (gitignored) as well as the console. Test-only tasks that need a cap read it from `UNVIBE_LIVE_CAP`. Only `test:live:*` may use real pi.
+
+Large demo (issue #309): before reporting UI changes, every agent does a hands-on pass on the cached large demo — open it (`mise run demo:large:open`, browse mode unless the change needs the agent: `mise run demo:large:open -- --mode interactive`), repeat actions, combine them, try edges, and turn anything found into a journey. Browse mode is free (`UNVIBE_AGENT=none`, everything already built); interactive mode runs pi + `muse-spark-1.3-contributor` for Ask/Explain/diagram under a $0.25 per-pass cap enforced the same way as the live tasks. The cache lives under `~/.cache/unvibe/demo-large/` (via `node:os`, never in the repo) with a schema version; `demo:large:build` (live, $1 cap, owner-picked `--repo`/`--pr`) saves it, and `demo:large:open` refuses a stale cache with "rebuild" instead of migrating.
 
 `test:live:*` never runs under `check` or CI. CI (`.github/workflows/ci.yml`)
 runs on `ubuntu-latest` for every branch push except `spike/**`, and on
@@ -309,6 +313,23 @@ git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
 
 Deleting a candidate preview means deleting its `preview/<slug>` ref (and the
 local branch once it is merged or abandoned).
+
+### Data format and resets (#311)
+
+`DATA_FORMAT` (`packages/shared/src/data-format.ts`, currently 1) is stamped
+as SQLite `user_version` in `unvibe.db` when the service creates data. A
+stored format that differs — or data with no stamp — is never converted: the
+service starts blocked, the app shows the reset notice (Export Outbox first,
+then Reset), `unvibe doctor` reports the state, and `unvibe reset-data
+[--yes]` performs the same move from the CLI (stop the service first). Reset
+always moves the whole data dir to a dated sibling (`*.bak-<timestamp>`) and
+never deletes it. Before a switch, `unvibe update` and Settings → Version
+compare the target build's format from its package record
+(`unvibe.dataFormat`) and warn first; the CLI continues only with `--yes`.
+`release:tag`'s notes (`scripts/release-notes.mjs`) gain a "Data reset
+needed" section automatically when the format changed since the previous
+tag. Bump `DATA_FORMAT` by hand in any change that makes stored data
+unreadable, and record it in `AGENTS.md`.
 
 ### Preview builds (issue #36)
 

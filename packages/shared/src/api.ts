@@ -1123,6 +1123,46 @@ export interface ThreadMessage {
   suggested?: boolean;
 }
 
+/**
+ * `GET /api/data-format` (#311) — the data dir's format state against
+ * this build's `DATA_FORMAT`. `mismatch` means the app shows the
+ * full-page reset notice instead of the normal UI.
+ */
+export interface DataFormatStatusResponse {
+  state: "none" | "match" | "mismatch";
+  /** This build's format (`DATA_FORMAT`). */
+  expected: number;
+  /** Format stored in the data dir; null when absent or unstamped. */
+  stored: number | null;
+  /** True when the data dir holds any stored data at all. */
+  hasData: boolean;
+  /**
+   * Unposted Outbox drafts across every review (#311: the Export card
+   * only shows when this is above 0). On a mismatch the service counts
+   * read-only from the stored DB — never by opening it for writing.
+   */
+  outboxCount: number;
+  /** Previous install ref recorded by the update helper (#311 go-back); null when unknown. */
+  previousRef: string | null;
+  /** Previous build's version when recorded; null when unknown. */
+  previousVersion: string | null;
+  /** Copyable terminal command that goes back to the previous build. */
+  goBackCommand: string;
+}
+
+/** `POST /api/data-format/go-back` (#311): a switch back to the previous build was committed. */
+export interface DataFormatGoBackResponse {
+  from: string;
+  to: string;
+}
+
+/** `POST /api/data-format/reset` (#311): the data dir was moved aside, never deleted. */
+export interface DataFormatResetResponse {
+  ok: true;
+  /** Absolute path the data dir was moved to. */
+  movedTo: string;
+}
+
 /** GET /api/reviews/:id/outbox — Outbox export Markdown (#223). No download/filename: Copy only. */
 export interface OutboxResponse {
   markdown: string;
@@ -1591,6 +1631,8 @@ export interface UpdateChannel {
   baseCommit: string | null;
   /** ISO build time; null when unknown. */
   builtAt: string | null;
+  /** Stored-data format (`DATA_FORMAT`) of that build; null when its package metadata has none (#311). */
+  dataFormat: number | null;
   current: boolean;
 }
 
@@ -1613,6 +1655,8 @@ export interface UpdateBuildInfo {
   baseCommit: string | null;
   commit: string | null;
   builtAt: string | null;
+  /** Stored-data format (`DATA_FORMAT`) of the running build (#311). */
+  dataFormat: number;
 }
 
 /** `GET /api/update/channels[?refresh=1]` — cached briefly server-side. */
@@ -1631,6 +1675,12 @@ export interface UpdateSwitchRequest {
    * switch, the gate, and the installed-build check still refuse.
    */
   force?: boolean;
+  /**
+   * #311: the user saw the data-reset warning for a target build whose
+   * `DATA_FORMAT` differs and chose to continue anyway. Without it the
+   * switch is refused (409) when the formats differ.
+   */
+  acceptDataReset?: boolean;
 }
 
 /**
@@ -1702,6 +1752,10 @@ export interface SwitchOutcome {
   logPath?: string;
   /** ISO time the outcome was recorded. */
   finishedAt: string;
+  /** Version switched from (#311: the notice's "Go back to <version>"); absent on old outcomes. */
+  fromVersion?: string | null;
+  /** Version switched to; absent on old outcomes. */
+  toVersion?: string | null;
   /**
    * Jobs stopped by a forced switch (copied from the pending record,
    * #36 follow-up). The UI names the count after the reload.
