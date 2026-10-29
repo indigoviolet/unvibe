@@ -104,6 +104,13 @@ describe("checkDataFormat", () => {
     expect(checkDataFormat(dir).stored).toBe(DATA_FORMAT + 1);
   });
 
+  it("none when only token/lock/probe-scratch entries exist without a DB", () => {
+    const dir = tmp("unvibe-df-");
+    fs.writeFileSync(path.join(dir, "token"), "x\n");
+    fs.mkdirSync(path.join(dir, "tmp"), { recursive: true });
+    expect(checkDataFormat(dir).state).toBe("none");
+  });
+
   it("mismatch when data files exist without a DB", () => {
     const dir = tmp("unvibe-df-");
     fs.mkdirSync(path.join(dir, "reviews"), { recursive: true });

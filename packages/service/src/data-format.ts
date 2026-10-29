@@ -8,7 +8,6 @@
  * conversion is ever attempted.
  */
 import fs from "node:fs";
-import path from "node:path";
 import {
   DATA_FORMAT,
   buildOutboxExportMarkdown,
@@ -23,8 +22,8 @@ import { dbFilePath, openDatabaseReadOnly } from "./store/index.js";
 
 export type { DataFormatStatus };
 
-/** Files that are not user data on their own (token, single-instance lock). */
-const NON_DATA_ENTRIES = new Set(["token", "unvibe.lock"]);
+/** Files that are not user data on their own (token, lock, diagnostic probe scratch). */
+const NON_DATA_ENTRIES = new Set(["token", "unvibe.lock", "tmp"]);
 
 function dirHasData(dataDir: string): boolean {
   try {

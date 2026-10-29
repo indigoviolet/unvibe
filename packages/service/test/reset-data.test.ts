@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import { runResetDataFlow } from "../src/cli/reset-data.js";
 import { runDoctor } from "../src/cli/doctor.js";
 import { migrate, openDatabase } from "../src/store/index.js";
-// @ts-expect-error plain-ESM script lib, typed in scripts-libs.d.ts by pattern
 import { dataResetSection, parseDataFormat } from "../../../scripts/release-notes-lib.mjs";
 
 function tmp(prefix: string): string {
