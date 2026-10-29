@@ -218,10 +218,13 @@ const main = async () => {
       else {
         console.log(`repo ${repo.id} (${repo.owner}/${repo.name}, managed)`);
         const created = await api(opts.port, "POST", "/api/reviews", { repoId: repo.id, pr: opts.pr }, token);
-        if (created.code !== 201) failures.push(`review create -> ${created.code}: ${(created.raw ?? "").slice(0, 300)}`);
+        // #92 async open: PR creates answer 202 with a loading placeholder
+        // (200 when reusing a finished review); the ingest lands in the
+        // background and the poll loop below waits for it.
+        if (![200, 201, 202].includes(created.code)) failures.push(`review create -> ${created.code}: ${(created.raw ?? "").slice(0, 300)}`);
         else {
           reviewId = created.json.review.id;
-          console.log(`review ${reviewId} created; running the full pipeline (reader, hunk passes, plotlines, glossary, diagrams)…`);
+          console.log(`review ${reviewId} created (HTTP ${created.code}); waiting for ingest, then the full pipeline (reader, hunk passes, plotlines, glossary, diagrams)…`);
         }
       }
     }
@@ -236,6 +239,24 @@ const main = async () => {
           break;
         }
         snap = got.json;
+        // #92: while the ingest is still loading there are no files yet;
+        // wait for it (it shares the run budget) and fail loudly on a
+        // failed/empty ingest instead of watching an empty snapshot.
+        const ingestStatus = snap.ingest?.status ?? "ready";
+        if (ingestStatus === "loading") {
+          console.log(
+            `  t=${Math.round((Date.now() - (deadline - opts.budgetMin * 60_000)) / 60000)}min ingest ${snap.ingest?.step ?? "working"}…`,
+          );
+          if (Date.now() > deadline) {
+            failures.push(`ingest did not finish within ${opts.budgetMin} minutes (re-run with --budget-min N; no cache saved)`);
+            break;
+          }
+          continue;
+        }
+        if (ingestStatus === "failed" || ingestStatus === "empty") {
+          failures.push(`ingest ${ingestStatus}: ${((snap.ingest?.error ?? "")).slice(0, 300)} (no cache saved)`);
+          break;
+        }
         const root = (snap.pages ?? []).find((p) => p.id === "root");
         const findings = (snap.pages ?? []).filter((p) => p.kind === "finding");
         const hunksum = (snap.hunkStates ?? []).filter((h) => h.summary).length;
