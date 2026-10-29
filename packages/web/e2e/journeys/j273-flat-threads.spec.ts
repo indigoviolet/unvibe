@@ -62,11 +62,12 @@ test.describe("J273 flat threads", () => {
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
 
-    // The thread renders inline under the card with kind-badged replies.
+    // The thread renders inline under the card with avatar-marked replies.
     const thread = page.locator('#C-problem section.ithread[data-thread]').first();
     await expect(thread).toBeVisible({ timeout: 30_000 });
     await expect(thread.locator('[data-reply][data-kind="ask"]').first()).toBeVisible({ timeout: 60_000 });
-    await expect(thread.locator(".kind-ask").first()).toBeVisible();
+    // Issue #315: no kind chip on Ask entries — the AI avatar says who's speaking.
+    await expect(thread.locator('[data-ask-answer] .av.ai').first()).toBeVisible();
     const threadId = await thread.getAttribute("data-thread");
     expect(threadId).toBeTruthy();
 
@@ -75,11 +76,16 @@ test.describe("J273 flat threads", () => {
     const q1 = thread.locator('[data-ask-question]').first();
     await expect(q1).toContainText("What is line folding?", { timeout: 30_000 });
     await expect(q1.locator(".av.you")).toBeVisible();
-    await expect(q1.locator(".kind-comment")).toBeVisible();
-    await expect(q1).toContainText("Reviewer comment");
+    // Issue #315: no comment chip, no "Reviewer comment" label — the
+    // entries keep accessible names so screen readers still tell them apart.
+    await expect(q1).toHaveAttribute("aria-label", "Your question");
+    await expect(q1.locator(".kind")).toHaveCount(0);
+    await expect(q1).not.toContainText("Reviewer comment");
     const a1 = thread.locator('[data-ask-answer]').first();
     await expect(a1).toBeVisible({ timeout: 30_000 });
     await expect(a1.locator(".av.ai")).toBeVisible();
+    await expect(a1).toHaveAttribute("aria-label", "Agent answer");
+    await expect(a1.locator(".kind")).toHaveCount(0);
     // The answer carries no question heading.
     await expect(a1.locator(".ans-q")).toHaveCount(0);
     // Question sits directly before its answer (no gap between them).

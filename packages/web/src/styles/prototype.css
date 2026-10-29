@@ -1505,7 +1505,8 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
 /* Issue #293: an Ask question is a reviewer entry with its answer as the
    reply directly under it — no rule and no blank gap between the two.
-   The answer keeps only its kind badge, so its toolbar stays right. */
+   Issue #315: neither entry carries a kind chip or heading (avatars say
+   who's speaking), so the answer's toolbar sits right via margin-left. */
 .spike-thread .spike-reply.ask-question { padding-bottom: 2px; }
 .spike-thread .spike-reply.ask-question + .spike-reply.ask-answer { border-top: none; padding-top: 2px; }
 .spike-thread .spike-reply.ask-answer .spike-reply-head .ctl { margin-left: auto; }

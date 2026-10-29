@@ -682,7 +682,11 @@ needed (that deviation is closed, not added).
   so the question never enters the Outbox/Submit path (both read only
   `kind === "comment"` replies) — met (`comments/ThreadView.tsx`
   `AskQuestionView` + `ask-answer`, `prototype.css` gap rules, journey J273
-  #293 asserts).
+  #293 asserts; issue #315 drops the kind chips and the "Reviewer
+  comment" label from both Ask entries — just avatar plus text — with
+  `aria-label="Your question"` / `"Agent answer"` on the entries for
+  screen readers. Explain replies and real reviewer comments keep
+  their badge + heading).
   Only Ask sends text to the agent; clicking a diff line opens a
   Comment. Only comment-kind replies are submitted — pure agent threads
   stay out of the Outbox and the submit path skips threads without
