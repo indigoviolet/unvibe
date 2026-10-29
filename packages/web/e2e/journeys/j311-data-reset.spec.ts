@@ -141,6 +141,27 @@ test.describe("J311 data-format notice", () => {
       // Go back is offered with the recorded version (not clicked here).
       await expect(notice.getByRole("button", { name: "Go back to 0.0.1-old" })).toBeVisible();
 
+      // #311 follow-up: the cards' outer edges line up with the text
+      // column (heading + intro paragraph) within 1px, wide and narrow.
+      for (const width of [1440, 800]) {
+        await page.setViewportSize({ width, height: 900 });
+        const edges = await notice.evaluate((doc) => {
+          const box = (el: Element) => {
+            const r = el.getBoundingClientRect();
+            return { left: r.left, right: r.right };
+          };
+          const h1 = doc.querySelector("h1");
+          const intro = doc.querySelector("p");
+          const cards = [...doc.querySelectorAll(".ui-card")];
+          if (!h1 || !intro || cards.length === 0) throw new Error("notice pieces missing");
+          return { h1: box(h1), intro: box(intro), cards: cards.map(box) };
+        });
+        for (const card of [...edges.cards, edges.intro]) {
+          expect(Math.abs(card.left - edges.h1.left)).toBeLessThanOrEqual(1);
+          expect(Math.abs(card.right - edges.h1.right)).toBeLessThanOrEqual(1);
+        }
+      }
+
       // Export shows the draft count and downloads the drafts.
       const downloadPromise = page.waitForEvent("download", { timeout: 30_000 });
       await notice.getByRole("button", { name: "Export 1 unposted draft" }).click();
