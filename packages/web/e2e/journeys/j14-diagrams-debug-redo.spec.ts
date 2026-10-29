@@ -13,7 +13,7 @@ import {
   D2_MIN_VERSION,
   type DiagramBlock,
 } from "@unvibe/shared";
-import { createDemoReview, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { createDemoReview, createScratchReview, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -144,6 +144,7 @@ test.describe("J14 diagrams, debug, redo", () => {
         db.exec(`CREATE TABLE IF NOT EXISTS review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL);`);
         db.prepare("INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(review_id) DO UPDATE SET rev = excluded.rev, snapshot = excluded.snapshot")
           .run("j14-d2-seed", seeded.rev, JSON.stringify(seeded), Date.now());
+        stampDataFormat(db);
       } finally { db.close(); }
       bad = await startService(badData, { agent: "replay", extraEnv: { UNVIBE_D2_BIN: "/nonexistent-d2" } });
       await page.goto(`${bad.origin}/review/j14-d2-seed?token=${bad.token}`);
@@ -327,6 +328,7 @@ function seedD2Review(dataDir: string): void {
       "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) " +
         "ON CONFLICT(id) DO NOTHING",
     ).run(D2_SEED_REVIEW_ID, "seed-repo", "main", 5020, 1, Date.now(), JSON.stringify({}));
+    stampDataFormat(db);
   } finally {
     db.close();
   }
