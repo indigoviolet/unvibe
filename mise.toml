@@ -271,23 +271,23 @@ description = "Cut a final release tag: clean/main/CI-green checks, version bump
 run = "node scripts/release-tag.mjs"
 
 [tasks."test:live:installed"]
-description = "Live sessions per provider from the installed copy (needs logins; tiny spend; never run by check)"
+description = "Live sessions per provider from the installed copy (pi, claude, codex; needs logins; tiny spend, capped; never run by check)"
 run = "mise run release && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-installed.mjs"
 
 [tasks."test:live:submit"]
-description = "Live M6 submit test on indigoviolet/lvu (draft PR only; never run by check)"
+description = "Live M6 submit test on indigoviolet/lvu (draft PR only; pipeline agent turns on pi by default; capped; never run by check)"
 run = "UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 node ./scripts/live-submit.mjs"
 
 [tasks."test:live:pipeline"]
-description = "Live M3 pipeline smoke on real agents (claude+codex; token spend; never run by check)"
+description = "Live M3 pipeline smoke on real agents (default pi; token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-pipeline.mjs"
 
 [tasks."test:live:plotlines"]
-description = "Live #169 evaluation: hunk scores + plotlines on the demo and public flask PRs (real agents; token spend; read-only, never posts; never run by check)"
+description = "Live #169 evaluation: hunk scores + plotlines on the demo and public flask PRs (default pi; token spend, capped; read-only, never posts; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-plotlines-169.mjs"
 
 [tasks."test:live:hunk-cap"]
-description = "Live #210 measurement: hunk-pass wall/run/queue times at sessionsPerProvider caps (usage: mise run test:live:hunk-cap -- --repo-path <checkout> --pr <n> [--caps 4,8,16,32]; needs claude login; small token spend; never run by check)"
+description = "Live #210 measurement: hunk-pass wall/run/queue times at sessionsPerProvider caps (usage: mise run test:live:hunk-cap -- --repo-path <checkout> --pr <n> [--caps 4,8,16,32]; default pi; small token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-hunk-cap.mjs"
 
 [tasks."test:live:second-opinion"]
@@ -295,13 +295,17 @@ description = "Live second-opinion check: blind on one finding with real agents 
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-second-opinion.mjs"
 
 [tasks."test:live:diagram"]
-description = "Live D2 diagram check: real diagram action per provider with cite + render asserts (needs logins, d2; small token spend; never run by check)"
+description = "Live D2 feature run (#286): one ask per lifted feature group per provider through the real pipeline, self-enforced $5 cap (--cap N), report to test-results/ (needs logins, d2; real spend; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-diagram.mjs"
 
 [tasks."test:live:full-access"]
-description = "Live full-access check (#160): session+fork git/gh/web/tool run plus the injection measurement (needs logins; small token spend; never run by check)"
+description = "Live full-access check (#160): session+fork git/gh/web/tool run plus the injection measurement (default pi; UNVIBE_LIVE_CAP required; never run by check)"
 run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 npm run test:live:full-access --workspace @unvibe/service"
 
 [tasks."test:live:fork-tools"]
 description = "Live #124 check: a Codex fork calls a review tool (needs codex login; tiny spend; never run by check)"
 run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 UNVIBE_LIVE_PROVIDERS=codex npm run test:live:fork-tools --workspace @unvibe/service"
+
+[tasks."test:live:pi"]
+description = "Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi (needs the owner's pi login and go; small spend; never run by check)"
+run = "npm run build --workspace @unvibe/shared && UNVIBE_PI_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 npm run test:live:pi --workspace @unvibe/service"

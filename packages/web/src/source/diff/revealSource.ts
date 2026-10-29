@@ -154,6 +154,21 @@ export function observeDiffPinned(): () => void {
       const underBacking = bandRect !== null && r.bottom > bandRect.top && r.top < bandRect.bottom;
       h.classList.toggle("stuck", inBand || underBacking);
     });
+    // Hidden-hunk rows (issue #283): the backing also covers the first
+    // file's first body rows while it sits in flow at rest — a hidden-only
+    // first file reads as a blank band with no label. A hidden row is not
+    // a header, so it is lifted above the backing only while the backing
+    // is at its natural (unstuck) position near the top: once the backing
+    // sticks to the pinned band, rows scroll under it like every other
+    // content row instead of riding the band. No copied CSS constants:
+    // the backing's natural top is the band top itself, its stuck top 6px
+    // above it, so a 3px tolerance separates the two states.
+    const backingRest = bandRect !== null && bandRect.top > bandTop - 3;
+    pane.querySelectorAll(".dhid").forEach((row) => {
+      const r = row.getBoundingClientRect();
+      const underBacking = bandRect !== null && r.bottom > bandRect.top && r.top < bandRect.bottom;
+      row.classList.toggle("stuck", backingRest && underBacking);
+    });
   };
   let raf = 0;
   const scheduleStuck = (): void => {

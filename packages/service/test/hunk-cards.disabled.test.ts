@@ -131,7 +131,7 @@ function hunkCards(ctx: App["ctx"], id: string, fileKey: string, contentHash: st
     .reviews.getSnapshot(id)!
     .annotations.filter(
       (a) =>
-        a.type === "conversation" &&
+        a.type === "thread" &&
         a.anchor.host.kind === "hunk" &&
         a.anchor.host.fileKey === fileKey &&
         a.anchor.host.contentHash === contentHash,
@@ -164,7 +164,7 @@ describe("hunk summaries as content cards (#138)", () => {
       expect(cards[0].id).not.toBe(nestedId);
       expect(cards[0].open).toBe(true);
       expect(cards[0].sessionId).toBeUndefined();
-      const firstTurn = (cards[0].turns ?? [])[0];
+      const firstTurn = (cards[0].replies ?? [])[0];
       expect(firstTurn?.question).toBeNull();
       expect(firstTurn?.blocks.length).toBeGreaterThan(0);
       // Activating the hunk card itself is a pure store write: the only
@@ -181,7 +181,7 @@ describe("hunk summaries as content cards (#138)", () => {
         expect(nested.anchor.host.blockId).toBe(`${firstTurn?.id}#b1`);
       }
       expect(nested.anchor.quotedText).toBe("fast path");
-      const nestedTurn = (nested.turns ?? []).find((t) => t.id === nestedTurnId)!;
+      const nestedTurn = (nested.replies ?? []).find((t) => t.id === nestedTurnId)!;
       expect(nestedTurn.blocks.length).toBeGreaterThan(0);
     } finally {
       await app.close();
@@ -203,7 +203,7 @@ describe("hunk summaries as content cards (#138)", () => {
       expect(ask.status).toBe(200);
       if (ask.json.jobId) expect(await waitForJob(ctx, ask.json.jobId as string)).toBe("done");
       const nested = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (ask.json.annotationId as string))!;
-      expect((nested.turns ?? [])[0]?.question).toBe("Why fold at all?");
+      expect((nested.replies ?? [])[0]?.question).toBe("Why fold at all?");
 
       const again = await postAction(app, id, {
         kind: "explain",
@@ -236,9 +236,9 @@ describe("hunk summaries as content cards (#138)", () => {
       expect(res.status).toBe(200);
       expect(res.json.jobId).toBeUndefined();
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === (res.json.annotationId as string))!;
-      expect(card.type).toBe("conversation");
+      expect(card.type).toBe("thread");
       expect(card.anchor.host).toEqual({ kind: "hunk", fileKey, contentHash });
-      const turn = (card.turns ?? [])[0];
+      const turn = (card.replies ?? [])[0];
       expect(turn?.blocks.length).toBe(1);
       // The token leaves the display text and lands in citations.
       const text = JSON.stringify(turn?.blocks[0]);

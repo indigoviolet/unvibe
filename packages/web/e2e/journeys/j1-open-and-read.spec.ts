@@ -100,6 +100,17 @@ test.describe("J1 open and read the guide", () => {
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
+    // #274 hover toolbars: the card toolbar lives in the heading row and
+    // stays hidden until the card is hovered or keyboard-focused.
+    const cardToolbar = page.locator("#C-central .chead .ctl");
+    await expect(cardToolbar).toHaveCSS("opacity", "0");
+    await page.locator("#C-central").hover();
+    await expect(cardToolbar).toHaveCSS("opacity", "1");
+    // Keyboard: focusing a toolbar control reveals it via :focus-within.
+    await page.mouse.move(0, 0);
+    await cardToolbar.getByRole("button", { name: "Use examples" }).focus();
+    await expect(cardToolbar).toHaveCSS("opacity", "1");
+
     // Variant with no agent: a scratch repo opens as diff + metadata, no guide promised.
     const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j1-repo-"));
     const noneData = mkdtempSync(path.join(os.tmpdir(), "unvibe-j1-none-"));

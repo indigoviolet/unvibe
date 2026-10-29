@@ -62,8 +62,10 @@ import type {
   RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
-import { parseGitHubRepoInput } from "@unvibe/shared";
+import { CHANGES_DEFAULT_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
+import { decodeChangesCursor, encodeChangesCursor, type ChangesCursor } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
+import { Combobox } from "@base-ui/react/combobox";
 import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
@@ -149,6 +151,57 @@ export function matchesAuthor(rowAuthor: string | undefined, filter: string): bo
  * Author → row count across the requested-review groups (#228): the
  * only lists the filter reads. Each row occurrence counts.
  */
+/**
+ * #310: append a newly fetched page to the shown rows, dropping rows
+ * already present (a later page can repeat an earlier row near a page
+ * boundary, and a changed filter can refetch page one). PRs key by
+ * number, branches and reviews by their own ids.
+ */
+export function appendChanges(existing: RepoChange[], fresh: RepoChange[]): RepoChange[] {
+  if (fresh.length === 0) return existing;
+  const keyOf = (c: RepoChange): string => {
+    if (c.kind === "pr" && c.prNumber !== undefined) return `pr:${c.prNumber}`;
+    if (c.kind === "branch" && c.branch) return `branch:${c.branch}`;
+    if (c.kind === "review" && c.reviewId) return `review:${c.reviewId}`;
+    if (c.kind === "demo" && c.demo) return `demo:${c.demo}`;
+    return `title:${c.title}`;
+  };
+  const seen = new Set(existing.map(keyOf));
+  const out = [...existing];
+  for (const c of fresh) {
+    const k = keyOf(c);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * #310: fold one filter's next-page token into the paging state.
+ * `token` null means that filter's search is exhausted (its keys clear);
+ * a token carries its searches' new end cursors (absent keys are left
+ * alone, so parallel filters compose without clobbering each other).
+ */
+export function mergePageCursors(
+  prev: ChangesCursor,
+  filter: "authoring" | "review-requested",
+  token: string | null,
+): ChangesCursor {
+  const next: ChangesCursor = { ...prev };
+  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team"] as const);
+  if (token === null) {
+    for (const k of keys) next[k] = null;
+    return next;
+  }
+  const decoded = decodeChangesCursor(token);
+  for (const k of keys) {
+    if (k in decoded) next[k] = decoded[k];
+  }
+  return next;
+}
+
 export function authorCounts(changes: Pick<RepoChange, "author">[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of changes) {
@@ -435,6 +488,144 @@ export function DocumentForm({ repos, onCreated }: { repos: Repo[]; onCreated: (
   );
 }
 
+export interface AuthorOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Single author control (#297 follow-up): a combobox in the select's
+ * place, at the select's size and style. At rest it shows the current
+ * choice ("All", or the chosen login) like the select did; typing
+ * filters the dropdown of known authors (the #228 list with counts)
+ * and picking one applies the client-side filter; Enter on a login that
+ * isn't in the list fetches that author's PRs from GitHub (`gh pr list
+ * --author`); "All" (or clearing the field + Enter) returns to all
+ * PRs and clears any server search. Arrows/Enter move through the list,
+ * Escape closes it — all native Base UI combobox behaviour with proper
+ * listbox/option ARIA. Typing never fetches (no extra requests, no
+ * prefetching); the draft text is never saved, only the committed
+ * choice persists like before.
+ *
+ * Enter handling: when keyboard navigation highlighted an item, Base UI
+ * commits it (and `stopEvent`s, so `!e.defaultPrevented` also holds) —
+ * the handler yields so the highlight wins and only one commit runs. A
+ * commit from anywhere (list pick, Show-all, repo switch) drops the
+ * draft via the `value` effect, so the box always settles back on the
+ * committed choice.
+ */
+function AuthorCombobox({
+  value,
+  options,
+  onPick,
+  onSearch,
+}: {
+  /** Committed choice: "all" or a login. */
+  value: string;
+  /** "All" plus the known authors (with counts), plus the committed
+      unknown login when a server search is active. */
+  options: AuthorOption[];
+  /** Pick a listed login (client-side filter, clears any server search). */
+  onPick: (login: string) => void;
+  /** Fetch an unlisted login's PRs from GitHub. */
+  onSearch: (login: string) => void;
+}): React.JSX.Element {
+  const display = options.find((o) => o.value === value)?.label ?? value;
+  const [draft, setDraft] = useState<string | null>(null);
+  // A commit from anywhere drops the draft: the box shows the choice.
+  useEffect(() => {
+    setDraft(null);
+  }, [value]);
+  const openRef = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // What keyboard navigation highlighted last (null when nothing is).
+  // The Enter handler yields to it so the highlight always wins.
+  const highlightRef = useRef<string | null>(null);
+  const commitDraft = (text: string): void => {
+    const t = text.trim();
+    // Untouched input: nothing to commit.
+    if (t === display) return;
+    if (t === "" || t === AUTHOR_ALL) onPick(AUTHOR_ALL);
+    else if (options.some((o) => o.value !== AUTHOR_ALL && o.value === t)) onPick(t);
+    else onSearch(t);
+    setDraft(null);
+  };
+  return (
+    <Combobox.Root
+      value={value}
+      items={options.map((o) => o.value)}
+      itemToStringLabel={(v) => options.find((o) => o.value === v)?.label ?? v}
+      onValueChange={(v) => {
+        if (typeof v === "string") {
+          onPick(v);
+          setDraft(null);
+        }
+      }}
+      inputValue={draft ?? display}
+      // The input doubles as the filter query: at rest it shows the
+      // committed choice, which must not filter the list down — only
+      // typed text filters (matched against the option labels).
+      filter={(item, query) => {
+        if (draft === null) return true;
+        const q = query.trim().toLowerCase();
+        if (q === "") return true;
+        const label = options.find((o) => o.value === item)?.label ?? item;
+        return label.toLowerCase().includes(q);
+      }}
+      onInputValueChange={(v) => {
+        // Escape with a closed popup clears the store input: ignore it
+        // (a commit from anywhere resets the draft instead).
+        if (v === "" && !openRef.current) return;
+        setDraft(v);
+      }}
+      onOpenChange={(open) => {
+        openRef.current = open;
+        if (!open) setDraft(null);
+      }}
+      onItemHighlighted={(v) => {
+        highlightRef.current = typeof v === "string" ? v : null;
+      }}
+      autoHighlight
+    >
+      <div className="author-combo" ref={boxRef}>
+        <Combobox.Input
+          aria-label="Author"
+          placeholder="Type a login…"
+          // At rest the box shows the choice; focusing selects it all
+          // so typing replaces it instead of appending to it.
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.defaultPrevented || highlightRef.current !== null) return;
+            e.preventDefault();
+            commitDraft(e.currentTarget.value);
+          }}
+        />
+        <Combobox.Trigger aria-label="Show authors">
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+        </Combobox.Trigger>
+      </div>
+      <Combobox.Portal>
+        <Combobox.Positioner anchor={boxRef} sideOffset={4} align="start" side="bottom" className="author-combo-positioner">
+          <Combobox.Popup className="ui-select-popup">
+            <Combobox.Empty className="ui-select-empty">No matching authors — press Enter to search GitHub</Combobox.Empty>
+            <Combobox.List>
+              {(login: string) => {
+                const label = options.find((o) => o.value === login)?.label ?? login;
+                return (
+                  <Combobox.Item key={login} value={login} className="ui-select-item">
+                    <span>{label}</span>
+                    <Combobox.ItemIndicator className="ui-select-check">✓</Combobox.ItemIndicator>
+                  </Combobox.Item>
+                );
+              }}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
+}
+
 export function StartPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -503,6 +694,19 @@ export function StartPage(): React.JSX.Element {
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
   // Author filter (#228): one single-select for the requested-review groups.
   const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
+  // #297: the typed-login author search (fetched server-side via
+  // `gh pr list --author`, not just the loaded rows). The search holds
+  // the committed login once Enter is pressed.
+  // #310: cursor paging — `pageCursors` holds the next-page cursors for
+  // every PR search (round-tripped opaquely through `cursor`). Load more
+  // appends one page per press; it never re-fetches. `loadingMore` locks
+  // the button while a page is in flight (double-press guard);
+  // `moreError` keeps the rows on a failed page with a Retry.
+  const [pageCursors, setPageCursors] = useState<ChangesCursor>({});
+  const [listsHaveMore, setListsHaveMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  const [authorSearch, setAuthorSearch] = useState<string | null>(null);
 
   // Readiness (fills in after render; never blocks).
   const [readiness, setReadiness] = useState<ReadinessCheck[] | null>(null);
@@ -525,22 +729,42 @@ export function StartPage(): React.JSX.Element {
   // rows for the repo: the kept rows stay rendered, the fetch replaces them
   // when it lands, and a failed refresh keeps them with the error note.
   const loadSeq = useRef(0);
+  const loadMoreSeq = useRef(0);
+  const loadingMoreRef = useRef(false);
   const loadLists = useCallback(async (id: string) => {
     const seq = ++loadSeq.current;
+    // A fresh load supersedes any in-flight Load more (its late rows are
+    // dropped by the sequence check below).
+    loadMoreSeq.current++;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    setMoreError(null);
+    setPageCursors({});
     const kept = getKeptLists(id);
     const hadKept = kept !== null;
+    // #297/#307: capture whether this load is a typed author search.
+    // A search-scoped response is never written to the kept lists —
+    // neither on the current repo nor (below) on a repo this load went
+    // stale for — so a return visit shows the default view, not a
+    // narrowed search (a search matching nothing would otherwise keep
+    // an empty requested list that reads exactly like this bug).
+    const searched = authorSearch !== null;
     // A background refresh shows its quiet sign; a first load keeps the
     // existing "Loading…" state (no kept age to describe).
     if (hadKept) setRefreshing(true);
+    // Fresh loads always start from page one (no cursor): the typed
+    // author search, if any, rides every PR-list call (branches are
+    // git-local and ignore both).
+    const opts = { limit: CHANGES_DEFAULT_LIMIT, ...(authorSearch !== null ? { author: authorSearch } : {}) };
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
     // forever no matter how the requests stall.
     const settled = await Promise.race([
       Promise.allSettled([
-        api.repoChanges(id, "authoring"),
-        api.repoChanges(id, "review-requested"),
-        api.repoChanges(id, "recent"),
+        api.repoChanges(id, "authoring", opts),
+        api.repoChanges(id, "review-requested", opts),
+        api.repoChanges(id, "recent", opts),
       ]),
       new Promise<null>((resolve) => {
         window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
@@ -582,7 +806,7 @@ export function StartPage(): React.JSX.Element {
     // Stale response for a previous repo: refresh its kept entry so a return
     // visit shows fresh rows, but never touch the current repo's state.
     if (loadSeq.current !== seq) {
-      if (fulfilled > 0) {
+      if (fulfilled > 0 && !searched) {
         try {
           setKeptLists(id, {
             authoring: freshAuthoring,
@@ -603,6 +827,14 @@ export function StartPage(): React.JSX.Element {
     setRequested(freshRequested);
     setBranches(freshBranches);
     setFetchNote(freshNote);
+    // #297: any full PR page means more PRs may exist (Load more below).
+    setListsHaveMore(
+      [a, r, rec].some((x) => x.status === "fulfilled" && x.value.hasMore === true),
+    );
+    // Merge this load's next-page cursors (per filter, so parallel calls
+    // compose without clobbering each other).
+    if (a.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "authoring", a.value.cursor));
+    if (r.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "review-requested", r.value.cursor));
     setListErrors({
       authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
       requested: r.status === "rejected" ? friendlyError(r.reason) : null,
@@ -612,8 +844,10 @@ export function StartPage(): React.JSX.Element {
     setListsError(rejected.length === 3 ? friendlyError(rejected[0].reason) : null);
     // Keep the last successful response per repo (failed filters reuse the
     // kept rows merged above). A total failure keeps the old entry and its
-    // age, so the status line still describes what is shown.
-    if (fulfilled > 0) {
+    // age, so the status line still describes what is shown. #297: an
+    // author search is never kept — it narrows the lists to one login,
+    // and a return visit must show the default view, not that search.
+    if (fulfilled > 0 && !searched) {
       try {
         const saved = setKeptLists(id, {
           authoring: freshAuthoring,
@@ -632,15 +866,19 @@ export function StartPage(): React.JSX.Element {
     // result, no extra calls) — reload the Reviews list so it shows the
     // fresh states. Best effort; list errors above already describe gh.
     if (fulfilled > 0) void loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, authorSearch]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes
       underneath. Without kept rows the old lists clear as before, so a
       first load behaves exactly as today. The nonce bump guarantees the
-      effect fires a fresh load even when the id is unchanged. */
+      effect fires a fresh load even when the id is unchanged. A typed
+      author search (#297) never crosses repos, so it clears here. */
   const selectRepo = useCallback(
     (id: string) => {
+      setAuthorSearch(null);
+      setListsHaveMore(false);
+      setMoreError(null);
       const kept = getKeptLists(id);
       if (kept) {
         setAuthoring(kept.authoring);
@@ -681,6 +919,11 @@ export function StartPage(): React.JSX.Element {
   const selectAuthor = useCallback((login: string) => {
     const next = login.trim() !== "" ? login : AUTHOR_ALL;
     setAuthorFilter(next);
+    // Picking from the list is the client-side filter (#228): it clears
+    // any server-side typed search (#297), and its paging token with it
+    // (a cursor is only valid for the search that minted it).
+    setAuthorSearch(null);
+    setPageCursors({});
     try {
       localStorage.setItem(AUTHOR_KEY, next);
     } catch {
@@ -688,9 +931,79 @@ export function StartPage(): React.JSX.Element {
     }
   }, []);
 
-  /** Clear both list filters (#228's way back clears the pair). */
+  /**
+   * #297: commit a login as a server-side author search: the next load
+   * fetches that author's PRs from GitHub (`gh pr list --author`),
+   * instead of filtering the loaded rows.
+   */
+  const commitAuthorSearch = useCallback((login: string) => {
+    const t = login.trim();
+    if (t === "" || t === AUTHOR_ALL) {
+      selectAuthor(AUTHOR_ALL);
+      return;
+    }
+    setAuthorFilter(t);
+    setAuthorSearch(t);
+    try {
+      localStorage.setItem(AUTHOR_KEY, t);
+    } catch {
+      // Ignore: the choice simply does not persist.
+    }
+  }, [selectAuthor]);
+
+  /**
+   * #310: Load more appends the next page of each PR list (one GraphQL
+   * page per search, nothing re-fetched). A failed page keeps every
+   * shown row and offers Retry on the same cursor; rows dedupe by PR
+   * number, so a repeated page can never duplicate a row.
+   */
+  const loadMoreLists = useCallback(async () => {
+    if (!selectedId || loadingMoreRef.current) return;
+    const mySeq = ++loadMoreSeq.current;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setMoreError(null);
+    // Branches are git-local and uncapped: only the PR lists page.
+    const cursor = encodeChangesCursor(pageCursors);
+    const opts = { limit: CHANGES_DEFAULT_LIMIT, ...(authorSearch !== null ? { author: authorSearch } : {}), cursor };
+    const settled = await Promise.race([
+      Promise.allSettled([
+        api.repoChanges(selectedId, "authoring", opts),
+        api.repoChanges(selectedId, "review-requested", opts),
+      ]),
+      new Promise<null>((resolve) => {
+        window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
+      }),
+    ]);
+    // A fresh load superseded this page: drop it (its rows would be stale).
+    if (loadMoreSeq.current !== mySeq) return;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    if (settled === null) {
+      setMoreError("it took too long — the service may be busy");
+      return;
+    }
+    const [a, r] = settled;
+    if (a.status === "rejected" || r.status === "rejected") {
+      const reason = (a.status === "rejected" ? a : (r as PromiseRejectedResult)).reason;
+      setMoreError(friendlyError(reason));
+      return;
+    }
+    setAuthoring((prev) => appendChanges(prev, a.value.changes));
+    setRequested((prev) => appendChanges(prev, r.value.changes));
+    setPageCursors((prev) =>
+      mergePageCursors(mergePageCursors(prev, "authoring", a.value.cursor), "review-requested", r.value.cursor),
+    );
+    setListsHaveMore(a.value.hasMore || r.value.hasMore);
+    // Same #230 sync as a fresh load (the pages just landed server-side).
+    void loadSessions();
+  }, [selectedId, pageCursors, authorSearch, loadSessions]);
+
+  /** Clear both list filters (#228's way back clears the pair) and the
+      typed author search (#297). */
   const showAllLists = useCallback(() => {
     selectRecency("all");
+    setAuthorSearch(null);
     selectAuthor(AUTHOR_ALL);
   }, [selectRecency, selectAuthor]);
 
@@ -934,7 +1247,12 @@ export function StartPage(): React.JSX.Element {
         </p>
       ) : null}
       {prOffer && !cloningPr ? (
-        <div className="ci" data-testid="pr-clone-offer">
+          <div
+            className="ci"
+            data-testid="pr-clone-offer"
+            // #281: opaque box above the watermark (see the readiness callout).
+            style={{ background: "var(--surface)" }}
+          >
           <div style={{ minWidth: 0 }}>
             <span className="hint">
               {prOffer.owner}/{prOffer.name} isn&apos;t in your repos. Clone it and open #
@@ -1009,13 +1327,20 @@ export function StartPage(): React.JSX.Element {
   // #228: author options (with counts) from the requested-review
   // groups only — the only lists the filter reads. Computed from the
   // unfiltered groups, so the options stay stable while either filter
-  // is active. Sorted by login.
+  // is active. Sorted by login. #297: a committed typed login rides as
+  // an extra option so the select keeps showing it (the server already
+  // narrowed the rows to it).
   const authorOptions = (() => {
     const counts = authorCounts(requested);
     const logins = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    if (authorSearch !== null && !counts.has(authorSearch)) logins.push(authorSearch);
+    logins.sort((a, b) => a.localeCompare(b));
     return [
       { value: AUTHOR_ALL, label: "All" },
-      ...logins.map((login) => ({ value: login, label: `${login} (${counts.get(login)})` })),
+      ...logins.map((login) => ({
+        value: login,
+        label: login === authorSearch && !counts.has(login) ? login : `${login} (${counts.get(login)})`,
+      })),
     ];
   })();
   // When a picked author is gone from the lists (repo switch, refresh),
@@ -1040,19 +1365,28 @@ export function StartPage(): React.JSX.Element {
     effectiveAuthor !== AUTHOR_ALL ? `No ${noun} by ${effectiveAuthor}.` : null;
 
   return (
-    <div className="app">
+    <div className="app start">
       <Toast />
       <Tooltip />
       <ScreenTopBar showBadge />
+      {/* Brain/disco-ball beside the start screen's content (issue #281,
+          variant A Watermark): #275's faint, tilted, off-centre, fixed
+          watermark. Static and pointer-transparent; the top bar and the
+          content below sit above it. */}
+      <div className="start-watermark" aria-hidden="true">
+        <img src="/disco-ball.svg" alt="" />
+      </div>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
           {realRepos.length > 0 && selectedId ? (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-              <span style={{ width: 320, maxWidth: "100%" }}>
+            // #274: the repo picker is the left-aligned page heading.
+            <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 4 }}>
+              <span style={{ maxWidth: "100%" }}>
                 <Select
                   aria-label="Repo"
                   value={selectedId}
                   title={selected?.localPath ?? ""}
+                  className="repo-title-select"
                   onValueChange={selectRepo}
                   options={[
                     ...(remembered.length > 0
@@ -1076,7 +1410,9 @@ export function StartPage(): React.JSX.Element {
                   key={c.id}
                   className="ci"
                   data-testid={`readiness-callout-${c.id}`}
-                  style={{ border: "1px solid var(--line)", alignItems: "center" }}
+                  // #281: opaque box above the watermark (the ball must
+                  // never show inside a card or notice box).
+                  style={{ border: "1px solid var(--line)", alignItems: "center", background: "var(--surface)" }}
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13 }}>
@@ -1302,7 +1638,6 @@ export function StartPage(): React.JSX.Element {
                     error={listErrors.authoring}
                     errorTestId="changes-error-authoring"
                     opening={opening}
-                    empty="No open PRs."
                     emptyTestId="authoring-empty"
                     filteredNote={
                       authoring.length > 0 && visibleAuthoring.length === 0 ? windowEmptyNote : null
@@ -1329,14 +1664,17 @@ export function StartPage(): React.JSX.Element {
                       Authors with counts come from the two groups; the
                       choice persists like the time filter. */}
                   <div className="prblock-head" style={{ marginTop: 14 }}>
-                    <h2 className="prblock-title">Waiting on your review</h2>
+                    <h2 className="prblock-title prblock-title-group">Waiting on your review</h2>
                     <div className="prblock-tools">
+                      {/* #297 follow-up: one combobox in the select's place,
+                          at the select's size and style — the select and the
+                          typed box are a single control now. */}
                       <span style={{ width: 170, flex: "none" }}>
-                        <Select
-                          aria-label="Author"
+                        <AuthorCombobox
                           value={effectiveAuthor}
-                          onValueChange={(v) => selectAuthor(v)}
                           options={authorOptions}
+                          onPick={selectAuthor}
+                          onSearch={commitAuthorSearch}
                         />
                       </span>
                     </div>
@@ -1346,20 +1684,21 @@ export function StartPage(): React.JSX.Element {
                       {listErrors.requested}
                     </p>
                   ) : null}
-                  <div className="subhead">Requested of you</div>
+                  <div className="subhead">
+                    Requested of you
+                    {visibleDirect.length === 0 && directRequested.length === 0 && !listErrors.requested ? (
+                      <span className="cnt">0</span>
+                    ) : null}
+                  </div>
                   {visibleDirect.length === 0 ? (
-                    <p className="hint subempty" data-testid="requested-direct-empty">
-                      {directRequested.length === 0 ? (
-                        "No PRs requested of you."
-                      ) : (
-                        <>
-                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
-                            Show all
-                          </Button>
-                        </>
-                      )}
-                    </p>
+                    directRequested.length === 0 ? null : (
+                      <p className="hint subempty" data-testid="requested-direct-empty">
+                        {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                        <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                          Show all
+                        </Button>
+                      </p>
+                    )
                   ) : (
                     visibleDirect.map((c, i) => (
                       <ChangeRow
@@ -1381,20 +1720,21 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
-                  <div className="subhead">Requested of your team</div>
+                  <div className="subhead">
+                    Requested of your team
+                    {visibleTeam.length === 0 && teamRequested.length === 0 && !listErrors.requested ? (
+                      <span className="cnt">0</span>
+                    ) : null}
+                  </div>
                   {visibleTeam.length === 0 ? (
-                    <p className="hint subempty" data-testid="requested-team-empty">
-                      {teamRequested.length === 0 ? (
-                        "No PRs requested of your team."
-                      ) : (
-                        <>
-                          {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
-                          <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
-                            Show all
-                          </Button>
-                        </>
-                      )}
-                    </p>
+                    teamRequested.length === 0 ? null : (
+                      <p className="hint subempty" data-testid="requested-team-empty">
+                        {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                        <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                          Show all
+                        </Button>
+                      </p>
+                    )
                   ) : (
                     visibleTeam.map((c, i) => (
                       <ChangeRow
@@ -1416,13 +1756,50 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
+                  {/* #297: a committed typed login that matches no loaded
+                      rows: the server already narrowed the groups to it, so
+                      both stay empty and this names it (with the way back). */}
+                  {authorSearch !== null &&
+                  visibleDirect.length === 0 &&
+                  visibleTeam.length === 0 &&
+                  !listErrors.requested ? (
+                    <p className="hint subempty" data-testid="requested-author-search-empty">
+                      No PRs by {authorSearch}.{" "}
+                      <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                        Show all
+                      </Button>
+                    </p>
+                  ) : null}
+                  {/* #310: one more page per press, never a re-fetch. A
+                      failed page keeps the rows and offers Retry on the
+                      same cursor; the button locks while a page is in
+                      flight so presses can't stack. */}
+                  {listsHaveMore ? (
+                    <div
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginTop: 8, marginBottom: 8 }}
+                    >
+                      {moreError ? (
+                        <p className="hint" role="alert" data-testid="lists-more-error">
+                          {moreError}
+                        </p>
+                      ) : null}
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        data-testid="lists-load-more"
+                        disabled={refreshing || loadingMore}
+                        onClick={loadMoreLists}
+                      >
+                        {refreshing || loadingMore ? "Loading…" : moreError ? "Retry" : "Load more PRs"}
+                      </Button>
+                    </div>
+                  ) : null}
                   <ChangeSection
                     title="Recent branches"
                     changes={visibleBranches}
                     error={listErrors.branches}
                     errorTestId="changes-error-branches"
                     opening={opening}
-                    empty="No branches."
                     emptyTestId="branches-empty"
                     filteredNote={branches.length > 0 && visibleBranches.length === 0 ? branchesEmptyNote : null}
                     onShowAll={() => selectRecency("all")}
@@ -1573,7 +1950,19 @@ export function SessionRow({
             <>{s.ingestError ?? "No changes to review: the diff is empty."}</>
           ) : (
             <>
-              {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+              {/* #274: the count sits at the row's left edge with a thin
+                  progress bar beside it (empty track at 0, filling in
+                  proportion). */}
+              <span className="pw">
+                {s.reviewedHunks}/{s.totalHunks} hunks reviewed
+                <span className="bar" aria-hidden="true">
+                  <i
+                    style={{
+                      width: `${s.totalHunks > 0 ? Math.round((s.reviewedHunks / s.totalHunks) * 100) : 0}%`,
+                    }}
+                  />
+                </span>
+              </span>
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
               {s.guideStatus === "running" ? (
                 <>
@@ -1636,6 +2025,7 @@ export function SessionRow({
         <Button
           ref={btnRef}
           variant="secondary" size="sm"
+          className="rm"
           type="button"
           aria-label="Remove this review"
           aria-haspopup="dialog"
@@ -1694,39 +2084,56 @@ function ChangeRow({
   const open = opening === null ? (): void => onOpen(c, i) : undefined;
   return (
     <div className="ci">
-      <div className="cj" onClick={open}>
+      {/* #274: branch rows show the name once (the title); the date sits right. */}
+      <div className={c.kind === "branch" ? "cj cj-branch" : "cj"} onClick={open}>
         <span className="cw">
-          {prLabel !== null ? (
+          {c.kind === "branch" ? (
+            // #274: the title below already shows the branch name, so the
+            // meta keeps only author, date and size (the date sits right).
             <>
-              {prUrl !== null ? (
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Open PR ${prLabel} on GitHub`}
-                >
-                  {prLabel}
-                </a>
-              ) : (
-                prLabel
-              )}
-              {c.branch ? ` · ${c.branch}` : ""}
+              {c.author ?? ""}
+              {typeof c.updatedAt === "number" ? `${c.author ? " · " : ""}${timeAgo(c.updatedAt)}` : ""}
+              {hasSize ? (
+                <>
+                  {c.author || typeof c.updatedAt === "number" ? " · " : ""}
+                  {/* #224: the shared diff stat; the file count is not shown. */}
+                  <DiffStat added={c.additions} removed={c.deletions} />
+                </>
+              ) : null}
             </>
           ) : (
-            (c.branch ?? c.title)
-          )}
-          {c.author ? ` · ${c.author}` : ""}
-          {(c.kind === "pr" || c.kind === "branch") && typeof c.updatedAt === "number"
-            ? ` · ${timeAgo(c.updatedAt)}`
-            : ""}
-          {hasSize ? (
             <>
-              {" · "}
-              {/* #224: the shared diff stat; the file count is not shown. */}
-              <DiffStat added={c.additions} removed={c.deletions} />
+              {prLabel !== null ? (
+                <>
+                  {prUrl !== null ? (
+                    <a
+                      href={prUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Open PR ${prLabel} on GitHub`}
+                    >
+                      {prLabel}
+                    </a>
+                  ) : (
+                    prLabel
+                  )}
+                  {c.branch ? ` · ${c.branch}` : ""}
+                </>
+              ) : (
+                (c.branch ?? c.title)
+              )}
+              {c.author ? ` · ${c.author}` : ""}
+              {c.kind === "pr" && typeof c.updatedAt === "number" ? ` · ${timeAgo(c.updatedAt)}` : ""}
+              {hasSize ? (
+                <>
+                  {" · "}
+                  {/* #224: the shared diff stat; the file count is not shown. */}
+                  <DiffStat added={c.additions} removed={c.deletions} />
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </span>
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
@@ -1750,7 +2157,6 @@ function ChangeSection({
   error,
   errorTestId,
   opening,
-  empty,
   emptyTestId,
   filteredNote,
   onShowAll,
@@ -1765,7 +2171,6 @@ function ChangeSection({
   error: string | null;
   errorTestId: string;
   opening: string | null;
-  empty: string;
   /** #131: test id for the empty state (authoring and branches need one). */
   emptyTestId?: string;
   /** #131: when the recency window hides every row, this note replaces the
@@ -1776,9 +2181,15 @@ function ChangeSection({
   owner: string | null;
   name: string | null;
 }): React.JSX.Element {
+  // #274 compact empty states: the heading carries a 0 count badge instead
+  // of a full empty line. Filter notes (with their Show-all way back) stay.
+  const genuinelyEmpty = changes.length === 0 && !error && !filteredNote;
   return (
     <>
-      <div className="divider">{title}</div>
+      <div className="divider">
+        {title}
+        {genuinelyEmpty ? <span className="cnt">0</span> : null}
+      </div>
       {error ? (
         <p className="hint" role="alert" data-testid={errorTestId}>
           {error}
@@ -1792,11 +2203,7 @@ function ChangeSection({
               Show all
             </Button>
           </p>
-        ) : (
-          <p className="hint subempty" data-testid={emptyTestId}>
-            {empty}
-          </p>
-        )
+        ) : null
       ) : (
         changes.map((c, i) => (
           <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} />

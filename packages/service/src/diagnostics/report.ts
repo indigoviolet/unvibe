@@ -105,7 +105,14 @@ export async function collectDiagnostics(opts: CollectOptions = {}): Promise<Dia
       };
 
   const effectivePath = path.effectivePath;
-  const diagOpts: DiagnoseOptions = { pathValue: effectivePath, env, runner, timeoutMs };
+  const probeDataDir = opts.service?.dataDir ?? opts.dataDir;
+  const diagOpts: DiagnoseOptions = {
+    pathValue: effectivePath,
+    env,
+    runner,
+    timeoutMs,
+    ...(probeDataDir ? { dataDir: probeDataDir } : {}),
+  };
   const tools: DiagnosticTool[] = await diagnoseAllTools(diagOpts);
 
   const home = os.homedir();

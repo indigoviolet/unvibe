@@ -65,7 +65,7 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
   const annotations = [
     {
       id: "ann_exp1",
-      type: "conversation",
+      type: "thread",
       anchor: {
         host: { kind: "block", blockId: "central#b1" },
         quotedText: "the thing",
@@ -75,12 +75,13 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
         version: 1,
       },
       open: true,
-      messages: [],
       post: false,
-      note: false,
-      turns: [
+      pinned: false,
+      replies: [
         {
           id: "ans_exp1",
+          kind: "explain",
+          who: "agent",
           question: null,
           blocks: [
             {
@@ -134,9 +135,11 @@ describe("M4 web fixes", () => {
       const opened = await s.app.inject({ method: "PATCH", url: `/api/reviews/${s.reviewId}/comments/ann_exp1`, headers: authed, payload: { open: true } } as never);
       expect(opened.statusCode).toBe(200);
       expect(s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.open).toBe(true);
-      // post/draft stay thread-only on conversation cards (reply drafts are allowed).
-      const bad = await s.app.inject({ method: "PATCH", url: `/api/reviews/${s.reviewId}/comments/ann_exp1`, headers: authed, payload: { post: true } } as never);
-      expect(bad.statusCode).toBe(400);
+      // Issue #273: post/draft apply to threads (comment-kind replies are
+      // what Submit posts); reply drafts were always allowed.
+      const marked = await s.app.inject({ method: "PATCH", url: `/api/reviews/${s.reviewId}/comments/ann_exp1`, headers: authed, payload: { post: true } } as never);
+      expect(marked.statusCode).toBe(200);
+      expect(s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.post).toBe(true);
     } finally {
       await s.app.close();
     }
@@ -161,12 +164,12 @@ describe("M4 web fixes", () => {
       await s.ctx.jobs.drain(10000);
       expect(s.ctx.jobs.get(job.id)?.state).toBe("done");
       const stored = s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!;
-      expect(stored.type).toBe("conversation");
-      expect((stored.turns?.[0]?.secondOpinions ?? []) as { verdict: string }[]).toHaveLength(1);
+      expect(stored.type).toBe("thread");
+      expect((stored.replies?.[0]?.secondOpinions ?? []) as { verdict: string }[]).toHaveLength(1);
       // Removal by mode and by stored id both work.
       await removeSecondOpinion({ reviews: s.ctx.reviews }, s.reviewId, "ans_exp1", "check");
       expect(
-        (s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.turns?.[0]?.secondOpinions ?? []).length,
+        (s.ctx.reviews.getSnapshot(s.reviewId)!.annotations.find((a) => a.id === "ann_exp1")!.replies?.[0]?.secondOpinions ?? []).length,
       ).toBe(0);
     } finally {
       await s.app.close();

@@ -1,22 +1,28 @@
 /**
  * Start-page changes for one repo (PRD §§4.2/15):
  *
- * - PRs you author: `gh pr list --author @me --repo <o/n>`;
- * - PRs awaiting your review: `gh pr list --search
- *   "review-requested:@me" --repo …` (direct + team) alongside `gh pr
- *   list --search "user-review-requested:@me" --repo …` (direct only, #95);
+ * - PRs you author: GraphQL search `repo:<o/n> state:open is:pr author:@me`;
+ * - PRs awaiting your review: GraphQL searches
+ *   `repo:<o/n> review-requested:@me` (direct + team) alongside
+ *   `repo:<o/n> user-review-requested:@me` (direct only, #95);
  * - recent local and remote branches via git;
  * - reviews opened before, with stale state (head moved since fetch).
  *
- * `gh pr list --json` returns every PR field the rows need in one call
- * per list — head branch (#91), diff size (#100), the PR URL (#94) and
- * review requests (#95) — where `gh search prs` could return none of
- * them. All commands go through the injectable `CommandRunner`; `gh`
- * runs with `GITHUB_TOKEN` unset. Every external call is best-effort: an
- * offline or logged-out `gh` still yields branches + previous reviews.
+ * Each search asks for exactly the fields the rows render — head branch
+ * (#91), diff size (#100), the PR URL (#94), review requests (#95) and
+ * latest reviews (the re-request rule, #230) — through the injectable
+ * `CommandRunner`; `gh` runs with `GITHUB_TOKEN` unset. Every next page
+ * is one more cursor query (#310: `after:`), never a re-fetch.
  */
-import type { ChangesFilter, Repo, RepoChange } from "@unvibe/shared";
-import { displayedReviewDecision, prStateFromGh } from "@unvibe/shared";
+import type { ChangesCursor, ChangesFilter, Repo, RepoChange } from "@unvibe/shared";
+import {
+  decodeChangesCursor,
+  displayedReviewDecision,
+  encodeChangesCursor,
+  normalizeChangesAuthor,
+  normalizeChangesLimit,
+  prStateFromGh,
+} from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -27,7 +33,31 @@ export interface ChangesDeps {
 }
 
 const BRANCH_LIMIT = 30;
-const PR_LIMIT = 30;
+
+/** Options for #297/#307/#310: page size, server-side author search, paging cursor. */
+export interface ChangesOptions {
+  /** Raw `limit` query value; normalized onto `[1, 100]` (default 30). */
+  limit?: unknown;
+  /**
+   * Raw `author` query value. When set, the review-requested searches
+   * carry `author:<login>` so a typed login fetches that author's PRs
+   * from GitHub instead of filtering the loaded rows. "Your PRs"
+   * (`author:@me`) never takes it.
+   */
+  author?: unknown;
+  /** Raw `cursor` query value (an opaque token minted by a previous response). */
+  cursor?: unknown;
+}
+
+/** A paged `gh` call that failed after the first page (#310). */
+export class ChangesPageError extends Error {
+  detail?: string;
+  constructor(message: string, detail?: string) {
+    super(message);
+    this.name = "ChangesPageError";
+    this.detail = detail;
+  }
+}
 
 interface GhReviewRequest {
   __typename?: string;
@@ -54,39 +84,179 @@ interface GhPr {
 }
 
 /**
- * Every PR field the start-page rows need, in one `gh` call per list.
- * Fields `gh` cannot return in one call are simply absent (the row omits
- * that part) — never one call per PR.
+ * Exactly the PR fields the start-page rows render, in one GraphQL
+ * `search` call per list. Fields `gh` cannot return in one call are
+ * simply absent (the row omits that part) — never one call per PR.
+ * `reviewRequests`/`latestReviews` are connection-shaped here (`nodes`);
+ * the normalizer flattens them into the shapes below.
  */
-const PR_FIELDS = "number,title,author,updatedAt,headRefName,additions,deletions,changedFiles,url,state,isDraft,reviewDecision,reviewRequests,latestReviews";
+const PR_SEARCH_QUERY = `query ($q: String!, $first: Int, $after: String) {
+  search(query: $q, type: ISSUE, first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      __typename
+      ... on PullRequest {
+        number
+        title
+        author { login }
+        updatedAt
+        headRefName
+        additions
+        deletions
+        changedFiles
+        url
+        state
+        isDraft
+        reviewDecision
+        reviewRequests(first: 30) {
+          nodes {
+            requestedReviewer {
+              __typename
+              ... on User { login }
+              ... on Bot { login }
+              ... on Team { slug name }
+            }
+          }
+        }
+        latestReviews(first: 30) {
+          nodes { author { login } state }
+        }
+      }
+    }
+  }
+}`;
 
-/** One `gh pr list` call; null on any failure (best-effort listing). */
-async function listPrs(
+interface GhPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface GhSearchResult {
+  prs: GhPr[] | null;
+  pageInfo: GhPageInfo | null;
+}
+
+function asList(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "object" && v !== null && Array.isArray((v as { nodes?: unknown }).nodes)) {
+    return (v as { nodes: unknown[] }).nodes;
+  }
+  return [];
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : null;
+}
+
+/** Flatten one search node into the row shape (null when not a PR). */
+function toGhPr(node: unknown): GhPr | null {
+  const n = asRecord(node);
+  if (!n || n.__typename !== "PullRequest") return null;
+  if (typeof n.number !== "number") return null;
+  const author = asRecord(n.author);
+  const login = author && typeof author.login === "string" ? author.login : undefined;
+  const reviewRequests: GhReviewRequest[] = [];
+  for (const edge of asList(n.reviewRequests)) {
+    const reviewer = asRecord(asRecord(edge)?.requestedReviewer);
+    if (!reviewer) continue;
+    const row: GhReviewRequest = {};
+    if (typeof reviewer.__typename === "string") row.__typename = reviewer.__typename;
+    // Bots carry a login like users (gh's flat shape did the same).
+    if (typeof reviewer.login === "string") row.login = reviewer.login;
+    if (typeof reviewer.slug === "string") row.slug = reviewer.slug;
+    if (typeof reviewer.name === "string") row.name = reviewer.name;
+    if (row.login !== undefined || row.slug !== undefined || row.name !== undefined || row.__typename !== undefined) {
+      reviewRequests.push(row);
+    }
+  }
+  const latestReviews: unknown[] = [];
+  for (const entry of asList(n.latestReviews)) {
+    const e = asRecord(entry);
+    if (!e) continue;
+    const elogin = asRecord(e.author);
+    const login2 = elogin && typeof elogin.login === "string" ? elogin.login : undefined;
+    const state = typeof e.state === "string" ? e.state : undefined;
+    if (login2 !== undefined && state !== undefined) latestReviews.push({ author: { login: login2 }, state });
+  }
+  return {
+    number: n.number,
+    title: typeof n.title === "string" && n.title !== "" ? n.title : `PR #${n.number}`,
+    ...(login !== undefined ? { author: { login } } : {}),
+    ...(typeof n.updatedAt === "string" ? { updatedAt: n.updatedAt } : {}),
+    ...(typeof n.headRefName === "string" && n.headRefName !== "" ? { headRefName: n.headRefName } : {}),
+    ...(typeof n.additions === "number" ? { additions: n.additions } : {}),
+    ...(typeof n.deletions === "number" ? { deletions: n.deletions } : {}),
+    ...(typeof n.changedFiles === "number" ? { changedFiles: n.changedFiles } : {}),
+    ...(typeof n.url === "string" && n.url !== "" ? { url: n.url } : {}),
+    ...(typeof n.state === "string" ? { state: n.state } : {}),
+    ...(typeof n.isDraft === "boolean" ? { isDraft: n.isDraft } : {}),
+    ...(typeof n.reviewDecision === "string" ? { reviewDecision: n.reviewDecision } : {}),
+    ...(reviewRequests.length > 0 ? { reviewRequests } : {}),
+    ...(latestReviews.length > 0 ? { latestReviews } : {}),
+  };
+}
+
+function pageFailure(after: string | null | undefined, stderr: string): GhSearchResult {
+  if (typeof after === "string") {
+    // A failed next page must surface, never silently masquerade as
+    // "no more rows" (the rows already shown stay put behind Retry).
+    throw new ChangesPageError("couldn't load the next page from GitHub", stderr.slice(0, 220));
+  }
+  return { prs: null, pageInfo: null };
+}
+
+/**
+ * One GraphQL `search` call; null rows on any first-page failure
+ * (best-effort listing). `after` pages forward: `null` means the search
+ * is exhausted (skip it), a string continues after that cursor, and an
+ * absent value fetches the first page.
+ */
+async function searchPrs(
   runner: CommandRunner,
   repo: Repo,
-  extra: string[],
-): Promise<GhPr[] | null> {
-  if (repo.owner === "local") return [];
+  queryParts: string[],
+  first: number,
+  after?: string | null,
+): Promise<GhSearchResult> {
+  if (repo.owner === "local") return { prs: [], pageInfo: { hasNextPage: false, endCursor: null } };
+  if (after === null) return { prs: [], pageInfo: { hasNextPage: false, endCursor: null } };
   const args = [
-    "pr",
-    "list",
-    "--repo",
-    `${repo.owner}/${repo.name}`,
-    ...extra,
-    "--json",
-    PR_FIELDS,
-    "--limit",
-    String(PR_LIMIT),
+    "api",
+    "graphql",
+    "--raw-field",
+    `query=${PR_SEARCH_QUERY}`,
+    "-F",
+    `q=${[`repo:${repo.owner}/${repo.name}`, ...queryParts].join(" ")}`,
+    "-F",
+    `first=${first}`,
+    ...(typeof after === "string" ? ["-F", `after=${after}`] : []),
   ];
+  let res: { code: number; stdout: string; stderr: string };
   try {
-    const res = await runGh(runner, args, { args, cwd: repo.localPath });
-    if (res.code !== 0) return null;
-    const prs = JSON.parse(res.stdout) as GhPr[];
-    if (!Array.isArray(prs)) return null;
-    return prs;
-  } catch {
-    return null;
+    res = await runGh(runner, args, { args, cwd: repo.localPath });
+  } catch (err) {
+    return pageFailure(after, err instanceof Error ? err.message : String(err));
   }
+  if (res.code !== 0) return pageFailure(after, res.stderr);
+  let data: unknown;
+  try {
+    data = JSON.parse(res.stdout);
+  } catch {
+    return pageFailure(after, res.stdout.slice(0, 220));
+  }
+  const search = asRecord(asRecord(data)?.data)?.search;
+  const s = asRecord(search);
+  if (!s) return pageFailure(after, "missing data.search");
+  const pageInfo = asRecord(s.pageInfo);
+  const hasNextPage = pageInfo?.hasNextPage === true;
+  const endCursor = typeof pageInfo?.endCursor === "string" ? pageInfo.endCursor : null;
+  const nodes = Array.isArray(s.nodes) ? s.nodes : [];
+  const prs: GhPr[] = [];
+  for (const node of nodes) {
+    const pr = toGhPr(node);
+    if (pr) prs.push(pr);
+  }
+  return { prs, pageInfo: { hasNextPage, endCursor } };
 }
 
 function toCount(v: unknown): number | undefined {
@@ -352,74 +522,153 @@ async function listPreviousReviews(
 /**
  * PRs awaiting review (#95): direct requests (`user-review-requested:@me`)
  * plus team requests (`review-requested:@me` minus the direct ones — a PR
- * asking both shows once, as direct). One `gh` call per list, never per
- * PR. When the direct call fails the distinction is unknown and rows
- * carry no scope (the web shows them as direct, as before).
+ * asking both shows once, as direct). One GraphQL `search` call per list,
+ * never per PR. When the direct call fails the distinction is unknown and
+ * rows carry no scope (the web shows them as direct, as before). #297:
+ * with `author` set, both searches carry `author:<login>` so a typed
+ * login fetches that author's PRs from GitHub. #307: the union of both
+ * searches (deduplicated by PR number). #310: each search pages with its
+ * own `after:` cursor; only the next page is ever fetched.
  */
-async function requestedPrs(runner: CommandRunner, repo: Repo): Promise<RepoChange[]> {
+async function requestedPrs(
+  runner: CommandRunner,
+  repo: Repo,
+  limit: number,
+  author: string | null,
+  cursors: { direct?: string | null; team?: string | null } = {},
+): Promise<{ changes: RepoChange[]; truncated: boolean; endCursors: { direct: string | null; team: string | null } }> {
+  const authorArgs = author !== null ? [`author:${author}`] : [];
   const [direct, all] = await Promise.all([
-    listPrs(runner, repo, ["--search", "user-review-requested:@me"]),
-    listPrs(runner, repo, ["--search", "review-requested:@me"]),
+    searchPrs(runner, repo, ["user-review-requested:@me", "is:open", ...authorArgs], limit, cursors.direct),
+    searchPrs(runner, repo, ["review-requested:@me", "is:open", ...authorArgs], limit, cursors.team),
   ]);
-  if (all === null) {
+  const truncated = (direct.pageInfo?.hasNextPage ?? false) || (all.pageInfo?.hasNextPage ?? false);
+  const endCursors = {
+    direct: direct.pageInfo && direct.pageInfo.hasNextPage ? direct.pageInfo.endCursor : null,
+    team: all.pageInfo && all.pageInfo.hasNextPage ? all.pageInfo.endCursor : null,
+  };
+  if (all.prs === null) {
     // The team-inclusive call failed: fall back to the direct rows alone
     // (also [] when that call failed) rather than an empty list.
-    return (direct ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc);
+    return {
+      changes: (direct.prs ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc),
+      truncated,
+      endCursors,
+    };
   }
-  if (direct === null) {
+  if (direct.prs === null) {
     // The distinction is unknown: return the rows without a scope (the
     // web shows unscoped rows as direct, as before) rather than
     // mislabelled.
-    return all.map(toChange).sort(byUpdatedDesc);
+    return { changes: all.prs.map(toChange).sort(byUpdatedDesc), truncated, endCursors };
   }
-  const directNumbers = new Set(direct.map((pr) => pr.number));
-  return all
-    .map((pr) => ({
-      ...toChange(pr),
-      reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
-    }))
-    .sort(byUpdatedDesc);
+  const directNumbers = new Set(direct.prs.map((pr) => pr.number));
+  // #307: union, not just the team-inclusive page. Rows both searches
+  // returned show once (as direct); direct rows past the capped team
+  // page are appended (as direct) instead of being dropped.
+  const byNumber = new Map<number, GhPr>();
+  for (const pr of all.prs) byNumber.set(pr.number, pr);
+  for (const pr of direct.prs) {
+    if (!byNumber.has(pr.number)) byNumber.set(pr.number, pr);
+  }
+  return {
+    changes: [...byNumber.values()]
+      .map((pr) => ({
+        ...toChange(pr),
+        reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
+      }))
+      .sort(byUpdatedDesc),
+    truncated,
+    endCursors,
+  };
 }
 
 /**
  * Changes for the start page. `filter` narrows the sections:
- * `authoring` (one `gh` call), `review-requested` (two `gh` calls: direct
- * + team-inclusive, #95), `branches` (git only), `recent` (branches +
- * previous reviews), `all` (default).
+ * `authoring` (one GraphQL search), `review-requested` (two GraphQL
+ * searches: direct + team-inclusive, #95), `branches` (git only),
+ * `recent` (branches + previous reviews), `all` (default). #297:
+ * `opts.limit` sizes every PR-list page and `opts.author` narrows the
+ * review-requested searches to that login. #310: `opts.cursor` carries
+ * the per-search cursors for the next page (opaque token, minted by the
+ * previous response); `hasMore` is true when a search has a next page.
  */
 export async function repoChanges(
   deps: ChangesDeps,
   repo: Repo,
   filter: ChangesFilter = "all",
-): Promise<RepoChange[]> {
+  opts: ChangesOptions = {},
+): Promise<{ changes: RepoChange[]; hasMore: boolean; cursor: string | null }> {
+  const limit = normalizeChangesLimit(opts.limit);
+  const author = normalizeChangesAuthor(opts.author);
+  const cursors = decodeChangesCursor(opts.cursor);
   // #149: one DB read per listing; PR/branch rows that already have a
   // review carry its id (previous-review rows already carry their own).
   const marks = reviewMarksFor(deps.db, repo.id);
+  const nextCursor = (c: ChangesCursor): string | null => {
+    const has = c.authoring != null || c.direct != null || c.team != null;
+    return has ? encodeChangesCursor(c) : null;
+  };
   switch (filter) {
-    case "authoring":
-      return attachReviewMarks(
-        ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
-        marks,
-      );
-    case "review-requested":
-      return attachReviewMarks(await requestedPrs(deps.runner, repo), marks);
-    case "branches":
-      return attachReviewMarks(await listBranches(deps.runner, repo), marks);
-    case "recent":
-      return [
-        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
-        ...(await listPreviousReviews(deps.runner, deps.db, repo)),
-      ];
-    case "all":
-    default:
-      return [
-        ...attachReviewMarks(
-          ((await listPrs(deps.runner, repo, ["--author", "@me"])) ?? []).map(toChange).sort(byUpdatedDesc),
+    case "authoring": {
+      const listed = await searchPrs(deps.runner, repo, ["state:open", "is:pr", "author:@me"], limit, cursors.authoring);
+      const page = listed.pageInfo;
+      const cursor = page && page.hasNextPage ? { authoring: page.endCursor } : { authoring: null };
+      return {
+        changes: attachReviewMarks(
+          (listed.prs ?? []).map(toChange).sort(byUpdatedDesc),
           marks,
         ),
-        ...attachReviewMarks(await requestedPrs(deps.runner, repo), marks),
-        ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
-        ...(await listPreviousReviews(deps.runner, deps.db, repo)),
-      ];
+        hasMore: page?.hasNextPage ?? false,
+        cursor: nextCursor(cursor),
+      };
+    }
+    case "review-requested": {
+      const { changes, truncated, endCursors } = await requestedPrs(deps.runner, repo, limit, author, cursors);
+      return {
+        changes: attachReviewMarks(changes, marks),
+        hasMore: truncated,
+        cursor: nextCursor({ direct: endCursors.direct, team: endCursors.team }),
+      };
+    }
+    case "branches":
+      return { changes: attachReviewMarks(await listBranches(deps.runner, repo), marks), hasMore: false, cursor: null };
+    case "recent":
+      return {
+        changes: [
+          ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
+          ...(await listPreviousReviews(deps.runner, deps.db, repo)),
+        ],
+        // Branches are git-local and uncapped; PR lists are not fetched here.
+        hasMore: false,
+        cursor: null,
+      };
+    case "all":
+    default: {
+      const [authoring, requested] = await Promise.all([
+        searchPrs(deps.runner, repo, ["state:open", "is:pr", "author:@me"], limit, cursors.authoring),
+        requestedPrs(deps.runner, repo, limit, author, cursors),
+      ]);
+      const aPage = authoring.pageInfo;
+      const aMore = aPage?.hasNextPage ?? false;
+      const rMore = requested.truncated;
+      return {
+        changes: [
+          ...attachReviewMarks(
+            (authoring.prs ?? []).map(toChange).sort(byUpdatedDesc),
+            marks,
+          ),
+          ...attachReviewMarks(requested.changes, marks),
+          ...attachReviewMarks(await listBranches(deps.runner, repo), marks),
+          ...(await listPreviousReviews(deps.runner, deps.db, repo)),
+        ],
+        hasMore: aMore || rMore,
+        cursor: nextCursor({
+          authoring: aMore ? aPage?.endCursor ?? null : null,
+          direct: requested.endCursors.direct,
+          team: requested.endCursors.team,
+        }),
+      };
+    }
   }
 }

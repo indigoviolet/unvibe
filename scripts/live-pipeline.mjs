@@ -1,9 +1,15 @@
 /*global console process setTimeout Buffer */
 // Live pipeline smoke test (M3), run as:
-//   mise run test:live:pipeline [--port N] [--provider claude|codex|both]
+//   mise run test:live:pipeline [--port N] [--provider pi|claude|codex|both|all] [--model <ref>] --cap <usd> [--allow-unpriced]
 //
-// Spins up the BUILT service with the default ACP runner (real claude/codex
-// logins; modest token spend), creates a review of a small scratch change
+// Default provider is pi with muse-spark-1.3-contributor (issue #292);
+// --provider/--model keep the other providers selectable. --cap (USD) is
+// required: spend is tracked job by job (failed jobs included) and the run
+// stops over the cap. Free pre-checks (pi --list-models, pi catalogue
+// pricing) run before any spend; the spend + per-run report also lands in
+// test-results/live-pipeline-*.json (gitignored).
+//
+// Spins up the BUILT service (real agent logins; modest token spend), creates a review of a small scratch change
 // (temp git repo, 3 files, deleted afterwards), and lets the whole pipeline
 // run once per provider. Records: time to first card, total tokens and
 // cache-hit rate, citation valid/repaired/unverified counts, card
@@ -18,6 +24,21 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertPriced,
+  costOf,
+  createSpendTracker,
+  fetchPiCatalog,
+  findCatalogEntry,
+  formatUsd,
+  parseLiveArgs,
+  precheckModelOffered,
+  preflightCap,
+  resolvePiCmd,
+  selectLiveModel,
+  worstCaseTurnUsd,
+  writeLiveReport,
+} from "./live-pi-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = path.join(ROOT, "packages", "service", "dist", "index.js");
@@ -29,19 +50,39 @@ if (!fs.existsSync(CLI)) {
 const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const PORT = portIdx >= 0 ? Number(args[portIdx + 1]) : 4595;
-const provIdx = args.indexOf("--provider");
-const onlyProvider = provIdx >= 0 ? args[provIdx + 1] : "both";
+const live = (() => {
+  try {
+    return parseLiveArgs(args); // --provider/--model/--cap/--allow-unpriced (issue #292)
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(2);
+  }
+})();
+const PI_CMD = resolvePiCmd();
 
-const RUNS = [
-  { name: "claude", main: { provider: "claude", model: "sonnet" }, small: { provider: "claude", model: "haiku" } },
+const LEGACY = {
+  claude: { name: "claude", main: { provider: "claude", model: "sonnet" }, small: { provider: "claude", model: "haiku" } },
   // Codex has no settable "default" value (set_config_option rejects it);
   // use the concrete default from docs/acp-runner.md.
-  { name: "codex", main: { provider: "codex", model: "gpt-5.6-terra" }, small: { provider: "claude", model: "haiku" } },
-].filter((r) => onlyProvider === "both" || r.name === onlyProvider);
-if (RUNS.length === 0) {
-  console.error(`unknown --provider ${onlyProvider} (want claude|codex|both)`);
+  codex: { name: "codex", main: { provider: "codex", model: "gpt-5.6-terra" }, small: { provider: "claude", model: "haiku" } },
+};
+const piRun = {
+  name: "pi",
+  main: { provider: "pi", model: live.model },
+  small: { provider: "pi", model: live.model },
+};
+const RUNS = (() => {
+  switch (live.provider) {
+    case "pi": return [piRun];
+    case "claude": return [LEGACY.claude];
+    case "codex": return [LEGACY.codex];
+    case "both": return [LEGACY.claude, LEGACY.codex];
+    case "all": return [piRun, LEGACY.claude, LEGACY.codex];
+    default: break;
+  }
+  console.error(`unknown --provider ${live.provider} (want pi|claude|codex|both|all)`);
   process.exit(2);
-}
+})();
 
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-pipe-data-"));
 const REPO = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-pipe-repo-"));
@@ -167,11 +208,35 @@ async function runOnce(run, token) {
   const out = { run: run.name, failures: [] };
   console.log(`\n=== live pipeline: ${run.name} (main ${run.main.provider}/${run.main.model}, small ${run.small.provider}/${run.small.model}) ===`);
   const t0 = Date.now();
-  const settings = await api("PUT", "/api/settings", { main: run.main, small: run.small }, token);
-  if (settings.code !== 200) {
-    out.failures.push(`PUT /api/settings -> ${settings.code}: ${settings.raw.slice(0, 200)}`);
+  // Single model-selection place (issue #292): fails loudly when the
+  // runner does not offer the model (it offers every pi model; the bare id maps to its provider).
+  const put = async (patch) => {
+    const r = await api("PUT", "/api/settings", patch, token);
+    return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
+  };
+  try {
+    await selectLiveModel(put, run.main, ["main"]);
+    await selectLiveModel(put, run.small, ["small"]);
+  } catch (e) {
+    out.failures.push(e instanceof Error ? e.message : String(e));
     return out;
   }
+  // Spend for this run is priced when pi catalogue rates are known;
+  // legacy-provider runs report tokens only (no invented prices).
+  const runRates = run.main.provider === "pi" ? piRates : null;
+  // Mid-run cap guard: every poll re-sums usage over ALL jobs (failed
+  // jobs included) and stops the run once priced spend passes the cap.
+  const runJobsUsage = (jobs) => {
+    const u = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+    for (const j of jobs ?? []) {
+      if (!j.usage) continue;
+      u.inputTokens += j.usage.inputTokens ?? 0;
+      u.cachedReadTokens += j.usage.cachedReadTokens ?? j.usage.cachedTokens ?? 0;
+      u.cachedWriteTokens += j.usage.cachedWriteTokens ?? 0;
+      u.outputTokens += j.usage.outputTokens ?? 0;
+    }
+    return u;
+  };
   const added = await api("POST", "/api/repos", { path: REPO }, token);
   const repos = added.json?.repos ?? [];
   const repo = repos.find((r) => r.localPath === REPO) ?? repos.find((r) => r.id !== "demo");
@@ -218,6 +283,13 @@ async function runOnce(run, token) {
     const plausibleTotal = totalHunks > 0 ? hunksum >= totalHunks : true;
     const liveJobs = await api("GET", `/api/jobs?review=${id}`, undefined, token);
     const busy = ((liveJobs.json?.jobs ?? []).some((j) => j.state === "running" || j.state === "backing-off" || j.state === "queued"));
+    if (runRates) {
+      const estimate = spend.usd() + costOf(runJobsUsage(liveJobs.json?.jobs), runRates);
+      if (estimate > live.capUsd) {
+        out.failures.push(`cap exceeded mid-run: priced spend ${formatUsd(estimate)} > cap ${formatUsd(live.capUsd)} (failed jobs included)`);
+        break;
+      }
+    }
     if ((root?.cards.length ?? 0) >= 2 && findings.length >= 1 && plausibleTotal && !busy) break;
     if (Date.now() > deadline) {
       out.failures.push("pipeline did not finish within 12 minutes");
@@ -271,15 +343,20 @@ async function runOnce(run, token) {
   }
   out.logUnverifiedSum = logUnverified;
 
-  // Critic: separate finding pages + suggested comments (threads with a
-  // suggested ai message, NOT marked for PR).
+  // Critic: separate finding pages + suggested comments (comment-kind
+  // replies carrying `suggested`, NOT marked for PR).
   const findingPages = (snap.pages ?? []).filter((p) => p.kind === "finding");
   out.findingPages = findingPages.map((p) => ({ id: p.id, title: p.title, confidence: p.confidence, cards: p.cards.length }));
-  const suggested = (snap.annotations ?? []).filter((a) => (a.messages ?? []).some((m) => m.suggested));
+  const replyText = (r) => {
+    const first = (r.blocks ?? []).find((b) => b && typeof b === "object" && b.type === "paragraph");
+    const s = first?.text?.standard;
+    return (typeof s === "string" ? s : "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  };
+  const suggested = (snap.annotations ?? []).filter((a) => (a.replies ?? []).some((r) => r.suggested));
   out.suggestedComments = suggested.map((a) => ({
     anchor: a.anchor?.host,
     post: a.post,
-    text: (a.messages.find((m) => m.suggested)?.text ?? "").slice(0, 120),
+    text: (replyText((a.replies ?? []).find((r) => r.suggested) ?? {}).slice(0, 120)),
   }));
   for (const s of suggested) {
     if (s.post !== false) out.failures.push(`suggested comment ${s.id} marked for PR`);
@@ -325,13 +402,53 @@ async function runOnce(run, token) {
   out.jobStates = (jobs.json?.jobs ?? []).map((j) => `${j.kind}:${j.state}`).join(",");
   const errored = (jobs.json?.jobs ?? []).filter((j) => j.state === "error");
   for (const j of errored) out.failures.push(`job ${j.kind} error: ${(j.error ?? "").slice(0, 160)}`);
+  // Final priced spend for this run (all jobs, failed included).
+  out.spendUsd = null;
+  if (runRates) {
+    const usage = runJobsUsage(jobs.json?.jobs);
+    spend.add(usage);
+    out.spendUsd = Math.round(spend.usd() * 10000) / 10000;
+    out.usageByJobs = usage;
+    try {
+      spend.check(`live pipeline (${run.name})`);
+    } catch (e) {
+      out.failures.push(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   console.log(`done ${run.name}: firstCard=${out.secondsToFirstCard}s tokens=${out.inputTokens}/${out.cachedTokens}/${out.outputTokens} hitRate=${out.cacheHitRate} cites=${total} unverified=${unverified}`);
   if (out.failures.length > 0) console.log(`FAILURES:\n- ${out.failures.join("\n- ")}`);
   return out;
 }
 
+let spend = null;
+let piRates = null;
+
 const main = async () => {
+  // Free pre-checks before any spend (issue #292): pi must list each pi
+  // model, and the cap is priced from pi's own catalogue.
+  try {
+    const piPicks = [...new Set(RUNS.flatMap((r) => [r.main, r.small]).filter((p) => p.provider === "pi").map((p) => p.model))];
+    for (const model of piPicks) precheckModelOffered(PI_CMD, { provider: "pi", model });
+    let piEntry = null;
+    if (piPicks.length > 0) {
+      const catalog = await fetchPiCatalog(PI_CMD);
+      piEntry = findCatalogEntry(catalog, { provider: "pi", model: piPicks[0] });
+      piRates = assertPriced(piEntry, { provider: "pi", model: piPicks[0], allowUnpriced: live.allowUnpriced });
+    } else {
+      console.log(`live pre-check: no pi runs selected; skipping pi --list-models and catalogue pricing (tokens reported, no USD conversion)`);
+    }
+    const oneTurn = piEntry ? worstCaseTurnUsd(piRates, piEntry) : null;
+    preflightCap({
+      capUsd: live.capUsd,
+      worstCaseUsd: oneTurn === null ? null : oneTurn * RUNS.length,
+      what: `${RUNS.length} run(s) worst case`,
+    });
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(2);
+  }
+  spend = createSpendTracker(piRates ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, live.capUsd);
   makeScratchRepo();
   const child = spawn(process.execPath, [CLI], { env: ENV, stdio: ["ignore", "pipe", "pipe"] });
   let logged = "";
@@ -402,6 +519,20 @@ const main = async () => {
   const doc = path.join(ROOT, "docs", "live-pipeline-results.md");
   fs.writeFileSync(doc, `${lines.join("\n")}\n`);
   console.log(`wrote ${doc}`);
+  const spendUsd = Math.round(spend.usd() * 10000) / 10000;
+  const report = writeLiveReport({
+    dir: path.join(ROOT, "test-results"),
+    task: "pipeline",
+    provider: live.provider,
+    model: live.model,
+    rates: piRates,
+    capUsd: live.capUsd,
+    spendUsd,
+    tokens: spend.totals,
+    results,
+    failures: results.flatMap((r) => (r.failures ?? []).map((f) => `${r.run}: ${f}`)),
+  });
+  console.log(`live pipeline: priced spend ${formatUsd(spendUsd)} of cap ${formatUsd(live.capUsd)} (failed jobs included); report ${report}`);
   try {
     fs.rmSync(REPO, { recursive: true, force: true });
     fs.rmSync(DATA, { recursive: true, force: true });

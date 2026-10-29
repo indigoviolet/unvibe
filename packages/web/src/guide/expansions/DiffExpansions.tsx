@@ -13,14 +13,13 @@
  * - anchor-stale shows the collapsed card fallback in the slot.
  */
 import { useEffect, useMemo, useReducer } from "react";
-import type { Annotation, Page } from "@unvibe/shared";
+import type { Thread, Page } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { toast } from "../../floating/Toast.js";
 import { slotKey, type LineSlots } from "../../source/diff/lineSlots.js";
 import { subscribeHighlight } from "../../source/diff/highlight/shiki.js";
 import { useReview } from "../../state/store.js";
-import { ExpansionCard } from "./ExpansionCard.js";
 import { hostLabel, recordUnplacedAnchors } from "../unplacedAnchors.js";
 import { isAnchorStale } from "./expansionUtils.js";
 
@@ -32,18 +31,18 @@ function makeExpMark(id: string, closed: boolean): HTMLElement {
 }
 
 /**
- * Issue #189: a multi-line anchor's quote spans rows, so no single code
- * cell can wrap it and a closed card/thread had no way back. The range
- * gets a per-row highlight plus this marker in the first row's gutter;
- * the existing mark click handler reopens it.
+ * Issue #285: closed multi-line ranges show no gutter marker. True when
+ * the annotation is a closable multi-line diff-line range (the same
+ * filter as the range highlight below).
  */
-function makeRangeMark(id: string, closed: boolean): HTMLElement {
-  const mark = document.createElement("mark");
-  mark.className = closed ? "anc range closed" : "anc range";
-  mark.dataset.jump = id;
-  mark.textContent = "↪";
-  mark.title = closed ? "Reopen the explanation" : "Explanation";
-  return mark;
+function isRangeAnnotation(a: Thread): boolean {
+  if (a.type !== "thread" && a.type !== "link" && !a.replies.some((r) => r.kind === "comment")) return false;
+  if (a.anchor.host.kind !== "diff-line") return false;
+  if (a.type === "link" && !a.promotedToPage) return false;
+  const host = a.anchor.host;
+  if (!host.endLine || host.endLine <= host.line) return false;
+  if (isAnchorStale(a)) return false;
+  return true;
 }
 
 function makePageLink(pageId: string): HTMLElement {
@@ -58,7 +57,6 @@ export function useDiffExpansionBindings(
   reviewId: string,
   lookupPage: (pageId: string) => Page | undefined,
   onOpenPage: (pageId: string) => void,
-  onFollowUp: (cardId: string, blockId: string, index: number) => void,
 ): {
   lineSlots: LineSlots;
   expandedLines: ReadonlySet<string>;
@@ -66,14 +64,14 @@ export function useDiffExpansionBindings(
   const annotations = useReview((s) => s.snapshot?.annotations);
 
   const byLine = useMemo(() => {
-    const map = new Map<string, Annotation[]>();
+    const map = new Map<string, Thread[]>();
     for (const a of annotations ?? []) {
-      if (a.type !== "conversation" && a.type !== "link") continue;
+      if (a.type !== "thread" && a.type !== "link") continue;
       // Issue #214: a card on a comment renders under that comment's line.
       let host = a.anchor.host;
       if (host.kind === "comment") {
         const commentId = host.commentId;
-        const comment = (annotations ?? []).find((x) => x.id === commentId && x.type === "comment");
+        const comment = (annotations ?? []).find((x) => x.id === commentId && x.replies.some((r) => r.kind === "comment"));
         if (!comment || comment.anchor.host.kind !== "diff-line") continue;
         host = comment.anchor.host;
       }
@@ -132,42 +130,35 @@ export function useDiffExpansionBindings(
       withPreservedSelection(scope, () => {
         // Issue #189: clear the previous range artifacts (idempotent —
         // React re-renders and highlight upgrades wipe rows freely).
-        for (const el of document.querySelectorAll("#right mark.anc.range")) el.remove();
+        // Issue #285: no gutter marker; the tint plus the per-line
+        // dotted marks below own the reopen.
         for (const el of document.querySelectorAll("#right tr.rng")) {
-          el.classList.remove("rng", "rng-first");
+          el.classList.remove("rng");
         }
         // Multi-line ranges: highlight every row of the range (hunks
         // and revealed context rows alike; rows not rendered are
-        // skipped) and put a reopen marker in the first row's gutter.
-        // Comment threads already reopen from their line-number icon,
-        // so they get the highlight only.
+        // skipped). Closed cards reopen through the per-line dotted
+        // marks below (issue #285); comment threads also keep their
+        // line-number icon reopen, and their range still reads dotted
+        // on every line.
         for (const a of annotations ?? []) {
-          if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
-          if (a.anchor.host.kind !== "diff-line") continue;
-          if (a.type === "link" && !a.promotedToPage) continue;
+          if (!isRangeAnnotation(a)) continue;
           const host = a.anchor.host;
-          if (!host.endLine || host.endLine <= host.line) continue;
-          if (isAnchorStale(a)) continue;
-          let firstRow: Element | null = null;
+          if (host.kind !== "diff-line") continue;
+          const end = host.endLine ?? host.line;
           let complete = true;
-          for (let n = host.line; n <= host.endLine; n++) {
+          for (let n = host.line; n <= end; n++) {
             const row = document.getElementById(`L-${host.fileKey}-${n}`);
             if (!row) {
               complete = false;
               continue;
             }
             row.classList.add("rng");
-            if (!firstRow) firstRow = row;
           }
           // Rows of a lazily rendered section may not exist yet; keep
           // the annotation pending so the bounded repass (and the row
           // observer below) re-apply the range when they land.
           if (!complete) pending.add(a.id);
-          if (firstRow && a.type !== "comment") {
-            firstRow.classList.add("rng-first");
-            const cell = firstRow.querySelector("td.n");
-            if (cell) cell.prepend(makeRangeMark(a.id, !a.open));
-          }
         }
         for (const [key, exps] of byLine) {
           const [fileKey, lineStr] = key.split(":");
@@ -177,6 +168,11 @@ export function useDiffExpansionBindings(
             clearMarks(cell, "mark.anc.ex[data-jump], mark.anc.exl[data-jump], a.cx.pg[data-node]");
             for (const a of exps) {
               if (isAnchorStale(a) || !a.anchor.quotedText) continue;
+              // Issue #285: multi-line ranges are marked per line below
+              // (the stored quote is whitespace-collapsed to one line,
+              // so matching it inside one cell is hopeless); the
+              // whole-line marks there own the reopen.
+              if (isRangeAnnotation(a)) continue;
               try {
                 // Issue #166: the spot carries the recorded selection
                 // offsets, so a repeated phrase places exactly; without
@@ -209,6 +205,33 @@ export function useDiffExpansionBindings(
             }
           }
         }
+        // Issue #285: dotted anchor text on EVERY line of a multi-line
+        // range, plus the `rng` tint + border above. Each dotted piece
+        // reopens through the existing mark click handler below. The
+        // stored quote is whitespace-collapsed to one line, so per-line
+        // re-matching is hopeless — wrap the whole code cell (the row's
+        // anchored text, sign prefix included).
+        for (const a of annotations ?? []) {
+          if (!isRangeAnnotation(a)) continue;
+          const host = a.anchor.host;
+          if (host.kind !== "diff-line") continue;
+          const end = host.endLine ?? host.line;
+          for (let n = host.line; n <= end; n++) {
+            const row = document.getElementById(`L-${host.fileKey}-${n}`);
+            if (!row) continue;
+            const cell = row.querySelector("td.c");
+            if (!cell) continue;
+            clearMarks(cell, `mark.anc.ex[data-jump="${a.id}"], mark.anc.exl[data-jump="${a.id}"]`);
+            try {
+              const range = document.createRange();
+              range.selectNodeContents(cell);
+              range.surroundContents(makeExpMark(a.id, !a.open));
+              pending.delete(a.id);
+            } catch {
+              // Ignore.
+            }
+          }
+        }
         // Diff click reopen checks the host kind; comment-hosted cards are
         // handled by the guide/description click paths and by closing via
         // their card controls. Their marks above are visual only here.
@@ -228,20 +251,17 @@ export function useDiffExpansionBindings(
     let scheduled = 0;
     const rangesSatisfied = (): boolean => {
       for (const a of annotations ?? []) {
-        if (a.type !== "conversation" && a.type !== "link" && a.type !== "comment") continue;
-        if (a.anchor.host.kind !== "diff-line") continue;
-        if (a.type === "link" && !a.promotedToPage) continue;
+        if (!isRangeAnnotation(a)) continue;
         const host = a.anchor.host;
-        if (!host.endLine || host.endLine <= host.line) continue;
-        if (isAnchorStale(a)) continue;
-        let firstRow: Element | null = null;
-        for (let n = host.line; n <= host.endLine; n++) {
+        if (host.kind !== "diff-line") continue;
+        const end = host.endLine ?? host.line;
+        for (let n = host.line; n <= end; n++) {
           const row = document.getElementById(`L-${host.fileKey}-${n}`);
           if (!row) continue;
           if (!row.classList.contains("rng")) return false;
-          if (!firstRow) firstRow = row;
+          const cell = row.querySelector("td.c");
+          if (!cell || !cell.querySelector("mark.anc.exl[data-jump], mark.anc.ex[data-jump]")) return false;
         }
-        if (a.type !== "comment" && firstRow && !firstRow.querySelector("mark.anc.range")) return false;
       }
       return true;
     };
@@ -278,7 +298,7 @@ export function useDiffExpansionBindings(
       const snap = useReview.getState().snapshot;
       const found = snap?.annotations.find((x) => x.id === id);
       if (!found || (found.anchor.host.kind !== "diff-line" && found.anchor.host.kind !== "comment")) return;
-      if (found.type === "conversation" && !found.open) {
+      if (found.type === "thread" && !found.open) {
         api.updateComment(reviewId, id, { open: true, pinned: true }).catch((err: unknown) => {
           toast(`Couldn't open the explanation: ${friendlyError(err)}`);
         });
@@ -291,29 +311,11 @@ export function useDiffExpansionBindings(
     return () => document.removeEventListener("click", onClick);
   }, [reviewId, onOpenPage]);
 
-  const lineSlots = useMemo<LineSlots>(() => {
-    const slots: LineSlots = {};
-    for (const [key, exps] of byLine) {
-      // Issue #204: open cards are pinned inline under their line.
-      const open = exps.filter((a) => a.type === "conversation" && a.open);
-      if (open.length === 0) continue;
-      slots[key] = (
-        <>
-          {open.map((e) => (
-            <ExpansionCard
-              key={e.id}
-              reviewId={reviewId}
-              expansion={e}
-              lookupPage={lookupPage}
-              onOpenPage={onOpenPage}
-              onFollowUp={onFollowUp}
-            />
-          ))}
-        </>
-      );
-    }
-    return slots;
-  }, [byLine, reviewId, lookupPage, onOpenPage, onFollowUp]);
+  // Issue #273: diff-line threads render through DiffComments line slots
+  // (one thread component everywhere). These slots stay empty so the same
+  // thread is never rendered twice; marks/expandedLines below still drive
+  // the diff highlight passes.
+  const lineSlots = useMemo<LineSlots>(() => ({}), []);
 
   const expandedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

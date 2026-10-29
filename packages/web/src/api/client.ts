@@ -299,8 +299,20 @@ const realApi = {
     request(`/api/repos/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** Ask the service to open a native folder dialog (#26). No request body. */
   pickFolder: (): Promise<PickFolderResponse> => post("/api/repos/pick-folder"),
-  repoChanges: (id: string, filter?: ChangesFilter): Promise<RepoChangesResponse> =>
-    get(`/api/repos/${encodeURIComponent(id)}/changes${filter ? `?filter=${filter}` : ""}`),
+  repoChanges: (
+    id: string,
+    filter?: ChangesFilter,
+    opts?: { limit?: number; author?: string; cursor?: string | null },
+  ): Promise<RepoChangesResponse> => {
+    const params = new URLSearchParams();
+    if (filter) params.set("filter", filter);
+    if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+    const author = opts?.author?.trim();
+    if (author) params.set("author", author);
+    if (opts?.cursor) params.set("cursor", opts.cursor);
+    const qs = params.toString();
+    return get(`/api/repos/${encodeURIComponent(id)}/changes${qs ? `?${qs}` : ""}`);
+  },
 
   createReview: (body: CreateReviewRequest): Promise<CreateReviewResponse> =>
     post("/api/reviews", body),
@@ -417,6 +429,8 @@ const realApi = {
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
+  /** Providers the pickers offer (issue #279): pi only when detected. */
+  providers: (): Promise<{ providers: string[] }> => get("/api/providers"),
   /** Thinking levels the provider's adapter offers (Default when none). */
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),

@@ -10,27 +10,31 @@
  *   had a quote (PRD §4.6). Threads whose quote is lost get a footnote chip
  *   instead (same row, with their quote).
  * - Footnote chips (`footnotes` + quoted threads): one quiet row shared with
- *   the citations chip. Closed expansions become dotted-link marks
- *   (`mark.anc.exl[data-jump]`, hover previews + click expands via the
+ *   the citations chip. Closed expansions become thread-link marks
+ *   (`mark.anc.exl[data-jump]`, soft highlight + thread glyph in the guide
+ *   per issue #302, hover previews + click expands via the
  *   existing `ExpansionHighlights` handlers); promoted links become page
  *   links (`a.cx.pg[data-node]`, hover previews via `HoverPopover`, click
- *   opens via `onOpenPage`); threads become marks (`mark.anc[data-thr]`,
- *   click toggles via `GuideThreads`). All start `hidden` and are revealed
+ *   opens via `onOpenPage`); comment threads become marks (`mark.anc[data-thr]`,
+ *   click toggles via `GuideThreads`, which also owns their `.th` chips).
+ *   Agent (explain/ask) threads never grow `.th` chips (issue #303): their
+ *   marks and fallback chips come from `ExpansionHighlights` + `footnotes`. All start `hidden` and are revealed
  *   by the highlight passes when their quote is not found in the host text,
  *   so switching back to a level that contains the phrase hides them again.
  */
-import type { Annotation } from "@unvibe/shared";
+import { type Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
 import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
+import { citationRange } from "./citations.js";
 
 interface Props {
   citations: ResolvedCitation[];
-  threads: Annotation[];
+  threads: Thread[];
   /** Closed expansions + promoted links anchored on this block. */
-  footnotes?: Annotation[];
+  footnotes?: Thread[];
   blockId: string;
   onOpenPage?: (pageId: string) => void;
 }
@@ -50,7 +54,15 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
     if (allOpen) closeBlockThreads(unquotedIds, blockId);
     else openBlockThreads(unquotedIds, blockId);
   };
-  const quotedThreads = threads.filter((t) => !!t.anchor.quotedText);
+  // Issue #303: `.th` chips belong to GuideThreads, which only tracks
+  // threads with a reviewer comment (its marks and chip toggle cover
+  // those alone). Agent (explain/ask) threads render their marks and
+  // fallback chips through ExpansionHighlights + `footnotes` instead —
+  // giving them a `.th` chip too shows the thread twice, because
+  // GuideThreads never hides a chip it doesn't track.
+  const quotedThreads = threads.filter(
+    (t) => !!t.anchor.quotedText && (t.replies ?? []).some((r) => r.kind === "comment"),
+  );
   const notes = footnotes ?? [];
   if (!verified.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
   return (
@@ -65,8 +77,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           data-tip="Show in source"
           onClick={() => revealSource(verified[0].target)}
         >
-          <Icon name="code" />
-          {verified.length > 1 ? verified.length : ""}
+          {citationRange(verified[0].target) ?? (verified.length > 1 ? verified.length : "")}
         </button>
       )}
       {unquoted.length > 0 && (

@@ -29,7 +29,7 @@ export interface RunInForkOptions {
   conversationKey?: string;
   /** Hunk content hash the conversation is anchored on (change-list filter). */
   hunkHash?: string;
-  /** Annotation the turn belongs to (contribution labelling; WS correlation). */
+  /** Thread the turn belongs to (contribution labelling; WS correlation). */
   annotationId?: string;
   /**
    * Issue #136: continue on an existing conversation session instead of

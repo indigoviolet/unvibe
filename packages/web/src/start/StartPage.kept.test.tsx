@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import type { Repo, RepoChange } from "@unvibe/shared";
+import type { Repo, RepoChange, RepoChangesResponse } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { StartPage } from "./StartPage.js";
 import { __resetKeptForTests, setKeptLists } from "./keptChanges.js";
@@ -83,12 +83,12 @@ describe("StartPage kept lists (#90)", () => {
     });
     baseMocks();
     const gates = {
-      authoring: deferred<{ changes: RepoChange[] }>(),
-      requested: deferred<{ changes: RepoChange[] }>(),
-      recent: deferred<{ changes: RepoChange[] }>(),
+      authoring: deferred<RepoChangesResponse>(),
+      requested: deferred<RepoChangesResponse>(),
+      recent: deferred<RepoChangesResponse>(),
     };
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       if (filter === "authoring") return gates.authoring.promise;
       if (filter === "review-requested") return gates.requested.promise;
       return gates.recent.promise;
@@ -102,9 +102,9 @@ describe("StartPage kept lists (#90)", () => {
     expect(screen.getByTestId("lists-refresh")).toHaveAttribute("title", expect.stringMatching(/refreshing/));
     expect(screen.getByTestId("lists-refresh").querySelector(".spin")).not.toBeNull();
 
-    gates.authoring.resolve({ changes: [pr(100, "Fresh PR", "fresh-branch")] });
-    gates.requested.resolve({ changes: [] });
-    gates.recent.resolve({ changes: [branch("fresh-branch")] });
+    gates.authoring.resolve({ changes: [pr(100, "Fresh PR", "fresh-branch")], hasMore: false, cursor: null });
+    gates.requested.resolve({ changes: [], hasMore: false, cursor: null });
+    gates.recent.resolve({ changes: [branch("fresh-branch")], hasMore: false, cursor: null });
 
     // Fresh data replaces the kept rows; the refresh tooltip settles to the age.
     expect(await screen.findByText("Fresh PR")).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("StartPage kept lists (#90)", () => {
     });
     baseMocks();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       throw new Error(`GET /api/repos/${id}/changes: 500 {"error":"mock gh is down"}`);
     }) as typeof api.repoChanges);
 
@@ -145,10 +145,10 @@ describe("StartPage kept lists (#90)", () => {
     });
     baseMocks();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       if (filter === "authoring") throw new Error("GET x: 500 {\"error\":\"mock gh is down\"}");
-      if (filter === "review-requested") return { changes: [pr(97, "Fresh ask", "ask-new")] };
-      return { changes: [branch("kept-branch")] };
+      if (filter === "review-requested") return { changes: [pr(97, "Fresh ask", "ask-new")], hasMore: false, cursor: null };
+      return { changes: [branch("kept-branch")], hasMore: false, cursor: null };
     }) as typeof api.repoChanges);
 
     renderPage();
@@ -162,9 +162,9 @@ describe("StartPage kept lists (#90)", () => {
   it("first load without kept rows behaves as before", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     baseMocks();
-    const gate = deferred<{ changes: RepoChange[] }>();
+    const gate = deferred<RepoChangesResponse>();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       return gate.promise;
     }) as typeof api.repoChanges);
 
@@ -174,18 +174,18 @@ describe("StartPage kept lists (#90)", () => {
     expect(screen.queryByTestId("lists-refresh")).not.toBeInTheDocument();
     expect(screen.queryByText("Your PRs")).not.toBeInTheDocument();
 
-    gate.resolve({ changes: [] });
+    gate.resolve({ changes: [], hasMore: false, cursor: null });
     expect(await screen.findByText("Your PRs")).toBeInTheDocument();
   });
 
   it("ignores a slow previous repo's response after a quick switch", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     baseMocks();
-    const slow = deferred<{ changes: RepoChange[] }>();
-    const fastAuthoring = deferred<{ changes: RepoChange[] }>();
-    const fastOther = deferred<{ changes: RepoChange[] }>();
+    const slow = deferred<RepoChangesResponse>();
+    const fastAuthoring = deferred<RepoChangesResponse>();
+    const fastOther = deferred<RepoChangesResponse>();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       if (id === "r1") return slow.promise;
       if (filter === "authoring") return fastAuthoring.promise;
       return fastOther.promise;
@@ -196,12 +196,12 @@ describe("StartPage kept lists (#90)", () => {
 
     // Switch before the first repo answers.
     await pickOption(screen.getByLabelText("Repo"), "acme/other");
-    fastAuthoring.resolve({ changes: [pr(2, "R2 PR", "r2-branch")] });
-    fastOther.resolve({ changes: [] });
+    fastAuthoring.resolve({ changes: [pr(2, "R2 PR", "r2-branch")], hasMore: false, cursor: null });
+    fastOther.resolve({ changes: [], hasMore: false, cursor: null });
     expect(await screen.findByText("R2 PR")).toBeInTheDocument();
 
     // The stale response must not overwrite the current repo's lists.
-    slow.resolve({ changes: [pr(1, "R1 PR", "r1-branch")] });
+    slow.resolve({ changes: [pr(1, "R1 PR", "r1-branch")], hasMore: false, cursor: null });
     await waitFor(() => expect(screen.getByText("R2 PR")).toBeInTheDocument());
     expect(screen.queryByText("R1 PR")).not.toBeInTheDocument();
   });
@@ -215,9 +215,9 @@ describe("StartPage kept lists (#90)", () => {
       fetchNote: null,
     });
     baseMocks();
-    const gate = deferred<{ changes: RepoChange[] }>();
+    const gate = deferred<RepoChangesResponse>();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       return gate.promise;
     }) as typeof api.repoChanges);
     const createReview = vi.spyOn(api, "createReview");
@@ -239,7 +239,7 @@ describe("StartPage kept lists (#90)", () => {
         author: "you",
       }),
     );
-    gate.resolve({ changes: [] });
+    gate.resolve({ changes: [], hasMore: false, cursor: null });
   });
 
   it("still loads when storage is unavailable", async () => {
@@ -249,9 +249,9 @@ describe("StartPage kept lists (#90)", () => {
     });
     baseMocks();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-      if (id === "demo") return { changes: [] };
-      if (filter === "recent") return { changes: [branch("feature-x")] };
-      return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
+      if (filter === "recent") return { changes: [branch("feature-x")], hasMore: false, cursor: null };
+      return { changes: [], hasMore: false, cursor: null };
     }) as typeof api.repoChanges);
 
     renderPage();
@@ -269,9 +269,9 @@ describe("StartPage kept lists (#90)", () => {
       fetchNote: null,
     });
     baseMocks();
-    const gate = deferred<{ changes: RepoChange[] }>();
+    const gate = deferred<RepoChangesResponse>();
     vi.spyOn(api, "repoChanges").mockImplementation((async (id: string) => {
-      if (id === "demo") return { changes: [] };
+      if (id === "demo") return { changes: [], hasMore: false, cursor: null };
       return gate.promise;
     }) as typeof api.repoChanges);
 
@@ -281,6 +281,6 @@ describe("StartPage kept lists (#90)", () => {
     // (PR number) and never reordered by the refresh machinery itself.
     const titles = screen.getAllByText(/^(Third|First|Second)$/).map((el) => el.textContent);
     expect(titles).toEqual(["Third", "First", "Second"]);
-    gate.resolve({ changes: [] });
+    gate.resolve({ changes: [], hasMore: false, cursor: null });
   });
 });

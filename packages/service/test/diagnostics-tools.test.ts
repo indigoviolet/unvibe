@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { diagnoseTool, TOOL_SPECS, enumerateCandidates } from "../src/diagnostics/tools.js";
+import { diagnoseTool, sweepProbeTmp, TOOL_SPECS, enumerateCandidates } from "../src/diagnostics/tools.js";
 import { FakeCommandRunner } from "../src/exec/runner.js";
 
 function makeBin(dir: string, name: string, body: string): string {
@@ -190,5 +190,78 @@ describe("diagnoseTool shim resolution (issue #105)", () => {
     expect(diag.chosen).toBe(w.shim);
     expect(diag.candidates[0].resolvedPath).toBeUndefined();
     expect(fake.calls.some((c) => c.cmd === w.miseBin)).toBe(false);
+  });
+});
+
+describe("probe worktree cleanup (issue #279)", () => {
+  function probeDirs(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter((e) => e.startsWith("unvibe-probe-"));
+  }
+
+  it("diagnoseTool leaves no probe dir behind (os.tmpdir fallback)", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-probe-test-"));
+    makeBin(dir, "git", "#!/bin/sh\necho 'git version 2.50.0'\n");
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: path.join(dir, "git"), args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "git")!;
+    const before = new Set(probeDirs());
+    try {
+      await diagnoseTool(spec, { pathValue: dir, env: {}, runner: fake as never, timeoutMs: 3000 });
+      expect(probeDirs().filter((e) => !before.has(e))).toEqual([]);
+    } finally {
+      // Never pollute the shared tmp even when the assertion fails.
+      for (const e of probeDirs().filter((x) => !before.has(x))) {
+        fs.rmSync(path.join(os.tmpdir(), e), { recursive: true, force: true });
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("diagnoseTool probes under <dataDir>/tmp and cleans up", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+    const bindir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-probebin-"));
+    makeBin(bindir, "git", "#!/bin/sh\necho 'git version 2.50.0'\n");
+    const fake = new FakeCommandRunner();
+    fake.enqueue({ cmd: path.join(bindir, "git"), args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
+    const spec = TOOL_SPECS.find((s) => s.tool === "git")!;
+    try {
+      await diagnoseTool(spec, { pathValue: bindir, env: {}, runner: fake as never, timeoutMs: 3000, dataDir });
+      const tmp = path.join(dataDir, "tmp");
+      const left = fs.existsSync(tmp) ? fs.readdirSync(tmp).filter((e) => e.startsWith("unvibe-probe-")) : [];
+      expect(left).toEqual([]);
+      // The probe never touches the shared temp dir.
+      expect(probeDirs()).toEqual(probeDirs());
+    } finally {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+      fs.rmSync(bindir, { recursive: true, force: true });
+    }
+  });
+
+  it("sweepProbeTmp removes every probe dir under <dataDir>/tmp", () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-sweep-"));
+    try {
+      const tmp = path.join(dataDir, "tmp");
+      fs.mkdirSync(tmp, { recursive: true });
+      const old = path.join(tmp, "unvibe-probe-old");
+      const fresh = path.join(tmp, "unvibe-probe-new");
+      const other = path.join(tmp, "unvibe-other");
+      fs.mkdirSync(old);
+      fs.mkdirSync(fresh);
+      fs.mkdirSync(other);
+      fs.writeFileSync(path.join(tmp, "unvibe-probe-file"), "not a dir");
+      // Age must not matter: startup runs before this process diagnoses.
+      const ancient = new Date(Date.now() - 60 * 60_000);
+      fs.utimesSync(old, ancient, ancient);
+      const removed = sweepProbeTmp(dataDir);
+      expect([...removed].sort()).toEqual([old, fresh].sort());
+      expect(fs.existsSync(old)).toBe(false);
+      expect(fs.existsSync(fresh)).toBe(false);
+      expect(fs.existsSync(other)).toBe(true);
+      expect(fs.existsSync(path.join(tmp, "unvibe-probe-file"))).toBe(true);
+      expect(sweepProbeTmp(path.join(dataDir, "missing"))).toEqual([]);
+      expect(sweepProbeTmp("")).toEqual([]);
+    } finally {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });

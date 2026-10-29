@@ -28,6 +28,13 @@ async function renderDiff(): Promise<void> {
   await screen.findByText("connection.py", {}, { timeout: 3000 });
 }
 
+/** Issue #296: new reviews hide existing comments; show them like a reviewer would. */
+async function showGithubComments(): Promise<void> {
+  await fireEvent.click(screen.getByRole("button", { name: "Review filters" }));
+  await fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /GitHub comments/ }));
+  await screen.findByText("teammate · 2 comments");
+}
+
 const CONN = "src-urllib3-connection.py";
 
 function connSection(): HTMLElement {
@@ -39,6 +46,7 @@ function connSection(): HTMLElement {
 describe("DiffView GitHub threads", () => {
   it("renders the current thread collapsed under its line", async () => {
     await renderDiff();
+    await showGithubComments();
     const conn = within(connSection());
     expect(conn.getByText("teammate · 2 comments")).toBeInTheDocument();
     expect(conn.getAllByText("from GitHub")).toHaveLength(2);
@@ -59,6 +67,7 @@ describe("DiffView GitHub threads", () => {
 
   it("lists outdated threads at their file's top and removed-file threads at the end", async () => {
     await renderDiff();
+    await showGithubComments();
     const conn = within(connSection());
     expect(conn.getByText("GitHub comments on lines no longer in the diff")).toBeInTheDocument();
     expect(conn.getByText("teammate · 1 comment")).toBeInTheDocument();
@@ -66,17 +75,20 @@ describe("DiffView GitHub threads", () => {
     expect(screen.getByText("review-bot · 1 comment")).toBeInTheDocument();
   });
 
-  it("hides threads through the filter menu, remembered with the review", async () => {
+  it("starts hidden; the filter menu shows and re-hides them, remembered with the review", async () => {
     await renderDiff();
-    expect(screen.getByText("teammate · 2 comments")).toBeInTheDocument();
+    // New reviews hide existing comments (#296).
+    expect(screen.queryByText("teammate · 2 comments")).not.toBeInTheDocument();
+    expect(useReview.getState().snapshot?.viewPrefs.showExistingComments).toBe(false);
+    // ...show them through the filter menu...
     await fireEvent.click(screen.getByRole("button", { name: "Review filters" }));
+    await fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /GitHub comments/ }));
+    await waitFor(() => expect(screen.getByText("teammate · 2 comments")).toBeInTheDocument());
+    expect(useReview.getState().snapshot?.viewPrefs.showExistingComments).toBe(true);
+    // ...and back off again.
     await fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /GitHub comments/ }));
     await waitFor(() => expect(screen.queryByText("teammate · 2 comments")).not.toBeInTheDocument());
     expect(screen.queryByText("GitHub comments on lines no longer in the diff")).not.toBeInTheDocument();
     expect(useReview.getState().snapshot?.viewPrefs.showExistingComments).toBe(false);
-    // …and back on again.
-    await fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /GitHub comments/ }));
-    await waitFor(() => expect(screen.getByText("teammate · 2 comments")).toBeInTheDocument());
-    expect(useReview.getState().snapshot?.viewPrefs.showExistingComments).toBe(true);
   });
 });

@@ -128,17 +128,78 @@ export function ProcessingDots(): React.JSX.Element {
 }
 
 /**
- * Shared modest loading state for the review panes while a review is
- * being prepared (issue #232): the processing indicator plus a short
+ * Shared loading state for the review panes while a review is being
+ * prepared (issue #232): the processing indicator plus a short
  * label at body size. The indicator is the only "working" signal — no
  * trailing ellipses, no commentary sentences.
+ *
+ * #284: the guide-building state shows the disco ball swinging gently
+ * on its own (`variant="guide"`); the diff-loading state shows the
+ * ball's pink glints on their own (`variant="diff"`). The follow-up
+ * makes both hero-sized: the ball derives from the start page's ball
+ * (see `ui.css`), stacked above the label with the group centred in
+ * the pane. No variant keeps the legacy dots for every other working state (Ask/Explain "Writing answer" and
+ * so on), which is unchanged. The art is decorative (`aria-hidden`);
+ * the visible label stays the accessible text via `role="status"`.
  */
-export function PaneLoading({ label }: { label: string }): React.JSX.Element {
+export function PaneLoading({ label, variant }: { label: string; variant?: "guide" | "diff" }): React.JSX.Element {
+  if (variant === "guide") {
+    return (
+      <p className="pane-loading" data-variant="guide" role="status">
+        <span className="guide-scene" aria-hidden="true">
+          <img className="guide-ball" src="/disco-ball.svg" alt="" />
+        </span>
+        <span>{label}</span>
+      </p>
+    );
+  }
+  if (variant === "diff") {
+    return (
+      <p className="pane-loading" data-variant="diff" role="status">
+        <LoadingGlints />
+        <span>{label}</span>
+      </p>
+    );
+  }
   return (
     <p className="pane-loading">
       <ProcessingDots />
       <span>{label}</span>
     </p>
+  );
+}
+
+/**
+ * #284: the disco ball's pink four-point sparkles, reused from
+ * `packages/web/public/disco-ball.svg` (exact path data, the art's
+ * pinks) as tiny inline SVGs. Shown only in the ball-less diff state,
+ * staggered in a loose cluster as if the ball were just out of frame
+ * up-left — never a straight row, so they never read as the old dots.
+ * Same 2.5s cycle and easing as the swing, drifting and twinkling in
+ * the same rhythm. Decorative.
+ */
+function LoadingGlints(): React.JSX.Element {
+  return (
+    <span className="loading-glints loose" aria-hidden="true">
+      <svg viewBox="52.5 19.5 11.5 19.8">
+        <path
+          d="m58.02 20.21c-0.26 8.54 0.35 8.98-5.21 9.13 5.57 0.2 4.96 0.43 5.22 9.27 0.36-9.05-0.41-9.15 5.26-9.27-5.67-0.13-5.01-0.63-5.27-9.13z"
+          fill="#FF38E9"
+        />
+      </svg>
+      <svg viewBox="60 57 6.2 10.7">
+        <path
+          d="m62.81 57.66c-0.16 4.66 0.07 4.62-2.52 4.76 2.62 0.12 2.38 0.09 2.54 4.75 0.11-4.78-0.15-4.73 2.95-4.76-3.17-0.13-2.8 0.01-2.97-4.75z"
+          fill="#FF48F1"
+        />
+      </svg>
+      <svg viewBox="52.5 19.5 11.5 19.8">
+        <path
+          d="m58.02 20.21c-0.26 8.54 0.35 8.98-5.21 9.13 5.57 0.2 4.96 0.43 5.22 9.27 0.36-9.05-0.41-9.15 5.26-9.27-5.67-0.13-5.01-0.63-5.27-9.13z"
+          fill="#FF38E9"
+        />
+      </svg>
+    </span>
   );
 }
 export function Checkbox({ checked, onChange, ariaLabel, id, testId, disabled }: { checked: boolean; onChange: (v: boolean) => void; ariaLabel?: string; id?: string; testId?: string; disabled?: boolean }): React.JSX.Element {

@@ -25,6 +25,7 @@ import {
   gitCheck,
   gitHubFetchCheck,
   gitVersion,
+  piCheck,
   probeGh,
   probeGitHubFetch,
   ROLE_LABEL,
@@ -44,6 +45,8 @@ export interface ReadinessDeps {
   loginPathValue?: string;
   /** Test override for the agent probe timeout. */
   timeoutMs?: number;
+  /** Service data dir (issue #279): probe dirs live under `<dataDir>/tmp/`). */
+  dataDir?: string;
 }
 
 interface Cached {
@@ -128,6 +131,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
           timeoutMs,
           runner: deps.runner,
           env: process.env,
+          ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
         }),
         {
           id: `agent:${role}`,
@@ -142,7 +146,13 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   );
 
   const d2 = await withTimeout(
-    d2Check({ pathValue, timeoutMs, runner: deps.runner, env: process.env }),
+    d2Check({
+      pathValue,
+      timeoutMs,
+      runner: deps.runner,
+      env: process.env,
+      ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
+    }),
     {
       id: "d2",
       label: "Diagrams · d2",
@@ -160,6 +170,26 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
       // Omitted under vitest (see above): never `undefined` in production.
       ...(gitHubFetchProbe ? [gitHubFetchCheck(gitHubFetchProbe)] : []),
       ...agentChecks,
+      // Issue #279: pi installed + logged in, in plain words. Always
+      // present (never blocks): ok when absent or logged in, warning when
+      // installed but logged out.
+      await withTimeout(
+        piCheck({
+          pathValue,
+          timeoutMs,
+          runner: deps.runner,
+          env: process.env,
+          ...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
+        }),
+        {
+          id: "pi",
+          label: "Pi (ChatGPT via pi)",
+          status: "warning" as const,
+          summary: "The pi check timed out",
+          fix: "Re-check.",
+          settingsAnchor: "#models",
+        },
+      ),
       distinctCheck(settings),
       d2,
     ],
@@ -170,4 +200,4 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   return response;
 }
 
-export { agentCheck, distinctCheck, ghCheck, gitCheck, gitHubFetchCheck, probeGh, probeGitHubFetch } from "./checks.js";
+export { agentCheck, distinctCheck, ghCheck, gitCheck, gitHubFetchCheck, piCheck, probeGh, probeGitHubFetch } from "./checks.js";

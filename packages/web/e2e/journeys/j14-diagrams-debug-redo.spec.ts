@@ -88,7 +88,7 @@ test.describe("J14 diagrams, debug, redo", () => {
     await page.getByRole("button", { name: "Output" }).first().click();
     const output = page.locator('[data-testid="job-output"]').first();
     await expect(output).toBeVisible({ timeout: 30_000 });
-    await expect(output).toContainText("Turn 1");
+    await expect(output).toContainText("Reply 1");
     await expect(output).toContainText("Prompt");
     await expect(output).toContainText("Output");
     // Inside the view, tool calls are one line each in a bounded list;
@@ -236,6 +236,23 @@ const D2_EXTRA_SOURCE = [
 ].join("\n");
 
 const D2_EXTRA_HASH = diagramHash(canonicalizeD2Source(D2_EXTRA_SOURCE), D2_MIN_VERSION);
+
+/** Lifted #286 features in one bundled-demo-safe sample (no icons: the
+ * real service must not fetch from the network in tests): a container, a
+ * markdown label, and a redeclared edge-style line. */
+const D2_LIFTED_SOURCE = [
+  "direction: right",
+  "parser: {",
+  '  msg: "HTTPMessage" {link: "diff:src-urllib3-connection.py:80-82"}',
+  '  norm: |md **unfold** values | {link: "diff:src-urllib3-connection.py:91-110"}',
+  '  msg -> norm: unfold {link: "diff:src-urllib3-connection.py:650-651"}',
+  "}",
+  'hdict: "HTTPHeaderDict"',
+  'parser -> hdict: sync {link: "diff:src-urllib3-connection.py:650-651"}',
+  "parser -> hdict: {style: {stroke-dash: 4}}",
+].join("\n");
+
+const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
 const D2_SEEDED_HASHES = new Set([
   D2_SEED_HASH,
   "5897a4452ede567b",
@@ -265,6 +282,17 @@ function seedD2Review(dataDir: string): void {
     source: D2_EXTRA_SOURCE,
     citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     render: { hash: D2_EXTRA_HASH, status: "unavailable" },
+  } as DiagramBlock);
+  card.blocks.push({
+    type: "diagram",
+    id: "b-seed-lifted",
+    source: D2_LIFTED_SOURCE,
+    citations: [
+      { target: "diff:src-urllib3-connection.py:80-82" },
+      { target: "diff:src-urllib3-connection.py:91-110" },
+      { target: "diff:src-urllib3-connection.py:650-651" },
+    ],
+    render: { hash: D2_LIFTED_HASH, status: "unavailable" },
   } as DiagramBlock);
   const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
   try {
@@ -365,6 +393,7 @@ for (const mode of [
     test.beforeAll(async () => {
       test.setTimeout(240_000);
       expect(D2_SEEDED_HASHES.has(D2_EXTRA_HASH)).toBe(false);
+      expect(D2_SEEDED_HASHES.has(D2_LIFTED_HASH)).toBe(false);
       dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j14-d2-data-"));
       seedD2Review(dataDir);
       svc = await startService(dataDir, {
@@ -468,6 +497,32 @@ for (const mode of [
       }
     });
 
+    test("lifted #286 features render on demand with d2, 409 without", async () => {
+      test.setTimeout(120_000);
+      const s = service();
+      const urlPath = `/api/reviews/${D2_SEED_REVIEW_ID}/diagrams/${D2_LIFTED_HASH}?theme=light`;
+      const got = await d2Api(s.origin, s.token, "GET", urlPath);
+      if (mode.expectBinary) {
+        expect(got.status).toBe(200);
+        expect(got.contentType).toContain("image/svg+xml");
+        expect(got.text).toContain("<svg");
+        // Container, markdown label and edge style all survived.
+        expect(got.text).toContain("data-refs");
+        expect(got.text).not.toContain("foreignObject");
+        // On-demand success heals the stored block to ok.
+        const snap = await d2Api(s.origin, s.token, "GET", `/api/reviews/${D2_SEED_REVIEW_ID}`);
+        expect(snap.status).toBe(200);
+        const blocks = (d2ApiJson(snap.text) as { pages: { cards: { blocks: DiagramBlock[] }[] }[] }).pages.flatMap(
+          (p) => p.cards.flatMap((c) => c.blocks),
+        );
+        const lifted = blocks.find((b) => b.type === "diagram" && b.id === "b-seed-lifted");
+        expect(lifted?.render?.status).toBe("ok");
+      } else {
+        expect(got.status).toBe(409);
+        expect((d2ApiJson(got.text) as { status: string }).status).toBe("unavailable");
+      }
+    });
+
     test("seeded diagram renders in light and dark, hover previews, click reveals", async ({
       page,
     }) => {
@@ -509,6 +564,19 @@ for (const mode of [
         await expect(fallback).toContainText("Diagrams need");
         const link = fallback.getByRole("link", { name: /Settings → Environment/ });
         await expect(link).toHaveAttribute("href", "/settings?tab=environment");
+      }
+    });
+
+    test("lifted #286 diagram shows SVG with d2, source fallback without", async ({ page }) => {
+      test.setTimeout(120_000);
+      await openReview(page, D2_SEED_REVIEW_ID);
+      if (mode.expectBinary) {
+        await expect(page.locator("#B-b-seed-lifted .dg-svg > svg")).toBeVisible({ timeout: 30_000 });
+        await expect(page.locator("#B-b-seed-lifted .dg-svg a[data-refs]")).toHaveCount(4);
+      } else {
+        const fallback = page.locator("#B-b-seed-lifted .dg-fallback");
+        await expect(fallback).toBeVisible({ timeout: 30_000 });
+        await expect(fallback.locator("pre.code")).toContainText("parser");
       }
     });
 

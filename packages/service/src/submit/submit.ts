@@ -346,7 +346,7 @@ export async function runSubmit(
     const at = Date.now();
     await ctx.reviews.mutate(reviewId, (draft) => {
       for (const a of draft.annotations) {
-        if (a.type !== "comment" || !a.post || a.postedAt) continue;
+        if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment")) continue;
         if (!pending.some((p) => p.thread.id === a.id)) continue;
         a.postedAt = at;
         if (reviewUrl) a.postedUrl = reviewUrl;

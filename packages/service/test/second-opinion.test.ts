@@ -282,7 +282,7 @@ describe("MCP search_review restriction (PRD §12)", () => {
           headSha: "abc123",
           hunks: [],
           cards: [{ id: "c-central", title: "Central change", text: "GUIDE-SECRET backoff in src/conn.py" }],
-          annotations: [{ id: "a1", type: "comment", anchorSummary: "src/conn.py:148", text: "THREAD-SECRET why backoff?" }],
+          annotations: [{ id: "a1", type: "thread", anchorSummary: "src/conn.py:148", text: "THREAD-SECRET why backoff?" }],
           contributions: [{ id: "k1", sourceSession: "s1", text: "CONTRIB-SECRET fact" }],
           description: [{ id: "d1", text: "DESC-VISIBLE this PR adds backoff" }],
         }),

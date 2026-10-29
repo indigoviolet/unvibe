@@ -70,7 +70,7 @@ describe("isAllowedHref", () => {
 });
 
 describe("sanitizeD2Svg hostile payloads", () => {
-  it("drops script, foreignObject, image and event handlers", () => {
+  it("drops script, foreignObject, remote images and event handlers", () => {
     const root = sanitizeD2Svg(HOSTILE, "t0");
     expect(root).not.toBeNull();
     const html = root!.outerHTML;
@@ -80,6 +80,24 @@ describe("sanitizeD2Svg hostile payloads", () => {
     expect(html).not.toMatch(/onclick|onmouseover/i);
     expect(html).not.toContain("evil.example");
     expect(html).not.toContain("javascript:");
+  });
+
+  it("keeps data:-embedded icons and scrubs them to geometry + href", () => {
+    const root = sanitizeD2Svg(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
+        `<image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" x="1" y="2" width="3" height="4" onclick="evil()" class="x"/>` +
+        `<image href="https://evil.example/i.png" x="1" y="2" width="3" height="4"/>` +
+        `</svg>`,
+      "ticon",
+    );
+    expect(root).not.toBeNull();
+    const imgs = root!.querySelectorAll("image");
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].getAttribute("href")).toBe("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=");
+    expect(imgs[0].getAttribute("x")).toBe("1");
+    expect(imgs[0].hasAttribute("onclick")).toBe(false);
+    expect(imgs[0].hasAttribute("class")).toBe(false);
+    expect(root!.outerHTML).not.toContain("evil.example");
   });
 
   it("keeps citation anchors, styles and internal refs", () => {

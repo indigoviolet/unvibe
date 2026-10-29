@@ -2,31 +2,46 @@
  * D2 source pre-check (docs/d2-diagrams.md).
  *
  * The binary must not touch the network or the filesystem on the agent's
- * behalf. D2 can fetch `icon:`/image URLs (bundling) and read local files
- * through imports (`...@file`, `@file`). We reject such sources *before*
- * invoking the binary, pass `--bundle=false`, run in an empty temp dir,
- * and scrub the subprocess env (bogus proxies).
+ * behalf. D2 fetches `icon:`/image `src:` URLs at compile time and reads
+ * local files through imports (`...@file`, `@file`), so:
+ * - `icon:`/`src:` URLs are validated against the allowlist
+ *   (`icons.terrastruct.com`, https, no query/fragment, `.svg`) *before*
+ *   invoking the binary — anything else is rejected and never fetched.
+ *   The pipeline pre-fetches the allowlisted bytes itself, stages them,
+ *   and rewrites the source to the staged file (d2 embeds local files as
+ *   `data:` even with `--bundle=false`). A staged fetch that fails is
+ *   stripped and the diagram renders without it.
+ * - Imports are rejected before invoking the binary (no flag disables
+ *   them); the process also runs in an empty temp dir with a scrubbed
+ *   env (bogus proxies).
  *
- * Denied (documented list):
- * - `icon:` (remote or local icon fetches, including `icon:` URLs)
- * - `shape: image` (image shapes fetch `src:` URLs)
+ * Allowed since #286 (they render fine and the post-render sanitiser
+ * strips what must not survive): `|md` / `|tex` / `|latex` labels (links
+ * inside md labels are stripped), `vars:`, `d2-config:`, `classes:`
+ * stanzas (d2 itself refuses non-system fonts), `tooltip:`, containers,
+ * edge styles, arrowheads, grids, `sql_table`/`class`, sequence spans /
+ * self-messages / notes, `near` legends. Citation `link:` values use bare
+ * `diff:`/`code:`/`desc:` tokens (not URLs); other URLs in source (e.g.
+ * inside md labels) are not fetched and their anchors are stripped
+ * post-render.
+ *
+ * Still denied:
  * - imports: `...@`, `@file`, `@...` import syntax, `!include`-style lines
- * - Markdown/LaTeX/code-block labels (`|md`, `|latex`, trailing `|` blocks)
- *   which produce `foreignObject` HTML in the SVG
- * - `vars:`, `d2-config`, `classes:` with external refs? (vars/d2-config
- *   can smuggle styles; rejected)
+ * - block-string labels (`: |` at end of line — multiline `|` blocks)
+ *   which produce `foreignObject` HTML the sanitiser drops
+ * - animation: `style.animated` / `animated:` (needs multi-board output
+ *   plus a viewer rule; not supported) and `animate-interval` (a CLI
+ *   flag, not an in-source keyword — in source it is a stray shape)
  * - layers / scenarios / steps / boards (`layers:`, `scenarios:`, `steps:`,
- *   `boards:`, `...@` board refs) — multi-board diagrams, not supported.
+ *   `boards:`) — multi-board diagrams, not supported.
  *   A top-level `steps: "label"` with a scalar value is renamed to
  *   `steps_box` (renameReservedShapeKeys) instead of rejected; the rest
  *   fails with a rename hint.
  * - `.class:` inside `{ … }` and bare `class:` keys (only the dotted
  *   `shape.class:` line form is valid D2).
- * - http(s) URLs anywhere (image `src:`, `link:` is allowed only for
- *   citation tokens, not URLs — actual URLs are rejected; citations use
- *   bare `diff:`/`code:`/`desc:` tokens which are not URLs)
  *
- * Caps: 12 shapes / 16 connections (keeps renders fast and layouts sane).
+ * Caps: 40 shapes / 48 connections (measured linear to 80 shapes; the
+ * timeout and the 512 KB output cap stay unchanged).
  * Input byte cap is enforced by the renderer (not here).
  */
 
@@ -41,21 +56,10 @@ export interface PrecheckFail {
 
 export type PrecheckResult = PrecheckOk | PrecheckFail;
 
-export const D2_MAX_SHAPES = 12;
-export const D2_MAX_CONNECTIONS = 16;
+export const D2_MAX_SHAPES = 40;
+export const D2_MAX_CONNECTIONS = 48;
 
 const DENY_PATTERNS: { re: RegExp; reason: string }[] = [
-  {
-    // icon: https://… or icon: local.svg — both trigger bundling fetches.
-    // Probe §9 #1: the binary GETs icon URLs at compile; unfetchable URLs
-    // fail the whole render. Reject pre-compile (no flag disables it).
-    re: /\bicon\s*:/i,
-    reason: "`icon` is not allowed (it fetches remote/local images)",
-  },
-  {
-    re: /\bshape\s*:\s*image\b/i,
-    reason: "`shape: image` is not allowed (it fetches image URLs)",
-  },
   {
     // D2 imports read arbitrary local files (absolute and cwd-relative;
     // probe §9 #2). There is NO CLI flag to disable them: reject
@@ -73,56 +77,29 @@ const DENY_PATTERNS: { re: RegExp; reason: string }[] = [
     reason: "`!include` is not allowed (it reads local files)",
   },
   {
-    // Markdown / TeX / LaTeX labels. Probe §9 #3: md links become real
-    // external <a href>; reject pre-compile, href allowlist is the backstop.
-    re: /\|\s*md\b/i,
-    reason: "`|md` Markdown labels are not allowed",
-  },
-  {
-    re: /\|\s*tex\b/i,
-    reason: "`|tex` labels are not allowed",
-  },
-  {
-    re: /\|\s*latex\b/i,
-    reason: "`|latex` labels are not allowed (they produce foreignObject HTML)",
-  },
-  {
+    // Multiline block-string labels (`key: |` … `|`). Single-line
+    // `|lang … |` / `|md … |` / `|latex … |` labels are allowed; their
+    // links and foreignObject are stripped post-render.
     re: /:\s*\|(tex|code)?\s*$/m,
-    reason: "`|` code-block labels are not allowed (they produce foreignObject HTML)",
+    reason: "`|` block-string labels are not allowed (they produce foreignObject HTML)",
   },
   {
-    re: /(^|\n)\s*vars\s*:/im,
-    reason: "`vars:` is not allowed",
+    // Animated edges need multi-board output plus a viewer
+    // reduced-motion rule (not supported): static SVG only.
+    re: /\banimated\s*:/i,
+    reason: "`animated:` is not allowed (animated diagrams are not supported; keep one static board)",
   },
   {
-    re: /d2-config/i,
-    reason: "`d2-config` is not allowed",
-  },
-  {
-    // `classes:` with font keys can smuggle styles; the prompt limits say
-    // no classes at all (§9 format block). Reject the whole stanza.
-    re: /(^|\n)\s*classes\s*:/im,
-    reason: "`classes:` is not allowed",
-  },
-  {
-    // Native tooltips fight the app's rich hover preview; the prompt says
-    // no tooltip:. Strip per contract, but also reject at pre-check so the
-    // agent learns the convention (repair turn).
-    re: /\btooltip\s*:/i,
-    reason: "`tooltip:` is not allowed (citations use link:, never tooltips)",
+    // `animate-interval` is a d2 CLI flag, not an in-source keyword —
+    // in source it renders as a stray shape labelled with the ms value.
+    re: /\banimate-interval\b/i,
+    reason: "`animate-interval` is not a D2 keyword (animated diagrams are not supported; keep one static board)",
   },
   {
     re: /(^|\n)\s*(layers|scenarios|steps|boards)\s*:/im,
     reason:
       "layers:/scenarios:/steps:/boards: define multi-board diagrams, which are not supported; " +
       "rename the shape instead (e.g. a box called `steps` becomes `steps_box`)",
-  },
-  {
-    // http(s) URLs anywhere in source (images, icons). Citation `link:`
-    // values use bare diff:/code:/desc: tokens (not URLs) and are fine;
-    // this pattern only fires on actual http(s):// URLs.
-    re: /https?:\/\//i,
-    reason: "URLs are not allowed in diagram sources (no network fetches)",
   },
 ];
 
@@ -248,6 +225,8 @@ function findClassMisuse(source: string): string | null {
   return null;
 }
 
+import { extractIconUrls, validateIconUrl } from "./icons.js";
+
 /**
  * Count shapes and connections heuristically:
  * - connections: occurrences of `->`, `<->`, `--`, `<--`, `-->`, `<->`, `=>`
@@ -291,6 +270,23 @@ export function precheckD2Source(source: string): PrecheckResult {
   }
   for (const { re, reason } of DENY_PATTERNS) {
     if (re.test(source)) return { ok: false, reason };
+  }
+  // Icon / image allowlist (issue #286): every `icon:`/`src:` URL must be
+  // https on exactly icons.terrastruct.com with no query/fragment and a
+  // `.svg` path — anything else is rejected before compiling (never
+  // fetched). A bare `shape: image` with no allowlisted `src:` cannot
+  // render, so it fails here with the actionable form.
+  const iconUrls = extractIconUrls(source);
+  for (const url of iconUrls) {
+    const valid = validateIconUrl(url);
+    if (!valid.ok) return { ok: false, reason: (valid as { ok: false; reason: string }).reason };
+  }
+  if (/\bshape\s*:\s*image\b/i.test(source) && !iconUrls.some((u) => validateIconUrl(u).ok)) {
+    return {
+      ok: false,
+      reason:
+        "`shape: image` needs an allowlisted `src:` (only https://icons.terrastruct.com/…/*.svg, no query or fragment)",
+    };
   }
   const misuse = findClassMisuse(source);
   if (misuse) return { ok: false, reason: misuse };

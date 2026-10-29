@@ -74,26 +74,52 @@ const TEAM: FakePr[] = [
   pr(104, "Alice asks the team", "alice", "alice-team", { reviewRequests: [{ slug: "core-team" }] }),
 ];
 
-function writeFakeGhAuthorFilter(binDir: string, logDir: string, headSha: string): void {
+/** A flat fixture PR as a GraphQL search node (what `gh api graphql` returns). */
+function toNode(p: FakePr): unknown {
+  const { reviewRequests, ...rest } = p as FakePr & { latestReviews?: unknown };
+  return {
+    __typename: "PullRequest",
+    ...rest,
+    reviewRequests: {
+      nodes: (reviewRequests ?? []).map((r) => ({
+        requestedReviewer: {
+          __typename: "login" in r && r.login !== undefined ? "User" : "Team",
+          ...r,
+        },
+      })),
+    },
+    latestReviews: { nodes: (("latestReviews" in p ? (p as { latestReviews?: unknown }).latestReviews : []) ?? []) as unknown[] },
+  };
+}
+
+function searchPage(rows: FakePr[]): string {
+  return JSON.stringify({
+    data: {
+      search: {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: rows.map(toNode),
+      },
+    },
+  });
+}
+
+function writeFakeGhAuthorFilter(binDir: string, logDir: string, poolDir: string, headSha: string): void {
+  for (const [name, rows] of Object.entries({ authoring: AUTHORING, direct: DIRECT, team: TEAM }) as [string, FakePr[]][]) {
+    writeFileSync(path.join(poolDir, `${name}.json`), searchPage(rows));
+  }
   const script = `#!/bin/sh
+POOL="${poolDir}"
 LOG="${logDir}"
 mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
-if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
-    *"--author"*) cat <<EOF
-${JSON.stringify(AUTHORING)}
-EOF
-      exit 0 ;;
-    *"user-review-requested:@me"*) cat <<EOF
-${JSON.stringify(DIRECT)}
-EOF
-      exit 0 ;;
-    *"review-requested:@me"*) cat <<EOF
-${JSON.stringify(TEAM)}
-EOF
-      exit 0 ;;
+    *"user-review-requested:@me"*) cat "$POOL/direct.json" ;;
+    *"review-requested:@me"*) cat "$POOL/team.json" ;;
+    *"author:"*) cat "$POOL/authoring.json" ;;
+    *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; ;;
   esac
+  exit 0
 fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   cat <<EOF
@@ -125,6 +151,7 @@ test.describe("J228 start-page author filter", () => {
   let repoDir = "";
   let dataDir = "";
   let logDir = "";
+  let poolDir = "";
   let fakeBin = "";
   let svc: RunningService | null = null;
   let repoId = "";
@@ -137,8 +164,9 @@ test.describe("J228 start-page author filter", () => {
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-data-"));
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-gh-"));
+    poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-pool-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-bin-"));
-    writeFakeGhAuthorFilter(fakeBin, logDir, headSha);
+    writeFakeGhAuthorFilter(fakeBin, logDir, poolDir, headSha);
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, {
@@ -158,7 +186,7 @@ test.describe("J228 start-page author filter", () => {
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    for (const d of [repoDir, dataDir, logDir, fakeBin]) rmSync(d, { recursive: true, force: true });
+    for (const d of [repoDir, dataDir, logDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
   for (const combo of [
@@ -228,7 +256,7 @@ test.describe("J228 start-page author filter", () => {
   }
 
   async function expectTrigger(page: import("@playwright/test").Page, text: string): Promise<void> {
-    await expect(page.getByLabel("Author", { exact: true })).toContainText(text, { timeout: 15_000 });
+    await expect(page.getByLabel("Author", { exact: true })).toHaveValue(text, { timeout: 15_000 });
   }
 
   async function pickAuthor(page: import("@playwright/test").Page, option: string): Promise<void> {

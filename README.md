@@ -12,6 +12,22 @@ It works on Linux and macOS. Install the release with `npm install -g 'github:in
 
 Node 24 or newer, `git`, and `gh` logged in (needed for PRs and submitting; local branches work without it). For the guide itself, the `claude` and/or `codex` CLIs installed and logged in. Unvibe uses those logins and does not install the CLIs for you. Minimum versions: Codex 0.160.1, Claude Code 2.1.293. Diagrams in the guide are drawn by the `d2` program (0.9.0 or newer; `brew install d2`, or see d2lang.com); without it everything else works and diagrams show as their source text.
 
+## Try it without installing
+
+```sh
+npx github:indigoviolet/unvibe#release doctor
+npx github:indigoviolet/unvibe#release start   # prints your private app URL
+npx github:indigoviolet/unvibe#release stop    # when you're done
+```
+
+First run downloads the release (~18 s on a fast machine); repeat runs take ~5 s from the npx cache. For regular use, install globally instead — the one-shot copy can't do start-at-login, `unvibe://` links, or self-update:
+
+```sh
+npm install -g github:indigoviolet/unvibe#release
+unvibe setup
+unvibe start
+```
+
 ## Install and run
 
 ```sh

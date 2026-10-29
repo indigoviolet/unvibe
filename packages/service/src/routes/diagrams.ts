@@ -203,6 +203,10 @@ async function tryRenderOnDemand(
     const svg2 = postProcessSvg(r2.svg, citations, newHash);
     const svgForTheme = theme === "dark" ? (themeVal === D2_THEME_DARK ? svg1 : svg2) : (themeVal === D2_THEME_LIGHT ? svg1 : svg2);
     const svgOther = theme === "dark" ? (themeVal === D2_THEME_DARK ? svg2 : svg1) : (themeVal === D2_THEME_LIGHT ? svg2 : svg1);
+    // Stripped icons (issue #286): noted on the block for Debug, never an error.
+    const iconNotes = [...(r1.iconNotes ?? []), ...(r2.iconNotes ?? [])]
+      .filter((n, i, all) => all.findIndex((o) => o.url === n.url) === i)
+      .map((n) => `icon stripped: ${n.url}: ${n.reason}`);
 
     // Cache under the new hash AND the requested hash (old URLs keep working).
     cache.put(newHash, theme, svgForTheme);
@@ -217,7 +221,7 @@ async function tryRenderOnDemand(
       await ctx.reviews.mutate(reviewId, (draft) => {
         const b = findDiagramByHash(draft, requestedHash) ?? findDiagramBySource(draft, source);
         if (b) {
-          b.render = { hash: newHash, status: "ok" };
+          b.render = { hash: newHash, status: "ok", ...(iconNotes.length > 0 ? { notes: iconNotes } : {}) };
         }
       });
     } catch {

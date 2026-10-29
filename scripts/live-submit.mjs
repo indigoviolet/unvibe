@@ -2,6 +2,19 @@
 /**
  * Live submit test (M6). Authorized sandbox: github.com/indigoviolet/lvu.
  *
+ * Run as: node ./scripts/live-submit.mjs [--provider pi|claude|codex] [--model <ref>] --cap <usd> [--allow-unpriced]
+ *
+ * Default provider is pi with muse-spark-1.3-contributor (issue
+ * #292): creating the review starts the pipeline's agent turns in the
+ * background, so this test DOES involve agent turns and selects the live
+ * model through the shared helper (scripts/live-pi-lib.mjs) before
+ * ingesting the PR. The submit path itself is deterministic gh writes, not
+ * agent work. --cap (USD) is required; free pre-checks (pi --list-models,
+ * pi catalogue pricing) run before any GitHub write or spend, priced spend
+ * is snapshotted at submit time (the background pipeline may still be
+ * running — the report says so), and the spend + results land in
+ * test-results/live-submit-*.json (gitignored).
+ *
  * Rules (do not widen without the user):
  * - Clone fresh into a temp dir; never touch ~/dev/lvu or its worktrees.
  * - One branch `unvibe-submit-test` with a trivial docs-only change.
@@ -17,6 +30,20 @@
  * Not run by `mise run check` (only by `mise run test:live:submit`).
  */
 import { execFileSync, spawn } from "node:child_process";
+import {
+  assertPriced,
+  createSpendTracker,
+  fetchPiCatalog,
+  findCatalogEntry,
+  formatUsd,
+  parseLiveArgs,
+  precheckModelOffered,
+  preflightCap,
+  resolvePiCmd,
+  selectLiveModel,
+  worstCaseTurnUsd,
+  writeLiveReport,
+} from "./live-pi-lib.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -79,6 +106,39 @@ async function api(base, token, method, url, body) {
 }
 
 async function main() {
+  // Shared live flags (issue #292): --cap is required. Free pre-checks run
+  // before any GitHub write or spend.
+  const live = (() => {
+    try {
+      return parseLiveArgs(process.argv.slice(2));
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exit(2);
+    }
+  })();
+  if (!["pi", "claude", "codex"].includes(live.provider)) {
+    console.error(`unknown --provider ${live.provider} (want pi|claude|codex)`);
+    process.exit(2);
+  }
+  const PI_CMD = resolvePiCmd();
+  let piRates = null;
+  let piEntry = null;
+  try {
+    if (live.provider === "pi") {
+      precheckModelOffered(PI_CMD, { provider: "pi", model: live.model });
+      const catalog = await fetchPiCatalog(PI_CMD);
+      piEntry = findCatalogEntry(catalog, { provider: "pi", model: live.model });
+      piRates = assertPriced(piEntry, { provider: "pi", model: live.model, allowUnpriced: live.allowUnpriced });
+    } else {
+      console.log(`live pre-check: provider ${live.provider} is not pi; skipping pi --list-models and catalogue pricing (tokens reported, no USD conversion)`);
+    }
+    const oneTurn = piEntry ? worstCaseTurnUsd(piRates, piEntry) : null;
+    preflightCap({ capUsd: live.capUsd, worstCaseUsd: oneTurn, what: "submit run worst case" });
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(2);
+  }
+  const spend = createSpendTracker(piRates ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, live.capUsd);
   const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-clone-"));
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-live-data-"));
   log("clone dir:", cloneDir);
@@ -148,6 +208,22 @@ async function main() {
     const token = fs.readFileSync(path.join(dataDir, "token"), "utf8").trim();
     const base = `http://127.0.0.1:${port}`;
 
+    // Single model-selection place (issue #292): the review create below
+    // starts the pipeline's agent turns in the background, so the live
+    // model is selected first. Fails loudly when the runner does not offer
+    // it (the runner offers every pi model) — before any review exists.
+    // (This harness's api() helper throws on non-2xx, so the 400 becomes
+    // the refusal detail selectLiveModel reports.)
+    const put = async (patch) => {
+      try {
+        const body = await api(base, token, "PUT", "/api/settings", patch);
+        return { ok: true, status: 200, detail: "", body };
+      } catch (e) {
+        return { ok: false, status: 400, detail: e instanceof Error ? e.message : String(e), body: null };
+      }
+    };
+    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"]);
+
     const reposRes = await api(base, token, "POST", "/api/repos", { path: cloneDir });
     const repo = reposRes.repos.find((r) => r.localPath === cloneDir) ?? reposRes.repos[0];
     log("repo:", repo.id, `${repo.owner}/${repo.name}`);
@@ -213,6 +289,42 @@ async function main() {
     if (matchingReviews.length < 1) throw new Error(`expected at least 1 review with the general comment, found ${matchingReviews.length}`);
     if (matchingComments.length < 1) throw new Error("inline comment not found on the PR");
     if (!prBody.includes(DESC_MARK)) throw new Error("PR body does not contain the edit marker");
+
+    // Priced spend snapshot at submit time (all jobs, failed included). The
+    // background pipeline may still be running, so this is partial by
+    // design — the report says whether jobs were still live.
+    let spendUsd = null;
+    let jobsLive = null;
+    if (piRates) {
+      const jobsRes = await api(base, token, "GET", `/api/jobs?review=${reviewId}`);
+      const jobs = jobsRes.jobs ?? [];
+      const usage = { inputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 0 };
+      for (const j of jobs) {
+        if (!j.usage) continue;
+        usage.inputTokens += j.usage.inputTokens ?? 0;
+        usage.cachedReadTokens += j.usage.cachedReadTokens ?? j.usage.cachedTokens ?? 0;
+        usage.cachedWriteTokens += j.usage.cachedWriteTokens ?? 0;
+        usage.outputTokens += j.usage.outputTokens ?? 0;
+      }
+      spend.add(usage);
+      spendUsd = Math.round(spend.usd() * 10000) / 10000;
+      jobsLive = jobs.filter((j) => ["running", "backing-off", "queued"].includes(j.state)).length;
+      spend.check("live submit");
+    }
+    const report = writeLiveReport({
+      dir: path.join(root, "test-results"),
+      task: "submit",
+      provider: live.provider,
+      model: live.model,
+      rates: piRates,
+      capUsd: live.capUsd,
+      spendUsd,
+      tokens: spend.totals,
+      backgroundPipelineStillLive: jobsLive,
+      results: [{ pr: prUrl, commentCount: submitted.commentCount }],
+      failures: [],
+    });
+    log(`priced spend ${spendUsd === null ? "(tokens only, non-pi run)" : formatUsd(spendUsd)} of cap ${formatUsd(live.capUsd)}; background pipeline still live: ${jobsLive ?? "(unknown, non-pi run)"}; report ${report}`);
 
     console.log(`\nLIVE TEST PASSED\nPR: ${prUrl}\n`);
   } finally {

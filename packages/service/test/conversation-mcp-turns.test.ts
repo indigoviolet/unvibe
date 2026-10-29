@@ -311,7 +311,7 @@ describe("conversation MCP connection across turns", () => {
       // transcript (the short follow-up prompt assumes live history).
       expect(attempts[1]).toContain("## Selected text");
       expect(attempts[1]).toContain("First answer body");
-      const turn = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!.turns![1];
+      const turn = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!.replies![1];
       expect(turn.blocks.length).toBeGreaterThan(0);
       expect(turn.error).toBeFalsy();
     } finally {

@@ -34,28 +34,29 @@ test.describe("J272 closed-card failure is recorded", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // Turn 1: Ask.
+    // Reply 1: Ask.
     await selectText(page, "#C-problem", "folded");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.locator("textarea").fill("What is line folding?");
     await composer.getByRole("button", { name: "Ask" }).click();
-    const card = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" }).first();
+    const card = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" }).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
     const snap = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
-      annotations?: { id: string; turns?: { question: string | null }[] }[];
+      annotations?: { id: string; replies?: { question: string | null }[] }[];
     };
-    const annotationId = (snap.annotations ?? []).find((a) => (a.turns ?? [])[0]?.question === "What is line folding?")?.id;
+    const annotationId = (snap.annotations ?? []).find((a) => (a.replies ?? [])[0]?.question === "What is line folding?")?.id;
     if (!annotationId) throw new Error("ask card not found via API");
 
-    // Turn 2: close the card while its answer fills, then kill mid-flight.
+    // Reply 2: close the thread while its answer fills, then kill mid-flight.
     const box = card.getByPlaceholder(/Ask a follow-up/);
     await expect(box).toBeVisible({ timeout: 15_000 });
     await box.fill("Does a cookie header change this?");
     await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
-    const pending = card.locator(".ans").nth(1);
+    // Issue #293: questions are separate entries — answers are `ask-answer`.
+    const pending = card.locator("[data-ask-answer]").nth(1);
     await expect(pending.locator(".working")).toBeVisible({ timeout: 30_000 });
     // Kill only once the server-side turn is filling, so the restart
     // reliably marks it failed.
@@ -63,9 +64,9 @@ test.describe("J272 closed-card failure is recorded", () => {
       .poll(
         async () => {
           const s = (await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as {
-            annotations?: { id: string; turns?: { question: string | null; working: string | null }[] }[];
+            annotations?: { id: string; replies?: { question: string | null; working: string | null }[] }[];
           };
-          const turns = (s.annotations ?? []).find((a) => a.id === annotationId)?.turns ?? [];
+          const turns = (s.annotations ?? []).find((a) => a.id === annotationId)?.replies ?? [];
           return turns.some((t) => t.question === "Does a cookie header change this?" && t.working !== null);
         },
         { timeout: 30_000 },
@@ -82,9 +83,9 @@ test.describe("J272 closed-card failure is recorded", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
     await page.locator(`mark.anc.exl[data-jump="${annotationId}"]`).first().click();
-    const after = page.locator("#C-problem .ui-card.child[data-expansion]", { hasText: "What is line folding?" }).first();
+    const after = page.locator("#C-problem section.ithread[data-thread]", { hasText: "What is line folding?" }).first();
     await expect(after).toBeVisible({ timeout: 30_000 });
-    const failed = after.locator(".ans").nth(1);
+    const failed = after.locator("[data-ask-answer]").nth(1);
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
     await expect(after.locator(".working")).toHaveCount(0);
     await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 15_000 });

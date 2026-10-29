@@ -4,7 +4,7 @@
  * outside-diff fallback with a note, deleted-side lines, renames.
  */
 import { describe, expect, it } from "vitest";
-import type { Annotation, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
 import {
   locatePendingThreads,
   locateThread,
@@ -13,7 +13,7 @@ import {
 import { threadPostText } from "../src/comments/threads.js";
 import { BASE_SHA, deletedFile, HEAD_SHA, renamedFile, sourceFile } from "./m6-helpers.js";
 
-function snapshotWith(annotations: Annotation[], files = [sourceFile()], pages: ReviewSnapshot["pages"] = []): ReviewSnapshot {
+function snapshotWith(annotations: Thread[], files = [sourceFile()], pages: ReviewSnapshot["pages"] = []): ReviewSnapshot {
   return {
     review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, createdAt: 1 },
     version: { n: 1, headSha: HEAD_SHA, mergeBaseSha: BASE_SHA, baseRef: "main", fetchedAt: 1, idMapping: {} },
@@ -31,16 +31,25 @@ function snapshotWith(annotations: Annotation[], files = [sourceFile()], pages: 
   };
 }
 
-function diffThread(fileKey: string, line: number, text = "body", extra: Partial<Annotation> = {}): Annotation {
+function diffThread(fileKey: string, line: number, text = "body", extra: Partial<Thread> = {}): Thread {
   return {
     id: `t-${fileKey}-${line}`,
-    type: "comment",
+    type: "thread",
     anchor: { host: { kind: "diff-line", fileKey, line }, quotedText: "", prefix: "", suffix: "", position: line, version: 1 },
     open: true,
-    messages: [{ who: "you", text }],
+    replies: [{
+      id: "ans_t1",
+      kind: "comment",
+      who: "you",
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+    }],
     post: true,
     ...extra,
-    // `extra` is a Partial, so its `pinned` may be absent; Annotation requires it.
+    // `extra` is a Partial, so its `pinned` may be absent; Thread requires it.
     pinned: extra.pinned ?? false,
   };
 }
@@ -48,7 +57,7 @@ function diffThread(fileKey: string, line: number, text = "body", extra: Partial
 describe("locateThread", () => {
   it("maps a diff-line add to RIGHT", () => {
     const snap = snapshotWith([diffThread("a-py", 2)]);
-    const loc = locateThread(snap, snap.annotations[0] as Annotation);
+    const loc = locateThread(snap, snap.annotations[0] as Thread);
     expect(loc).toEqual({ kind: "inline", path: "a.py", line: 2, side: "RIGHT" });
   });
 
@@ -57,7 +66,7 @@ describe("locateThread", () => {
       [{ ...diffThread("d-py", 2), anchor: { host: { kind: "diff-line", fileKey: "d-py", line: 2, side: "LEFT" }, quotedText: "", prefix: "", suffix: "", position: 2, version: 1 } }],
       [deletedFile()],
     );
-    const loc = locateThread(snap, snap.annotations[0] as Annotation);
+    const loc = locateThread(snap, snap.annotations[0] as Thread);
     expect(loc).toEqual({ kind: "inline", path: "d.py", line: 2, side: "LEFT" });
   });
 
@@ -71,7 +80,7 @@ describe("locateThread", () => {
 
   it("falls back to the review body outside the diff", () => {
     const snap = snapshotWith([diffThread("a-py", 500)]);
-    const loc = locateThread(snap, snap.annotations[0] as Annotation);
+    const loc = locateThread(snap, snap.annotations[0] as Thread);
     expect(loc.kind).toBe("general");
   });
 
@@ -100,7 +109,7 @@ describe("locateThread", () => {
         },
       ],
     };
-    const t: Annotation = {
+    const t: Thread = {
       ...diffThread("m-py", 2, "old ctx"),
       anchor: { host: { kind: "diff-line", fileKey: "m-py", line: 2, side: "LEFT" }, quotedText: "", prefix: "", suffix: "", position: 2, version: 1 },
     };
@@ -115,7 +124,7 @@ describe("locateThread", () => {
 
   it("uses the new path for renames", () => {
     const snap = snapshotWith([diffThread("new-py", 2)], [renamedFile()]);
-    const loc = locateThread(snap, snap.annotations[0] as Annotation);
+    const loc = locateThread(snap, snap.annotations[0] as Thread);
     expect(loc).toEqual({ kind: "inline", path: "new.py", line: 2, side: "RIGHT" });
   });
 
@@ -141,13 +150,13 @@ describe("locateThread", () => {
         ],
       },
     ];
-    const t: Annotation = {
+    const t: Thread = {
       id: "t-guide",
-      type: "comment",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      messages: [{ who: "you", text: "guide q" }],
+      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "guide q" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t], [sourceFile()], pages);
@@ -174,22 +183,22 @@ describe("locateThread", () => {
         ],
       },
     ];
-    const guide: Annotation = {
+    const guide: Thread = {
       id: "t-g",
-      type: "comment",
+      type: "thread",
       anchor: { host: { kind: "block", blockId: "b9" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      messages: [{ who: "you", text: "g" }],
+      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "g" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
-    const desc: Annotation = {
+    const desc: Thread = {
       id: "t-d",
-      type: "comment",
+      type: "thread",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       pinned: false,
-      messages: [{ who: "you", text: "d" }],
+      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "d" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([guide, desc], [sourceFile()], pages);
@@ -198,9 +207,9 @@ describe("locateThread", () => {
   });
 
   it("sends a file-tab comment to the review body with a permalink (#81)", () => {
-    const t: Annotation = {
+    const t: Thread = {
       id: "t-code",
-      type: "comment",
+      type: "thread",
       anchor: {
         host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2, endLine: 3 },
         quotedText: "beta = 2\ngamma = 3",
@@ -211,7 +220,7 @@ describe("locateThread", () => {
       },
       open: true,
       pinned: false,
-      messages: [{ who: "you", text: "Is beta still the right default?" }],
+      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t]);
@@ -223,10 +232,10 @@ describe("locateThread", () => {
     // No repo to link to: the plain text stands alone. An empty comment
     // stays empty, so Submit still refuses it instead of posting a bare link.
     expect(locateThreadWithText(snap, t).text).toBe("Is beta still the right default?");
-    const empty: Annotation = { ...t, id: "t-code-empty", messages: [{ who: "you", text: "" }] };
+    const empty: Thread = { ...t, id: "t-code-empty", replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }] };
     expect(locateThreadWithText(snap, empty, { owner: "octo", name: "hello" }).text).toBe("");
     // Single-line citations link #Lx, not #Lx-Lx.
-    const single: Annotation = {
+    const single: Thread = {
       ...t,
       id: "t-code-1",
       anchor: { ...t.anchor, host: { kind: "code", path: "helper.py", commit: HEAD_SHA, line: 2 } },
@@ -243,20 +252,28 @@ describe("locateThread", () => {
   });
 
   it("prefers draft, then you, then suggested text", () => {
-    const base: Annotation = {
+    const mk = (who: "you" | "agent", text: string, suggested = false): Thread["replies"][number] => ({
+      id: `ans_${who}_${text}`,
+      kind: "comment",
+      who,
+      question: null,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+      ...(suggested ? { suggested: true } : {}),
+    });
+    const base: Thread = {
       id: "t",
-      type: "comment",
+      type: "thread",
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       pinned: false,
-      messages: [
-        { who: "ai", text: "suggested", suggested: true },
-        { who: "you", text: "mine" },
-      ],
+      replies: [mk("agent", "suggested", true), mk("you", "mine")],
       post: true,
     };
     expect(threadPostText(base)).toBe("mine");
     expect(threadPostText({ ...base, draft: "d" })).toBe("d");
-    expect(threadPostText({ ...base, messages: [{ who: "ai", text: "s", suggested: true }] })).toBe("s");
+    expect(threadPostText({ ...base, replies: [{ id: "ans_t1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "s" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] })).toBe("s");
   });
 });

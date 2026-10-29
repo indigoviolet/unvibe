@@ -7,7 +7,7 @@
  * missed", re-run and remove controls. A disagreement uses the
  * prototype's warn colours prominently.
  */
-import type { Annotation, Card, Page, SecondOpinionResult } from "@unvibe/shared";
+import type { Thread, Card, Page, SecondOpinionResult } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { useReview } from "../../state/store.js";
 import { BlockView } from "../BlockView.js";
@@ -30,7 +30,7 @@ function verdictLabel(v: SecondOpinionResult["verdict"]): string {
 }
 
 export function SecondOpinionBlock({ reviewId, card, result, lookupPage, onOpenPage, onFollowUp }: Props): React.JSX.Element {
-  const threads: Annotation[] = [];
+  const threads: Thread[] = [];
   const dis = result.verdict === "disagrees";
   // A re-run starts an agent session for the same card: disable while one
   // is already in flight so it cannot be double-clicked.

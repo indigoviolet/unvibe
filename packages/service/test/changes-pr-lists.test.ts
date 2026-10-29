@@ -1,7 +1,7 @@
 /**
- * Start-page PR lists (#95, #100, #94, #91): one `gh pr list` call per
- * list returns number, title, author, updated time, head branch,
- * additions, deletions, changed files, URL and review requests.
+ * Start-page PR lists (#95, #100, #94, #91): one GraphQL `search` call
+ * per list (#310) returns number, title, author, updated time, head
+ * branch, additions, deletions, changed files, URL and review requests.
  *
  * - authoring: full fields, newest first, one `gh` call;
  * - review-requested: direct (`user-review-requested:@me`) and team
@@ -44,21 +44,41 @@ type GhBodies = {
   fail?: Array<"author" | "direct" | "all">;
 };
 
-/** Stub `gh` by query qualifier; records every `gh` invocation. */
+/** One flat fixture row as a GraphQL search node. */
+function toNode(p: unknown): unknown {
+  const r = (p ?? {}) as Record<string, unknown>;
+  const flat = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  return {
+    __typename: "PullRequest",
+    ...r,
+    reviewRequests: { nodes: flat(r.reviewRequests).map((x) => ({ requestedReviewer: x })) },
+    latestReviews: { nodes: flat(r.latestReviews) },
+  };
+}
+
+/** Stub `gh api graphql` by search qualifier; records every `gh` invocation. */
 function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] } {
   const ghCalls: string[][] = [];
+  const queryOf = (args: string[]): string => args.find((a) => a.startsWith("q="))?.slice(2) ?? "";
   const runner: CommandRunner = {
     run: async (cmd: string, opts: RunOptions): Promise<RunResult> => {
       if (cmd !== "gh") return real.run(cmd, opts);
       ghCalls.push(opts.args);
-      const key = opts.args.includes("user-review-requested:@me")
+      const q = queryOf(opts.args);
+      const key = q.includes("user-review-requested:@me")
         ? "direct"
-        : opts.args.includes("review-requested:@me")
+        : q.includes("review-requested:@me")
           ? "all"
           : "author";
       if (bodies.fail?.includes(key)) return { stdout: "", stderr: "mock gh is down", code: 1 };
-      const body = bodies[key];
-      return { stdout: JSON.stringify(body ?? []), stderr: "", code: 0 };
+      const rows = (bodies[key] ?? []) as unknown[];
+      return {
+        stdout: JSON.stringify({
+          data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: rows.map(toNode) } },
+        }),
+        stderr: "",
+        code: 0,
+      };
     },
   };
   return { runner, ghCalls };
@@ -136,7 +156,7 @@ const FULL_NEW = {
   reviewRequests: [],
 };
 
-describe("start-page PR lists (one gh pr list call per list)", () => {
+describe("start-page PR lists (one GraphQL search per list)", () => {
   it("authoring returns every row field, newest first, in one gh call", async () => {
     const { runner, ghCalls } = stubGh({ author: [FULL_OLD, FULL_NEW] });
     const { app, repoId } = await setupRepo(runner);
@@ -153,15 +173,15 @@ describe("start-page PR lists (one gh pr list call per list)", () => {
       expect(row.deletions).toBe(18);
       expect(row.changedFiles).toBe(4);
       expect(row.updatedAt).toBe(Date.parse("2026-10-03T00:00:00Z"));
-      // One call per list, through `gh pr list` with every field.
+      // One call per list: `gh api graphql` with the authoring search
+      // and every rendered field in the query.
       expect(ghCalls).toHaveLength(1);
       const [args] = ghCalls;
-      expect(args.slice(0, 2)).toEqual(["pr", "list"]);
-      expect(args).toContain("--author");
-      expect(args).toContain("@me");
-      const json = args[args.indexOf("--json") + 1];
-      for (const field of ["number", "title", "author", "updatedAt", "headRefName", "additions", "deletions", "changedFiles", "url", "reviewRequests"]) {
-        expect(json.split(",")).toContain(field);
+      expect(args.slice(0, 2)).toEqual(["api", "graphql"]);
+      const query = args.find((a) => a.startsWith("query=")) ?? "";
+      expect(args.find((a) => a.startsWith("q=")) ?? "").toContain("author:@me");
+      for (const field of ["number", "title", "author", "updatedAt", "headRefName", "additions", "deletions", "changedFiles", "url", "reviewRequests", "latestReviews", "endCursor"]) {
+        expect(query).toContain(field);
       }
     } finally {
       await app.close();
@@ -222,8 +242,9 @@ describe("start-page PR lists (one gh pr list call per list)", () => {
       expect(byNumber.get(12)?.requestedTeams).toEqual(["core"]);
       // Two gh calls for the requested lists (direct + team-inclusive).
       expect(ghCalls).toHaveLength(2);
-      expect(ghCalls.some((a) => a.includes("user-review-requested:@me"))).toBe(true);
-      expect(ghCalls.some((a) => a.includes("review-requested:@me"))).toBe(true);
+      const queries = ghCalls.map((a) => a.find((x) => x.startsWith("q=")) ?? "");
+      expect(queries.some((q) => q.includes("user-review-requested:@me"))).toBe(true);
+      expect(queries.some((q) => q.includes("review-requested:@me"))).toBe(true);
     } finally {
       await app.close();
     }

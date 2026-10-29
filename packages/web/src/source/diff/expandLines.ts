@@ -64,6 +64,25 @@ export function expandRegions(file: Pick<ReviewFile, "hunks" | "isDeleted">, tot
   return out;
 }
 
+/**
+ * Optimistic bottom region for a file whose total is not yet known
+ * (issue #288): the last hunk's end is known, the file end is not, so
+ * assume one step of hidden lines below it. The first click fetches
+ * `[lastEnd+1, lastEnd+step]`; success teaches the total and reveals,
+ * past-the-end teaches the total and the control disappears. Pure: the
+ * hook synthesises this region only while `totalLines` is null.
+ */
+export function optimisticBottomRegion(
+  file: Pick<ReviewFile, "hunks" | "isDeleted">,
+  step: number = EXPAND_STEP,
+): ExpandRegion | null {
+  if (file.hunks.length === 0) return null;
+  const deleted = file.isDeleted === true;
+  const last = file.hunks[file.hunks.length - 1];
+  const end = deleted ? last.oldEnd : last.newEnd;
+  return { key: "bottom", start: end + 1, end: end + step };
+}
+
 /** Merge overlapping/adjacent intervals, sorted. */
 export function mergeRanges(ranges: RevealedRange[]): RevealedRange[] {
   const sorted = [...ranges].sort((a, b) => a.start - b.start);
@@ -175,6 +194,24 @@ export function planExpandAll(region: ExpandRegion, revealed: RevealedRange[], c
     }
   }
   return out;
+}
+
+/**
+ * Collapse window for one hunk-side (issue #308): everything this side
+ * revealed, back to the hunk's original edge. Gap sides stop at the
+ * partition split (the other side's expansion survives the collapse);
+ * top/bottom regions span to the region edge. Null when the window is
+ * empty (nothing revealed on this side).
+ */
+export function collapseRangeAbove(region: ExpandRegion, hunkStart: number, split: number): RevealedRange | null {
+  const lo = region.key.startsWith("gap-") ? split : region.start;
+  return lo < hunkStart ? { start: lo, end: hunkStart - 1 } : null;
+}
+
+/** Mirror of `collapseRangeAbove` below the hunk. */
+export function collapseRangeBelow(region: ExpandRegion, hunkEnd: number, split: number): RevealedRange | null {
+  const hi = region.key.startsWith("gap-") ? split - 1 : region.end;
+  return hunkEnd < hi ? { start: hunkEnd + 1, end: hi } : null;
 }
 
 /**

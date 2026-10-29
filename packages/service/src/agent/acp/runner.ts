@@ -51,6 +51,8 @@ export interface AcpRunnerOptions {
   factories?: Partial<Record<ProviderId, TransportFactory>>;
   /** Env for the live-agent guard (#188); defaults to process.env. */
   env?: NodeJS.ProcessEnv;
+  /** Service data dir (issue #279): probe dirs live under `<dataDir>/tmp/`). */
+  dataDir?: string;
   /**
    * Ceiling for notification-settling waits after every prompt and in
    * load() (ms; default 300). The waits end early once notifications are
@@ -154,7 +156,7 @@ export class AcpAgentRunner implements AgentRunner {
       // Partial-fake guard (#188): a provider with no injected fake would
       // spawn the real adapter for that provider.
       if (!factory) assertLiveAgentAllowed(this.opts.env ?? process.env);
-      c = new ProviderConnection(provider, readOnly, factory);
+      c = new ProviderConnection(provider, readOnly, factory, this.opts.dataDir);
       this.conns.set(key, c);
     }
     return c;

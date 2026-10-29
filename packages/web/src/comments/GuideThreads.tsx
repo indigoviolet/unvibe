@@ -21,7 +21,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { useLocation } from "react-router";
 import { subscribeHighlight } from "../source/diff/highlight/shiki.js";
-import type { Annotation } from "@unvibe/shared";
+import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -111,13 +111,13 @@ export function GuideThreadHooks() {
     const page = document.getElementById("page");
     if (!page) return;
     const threads = (annotations ?? []).filter(
-      (a): a is Annotation => a.type === "comment" && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
+      (a): a is Thread => (a.replies ?? []).some((r) => r.kind === "comment") && a.anchor.host.kind === "block" && !!a.anchor.quotedText,
     );
     // Issue #166: anchors whose host text isn't there yet (a re-render
     // landing after this pass) are retried — bounded overall per effect
     // run (#206), never re-armed per pass.
     let pending = new Set<string>(threads.map((t) => t.id));
-    const placedOf = (thread: Annotation): { placed: boolean; hostMissing: boolean } => {
+    const placedOf = (thread: Thread): { placed: boolean; hostMissing: boolean } => {
       const host = thread.anchor.host;
       if (host.kind !== "block") return { placed: false, hostMissing: true };
       const scope = anchorScope(page, host.blockId);
@@ -235,7 +235,7 @@ export function GuideThreadHooks() {
           const snap = useReview.getState().snapshot;
           const reviewId = snap?.review.id;
           const thread = snap?.annotations.find((a) => a.id === id);
-          if (!reviewId || !thread || thread.type !== "comment" || isReadOnlyVersionNow()) return;
+          if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment") || isReadOnlyVersionNow()) return;
           if (!thread.open) {
             api.updateComment(reviewId, id, { open: true }).catch(() => {});
           }
@@ -246,7 +246,7 @@ export function GuideThreadHooks() {
       const snap = useReview.getState().snapshot;
       const reviewId = snap?.review.id;
       const thread = snap?.annotations.find((a) => a.id === id);
-      if (!reviewId || !thread || thread.type !== "comment") return;
+      if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment")) return;
       if (isReadOnlyVersionNow()) {
         toast("Viewing an older version · read-only");
         return;
@@ -306,6 +306,10 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
+      // Issue #273: an Ask inside a thread opens its composer in that
+      // thread (ThreadView owns `threadId` requests) — never a second
+      // composer on the underlying block.
+      if (req.threadId) return;
       if (req.anchor.where === "comment") {
         // Issue #214: Ask on a comment shows its composer under the
         // comment's guide block (the card itself anchors to the comment).
@@ -326,12 +330,15 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
     return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
   }, [cardId, blockId]);
 
+  const collapseAll = useReview((s) => s.collapseAll);
+  // Collapse-all renders every thread on the block as a row — including
+  // closed ones, which otherwise show only as marks.
   const threads = (annotations ?? []).filter(
-    (a): a is Annotation =>
-      a.type === "comment" &&
+    (a): a is Thread =>
+      (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
-      a.open,
+      (a.open || collapseAll),
   );
 
   // An explain started from a selection on this block shows a
@@ -343,7 +350,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
   const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
   const arrived = (annotations ?? []).some(
     (a) =>
-      a.type === "conversation" &&
+      a.type === "thread" &&
       a.open &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
@@ -366,6 +373,8 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           kind={pending.kind}
           initialText={pending.initialText}
           offsets={pending.offsets}
+          threadId={pending.threadId}
+          sourceReplyId={pending.sourceReplyId}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);

@@ -7,7 +7,6 @@
  * unauthenticated.
  */
 import type {
-  Annotation,
   Card,
   ContextRepoRef,
   ContextRepoSource,
@@ -19,6 +18,8 @@ import type {
   HunkState,
   PrReviewDecision,
   PrState,
+  Reply,
+  ReplyKind,
   ReviewKind,
   ReviewViewPrefs,
   Job,
@@ -29,6 +30,7 @@ import type {
   ReviewFile,
   Repo,
   SelectionOffsets,
+  Thread,
   Version,
 } from "./entities.js";
 import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
@@ -127,6 +129,186 @@ export type PickFolderResponse =
 
 export type ChangesFilter = "authoring" | "review-requested" | "branches" | "recent" | "all";
 
+/**
+ * Start-page PR paging (#297, #310): listings page with GraphQL
+ * cursors (`gh api graphql` + `after:`), one page per press — never a
+ * growing re-fetch. The default page stays 30; the ceiling matches the
+ * search API's `first:` cap of 100, keeping one listing cheap.
+ */
+export const CHANGES_DEFAULT_LIMIT = 30;
+export const CHANGES_MAX_LIMIT = 100;
+
+/** Clamp a `limit` query value onto `[1, CHANGES_MAX_LIMIT]` (default 30). Pure. */
+export function normalizeChangesLimit(v: unknown): number {
+  if (typeof v === "string") {
+    if (v.trim() === "") return CHANGES_DEFAULT_LIMIT;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return CHANGES_DEFAULT_LIMIT;
+    return Math.min(CHANGES_MAX_LIMIT, Math.max(1, Math.floor(n)));
+  }
+  if (typeof v !== "number" || !Number.isFinite(v)) return CHANGES_DEFAULT_LIMIT;
+  return Math.min(CHANGES_MAX_LIMIT, Math.max(1, Math.floor(v)));
+}
+
+/**
+ * Trim an `author` query value; null when absent/blank. Pure.
+ *
+ * #310: only a valid GitHub login shape passes through — anything else
+ * reads as absent. The login lands inside a GraphQL `search` string
+ * (not a variable), so a value like `x state:closed` must never reach
+ * the query.
+ */
+export function normalizeChangesAuthor(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const login = v.trim();
+  if (login === "") return null;
+  // GitHub logins: alphanumerics and hyphens, at most 39 chars, never
+  // leading or trailing with a hyphen.
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(login)) return null;
+  return login;
+}
+
+/**
+ * Per-search GraphQL cursors behind one paging token (#310). Each key
+ * holds the `endCursor` for the next page of that search; an explicit
+ * `null` means that search is exhausted (skip it); a missing key means
+ * it was never fetched (fetch its first page). The token is opaque to
+ * callers: round-trip the `cursor` response field as the next request's
+ * `cursor` query value.
+ */
+export interface ChangesCursor {
+  authoring?: string | null;
+  direct?: string | null;
+  team?: string | null;
+}
+
+const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function utf8Bytes(s: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    let cp = s.charCodeAt(i);
+    // Unpaired surrogates encode as U+FFFD (never throw on odd input).
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < s.length) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdfff) {
+        cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
+        i++;
+      } else {
+        cp = 0xfffd;
+      }
+    } else if (cp >= 0xdc00 && cp <= 0xdfff) {
+      cp = 0xfffd;
+    }
+    if (cp < 0x80) out.push(cp);
+    else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+    else if (cp < 0x10000) out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    else out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+  }
+  return out;
+}
+
+function toB64Url(bytes: number[]): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1;
+    out += B64URL[b0 >> 2];
+    out += B64URL[((b0 & 0x03) << 4) | (b1 === -1 ? 0 : b1 >> 4)];
+    out += b1 === -1 ? "" : B64URL[((b1 & 0x0f) << 2) | (b2 === -1 ? 0 : b2 >> 6)];
+    out += b2 === -1 ? "" : B64URL[b2 & 0x3f];
+  }
+  return out;
+}
+
+function fromB64Url(s: string): string | null {
+  const vals: number[] = [];
+  for (const ch of s) {
+    const i = B64URL.indexOf(ch);
+    if (i === -1) return null;
+    vals.push(i);
+  }
+  if (vals.length % 4 === 1) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < vals.length; i += 4) {
+    const a = vals[i];
+    const b = vals[i + 1];
+    const c = i + 2 < vals.length ? vals[i + 2] : 0;
+    const d = i + 3 < vals.length ? vals[i + 3] : 0;
+    bytes.push((a << 2) | (b >> 4));
+    if (i + 2 < vals.length) bytes.push(((b & 0x0f) << 4) | (c >> 2));
+    if (i + 3 < vals.length) bytes.push(((c & 0x03) << 6) | d);
+  }
+  // UTF-8 decode with replacement (never throws on odd input).
+  let out = "";
+  for (let i = 0; i < bytes.length;) {
+    const b0 = bytes[i];
+    if (b0 < 0x80) {
+      out += String.fromCharCode(b0);
+      i++;
+    } else if (b0 >= 0xc2 && b0 <= 0xdf && i + 1 < bytes.length && bytes[i + 1] >> 6 === 0x02) {
+      out += String.fromCharCode(((b0 & 0x1f) << 6) | (bytes[i + 1] & 0x3f));
+      i += 2;
+    } else if (
+      b0 >= 0xe0 &&
+      b0 <= 0xef &&
+      i + 2 < bytes.length &&
+      bytes[i + 1] >> 6 === 0x02 &&
+      bytes[i + 2] >> 6 === 0x02
+    ) {
+      const cp = ((b0 & 0x0f) << 12) | ((bytes[i + 1] & 0x3f) << 6) | (bytes[i + 2] & 0x3f);
+      out += cp >= 0xd800 && cp <= 0xdfff ? "\ufffd" : String.fromCharCode(cp);
+    } else if (
+      b0 >= 0xf0 &&
+      b0 <= 0xf4 &&
+      i + 3 < bytes.length &&
+      bytes[i + 1] >> 6 === 0x02 &&
+      bytes[i + 2] >> 6 === 0x02 &&
+      bytes[i + 3] >> 6 === 0x02
+    ) {
+      const cp = ((b0 & 0x07) << 18) | ((bytes[i + 1] & 0x3f) << 12) | ((bytes[i + 2] & 0x3f) << 6) | (bytes[i + 3] & 0x3f);
+      out += String.fromCodePoint(cp);
+    } else {
+      out += "\ufffd";
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Encode a paging token (opaque, URL-safe, no padding). Pure. */
+export function encodeChangesCursor(c: ChangesCursor): string {
+  const slim: Record<string, string | null> = {};
+  for (const k of ["authoring", "direct", "team"] as const) {
+    // Only present keys round-trip: an absent key means "never fetched",
+    // while an explicit null means "exhausted".
+    if (k in c) slim[k] = typeof c[k] === "string" ? c[k] : null;
+  }
+  return toB64Url(utf8Bytes(JSON.stringify(slim)));
+}
+
+/** Decode a paging token; garbage reads as "nothing fetched yet". Pure. */
+export function decodeChangesCursor(v: unknown): ChangesCursor {
+  if (typeof v !== "string" || v === "") return {};
+  const json = fromB64Url(v);
+  if (json === null) return {};
+  let doc: unknown;
+  try {
+    doc = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return {};
+  const out: ChangesCursor = {};
+  for (const k of ["authoring", "direct", "team"] as const) {
+    const val = (doc as Record<string, unknown>)[k];
+    if (val === undefined) continue;
+    out[k] = typeof val === "string" ? val : null;
+  }
+  return out;
+}
+
 export interface RepoChange {
   kind: "pr" | "branch" | "review" | "demo";
   title: string;
@@ -190,6 +372,17 @@ export interface RepoChangesResponse {
    * shows this note instead of failing.
    */
   fetchError?: string;
+  /**
+   * #297/#310: true when a PR list has a next page, so more PRs may
+   * exist. The start page offers Load more then (one more GraphQL
+   * page per press, cursor-paged — never a growing re-fetch).
+   */
+  hasMore: boolean;
+  /**
+   * #310: opaque paging token for the next page (round-trip as the
+   * `cursor` query value). Null when every PR list is exhausted.
+   */
+  cursor: string | null;
 }
 
 // --- reviews -------------------------------------------------------------
@@ -302,7 +495,7 @@ interface ReviewSnapshotBase {
   /** #92: ingest state. */
   ingest: IngestStatus;
   pages: Page[];
-  annotations: Annotation[];
+  annotations: Thread[];
   hunkStates: HunkState[];
   /**
    * Issue #162: per-file fold state, keyed by file key. Reviewed is
@@ -557,20 +750,29 @@ export interface UpdateReviewResponse {
  * route by `kind` and later agents can add variants without new endpoints.
  */
 export type ReviewAction =
-  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets }
-  /** Issue #136 slice 2: same request; creates a conversation card whose first question is the message. */
-  | { kind: "ask"; quote: string; anchor: ActionAnchor; message: string; offsets?: SelectionOffsets }
+  /**
+   * Issue #273: Explain starts a new thread anchored on content, or —
+   * with `threadId` — appends an Explain reply inside that thread. The
+   * selected text (`quote`, optionally from `sourceReplyId`) becomes a
+   * hyperlink to the new reply (`linkTo`).
+   */
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  /**
+   * Issue #273: Ask starts a new thread anchored on content, or —
+   * with `threadId` — appends an Ask reply inside that thread.
+   */
+  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
-   * Issue #136: `cardId` is a page-card id or one conversation answer's
+   * Issue #273: `cardId` is a page-card id or one thread reply's
    * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
-   * that unit's own blocks/level/undo stack, so an answer rewrites alone.
+   * that unit's own blocks/level/undo stack, so a reply rewrites alone.
    */
   | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
   | { kind: "examples"; cardId: string }
   | { kind: "diagram"; cardId: string }
   | { kind: "undo"; cardId: string }
-  /** Issue #136: `cardId` is a page-card id or a conversation card id. */
+  /** `cardId` is a page-card id or a thread id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
   | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
@@ -578,28 +780,29 @@ export type ReviewAction =
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
   /**
-   * Issue #138: turn an idle hunk summary into its conversation card
+   * Issue #138 (threads): turn an idle hunk summary into its thread
    * (created from the stored summary text, no agent call), or reopen it.
    * The explicit hunk control sends this; selecting summary text and
    * choosing Explain/Ask goes through those actions with a hunk anchor.
    */
   | { kind: "hunk_card"; fileKey: string; contentHash: string }
   /**
-   * M4: answer a follow-up suggestion under the block it came from.
-   * `cardId` is a page-card id, a conversation card id, or one answer's
-   * `ans_…` id. On a page card the answer arrives as a new conversation
-   * card anchored on that block (prototype `follow`), quoting the
-   * suggestion label; on a conversation card the suggestion is sent as
-   * the next turn in the same conversation (#136).
+   * M4 (threads): answer a follow-up suggestion under the block it came
+   * from. `cardId` is a page-card id, a thread id, or one reply's
+   * `ans_…` id. On a page card the answer arrives as a new thread
+   * anchored on that block, quoting the suggestion label; on a thread
+   * reply the suggestion is sent as the next agent reply in the same
+   * thread.
    */
   | { kind: "followup"; cardId: string; blockId: string; index: number }
   /**
-   * Follow-up user message on a conversation card, added as a turn on
-   * the card's session (`Annotation.sessionId`) instead of forking
-   * again.
+   * Follow-up user message on a thread, answered as an Ask reply on the
+   * thread's session (`Thread.sessionId`) instead of forking again.
    */
   | { kind: "reply"; annotationId: string; message: string }
-  /** Retry the last turn of a conversation card. */
+  /** Retry the last failed agent reply of a thread. */
+  | { kind: "reply_retry"; annotationId: string; replyId?: string }
+  /** Retry the last failed agent reply of a thread (alias of `reply_retry`). */
   | { kind: "retry"; annotationId: string }
   /**
    * M4: write a concept page on first open (`ensureConceptPage`). The
@@ -610,10 +813,10 @@ export type ReviewAction =
 export type ActionAnchor =
   /**
    * A guide block, addressed `<card>#<block>` (block ids restart at `b1`
-   * in every card, so the card qualifier is required). The card part is a
-   * page-card id, or — for a selection inside a conversation answer (#116,
-   * #136) — the hosting answer's `ans_…` id, so nested cards address
-   * `<answer>#<block>` the same way.
+   * in every card, so the card qualifier is required). The card part is
+   * always a page-card id (issue #273: the `ans_…` host form is gone;
+   * selections inside a thread reply travel as `threadId`/`sourceReplyId`
+   * on explain/ask instead).
    */
   | { where: "block"; blockId: string }
   | { where: "description"; paragraphId: string }
@@ -645,9 +848,11 @@ export interface ActionResponse {
   accepted: boolean;
   /** Job started for the action, when async. */
   jobId?: string;
-  /** M4: annotation created or targeted by the action (explain/ask/note/followup). */
+  /** M4: thread created or targeted by the action (explain/ask/note/followup). */
   annotationId?: string;
-  /** Issue #136: turn created or targeted by the action (explain/ask/reply/retry/followup). */
+  /** Issue #273: reply created or targeted by the action (explain/ask/reply/retry/followup). Alias `turnId` kept for callers. */
+  replyId?: string;
+  /** Deprecated alias of `replyId`. */
   turnId?: string;
   /** M4: page created or targeted (promote/concept). */
   pageId?: string;
@@ -871,6 +1076,8 @@ export interface UpdateCommentRequest {
   open?: boolean;
   /** M6: unsent reply-box content (survives re-renders); null clears it. */
   reply?: string | null;
+  /** Issue #273: unsent Ask follow-up draft (#271); null clears it. */
+  followupDraft?: string | null;
   /** Issue #167: pin a conversation card into the page (conversations only). */
   pinned?: boolean;
 }
@@ -1549,4 +1756,4 @@ export type ReviewEvent =
   | { type: "error"; message: string; jobId?: string };
 
 /** Re-exported entity slices used by route stubs. */
-export type { Annotation, Card, Page };
+export type { Thread, Card, Page, Reply, ReplyKind };

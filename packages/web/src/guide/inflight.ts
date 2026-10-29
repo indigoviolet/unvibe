@@ -13,7 +13,7 @@
  * plus the update pass (`POST …/update`). Local-only kinds — collapse,
  * note, promote, close, delete, undo — need nothing.
  */
-import type { ActionAnchor, Annotation, Job, JobKind, ReviewSnapshot } from "@unvibe/shared";
+import type { ActionAnchor, Thread, Job, JobKind, ReviewSnapshot } from "@unvibe/shared";
 import { isLiveJobState, type InFlightAction, type InFlightKind } from "../state/store.js";
 
 /** Fixed plain label per action (no streamed text, no progress strings). */
@@ -124,7 +124,7 @@ export function busyForConversation(
   inflight: Record<string, InFlightAction>,
   jobs: Job[],
   snapshot: ReviewSnapshot | null | undefined,
-  expansion: Annotation,
+  expansion: Thread,
 ): BusyState | null {
   const direct = busyForCard(inflight, jobs, expansion.id);
   if (direct) {
@@ -135,7 +135,7 @@ export function busyForConversation(
     }
     return direct;
   }
-  if (expansion.type === "conversation") {
+  if (expansion.type === "thread") {
     if (expansion.anchor.host.kind === "block") {
       const chip = followupEntryForAnchorBlock(inflight, expansion.anchor.host.blockId);
       if (chip) return { kind: chip.kind, label: inflightLabel(chip.kind), rewriting: false };
@@ -161,9 +161,9 @@ export function busyForConversation(
  */
 export function anchorEntryForConversation(
   inflight: Record<string, InFlightAction>,
-  expansion: Annotation,
+  expansion: Thread,
 ): InFlightAction | undefined {
-  if (expansion.type !== "conversation") return undefined;
+  if (expansion.type !== "thread") return undefined;
   const host = expansion.anchor.host;
   for (const [key, entry] of Object.entries(inflight)) {
     if (entry.kind !== "explain") continue;
@@ -273,8 +273,8 @@ export function anchorBlockType(
     }
   }
   for (const a of snapshot?.annotations ?? []) {
-    if (a.type !== "conversation") continue;
-    for (const t of a.turns ?? []) {
+    if (a.type !== "thread") continue;
+    for (const t of a.replies ?? []) {
       if (owner !== null && a.id !== owner && t.id !== owner) continue;
       for (const b of t.blocks as { id: string; type: string }[]) {
         if (match(b.id)) return b.type;
@@ -287,10 +287,10 @@ export function anchorBlockType(
 /** True when a conversation card is a follow-up answer (anchored on a follow-up block). */
 export function isFollowupAnswer(
   snapshot: ReviewSnapshot | null | undefined,
-  expansion: Annotation,
+  expansion: Thread,
 ): boolean {
   const host = expansion.anchor.host;
-  if (expansion.type !== "conversation" || host.kind !== "block") return false;
+  if (expansion.type !== "thread" || host.kind !== "block") return false;
   return anchorBlockType(snapshot, host.blockId) === "follow-up";
 }
 

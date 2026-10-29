@@ -9,7 +9,7 @@ export {
   resolveRepoRoots,
   type DetectedCheckout,
 } from "./detect.js";
-export { repoChanges, type ChangesDeps } from "./changes.js";
+export { ChangesPageError, repoChanges, type ChangesDeps, type ChangesOptions } from "./changes.js";
 export { listWorktrees, resolveContextRepo } from "./worktrees.js";
 export { pickFolder, type PickFolderOptions } from "./pick-folder.js";
 export {

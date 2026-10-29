@@ -7,7 +7,9 @@
  * 3. Compile-check via the binary (`d2 validate -`).
  *    Either failure → exactly one repair turn carrying validator/compiler
  *    messages (the caller sends it).
- * 4. Render light + dark, post-process (anchor rewriting + sanitisation).
+ * 4. Render light + dark (allowlisted icons are pre-fetched and staged
+ *    first; a fetch failure strips the icon with a note, never a repair),
+ *    post-process (anchor rewriting + sanitisation).
  * 5. Cache by hash (content hash of canonical source + d2 version + options).
  *
  * When the binary is unavailable: skip compile-check and rendering, keep
@@ -21,6 +23,7 @@ import type { ReviewLookup } from "../validate/lookup.js";
 import { validateTarget } from "../validate/index.js";
 import type { ResolvedD2Bin } from "./bins.js";
 import { checkD2Source, renderD2Theme, D2_THEME_DARK, D2_THEME_LIGHT } from "./render.js";
+import { defaultFetchIcon, type IconFetcher } from "./icons.js";
 import { renameReservedShapeKeys } from "./precheck.js";
 import { postProcessSvg, type CitationMap } from "./sanitize.js";
 import { DiagramCache } from "./cache.js";
@@ -33,6 +36,8 @@ export interface FinalizeDeps {
   d2bin: ResolvedD2Bin | null;
   d2version: string | null;
   cache?: DiagramCache;
+  /** Icon fetcher (issue #286). Defaults to the real network fetch; tests stub it. */
+  fetchIcon?: IconFetcher;
 }
 
 export interface FinalizedBlock {
@@ -102,6 +107,7 @@ export async function finalizeDiagramBlock(source: string, caption: string | und
   const check = await checkD2Source(canonSource, {
     runner: deps.runner,
     binPath: deps.d2bin.path,
+    fetchIcon: deps.fetchIcon ?? defaultFetchIcon,
   }).catch((e) => ({ ok: false as const, error: (e as Error).message }));
   if (!check.ok) {
     messages.push(`- compile error: ${check.error ?? "d2 rejected the source"}`);
@@ -150,8 +156,20 @@ export async function finalizeDiagramBlock(source: string, caption: string | und
   }
 
   const [light, dark] = await Promise.all([
-    renderD2Theme(canonSource, { runner: deps.runner, binPath: deps.d2bin.path, salt: hash, theme: D2_THEME_LIGHT }),
-    renderD2Theme(canonSource, { runner: deps.runner, binPath: deps.d2bin.path, salt: hash, theme: D2_THEME_DARK }),
+    renderD2Theme(canonSource, {
+      runner: deps.runner,
+      binPath: deps.d2bin.path,
+      salt: hash,
+      theme: D2_THEME_LIGHT,
+      fetchIcon: deps.fetchIcon ?? defaultFetchIcon,
+    }),
+    renderD2Theme(canonSource, {
+      runner: deps.runner,
+      binPath: deps.d2bin.path,
+      salt: hash,
+      theme: D2_THEME_DARK,
+      fetchIcon: deps.fetchIcon ?? defaultFetchIcon,
+    }),
   ]);
 
   if (!light.ok || !light.svg || !dark.ok || !dark.svg) {
@@ -204,13 +222,19 @@ export async function finalizeDiagramBlock(source: string, caption: string | und
   cache.put(hash, "light", postProcessSvg(light.svg, cmap, hash));
   cache.put(hash, "dark", postProcessSvg(dark.svg, cmap, hash));
 
+  // Stripped icons (issue #286): recorded on the block for Debug, never a
+  // repair trigger — the diagram renders without them.
+  const iconNotes = [...(light.iconNotes ?? []), ...(dark.iconNotes ?? [])]
+    .filter((n, i, all) => all.findIndex((o) => o.url === n.url) === i)
+    .map((n) => `icon stripped: ${n.url}: ${n.reason}`);
+
   const block: DiagramBlock = {
     type: "diagram",
     id: "b-d2",
     source: canonSource,
     ...(caption ? { caption } : {}),
     citations,
-    render: { hash, status: "ok" },
+    render: { hash, status: "ok", ...(iconNotes.length > 0 ? { notes: iconNotes } : {}) },
   };
   return { block, needsRepair: false, messages: [] };
 }

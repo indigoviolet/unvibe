@@ -18,7 +18,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -298,9 +298,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const hunkCards = useMemo(() => {
     const files = snapshot?.files ?? [];
     const current = new Set(files.flatMap((f) => f.hunks.map((h) => h.contentHash)));
-    const map = new Map<string, import("@unvibe/shared").Annotation>();
+    const map = new Map<string, import("@unvibe/shared").Thread>();
     for (const a of snapshot?.annotations ?? []) {
-      if (a.type !== "conversation" || a.anchor.host.kind !== "hunk") continue;
+      if (a.type !== "thread" || a.anchor.host.kind !== "hunk") continue;
       if (!current.has(a.anchor.host.contentHash) || map.has(a.anchor.host.contentHash)) continue;
       map.set(a.anchor.host.contentHash, a);
     }
@@ -670,7 +670,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     } else {
       toast(
         `Folded ${foldedNoun}. ` +
-          "This review is past the per-hunk summary limit, so summaries stay on demand — use the spark button on any hunk.",
+          "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
       );
     }
   }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter]);
@@ -708,8 +708,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Issue #168: one show/hide control for existing GitHub comments,
   // remembered with the review. Hiding never removes them from the
   // agents' context; the comments menu's section follows this setting.
+  // Issue #296: absent means hidden (no fallback to the old shown default).
   const toggleGithubComments = useCallback(() => {
-    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? true;
+    const current = useReview.getState().snapshot?.viewPrefs.showExistingComments ?? DEFAULT_REVIEW_VIEW_PREFS.showExistingComments;
     api.updateView(reviewId, { showExistingComments: !current }).catch(() => {
       toast("Couldn't save that change");
     });

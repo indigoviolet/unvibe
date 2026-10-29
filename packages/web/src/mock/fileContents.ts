@@ -287,8 +287,10 @@ export function mockFileSlice(
   params: { path: string; commit: string; start: number; end: number },
 ): { path: string; commit: string; start: number; end: number; totalLines: number; lines: string[] } {
   const url = `/api/reviews/${reviewId}/file`;
-  const fail = (status: number, error: string): Error => {
-    return new Error(`GET ${url}: ${status} ${JSON.stringify({ error })}`);
+  const fail = (status: number, error: string, totalLines?: number): Error => {
+    return new Error(
+      `GET ${url}: ${status} ${JSON.stringify(totalLines !== undefined ? { error, totalLines } : { error })}`,
+    );
   };
   if (reviewId !== "demo") throw fail(404, "unknown review");
   const { path: relPath, commit, start, end } = params;
@@ -303,7 +305,8 @@ export function mockFileSlice(
   if (file.isBinary) throw fail(400, `${relPath} is a binary file and is not shown`);
   const contents = MOCK_FILE_CONTENTS[relPath];
   if (!contents) throw fail(404, `no ${relPath} at ${commit}`);
-  if (end > contents.totalLines) throw fail(400, `lines ${start}-${end} are outside ${relPath} (${contents.totalLines} lines)`);
+  if (end > contents.totalLines)
+    throw fail(400, `lines ${start}-${end} are outside ${relPath} (${contents.totalLines} lines)`, contents.totalLines);
   return {
     path: relPath,
     commit,

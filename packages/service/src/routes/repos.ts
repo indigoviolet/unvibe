@@ -31,6 +31,7 @@ import {
 } from "@unvibe/shared";
 import {
   addManagedRepo,
+  ChangesPageError,
   deriveIdentity,
   detectCheckouts,
   CloneError,
@@ -195,7 +196,7 @@ export async function registerRepos(
 
   app.get("/api/repos/:id/changes", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const query = req.query as { filter?: string };
+    const query = req.query as { filter?: string; limit?: string; author?: string; cursor?: string };
     const rawFilter = query.filter ?? "all";
     if (!(FILTERS as string[]).includes(rawFilter)) {
       return reply.code(400).send({ error: `unknown filter: ${query.filter}` });
@@ -207,7 +208,7 @@ export async function registerRepos(
     // the demo never leaks into "authoring" / "review-requested" / branches.
     if (id === "demo") {
       if (rawFilter !== "all") {
-        return { changes: [] } satisfies RepoChangesResponse;
+        return { changes: [], hasMore: false, cursor: null } satisfies RepoChangesResponse;
       }
       return {
         changes: [
@@ -217,6 +218,8 @@ export async function registerRepos(
             demo: "urllib3-5020",
           },
         ],
+        hasMore: false,
+        cursor: null,
       } satisfies RepoChangesResponse;
     }
     const filter = rawFilter as ChangesFilter;
@@ -230,15 +233,38 @@ export async function registerRepos(
     // branches are current. Best effort — offline degrades to stale data
     // with a visible note, never a failed listing. User checkouts are never
     // fetched implicitly.
+    // #297: `limit` sizes every PR-list page; `author` narrows the
+    // review-requested searches to that login. #310: `cursor` is the
+    // opaque token for the next page (minted by the previous response);
+    // each press fetches only the next page, never a re-fetch.
     const fetchError = await refreshManagedCheckout(ctx.runner, repo);
-    const changes = await repoChanges({ runner: ctx.runner, db: ctx.db }, repo, filter);
-    // #230: the Reviews list reuses this same `gh pr list` result — no
+    let changes: import("@unvibe/shared").RepoChange[];
+    let hasMore: boolean;
+    let cursor: string | null;
+    try {
+      ({ changes, hasMore, cursor } = await repoChanges(
+        { runner: ctx.runner, db: ctx.db },
+        repo,
+        filter,
+        { limit: query.limit, author: query.author, cursor: query.cursor },
+      ));
+    } catch (err) {
+      if (err instanceof ChangesPageError) {
+        // #310: a failed next page surfaces instead of silently reading
+        // as "no more rows". The start page keeps its rows and offers
+        // Retry; the gh stderr rides along for debugging.
+        req.log.warn({ err: err.detail }, "changes next page failed");
+        return reply.code(502).send({ error: err.message, ...(err.detail ? { detail: err.detail } : {}) });
+      }
+      throw err;
+    }
+    // #230: the Reviews list reuses this same PR-list result — no
     // extra gh calls. Any review whose PR appears here takes its current
     // state/decision, and the stored review is updated. PRs not in the
     // result keep their stored state. Best effort: never fails the listing.
     await syncReviewsWithPrLists(ctx, changes);
-    if (fetchError) return { changes, fetchError } satisfies RepoChangesResponse;
-    return { changes } satisfies RepoChangesResponse;
+    if (fetchError) return { changes, hasMore, cursor, fetchError } satisfies RepoChangesResponse;
+    return { changes, hasMore, cursor } satisfies RepoChangesResponse;
   });
 }
 

@@ -23,7 +23,7 @@
  * (above-the-fold files, file jumps, `revealSource` targets).
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { Annotation, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
+import type { Thread, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
 import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { Button, Card, DiffStat } from "../../ui/index.js";
@@ -31,7 +31,7 @@ import { escapeHtml } from "../../components/escapeHtml.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
-import { ExpansionCard } from "../../guide/expansions/ExpansionCard.js";
+import { ThreadView } from "../../comments/ThreadView.js";
 import {
   fileStats,
   groupHunks,
@@ -47,10 +47,13 @@ import { useFileHighlight } from "./highlight/useFileHighlight.js";
 import type { LineTokens } from "./highlight/tokenize.js";
 import {
   ControlSeparator,
+  GutterButtons,
   RevealedRows,
+  gutterRowClass,
   useFileExpansion,
   useRevealedTokens,
   type GutterControl,
+  type RevealedLine,
 } from "./FileExpansion.js";
 import { hiddenIn, maxLineDigits, partitionGap } from "./expandLines.js";
 import "./highlight/highlight.css";
@@ -123,7 +126,7 @@ interface SectionProps {
    * of the idle summary text. Optional (defaults to none) so sections
    * stay usable standalone in tests.
    */
-  hunkCards?: ReadonlyMap<string, Annotation>;
+  hunkCards?: ReadonlyMap<string, Thread>;
   /**
    * Promoted hunk discussions (issue #138 follow-up): content hash →
    * page id. The hunk keeps its summary text plus a page-link chip.
@@ -233,6 +236,10 @@ interface RowProps {
   /** Issue #261: hide the empty number column (added/deleted). Unified only. */
   hideOld?: boolean;
   hideNew?: boolean;
+  /** Issue #285 (E2): up/down expand controls for the hunk's first/last row. */
+  upControls?: GutterControl[] | null;
+  downControls?: GutterControl[] | null;
+  controlsPending?: boolean;
 }
 
 /**
@@ -274,9 +281,17 @@ function plainCommentClass(text: string, segs: LineTokens | null): string | unde
   return segs === null && /^\s*#/.test(text) ? "cm" : undefined;
 }
 
-function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks, hideOld, hideNew }: RowProps): ReactNode {
+function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineClick, toks, hideOld, hideNew, upControls, downControls, controlsPending }: RowProps): ReactNode {
   const lines = hunk.lines;
   const cols = 3 - (hideOld ? 1 : 0) - (hideNew ? 1 : 0);
+  // Issue #285 (E2): two tight columns; the comment icon swaps in for
+  // the new-side number (on hover, permanently on commented lines).
+  // Issue #308: first/last-row numbers give way to the gutter controls —
+  // expand-more on the outermost visible row of each direction,
+  // collapse on the next row in (both move outward with every
+  // expansion; a single-row hunk serving both directions keeps up's
+  // expand pair and both collapses).
+  const pending = controlsPending ?? false;
   return (
     <>
       {lines.map((r, ri) => {
@@ -286,19 +301,76 @@ function UnifiedRows({ fileKey, hunk, slots, commentedLines, highlight, onLineCl
         // Unified rows show the new-side tokens (the post-image under
         // review); deleted rows show the old side.
         const segs = toks ? (r.kind === "del" ? toks.old[ri] : toks.new[ri]) ?? null : null;
+        const upHere = ri === 0 && upControls !== undefined && upControls !== null && upControls.length > 0;
+        const downHere =
+          ri === lines.length - 1 &&
+          downControls !== undefined &&
+          downControls !== null &&
+          downControls.length > 0;
+        let xc: GutterControl[] | null = null;
+        if (upHere && downHere) {
+          // One row serving both directions: up wins among expand
+          // pairs (a single "Show 20 more lines"); collapse chevrons
+          // from both sides stay (distinct accessible names).
+          const upExp = upControls!.filter((c) => c.kind !== "collapse");
+          const downExp = downControls!.filter((c) => c.kind !== "collapse");
+          xc = [
+            ...(upExp.length > 0 ? upExp : downExp),
+            ...upControls!.filter((c) => c.kind === "collapse"),
+            ...downControls!.filter((c) => c.kind === "collapse"),
+          ];
+        } else if (upHere) xc = upControls!;
+        else if (downHere) xc = downControls!;
+        // One button per control: the first rides the old cell, the
+        // rest the new cell (`^`/`^^`, `v`/`vv`, then collapse); a lone
+        // step rides the old cell, or the new cell when the old column
+        // is hidden — never both (duplicate labels would break role
+        // queries and SR output).
+        const oldCs: GutterControl[] = xc !== undefined && xc !== null && !hideOld ? [xc[0]] : [];
+        const newCs: GutterControl[] =
+          xc === undefined || xc === null || hideNew ? [] : hideOld ? [...xc] : xc.slice(1);
+        // Deleted files hide the new column: every control rides the old cell.
+        if (hideNew === true && xc !== undefined && xc !== null) oldCs.push(...xc.slice(1));
+        const xCls = gutterRowClass(xc);
         return (
           <Fragment key={`${r.kind}-${r.oldLine ?? ""}-${n ?? ""}-${ri}`}>
-            <tr className={`${r.kind}${hl ? " hl" : ""}`} id={n !== undefined ? `L-${fileKey}-${n}` : undefined}>
-              {hideOld ? null : <td className="n">{r.oldLine ?? ""}</td>}
-              {hideNew ? null : (
+            <tr className={`${r.kind}${hl ? " hl" : ""}${xCls}`} id={n !== undefined ? `L-${fileKey}-${n}` : undefined}>
+              {hideOld ? null : xc && oldCs.length > 0 ? (
+                <td className="n">
+                  <span className="nnum">{r.oldLine ?? ""}</span>
+                  <GutterButtons cs={oldCs} pending={pending} />
+                </td>
+              ) : (
+                <td className="n">{r.oldLine ?? ""}</td>
+              )}
+              {hideNew ? null : xc && newCs.length > 0 ? (
                 <td
-                  className={`n${n !== undefined ? " new" : ""}${commented ? " hc" : ""}`}
+                  className={`n${n !== undefined ? " new" : ""}${commented ? " e-commented" : ""}`}
                   data-line={n !== undefined ? `${fileKey}:${n}` : undefined}
                   data-tip={n !== undefined ? lineTip(slots, commentedLines, fileKey, n) : undefined}
                   onClick={n !== undefined && onLineClick ? () => onLineClick(fileKey, n) : undefined}
                 >
-                  {commented ? <Icon name="comment" /> : null}
-                  {n ?? ""}
+                  <span className="nnum">{n ?? ""}</span>
+                  {n !== undefined ? (
+                    <span className="nic">
+                      <Icon name="comment" />
+                    </span>
+                  ) : null}
+                  <GutterButtons cs={newCs} pending={pending} />
+                </td>
+              ) : (
+                <td
+                  className={`n${n !== undefined ? " new" : ""}${commented ? " e-commented" : ""}`}
+                  data-line={n !== undefined ? `${fileKey}:${n}` : undefined}
+                  data-tip={n !== undefined ? lineTip(slots, commentedLines, fileKey, n) : undefined}
+                  onClick={n !== undefined && onLineClick ? () => onLineClick(fileKey, n) : undefined}
+                >
+                  <span className="nnum">{n ?? ""}</span>
+                  {n !== undefined ? (
+                    <span className="nic">
+                      <Icon name="comment" />
+                    </span>
+                  ) : null}
                 </td>
               )}
               <td className="c">
@@ -410,7 +482,7 @@ function HunkCard({
   hash: string;
   fileKey: string;
   /** Activated conversation card hosted on this hunk, if any (#138). */
-  hunkCard: Annotation | undefined;
+  hunkCard: Thread | undefined;
   /** Page a hunk discussion moved to, if any (#138 follow-up). */
   promotedPageId: string | undefined;
   reviewId: string;
@@ -449,9 +521,9 @@ function HunkCard({
         // conversation card replaces the idle text directly (no `.fcard`
         // around the card's own bordered section).
         <>
-          <ExpansionCard
+          <ThreadView
             reviewId={reviewId}
-            expansion={hunkCard}
+            thread={hunkCard}
             lookupPage={lookupPage}
             onOpenPage={onOpenPage}
             onFollowUp={onFollowUp}
@@ -534,7 +606,9 @@ function HiddenRow({
         aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
         onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
       >
-        <Icon name="right" />
+        <span className="hic" aria-hidden="true">
+          <Icon name="right" />
+        </span>
         <span className="hidl">
           {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
         </span>
@@ -559,6 +633,10 @@ function HunkBlock(
     unitNext?: { label: string; tip: string } | null;
     unitPending?: boolean;
     onUnitExpand?: () => void;
+    /** Issue #285 (E2): up/down expand controls for the first/last row. */
+    upControls?: GutterControl[] | null;
+    downControls?: GutterControl[] | null;
+    controlsPending?: boolean;
   },
 ): ReactNode {
   const { file, index } = props;
@@ -592,6 +670,9 @@ function HunkBlock(
     toks: props.tokens?.get(h.contentHash) ?? null,
     hideOld: hide.hideOld,
     hideNew: hide.hideNew,
+    upControls: props.upControls,
+    downControls: props.downControls,
+    controlsPending: props.controlsPending,
   };
   const hunkCardState = props.hunkCards?.get(h.contentHash);
   // Issue #161: an open hunk card renders bare at the hunk's level (no
@@ -688,7 +769,7 @@ function HunkBlock(
             aria-label="Summarize"
             onClick={() => props.actions.summarize(h.contentHash)}
           >
-            <Icon name="spark" />
+            <Icon name="summary" />
           </button>
         )}
         {props.unitNext ? (
@@ -757,16 +838,6 @@ export function FileSection(props: SectionProps): ReactNode {
     disabled: !canExpand,
   });
   const revealedTokens = useRevealedTokens(file.path, expansion.lines, visible && !props.folded && !file.isBinary);
-  // Learn the file total up front for the one shape that could never
-  // reach a first response otherwise: a single hunk starting at line 1
-  // (no top or gap controls to click). Silent: failures just leave the
-  // bottom control hidden.
-  const firstStart = file.hunks.length === 1 ? (file.isDeleted === true ? file.hunks[0].oldStart : file.hunks[0].newStart) : -1;
-  const needProbe = canExpand && expansion.totalLines === null && firstStart === 1 && visible && !props.folded;
-  const probeTotal = expansion.probeTotal;
-  useEffect(() => {
-    if (needProbe) void probeTotal();
-  }, [needProbe, probeTotal]);
   // Widest line number in the file, in digits (see `--lnw` on `.dfile`).
   // Revealed lines can carry more digits than the hunks (a 4-digit file
   // with 3-digit hunks), so they widen the shared width too.
@@ -823,9 +894,9 @@ export function FileSection(props: SectionProps): ReactNode {
    * (issue #265): the gap's head under the earlier hunk, its tail atop
    * the later hunk, a fully revealed gap once in exactly one of them.
    * Continuous boundaries (fully revealed or zero-line gaps, file edges)
-   * show no controls; revealed blocks collapse through their hover
-   * gutter icon. Folded hunks render no table, so their expansion rows
-   * wait for unfolding.
+   * show no expand controls; revealed blocks collapse through the
+   * second-row `fold` chevron (issue #308). Folded hunks render no table,
+   * so their expansion rows wait for unfolding.
    */
   function buildSections(): ReactNode {
     // Issue #169: hunks the score/plotline filter rejects render nothing
@@ -861,94 +932,137 @@ export function FileSection(props: SectionProps): ReactNode {
       const hcols = props.view === "split" ? 4 : hh.hideOld || hh.hideNew ? 2 : 3;
       const before: ReactNode[] = [];
       const after: ReactNode[] = [];
+      // Issue #285 (E2): in unified view the up/down controls move into
+      // the hunk's first/last row number cells (no separator rows).
+      // Split view keeps its separator rows (untouched by #285).
+      const inRow = props.view !== "split";
+      let upC: GutterControl[] | null = null;
+      let downC: GutterControl[] | null = null;
       if (canExpand) {
         const deleted = file.isDeleted === true;
         const hs = deleted ? h.oldStart : h.newStart;
         const he = deleted ? h.oldEnd : h.newEnd;
-        // Lines above this hunk: the top region (first hunk) carries
-        // step-up + show-all; a gap above carries step-up +
-        // show-all-to-previous. Revealed lines read in the section whose
-        // control revealed them (issue #265): the top region's above the
-        // first hunk, a gap's tail above the later hunk.
+        // Above this hunk (issue #308): the top region above the first
+        // hunk, or the gap's tail above a later hunk (issue #265: the
+        // tail reads atop the clicked hunk). Expand-more rides the
+        // outermost visible row in that direction, collapse (the `fold`
+        // chevron) the next row in; both move outward with every
+        // expansion until the gap closes or line 1. Split view keeps its
+        // separator rows (already outermost) plus the Hide icon.
         const above = expansion.regionAbove(i);
-        if (above) {
-          const remainingAbove = hiddenIn(above, expansion.revealed)
+        const regionUp = i === 0 ? (above?.key === "top" ? above : null) : above && above.key !== "top" ? above : null;
+        let aboveLines: RevealedLine[] = [];
+        let upExpand: GutterControl[] | null = null;
+        let upCollapse: GutterControl | null = null;
+        if (regionUp) {
+          const remainingUp = hiddenIn(regionUp, expansion.revealed)
             .filter((r) => r.end < hs)
             .reduce((s, r) => s + r.end - r.start + 1, 0);
-          if (remainingAbove > 0 && i === 0) {
-            const controls: GutterControl[] = [
+          if (remainingUp > 0) {
+            upExpand = [
               {
                 kind: "step",
                 dir: "up",
-                label: `Show ${Math.min(20, remainingAbove)} more lines`,
+                label: `Show ${Math.min(20, remainingUp)} more lines`,
                 onClick: () => expansion.expandUp(h, i),
               },
               {
                 kind: "all",
                 dir: "up",
-                label: `Show all ${remainingAbove} lines`,
-                onClick: () => expansion.expandAll(above, "up"),
+                label: `Show all ${remainingUp} lines`,
+                onClick: () => expansion.expandAll(regionUp, "up"),
               },
             ];
-            before.push(
-              <ControlSeparator key={`xa-${file.fileKey}-${i}`} controls={controls} cols={hcols} pending={expansion.pending} hideOld={hh.hideOld} hideNew={hh.hideNew} />,
-            );
           }
-          if (i === 0) {
-            const aboveLines = expansion.lines.filter((l) => l.line >= above.start && l.line <= above.end);
-            if (aboveLines.length > 0) {
-              before.push(
-                <RevealedRows
-                  key={`ra-${file.fileKey}-${i}`}
-                  fileKey={file.fileKey}
-                  lines={aboveLines}
-                  view={props.view}
-                  tokens={revealedTokens}
-                  slots={props.slots}
-                  highlight={props.highlight}
-                  onHideBlock={(s, e) => expansion.collapseInterval(s, e)}
-                  hideOld={hh.hideOld}
-                  hideNew={hh.hideNew}
-                />,
-              );
-            }
+          const inUp = expansion.lines.filter((l) => l.line >= regionUp.start && l.line <= regionUp.end);
+          // Gaps partition around the split both ends keep moving
+          // (issue #265); the top region reads whole from its one side.
+          aboveLines = regionUp.key.startsWith("gap-")
+            ? partitionGap(inUp, expansion.splitFor(regionUp)).lower
+            : inUp;
+          if (aboveLines.length > 0) {
+            upCollapse = {
+              kind: "collapse",
+              dir: "up",
+              label: "Hide expanded lines above",
+              onClick: () => expansion.collapseAbove(h, i),
+            };
           }
         }
-        // Lines below this hunk (the gap below, or the bottom region for
-        // the last hunk): the gap's head under this hunk first, then the
-        // step-down + show-all for the remaining run.
+        if (!inRow && upExpand) {
+          before.push(
+            <ControlSeparator key={`xa-${file.fileKey}-${i}`} controls={upExpand} cols={hcols} pending={expansion.pending} hideOld={hh.hideOld} hideNew={hh.hideNew} />,
+          );
+        }
+        if (aboveLines.length > 0) {
+          before.push(
+            <RevealedRows
+              key={`ra-${file.fileKey}-${i}`}
+              fileKey={file.fileKey}
+              lines={aboveLines}
+              view={props.view}
+              tokens={revealedTokens}
+              slots={props.slots}
+              highlight={props.highlight}
+              onHideBlock={inRow ? undefined : (s, e) => expansion.collapseInterval(s, e)}
+              hideOld={hh.hideOld}
+              hideNew={hh.hideNew}
+              controlsPending={expansion.pending}
+              leadControls={inRow ? upExpand : undefined}
+              secondControls={inRow && aboveLines.length >= 2 && upCollapse ? [upCollapse] : undefined}
+            />,
+          );
+        }
+        // A single revealed line carries expand-more itself while
+        // collapse sits on the hunk's edge row; with none revealed the
+        // hunk's edge row carries expand-more, as before.
+        if (inRow) {
+          upC = aboveLines.length === 0 ? upExpand : aboveLines.length === 1 && upCollapse ? [upCollapse] : null;
+        }
+        // Below this hunk (issue #308): the gap's head under this hunk
+        // first, then the bottom region below the last hunk — mirror of
+        // the above side. Expand-more rides the outermost visible row
+        // below, collapse the second-to-last row. Split view keeps its
+        // separator rows (already outermost) plus the Hide icon.
         const below = expansion.regionBelow(i, file.hunks);
+        let belowLines: RevealedLine[] = [];
+        let downExpand: GutterControl[] | null = null;
+        let downCollapse: GutterControl | null = null;
         if (below) {
           const inBelow = expansion.lines.filter((l) => l.line >= below.start && l.line <= below.end);
           // Gaps partition around the split both ends keep moving (issue
           // #265); top/bottom regions read whole from their one side.
-          const belowLines = below.key.startsWith("gap-")
+          belowLines = below.key.startsWith("gap-")
             ? partitionGap(inBelow, expansion.splitFor(below)).upper
             : inBelow;
           if (belowLines.length > 0) {
-            after.push(
-              <RevealedRows
-                key={`rb-${file.fileKey}-${i}`}
-                fileKey={file.fileKey}
-                lines={belowLines}
-                view={props.view}
-                tokens={revealedTokens}
-                slots={props.slots}
-                highlight={props.highlight}
-                onHideBlock={(s, e) => expansion.collapseInterval(s, e)}
-                hideOld={hh.hideOld}
-                hideNew={hh.hideNew}
-              />,
-            );
+            downCollapse = {
+              kind: "collapse",
+              dir: "down",
+              label: "Hide expanded lines below",
+              onClick: () => expansion.collapseBelow(h, i),
+            };
           }
           const remainingBelow = hiddenIn(below, expansion.revealed)
             .filter((r) => r.end > he)
             .reduce((s, r) => s + r.end - r.start + 1, 0);
           if (remainingBelow > 0) {
-            after.push(
-              <ControlSeparator
-                key={`xb-${file.fileKey}-${i}`}
-                controls={[
+            // Issue #288: optimistic bottom (total unknown) offers only
+            // the step — the file end is not known, so no show-all count.
+            // At EOF the click teaches the total, the control drops, and
+            // the number returns.
+            const optimistic =
+              expansion.totalLines === null && i === file.hunks.length - 1 && below.key === "bottom";
+            downExpand = optimistic
+              ? [
+                  {
+                    kind: "step",
+                    dir: "down",
+                    label: `Show ${Math.min(20, remainingBelow)} more lines`,
+                    onClick: () => expansion.expandDown(h, i),
+                  },
+                ]
+              : [
                   {
                     kind: "step",
                     dir: "down",
@@ -961,68 +1075,44 @@ export function FileSection(props: SectionProps): ReactNode {
                     label: `Show all ${remainingBelow} lines`,
                     onClick: () => expansion.expandAll(below, "down"),
                   },
-                ]}
-                cols={hcols}
-                pending={expansion.pending}
-                hideOld={hh.hideOld}
-                hideNew={hh.hideNew}
-              />,
-            );
+                ];
           }
         }
-        // The lower side's step-up + show-all-to-previous for the gap
-        // above: its tail reads atop this hunk (issue #265), sharing the
-        // run's remaining count with the upper side.
-        if (i > 0) {
-          const gapAbove = expansion.regionAbove(i);
-          if (gapAbove && gapAbove.key !== "top") {
-            const remainingRun = hiddenIn(gapAbove, expansion.revealed)
-              .filter((r) => r.start < hs)
-              .reduce((s, r) => s + r.end - r.start + 1, 0);
-            if (remainingRun > 0) {
-              before.push(
-                <ControlSeparator
-                  key={`xu-${file.fileKey}-${i}`}
-                  controls={[
-                    {
-                      kind: "step",
-                      dir: "up",
-                      label: `Show ${Math.min(20, remainingRun)} more lines`,
-                      onClick: () => expansion.expandUp(h, i),
-                    },
-                    {
-                      kind: "all",
-                      dir: "up",
-                      label: `Show all ${remainingRun} lines`,
-                      onClick: () => expansion.expandAll(gapAbove, "up"),
-                    },
-                  ]}
-                  cols={hcols}
-                  pending={expansion.pending}
-                  hideOld={hh.hideOld}
-                  hideNew={hh.hideNew}
-                />,
-              );
-            }
-            const inGap = expansion.lines.filter((l) => l.line >= gapAbove.start && l.line <= gapAbove.end);
-            const tailLines = partitionGap(inGap, expansion.splitFor(gapAbove)).lower;
-            if (tailLines.length > 0) {
-              before.push(
-                <RevealedRows
-                  key={`ru-${file.fileKey}-${i}`}
-                  fileKey={file.fileKey}
-                  lines={tailLines}
-                  view={props.view}
-                  tokens={revealedTokens}
-                  slots={props.slots}
-                  highlight={props.highlight}
-                  onHideBlock={(s, e) => expansion.collapseInterval(s, e)}
-                  hideOld={hh.hideOld}
-                  hideNew={hh.hideNew}
-                />,
-              );
-            }
-          }
+        if (belowLines.length > 0) {
+          after.push(
+            <RevealedRows
+              key={`rb-${file.fileKey}-${i}`}
+              fileKey={file.fileKey}
+              lines={belowLines}
+              view={props.view}
+              tokens={revealedTokens}
+              slots={props.slots}
+              highlight={props.highlight}
+              onHideBlock={inRow ? undefined : (s, e) => expansion.collapseInterval(s, e)}
+              hideOld={hh.hideOld}
+              hideNew={hh.hideNew}
+              controlsPending={expansion.pending}
+              trailControls={inRow ? downExpand : undefined}
+              secondLastControls={inRow && belowLines.length >= 2 && downCollapse ? [downCollapse] : undefined}
+            />,
+          );
+        }
+        // A single revealed line carries expand-more itself while
+        // collapse sits on the hunk's edge row; with none revealed the
+        // hunk's edge row carries expand-more, as before.
+        if (inRow) {
+          downC = belowLines.length === 0 ? downExpand : belowLines.length === 1 && downCollapse ? [downCollapse] : null;
+        } else if (downExpand) {
+          after.push(
+            <ControlSeparator
+              key={`xb-${file.fileKey}-${i}`}
+              controls={downExpand}
+              cols={hcols}
+              pending={expansion.pending}
+              hideOld={hh.hideOld}
+              hideNew={hh.hideNew}
+            />,
+          );
         }
       }
       return (
@@ -1038,6 +1128,9 @@ export function FileSection(props: SectionProps): ReactNode {
           unitNext={u?.next ?? null}
           unitPending={u?.pending ?? false}
           onUnitExpand={u ? () => expansion.expandUnit(h) : undefined}
+          upControls={upC}
+          downControls={downC}
+          controlsPending={expansion.pending}
         />
       );
     });

@@ -6,9 +6,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
-import type { Annotation, Block, ReviewSnapshot } from "@unvibe/shared";
+import type { Thread, Block, ReviewSnapshot } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
-import { BlockView } from "./BlockView.js";
+import { BlockView, uncoveredListCitations } from "./BlockView.js";
+import { resolveBlockCitations } from "./citations.js";
 
 const FILE = {
   fileKey: "conn",
@@ -52,10 +53,10 @@ function listBlock(): Block {
   } as unknown as Block;
 }
 
-function footnote(): Annotation {
+function footnote(): Thread {
   return {
     id: "e1",
-    type: "conversation",
+    type: "thread",
     anchor: {
       host: { kind: "block", blockId: "b1" },
       quotedText: "a lost quote",
@@ -65,9 +66,9 @@ function footnote(): Annotation {
       version: 1,
     },
     open: false,
-    messages: [],
+    replies: [],
     post: false,
-  } as unknown as Annotation;
+  } as unknown as Thread;
 }
 
 describe("BlockView list citations (#165)", () => {
@@ -110,5 +111,79 @@ describe("BlockView list citations (#165)", () => {
     expect(row).not.toBeNull();
     expect(row?.querySelector("button.lk")).toBeNull();
     expect(row?.querySelector("[data-jump='e1']")).not.toBeNull();
+  });
+});
+
+describe("uncoveredListCitations (issue #305)", () => {
+  function resolved(targets: string[]) {
+    const snap = useReview.getState().snapshot;
+    if (!snap) throw new Error("no snapshot");
+    return resolveBlockCitations(
+      snap,
+      targets.map((target) => ({ target })),
+    );
+  }
+
+  it("returns block sources no item shows, skipping unverified ones", () => {
+    seed();
+    const out = uncoveredListCitations(
+      resolved(["diff:conn:1-2", "diff:conn:9-9"]),
+      [resolved(["diff:conn:1-2"])],
+    );
+    expect(out.map((c) => c.target)).toEqual(["diff:conn:9-9"]);
+  });
+
+  it("returns nothing when the items cover the block union", () => {
+    seed();
+    const out = uncoveredListCitations(
+      resolved(["diff:conn:1-2", "diff:conn:3-4"]),
+      [resolved(["diff:conn:1-2"]), resolved(["diff:conn:3-4"])],
+    );
+    expect(out).toEqual([]);
+  });
+});
+
+describe("BlockView whole-list citations (issue #305)", () => {
+  function citedList(): Block {
+    return {
+      type: "list",
+      id: "b1",
+      ordered: false,
+      items: [
+        { html: "First folds lazily", citations: [{ target: "diff:conn:1-2" }] },
+        { html: "Second reads eagerly", citations: [{ target: "diff:conn:3-4" }] },
+      ],
+      // Whole-list source, shown on no item.
+      citations: [
+        { target: "diff:conn:1-2" },
+        { target: "diff:conn:3-4" },
+        { target: "diff:conn:5-6" },
+      ],
+    } as unknown as Block;
+  }
+
+  it("sits inline at the end of the last li, with no row below the list", () => {
+    seed();
+    const { container } = render(
+      <BlockView
+        block={citedList()}
+        level="standard"
+        threads={[]}
+        cardId="c1"
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    const items = container.querySelectorAll("li");
+    expect(items).toHaveLength(2);
+    // Per-item chips stay on their items.
+    expect(items[0]?.querySelector('button.lk[data-refs*="diff:conn:1-2"]')).not.toBeNull();
+    expect(items[1]?.querySelector('button.lk[data-refs*="diff:conn:3-4"]')).not.toBeNull();
+    // The whole-list source lands in the last item, inline after its chip.
+    const lastChip = items[1]?.querySelector('button.lk[data-refs*="diff:conn:5-6"]');
+    expect(lastChip).not.toBeNull();
+    expect(lastChip?.closest("li")).toBe(items[1]);
+    // No row between the list and the next block.
+    expect(container.querySelector(".lo-row")).toBeNull();
   });
 });

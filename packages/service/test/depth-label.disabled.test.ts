@@ -18,13 +18,13 @@ function snapshot(): ReviewSnapshot {
     annotations: [
       {
         id: "ann_quoted",
-        type: "conversation",
+        type: "thread",
         anchor: { host: { kind: "block", blockId: "c-titled#b1" }, quotedText: "folded headers" },
         turns: [{ id: "ans_1", question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
       },
       {
         id: "ann_empty",
-        type: "conversation",
+        type: "thread",
         anchor: { host: { kind: "block", blockId: "c-titled#b1" }, quotedText: "  " },
         turns: [{ id: "ans_2", question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
       },

@@ -344,7 +344,7 @@ export class SharedContextService {
   ): Promise<{ settled: boolean; summary?: string }> {
     const snap = this.snapshot(reviewId);
     const thread = snap?.annotations.find((a) => a.id === commentId);
-    if (!snap || !thread || (thread.type !== "comment" && thread.type !== "conversation")) {
+    if (!snap || !thread || (thread.type !== "thread" && thread.type !== "link")) {
       return { settled: false };
     }
     const now = opts.now ?? this.clock.now();

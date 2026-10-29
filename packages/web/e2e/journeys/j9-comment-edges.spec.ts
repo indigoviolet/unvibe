@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { selectText } from "../select-text.js";
 import { fileKeyForPath } from "@unvibe/shared";
 import { apiJson, createDemoReview, createScratchReview, createSeededDemoReview, makeScratchRepo, writeFakeGh } from "./journey-helpers.js";
 
@@ -36,13 +37,15 @@ test.describe("J9 comment edges", () => {
     for (const d of [repoDir, dataDir, logDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
-  test("reply, edit draft, close and reopen, then delete", async ({ page }) => {
+  test("comment again via toolbar, edit draft, close and reopen, then delete", async ({ page }) => {
     test.setTimeout(180_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
 
-    // Create, then reply in the thread.
+    // Create, then comment again through the toolbar: selecting text
+    // in the comment opens a composer for a separate comment thread
+    // (the thread itself ends in the single agent Reply box now).
     await page.locator(`[id="L-${appKey}-2"] td.n.new`).click();
     const slot = page.locator(`[id="F-${appKey}"] .ithread[data-pending-thread]`);
     await expect(slot).toBeVisible();
@@ -50,14 +53,22 @@ test.describe("J9 comment edges", () => {
     await slot.getByRole("button", { name: "Save" }).click();
     const thread = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "First version of this note." });
     await expect(thread).toBeVisible({ timeout: 10_000 });
-    await thread.getByPlaceholder("Reply…").fill("A reply to myself.");
-    await thread.getByRole("button", { name: "Reply" }).click();
-    await expect(thread).toContainText("A reply to myself.", { timeout: 10_000 });
+    await expect(thread.locator("textarea")).toHaveCount(1);
+    await expect(thread.locator('textarea[aria-label="Reply"]')).toBeVisible();
+    await selectText(page, `[id="F-${appKey}"] .ithread[data-thread]`, "First version");
+    await page.locator('#selbar [data-act="note"]').click();
+    const slot2 = page.locator(`[id="F-${appKey}"] .ithread[data-pending-thread]`);
+    await expect(slot2).toBeVisible({ timeout: 10_000 });
+    await slot2.locator("textarea").fill("A second thought on this line.");
+    await slot2.getByRole("button", { name: "Save" }).click();
+    const thread2 = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "A second thought on this line." });
+    await expect(thread2).toBeVisible({ timeout: 10_000 });
+    await expect(thread).toContainText("First version of this note.");
 
-    // Edit the Outbox draft on the menu's Outbox tab; it persists across reopen.
+    // Edit the Outbox draft on the first thread's row; it persists across reopen.
     await page.locator('#reviewbar [data-cm=""]').click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
-    const draft = page.locator(".cmenu textarea[id^='ob-']").first();
+    const draft = page.locator(".cmenu .cm-entry", { hasText: "First version of this note." }).locator("textarea").first();
     await expect(draft).toBeVisible({ timeout: 10_000 });
     await draft.fill("Edited version of this note.");
     await page.waitForResponse(
@@ -67,7 +78,7 @@ test.describe("J9 comment edges", () => {
     await page.keyboard.press("Escape");
     await page.locator('#reviewbar [data-cm=""]').click();
     await page.locator('.cmenu [data-cmtab="outbox"]').click();
-    await expect(page.locator(".cmenu textarea[id^='ob-']").first()).toHaveValue("Edited version of this note.");
+    await expect(page.locator(".cmenu .cm-entry", { hasText: "Edited version of this note." }).locator("textarea").first()).toHaveValue("Edited version of this note.");
     await page.keyboard.press("Escape");
 
     // Close leaves the thread; clicking the line reopens it.
@@ -75,18 +86,24 @@ test.describe("J9 comment edges", () => {
     await expect(openThread).toBeVisible({ timeout: 10_000 });
     await openThread.getByRole("button", { name: "Close" }).click();
     await expect(openThread).toHaveCount(0, { timeout: 10_000 });
-    // Moved from comments.spec.ts (#258): closing leaves a comment icon
-    // on the line number; clicking the line reopens the thread.
-    await expect(page.locator(`[id="L-${appKey}-2"] td.n.hc`)).toBeVisible({ timeout: 10_000 });
-    await page.locator(`[id="L-${appKey}-2"] td.n.new`).click();
+    // Moved from comments.spec.ts (#258): closing leaves the comment
+    // icon permanently in place of the line number (issue #285 E2);
+    // clicking the line reopens the thread.
+    const numCell = page.locator(`[id="L-${appKey}-2"] td.n.new`);
+    await expect(numCell).toHaveClass(/e-commented/, { timeout: 10_000 });
+    await expect(numCell.locator(".nic")).toBeVisible({ timeout: 10_000 });
+    await numCell.click();
     await expect(openThread).toBeVisible({ timeout: 10_000 });
 
-    // Delete removes it for good.
+    // Delete removes them for good (both threads, leaving a clean slate).
     await openThread.getByRole("button", { name: "Delete" }).click();
     await expect(openThread).toHaveCount(0, { timeout: 10_000 });
+    const second = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "A second thought on this line." });
+    await second.getByRole("button", { name: "Delete" }).click();
+    await expect(second).toHaveCount(0, { timeout: 10_000 });
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "First version" })).toHaveCount(0);
+    await expect(page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "First version of this note." })).toHaveCount(0);
   });
 
   test("gutter is digits + padding; added file drops the empty column (#261)", async ({ page }) => {
@@ -95,8 +112,9 @@ test.describe("J9 comment edges", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
     const utilKey = fileKeyForPath("src/util.py");
-    // Modified file keeps both columns, tightened; the new numbers keep
-    // the comment affordance (click still opens the composer).
+    // Modified file: two number columns, each at most digits + 8px
+    // padding with zero affordance room (issue #285); the new numbers
+    // keep the comment affordance (click still opens the composer).
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     const mod = await page.evaluate((key) => {
       const file = document.getElementById(`F-${key}`)!;
@@ -129,8 +147,8 @@ test.describe("J9 comment edges", () => {
       return { digits, digitW, pad, oldMax, nwMax };
     }, appKey);
     expect(mod.oldMax).toBeGreaterThan(0);
-    expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 18 + 3);
-    expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 14 + 3);
+    expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
+    expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
     await expect(page.locator(`[id="L-${appKey}-2"] td.n.new`)).toHaveAttribute("data-tip", /Comment on line 2/);
     // Added file: single number column.
     const added = await page.evaluate((key) => {

@@ -25,15 +25,18 @@ standard
   node label short (a few words, at most two lines — long single-line
   labels overflow their boxes).
 - Cite code by putting link: "diff:<fileKey>:<START>-<END>" (ranges from
-  your context, no [[ ]], no tooltip:) inline in braces on each shape or
+  your context, no [[ ]]) inline in braces on each shape or
   connection that maps to code (at least 2), e.g. `a -> b: unfold
   {link: "diff:conn:91-110"}` or `norm: "_normalize_header_values"
   {link: "diff:conn:80-88"}` (a `link:` on its own indented line is
    silently dropped — always attach inline). Mark a good/bad outcome with
    `myid.class: [ok]` / `[bad]` on its own line (never inside `{ ... }`).
-- Limits: at most 12 shapes and 16 connections; no icon:, no shape: image,
-  no imports, no markdown labels, no layers/scenarios/steps/boards, no
-  vars, no `classes:` stanzas, no tooltip:. Never name a shape `steps`,
+- Limits: at most 40 shapes and 48 connections; icons only as
+  `icon: https://icons.terrastruct.com/<set>%2F<name>.svg` (any other host
+  is rejected); no imports, no layers/scenarios/steps/boards, no
+  `style.animated`, no `animate-interval`. `vars:`, `classes:` stanzas,
+  `tooltip:` (short, never a citation) and `|md` / `|latex` labels are
+  allowed. Never name a shape `steps`,
   `layers`, `scenarios` or `boards` (call it `flow` or `steps_box`).
 - After the block, two to four lines of prose explaining the diagram
   in order, with citations. Do not start that paragraph with `Caption:` — that
