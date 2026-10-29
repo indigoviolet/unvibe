@@ -1123,6 +1123,28 @@ export interface ThreadMessage {
   suggested?: boolean;
 }
 
+/**
+ * `GET /api/data-format` (#311) — the data dir's format state against
+ * this build's `DATA_FORMAT`. `mismatch` means the app shows the
+ * full-page reset notice instead of the normal UI.
+ */
+export interface DataFormatStatusResponse {
+  state: "none" | "match" | "mismatch";
+  /** This build's format (`DATA_FORMAT`). */
+  expected: number;
+  /** Format stored in the data dir; null when absent or unstamped. */
+  stored: number | null;
+  /** True when the data dir holds any stored data at all. */
+  hasData: boolean;
+}
+
+/** `POST /api/data-format/reset` (#311): the data dir was moved aside, never deleted. */
+export interface DataFormatResetResponse {
+  ok: true;
+  /** Absolute path the data dir was moved to. */
+  movedTo: string;
+}
+
 /** GET /api/reviews/:id/outbox — Outbox export Markdown (#223). No download/filename: Copy only. */
 export interface OutboxResponse {
   markdown: string;
@@ -1591,6 +1613,8 @@ export interface UpdateChannel {
   baseCommit: string | null;
   /** ISO build time; null when unknown. */
   builtAt: string | null;
+  /** Stored-data format (`DATA_FORMAT`) of that build; null when its package metadata has none (#311). */
+  dataFormat: number | null;
   current: boolean;
 }
 
@@ -1613,6 +1637,8 @@ export interface UpdateBuildInfo {
   baseCommit: string | null;
   commit: string | null;
   builtAt: string | null;
+  /** Stored-data format (`DATA_FORMAT`) of the running build (#311). */
+  dataFormat: number;
 }
 
 /** `GET /api/update/channels[?refresh=1]` — cached briefly server-side. */
