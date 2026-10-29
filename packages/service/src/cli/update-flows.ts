@@ -47,6 +47,8 @@ export interface UpdateDeps {
    * (real `os.homedir()`); tests pass a scratch dir so a managed real home
    * is never rewritten.
    */
+  /** #311: the user accepted the data-reset warning for a format-changing update (`--yes`). */
+  acceptDataReset?: boolean;
   homeDir?: string;
   /**
    * Platform for the login-unit refresh (issue #280). Production omits it
@@ -102,6 +104,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
     };
   }
   const result = await runSwitchCore({
+    ...(deps.acceptDataReset ? { acceptDataReset: true } : {}),
     runner: deps.runner,
     dataDir: deps.dataDir,
     serviceScriptPath: deps.cliScriptPath,

@@ -67,11 +67,11 @@ function mockLists(requested: RepoChange[], authoring: RepoChange[] = [], branch
   vi.spyOn(api, "viewer").mockResolvedValue({ login: "you" });
   vi.spyOn(api, "createReview").mockResolvedValue({ review: { id: "rv1" } } as never);
   vi.spyOn(api, "repoChanges").mockImplementation((async (id: string, filter?: string) => {
-    if (id === "demo") return { changes: [], hasMore: false };
-    if (filter === "authoring") return { changes: authoring, hasMore: false };
-    if (filter === "review-requested") return { changes: requested, hasMore: false };
-    if (filter === "recent") return { changes: branches, hasMore: false };
-    return { changes: [], hasMore: false };
+    if (id === "demo") return { changes: [], hasMore: false, cursor: null };
+    if (filter === "authoring") return { changes: authoring, hasMore: false, cursor: null };
+    if (filter === "review-requested") return { changes: requested, hasMore: false, cursor: null };
+    if (filter === "recent") return { changes: branches, hasMore: false, cursor: null };
+    return { changes: [], hasMore: false, cursor: null };
   }) as typeof api.repoChanges);
 }
 

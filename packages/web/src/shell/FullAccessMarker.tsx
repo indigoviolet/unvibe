@@ -9,7 +9,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api } from "../api/client.js";
 
-export function FullAccessMarker({ compact }: { compact?: boolean }): React.JSX.Element | null {
+export function FullAccessMarker({ compact, disabled }: { compact?: boolean; disabled?: boolean }): React.JSX.Element | null {
+  const off = disabled ? { "aria-disabled": true as const, tabIndex: -1, onClick: (e: React.MouseEvent) => e.preventDefault() } : {};
   const [on, setOn] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function FullAccessMarker({ compact }: { compact?: boolean }): React.JSX.
     "Full access is on: the review helper can run commands as you. Open Settings → Access to turn it off.";
   if (compact) {
     return (
-      <Link className="pill warn-mini" data-testid="full-access-marker" to="/settings?tab=access" title={full}>
+      <Link className="pill warn-mini" data-testid="full-access-marker" to="/settings?tab=access" title={full} {...off}>
         full access
       </Link>
     );
@@ -40,7 +41,7 @@ export function FullAccessMarker({ compact }: { compact?: boolean }): React.JSX.
   return (
     <p className="warnline" data-testid="full-access-marker" title={full}>
       Full access is on — the review helper can run commands as you.{" "}
-      <Link to="/settings?tab=access">Reply it off in Settings → Access</Link>.
+      <Link to="/settings?tab=access" {...off}>Reply it off in Settings → Access</Link>.
     </p>
   );
 }

@@ -44,6 +44,31 @@ function readBlockedLog(logFile: string): string[] {
   }
 }
 
+/**
+ * Assert /api/diagnostics probed and chose only the expected binaries for
+ * claude/codex/pi (issue #300, option A). With explicit overrides the
+ * service never enumerates PATH, so exactly one candidate per tool proves
+ * no real install was executed — by version probes, shim resolution, or
+ * adapter sessions. A missing override (plain pi) must be the lone
+ * candidate with a null choice.
+ */
+async function expectDiagnosedOnly(
+  target: RunningService,
+  expected: { tool: "claude" | "codex" | "pi"; candidates: string[]; chosen: string | null }[],
+): Promise<void> {
+  const res = await apiJson(target, "GET", "/api/diagnostics");
+  expect(res.status).toBe(200);
+  const tools = (res.json as {
+    tools: { tool: string; candidates: { path: string }[]; chosen: string | null }[];
+  }).tools;
+  for (const { tool, candidates, chosen } of expected) {
+    const t = tools.find((t) => t.tool === tool);
+    expect(t, `${tool} diagnosed`).toBeDefined();
+    expect(t!.candidates.map((c) => c.path)).toEqual(candidates);
+    expect(t!.chosen).toBe(chosen);
+  }
+}
+
 test.describe("J279 pi provider", () => {
   let binDir = "", blockedDir = "", blockedLog = "", dataDir = "", plainDir = "", scratchHome = "";
   let svc: RunningService | null = null;
@@ -75,6 +100,14 @@ test.describe("J279 pi provider", () => {
         // agent binary is reachable even if settings fall back to
         // claude/codex or a login-shell PATH is applied.
         PATH: `${binDir}${path.delimiter}${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        // Issue #300, option A: pin the agent binaries to the fakes via
+        // explicit overrides. An override is probed exclusively (no PATH
+        // enumeration, so real installs are never even executed) and is
+        // honoured even when "broken", so adapters drive the stubs,
+        // which refuse loudly, instead of real CLIs.
+        UNVIBE_CLAUDE_BIN: path.join(blockedDir, "claude"),
+        UNVIBE_CODEX_BIN: path.join(blockedDir, "codex"),
+        UNVIBE_PI_BIN: path.join(binDir, "pi"),
         UNVIBE_FAKE_PI_MODE: "replay",
         UNVIBE_FAKE_PI_FIXTURES: FIXTURES,
         // The fake reports its version from here; 1.4.0 meets the minimum.
@@ -197,6 +230,10 @@ test.describe("J279 pi provider", () => {
         HOME: scratchHome,
         PATH: `${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,
         UNVIBE_PI_BIN: path.join(plainDir, "no-such-pi"),
+        // Same pinning as the main service (issue #300, option A): real
+        // claude/codex installs must not be probed or driven here either.
+        UNVIBE_CLAUDE_BIN: path.join(blockedDir, "claude"),
+        UNVIBE_CODEX_BIN: path.join(blockedDir, "codex"),
       },
     });
     const providers = (await apiJson(plain, "GET", "/api/providers")).json as { providers: string[] };
@@ -211,20 +248,50 @@ test.describe("J279 pi provider", () => {
     expect(providerNames).not.toContain("pi");
   });
 
-  test("blocked agent binaries are never used for sessions", async () => {
-    // Runs last: both services above are still up. Diagnostics probes every
-    // `pi` candidate with `--version` (the blocker refuses, the fake
-    // answers), so `pi --version` lines are expected; anything else —
-    // a session start (`--mode rpc`), a login check (`auth check`) —
-    // would mean a real binary was reached. Same for claude/codex.
+  test("only stubs and the fake are probed or chosen (no real agent binary runs)", async () => {
+    // Runs last: both services above are still up. Issue #300, option A:
+    // the services pin claude/codex/pi to the stubs/fake via explicit
+    // overrides, and an override is probed exclusively — no PATH
+    // enumeration, so a real install is never executed by a version
+    // probe, a shim resolution, or an adapter session. The diagnostics
+    // report is the direct signal: every probed candidate and the choice
+    // must be a stub/fake path. The calls log below is the backstop: only
+    // `--version` probes may have reached the stubs.
     if (!svc) throw new Error("no service");
+    const claudeStub = path.join(blockedDir, "claude");
+    const codexStub = path.join(blockedDir, "codex");
+    const fakePi = path.join(binDir, "pi");
+    await expectDiagnosedOnly(svc, [
+      { tool: "claude", candidates: [claudeStub], chosen: claudeStub },
+      { tool: "codex", candidates: [codexStub], chosen: codexStub },
+      { tool: "pi", candidates: [fakePi], chosen: fakePi },
+    ]);
+    if (plain) {
+      const missingPi = path.join(plainDir, "no-such-pi");
+      await expectDiagnosedOnly(plain, [
+        { tool: "claude", candidates: [claudeStub], chosen: claudeStub },
+        { tool: "codex", candidates: [codexStub], chosen: codexStub },
+        { tool: "pi", candidates: [missingPi], chosen: null },
+      ]);
+    }
     const calls = readBlockedLog(blockedLog);
     // Full file: both services ran, so probes must have happened (this
     // proves the blockers are on PATH and refusing). Under --grep only
-    // this test runs and the log may be empty — the non-probe assertion
-    // below still holds either way.
+    // this test runs and the log may be empty — the assertions below
+    // still hold either way.
     if (plain) expect(calls.length).toBeGreaterThan(0);
-    const nonProbe = calls.filter((l) => !/^(claude|codex|pi) --version$/.test(l));
-    expect(nonProbe).toEqual([]);
+    // Option A points the adapters at the stubs, so adapter bootstrap
+    // reaches them too — and is refused (exit 1). Only these stub
+    // interactions are expected: version probes, the adapter's login
+    // and transport checks, and refused session setups. Anything else
+    // would mean real work was attempted outside the fake.
+    const unexpected = calls.filter(
+      (l) =>
+        !/^(claude|codex|pi) --version$/.test(l) &&
+        !/^claude auth status --json$/.test(l) &&
+        !/^codex app-server$/.test(l) &&
+        !/^claude --output-format stream-json --verbose --input-format stream-json /.test(l),
+    );
+    expect(unexpected).toEqual([]);
   });
 });

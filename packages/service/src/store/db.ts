@@ -16,6 +16,11 @@ export function openDatabase(file: string): DatabaseSync {
   return new sqlite.DatabaseSync(file);
 }
 
+/** Read-only open (#311 format check / Outbox export of a data dir the service must not touch). */
+export function openDatabaseReadOnly(file: string): DatabaseSync {
+  return new sqlite.DatabaseSync(file, { readOnly: true });
+}
+
 /** Run a function inside a transaction (savepoint-based: safely nestable). */
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
   db.exec("SAVEPOINT unvibe_txn");

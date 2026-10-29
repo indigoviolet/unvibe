@@ -2065,9 +2065,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await shot(page, "review-preparing", suffix, "Loading the diff");
     });
     // Issue #284: a still frame can't show motion, so freeze the swing
-    // at an extreme (0%: tilt maximal, glints bright) and at mid-swing
-    // (25%: tilt crossing centre, glints dim) via the Web Animations
-    // API and frame each. Paused times are in ms of the 2.5s cycle.
+    // at an extreme (0%: tilt maximal) and at mid-swing (25%: tilt
+    // crossing centre) via the Web Animations API and frame each.
+    // Paused times are in ms of the 2.5s cycle; the diff glints share
+    // the cycle (bright at the extremes, dim mid-swing).
     async function freezeSwing(page: Page, atMs: number): Promise<void> {
       await page.evaluate((ms) => {
         for (const el of document.querySelectorAll(".guide-scene, .loading-glints svg")) {
@@ -2126,9 +2127,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
       await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
-      // #284: the ball and its glints swing together — no dots here.
+      // #284 (owner change): the guide shows the ball alone — no
+      // glints, no dots here.
       await expect(page.locator('[data-testid="guide-empty"] .guide-ball')).toBeVisible();
-      await expect(page.locator('[data-testid="guide-empty"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="guide-empty"] .loading-glints')).toHaveCount(0);
       await expect(page.locator('[data-testid="guide-empty"] .dots')).toHaveCount(0);
       await freezeSwing(page, 0);
       await page.screenshot({ path: path.join(SHOTS, `guide-swing-extreme-${suffix}.png`) });
@@ -2192,8 +2194,9 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await shot(page, "guide-building", suffix, "Building the guide");
     });
   }
-  // Issue #284: under reduced motion the ball hangs still and the
-  // glints sit static but visible — neither animates, in either pane.
+  // Issue #284 (owner change): under reduced motion the ball hangs
+  // still with no separate glints on the guide side; the diff pane's
+  // glints sit static but visible — nothing animates, in either pane.
   test("visual tour loading indicators honour reduced motion (#284)", async ({ page }) => {
     if (!svc232) throw new Error("preparing service not running");
     test.setTimeout(120_000);
@@ -2206,11 +2209,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       return el ? getComputedStyle(el).animationName : null;
     });
     expect(ballAnim, "guide ball animates under reduced motion").toBe("none");
-    const glintAnims = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-testid="guide-empty"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
-    );
-    expect(glintAnims.length, "guide glints missing").toBe(3);
-    for (const name of glintAnims) expect(name, "guide glint animates under reduced motion").toBe("none");
+    // Owner change: no separate glints on the guide side at all.
+    await expect(page.locator('[data-testid="guide-empty"] .loading-glints')).toHaveCount(0);
     // The diff pane's glints-only state is static too — and carries no
     // ball and no dots in either loading pane.
     await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
@@ -3152,6 +3152,99 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.keyboard.press("Escape");
       await expect(pop).toHaveCount(0);
       await expect(row).toBeVisible();
+    });
+  }
+});
+
+/**
+ * #311: the data-format reset notice, light and dark at 1440px. Its own
+ * service on a seeded old-format data dir (a DB with no format stamp);
+ * the notice is the whole page, so one frame per scheme is the scene.
+ */
+test.describe("data reset notice tour (#311)", () => {
+  let noticeDataDir = "";
+  let noticeSvc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    noticeDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notice-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(noticeDataDir, "unvibe.db"));
+    db.exec(
+      "CREATE TABLE review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL)",
+    );
+    // One unposted draft, so the frame shows the Export card with its
+    // count, and a recorded previous build, so it shows Go back too.
+    const snapshot = {
+      review: { id: "rv_old", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
+      ingest: { status: "ready" },
+      pages: [{ id: "root", kind: "root", title: "Guide title", cards: [] }],
+      annotations: [
+        {
+          type: "thread",
+          id: "t1",
+          anchor: { host: { kind: "diff-line", fileKey: "fk1", line: 2 }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true,
+          pinned: false,
+          post: true,
+          replies: [
+            {
+              id: "r1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
+        },
+      ],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: {},
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    };
+    db.prepare("INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?)").run(
+      "rv_old",
+      1,
+      JSON.stringify(snapshot),
+      0,
+    );
+    db.close();
+    mkdirSync(path.join(noticeDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(noticeDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "preview/previous", to: "release", finishedAt: "2026-10-29T00:00:00.000Z", fromVersion: "0.0.11" }) + "\n",
+    );
+    noticeSvc = await startService(noticeDataDir, { agent: "none" });
+  });
+
+  test.afterAll(async () => {
+    await noticeSvc?.stop().catch(() => {});
+    noticeSvc = null;
+    rmSync(noticeDataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", dark: false },
+    { name: "1440-dark", dark: true },
+  ] as const) {
+    test(`data reset notice (${combo.name})`, async ({ page }) => {
+      if (!noticeSvc) throw new Error("notice service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
+      await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, "data-reset-notice");
+      await shot(page, "data-reset-notice", combo.name, "This version can't read your existing reviews");
     });
   }
 });

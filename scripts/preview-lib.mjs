@@ -171,6 +171,7 @@ export function buildUnvibeField({
   sourceCommit = null,
   baseBranch = null,
   baseCommit = null,
+  dataFormat = null,
 }) {
   return {
     channel,
@@ -181,6 +182,7 @@ export function buildUnvibeField({
     sourceCommit,
     baseBranch,
     baseCommit,
+    dataFormat,
   };
 }
 

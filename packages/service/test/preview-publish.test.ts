@@ -180,6 +180,7 @@ describe("buildUnvibeField (dual-side metadata)", () => {
         sourceCommit: "aaa111",
         baseBranch: "main",
         baseCommit: "bbb222",
+        dataFormat: 1,
       }),
     ).toEqual({
       channel: "preview/feat-x",
@@ -190,6 +191,7 @@ describe("buildUnvibeField (dual-side metadata)", () => {
       sourceCommit: "aaa111",
       baseBranch: "main",
       baseCommit: "bbb222",
+      dataFormat: 1,
     });
   });
 

@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import type { Hunk, ReviewFile } from "@unvibe/shared";
 import {
+  collapseRangeAbove,
+  collapseRangeBelow,
   expandRegions,
   hiddenIn,
   isRegionFull,
@@ -92,6 +94,20 @@ describe("hidden/revealed math", () => {
     // Second step continues outward.
     const revealed = [{ start: 114, end: 133 }];
     expect(planExpandDown(113, region, revealed)).toEqual({ start: 134, end: 153 });
+    // Third step keeps going (issue #308: repeated expansion).
+    const revealed2 = [
+      { start: 114, end: 133 },
+      { start: 134, end: 153 },
+    ];
+    expect(planExpandDown(113, region, revealed2)).toEqual({ start: 154, end: 173 });
+    // Steps from both ends meet in the middle: each side stops where
+    // the other side's lines begin.
+    const bothEnds = [
+      { start: 114, end: 133 },
+      { start: 627, end: 646 },
+    ];
+    expect(planExpandDown(113, region, bothEnds)).toEqual({ start: 134, end: 153 });
+    expect(planExpandUp(647, region, bothEnds)).toEqual({ start: 607, end: 626 });
     // Nothing left: null.
     const full = [{ start: 114, end: 646 }];
     expect(planExpandDown(113, region, full)).toBeNull();
@@ -114,6 +130,36 @@ describe("hidden/revealed math", () => {
 
   it("hides nothing outside the region", () => {
     expect(hiddenIn(region, [{ start: 1, end: 1000 }])).toEqual([]);
+  });
+});
+
+describe("collapseRangeAbove/Below (issue #308)", () => {
+  const gap = { key: "gap-0", start: 114, end: 646 };
+  const top = { key: "top", start: 1, end: 76 };
+  const bottom = { key: "bottom", start: 655, end: 760 };
+
+  it("spans back to the hunk edge from the region edge", () => {
+    // Nothing revealed yet: the windows still span the whole side.
+    expect(collapseRangeAbove(top, 77, 77)).toEqual({ start: 1, end: 76 });
+    expect(collapseRangeBelow(bottom, 654, 655)).toEqual({ start: 655, end: 760 });
+  });
+
+  it("stops a gap side at the partition split (the other side survives)", () => {
+    // Upper hunk revealed the head [114..133] (split 134), lower the
+    // tail [627..646] (split 627): collapsing the tail keeps the head.
+    expect(collapseRangeAbove(gap, 647, 627)).toEqual({ start: 627, end: 646 });
+    expect(collapseRangeBelow(gap, 113, 134)).toEqual({ start: 114, end: 133 });
+  });
+
+  it("covers the whole gap after show-all (collapsing reopens it)", () => {
+    expect(collapseRangeAbove(gap, 647, 114)).toEqual({ start: 114, end: 646 });
+    expect(collapseRangeBelow(gap, 113, 647)).toEqual({ start: 114, end: 646 });
+  });
+
+  it("returns null when the window is empty", () => {
+    // Split past the hunk edge: nothing of this side revealed.
+    expect(collapseRangeAbove(gap, 647, 647)).toBeNull();
+    expect(collapseRangeBelow(gap, 113, 114)).toBeNull();
   });
 });
 

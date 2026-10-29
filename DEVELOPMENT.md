@@ -314,6 +314,23 @@ git push origin :refs/tags/v0.0.1 && git tag -d v0.0.1
 Deleting a candidate preview means deleting its `preview/<slug>` ref (and the
 local branch once it is merged or abandoned).
 
+### Data format and resets (#311)
+
+`DATA_FORMAT` (`packages/shared/src/data-format.ts`, currently 1) is stamped
+as SQLite `user_version` in `unvibe.db` when the service creates data. A
+stored format that differs — or data with no stamp — is never converted: the
+service starts blocked, the app shows the reset notice (Export Outbox first,
+then Reset), `unvibe doctor` reports the state, and `unvibe reset-data
+[--yes]` performs the same move from the CLI (stop the service first). Reset
+always moves the whole data dir to a dated sibling (`*.bak-<timestamp>`) and
+never deletes it. Before a switch, `unvibe update` and Settings → Version
+compare the target build's format from its package record
+(`unvibe.dataFormat`) and warn first; the CLI continues only with `--yes`.
+`release:tag`'s notes (`scripts/release-notes.mjs`) gain a "Data reset
+needed" section automatically when the format changed since the previous
+tag. Bump `DATA_FORMAT` by hand in any change that makes stored data
+unreadable, and record it in `AGENTS.md`.
+
 ### Preview builds (issue #36)
 
 Every in-flight branch is publishable as an installable build, so a

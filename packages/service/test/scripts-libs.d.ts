@@ -32,6 +32,7 @@ declare module "*preview-lib.mjs" {
     sourceCommit: string | null;
     baseBranch: string | null;
     baseCommit: string | null;
+    dataFormat: number | null;
   }
   export function buildUnvibeField(field: {
     channel: string;
@@ -42,6 +43,7 @@ declare module "*preview-lib.mjs" {
     sourceCommit?: string | null;
     baseBranch?: string | null;
     baseCommit?: string | null;
+    dataFormat?: number | null;
   }): UnvibeField;
   export function selectPruneRefs(
     entries: { ref: string; sourceBranch?: string | null }[],
@@ -49,6 +51,11 @@ declare module "*preview-lib.mjs" {
     existingBranches: string[],
     mainName?: string,
   ): { ref: string; reason: string }[];
+}
+
+declare module "*release-notes-lib.mjs" {
+  export function parseDataFormat(source: string | null | undefined): number | null;
+  export function dataResetSection(prevFormat: number | null, nextFormat: number | null, version: string): string | null;
 }
 
 declare module "*global-install-lib.mjs" {

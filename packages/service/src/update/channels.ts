@@ -14,7 +14,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { UpdateChannel } from "@unvibe/shared";
+import { DATA_FORMAT, type UpdateChannel } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/gh.js";
 
@@ -29,6 +29,8 @@ export const UNVIBE_REPO = "indigoviolet/unvibe";
 
 export interface InstalledBuild {
   version: string;
+  /** Stored-data format of this build (#311): its package record, else this code's `DATA_FORMAT`. */
+  dataFormat: number;
   /** Null when the install carries no channel record (source checkout, old build). */
   channel: string | null;
   sourceBranch: string | null;
@@ -118,6 +120,7 @@ interface ReleasePackageJson {
     baseCommit?: unknown;
     commit?: unknown;
     builtAt?: unknown;
+    dataFormat?: unknown;
   };
 }
 
@@ -158,6 +161,7 @@ export function readInstalledBuild(
 ): InstalledBuild {
   const empty = {
     version: fallbackVersion,
+    dataFormat: DATA_FORMAT,
     channel: null,
     sourceBranch: null,
     sourceCommit: null,
@@ -185,6 +189,10 @@ export function readInstalledBuild(
     }
     return {
       version,
+      dataFormat:
+        typeof pkg.unvibe?.dataFormat === "number" && Number.isInteger(pkg.unvibe.dataFormat)
+          ? pkg.unvibe.dataFormat
+          : DATA_FORMAT,
       channel,
       sourceBranch: asStringOrNull(pkg.unvibe?.sourceBranch),
       sourceCommit: asStringOrNull(pkg.unvibe?.sourceCommit),
@@ -213,6 +221,7 @@ export function decodeRefPackage(stdout: string): {
   baseBranch: string | null;
   baseCommit: string | null;
   builtAt: string | null;
+  dataFormat: number | null;
 } {
   const blank = {
     version: null,
@@ -222,6 +231,7 @@ export function decodeRefPackage(stdout: string): {
     baseBranch: null,
     baseCommit: null,
     builtAt: null,
+    dataFormat: null,
   };
   try {
     const body = JSON.parse(stdout) as { content?: unknown; encoding?: unknown };
@@ -236,6 +246,10 @@ export function decodeRefPackage(stdout: string): {
       baseBranch: asStringOrNull(pkg.unvibe?.baseBranch),
       baseCommit: asStringOrNull(pkg.unvibe?.baseCommit),
       builtAt: asStringOrNull(pkg.unvibe?.builtAt),
+      dataFormat:
+        typeof pkg.unvibe?.dataFormat === "number" && Number.isInteger(pkg.unvibe.dataFormat)
+          ? pkg.unvibe.dataFormat
+          : null,
     };
   } catch {
     return { ...blank };
@@ -254,6 +268,7 @@ export async function fetchRefPackage(
   baseBranch: string | null;
   baseCommit: string | null;
   builtAt: string | null;
+  dataFormat: number | null;
 }> {
   const args = ["api", `repos/${UNVIBE_REPO}/contents/package.json?ref=${ref}`];
   const blank = {
@@ -264,6 +279,7 @@ export async function fetchRefPackage(
     baseBranch: null,
     baseCommit: null,
     builtAt: null,
+    dataFormat: null,
   };
   try {
     const res = await runGh(runner, args, { args });
@@ -301,6 +317,7 @@ export function channelsFileOverride(
         baseBranch: typeof c.baseBranch === "string" ? c.baseBranch : null,
         baseCommit: typeof c.baseCommit === "string" ? c.baseCommit : null,
         builtAt: typeof c.builtAt === "string" ? c.builtAt : null,
+        dataFormat: typeof c.dataFormat === "number" && Number.isInteger(c.dataFormat) ? c.dataFormat : null,
         current: c.ref === installed.channel,
       }));
   } catch {
@@ -359,6 +376,7 @@ export async function listChannels(
       baseBranch: meta.baseBranch,
       baseCommit: meta.baseCommit,
       builtAt: meta.builtAt,
+      dataFormat: meta.dataFormat,
       current: ref === installed.channel,
     };
   });

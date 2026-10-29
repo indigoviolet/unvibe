@@ -8,6 +8,7 @@
  * screen) are additions in the same stroke style. #224 adds the PR
  * state/decision set (`pr-open`, `pr-draft`, `pr-merged`, `pr-closed`,
  * `request-changes`, `eye`) in the same style; approved reuses `check`.
+ * #301 adds `second` (second opinion) and `summary` in the same style.
  * Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
@@ -187,6 +188,25 @@ const PATHS: Record<string, JSX.Element> = {
       <circle cx="8" cy="8" r="1.5" />
     </>
   ),
+  /**
+   * Issue #301: Second opinion (a second voice on the same claim — two
+   * overlapping speech bubbles) and Summarize (tapering text lines, a
+   * condensing passage). Same 16x16 stroke style as the rest of the set.
+   */
+  second: (
+    <>
+      <path d="M2.5 3.5h7v5.5H6L3.8 11.2v-2H2.5z" />
+      <path d="M6.5 11.5h7V14H8.7l-2.2 1.5v-1.5" />
+    </>
+  ),
+  summary: (
+    <>
+      <path d="M2.5 3.5h11" />
+      <path d="M2.5 6.8h8" />
+      <path d="M2.5 10h11" />
+      <path d="M2.5 13.2h5.5" />
+    </>
+  ),
   doc: (
     <>
       <path d="M4 2h5.5L12 4.5V14H4z" />
@@ -216,6 +236,9 @@ export const PERSON_SVG_INNER =
   '<circle cx="8" cy="5.4" r="2.5"/><path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4"/>';
 export const SPARK_SVG_INNER =
   '<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z"/>';
+/** Raw inner-SVG markup for the comment bubble (issue #302: the glyph on
+ * collapsed-thread marks). Same shape as `comment` above. */
+export const COMMENT_SVG_INNER = '<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z"/>';
 
 export type IconName = keyof typeof PATHS;
 

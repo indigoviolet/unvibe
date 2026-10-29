@@ -26,19 +26,32 @@ export function ScreenTopBar({
   crumbs,
   showBadge,
   hideSettings,
+  disabled,
 }: {
   /** Breadcrumb trail after the home link; omit on the start page. */
   crumbs?: Crumb[];
   showBadge?: boolean;
   /** Set on the Settings screen (it needs no Settings button). */
   hideSettings?: boolean;
+  /**
+   * #311: every control stays visible but inert on the data-format
+   * notice — aria-disabled, not focusable, not clickable, muted.
+   */
+  disabled?: boolean;
 }): React.JSX.Element {
+  const off = disabled
+    ? {
+        "aria-disabled": true as const,
+        tabIndex: -1,
+        onClick: (e: React.MouseEvent) => e.preventDefault(),
+      }
+    : {};
   return (
-    <header className="top">
-      <Link className="brand" to="/" title="Back to the start page" aria-label="Unvibe">
+    <header className="top" style={disabled ? { opacity: 0.55 } : undefined}>
+      <Link className="brand" to="/" title="Back to the start page" aria-label="Unvibe" {...off}>
         <Wordmark />
       </Link>
-      <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents">
+      <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents" {...off}>
         <Icon name="doc" />
       </Link>
       {crumbs && crumbs.length > 0 ? (
@@ -49,7 +62,7 @@ export function ScreenTopBar({
                 /
               </span>
               {c.to ? (
-                <Link to={c.to}>{c.label}</Link>
+                <Link to={c.to} {...off}>{c.label}</Link>
               ) : (
                 <h1 aria-current="page">{c.label}</h1>
               )}
@@ -58,11 +71,11 @@ export function ScreenTopBar({
         </nav>
       ) : null}
       <span className="sp" />
-      {showBadge ? <PreviewBuildBadge /> : null}
-      {showBadge ? <FullAccessMarker compact /> : null}
-      <UpdateIcon />
+      {showBadge ? <PreviewBuildBadge disabled={disabled} /> : null}
+      {showBadge ? <FullAccessMarker compact disabled={disabled} /> : null}
+      <UpdateIcon disabled={disabled} />
       {hideSettings ? null : (
-        <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings">
+        <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings" {...off}>
           <Icon name="gear" />
         </Link>
       )}

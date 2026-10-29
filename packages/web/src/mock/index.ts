@@ -1685,6 +1685,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 3 * 86400_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
   {
@@ -1697,6 +1698,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: "main",
     baseCommit: "0011223344556677",
     builtAt: new Date(NOW - 3600_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
   {
@@ -1709,6 +1711,7 @@ const MOCK_UPDATE_CHANNELS: UpdateChannel[] = [
     baseBranch: null,
     baseCommit: null,
     builtAt: new Date(NOW - 7200_000).toISOString(),
+    dataFormat: 1,
     current: false,
   },
 ];
@@ -1764,6 +1767,7 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
     baseCommit: found.baseCommit,
     commit: staleCommit ?? found.commit,
     builtAt: staleCommit ? new Date(NOW - 3 * 86400_000).toISOString() : found.builtAt,
+    dataFormat: found.dataFormat ?? 1,
   };
 }
 
@@ -1921,7 +1925,7 @@ export const mockApi = {
   repoChanges: async (
     id: string,
     filter?: ChangesFilter,
-    opts?: { limit?: number; author?: string },
+    opts?: { limit?: number; author?: string; cursor?: string | null },
   ): Promise<RepoChangesResponse> => {
     // Test-only hooks for the start page (all no-ops unless set):
     // - `unvibe.mock.repoChangesHold`: when present, hold every repo-lists
@@ -2067,30 +2071,37 @@ export const mockApi = {
           },
         ],
         hasMore: false,
+        cursor: null,
       };
     }
-    // #297: honour the paging/author options like the service (the mock
-    // lists are short, so `limit` only truncates and `hasMore` mirrors it).
+    // #297/#310: honour the paging/author options like the service. The
+    // mock pages by offset (`cursor` is the next offset, as a string):
+    // each page returns at most `limit` rows with `hasMore` while rows
+    // remain, so Load more walks forward instead of re-fetching.
     const limit =
       typeof opts?.limit === "number" && Number.isFinite(opts.limit) ? Math.max(1, Math.floor(opts.limit)) : 30;
     const author = typeof opts?.author === "string" && opts.author.trim() !== "" ? opts.author.trim() : null;
+    const offset = typeof opts?.cursor === "string" && /^\d+$/.test(opts.cursor) ? Number(opts.cursor) : 0;
     const scopedRequested =
       author !== null ? requested.filter((c) => c.author === author) : requested;
-    const take = (rows: RepoChange[]): { rows: RepoChange[]; truncated: boolean } =>
-      rows.length > limit ? { rows: rows.slice(0, limit), truncated: true } : { rows, truncated: false };
+    const take = (rows: RepoChange[]): { rows: RepoChange[]; hasMore: boolean; cursor: string | null } => {
+      const page = rows.slice(offset, offset + limit);
+      const more = offset + limit < rows.length;
+      return { rows: page, hasMore: more, cursor: more ? String(offset + limit) : null };
+    };
     switch (filter) {
       case "authoring": {
-        const { rows, truncated } = take(markMockChanges(authoring, id));
-        return withFetchNote({ changes: rows, hasMore: truncated });
+        const { rows, hasMore, cursor } = take(markMockChanges(authoring, id));
+        return withFetchNote({ changes: rows, hasMore, cursor });
       }
       case "review-requested": {
-        const { rows, truncated } = take(markMockChanges(scopedRequested, id));
-        return withFetchNote({ changes: rows, hasMore: truncated });
+        const { rows, hasMore, cursor } = take(markMockChanges(scopedRequested, id));
+        return withFetchNote({ changes: rows, hasMore, cursor });
       }
       case "branches":
-        return withFetchNote({ changes: markMockChanges(branches, id), hasMore: false });
+        return withFetchNote({ changes: markMockChanges(branches, id), hasMore: false, cursor: null });
       case "recent":
-        return withFetchNote({ changes: [...markMockChanges(branches, id), ...previous], hasMore: false });
+        return withFetchNote({ changes: [...markMockChanges(branches, id), ...previous], hasMore: false, cursor: null });
       default: {
         const a = take(markMockChanges(authoring, id));
         const r = take(markMockChanges(scopedRequested, id));
@@ -2101,7 +2112,8 @@ export const mockApi = {
             ...markMockChanges(branches, id),
             ...previous,
           ],
-          hasMore: a.truncated || r.truncated,
+          hasMore: a.hasMore || r.hasMore,
+          cursor: a.cursor ?? r.cursor,
         });
       }
     }
@@ -2375,6 +2387,12 @@ export const mockApi = {
     mockReviewList.length = 0;
     return { ok: true, reviewsRemoved };
   },
+
+  // #311: mock data always matches this build's format.
+  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount: 0, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" }),
+  dataFormatOutbox: async () => ({ markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count: 0 }),
+  resetDataFormat: async () => ({ ok: true as const, movedTo: "(mock) data moved aside" }),
+  goBackDataFormat: async () => ({ from: "release", to: "release" }),
 
   readiness: async (): Promise<ReadinessResponse> => {
     await wait(50);
@@ -2726,8 +2744,8 @@ export const mockApi = {
           inThreadId = ensured.id;
           hunkSource = ensured.replyId;
         }
-        // Issue #273: Ask inside a thread appends there (Ask about this,
-        // the toolbar's Ask on a selection inside a thread).
+        // Issue #273: Ask inside a thread appends there (the toolbar's
+        // Ask on a selection inside a thread; #301 removed Ask about this).
         if (inThreadId) {
           const target = annotations.find((x) => x.id === inThreadId);
           if (!target || target.type !== "thread") throw new Error(`unknown thread ${inThreadId}`);

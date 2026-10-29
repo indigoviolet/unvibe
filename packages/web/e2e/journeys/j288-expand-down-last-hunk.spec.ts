@@ -117,8 +117,9 @@ test.describe("J288 expand down last hunk", () => {
     await expect(page.locator(`[id="L-${bottomKey}-${bottomEnd + 20}"]`)).toHaveCount(1);
     // Nothing leaks into the earlier hunk's section.
     await expect(dhunks.nth(0).locator("tr[data-revealed]")).toHaveCount(0);
-    // The total is now known: the short tail offers its own show-all.
-    await expect(last.getByRole("button", { name: "Show all 7 lines" })).toBeVisible({ timeout: 30_000 });
+    // The total is now known: the short tail offers its own show-all —
+    // riding the outermost revealed row (issue #308), not the hunk row.
+    await expect(file.getByRole("button", { name: "Show all 7 lines" })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".xerr")).toHaveCount(0);
   });
 

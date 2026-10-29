@@ -62,7 +62,8 @@ import type {
   RepoWorktree,
   ReviewSummary,
 } from "@unvibe/shared";
-import { CHANGES_DEFAULT_LIMIT, CHANGES_MAX_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
+import { CHANGES_DEFAULT_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
+import { decodeChangesCursor, encodeChangesCursor, type ChangesCursor } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
 import { Combobox } from "@base-ui/react/combobox";
 import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
@@ -150,6 +151,57 @@ export function matchesAuthor(rowAuthor: string | undefined, filter: string): bo
  * Author → row count across the requested-review groups (#228): the
  * only lists the filter reads. Each row occurrence counts.
  */
+/**
+ * #310: append a newly fetched page to the shown rows, dropping rows
+ * already present (a later page can repeat an earlier row near a page
+ * boundary, and a changed filter can refetch page one). PRs key by
+ * number, branches and reviews by their own ids.
+ */
+export function appendChanges(existing: RepoChange[], fresh: RepoChange[]): RepoChange[] {
+  if (fresh.length === 0) return existing;
+  const keyOf = (c: RepoChange): string => {
+    if (c.kind === "pr" && c.prNumber !== undefined) return `pr:${c.prNumber}`;
+    if (c.kind === "branch" && c.branch) return `branch:${c.branch}`;
+    if (c.kind === "review" && c.reviewId) return `review:${c.reviewId}`;
+    if (c.kind === "demo" && c.demo) return `demo:${c.demo}`;
+    return `title:${c.title}`;
+  };
+  const seen = new Set(existing.map(keyOf));
+  const out = [...existing];
+  for (const c of fresh) {
+    const k = keyOf(c);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * #310: fold one filter's next-page token into the paging state.
+ * `token` null means that filter's search is exhausted (its keys clear);
+ * a token carries its searches' new end cursors (absent keys are left
+ * alone, so parallel filters compose without clobbering each other).
+ */
+export function mergePageCursors(
+  prev: ChangesCursor,
+  filter: "authoring" | "review-requested",
+  token: string | null,
+): ChangesCursor {
+  const next: ChangesCursor = { ...prev };
+  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team"] as const);
+  if (token === null) {
+    for (const k of keys) next[k] = null;
+    return next;
+  }
+  const decoded = decodeChangesCursor(token);
+  for (const k of keys) {
+    if (k in decoded) next[k] = decoded[k];
+  }
+  return next;
+}
+
 export function authorCounts(changes: Pick<RepoChange, "author">[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of changes) {
@@ -642,12 +694,18 @@ export function StartPage(): React.JSX.Element {
   const [recency, setRecency] = useState<RecencyWindow>(readRecency);
   // Author filter (#228): one single-select for the requested-review groups.
   const [authorFilter, setAuthorFilter] = useState<string>(readAuthor);
-  // #297: page size for the PR lists (`gh pr list` has no offset, so a
-  // larger `--limit` re-fetch pages) and the typed-login author search
-  // (fetched server-side via `gh pr list --author`, not just the loaded
-  // rows). The search holds the committed login once Enter is pressed.
-  const [prLimit, setPrLimit] = useState<number>(CHANGES_DEFAULT_LIMIT);
+  // #297: the typed-login author search (fetched server-side via
+  // `gh pr list --author`, not just the loaded rows). The search holds
+  // the committed login once Enter is pressed.
+  // #310: cursor paging — `pageCursors` holds the next-page cursors for
+  // every PR search (round-tripped opaquely through `cursor`). Load more
+  // appends one page per press; it never re-fetches. `loadingMore` locks
+  // the button while a page is in flight (double-press guard);
+  // `moreError` keeps the rows on a failed page with a Retry.
+  const [pageCursors, setPageCursors] = useState<ChangesCursor>({});
   const [listsHaveMore, setListsHaveMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
   const [authorSearch, setAuthorSearch] = useState<string | null>(null);
 
   // Readiness (fills in after render; never blocks).
@@ -671,8 +729,17 @@ export function StartPage(): React.JSX.Element {
   // rows for the repo: the kept rows stay rendered, the fetch replaces them
   // when it lands, and a failed refresh keeps them with the error note.
   const loadSeq = useRef(0);
+  const loadMoreSeq = useRef(0);
+  const loadingMoreRef = useRef(false);
   const loadLists = useCallback(async (id: string) => {
     const seq = ++loadSeq.current;
+    // A fresh load supersedes any in-flight Load more (its late rows are
+    // dropped by the sequence check below).
+    loadMoreSeq.current++;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    setMoreError(null);
+    setPageCursors({});
     const kept = getKeptLists(id);
     const hadKept = kept !== null;
     // #297/#307: capture whether this load is a typed author search.
@@ -685,9 +752,10 @@ export function StartPage(): React.JSX.Element {
     // A background refresh shows its quiet sign; a first load keeps the
     // existing "Loading…" state (no kept age to describe).
     if (hadKept) setRefreshing(true);
-    // #297: the page size and the typed-login search ride every PR-list
-    // call (branches are git-local and ignore both).
-    const opts = { limit: prLimit, ...(authorSearch !== null ? { author: authorSearch } : {}) };
+    // Fresh loads always start from page one (no cursor): the typed
+    // author search, if any, rides every PR-list call (branches are
+    // git-local and ignore both).
+    const opts = { limit: CHANGES_DEFAULT_LIMIT, ...(authorSearch !== null ? { author: authorSearch } : {}) };
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
@@ -763,6 +831,10 @@ export function StartPage(): React.JSX.Element {
     setListsHaveMore(
       [a, r, rec].some((x) => x.status === "fulfilled" && x.value.hasMore === true),
     );
+    // Merge this load's next-page cursors (per filter, so parallel calls
+    // compose without clobbering each other).
+    if (a.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "authoring", a.value.cursor));
+    if (r.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "review-requested", r.value.cursor));
     setListErrors({
       authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
       requested: r.status === "rejected" ? friendlyError(r.reason) : null,
@@ -794,7 +866,7 @@ export function StartPage(): React.JSX.Element {
     // result, no extra calls) — reload the Reviews list so it shows the
     // fresh states. Best effort; list errors above already describe gh.
     if (fulfilled > 0) void loadSessions();
-  }, [loadSessions, prLimit, authorSearch]);
+  }, [loadSessions, authorSearch]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
       previous repo's data can never flash, and the load effect refreshes
@@ -806,6 +878,7 @@ export function StartPage(): React.JSX.Element {
     (id: string) => {
       setAuthorSearch(null);
       setListsHaveMore(false);
+      setMoreError(null);
       const kept = getKeptLists(id);
       if (kept) {
         setAuthoring(kept.authoring);
@@ -847,8 +920,10 @@ export function StartPage(): React.JSX.Element {
     const next = login.trim() !== "" ? login : AUTHOR_ALL;
     setAuthorFilter(next);
     // Picking from the list is the client-side filter (#228): it clears
-    // any server-side typed search (#297).
+    // any server-side typed search (#297), and its paging token with it
+    // (a cursor is only valid for the search that minted it).
     setAuthorSearch(null);
+    setPageCursors({});
     try {
       localStorage.setItem(AUTHOR_KEY, next);
     } catch {
@@ -876,10 +951,53 @@ export function StartPage(): React.JSX.Element {
     }
   }, [selectAuthor]);
 
-  /** #297: Load more doubles the PR page (30 → 60 → 120 → 200). */
-  const loadMorePrs = useCallback(() => {
-    setPrLimit((l) => Math.min(CHANGES_MAX_LIMIT, l >= CHANGES_MAX_LIMIT ? l : l * 2));
-  }, []);
+  /**
+   * #310: Load more appends the next page of each PR list (one GraphQL
+   * page per search, nothing re-fetched). A failed page keeps every
+   * shown row and offers Retry on the same cursor; rows dedupe by PR
+   * number, so a repeated page can never duplicate a row.
+   */
+  const loadMoreLists = useCallback(async () => {
+    if (!selectedId || loadingMoreRef.current) return;
+    const mySeq = ++loadMoreSeq.current;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setMoreError(null);
+    // Branches are git-local and uncapped: only the PR lists page.
+    const cursor = encodeChangesCursor(pageCursors);
+    const opts = { limit: CHANGES_DEFAULT_LIMIT, ...(authorSearch !== null ? { author: authorSearch } : {}), cursor };
+    const settled = await Promise.race([
+      Promise.allSettled([
+        api.repoChanges(selectedId, "authoring", opts),
+        api.repoChanges(selectedId, "review-requested", opts),
+      ]),
+      new Promise<null>((resolve) => {
+        window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
+      }),
+    ]);
+    // A fresh load superseded this page: drop it (its rows would be stale).
+    if (loadMoreSeq.current !== mySeq) return;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    if (settled === null) {
+      setMoreError("it took too long — the service may be busy");
+      return;
+    }
+    const [a, r] = settled;
+    if (a.status === "rejected" || r.status === "rejected") {
+      const reason = (a.status === "rejected" ? a : (r as PromiseRejectedResult)).reason;
+      setMoreError(friendlyError(reason));
+      return;
+    }
+    setAuthoring((prev) => appendChanges(prev, a.value.changes));
+    setRequested((prev) => appendChanges(prev, r.value.changes));
+    setPageCursors((prev) =>
+      mergePageCursors(mergePageCursors(prev, "authoring", a.value.cursor), "review-requested", r.value.cursor),
+    );
+    setListsHaveMore(a.value.hasMore || r.value.hasMore);
+    // Same #230 sync as a fresh load (the pages just landed server-side).
+    void loadSessions();
+  }, [selectedId, pageCursors, authorSearch, loadSessions]);
 
   /** Clear both list filters (#228's way back clears the pair) and the
       typed author search (#297). */
@@ -1652,22 +1770,27 @@ export function StartPage(): React.JSX.Element {
                       </Button>
                     </p>
                   ) : null}
-                  {/* Owner decision (#297 follow-up): the button sits right
-                      after the PR rows it loads (after the last PR section,
-                      before "Recent branches") — not at the bottom of the
-                      panel. A full PR page means more PRs may exist: a
-                      larger `--limit` re-fetch loads them, and the author
-                      list grows with the new rows. */}
+                  {/* #310: one more page per press, never a re-fetch. A
+                      failed page keeps the rows and offers Retry on the
+                      same cursor; the button locks while a page is in
+                      flight so presses can't stack. */}
                   {listsHaveMore ? (
-                    <div style={{ display: "flex", justifyContent: "center", marginTop: 8, marginBottom: 8 }}>
+                    <div
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginTop: 8, marginBottom: 8 }}
+                    >
+                      {moreError ? (
+                        <p className="hint" role="alert" data-testid="lists-more-error">
+                          {moreError}
+                        </p>
+                      ) : null}
                       <Button
                         variant="secondary"
                         type="button"
                         data-testid="lists-load-more"
-                        disabled={refreshing}
-                        onClick={loadMorePrs}
+                        disabled={refreshing || loadingMore}
+                        onClick={loadMoreLists}
                       >
-                        {refreshing ? "Loading…" : "Load more PRs"}
+                        {refreshing || loadingMore ? "Loading…" : moreError ? "Retry" : "Load more PRs"}
                       </Button>
                     </div>
                   ) : null}

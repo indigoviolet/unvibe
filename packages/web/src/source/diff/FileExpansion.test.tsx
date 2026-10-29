@@ -58,10 +58,21 @@ describe("DiffView expansion", () => {
     expect(revealedRows(connSection())).toHaveLength(20);
     expect(document.getElementById(`L-${CONN}-76`)).not.toBeNull();
     expect(document.getElementById(`L-${CONN}-56`)).toBeNull();
-    // A second step continues upward.
-    await fireEvent.click(conn.getAllByRole("button", { name: "Show 20 more lines" })[0]);
+    // Issue #308: expand-more moved to the outermost revealed row,
+    // the collapse chevron to the next row in; the hunk's own first
+    // row is back to its number.
+    const outer = document.getElementById(`L-${CONN}-57`)!;
+    expect(outer.classList.contains("has-xup")).toBe(true);
+    expect(within(outer).getByRole("button", { name: "Show 20 more lines" })).toBeInTheDocument();
+    const inner = document.getElementById(`L-${CONN}-58`)!;
+    expect(inner.classList.contains("has-xhide-up")).toBe(true);
+    expect(document.getElementById(`L-${CONN}-77`)!.className).not.toContain("has-x");
+    // A second step continues upward from the outermost row.
+    await fireEvent.click(within(outer).getByRole("button", { name: "Show 20 more lines" }));
     expect(await conn.findByText("DummyConnection")).toBeInTheDocument();
     expect(revealedRows(connSection())).toHaveLength(40);
+    const outer2 = document.getElementById(`L-${CONN}-37`)!;
+    expect(outer2.classList.contains("has-xup")).toBe(true);
   });
 
   it("collapses a region back", async () => {
@@ -70,8 +81,12 @@ describe("DiffView expansion", () => {
     await fireEvent.click(conn.getAllByRole("button", { name: "Show 20 more lines" })[0]);
     await conn.findByText("RefusedConnectionError");
     expect(revealedRows(connSection())).toHaveLength(20);
-    await fireEvent.click(conn.getByRole("button", { name: "Hide 20 lines" }));
+    // Issue #308: the collapse chevron sits on the second revealed
+    // row; hiding returns expand-more to the hunk's own first row.
+    const inner = document.getElementById(`L-${CONN}-58`)!;
+    await fireEvent.click(within(inner).getByRole("button", { name: "Hide expanded lines above" }));
     expect(revealedRows(connSection())).toHaveLength(0);
+    expect(document.getElementById(`L-${CONN}-77`)!.classList.contains("has-xup")).toBe(true);
   });
 
   it("reveals a whole gap so the hunks read as continuous", async () => {
@@ -100,11 +115,15 @@ describe("DiffView expansion", () => {
       [10, 11, 12, 13].map((n) => `L-${TCONN}-${n}`),
     );
     expect((rows1[4] as HTMLElement).id).toBe(`L-${TCONN}-14`);
-    // Fully revealed: this gap's show-all is gone; the quiet Hide icon
-    // sits on the run's first row instead.
+    // Fully revealed: this gap's show-all is gone; the collapse
+    // chevron (issue #308) sits on the run's second row instead.
     expect(tconn.queryByRole("button", { name: "Show all 4 lines" })).toBeNull();
-    await fireEvent.click(tconn.getByRole("button", { name: "Hide 4 lines" }));
+    const collapsed = document.getElementById(`L-${TCONN}-11`)!;
+    expect(collapsed.classList.contains("has-xhide-up")).toBe(true);
+    await fireEvent.click(within(collapsed).getByRole("button", { name: "Hide expanded lines above" }));
     expect(revealedRows(section)).toHaveLength(0);
+    // Collapsing reopens the gap: both ends offer show-all again.
+    expect(tconn.getAllByRole("button", { name: "Show all 4 lines" })).toHaveLength(2);
   });
 
   it("keeps both sides aligned in split view", async () => {
@@ -224,22 +243,26 @@ describe("DiffView unit expansion", () => {
     // From below (the lower hunk's step): the 4-line gap finishes at once.
     await fireEvent.click(steps[1]);
     await waitForRevealed(section, 4);
-    // No separator rows at the revealed boundary (#285: controls ride the
-    // first/last rows, so hunk tables hold code rows only): hunk 1's
+    // No separator rows at the revealed boundary (#285: controls ride
+    // the rows, so hunk tables hold code rows only): hunk 1's
     // table holds only its top-region control above its code (ending on
     // code line 9); hunk 2's table starts on the revealed gap lines
     // (10-13, atop the clicked hunk per #265) and then its code. The
-    // gap's show-all is gone (fully revealed); the quiet Hide icon sits
-    // on the run's first row instead.
+    // gap's show-all is gone (fully revealed): the outermost revealed
+    // row shows its number and the collapse chevron (issue #308) sits
+    // on the second row.
     const [d0, d1] = section.querySelectorAll(".dhunk");
     const rows0 = [...d0.querySelectorAll("table.diff tbody tr")];
     expect(rows0[rows0.length - 1].id).toBe(`L-${TCONN}-9`);
     const rows1 = [...d1.querySelectorAll("table.diff tbody tr")];
     expect(rows1.some((tr) => tr.classList.contains("xsep"))).toBe(false);
     expect(rows1[0].id).toBe(`L-${TCONN}-10`);
+    expect(rows1[0].className).not.toContain("has-x");
+    expect(rows1[1].id).toBe(`L-${TCONN}-11`);
+    expect(rows1[1].className).toContain("has-xhide-up");
     expect(rows1[4].id).toBe(`L-${TCONN}-14`);
-    // The hover Hide sits on the run's first row instead.
-    expect(section.querySelectorAll("button[aria-label='Hide 4 lines']")).toHaveLength(1);
+    // The collapse chevron sits on the run's second row.
+    expect(section.querySelectorAll("button[aria-label='Hide expanded lines above']")).toHaveLength(1);
   });
 
   it("shrinks one gap run from either end with one remaining count", async () => {
@@ -433,8 +456,10 @@ describe("FileSection number width", () => {
       expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
       expect(slice).not.toHaveBeenCalled();
       // One click fetches the assumed step and reveals it, learning the
-      // total (show-all appears for the long tail — riding the hunk's
-      // last code row per #285).
+      // total. Issue #308: expand-more moves to the outermost revealed
+      // row (the step plus the long tail's show-all), the collapse
+      // chevron to the next row in; the hunk's own last row is back to
+      // its number.
       await fireEvent.click(screen.getByRole("button", { name: "Show 20 more lines" }));
       await waitFor(() => {
         expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(20);
@@ -443,13 +468,21 @@ describe("FileSection number width", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
       });
-      // The pair rides the hunk's last row (step in the old cell,
-      // show-all in the new; numbers still at rest) — no separator row.
+      const outer = document.getElementById("L-one-23")!;
+      expect(outer.classList.contains("has-xdown")).toBe(true);
+      expect(within(outer).getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
+      const inner = document.getElementById("L-one-22")!;
+      expect(inner.classList.contains("has-xhide-down")).toBe(true);
       const lastRow = document.getElementById("L-one-3")!;
-      expect(lastRow.classList.contains("has-xdown")).toBe(true);
+      expect(lastRow.className).not.toContain("has-x");
       expect(lastRow.querySelector("td.n .nnum")?.textContent).toBe("3");
-      expect(lastRow.querySelectorAll("td.n .xbtns button")).toHaveLength(2);
-      expect(within(lastRow).getByRole("button", { name: "Show all 1177 lines" })).toBeInTheDocument();
+      // Collapsing hides the revealed lines and returns expand-more to
+      // the hunk's last row.
+      await fireEvent.click(within(inner).getByRole("button", { name: "Hide expanded lines below" }));
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
+      });
+      expect(document.getElementById("L-one-3")!.classList.contains("has-xdown")).toBe(true);
     } finally {
       slice.mockRestore();
     }
@@ -712,7 +745,7 @@ describe("unified gutter E2 controls (issue #285)", () => {
       expect(within(last2).queryByRole("button", { name: "Show all 48 lines" })).toBeNull();
       // The in-row step expands like the old separator control did — and
       // the fetch teaches the total, so the bottom show-all lands on the
-      // last row beside the revealed head.
+      // last hunk's last row beside no revealed lines yet.
       await fireEvent.click(within(last1).getByRole("button", { name: "Show 20 more lines" }));
       await waitFor(() => {
         expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(20);
@@ -722,6 +755,32 @@ describe("unified gutter E2 controls (issue #285)", () => {
       await waitFor(() => {
         expect(within(last2).getByRole("button", { name: "Show all 48 lines" })).toBeInTheDocument();
       });
+      // Issue #308: expand-more moved to the outermost revealed row
+      // (the last of the new head), collapse to the next row in; the
+      // hunk's own last row is back to its number.
+      const outerDown = document.getElementById("L-e2-32")!;
+      expect(outerDown.classList.contains("has-xdown")).toBe(true);
+      expect(within(outerDown).getByRole("button", { name: "Show 17 more lines" })).toBeInTheDocument();
+      const innerDown = document.getElementById("L-e2-31")!;
+      expect(innerDown.classList.contains("has-xhide-down")).toBe(true);
+      expect(document.getElementById("L-e2-12")!.className).not.toContain("has-x");
+      // A second step from the outermost row closes the gap.
+      await fireEvent.click(within(outerDown).getByRole("button", { name: "Show 17 more lines" }));
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(37);
+      });
+      // Gap closed: the outermost revealed row shows its number, the
+      // collapse chevron stays on the second-to-last row.
+      expect(document.getElementById("L-e2-49")!.className).not.toContain("has-x");
+      const closedInner = document.getElementById("L-e2-48")!;
+      expect(closedInner.classList.contains("has-xhide-down")).toBe(true);
+      // Collapsing reopens the gap: expand-more returns to the hunk rows.
+      await fireEvent.click(within(closedInner).getByRole("button", { name: "Hide expanded lines below" }));
+      await waitFor(() => {
+        expect(document.querySelectorAll("tr[data-revealed]")).toHaveLength(0);
+      });
+      expect(document.getElementById("L-e2-12")!.classList.contains("has-xdown")).toBe(true);
+      expect(document.getElementById("L-e2-50")!.classList.contains("has-xup")).toBe(true);
     } finally {
       slice.mockRestore();
     }

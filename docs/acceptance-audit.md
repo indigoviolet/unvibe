@@ -442,13 +442,19 @@ needed (that deviation is closed, not added).
 
 - Dotted links (page preview → open; collapsed expansion preview →
   expand) — met (`e2e/guide.spec.ts` “dotted-link hover preview: timing
-  and content”).
+  and content”). Issue #302 reserves the dotted underline for glossary
+  terms: collapsed thread links in guide prose read as a soft highlight
+  plus a small thread glyph (no dotted underline), and their preview
+  shows the thread pinned-style (kind badge, inline AI avatar, reply
+  count). Glossary previews carry a Glossary label (journeys J302,
+  J252; thread-polish tour frames).
 - Citations (`<>` + count; hover previews lines; click opens source pane
   at spot w/ unfold + filter clear) — met (`guide-service.spec.ts`
   “citations reveal over the real API”, `validate/*`). Chips flow inline
   with their text and never wrap alone onto a line (issue #165); lists
-  carry per-item chips with no repeated block-level count row
-  (`guide/BlockView.list.test.tsx`).
+  carry per-item chips with no repeated block-level count row, and a
+  whole-list source no item shows lands inline at the end of the last
+  item (issue #305, `guide/BlockView.list.test.tsx` + journey J305).
 - Inline code chips behave as citations — met (`reply-format.md` §1,
   `guide/citations.test.ts`).
 - Unverified citations get no marker (issue #264) — met: the service
@@ -534,9 +540,9 @@ needed (that deviation is closed, not added).
   thread on the same host. New threads keep the comment composer box
   — met (`actions/conversation.ts`, `comments/ThreadView.tsx` +
   `ReplyBox.tsx` with `followupDraft`, `conversation.test.ts`,
-  journeys J2/J9/J15/J17/J273). “Ask about this” on a
-  comment appends an Ask reply inside the same thread — the only way a
-  comment leads to an agent reply, and the answer is never submitted.
+  journeys J2/J9/J15/J17/J273). Issue #301 removed “Ask about this”:
+  the Reply box is the only way a comment leads to an agent reply, and
+  the answer is never submitted.
   The header never shows an empty or near-empty quote: no quoted text
   (e.g. a line comment) shows only the location, and below ~440px of
   thread width (diff pane at 960px) the quote hides entirely via a
@@ -973,9 +979,14 @@ needed (that deviation is closed, not added).
   tightens the unified gutter to digits + 8px padding with zero
   affordance room (80px at 4-digit lines): the comment icon swaps in for
   the new-side number (on hover, permanently on commented lines) and the
-  expand carets replace the hunk's first/last row numbers (`^`/`^^` up,
-  `v`/`vv` down, on row hover with numbers at rest; up wins the
-  one-row tie; a hunk at line 1 or EOF keeps its numbers). Closed
+  expand carets ride the rows (`^`/`^^` up, `v`/`vv` down, on row hover
+  with numbers at rest; a hunk at line 1 or EOF keeps its numbers).
+  Issue #308 moves both with every expansion: expand-more sits on the
+  outermost visible row of each direction, the `fold` collapse chevron
+  ("Hide expanded lines above/below") on the next row in, until the
+  gap closes or the file's start or end; collapsing returns the side to
+  the hunk's edge and reopens a closed gap; a one-row hunk serving
+  both directions keeps up's expand pair and both chevrons. Closed
   multi-line ranges read as dotted anchor text on every line plus the
   tint and border (the #189 gutter `↪` marker is gone; clicking any
   dotted piece reopens), and drops the empty number column on
@@ -991,23 +1002,26 @@ needed (that deviation is closed, not added).
   shared `readCodeSlice` source with a per-request cap
   (`service/src/routes/files.ts`, `service/test/file-slice.test.ts` 4
   tests); quiet gutter caret icons (single = 20-line step, double =
-  whole run) ride the hunk's first/last row number cells (issue #285:
-  no separator rows in unified — `^`/`^^` on the first row, `v`/`vv`
-  on the last, transparent until row hover or keyboard focus; split
-  keeps its separator rows), pinned left while code scrolls, one
-  hidden run per gap sharing one remaining count from both ends, no
-  controls on continuous boundaries (fully revealed or zero-line gaps,
-  file edges; issue #288: the last hunk always offers an optimistic
-  bottom step before the total is known — the click fetches one assumed
-  step, teaches the total, and at EOF drops the control silently with no
-  error, no probe on load), and a
-  quiet fold icon on each revealed block's first gutter number instead
-  of control rows (`web/src/source/diff/FileExpansion.tsx`,
-  `expandLines.test.ts` 14 tests, `FileExpansion.test.tsx` 18 tests,
-  `e2e/diff-expand.spec.ts` 8 tests, journeys `j265-expand-up.spec.ts` 3
-  tests, `j288-expand-down-last-hunk.spec.ts` 2 tests and the new
-  `j285-gutter-e2.spec.ts` 3 tests against the
-  real service); revealed rows are tinted context
+  whole run) ride the outermost visible row of each direction (issue
+  #308: expand-more moves outward with every expansion; unified E2
+  never renders separator rows — `^`/`^^` above, `v`/`vv` below,
+  transparent until row hover or keyboard focus; split keeps its
+  separator rows), pinned left while code scrolls, one hidden run per
+  gap sharing one remaining count from both ends, no expand controls
+  on continuous boundaries (fully revealed or zero-line gaps, file
+  edges; issue #288: the last hunk always offers an optimistic bottom
+  step before the total is known — the click fetches one assumed
+  step, teaches the total, and at EOF drops the control silently with
+  no error, no probe on load), and a `fold` collapse chevron on the
+  next row in ("Hide expanded lines above/below", hover like the
+  other controls, only once that side expanded; hiding returns the
+  side to the hunk's edge and reopens a closed gap)
+  (`web/src/source/diff/FileExpansion.tsx`, `expandLines.test.ts` 18
+  tests, `FileExpansion.test.tsx` 18 tests, `e2e/diff-expand.spec.ts`
+  8 tests, journeys `j265-expand-up.spec.ts` 3 tests,
+  `j288-expand-down-last-hunk.spec.ts` 2 tests, the new
+  `j308-expand-repeat.spec.ts` 6 tests and `j285-gutter-e2.spec.ts`
+  3 tests against the real service); revealed rows are tinted context
   with Shiki colours in unified and split, both sides aligned
   (`expand.css`, `highlightLines`, tour frames `diff-expand-up` and
   `diff-expand-full-gap`, plus the #285 `diff-gutter-e2-rest`,
@@ -3009,20 +3023,20 @@ hunk coverage) is reported for a separate issue, not fixed here.
 
 ## Addendum: #284 (branch `fix/284-loading-ball`)
 
-- **#284 (guide loading ball + glints; diff glints-only):** the
+- **#284 (guide loading ball; diff glints-only):** the
   guide-building state shows the #275/#281 disco ball (whole
   `/disco-ball.svg`, the scene pendulums from the chain mount,
-  ±4° over 2.5s ease-in-out, infinite) with 3 small pink glints
-  (art's own sparkle paths, `#FF38E9`/`#FF48F1`) scattered as
-  reflections around the sphere — same 2.5s cycle and easing, in phase
-  with the swing, drifting slightly and brightest at the swing's ends.
-  The diff-loading state shows the same glints in a loose staggered
-  cluster on their own (one shared element/animation), as if the ball
-  were just out of frame — never a straight row. `PaneLoading` takes
-  `variant="guide" | "diff"`; every other dots indicator is
-  unchanged. Reduced motion: scene and glints static but visible. Dark
-  mode remaps the ball to line-art-on-dark (lightness-inverted, hue
-  kept) and softens the glint cluster (opacity .7).
+  ±4° over 2.5s ease-in-out, infinite) on its own — the ball's painted
+  highlights are its reflections; the separate pink sparkles were
+  dropped from the guide side by owner direction. The diff-loading
+  state keeps the same glints (art's own sparkle paths,
+  `#FF38E9`/`#FF48F1`) in a loose staggered cluster on their own,
+  as if the ball were just out of frame — never a straight row.
+  `PaneLoading` takes `variant="guide" | "diff"`; every other dots
+  indicator is unchanged. Reduced motion: scene and glints static but
+  visible. Dark mode remaps the ball to line-art-on-dark
+  (lightness-inverted, hue kept) and softens the glint cluster
+  (opacity .7).
 - **#284 follow-up (hero-sized loading art):** both indicators are
   large. The guide ball derives from the start page's ball —
   `--start-ball: 640px` (the watermark width in `prototype.css`) with
@@ -3032,8 +3046,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   scale by the same ratio (~33–50px, sizes/offsets/drift as fractions
   of the ball size). Art stacks above the label with the group centred
   in the pane (column `PaneLoading[data-variant]`, pad centres in a
-  floor filling the visible pane); animation timing, sync, reduced motion and themes are
-  unchanged. The tour asserts the hero art stays inside its pane at
+  floor filling the visible pane); animation timing, sync, reduced
+  motion and themes are unchanged. The tour asserts the hero art stays inside its pane at
   both swing extremes and the label is uncovered. Evidence: tour
   `guide-building-*` + `guide-swing-extreme-*`/`guide-swing-mid-*` +
   `diff-glint-extreme-*`/`diff-glint-mid-*` +
@@ -3219,6 +3233,50 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (links + hover open, 1440/960 light/dark, `checkLayout`).
   Full gates not yet run.
 
+## Addendum: #301/#302/#303/#304/#305 (branch `feat/301-thread-polish`)
+
+- **#301 (thread polish):** the “Ask about this” header button is gone
+  (the Reply box asks the agent); reply avatars sit inline in the first
+  line with the kind badge and the body uses normal padding (no avatar
+  column); threads use the neutral card surface with a thin `--line`
+  border while the `.on` focus state keeps an accent border + soft ring
+  in every theme and mode; the sparkle stays only as the AI avatar and
+  Second opinion / Summarize get their own `second` / `summary` icons
+  (same 16x16 stroke style). Evidence: `ThreadView.test.tsx` (removal +
+  inline-avatar layout), `e2e/comments.spec.ts` (in-thread Ask flow),
+  thread-polish tour frames (rest, focused, Ask + follow-up, comment
+  thread, both new icons).
+- **#302 (thread links vs glossary):** collapsed-thread marks
+  (`mark.anc.exl[data-jump]`) in guide prose get the highlight + glyph
+  via `ensureThreadGlyphs`; the thread preview shows kind badge, avatar
+  and reply count; glossary previews get the Glossary label (chip change
+  is #304). Evidence: journey J302, tour frames.
+- **#303 (cross-node quotes):** the anchor matcher normalizes whitespace
+  on both sides and maps back to raw per-node segments, so quotes
+  spanning code/emphasis/links resolve instead of raising the duplicate
+  fallback chip (recorded-offset verification already normalized; the
+  text-match path did not). The fallback chip itself is neutral, not
+  amber. Quoted agent (explain/ask) threads also render no `.th` chip:
+  those chips belong to GuideThreads, which only tracks threads with a
+  reviewer comment — an agent thread showed its inline mark *and* a
+  `.th` quote chip (the thread twice). Evidence: `anchor.test.ts`
+  whitespace suite (3 fail pre-fix), `Markers.test.tsx` (comment thread
+  keeps its chip; explain/ask render none), journey J303 (no
+  `[data-fallback]` and no `[data-tfallback]`), tour frame.
+- **#304 (glossary chip):** the glossary popover shows the shared compact
+  prose chip (`citationRange`, line range, click goes to source) instead
+  of the label + snippet button; the Glossary label and hint stay.
+  Evidence: J252 extension (label, chip, no snippet, click lands on the
+  source line), tour frame.
+- **#305 (list citations):** `uncoveredListCitations` (pure) finds
+  block-level sources no item shows; `BlockView` renders them inline at
+  the end of the last `li` — per-item chips stay, no row below the list
+  (both list kinds; nested markup and trailing code/links flow inline).
+  Note: the replay demo's lists are all fully covered per-item, so no
+  demo frame shows the new chip — placement is proven by the render
+  unit test. Evidence: `BlockView.list.test.tsx`, journey J305, tour
+  frame of a cited list.
+
 ## Addendum: #255 (branch `feat/255-code-highlight`)
 
 - **#255 (syntax highlighting for code blocks in documents and guide
@@ -3383,3 +3441,83 @@ hunk coverage) is reported for a separate issue, not fixed here.
   single control fits its card; `checkLayout` on every frame), tour
   frames `packages/web/visual-tour/start-pr-list-more-*` and
   `start-author-combo-*` (git-ignored). Full gates not yet run.
+
+## Addendum: #311 (branch `feat/311-data-reset-warning`)
+
+- **#311 (warn before and after an update that needs a data reset):**
+  `DATA_FORMAT = 1` (flat-threads shape, v0.0.12) lives in
+  `packages/shared/src/data-format.ts`, with the bump rule recorded in
+  `AGENTS.md` next to the no-backward-compatibility rule. The service
+  stamps it as SQLite `user_version` when it creates data
+  (`src/data-format.ts`: `checkDataFormat` / `stampDataFormat` /
+  `moveDataAside`, read-only checks — the stored DB is never opened
+  for writing on a mismatch).
+- **After an update:** on start a mismatch (different stamp, or data
+  with no stamp — every pre-#311 data dir) starts a blocked
+  generation: the app shows the full-page notice
+  (`packages/web/src/data-format/DataFormatNotice.tsx`) instead of
+  the normal UI, with **Export Outbox first** (combined #223 export
+  over all reviews, read read-only from the stored DB,
+  `GET /api/data-format/outbox`) and **Reset** (`POST
+  /api/data-format/reset`: the data dir is moved to a dated sibling
+  `*.bak-<timestamp>`, never deleted, the token is carried into the
+  fresh dir, and the service restarts in-process on the same port and
+  starts fresh). `unvibe doctor` reports match / mismatch / none;
+  `unvibe reset-data [--yes]` does the same move from the CLI,
+  refuses while the service runs with stop-first guidance, and asks
+  for confirmation without `--yes`.
+- **Before an update:** the target build's format rides its package
+  record (`unvibe.dataFormat`, written by `scripts/release.mjs` from
+  the shared constant) through `UpdateChannel.dataFormat` /
+  `UpdateBuildInfo.dataFormat`. The shared switch core refuses a
+  format-changing install until the user confirms; the CLI spells it
+  as `unvibe update <channel> --yes`, and Settings → Version shows
+  the reset warning with an Export Outbox first button in the confirm
+  step, sends `acceptDataReset`, and the switch route re-checks
+  server-side (409 without it). An unreadable target format cannot
+  warn — the switch proceeds and the new build's own gate catches a
+  mismatch on start.
+- **Release notes:** `scripts/release-notes.mjs` adds a "Data reset
+  needed" section (exact update + reset commands) whenever
+  `DATA_FORMAT` at the new tag differs from the previous tag
+  (unstamped counts as 0), via the pure helpers in
+  `scripts/release-notes-lib.mjs`.
+- Evidence: shared `test/data-format.test.ts`; service
+  `test/data-format.test.ts` (check states, stamp, move-aside never
+  deletes + collision, combined export, doctor line),
+  `test/reset-data.test.ts` (CLI flow incl. running-service refusal
+  and a real `runDoctor` on a scratch dir, notes section),
+  `test/update.test.ts` (format-changing target refused until
+  accepted; no npm run before that); journey
+  `e2e/journeys/j311-data-reset.spec.ts` (seeded unstamped data dir:
+  notice, Export download contains the draft, Reset moves the data
+  aside and the fresh start page loads, format then matches); tour
+  frames `packages/web/visual-tour/data-reset-notice-1440-{light,dark}.png`
+  (git-ignored), both inspected. No conversion or migration anywhere:
+  unreadable data is moved aside, never read into the new shape.
+  Full gates not yet run.
+- **Owner follow-ups (branch `fix/311-notice-in-app`):** the notice
+  now replaces the start page's content inside the normal app frame
+  (top bar visible but `aria-disabled`/unfocusable/unclickable and
+  muted, disco-ball art, 760px start column, existing Card/Button/
+  heading components); deep links land on the same notice; after a
+  Reset the browser lands on `/`. The Export card only shows when
+  the read-only count (`outboxCount` on `GET /api/data-format`) is
+  above 0, with the count in the button ("Export 1 unposted draft");
+  at 0 only Go back / Reset show — the pre-update confirm follows
+  the same rule. The switch outcome now records `fromVersion` /
+  `toVersion`, and the notice offers **Go back to <version>** from
+  that record through the existing update path (`POST
+  /api/data-format/go-back`: pending switch + helper + shutdown,
+  data untouched, `acceptDataReset`); when the previous build is
+  unknown it shows the copyable terminal command instead (era tag
+  for unstamped/format-1 data), and `unvibe doctor` prints the same
+  command on a mismatch. Evidence: service
+  `test/data-format-routes.test.ts` (count read-only — DB bytes
+  unchanged — previous picking known/unknown, go-back commits the
+  switch with nothing moved aside), journey
+  `e2e/journeys/j311-data-reset.spec.ts` (three cases: with drafts,
+  without drafts incl. deep link, and the go-back helper drill on a
+  scratch HOME/data dir/prefix with byte-identical data), tour
+  frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
+  Full gates not yet run.

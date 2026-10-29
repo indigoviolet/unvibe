@@ -19,6 +19,19 @@ export interface ResolvedCitation {
 
 export type FileKeyAliases = Record<string, string>;
 
+/**
+ * Issue #274: the compact prose chip shows the first citation's line range
+ * (L80–82) instead of the bare source count. Non-line targets (documents,
+ * description blocks, hunk ids) and unparseable targets keep the count
+ * (callers fall back). Shared by the prose chip (`Markers.tsx`) and the
+ * glossary hover chip (`HoverPopover.tsx`, issue #304).
+ */
+export function citationRange(target: string): string | null {
+  const parsed = parseId(target);
+  if (!parsed || (parsed.kind !== "diff" && parsed.kind !== "code")) return null;
+  return parsed.start === parsed.end ? `L${parsed.start}` : `L${parsed.start}–${parsed.end}`;
+}
+
 function resolveFile(
   snapshot: ReviewSnapshot,
   key: string,

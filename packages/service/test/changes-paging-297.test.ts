@@ -1,11 +1,10 @@
 /**
- * Start-page paging + author search (#297).
+ * Start-page paging + author search (#297) over GraphQL (#310).
  *
- * - `limit` sizes every `gh pr list` call (`--limit`); a full page reports
- *   `hasMore` so the start page offers Load more (a larger `--limit`
- *   re-fetch — `gh pr list` has no offset).
+ * - `limit` sizes every search (`first:`); `hasMore` comes from the
+ *   search's `pageInfo.hasNextPage` (no more full-page guessing).
  * - `author` narrows only the review-requested searches with
- *   `--author <login>`; "Your PRs" (`--author @me`) never takes it.
+ *   `author:<login>`; "Your PRs" (`author:@me`) never takes it.
  *
  * `gh` is stubbed through the injectable command runner (never real
  * GitHub); git runs for real against a temp checkout.
@@ -16,6 +15,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { RealCommandRunner } from "../src/exec/index.js";
 import type { CommandRunner, RunOptions, RunResult } from "../src/exec/index.js";
+import { decodeChangesCursor } from "@unvibe/shared";
 import { createApp } from "../src/server.js";
 
 const real = new RealCommandRunner();
@@ -37,30 +37,50 @@ async function makeGitRepo(dir: string): Promise<void> {
 
 function cannedPrs(n: number, author: string): unknown[] {
   return Array.from({ length: n }, (_, i) => ({
+    __typename: "PullRequest",
     number: 100 + i,
     title: `PR ${100 + i} by ${author}`,
     author: { login: author },
     updatedAt: "2026-10-01T00:00:00Z",
     headRefName: `branch-${100 + i}`,
+    state: "OPEN",
   }));
 }
 
-type GhBodies = { author?: unknown; direct?: unknown; all?: unknown };
+type GhBodies = { author?: unknown[]; direct?: unknown[]; all?: unknown[] };
 
-/** Stub `gh` by query qualifier; records every `gh` invocation. */
+/** Stub `gh api graphql` by search qualifier; records every `gh` invocation. */
 function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] } {
   const ghCalls: string[][] = [];
+  const valueOf = (args: string[], flag: string): string | undefined => {
+    const hit = args.find((a) => a.startsWith(`${flag}=`));
+    return hit === undefined ? undefined : hit.slice(flag.length + 1);
+  };
   const runner: CommandRunner = {
     run: async (cmd: string, opts: RunOptions): Promise<RunResult> => {
       if (cmd !== "gh") return real.run(cmd, opts);
       ghCalls.push(opts.args);
-      const key = opts.args.includes("user-review-requested:@me")
+      const q = valueOf(opts.args, "q") ?? "";
+      const first = Number(valueOf(opts.args, "first") ?? "30");
+      const after = valueOf(opts.args, "after");
+      const key = q.includes("user-review-requested:@me")
         ? "direct"
-        : opts.args.includes("review-requested:@me")
+        : q.includes("review-requested:@me")
           ? "all"
           : "author";
-      const body = bodies[key];
-      return { stdout: JSON.stringify(body ?? []), stderr: "", code: 0 };
+      const rows = [...(bodies[key] ?? [])];
+      // Cursor pages: first call returns the first `first` rows with a
+      // next-page cursor; any `after:` call returns the rest, exhausted.
+      const page = after === undefined ? rows.slice(0, first) : rows.slice(first);
+      const hasNextPage = after === undefined ? rows.length > first : false;
+      const endCursor = hasNextPage ? (key === "direct" ? "d1" : key === "author" ? "a1" : "t1") : null;
+      return {
+        stdout: JSON.stringify({
+          data: { search: { pageInfo: { hasNextPage, endCursor }, nodes: page } },
+        }),
+        stderr: "",
+        code: 0,
+      };
     },
   };
   return { runner, ghCalls };
@@ -89,72 +109,78 @@ async function setupRepo(runner: CommandRunner): Promise<{ app: TestApp; repoId:
 async function getChanges(
   app: TestApp,
   url: string,
-): Promise<{ changes: { prNumber?: number; title?: string }[]; hasMore: boolean }> {
+): Promise<{ changes: { prNumber?: number; title?: string }[]; hasMore: boolean; cursor: string | null }> {
   const res = await app.inject({ method: "GET", url, headers: { authorization: "Bearer tok" } });
   expect(res.statusCode).toBe(200);
-  return res.json() as { changes: { prNumber?: number; title?: string }[]; hasMore: boolean };
+  return res.json() as { changes: { prNumber?: number; title?: string }[]; hasMore: boolean; cursor: string | null };
 }
 
-function limitOf(args: string[]): string | undefined {
-  const i = args.indexOf("--limit");
-  return i === -1 ? undefined : args[i + 1];
+function firstOf(args: string[]): string | undefined {
+  return args.find((a) => a.startsWith("first="))?.slice("first=".length);
 }
 
-function authorOf(args: string[]): string | undefined {
-  const i = args.indexOf("--author");
-  return i === -1 ? undefined : args[i + 1];
+function queryOf(args: string[]): string {
+  return args.find((a) => a.startsWith("q="))?.slice("q=".length) ?? "";
 }
 
-describe("changes paging + author search (#297)", () => {
-  it("limit sizes every pr list; a full page reports hasMore", async () => {
+describe("changes paging + author search (#297, GraphQL #310)", () => {
+  it("one graphql search per list, with first: from limit", async () => {
     const { runner, ghCalls } = stubGh({ author: cannedPrs(3, "you"), direct: [], all: [] });
     const { app, repoId } = await setupRepo(runner);
     try {
       const body = await getChanges(app, `/api/repos/${repoId}/changes?filter=authoring&limit=2`);
-      expect(body.changes).toHaveLength(3);
+      expect(body.changes).toHaveLength(2);
       expect(body.hasMore).toBe(true);
-      // The one authoring call carried the requested size.
-      const authoringCalls = ghCalls.filter((a) => a.includes("--author"));
-      expect(authoringCalls).toHaveLength(1);
-      expect(limitOf(authoringCalls[0])).toBe("2");
-
-      const wide = await getChanges(app, `/api/repos/${repoId}/changes?filter=authoring&limit=10`);
-      expect(wide.hasMore).toBe(false);
-      expect(limitOf(ghCalls.filter((a) => a.includes("--author")).at(-1)!)).toBe("10");
+      expect(ghCalls).toHaveLength(1);
+      const [args] = ghCalls;
+      expect(args.slice(0, 2)).toEqual(["api", "graphql"]);
+      expect(firstOf(args)).toBe("2");
+      const q = queryOf(args);
+      expect(q).toContain("repo:acme/app");
+      // Authoring keeps the old `gh pr list` effective state (open only).
+      expect(q).toContain("author:@me");
+      expect(q).toContain("state:open");
+      // The next-page cursor decodes to the authoring search.
+      expect(decodeChangesCursor(body.cursor)).toEqual({ authoring: "a1" });
     } finally {
       await app.close();
     }
   });
 
-  it("defaults to 30 and clamps an absurd limit", async () => {
+  it("defaults to 30 and clamps an absurd limit to 100", async () => {
     const { runner, ghCalls } = stubGh({ author: cannedPrs(1, "you"), direct: [], all: [] });
     const { app, repoId } = await setupRepo(runner);
     try {
       await getChanges(app, `/api/repos/${repoId}/changes?filter=authoring`);
-      expect(limitOf(ghCalls.filter((a) => a.includes("--author")).at(-1)!)).toBe("30");
+      expect(firstOf(ghCalls.at(-1)!)).toBe("30");
       await getChanges(app, `/api/repos/${repoId}/changes?filter=authoring&limit=99999`);
-      expect(limitOf(ghCalls.filter((a) => a.includes("--author")).at(-1)!)).toBe("200");
+      expect(firstOf(ghCalls.at(-1)!)).toBe("100");
     } finally {
       await app.close();
     }
   });
 
   it("author narrows only the review-requested searches", async () => {
-    const { runner, ghCalls } = stubGh({ author: cannedPrs(1, "you"), direct: cannedPrs(1, "alice"), all: cannedPrs(2, "alice") });
+    const { runner, ghCalls } = stubGh({ author: cannedPrs(1, "you"), direct: cannedPrs(1, "alice"), all: [] });
     const { app, repoId } = await setupRepo(runner);
     try {
       const body = await getChanges(app, `/api/repos/${repoId}/changes?filter=review-requested&author=alice`);
-      expect(body.changes).toHaveLength(2);
-      const searchCalls = ghCalls.filter((a) => a.some((x) => x.includes("review-requested:@me")));
+      expect(body.changes).toHaveLength(1);
+      const searchCalls = ghCalls.filter((a) => queryOf(a).includes("review-requested:@me"));
       expect(searchCalls).toHaveLength(2);
-      for (const call of searchCalls) expect(authorOf(call)).toBe("alice");
+      for (const call of searchCalls) {
+        expect(queryOf(call)).toContain("author:alice");
+        // The old `gh pr list` calls defaulted to open with no explicit
+        // --state: the searches carry the equivalent qualifier.
+        expect(queryOf(call)).toContain("is:open");
+      }
 
       // The combined filter keeps "Your PRs" on @me while scoping requests.
       ghCalls.length = 0;
       await getChanges(app, `/api/repos/${repoId}/changes?filter=all&author=alice`);
-      const mine = ghCalls.filter((a) => authorOf(a) === "@me");
+      const mine = ghCalls.filter((a) => queryOf(a).includes("author:@me"));
       expect(mine).toHaveLength(1);
-      const scoped = ghCalls.filter((a) => authorOf(a) === "alice");
+      const scoped = ghCalls.filter((a) => queryOf(a).includes("author:alice"));
       expect(scoped).toHaveLength(2);
     } finally {
       await app.close();
@@ -167,7 +193,7 @@ describe("changes paging + author search (#297)", () => {
     try {
       const body = await getChanges(app, `/api/repos/${repoId}/changes?filter=authoring&limit=many`);
       expect(body.hasMore).toBe(false);
-      expect(limitOf(ghCalls.filter((a) => a.includes("--author")).at(-1)!)).toBe("30");
+      expect(firstOf(ghCalls.at(-1)!)).toBe("30");
     } finally {
       await app.close();
     }

@@ -1,4 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { DataFormatStatusResponse } from "@unvibe/shared";
+import { DataFormatNotice } from "./data-format/DataFormatNotice.js";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { api } from "./api/client.js";
 import { syncUiThemeFromSettings } from "./theme/theme.js";
@@ -11,6 +13,24 @@ import { DocumentsPage } from "./start/DocumentsPage.js";
 import { DoctorPage } from "./doctor/DoctorPage.js";
 
 export function App() {
+  // #311: a stored-format mismatch gates the whole app on the reset
+  // notice — the normal UI never renders against unreadable data.
+  const [format, setFormat] = useState<DataFormatStatusResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .dataFormat()
+      .then((s) => {
+        if (!cancelled) setFormat(s);
+      })
+      .catch(() => {
+        // Unreachable service: the normal UI's own errors stand.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // UI theme (issue #196): the boot script applied the mirrored theme
   // before first paint; reconcile with the persisted setting once known
   // (a theme saved in another browser, or a cleared mirror, wins here).
@@ -28,6 +48,12 @@ export function App() {
       cancelled = true;
     };
   }, []);
+  if (format?.state === "mismatch")
+    return (
+      <BrowserRouter>
+        <DataFormatNotice status={format} />
+      </BrowserRouter>
+    );
   return (
     <BrowserRouter>
       <RouteShellBoundary>

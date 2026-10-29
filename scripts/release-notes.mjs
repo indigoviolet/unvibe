@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { dataResetSection, parseDataFormat } from "./release-notes-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -64,8 +65,24 @@ lifecycle scripts).`;
   changes = `Changes since ${prev}:\n\n${lines || "- (no changes listed)"}`;
 }
 
-const body = `# Unvibe ${version}
+/**
+ * #311: `DATA_FORMAT` at the previous tag and at this tag (a tag with no
+ * stamp counts as unstamped). Best-effort: an unreadable side is null,
+ * which still warns when this tag carries a stamp.
+ */
+function dataFormatAt(ref) {
+  if (!ref) return null;
+  const r = spawnSync("git", ["show", `${ref}:packages/shared/src/data-format.ts`], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  return r.status === 0 ? parseDataFormat(r.stdout) : null;
+}
+const resetSection = prev ? dataResetSection(dataFormatAt(prev), dataFormatAt(tag), version) : null;
 
+const body = `# Unvibe ${version}
+${resetSection ? `\n${resetSection}\n` : ""}
 Install with no flags (Node 24 or newer):
 
 \`\`\`sh

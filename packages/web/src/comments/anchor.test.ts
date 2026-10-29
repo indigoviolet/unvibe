@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   anchorScope,
+  ensureThreadGlyphs,
   highlightAnchorInRoot,
+  locateNearestQuoteSegments,
   locateQuoteSegments,
   markTextInElement,
   placeAnchorSpot,
@@ -75,6 +77,41 @@ describe("locateQuoteSegments", () => {
   });
 });
 
+describe("locateQuoteSegments whitespace (issue #303)", () => {
+  test("matches across a code span with a newline in the DOM", () => {
+    // Stored quotes are collapsed ("the foo() call"); stored block HTML
+    // may carry newlines or indentation around the inline element.
+    const texts = ["the ", "foo()", "\n  call"];
+    expect(locateQuoteSegments(texts, "the foo() call")).toEqual([
+      { node: 0, start: 0, end: 4 },
+      { node: 1, start: 0, end: 5 },
+      { node: 2, start: 0, end: 7 },
+    ]);
+  });
+
+  test("matches across emphasis with collapsed spaces", () => {
+    const texts = ["a  ", "bold", "   word"];
+    expect(locateQuoteSegments(texts, "a bold word")).toEqual([
+      { node: 0, start: 0, end: 3 },
+      { node: 1, start: 0, end: 4 },
+      { node: 2, start: 0, end: 7 },
+    ]);
+  });
+
+  test("still null when the quote is really absent (chip shows)", () => {
+    expect(locateQuoteSegments(["the ", "foo()", " call"], "the bar() call")).toBeNull();
+    expect(locateQuoteSegments(["  \n  "], "the foo() call")).toBeNull();
+  });
+
+  test("nearest occurrence wins, whitespace-insensitive", () => {
+    const texts = ["fast  path and fast\npath"];
+    const nearSecond = locateNearestQuoteSegments(texts, "fast path", 14);
+    expect(nearSecond?.[0]).toEqual({ node: 0, start: 15, end: 24 });
+    const nearFirst = locateNearestQuoteSegments(texts, "fast path", 0);
+    expect(nearFirst?.[0]).toEqual({ node: 0, start: 0, end: 10 });
+  });
+});
+
 describe("splitOnQuote", () => {
   test("splits around the quote", () => {
     expect(splitOnQuote("a fast path b", "fast path")).toEqual({
@@ -135,6 +172,34 @@ describe("mark idempotence (issue #15)", () => {
       highlightAnchorInRoot(root, "b1", { quote: "slow lane" }, () => makeExpMark("e1", true));
     }
     expect(maxMarkDepth(root)).toBe(1);
+  });
+});
+
+describe("thread glyphs (issue #302)", () => {
+  test("one glyph on the last mark of each collapsed thread", () => {
+    const { root } = hostWithQuote("<p>before <code>foo</code> bar after</p>", "b1");
+    highlightAnchorInRoot(root, "b1", { quote: "foo bar" }, () => makeExpMark("e1", true));
+    const marks = [...root.querySelectorAll('mark.anc.exl[data-jump="e1"]')];
+    expect(marks.length).toBe(2);
+    ensureThreadGlyphs(root);
+    const glyphs = root.querySelectorAll('mark.anc.exl[data-jump="e1"] svg.thg');
+    expect(glyphs).toHaveLength(1);
+    expect(marks[marks.length - 1]?.querySelector(":scope > svg.thg")).not.toBeNull();
+    // Idempotent: a second pass adds no duplicate.
+    ensureThreadGlyphs(root);
+    expect(root.querySelectorAll('mark.anc.exl[data-jump="e1"] svg.thg')).toHaveLength(1);
+  });
+
+  test("footnote chips and other threads are left alone", () => {
+    const { root } = hostWithQuote("<p>the fast path wins</p>", "b1");
+    highlightAnchorInRoot(root, "b1", { quote: "fast path" }, () => makeExpMark("e1", true));
+    const chip = document.createElement("mark");
+    chip.className = "anc exl fnote";
+    chip.dataset.jump = "e2";
+    root.appendChild(chip);
+    ensureThreadGlyphs(root);
+    expect(chip.querySelector("svg.thg")).toBeNull();
+    expect(root.querySelectorAll('mark.anc.exl[data-jump="e1"] svg.thg')).toHaveLength(1);
   });
 });
 

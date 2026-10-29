@@ -32,6 +32,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildUnvibeField } from "./preview-lib.mjs";
+import { parseDataFormat } from "./release-notes-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RELEASE = path.join(ROOT, "release");
@@ -265,6 +266,9 @@ const releasePkg = {
   // which channel this tree is, what commit built it, and when. Additive
   // metadata only — install behaviour is unchanged.
   unvibe: buildUnvibeField({
+    // #311: the target build's data format, read by `unvibe update`
+    // (and the in-app picker) from this record before switching.
+    dataFormat: parseDataFormat(readFileSync(path.join(ROOT, "packages/shared/src/data-format.ts"), "utf8")),
     channel: releaseBranch,
     commit: commitFull,
     builtAt,
