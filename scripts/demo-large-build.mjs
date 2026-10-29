@@ -19,8 +19,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEMO_LARGE_BUILD_CAP_USD,
-  DEMO_LARGE_DEFAULT_PR,
-  DEMO_LARGE_DEFAULT_REPO,
   DEMO_LARGE_MODEL,
   demoLargeCacheDir,
   demoLargeMetaPath,
