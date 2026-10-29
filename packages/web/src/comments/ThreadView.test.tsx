@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import type { Thread, ReviewSnapshot } from "@unvibe/shared";
+import type { Reply, Thread, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { ThreadView } from "./ThreadView.js";
@@ -173,6 +173,75 @@ describe("ThreadView ask-about removal (issue #301)", () => {
     }
   });
 });
+describe("Ask thread entries (issue #315)", () => {
+  function mkAgent(kind: "ask" | "explain", question: string): Reply {
+    return {
+      id: `ans_${kind}_${Math.random().toString(36).slice(2, 6)}`,
+      kind,
+      who: "agent",
+      question,
+      blocks: [{ type: "paragraph", id: "b1", text: { standard: "An answer." }, citations: [] }],
+      level: "standard",
+      revision: 1,
+      undoStack: [],
+    };
+  }
+
+  function seedAsk(): { q: Element | null; a: Element | null } {
+    const asking = thread({ replies: [mkAgent("ask", "What is line folding?")] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [asking] });
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
+    return {
+      q: container.querySelector("[data-ask-question]"),
+      a: container.querySelector("[data-ask-answer]"),
+    };
+  }
+
+  test("the question entry is the reviewer avatar plus text, named for screen readers", () => {
+    const { q } = seedAsk();
+    expect(q).not.toBeNull();
+    expect(q?.querySelector(".av.you")).not.toBeNull();
+    expect(q).toHaveTextContent("What is line folding?");
+    // No comment chip, no "Reviewer comment" label — the avatar says
+    // who's speaking; the accessible name keeps them distinguishable.
+    expect(q?.querySelector(".kind")).toBeNull();
+    expect(q?.querySelector(".ans-q")).toBeNull();
+    expect(q).not.toHaveTextContent("Reviewer comment");
+    expect(q?.getAttribute("aria-label")).toBe("Your question");
+  });
+
+  test("the answer entry is the AI avatar plus body, named for screen readers", () => {
+    const { a } = seedAsk();
+    expect(a).not.toBeNull();
+    expect(a?.querySelector(".av.ai")).not.toBeNull();
+    expect(a).toHaveTextContent("An answer.");
+    // No ask chip, no question heading; the toolbar stays.
+    expect(a?.querySelector(".kind")).toBeNull();
+    expect(a?.querySelector(".ans-q")).toBeNull();
+    expect(a?.getAttribute("aria-label")).toBe("Agent answer");
+    expect(a?.querySelector(".ctl")).not.toBeNull();
+  });
+
+  test("explain replies keep their kind badge and heading", () => {
+    const explaining = thread({ replies: [mkAgent("explain", "Why is this so?")] });
+    useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [explaining] });
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
+    const reply = container.querySelector('[data-reply][data-kind="explain"]');
+    expect(reply?.querySelector(".kind-explain")).not.toBeNull();
+    expect(reply?.querySelector(".ans-q")).toHaveTextContent(/Explain/);
+  });
+
+  test("real reviewer comments keep their badge and label", () => {
+    const found = useReview.getState().snapshot?.annotations[0] as Thread;
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
+    const reply = container.querySelector('[data-reply][data-kind="comment"]');
+    expect(reply?.querySelector(".kind-comment")).not.toBeNull();
+    expect(reply).toHaveTextContent("Reviewer comment");
+  });
+});
+
 describe("ThreadView authorship (owner decision: icons, not text)", () => {
   test("the user's avatar is a person icon with a screen-reader name, and no visible author text", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;

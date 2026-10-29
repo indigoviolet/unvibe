@@ -151,8 +151,11 @@ function isAskWithQuestion(reply: Reply): boolean {
 }
 
 /** Reviewer-styled question entry for an Ask reply (#293). Issue #301:
- * the avatar sits inline in the first line, with the badge; the body
- * below uses the thread's normal padding (no avatar column). */
+ * the avatar sits inline in the first line; the body below uses the
+ * thread's normal padding (no avatar column). Issue #315: no kind chip
+ * and no "Reviewer comment" label — the reviewer avatar alone says
+ * who's speaking. The entry keeps an accessible name ("Your question")
+ * so screen readers still tell it apart from the agent answer. */
 function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
   const question = (reply.question ?? "").trim();
   return (
@@ -162,13 +165,13 @@ function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): Re
       data-reply={`${reply.id}-question`}
       data-kind="comment"
       data-ask-question={reply.id}
+      role="article"
+      aria-label="Your question"
     >
       <div className="spike-reply-head">
         <span className="av you" role="img" aria-label="You">
           <Icon name="person" />
         </span>
-        <span className="kind kind-comment">comment</span>
-        <span className="ans-q">Reviewer comment</span>
       </div>
       <p>{question}</p>
     </div>
@@ -296,22 +299,29 @@ function AgentReplyView({
 
   const askAnswerClass = hideQuestion ? " ask-answer" : "";
   // Issue #301: the AI avatar sits inline at the start of the reply's
-  // first line, with the kind badge; the body below uses the thread's
-  // normal padding (no avatar column).
+  // first line (with the kind badge except on Ask answers — #315), the
+  // body below uses the thread's normal padding (no avatar column).
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
       id={reply.id}
       data-reply={reply.id}
       data-kind={reply.kind}
-      {...(hideQuestion ? { "data-ask-answer": reply.id } : {})}
+      {...(hideQuestion ? { "data-ask-answer": reply.id, role: "article", "aria-label": "Agent answer" } : {})}
     >
       <div className="spike-reply-head">
         <span className="av ai" role="img" aria-label="Agent">
           <Icon name="spark" />
         </span>
-        <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
-        {hideQuestion ? null : <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>}
+        {/* Issue #315: an Ask answer shows only the AI avatar — no kind
+            chip, no question heading (the question is its own entry just
+            above). Other kinds keep their badge + heading. */}
+        {hideQuestion ? null : (
+          <>
+            <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
+            <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>
+          </>
+        )}
         {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
         {awaitingAnswer ? null : (
           <div className="ctl">
