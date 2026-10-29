@@ -15,8 +15,6 @@ import {
 } from "../update/channels.js";
 import { runSwitchCore } from "../update/switch.js";
 import { DB_RULE } from "../update/data-backup.js";
-import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "@unvibe/shared";
-import { fetchRefPackage } from "../update/channels.js";
 import { refreshLoginUnitIfManaged } from "../update/service-manager.js";
 import { isNpxCachePath, UPDATE_NPX_MESSAGE } from "./npx.js";
 
@@ -105,30 +103,8 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       ],
     };
   }
-  // #311: warn before switching when the target build's data format
-  // (from its package metadata) differs from this build's. An unreadable
-  // target format cannot warn — the switch proceeds and the new build's
-  // own format gate catches a mismatch on start.
-  const remote = await fetchRefPackage(deps.runner, channel).catch(() => null);
-  const formatChange = compareDataFormat(DATA_FORMAT, remote?.dataFormat);
-  if (formatChange === "changed" && remote?.dataFormat != null && !deps.acceptDataReset) {
-    return {
-      code: 1,
-      lines: [
-        dataFormatResetWarning(DATA_FORMAT, remote.dataFormat),
-        "Export your Outbox first (open the app, or after updating use its Export Outbox button before resetting).",
-        `To continue anyway: unvibe update ${channel} --yes`,
-        "Nothing was installed and your data is untouched.",
-      ],
-    };
-  }
-  const formatNote =
-    formatChange === "changed" && remote?.dataFormat != null
-      ? [dataFormatResetWarning(DATA_FORMAT, remote.dataFormat), "Continuing as confirmed; the new build will ask for a reset on start."]
-      : formatChange === "unknown"
-        ? ["note: couldn't read the target build's data format, so no reset warning can be given; the new build checks your data on start."]
-        : [];
   const result = await runSwitchCore({
+    ...(deps.acceptDataReset ? { acceptDataReset: true } : {}),
     runner: deps.runner,
     dataDir: deps.dataDir,
     serviceScriptPath: deps.cliScriptPath,
@@ -147,7 +123,7 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       ],
     };
   }
-  const lines = [...formatNote, ...result.lines];
+  const lines = [...result.lines];
   if (result.code === 0 && result.installed) {
     // No automatic setup (issue #220): `unvibe setup` is a manual step.
     lines.push("run `unvibe start` to launch the new build.");

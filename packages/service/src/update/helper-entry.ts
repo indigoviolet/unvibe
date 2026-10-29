@@ -149,6 +149,7 @@ function parseArgs(raw: unknown): HelperArgs {
     loginUid: loginUid as number | null,
     effectivePath: str("effectivePath"),
     ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
+    ...(o["acceptDataReset"] === true ? { acceptDataReset: true } : {}),
   };
 }
 

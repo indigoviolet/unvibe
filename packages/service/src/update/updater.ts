@@ -39,6 +39,8 @@ export interface SwitchToOptions {
    * database the new build may have migrated.
    */
   restoreBackupOf?: string;
+  /** #311: the user accepted the data-reset warning for a format-changing target. */
+  acceptDataReset?: boolean;
 }
 
 export interface Updater {
@@ -114,6 +116,7 @@ export class RealUpdater implements Updater {
       serviceVersion: this.serviceVersion,
       channel: ref,
       ...(opts?.restoreBackupOf ? { restoreBackupOf: opts.restoreBackupOf } : {}),
+      ...(opts?.acceptDataReset ? { acceptDataReset: true } : {}),
       env: this.env,
       ...(this.homeDir !== undefined ? { homeDir: this.homeDir } : {}),
       log: this.log,

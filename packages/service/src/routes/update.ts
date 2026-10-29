@@ -376,6 +376,7 @@ export async function registerUpdate(
       loginUnitPath: loginUnitPath(deps.loginHome?.homeDir ?? os.homedir(), deps.loginHome?.platform ?? process.platform),
       loginUid: currentUid(),
       ...(interruptedJobs !== undefined ? { interruptedJobs } : {}),
+      ...(body.acceptDataReset === true ? { acceptDataReset: true } : {}),
     };
     const argsFile = path.join(updateDir(ctx.dataDir), `helper-args-${Date.now()}.json`);
     try {

@@ -2388,6 +2388,11 @@ export const mockApi = {
     return { ok: true, reviewsRemoved };
   },
 
+  // #311: mock data always matches this build's format.
+  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true }),
+  dataFormatOutbox: async () => ({ markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count: 0 }),
+  resetDataFormat: async () => ({ ok: true as const, movedTo: "(mock) data moved aside" }),
+
   readiness: async (): Promise<ReadinessResponse> => {
     await wait(50);
     return readMockReadiness();
