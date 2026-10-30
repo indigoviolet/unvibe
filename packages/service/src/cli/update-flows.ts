@@ -136,7 +136,8 @@ export async function runUpdateChannelFlow(deps: UpdateDeps, channel: string): P
       const refreshed = refreshLoginUnitIfManaged(deps.homeDir ?? os.homedir(), deps.platform ?? process.platform, {
         nodePath: process.execPath,
         cliPath,
-        port: loadConfig().port,
+        // Port only: a bare env avoids the #313 data-dir guard in loadConfig.
+        port: loadConfig({ UNVIBE_PORT: process.env.UNVIBE_PORT }).port,
         dataDir: deps.dataDir,
       });
       if (refreshed) lines.push("login start refreshed for the new build.");

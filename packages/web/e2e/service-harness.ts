@@ -15,9 +15,20 @@
  *   the ambient CI token (PRD §15).
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+function harnessRealHome(): string {
+  if (process.env.UNVIBE_REAL_HOME) return process.env.UNVIBE_REAL_HOME;
+  try {
+    const info = os.userInfo();
+    return info && info.homedir ? info.homedir : os.homedir();
+  } catch {
+    return os.homedir();
+  }
+}
 
 export const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 
@@ -82,6 +93,17 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
 
   const env: Record<string, string | undefined> = { ...process.env, ...opts.extraEnv };
   delete env.GITHUB_TOKEN;
+  // Real-home guard (#313): every spawned service is a test run, and the
+  // real home is the one captured at harness start.
+  env.UNVIBE_TEST = "1";
+  env.UNVIBE_REAL_HOME = harnessRealHome();
+  // Update-helper drills (fake updater) must never see the real login
+  // unit: give them a scratch HOME unless the spec already set one.
+  let harnessHome: string | null = null;
+  if (env.UNVIBE_UPDATER_BACKEND === "fake" && !opts.extraEnv?.HOME) {
+    harnessHome = mkdtempSync(path.join(os.tmpdir(), "unvibe-harness-home-"));
+    env.HOME = harnessHome;
+  }
   if (opts.liveRunner) {
     // Hermetic live factory for the pi journey only (fake binary, no spend).
     env.UNVIBE_ALLOW_LIVE_AGENT = "1";
@@ -139,7 +161,16 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
     token,
     logFile,
     killHard: () => proc.kill("SIGKILL"),
-    stop: () => stopService(proc, log, label),
+    stop: async () => {
+      await stopService(proc, log, label);
+      if (harnessHome) {
+        try {
+          rmSync(harnessHome, { recursive: true, force: true });
+        } catch {
+          // best effort; the per-run temp guard will flag a leftover
+        }
+      }
+    },
   };
 }
 

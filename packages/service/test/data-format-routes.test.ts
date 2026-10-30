@@ -102,17 +102,26 @@ describe("pickPreviousBuild + goBackCommand", () => {
 
 describe("data-format routes", () => {
   const prevEnv = process.env.UNVIBE_UPDATER_BACKEND;
+  const prevDataDir = process.env.UNVIBE_DATA_DIR;
   afterEach(() => {
     if (prevEnv === undefined) delete process.env.UNVIBE_UPDATER_BACKEND;
     else process.env.UNVIBE_UPDATER_BACKEND = prevEnv;
+    if (prevDataDir === undefined) delete process.env.UNVIBE_DATA_DIR;
+    else process.env.UNVIBE_DATA_DIR = prevDataDir;
   });
 
   async function harness(dir: string) {
     process.env.UNVIBE_UPDATER_BACKEND = "fake";
+    // Scratch data dir + scratch HOME (#313): the go-back route resolves
+    // its port via loadConfig() and its login unit via loginHome, so both
+    // must point at scratch — never the real data dir or real home.
+    process.env.UNVIBE_DATA_DIR = dir;
+    const homeDir = tmp("unvibe-df-home-");
     let spawned = 0;
     let shutdowns = 0;
     const created = await createApp(TOKEN, {
       dataDir: dir,
+      loginHome: { homeDir, platform: process.platform },
       updater: new FakeUpdater(dir),
       updateHooks: {
         spawnHelper: async () => {

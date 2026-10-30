@@ -25,6 +25,18 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll } from "vitest";
 
+// Real-home guard (#313): mark vitest runs and capture the real home
+// at harness start, before any test redirects HOME/tmpdir to scratch.
+process.env.UNVIBE_TEST = "1";
+if (!process.env.UNVIBE_REAL_HOME) {
+  try {
+    const info = os.userInfo();
+    process.env.UNVIBE_REAL_HOME = info && info.homedir ? info.homedir : os.homedir();
+  } catch {
+    process.env.UNVIBE_REAL_HOME = os.homedir();
+  }
+}
+
 declare global {
   var __unvibeNonLoopbackAttempts: string[] | undefined;
 }

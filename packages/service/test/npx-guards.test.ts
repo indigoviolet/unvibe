@@ -87,6 +87,8 @@ describe("update under npx", () => {
         dataDir,
         cliScriptPath: npxCliPath(tmpHome("unvibe-npx-update-cache-")),
         serviceVersion: "0.0.1",
+        homeDir: tmpHome("unvibe-npx-update-home-"),
+        platform: process.platform,
       },
       "preview/feat-x",
     );
@@ -121,7 +123,7 @@ describe("update under npx", () => {
       code: 0,
     });
     const out = await runUpdateChannelFlow(
-      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1" },
+      { runner, dataDir, cliScriptPath: scriptPath, serviceVersion: "0.0.1", homeDir: tmpHome("unvibe-npx-update-ok-home-"), platform: process.platform },
       "release",
     );
     expect(out.code).toBe(0);
@@ -154,6 +156,8 @@ describe("in-app switcher under npx", () => {
     const created = await createApp(TOKEN, {
       db,
       dataDir,
+      // Scratch HOME (#313): the switch route must not resolve the real home.
+      loginHome: { homeDir: tmpHome("unvibe-npx-switch-home-"), platform: process.platform },
       settings: new SettingsStore(db),
       jobs: new JobQueue(),
       updater: new FakeUpdater(dataDir),

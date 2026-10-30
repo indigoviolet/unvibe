@@ -34,6 +34,7 @@ import {
 import os from "node:os";
 import { installPrefixForPackage, installRef, installSpec, stableNpmCwd } from "./install.js";
 import { findMiseBinStatic } from "./mise-find.js";
+import { assertNotRealHomeForWrite } from "./service-manager.js";
 
 export interface SwitchCoreRequest {
   runner: CommandRunner;
@@ -199,6 +200,14 @@ export async function runSwitchCore(req: SwitchCoreRequest): Promise<SwitchCoreR
     installed,
   });
 
+  // Real-home guard (#313): refuse before any backup/install under a
+  // test marker when the data dir (or home) resolves to the real user's.
+  try {
+    assertNotRealHomeForWrite({ homeDir: req.homeDir, dataDir: req.dataDir });
+  } catch (err) {
+    log(err instanceof Error ? err.message : String(err));
+    return done(1, readInstalledBuild(req.serviceScriptPath, req.serviceVersion));
+  }
   if (!isChannelName(req.channel)) {
     return done(2, readInstalledBuild(req.serviceScriptPath, req.serviceVersion));
   }
