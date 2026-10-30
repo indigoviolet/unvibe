@@ -4,9 +4,14 @@
  * Content comes from `GET /api/reviews/:id/file` (the `git show` source
  * `get_code` serves) in 200-line slices. The cited range is highlighted
  * — a range past the end highlights whatever part of it exists — and
- * the first cited line scrolls into view. Text selects like diff lines:
- * Explain, Ask and Comment anchor to the `code:` host and their cards
- * and threads render under the cited lines here.
+ * scrolls into view once its lines have loaded (#317: the scroll waits
+ * for the cited chunk instead of firing against a not-yet-rendered
+ * row, and re-scrolls when a later citation names a new range in the
+ * already-open tab). Lines carry the diff's Shiki syntax colours,
+ * tokenised in windows (cited range first) so large files stay
+ * responsive. Text selects like diff lines: Explain, Ask and Comment
+ * anchor to the `code:` host and their cards and threads render under
+ * the cited lines here.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Page } from "@unvibe/shared";
@@ -16,6 +21,10 @@ import { ThreadView } from "../../comments/ThreadView.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
+import { codeLineHtml } from "../diff/highlight/codeHtml.js";
+import "../diff/highlight/highlight.css";
+import { clampCitedRange } from "./highlightWindow.js";
+import { useFileTokens } from "./useFileTokens.js";
 import "./file.css";
 
 const CHUNK = 200;
@@ -117,15 +126,30 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
 
   const hlStart = start ?? 1;
   const hlEnd = Math.min(end ?? hlStart, totalLines);
+  const focus = clampCitedRange(start, end, totalLines);
+  const focusStart = focus.start;
+  const focusEnd = focus.end;
+  const tokens = useFileTokens(path, lines, focusStart, focusEnd);
 
+  // #317: scroll the cited range into view. The file loads in chunks,
+  // so the cited row may not exist yet — only mark the range scrolled
+  // once its row is actually found, and let later chunk arrivals (this
+  // effect re-runs as `lines` grows) retry. A new range in an
+  // already-open tab is a new key, so it scrolls again.
   useEffect(() => {
     if (!lines || totalLines === 0) return;
-    const key = `${path}@${commit}:${hlStart}`;
+    const key = `${path}@${commit}:${focusStart}-${focusEnd}`;
     if (scrolledFor.current === key) return;
+    const el = document.querySelector(
+      `[data-code-file="${CSS.escape(`${path}@${commit}`)}"] [data-code-line="${focusStart}"]`,
+    );
+    if (!el) return;
     scrolledFor.current = key;
-    const el = document.querySelector(`[data-code-file="${CSS.escape(`${path}@${commit}`)}"] [data-code-line="${hlStart}"]`);
-    el?.scrollIntoView({ block: "center" });
-  }, [lines, totalLines, path, commit, hlStart]);
+    const raf = requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [lines, totalLines, path, commit, focusStart, focusEnd]);
 
   const byLine = useMemo(() => {
     const map = new Map<number, typeof annotations>();
@@ -178,7 +202,14 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
             <div key={n}>
               <div className={`cf-line${cited ? " cited" : ""}`} data-code-line={n}>
                 <span className="cf-n">{n}</span>
-                <span className="cf-c">{text === "" ? " " : text}</span>
+                {text === "" ? (
+                  <span className="cf-c"> </span>
+                ) : (
+                  <span
+                    className="cf-c"
+                    dangerouslySetInnerHTML={{ __html: codeLineHtml(text, tokens.get(n) ?? null) }}
+                  />
+                )}
               </div>
               {openCards.map((a) => (
                 <div className="cf-slot" key={a.id}>

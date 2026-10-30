@@ -84,6 +84,17 @@ table.diff td.c .shk-param { color: var(--shk-param); }
 table.diff td.c .shk-link { color: var(--shk-link); }
 table.diff td.c .shk-b { font-weight: 600; }
 table.diff td.c .shk-i { font-style: italic; }
+/* File tab (issue #317): same palette as diff rows, so light/dark and
+   every ui-theme restyle without re-tokenising. */
+.codefile .cf-c .shk-kw { color: var(--shk-kw); }
+.codefile .cf-c .shk-str { color: var(--shk-str); }
+.codefile .cf-c .shk-com { color: var(--shk-com); }
+.codefile .cf-c .shk-fn { color: var(--shk-fn); }
+.codefile .cf-c .shk-const { color: var(--shk-const); }
+.codefile .cf-c .shk-param { color: var(--shk-param); }
+.codefile .cf-c .shk-link { color: var(--shk-link); }
+.codefile .cf-c .shk-b { font-weight: 600; }
+.codefile .cf-c .shk-i { font-style: italic; }
 /* Guide/document code blocks (issue #255): same palette as diff rows, so
    light/dark and every ui-theme restyle without re-tokenising. */
 pre.code .shk-kw { color: var(--shk-kw); }
