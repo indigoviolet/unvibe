@@ -49,6 +49,85 @@ export function loginUnitPath(homeDir: string, platform: string): string {
   return platform === "darwin" ? launchdPlistPath(homeDir) : systemdUnitPath(homeDir);
 }
 
+// --- Real-home guard (#313) -------------------------------------------------
+// Fail fast at the source: under a test marker, never write a login unit
+// or use a data dir that resolves to the real user's. Harnesses set
+// `UNVIBE_TEST=1` (plus `UNVIBE_REAL_HOME` captured at harness start);
+// vitest sets `VITEST`; fake-updater drills set
+// `UNVIBE_UPDATER_BACKEND=fake`. Metadata/path comparison only.
+
+/** True when this process is running under a test/drill harness. */
+export function isTestRun(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.UNVIBE_TEST === "1" || env.VITEST === "true" || env.VITEST === "1" || env.UNVIBE_UPDATER_BACKEND === "fake";
+}
+
+/** The real user's home (never a harness-scratch HOME). */
+export function realHomeDir(env: NodeJS.ProcessEnv = process.env): string {
+  const captured = env.UNVIBE_REAL_HOME;
+  if (captured) return path.resolve(captured);
+  try {
+    const info = os.userInfo();
+    if (info && typeof info.homedir === "string" && info.homedir) return path.resolve(info.homedir);
+  } catch {
+    // fall through to os.homedir()
+  }
+  return path.resolve(os.homedir());
+}
+
+/** The real data dir (`~/.local/share/unvibe`). */
+export function realDataDir(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(realHomeDir(env), ".local", "share", "unvibe");
+}
+
+function resolved(p: string): string {
+  try {
+    return path.resolve(p);
+  } catch {
+    return p;
+  }
+}
+
+function isSameOrUnder(candidate: string, base: string): boolean {
+  const c = resolved(candidate);
+  const b = resolved(base);
+  return c === b || c.startsWith(b + path.sep);
+}
+
+/**
+ * Throw when, under a test marker, a write would touch the real home:
+ * the home dir itself, a login-unit path under the real home, or the
+ * real data dir. Called before any write, so nothing real is touched.
+ */
+export function assertNotRealHomeForWrite(
+  target: { homeDir?: string; unitPath?: string; dataDir?: string },
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!isTestRun(env)) return;
+  const realHome = realHomeDir(env);
+  const realUnitLinux = systemdUnitPath(realHome);
+  const realUnitDarwin = launchdPlistPath(realHome);
+  const realData = realDataDir(env);
+  const problems: string[] = [];
+  if (target.homeDir && resolved(target.homeDir) === realHome) {
+    problems.push(`home dir resolves to the real home (${realHome})`);
+  }
+  if (target.unitPath) {
+    const u = resolved(target.unitPath);
+    if (u === realUnitLinux || u === realUnitDarwin) {
+      problems.push(`login unit path resolves to the real unit (${u})`);
+    }
+  }
+  if (target.dataDir && isSameOrUnder(target.dataDir, realData)) {
+    problems.push(`data dir resolves to the real data dir (${realData})`);
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `real-home guard (#313): refusing to touch the real home under a test marker (${problems.join("; ")}). ` +
+        `Point HOME, the login-unit path and UNVIBE_DATA_DIR at a scratch directory instead.`,
+    );
+  }
+}
+
 /** True when `unvibe setup` installed the start-at-login unit. */
 export function isLoginManaged(homeDir: string, platform: string): boolean {
   try {
@@ -431,7 +510,10 @@ export function refreshLoginUnitIfManaged(
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, c);
   },
+  env: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  // Real-home guard (#313): refuse before any write under a test marker.
+  assertNotRealHomeForWrite({ homeDir, unitPath: loginUnitPath(homeDir, platform), dataDir: opts.dataDir }, env);
   if (!isLoginManaged(homeDir, platform)) return false;
   if (!opts.nodePath || !opts.cliPath || !opts.dataDir) return false;
   const content = platform === "darwin" ? launchdPlistContent(opts) : systemdUnitContent(opts);

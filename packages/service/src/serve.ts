@@ -9,7 +9,7 @@
 import type { FastifyInstance } from "fastify";
 import { loadOrCreateToken } from "./auth.js";
 import { removeOwnLock, writeLock } from "./cli/lock.js";
-import { loadConfig } from "./config.js";
+import { assertNotRealDataDir, loadConfig } from "./config.js";
 import { applyLoginShellPath } from "./diagnostics/path-probe.js";
 import { sweepProbeTmp } from "./diagnostics/tools.js";
 import { shutdownService, type ServiceShutdownReport, type ServiceShutdownSteps } from "./lifecycle/index.js";
@@ -29,6 +29,8 @@ export async function serve(): Promise<void> {
   // Dev-only error reporting (issue #29): on only with SENTRY_DSN_SERVICE.
   const sentry = await initSentry();
   const config = loadConfig();
+  // Real-home guard (#313): refuse to run on the real data dir under a test marker.
+  assertNotRealDataDir(config.dataDir);
   // #311: a data-format reset restarts the service into a fresh
   // generation (same process, same port) after moving the data aside.
   for (;;) {

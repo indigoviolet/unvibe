@@ -25,7 +25,7 @@ import {
   patchInfoPlist,
 } from "./macos.js";
 import { desktopFileContent, desktopFilePath, DESKTOP_FILENAME, URL_MIME } from "./linux.js";
-import { isLoginManaged } from "../../update/service-manager.js";
+import { assertNotRealHomeForWrite, isLoginManaged } from "../../update/service-manager.js";
 import { isNpxCachePath, SETUP_NPX_MESSAGE } from "../npx.js";
 
 /**
@@ -129,6 +129,9 @@ export async function installSetup(
   platform: SetupPlatform = process.platform,
   opts: InstallSetupOpts = {},
 ): Promise<string[]> {
+  // Real-home guard (#313): refuse before writing anything under a test
+  // marker when the target home/data dir resolves to the real user's.
+  assertNotRealHomeForWrite({ homeDir: paths.homeDir, dataDir: opts.dataDir });
   // Issue #277: refuse before writing anything — the npx cache path baked
   // into the handler and login unit would rot when npm prunes its cache.
   if (isNpxCachePath(paths.cliPath)) {
@@ -199,6 +202,7 @@ async function installLoginUnit(
   platform: SetupPlatform,
   opts: InstallSetupOpts,
 ): Promise<string[]> {
+  assertNotRealHomeForWrite({ homeDir: paths.homeDir, dataDir: opts.dataDir });
   const unit = {
     nodePath: paths.nodePath,
     cliPath: paths.cliPath,
@@ -240,6 +244,7 @@ export async function uninstallSetup(
   runner: SetupRunner = realSetupRunner(),
   platform: SetupPlatform = process.platform,
 ): Promise<string[]> {
+  assertNotRealHomeForWrite({ homeDir: paths.homeDir });
   const steps: string[] = [];
   if (platform === "darwin") {
     const appPath = helperAppPath(paths.homeDir);
