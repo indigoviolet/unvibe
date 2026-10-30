@@ -6,7 +6,7 @@ Unvibe reads a branch or pull request with you. It restates the change as a guid
 
 ## Status
 
-Unvibe runs on Linux and macOS, on your machine, under your own logins. The front-door page is [www.romansix.org/unvibe](https://www.romansix.org/unvibe/); open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
+Unvibe runs on Linux and macOS, on your machine, under your own logins. The front-door page is [unvibe.xyz](https://unvibe.xyz); open work is tracked at [github.com/indigoviolet/unvibe/issues](https://github.com/indigoviolet/unvibe/issues).
 
 ## Requirements
 
