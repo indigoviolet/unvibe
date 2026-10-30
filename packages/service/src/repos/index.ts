@@ -10,6 +10,12 @@ export {
   type DetectedCheckout,
 } from "./detect.js";
 export { ChangesPageError, repoChanges, type ChangesDeps, type ChangesOptions } from "./changes.js";
+export {
+  buildPrStatusesQuery,
+  parsePrStatuses,
+  refreshRepoReviewStatuses,
+  type ReviewStatusesDeps,
+} from "./review-statuses.js";
 export { listWorktrees, resolveContextRepo } from "./worktrees.js";
 export { pickFolder, type PickFolderOptions } from "./pick-folder.js";
 export {

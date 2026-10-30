@@ -27,6 +27,7 @@ import {
   type Repo,
   type ReposResponse,
   type RepoChangesResponse,
+  type RepoReviewStatusesResponse,
   type RepoWorktreesResponse,
 } from "@unvibe/shared";
 import {
@@ -40,6 +41,7 @@ import {
   newRepoId,
   pickFolder,
   refreshManagedCheckout,
+  refreshRepoReviewStatuses,
   removeRepo,
   repoChanges,
   resolveRepoRoots,
@@ -192,6 +194,24 @@ export async function registerRepos(
       ...(originMainSha ? { originMainSha } : {}),
       ...(localSha ? { localSha } : {}),
     } satisfies RepoWorktreesResponse;
+  });
+
+  // #298: batched review-status refresh. The start page calls this on
+  // load and on Refresh (only there — no polling): one GraphQL query
+  // per repo covers every PR-backed review, branch reviews use the
+  // local git tip, and nothing is re-ingested. Best effort: gh/git
+  // failures keep the stored statuses, never a failed listing.
+  app.post("/api/repos/:id/review-statuses", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return { statuses: [] } satisfies RepoReviewStatusesResponse;
+    let repo = ctx.repos.get(id);
+    if (!repo) repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
+    if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    const statuses = await refreshRepoReviewStatuses(
+      { runner: ctx.runner, db: ctx.db, reviews: ctx.reviews },
+      repo,
+    );
+    return { statuses } satisfies RepoReviewStatusesResponse;
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {

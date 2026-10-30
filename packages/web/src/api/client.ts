@@ -46,6 +46,7 @@ import type {
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
+  RepoReviewStatusesResponse,
   RepoWorktreesResponse,
   ReviewAction,
   ReviewSnapshot,
@@ -317,6 +318,9 @@ const realApi = {
     return get(`/api/repos/${encodeURIComponent(id)}/changes${qs ? `?${qs}` : ""}`);
   },
 
+  /** #298: batched review-status refresh for one repo (load/Refresh only). */
+  refreshReviewStatuses: (id: string): Promise<RepoReviewStatusesResponse> =>
+    post(`/api/repos/${encodeURIComponent(id)}/review-statuses`),
   createReview: (body: CreateReviewRequest): Promise<CreateReviewResponse> =>
     post("/api/reviews", body),
   /** Issue #222: create a document review (answered with its ready snapshot). */

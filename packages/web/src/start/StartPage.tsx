@@ -756,6 +756,11 @@ export function StartPage(): React.JSX.Element {
     // author search, if any, rides every PR-list call (branches are
     // git-local and ignore both).
     const opts = { limit: CHANGES_DEFAULT_LIMIT, ...(authorSearch !== null ? { author: authorSearch } : {}) };
+    // #298: the same load/Refresh also checks the Reviews list's
+    // statuses (one batched gh query per repo, no re-ingest). Best
+    // effort and never polled — it rides this load only, and the
+    // sessions reload below picks up what it stored.
+    const statusRefresh = api.refreshReviewStatuses(id).catch(() => null);
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
@@ -865,7 +870,11 @@ export function StartPage(): React.JSX.Element {
     // #230: the PR lists just synced stored reviews server-side (same gh
     // result, no extra calls) — reload the Reviews list so it shows the
     // fresh states. Best effort; list errors above already describe gh.
-    if (fulfilled > 0) void loadSessions();
+    // #298: wait for the batched status check too, so merged/closed PRs
+    // (absent from the open PR lists) and new-commits tags show as well.
+    void statusRefresh.then(() => {
+      if (loadSeq.current === seq) void loadSessions();
+    });
   }, [loadSessions, authorSearch]);
 
   /** Select a repo: with kept rows (#90) they render synchronously so the
