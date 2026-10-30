@@ -17,6 +17,20 @@ if (!process.env.UNVIBE_E2E_TMPROOT) {
   process.env.TMP = root;
 }
 
+// Real-home guard (#313): mark this as a test run and capture the real
+// home at harness start, before any spec redirects HOME to scratch.
+// `e2e/home-guard.ts` (globalSetup) snapshots the real login-unit and
+// data-dir metadata and fails the run if any changes.
+process.env.UNVIBE_TEST = "1";
+if (!process.env.UNVIBE_REAL_HOME) {
+  try {
+    const info = os.userInfo();
+    process.env.UNVIBE_REAL_HOME = info && info.homedir ? info.homedir : os.homedir();
+  } catch {
+    process.env.UNVIBE_REAL_HOME = os.homedir();
+  }
+}
+
 // Behaviour tests run against mock mode (`VITE_MOCK=1`), so no service is
 // needed. Browsers come from `mise run playwright-install` and are never
 // required by `mise run check`.
@@ -67,5 +81,6 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   outputDir: "./test-results",
+  globalSetup: "./e2e/home-guard.ts",
   globalTeardown: "./e2e/tmp-teardown.ts",
 });

@@ -18,6 +18,7 @@ import path from "node:path";
 interface Snapshot {
   exists: boolean;
   mtimeMs: number | null;
+  size: number | null;
 }
 
 function watchedPaths(home: string): string[] {
@@ -25,6 +26,9 @@ function watchedPaths(home: string): string[] {
     path.join(home, ".config", "systemd", "user", "unvibe.service"),
     path.join(home, "Library", "LaunchAgents", "com.unvibe.service.plist"),
     path.join(home, ".local", "share", "applications", "unvibe-open.desktop"),
+    // Real data dir top level (#313): existence + mtime only judged below
+    // via the same metadata snapshot (never contents).
+    path.join(home, ".local", "share", "unvibe"),
   ];
 }
 
@@ -33,18 +37,28 @@ function snapshot(paths: string[]): Map<string, Snapshot> {
   for (const p of paths) {
     try {
       const st = fs.statSync(p);
-      out.set(p, { exists: true, mtimeMs: st.mtimeMs });
+      out.set(p, { exists: true, mtimeMs: st.mtimeMs, size: st.size });
     } catch {
-      out.set(p, { exists: false, mtimeMs: null });
+      out.set(p, { exists: false, mtimeMs: null, size: null });
     }
   }
   return out;
 }
 
 export default async function homeGuard(): Promise<() => Promise<void>> {
+  // Real-home guard (#313): mark the run and capture the real home at
+  // harness start (os.userInfo, never a scratch HOME).
+  process.env.UNVIBE_TEST = "1";
   // Real home at suite start (globalSetup runs before the per-file temp-root
   // patch, in the main process — never a test's scratch dir).
-  const home = os.homedir();
+  let home = os.homedir();
+  try {
+    const info = os.userInfo();
+    if (info && info.homedir) home = info.homedir;
+  } catch {
+    // keep os.homedir()
+  }
+  if (!process.env.UNVIBE_REAL_HOME) process.env.UNVIBE_REAL_HOME = home;
   const paths = watchedPaths(home);
   const before = snapshot(paths);
   return async () => {
@@ -56,8 +70,8 @@ export default async function homeGuard(): Promise<() => Promise<void>> {
       if (!b || !a) continue;
       if (b.exists !== a.exists) {
         changed.push(`${p}: existed=${b.exists} now=${a.exists}`);
-      } else if (b.exists && a.exists && b.mtimeMs !== a.mtimeMs) {
-        changed.push(`${p}: mtime ${String(b.mtimeMs)} -> ${String(a.mtimeMs)}`);
+      } else if (b.exists && a.exists && (b.mtimeMs !== a.mtimeMs || b.size !== a.size)) {
+        changed.push(`${p}: mtime ${String(b.mtimeMs)} -> ${String(a.mtimeMs)}, size ${String(b.size)} -> ${String(a.size)}`);
       }
     }
     if (changed.length > 0) {

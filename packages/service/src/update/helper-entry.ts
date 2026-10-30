@@ -29,6 +29,7 @@ import { readLock } from "../cli/lock.js";
 import { FakeUpdater, RealUpdater, type Updater } from "./updater.js";
 import { clearPendingSwitch, updateDir, writeSwitchOutcome } from "./state.js";
 import {
+  assertNotRealHomeForWrite,
   isLoginManaged,
   refreshLoginUnitIfManaged,
   startManagedService,
@@ -189,6 +190,21 @@ async function main(): Promise<number> {
     args = parseArgs(JSON.parse(fs.readFileSync(argsFile, "utf8")) as unknown);
   } catch (err) {
     console.error(`update helper: ${(err as Error).message}`);
+    return 2;
+  }
+
+  // Real-home guard (#313): fail fast before any install/restart when a
+  // drill would manage the real login unit or use the real data dir.
+  // An unmanaged drill on a scratch data dir is safe: the unit refresh
+  // inside the flow re-checks and refuses the write itself.
+  try {
+    const home = process.env.HOME ?? os.homedir();
+    assertNotRealHomeForWrite({
+      ...(args.managed ? { homeDir: home, unitPath: args.loginUnitPath } : {}),
+      dataDir: args.dataDir,
+    });
+  } catch (err) {
+    console.error(`update helper: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
 
