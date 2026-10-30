@@ -605,7 +605,7 @@ function AuthorCombobox({
         </Combobox.Trigger>
       </div>
       <Combobox.Portal>
-        <Combobox.Positioner anchor={boxRef} sideOffset={4} align="start" side="bottom" className="author-combo-positioner">
+        <Combobox.Positioner anchor={boxRef} sideOffset={4} align="start" side="bottom" className="ui-select-positioner">
           <Combobox.Popup className="ui-select-popup">
             <Combobox.Empty className="ui-select-empty">No matching authors — press Enter to search GitHub</Combobox.Empty>
             <Combobox.List>
