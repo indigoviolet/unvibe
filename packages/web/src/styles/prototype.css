@@ -892,11 +892,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prblock-tools .author-combo:focus-within { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
 .prblock-tools .author-combo > button { display: inline-flex; flex: none; align-items: center; justify-content: center; background: none; border: 0; padding: 0; margin: 0; color: var(--text-muted); cursor: pointer; }
 .prblock-tools .author-combo > button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); border-radius: var(--radius-4); }
-/* The dropdown lives in a body-level portal: like every other popover
-   it needs its own z-index to paint above the start page's `main`
-   stacking context (the option rows assert present but paint under the
-   card without it). Same level as the other popovers. */
-.author-combo-positioner { z-index: 30; }
+/* The combobox dropdown shares the select's positioner class
+   (`.ui-select-positioner` in ui.css), so its z-index lives there too. */
 .spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
 @keyframes prspin { to { transform: rotate(360deg); } }
 /* Reduced motion: the refresh icon stays still while fetching (the tooltip
