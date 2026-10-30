@@ -3160,7 +3160,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 });
 
 /**
- * #311: the data-format reset notice, light and dark at 1440px. Its own
+ * #311: the data-format reset notice, light and dark at 1440px and
+ * 800px. Its own
  * service on a seeded old-format data dir (a DB with no format stamp);
  * the notice is the whole page, so one frame per scheme is the scene.
  */
@@ -3235,13 +3236,15 @@ test.describe("data reset notice tour (#311)", () => {
   });
 
   for (const combo of [
-    { name: "1440-light", dark: false },
-    { name: "1440-dark", dark: true },
+    { name: "1440-light", dark: false, width: 1440 },
+    { name: "1440-dark", dark: true, width: 1440 },
+    { name: "800-light", dark: false, width: 800 },
+    { name: "800-dark", dark: true, width: 800 },
   ] as const) {
     test(`data reset notice (${combo.name})`, async ({ page }) => {
       if (!noticeSvc) throw new Error("notice service not running");
       test.setTimeout(120_000);
-      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.setViewportSize({ width: combo.width, height: 900 });
       if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
       await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });

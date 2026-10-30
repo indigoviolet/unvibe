@@ -93,16 +93,21 @@ function AsideInner({
       return <HighlightedCode language={inner.language} code={inner.code} top={top} />;
     case "diagram":
       return <DiagramView reviewId={reviewId} block={inner} onOpenPage={onOpenPage} />;
-    case "list":
-      return (
-        <ul className="lst">
-          {inner.items.map((item, i) => (
-            <li key={i}>
-              <span className="sel" data-top={top} dangerouslySetInnerHTML={{ __html: item.html }} />
-            </li>
-          ))}
-        </ul>
+    case "list": {
+      const listItems = inner.items.map((item, i) => (
+        <li key={i}>
+          <span className="sel" data-top={top} dangerouslySetInnerHTML={{ __html: item.html }} />
+        </li>
+      ));
+      // Issue #314: asides keep the list kind and start number too.
+      return inner.ordered ? (
+        <ol className="lst" {...(inner.start !== undefined && inner.start !== 1 ? { start: inner.start } : {})}>
+          {listItems}
+        </ol>
+      ) : (
+        <ul className="lst">{listItems}</ul>
       );
+    }
     default:
       return null;
   }
@@ -182,7 +187,12 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
           </li>
         );
       });
-      const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
+      // Issue #314: ordered lists keep their start number.
+      const list = block.ordered ? (
+        <ol className="lst" {...(block.start !== undefined && block.start !== 1 ? { start: block.start } : {})}>{items}</ol>
+      ) : (
+        <ul className="lst">{items}</ul>
+      );
       // Issue #165: no block-level citation union row under a list.
       // Issue #305: list-level sources no item shows land inline at the
       // end of the last item instead (see `uncoveredListCitations`).
