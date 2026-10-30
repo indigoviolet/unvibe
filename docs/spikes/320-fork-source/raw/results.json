@@ -1,0 +1,1305 @@
+{
+  "model": {
+    "provider": "pi",
+    "model": "muse-spark-1.3-contributor"
+  },
+  "capUsd": 1,
+  "dryRun": false,
+  "stopped403": null,
+  "noteUsage": {
+    "inputTokens": 2138,
+    "cachedReadTokens": 45553,
+    "cachedWriteTokens": 0,
+    "outputTokens": 1743
+  },
+  "layer": {
+    "sessionKind": "critic",
+    "totalReads": 28,
+    "uniqueItems": 25,
+    "includedItems": 25,
+    "chars": 7653
+  },
+  "totals": {
+    "inputTokens": 844981,
+    "cachedReadTokens": 1859737,
+    "cachedWriteTokens": 0,
+    "outputTokens": 114838
+  },
+  "spendUsd": 0.11118517400000001,
+  "results": [
+    {
+      "question": "Q1",
+      "kind": "why",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 197,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2273
+      },
+      "contextUsage": {
+        "inputTokens": 45596,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "costUsd": 0.0005654060000000001,
+      "ttftMs": 12580,
+      "totalMs": 15309,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:79-82` the change defines `HAVE_OPENSSL_ECH` only when `OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(OPENSSL_NO_ECH)`, and only then includes `openssl/ech.h`.\n\nAll C ECH implementation is behind that macro: e.g. `OSSL_ECHSTORE`/ `SSL_ech_*` helpers in `Modules/_ssl.c:5298-5502`, socket methods in `Modules/_ssl.c:2177-2281`, constants `ECH_STATUS_*` in `Modules/_ssl.c:7387-7399` and `OP_ECH_*` in `Modules/_ssl.c:7490-7495`.\n\nIt is exposed as `HAS_ECH=1/0` in `Modules/_ssl.c:7623-7627`, documented in `Doc/library/ssl.rst:1025-1029` as requiring OpenSSL 4.0 or later with ECH enabled.\n\n`Lib/ssl.py:155-159` defines `ECHStatus` only `if HAS_ECH:`; same for `SSLContext.set_outer_alpn_protocols` in `Lib/ssl.py:538-541`, `SSLObject.outer_server_hostname/set_ech_config/get_ech_status/get_ech_retry_config` in `Lib/ssl.py:866-870,1021-1036`, and `SSLSocket` equivalents in `Lib/ssl.py:1168-1173,1476-1491`. `Lib/test/test_ssl.py:2073-2095` asserts `hasattr(...)==HAS_ECH`, so on older OpenSSL those attributes are absent.\n\nPassing `ech_config` without ECH fails in `Lib/ssl.py:399-400` with `NotImplementedError(\"ECH is not supported by the OpenSSL library\")`, documented in `Doc/library/ssl.rst:2255-2257`; server-side use separately raises `ValueError` per `Lib/ssl.py:396-398`.\n\n`SSLECHRejectedError` itself is still imported in `Lib/ssl.py:107-112` via unconditional `Modules/_ssl.c:7308-7313`, but its `ECH_REQUIRED` mapping in `Modules/_ssl.c:775-780` and `retry_config` filling in `Modules/_ssl.c:645-663` are `#ifdef HAVE_OPENSSL_ECH`, so it is never raised there."
+    },
+    {
+      "question": "Q1",
+      "kind": "why",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 5274,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2388
+      },
+      "contextUsage": {
+        "inputTokens": 45596,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "sunkUsage": {
+        "inputTokens": 5157,
+        "cachedReadTokens": 138963,
+        "cachedWriteTokens": 0,
+        "outputTokens": 780
+      },
+      "costUsd": 0.001096106,
+      "ttftMs": 14283,
+      "totalMs": 16729,
+      "toolReads": [],
+      "answer": "ECH APIs only exist in OpenSSL 4.0+:\n\n* `Modules/_ssl.c:79-82` gates everything on `#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(OPENSSL_NO_ECH)` defining `HAVE_OPENSSL_ECH` and including `openssl/ech.h`.\n* `Doc/library/ssl.rst:1025-1028` documents `HAS_ECH` as requiring `OpenSSL 4.0 or later with ECH enabled`.\n* All bindings use that macro: `Modules/_ssl.c:2177-2281` `get_ech_status`/`get_ech_retry_config`/`set_ech_config`, `Modules/_ssl.c:4125-4162` `_set_outer_alpn_protocols`, `Modules/_ssl.c:5298-5502` `set_ech_config`/`load_ech_keys`, `Modules/_ssl.c:7387-7399` `ECH_STATUS_*`, `Modules/_ssl.c:7490-7495` `OP_ECH_*`.\n\nOn older OpenSSL:\n\n* `Modules/_ssl.c:7623-7627` sets `HAS_ECH` to `0`.\n* `Lib/ssl.py:155-159` only creates `ECHStatus` `if HAS_ECH:`, and `Lib/ssl.py:538-541`, `Lib/ssl.py:866-870`, `Lib/ssl.py:1021-1036`, `Lib/ssl.py:1168-1173`, `Lib/ssl.py:1476-1491` only define `set_outer_alpn_protocols`/`outer_server_hostname`/`set_ech_config`/`get_ech_status`/`get_ech_retry_config` `if HAS_ECH:`; `Lib/test/test_ssl.py:2073-2095` asserts `hasattr(...) == ssl.HAS_ECH`, so lookup fails.\n* Passing a config still parses arguments via `Lib/ssl.py:385-400`, where `if ech_config is not None and not HAS_ECH: raise NotImplementedError(\"ECH is not supported by the OpenSSL library\")`; `Doc/library/ssl.rst:2255-2257` documents `ech_config` raising `NotImplementedError` if `HAS_ECH` is `False`."
+    },
+    {
+      "question": "Q1",
+      "kind": "why",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 253,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2080
+      },
+      "contextUsage": {
+        "inputTokens": 47572,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "costUsd": 0.000536246,
+      "ttftMs": 11060,
+      "totalMs": 13672,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:79-82`:\n```c\n#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(OPENSSL_NO_ECH)\n#  define HAVE_OPENSSL_ECH 1\n#  include \"openssl/ech.h\"\n#endif\n```\n`Doc/library/ssl.rst:1025-1030` states: `HAS_ECH` means OpenSSL `4.0 or later with ECH enabled`.\n\nAll ECH bindings require that macro:\n\n* `Modules/_ssl.c:7388-7399`: `ECH_STATUS_*` only under `#ifdef HAVE_OPENSSL_ECH`.\n* `Modules/_ssl.c:7491-7494`: `OP_ECH_GREASE/TRIALDECRYPT/IGNORE_CID/GREASE_RETRY_CONFIG` only under same guard.\n* `Modules/_ssl.c:7623-7627`: `addbool(m,\"HAS_ECH\",1)` else `0`.\n* `Modules/clinic/_ssl.c.h:159,186,213,1287,2165,2207`: `get_ech_status/get_ech_retry_config/set_ech_config/_set_outer_alpn_protocols/load_ech_keys` wrapped in `#if defined(HAVE_OPENSSL_ECH)`, with empty `METHODDEF` fallbacks at `Modules/clinic/_ssl.c.h:3293-3319`.\n* `Lib/ssl.py:155-159`: `ECHStatus` only `if HAS_ECH:`.\n* `Lib/ssl.py:538-541,866-870,1021-1036,1168-1173,1476-1491`: `set_outer_alpn_protocols/outer_server_hostname/set_ech_config/get_ech_status/get_ech_retry_config` only `if HAS_ECH:`.\n\nOn older OpenSSL `Lib/test/test_ssl.py:2074-2095` asserts `hasattr(...,name)==ssl.HAS_ECH`, so lookups fail when `False`.\n\nPassing `ech_config` fails explicitly: `Lib/ssl.py:399-400` in `_check_sslobject_params`:\n```python\nif ech_config is not None and not HAS_ECH:\n    raise NotImplementedError(\"ECH is not supported by the OpenSSL library\")\n```\n`Doc/library/ssl.rst:2255-2257` documents for `wrap_socket`/`wrap_bio`: specifying `ech_config` raises `NotImplementedError` if `HAS_ECH` is `False`."
+    },
+    {
+      "question": "Q1",
+      "kind": "why",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 257,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 3471
+      },
+      "contextUsage": {
+        "inputTokens": 46291,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 27
+      },
+      "costUsd": 0.0008122860000000001,
+      "ttftMs": 20620,
+      "totalMs": 23500,
+      "toolReads": [],
+      "answer": "CPython gates ECH on the OpenSSL version because the implementation uses OpenSSL 4.0 ECH APIs:\n\n* `Modules/_ssl.c:79-82` defines `HAVE_OPENSSL_ECH` only if `OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(OPENSSL_NO_ECH)` and includes `openssl/ech.h`.\n* `Doc/library/ssl.rst:1025-1030` documents `HAS_ECH` as requiring `OpenSSL 4.0 or later with ECH enabled`.\n* Constants/methods are `#ifdef HAVE_OPENSSL_ECH`: `Modules/_ssl.c:7387-7399` for `ECH_STATUS_*`, `Modules/_ssl.c:7490-7495` for `OP_ECH_*`, `Modules/_ssl.c:7623-7627` sets `HAS_ECH` to `1` or `0`.\n\nOn older OpenSSL `HAS_ECH` is `False`, and the new APIs are absent:\n\n* `Lib/ssl.py:155-159` defines `ECHStatus` only `if HAS_ECH:`; `Lib/ssl.py:538-541`, `Lib/ssl.py:866-870`, `Lib/ssl.py:1021-1036`, `Lib/ssl.py:1168-1174`, `Lib/ssl.py:1476-1491` similarly guard `set_outer_alpn_protocols`, `outer_server_hostname`, `set_ech_config`, `get_ech_status`, `get_ech_retry_config`.\n* `Modules/clinic/_ssl.c.h:3293-3303` and `Modules/clinic/_ssl.c.h:3313-3319` define empty `METHODDEF`s without `HAVE_OPENSSL_ECH`, so `_ssl` has no ECH methods.\n* `Lib/test/test_ssl.py:2073-2095` asserts `hasattr(ssl,'ECHStatus')==ssl.HAS_ECH` and all `ECH_STATUS_*/OP_ECH_*` and context/socket ECH methods track `HAS_ECH`.\n\nPassing `ech_config` fails fast:\n\n* `Lib/ssl.py:399-400`: `if ech_config is not None and not HAS_ECH: raise NotImplementedError(\"ECH is not supported...\")` in `_check_sslobject_params`.\n* `Doc/library/ssl.rst:2255-2257`: `ech_config` raises `ValueError` if `server_side` is true, and `NotImplementedError` if `HAS_ECH` is `False`."
+    },
+    {
+      "question": "Q1",
+      "kind": "why",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 48419,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2055
+      },
+      "contextUsage": {
+        "inputTokens": 48267,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.0052529000000000005,
+      "ttftMs": 12567,
+      "totalMs": 15853,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:79-82` ECH is fenced by build:\n\n> `#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(OPENSSL_NO_ECH)` / `#define HAVE_OPENSSL_ECH` / `#include \"openssl/ech.h\"`.\n\n`Doc/library/ssl.rst:1025-1029` states `HAS_ECH` requires `OpenSSL 4.0 or later with ECH enabled`, because `SSL_ech_*`, `SSL_CTX_set1_echstore`, `OSSL_ECHSTORE_*` used in `Modules/_ssl.c:646-662,775-780,980-994,2238-2279,5299-5501` do not exist earlier.\n\nOn older OpenSSL:\n\n* `Modules/_ssl.c:7623-7627`: `addbool(m,\"HAS_ECH\",1)` under `#ifdef HAVE_OPENSSL_ECH`, else `addbool(m,\"HAS_ECH\",0)`.\n* `Modules/_ssl.c:7387-7399` and `Modules/_ssl.c:7491-7494`: `ECH_STATUS_*` and `OP_ECH_GREASE/TRIALDECRYPT/IGNORE_CID/GREASE_RETRY_CONFIG` are only `ADD_INT_CONST`/`ADD_OPTION` inside `#ifdef HAVE_OPENSSL_ECH`.\n* `Modules/clinic/_ssl.c.h:3293-3320`: empty `#ifndef ...METHODDEF / #define ...` fallbacks, so `_ssl._SSLContext/_SSLSocket` have no `set_ech_config/load_ech_keys/_set_outer_alpn_protos/get_ech_status/get_ech_retry_config`.\n* `Lib/ssl.py:155-159`, `Lib/ssl.py:538-541`, `Lib/ssl.py:866-870,1021-1036,1168-1173,1476-1491`: `ECHStatus`, `set_outer_alpn_protocols`, `outer_server_hostname`, `set_ech_config/get_ech_status/get_ech_retry_config` only defined `if HAS_ECH:`; verified by `Lib/test/test_ssl.py:2074-2095` checking `hasattr(...)==ssl.HAS_ECH`.\n* `Lib/ssl.py:399-400`: `_check_sslobject_params` raises `NotImplementedError(\"ECH is not supported by the OpenSSL library\")` if `ech_config is not None and not HAS_ECH`; documented in `Doc/library/ssl.rst:2255-2257` for `wrap_socket`/`wrap_bio`."
+    },
+    {
+      "question": "Q2",
+      "kind": "where",
+      "explored": true,
+      "source": "A",
+      "usage": {
+        "inputTokens": 45730,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1530
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 16
+      },
+      "costUsd": 0.004879,
+      "ttftMs": 9755,
+      "totalMs": 11982,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:776-779`, `PySSL_SetError()` maps OpenSSL failure to new type:\n\n> `ERR_GET_LIB(e)==ERR_LIB_SSL && ERR_GET_REASON(e)==SSL_R_ECH_REQUIRED` -> `state->PySSLECHRejectedErrorObject`.\n\nRegistered in `Modules/_ssl.c:7308-7313` as `SSLECHRejectedError` with base `state->PySSLErrorObject`, documented in `Doc/library/ssl.rst:324-337` as `SSLError` subclass raised when server rejected ECH.\n\nExtra data: `retry_config` attribute, interned in `Modules/_ssl.c:7870-7872` as `\"retry_config\"`.\n\nIn `Modules/_ssl.c:646-661`, `fill_and_set_sslerror()` when `type==PySSLECHRejectedErrorObject`:\n\n* calls `SSL_ech_get1_retry_config(sslsock->ssl,&config,&config_len)` in `Modules/_ssl.c:652`; on failure clears to `NULL/0` per comment `Modules/_ssl.c:650-654` only authenticated retry configs released;\n* builds `PyBytes_FromStringAndSize(config,config_len)` in `Modules/_ssl.c:656`;\n* sets `err_value.retry_config` in `Modules/_ssl.c:660`.\n\nDocumented in `Doc/library/ssl.rst:339-342`: server ECH retry `ECHConfigList`, or `b\"\"` if none. Exposed via `from _ssl import SSLECHRejectedError` in `Lib/ssl.py:110-111`."
+    },
+    {
+      "question": "Q2",
+      "kind": "where",
+      "explored": true,
+      "source": "B",
+      "usage": {
+        "inputTokens": 50701,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1335
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 18
+      },
+      "sunkUsage": {
+        "inputTokens": 5290,
+        "cachedReadTokens": 285862,
+        "cachedWriteTokens": 0,
+        "outputTokens": 661
+      },
+      "costUsd": 0.0053371,
+      "ttftMs": 9454,
+      "totalMs": 11509,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:776-778` `PySSL_SetError()` maps handshake failure to new type:\n\n> `if (ERR_GET_LIB(e)==ERR_LIB_SSL && ERR_GET_REASON(e)==SSL_R_ECH_REQUIRED) type=state->PySSLECHRejectedErrorObject;` guarded by `HAVE_OPENSSL_ECH`.\n\nRegistered in `Modules/_ssl.c:7308-7313` as subclass of `SSLError` (`SSLECHRejectedError_doc` at `Modules/_ssl.c:463-464`).\n\nExtra data in `Modules/_ssl.c:646-661` `fill_and_set_sslerror()`: only when `sslsock!=NULL && type==PySSLECHRejectedErrorObject`:\n\n* calls `SSL_ech_get1_retry_config(sslsock->ssl,&config,&config_len)` (`Modules/_ssl.c:652`);\n* on failure `!=1` sets `config=NULL,config_len=0` (`Modules/_ssl.c:653-654`) — comment `Modules/_ssl.c:650-651`: only authenticated outer-handshake configs released;\n* builds `PyBytes_FromStringAndSize(config,config_len)` (`Modules/_ssl.c:656`), `OPENSSL_free(config)` (`Modules/_ssl.c:657`), attaches as `retry_config` via `PyObject_SetAttr(err_value,state->str_retry_config,retry_obj)` (`Modules/_ssl.c:660`).\n\nDocumented in `Doc/library/ssl.rst:339-342`: `retry_config` is `ECHConfigList` or `b\"\"` if server provided none."
+    },
+    {
+      "question": "Q2",
+      "kind": "where",
+      "explored": true,
+      "source": "C",
+      "usage": {
+        "inputTokens": 303,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1802
+      },
+      "contextUsage": {
+        "inputTokens": 47572,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 86
+      },
+      "costUsd": 0.00048564600000000006,
+      "ttftMs": 9854,
+      "totalMs": 11969,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:775-779`, `PySSL_SetError` maps OpenSSL failure to new type:\n\n> `if (ERR_GET_LIB(e) == ERR_LIB_SSL && ERR_GET_REASON(e) == SSL_R_ECH_REQUIRED)` then `type = state->PySSLECHRejectedErrorObject`.\n\nType defined in `Modules/_ssl.c:463-464` (`SSLECHRejectedError_doc`), registered in `Modules/_ssl.c:7308-7313` as `SSLECHRejectedError` subclass of `PySSLErrorObject` (`Modules/_ssl.h:26`), exported in `Lib/ssl.py:110-111`.\n\nExtra data in `Modules/_ssl.c:646-662` inside `fill_and_set_sslerror`: when `type == PySSLECHRejectedErrorObject`:\n\n* `Modules/_ssl.c:652-654`: call `SSL_ech_get1_retry_config(sslsock->ssl,&config,&config_len)`; on failure use `NULL,0` — comment `Modules/_ssl.c:650-651`: `OpenSSL only releases retry configurations once the outer handshake has authenticated the server`.\n* `Modules/_ssl.c:656-660`: `PyBytes_FromStringAndSize(config,config_len)` + `PyObject_SetAttr(err_value, state->str_retry_config, retry_obj)` where `str_retry_config` is interned `\"retry_config\"` in `Modules/_ssl.c:7870-7871`.\n\nDocumented in `Doc/library/ssl.rst:339-342` as `retry_config`: server ECHConfigList or `b\"\"` if none provided."
+    },
+    {
+      "question": "Q2",
+      "kind": "where",
+      "explored": true,
+      "source": "D",
+      "usage": {
+        "inputTokens": 46431,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1562
+      },
+      "contextUsage": {
+        "inputTokens": 46291,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "costUsd": 0.0049555,
+      "ttftMs": 8943,
+      "totalMs": 11089,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c`, `PySSL_SetError()` maps OpenSSL failure `ERR_LIB_SSL` / `SSL_R_ECH_REQUIRED` to the new type:\n\n* `Modules/_ssl.c:776-779`: `if (ERR_GET_LIB(e)==ERR_LIB_SSL && ERR_GET_REASON(e)==SSL_R_ECH_REQUIRED) type=state->PySSLECHRejectedErrorObject;`\n* Registered in `Modules/_ssl.c:7308-7313` as `SSLECHRejectedError` subclass of `PySSLErrorObject`, re-exported in `Lib/ssl.py:110-111`.\n\nWhen raised via `fill_and_set_sslerror()`, it carries `retry_config: bytes`:\n\n* `Modules/_ssl.c:646-652`: only if `sslsock!=NULL && type==PySSLECHRejectedErrorObject`, call `SSL_ech_get1_retry_config(sslsock->ssl,&config,&config_len)`.\n* `Modules/_ssl.c:652-657`: on failure return `!=1`, use `config=NULL,len=0`; then `PyBytes_FromStringAndSize(config,config_len)` so unauthenticated/missing becomes `b\"\"`.\n* `Modules/_ssl.c:660-661`: `PyObject_SetAttr(err_value,state->str_retry_config,retry_obj)`.\n* `Modules/_ssl.c:7870-7872`: `str_retry_config` is interned `\"retry_config\"`.\n\nDocumented in `Doc/library/ssl.rst:324-342`: subclass of `SSLError` for server-rejected ECH, with `retry_config` ECHConfigList or `b\"\"`."
+    },
+    {
+      "question": "Q2",
+      "kind": "where",
+      "explored": true,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 48426,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1284
+      },
+      "contextUsage": {
+        "inputTokens": 48267,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 41
+      },
+      "costUsd": 0.0050994000000000005,
+      "ttftMs": 7946,
+      "totalMs": 9828,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:7308-7313` `SSLECHRejectedError` is registered as subclass of `SSLError`:\n`add_exception(state->PySSLECHRejectedErrorObject,\"SSLECHRejectedError\",SSLECHRejectedError_doc,state->PySSLErrorObject)`.\n\nMapping in `Modules/_ssl.c:775-780` inside `PySSL_SetError`:\n```c\nif (ERR_GET_LIB(e)==ERR_LIB_SSL &&\n    ERR_GET_REASON(e)==SSL_R_ECH_REQUIRED) {\n    type = state->PySSLECHRejectedErrorObject;\n}\n```\ni.e. OpenSSL `SSL_R_ECH_REQUIRED` failure.\n\nExtra data in `Modules/_ssl.c:646-661` inside `fill_and_set_sslerror`, only when `type==PySSLECHRejectedErrorObject`:\n```c\nif (SSL_ech_get1_retry_config(sslsock->ssl,&config,&config_len)!=1) {\n    config=NULL; config_len=0;\n}\nretry_obj=PyBytes_FromStringAndSize((const char *)config,config_len);\nOPENSSL_free(config);\nif (PyObject_SetAttr(err_value,state->str_retry_config,retry_obj))\n```\nwhere `state->str_retry_config` is interned `\"retry_config\"` at `Modules/_ssl.c:7870-7872`.\n\nResult documented in `Doc/library/ssl.rst:339-342`: `attribute retry_config`: server ECH retry `ECHConfigList`, or `b\"\"` if server did not provide one; comment at `Modules/_ssl.c:650-651` clarifies `b\"\"` when outer handshake has not authenticated server."
+    },
+    {
+      "question": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "source": "A",
+      "usage": {
+        "inputTokens": 214,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2349
+      },
+      "contextUsage": {
+        "inputTokens": 45596,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 38
+      },
+      "costUsd": 0.000582306,
+      "ttftMs": 13783,
+      "totalMs": 15480,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py:1479-1481`:\n\n```python\ndef set_ech_config(self, ech_config):\n    self._ech_config = ech_config\n    if self._sslobj is not None:\n        self._sslobj.set_ech_config(ech_config)\n```\n\nCache assignment at `Lib/ssl.py:1479` happens before validation.\n\nOn connected socket `Lib/ssl.py:1480` is true, so calls `_ssl._SSLSocket.set_ech_config`.\n\nThat C impl parses first in `Modules/_ssl.c:2253-2255`:\n\n```c\nOSSL_ECHSTORE *store = ech_store_from_config(state, ech_config);\nif (store == NULL) {\n    return NULL;\n```\n\nInvalid bytes fail there, before `Modules/_ssl.c:2257` `SSL_set1_echstore(self->ssl, store)`, so `SSL` object keeps old config but Python `self._ech_config` now holds invalid bytes.\n\nOn next reconnect `Lib/ssl.py:1520-1521` in `_real_connect` reuses it:\n\n```python\nif self._ech_config is not None:\n    self._sslobj.set_ech_config(self._ech_config)\n```\n\nSame re-apply in `_create` at `Lib/ssl.py:1142-1143`. Failed value is retried and connect fails again."
+    },
+    {
+      "question": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "source": "B",
+      "usage": {
+        "inputTokens": 51005,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 3765
+      },
+      "contextUsage": {
+        "inputTokens": 45596,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 23
+      },
+      "sunkUsage": {
+        "inputTokens": 5000,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 974
+      },
+      "costUsd": 0.0058535,
+      "ttftMs": 26458,
+      "totalMs": 28734,
+      "toolReads": [],
+      "answer": "`Lib/ssl.py:1478-1481` assigns `self._ech_config = ech_config` before `if self._sslobj is not None: self._sslobj.set_ech_config(ech_config)`.\n\nOn a connected client socket `self._sslobj` is not `None`, so the C call is entered with the cache already mutated.\n\n`Modules/_ssl.c:2242-2255` then validates: rejects non-client `socket_type`, rejects `!SSL_in_before(self->ssl)` after handshake, and calls `ech_store_from_config()` returning `NULL` for unparsable input.\n\n`Modules/_ssl.c:5318-5337` shows that path: `BIO_write` / `OSSL_ECHSTORE_read_echconfiglist` failure or `num_entries == 0` goes to `fail` with `_setSSLError()` and `return NULL`, so `SSL_set1_echstore()` is never reached.\n\nResult: `self._ech_config` remains the invalid bytes while the underlying `SSL` keeps its prior store.\n\n`Lib/ssl.py:1493-1495` (`_real_close`: `self._sslobj = None`) does not clear `self._ech_config`.\n\n`Lib/ssl.py:1520-1521` (`_real_connect`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`) reapplies that stale value to the fresh `SSL` object, so the next connect raises the same `SSLError`/`ValueError` again."
+    },
+    {
+      "question": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "source": "C",
+      "usage": {
+        "inputTokens": 281,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2092
+      },
+      "contextUsage": {
+        "inputTokens": 47572,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 49
+      },
+      "costUsd": 0.000541446,
+      "ttftMs": 12169,
+      "totalMs": 14063,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py:1478-1481`:\n\n```python\ndef set_ech_config(self, ech_config):\n    self._ech_config = ech_config\n    if self._sslobj is not None:\n        self._sslobj.set_ech_config(ech_config)\n```\n\nOn an already-connected socket `self._sslobj is not None` (`Lib/ssl.py:1480`), so the C call is attempted.\n\nIn `Modules/_ssl.c:2242-2256` the C implementation validates before applying:\n\n```c\nif (self->socket_type != PY_SSL_CLIENT) { ... return NULL; }\nif (!SSL_in_before(self->ssl)) { ... return NULL; }\nOSSL_ECHSTORE *store = ech_store_from_config(state, ech_config);\nif (store == NULL) { return NULL; }\n```\n\nInvalid bytes fail in `ech_store_from_config` (`Modules/_ssl.c:5318-5329`) and return `NULL` without reaching `SSL_set1_echstore(self->ssl,store)` (`Modules/_ssl.c:2257-2258`), so the underlying `SSL` keeps its old store while the exception propagates.\n\nLeft behind: `self._ech_config` is already the invalid value (`Lib/ssl.py:1479`).\n\nOn next reconnect it is re-applied:\n\n* `Lib/ssl.py:1142-1143`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)` in `_create`.\n* `Lib/ssl.py:1520-1521`: same pattern in `_real_connect`."
+    },
+    {
+      "question": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "source": "D",
+      "usage": {
+        "inputTokens": 46446,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2410
+      },
+      "contextUsage": {
+        "inputTokens": 13666,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "costUsd": 0.0051266,
+      "ttftMs": 15685,
+      "totalMs": 17691,
+      "toolReads": [],
+      "answer": "`SSLSocket.set_ech_config` assigns before validating:\n\n* `Lib/ssl.py:1479`: `self._ech_config = ech_config`\n* `Lib/ssl.py:1480-1481`: `if self._sslobj is not None: self._sslobj.set_ech_config(ech_config)`\n\nOn an already-connected socket `self._sslobj is not None`, so it enters the C implementation after the cache is mutated.\n\nThe C implementation fails after that point without updating `self->ssl`:\n\n* `Modules/_ssl.c:2247-2250`: `if (!SSL_in_before(self->ssl))` -> `ValueError: Cannot set ECH configuration after handshake.`\n* `Modules/_ssl.c:2253-2255`: `store = ech_store_from_config(...); if (store == NULL) return NULL;` -> `SSLError` for invalid bytes.\n* `Modules/_ssl.c:2257-2262`: `SSL_set1_echstore()` only reached on success.\n\nLeft behind: `self._ech_config` is the invalid bytes, while the underlying `SSL` retains the prior configuration — wrapper/connection diverged.\n\nOn next reconnect the stale value is reapplied:\n\n* `Lib/ssl.py:1520-1521`: `_real_connect`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`\n* `Lib/ssl.py:1142-1143`: `_create`: same re-apply pattern."
+    },
+    {
+      "question": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 15793,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1368
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 18
+      },
+      "costUsd": 0.0019181500000000002,
+      "ttftMs": 9150,
+      "totalMs": 11154,
+      "toolReads": [],
+      "answer": "`Lib/ssl.py:1479-1481`:\n\n```python\ndef set_ech_config(self, ech_config):\n    self._ech_config = ech_config\n    if self._sslobj is not None:\n        self._sslobj.set_ech_config(ech_config)\n```\n\nOn an already-connected socket `self._sslobj is not None`, so it calls into `Modules/_ssl.c:2238-2279` after mutating the cache.\n\nThat C impl validates after the cache write: `socket_type!=PY_SSL_CLIENT` and `!SSL_in_before(self->ssl)` raise `ValueError` `Modules/_ssl.c:2242-2250`, and `ech_store_from_config()` failure returns `NULL` without calling `SSL_set1_echstore()` `Modules/_ssl.c:2253-2256`. Invalid bytes fail in `ech_store_from_config()` via `OSSL_ECHSTORE_read_echconfiglist` / `num_entries==0` `Modules/_ssl.c:5299-5338`.\n\nLeft behind: `self._ech_config` holds the invalid bytes that raised, while the underlying `self->ssl` retains the old store.\n\nOn next reconnect `Lib/ssl.py:1520-1521` in `_real_connect`:\n\n```python\nif self._ech_config is not None:\n    self._sslobj.set_ech_config(self._ech_config)\n```\n\nre-applies that known-bad value, so the failure repeats. Same re-apply exists in `_create` `Lib/ssl.py:1139-1143`."
+    },
+    {
+      "question": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 45753,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1664
+      },
+      "contextUsage": {
+        "inputTokens": 29355,
+        "cachedReadTokens": 16241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 49
+      },
+      "costUsd": 0.0049081,
+      "ttftMs": 8048,
+      "totalMs": 12526,
+      "toolReads": [],
+      "answer": "`Lib/test/test_ssl.py:2048` defines `class ECHTests` with `Lib/test/test_ssl.py:2056-2060` `ECH_CONFIG` bytes for `localhost` with `X25519/HKDF-SHA256/AES-128-GCM`.\n\nCovered:\n\n* Availability/shape: `Lib/test/test_ssl.py:2073-2095` checks `ECHStatus`, `ECH_STATUS_*`/`OP_ECH_*` presence equals `HAS_ECH`, `SSLECHRejectedError` subclassing, and context/socket method presence.\n* No-SSL-object behavior: `Lib/test/test_ssl.py:2098-2106` expects `None` for `outer_server_hostname`/`get_ech_status`/`get_ech_retry_config`.\n* Client config parsing: `Lib/test/test_ssl.py:2109-2125` accepts `bytes/bytearray/memoryview`, rejects `None/str/int` with `TypeError` and empty/truncated/invalid with `SSLError`; `Lib/test/test_ssl.py:2128-2130` accepts base64; `Lib/test/test_ssl.py:2145-2175` checks mixed versions/suites.\n* Roles: `Lib/test/test_ssl.py:2133-2142` server `set_ech_config` and client `load_ech_keys` fail, generic `PROTOCOL_TLS` allows both.\n* Keys: `Lib/test/test_ssl.py:2325-2360` path types, missing file, invalid/public-only/mismatched/encrypted PEM, prior keys remain usable; `Lib/test/test_ssl.py:2363-2377` password string/callable, failing callback, unencrypted with callback.\n* Handshakes: `Lib/test/test_ssl.py:2380-2420` success for two `config_id`s, `outer_server_hostname=='public.example'`, SNI visibility, data exchange, GREASE `retry_config`; `Lib/test/test_ssl.py:2260-2296` stale-config `SSLECHRejectedError/ECH_REQUIRED`, retry usable via `wrap_socket`; `Lib/test/test_ssl.py:2216-2257` per-connection `ech_config` override.\n* ALPN/GREASE/status: `Lib/test/test_ssl.py:2299-2322` outer selection on reject; `Lib/test/test_ssl.py:2442-2476` outer-ALPN setters/isolation; `Lib/test/test_ssl.py:2479-2488` `GREASE`; `Lib/test/test_ssl.py:2423-2439` `NOT_TRIED/NOT_CONFIGURED`; `Lib/test/test_ssl.py:2504-2530` rejected `FAILED` status and `nomemtest` allocation.\n\nSkipped: most use `Lib/test/test_ssl.py:2049-2053` `requires_ech_x25519`, i.e. `skipUnless(ssl.HAS_ECH and 'x25519' in ...get_groups())`; remainder use `Lib/test/test_ssl.py:2097,2441,2454,2465,2478` `skipUnless(ssl.HAS_ECH,'requires ECH')`."
+    },
+    {
+      "question": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 5205,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2271
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 50
+      },
+      "sunkUsage": {
+        "inputTokens": 5135,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 708
+      },
+      "costUsd": 0.001065806,
+      "ttftMs": 10662,
+      "totalMs": 14924,
+      "toolReads": [],
+      "answer": "`ECHTests` in `Lib/test/test_ssl.py:2048` covers client/server ECH using `ECH_CONFIG` defined in `Lib/test/test_ssl.py:2055-2060` as localhost `X25519/HKDF-SHA256/AES-128-GCM` list plus helpers `make_ssl_objects`, `read_ech_key_and_config`, `stale_config`, `handshake_bio_pair`, `echo_server_thread` in `Lib/test/test_ssl.py:2062-2214`:\n\n* API availability: `test_availability` in `Lib/test/test_ssl.py:2073-2095` checks `ECHStatus`/`ECH_STATUS_*`/`OP_ECH_*` and `_ssl`/`ssl` methods; `test_socket_without_ssl_object` in `Lib/test/test_ssl.py:2097-2106` checks `None` returns pre-connect.\n* Client config: `test_set_ech_config` in `Lib/test/test_ssl.py:2108-2125` covers `bytes`/`bytearray`/`memoryview`, buffer release, `TypeError`/`SSLError`; `test_set_ech_config_base64` in `Lib/test/test_ssl.py:2127-2130`, mixed versions in `Lib/test/test_ssl.py:2144-2155` and unsupported suites in `Lib/test/test_ssl.py:2157-2175`, role errors in `Lib/test/test_ssl.py:2132-2142`.\n* Keys: `test_load_ech_keys` in `Lib/test/test_ssl.py:2324-2360` and password variant in `Lib/test/test_ssl.py:2362-2377` cover path types, `OSError`, mismatched/encrypted PEM, `for_retry=False` in `Lib/test/test_ssl.py:2391-2392`.\n* Handshakes: per-connection override in `Lib/test/test_ssl.py:2215-2257`, reject/retry reuse in `Lib/test/test_ssl.py:2259-2296`, outer-ALPN selection in `Lib/test/test_ssl.py:2298-2322`, full `BIO` echo and `GREASE` retry in `Lib/test/test_ssl.py:2379-2420`, pre-handshake status in `Lib/test/test_ssl.py:2422-2439`, unauthenticated reject in `Lib/test/test_ssl.py:2490-2512`, allocation failure in `Lib/test/test_ssl.py:2514-2530`; outer-ALPN/GREASE-only tests in `Lib/test/test_ssl.py:2441-2488`.\n\nMost is skipped by `requires_ech_x25519` defined in `Lib/test/test_ssl.py:2049-2053` as `skipUnless(ssl.HAS_ECH and 'x25519' in ...get_groups())`, applied in `Lib/test/test_ssl.py:2108-2109`, `2127-2128`, `2132-2133`, `2144-2145`, `2157-2158`, `2215`, `2259`, `2298`, `2324`, `2362`, `2379`, `2422`, `2504`, `2514-2515`; only `test_availability`, `test_socket_without_ssl_object` in `Lib/test/test_ssl.py:2097`, and outer-ALPN/`GREASE` tests in `Lib/test/test_ssl.py:2441,2454,2465,2478` use weaker `HAS_ECH`-only or no gate."
+    },
+    {
+      "question": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 47700,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2145
+      },
+      "contextUsage": {
+        "inputTokens": 47572,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.005199,
+      "ttftMs": 9762,
+      "totalMs": 13057,
+      "toolReads": [],
+      "answer": "`Lib/test/test_ssl.py:2048` adds `class ECHTests(unittest.TestCase)` with `ECH_CONFIG` localhost fixture `Lib/test/test_ssl.py:2056-2060`.\n\nSkipping: `Lib/test/test_ssl.py:2049-2053` defines `requires_ech_x25519=skipUnless(ssl.HAS_ECH and 'x25519' in ...get_groups())`; most tests use it and skip without OpenSSL-4.0 ECH plus X25519. `Lib/test/test_ssl.py:2097,2441,2454,2465,2478` use `skipUnless(ssl.HAS_ECH)` only. `Lib/test/test_ssl.py:2073-2095` `test_availability` is unskipped, asserting `hasattr(ssl,'ECHStatus')==HAS_ECH`, `ECH_STATUS_/OP_ECH_` presence, `SSLECHRejectedError` subclassing `SSLError`, and context/socket method presence.\n\nCoverage:\n* `Lib/test/test_ssl.py:2098-2106`: `None` status/retry/outer-name without `SSL` object.\n* `Lib/test/test_ssl.py:2109-2130`: `set_ech_config` accepts `bytes/bytearray/memoryview`, releases buffer, rejects `None/str/int` with `TypeError` and truncated/invalid with `SSLError`; Base64 accepted.\n* `Lib/test/test_ssl.py:2133-2155`: role checks — server `set_ech_config` raises `PROTOCOL_TLS_SERVER`, client `load_ech_keys` raises `PROTOCOL_TLS_CLIENT`; mixed supported/unsupported versions.\n* `Lib/test/test_ssl.py:2158-2175`: unsupported KEM/KDF/AEAD rejects whole list.\n* `Lib/test/test_ssl.py:2216-2296`: per-connection `ech_config` overrides stale context config, `ValueError` after handshake/server-side, retry flow: `SSLECHRejectedError/ECH_REQUIRED`, `retry_config` reusable for socket and BIO pairs.\n* `Lib/test/test_ssl.py:2299-2322,2444-2476`: outer vs inner ALPN selection and validation.\n* `Lib/test/test_ssl.py:2325-2377`: `load_ech_keys` path types, `OSError/ValueError/TypeError/SSLError` cases, encrypted-key passwords/callables, failed loads leave keys usable.\n* `Lib/test/test_ssl.py:2380-2420`: successful handshake for two `config_id`s, `ECH_STATUS_SUCCESS`, `outer_server_hostname=='public.example'`, inner-name `sni_callback`.\n* `Lib/test/test_ssl.py:2423-2488,2504-2530`: `NOT_TRIED/NOT_CONFIGURED/GREASE/FAILED` statuses, empty retry when server has no ECH, `nomemtest` allocation failure."
+    },
+    {
+      "question": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 233,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1971
+      },
+      "contextUsage": {
+        "inputTokens": 46291,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 27
+      },
+      "costUsd": 0.0005098860000000001,
+      "ttftMs": 7946,
+      "totalMs": 11510,
+      "toolReads": [],
+      "answer": "`Lib/test/test_ssl.py:2048` defines `class ECHTests`.\n\nGate when most skipped: `Lib/test/test_ssl.py:2049-2053` defines `requires_ech_x25519 = unittest.skipUnless(ssl.HAS_ECH and 'x25519' in ...get_groups(), ...)`; tests using it are skipped without ECH build support plus X25519. Remainder use `Lib/test/test_ssl.py:2097,2441,2454,2465,2478` form `@unittest.skipUnless(ssl.HAS_ECH, 'requires ECH')`.\n\nCovers:\n\n* Fixture `ECH_CONFIG` localhost X25519/HKDF-SHA256/AES-128-GCM list: `Lib/test/test_ssl.py:2055-2060`.\n* API availability across `ssl`/`_ssl`, `ECHStatus`, `SSLECHRejectedError`, context/socket methods: `Lib/test/test_ssl.py:2073-2095`.\n* `None`/`b''` behavior with no `SSL` object: `Lib/test/test_ssl.py:2098-2106`.\n* `set_ech_config` type/buffer handling and invalid inputs: `Lib/test/test_ssl.py:2109-2125`; Base64 input: `Lib/test/test_ssl.py:2128-2130`; mixed supported/unsupported versions: `Lib/test/test_ssl.py:2145-2155`; unsupported KEM/KDF/AEAD suites: `Lib/test/test_ssl.py:2158-2175`.\n* Client/server role errors for `set_ech_config`/`load_ech_keys`: `Lib/test/test_ssl.py:2133-2142`.\n* Helpers to read `ech*.pem`, corrupt HPKE key, drive BIO handshake, echo over socketpair: `Lib/test/test_ssl.py:2177-2213`.\n* Per-connection `ech_config` override, post-handshake/server-mode errors, unconnected-socket caching: `Lib/test/test_ssl.py:2216-2257`; stale-config rejection, `ECH_REQUIRED`/`retry_config`, retry connects and echo: `Lib/test/test_ssl.py:2260-2296`; successful handshake, SNI, I/O, GREASE retry-config: `Lib/test/test_ssl.py:2380-2420`; rejected handshake without server ECH: `Lib/test/test_ssl.py:2490-2512`; allocation-failure path: `Lib/test/test_ssl.py:2514-2530`.\n* Outer ALPN set/validation and independence from inner ALPN, including rejection case: `Lib/test/test_ssl.py:2299-2322,2442-2476`.\n* `load_ech_keys` paths, mismatched/encrypted/password-callback cases: `Lib/test/test_ssl.py:2325-2377`.\n* `NOT_TRIED`/`NOT_CONFIGURED` before handshake and GREASE status: `Lib/test/test_ssl.py:2423-2488`."
+    },
+    {
+      "question": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 12579,
+        "cachedReadTokens": 35825,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1745
+      },
+      "contextUsage": {
+        "inputTokens": 48267,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 29
+      },
+      "costUsd": 0.0016785500000000002,
+      "ttftMs": 7544,
+      "totalMs": 10732,
+      "toolReads": [],
+      "answer": "`Lib/test/test_ssl.py:2048` adds `class ECHTests(unittest.TestCase)` with `ECH_CONFIG` test vector at `Lib/test/test_ssl.py:2056-2060` and helpers `read_ech_key_and_config`, `stale_config`, `handshake_bio_pair`, `echo_server_thread` at `Lib/test/test_ssl.py:2177-2213`.\n\nCovers:\n* API availability: `test_availability` at `Lib/test/test_ssl.py:2073-2095` checks `ECHStatus`, `ECH_STATUS_`/`OP_ECH_` names, `SSLECHRejectedError` subclassing, context vs socket methods.\n* Config parsing: `test_set_ech_config` at `Lib/test/test_ssl.py:2109-2125`, `test_set_ech_config_base64` at `Lib/test/test_ssl.py:2128-2130`, `test_mixed_ech_config_versions` at `Lib/test/test_ssl.py:2145-2155`, `test_mixed_ech_config_unsupported_suites` at `Lib/test/test_ssl.py:2158-2175`.\n* Roles/connection config: `test_context_roles` at `Lib/test/test_ssl.py:2133-2142`, `test_connection_ech_config` at `Lib/test/test_ssl.py:2216-2257`.\n* Handshake/retry: `test_rejected_ech_retry_config` at `Lib/test/test_ssl.py:2260-2296`, `test_ech_handshake` at `Lib/test/test_ssl.py:2380-2420`, `test_rejected_ech` at `Lib/test/test_ssl.py:2505-2512` via `make_rejected_client` at `Lib/test/test_ssl.py:2490-2502`.\n* Keys: `test_load_ech_keys` at `Lib/test/test_ssl.py:2325-2360`, `test_load_ech_keys_password` at `Lib/test/test_ssl.py:2363-2377`.\n* ALPN/GREASE/status: `test_outer_alpn_with_connection_ech_config` at `Lib/test/test_ssl.py:2299-2322`, `test_status_before_handshake` at `Lib/test/test_ssl.py:2423-2439`, `test_set_outer_alpn_protocols` at `Lib/test/test_ssl.py:2442-2452`, `test_outer_alpn_does_not_replace_inner` at `Lib/test/test_ssl.py:2455-2463`, `test_outer_alpn_without_ech_config` at `Lib/test/test_ssl.py:2466-2476`, `test_grease` at `Lib/test/test_ssl.py:2479-2488`, `test_socket_without_ssl_object` at `Lib/test/test_ssl.py:2098-2106`, `test_status_allocation_failure` at `Lib/test/test_ssl.py:2516-2530`.\n\nSkipped when: most use `requires_ech_x25519` defined at `Lib/test/test_ssl.py:2049-2053` as `unittest.skipUnless(ssl.HAS_ECH and 'x25519' in ...get_groups(),'requires ECH with X25519')`; remainder use `@unittest.skipUnless(ssl.HAS_ECH,'requires ECH')` e.g. `Lib/test/test_ssl.py:2097,2441,2454,2465,2478,2541`. Only `test_availability` runs without ECH."
+    },
+    {
+      "question": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "source": "A",
+      "usage": {
+        "inputTokens": 176,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1740
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 19
+      },
+      "costUsd": 0.00045670600000000003,
+      "ttftMs": 6940,
+      "totalMs": 9586,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py` → `Modules/_ssl.c` → OpenSSL:\n\n* `SSLContext.wrap_socket(sock,...,ech_config=None)` `Lib/ssl.py:481` and `wrap_bio(...ech_config=None)` `Lib/ssl.py:496` forward to `SSLSocket._create(...ech_config=ech_config)` `Lib/ssl.py:492` / `SSLObject._create(...ech_config=ech_config)` `Lib/ssl.py:502`.\n* Validation layer 1 — ` _check_sslobject_params` `Lib/ssl.py:396-400`: `server_side+ech_config` → `ValueError: client mode`; `ech_config and not HAS_ECH` → `NotImplementedError`.\n* `SSLObject._create` `Lib/ssl.py:841-853`: `_wrap_bio()` then `sslobj.set_ech_config(ech_config)` if not `None`; no caching.\n* `SSLSocket._create` caches `self._ech_config=ech_config` `Lib/ssl.py:1083`, then after `_wrap_socket` does `self._sslobj.set_ech_config(self._ech_config)` `Lib/ssl.py:1142-1143`; same re-apply in `_real_connect` `Lib/ssl.py:1520-1521`. `SSLSocket.set_ech_config` `Lib/ssl.py:1478-1481` updates cache + delegates if connected.\n* Validation layer 2 — `_ssl._SSLSocket.set_ech_config_impl` `Modules/_ssl.c:2242-2250`: `socket_type!=PY_SSL_CLIENT` → `ValueError`; `!SSL_in_before(ssl)` → `ValueError: after handshake`.\n* Transform — `ech_store_from_config` `Modules/_ssl.c:5302-5329`: `len>INT_MAX` → `OverflowError`; `BIO_new+ BIO_write` raw `Py_buffer`, `OSSL_ECHSTORE_new` + `OSSL_ECHSTORE_read_echconfiglist` (binary or Base64 auto-detect); `OSSL_ECHSTORE_num_entries!=1` / `==0` → `SSLError`.\n* Install — socket: `SSL_set1_echstore(ssl,store)` `Modules/_ssl.c:2257`, then restore context outer-ALPN `SSL_ech_set1_outer_alpn_protos` `Modules/_ssl.c:2267-2270`. Context: `_ssl._SSLContext.set_ech_config_impl` rejects `PROTOCOL_TLS_SERVER` `Modules/_ssl.c:5358-5362`, same transform, then `SSL_CTX_set1_echstore(ctx,store)` under `tstate_mutex` `Modules/_ssl.c:5369-5371`."
+    },
+    {
+      "question": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "source": "B",
+      "usage": {
+        "inputTokens": 5030,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2528
+      },
+      "contextUsage": {
+        "inputTokens": 29355,
+        "cachedReadTokens": 16241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "sunkUsage": {
+        "inputTokens": 4918,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 555
+      },
+      "costUsd": 0.0010997060000000002,
+      "ttftMs": 14983,
+      "totalMs": 18386,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py`, `SSLContext.wrap_socket(sock,...,ech_config=None)` (`Lib/ssl.py:478-493`) and `wrap_bio(...,ech_config=None)` (`Lib/ssl.py:495-503`) forward to `SSLSocket._create` / `SSLObject._create`.\n\nBoth `_create` paths first call `_check_sslobject_params` (`Lib/ssl.py:843-845`, `Lib/ssl.py:1067-1069`): `server_side+ech_config` → `ValueError` (`Lib/ssl.py:396-398`), `ech_config` without `HAS_ECH` → `NotImplementedError` (`Lib/ssl.py:399-400`).\n\n`SSLObject._create` then does `context._wrap_bio(...)` plus `sslobj.set_ech_config(ech_config)` if set (`Lib/ssl.py:847-853`). `SSLSocket._create` caches `self._ech_config=ech_config` (`Lib/ssl.py:1083`), creates `self._sslobj` (`Lib/ssl.py:1139-1141`), then `self._sslobj.set_ech_config(self._ech_config)` (`Lib/ssl.py:1142-1143`); `SSLSocket.set_ech_config` re-caches then delegates (`Lib/ssl.py:1478-1481`), and `_real_connect` re-applies cache on lazy connect (`Lib/ssl.py:1520-1521`).\n\nIn `Modules/_ssl.c`, `_ssl._SSLSocket.set_ech_config_impl` (`Modules/_ssl.c:2242-2278`) validates: non-client → `ValueError` (`Modules/_ssl.c:2242-2246`), `!SSL_in_before` → `ValueError` (`Modules/_ssl.c:2247-2251`).\n\nTransform in `ech_store_from_config` (`Modules/_ssl.c:5300-5338`): `len>INT_MAX` → `OverflowError`, `BIO_new`+`OSSL_ECHSTORE_new`, `BIO_write`+`OSSL_ECHSTORE_read_echconfiglist` (accepts binary or Base64), `OSSL_ECHSTORE_num_entries==0` → `ERR_R_PASSED_INVALID_ARGUMENT`.\n\nInstall: `SSL_set1_echstore(ssl,store)` (`Modules/_ssl.c:2257-2262`) for sockets, `SSL_CTX_set1_echstore` under `tstate_mutex` (`Modules/_ssl.c:5369-5376`) for `SSLContext.set_ech_config` after `PROTOCOL_TLS_SERVER` rejection (`Modules/_ssl.c:5358-5363`). Socket path then restores context outer-ALPN via `SSL_ech_set1_outer_alpn_protos` (`Modules/_ssl.c:2265-2272`); `newPySSLSocket` clears it when status is `NOT_CONFIGURED/GREASE` (`Modules/_ssl.c:980-994`)."
+    },
+    {
+      "question": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "source": "C",
+      "usage": {
+        "inputTokens": 235,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2416
+      },
+      "contextUsage": {
+        "inputTokens": 99,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "costUsd": 0.0006016460000000001,
+      "ttftMs": 12878,
+      "totalMs": 16503,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py`:\n\n* `SSLContext.wrap_socket(..., ech_config=None)` at `Lib/ssl.py:481` forwards `ech_config=ech_config` to `SSLSocket._create` at `Lib/ssl.py:492`; `SSLContext.wrap_bio(..., ech_config=None)` at `Lib/ssl.py:496` forwards to `SSLObject._create` at `Lib/ssl.py:502`.\n* Both `_create` call `_check_sslobject_params(..., ech_config)` at `Lib/ssl.py:844`/`Lib/ssl.py:1068`, defined at `Lib/ssl.py:385`: rejects `server_side+ech_config` with `ValueError` at `Lib/ssl.py:396` and `ech_config` without `HAS_ECH` with `NotImplementedError` at `Lib/ssl.py:399`.\n* `SSLObject._create` at `Lib/ssl.py:841`: after `context._wrap_bio` at `Lib/ssl.py:847`, `if ech_config is not None: sslobj.set_ech_config(ech_config)` at `Lib/ssl.py:852`.\n* `SSLSocket._create` at `Lib/ssl.py:1064`: caches `self._ech_config=ech_config` at `Lib/ssl.py:1083`, then after `_wrap_socket` at `Lib/ssl.py:1139`, `if self._ech_config is not None: self._sslobj.set_ech_config` at `Lib/ssl.py:1142`; same re-apply on deferred connect in `_real_connect` at `Lib/ssl.py:1520`. `SSLSocket.set_ech_config` at `Lib/ssl.py:1478` updates cache at `Lib/ssl.py:1479` then delegates at `Lib/ssl.py:1481`.\n\nIn `Modules/_ssl.c` + `Modules/clinic/_ssl.c.h`:\n\n* Clinic `PyObject_GetBuffer(...,PyBUF_SIMPLE)` at `Modules/clinic/_ssl.c.h:236` (socket) / `Modules/clinic/_ssl.c.h:2189` (context) enforces bytes-like.\n* `_ssl._SSLSocket.set_ech_config` at `Modules/_ssl.c:2239`: rejects non-client at `Modules/_ssl.c:2242`, post-handshake `!SSL_in_before` at `Modules/_ssl.c:2247`, then `ech_store_from_config` at `Modules/_ssl.c:2253` + `SSL_set1_echstore` at `Modules/_ssl.c:2257`, then restores `ctx->outer_alpn_protocols` via `SSL_ech_set1_outer_alpn_protos` at `Modules/_ssl.c:2268`.\n* `ech_store_from_config` at `Modules/_ssl.c:5300`: `len>INT_MAX` check at `Modules/_ssl.c:5302`, `BIO_write`+`OSSL_ECHSTORE_read_echconfiglist` at `Modules/_ssl.c:5318`, `OSSL_ECHSTORE_num_entries`/`==0` check at `Modules/_ssl.c:5323`.\n* `_ssl._SSLContext.set_ech_config` at `Modules/_ssl.c:5354`: rejects `PROTOCOL_TLS_SERVER` at `Modules/_ssl.c:5358`, then store + `SSL_CTX_set1_echstore` under `tstate_mutex` at `Modules/_ssl.c:5370`."
+    },
+    {
+      "question": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "source": "D",
+      "usage": {
+        "inputTokens": 235,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2300
+      },
+      "contextUsage": {
+        "inputTokens": 13666,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 23
+      },
+      "costUsd": 0.000575886,
+      "ttftMs": 10765,
+      "totalMs": 14356,
+      "toolReads": [],
+      "answer": "`ech_config` path:\n\n* `SSLContext.wrap_socket(..., ech_config=None)` at `Lib/ssl.py:478-481` forwards to `SSLSocket._create(..., ech_config=ech_config)` at `Lib/ssl.py:488-493`; `SSLContext.wrap_bio(..., ech_config=None)` at `Lib/ssl.py:495-496` forwards to `SSLObject._create(..., ech_config=ech_config)` at `Lib/ssl.py:499-503`.\n* Validation in `_check_sslobject_params`: signature at `Lib/ssl.py:385-386`; `server_side+ech_config→ValueError` at `Lib/ssl.py:396-398`; `ech_config without HAS_ECH→NotImplementedError` at `Lib/ssl.py:399-400`; called from both `_create` paths at `Lib/ssl.py:843-845` and `Lib/ssl.py:1067-1069`.\n* `SSLObject._create` at `Lib/ssl.py:841-853`: creates BIO object via `context._wrap_bio` at `Lib/ssl.py:847-851`, then `if ech_config is not None: sslobj.set_ech_config` at `Lib/ssl.py:852-853`.\n* `SSLSocket._create` caches at `Lib/ssl.py:1083` (`self._ech_config=ech_config`), installs after `_wrap_socket` at `Lib/ssl.py:1142-1143` and after implicit connect in `_real_connect` at `Lib/ssl.py:1520-1521` via `self._sslobj.set_ech_config`.\n* Python setters are thin: `SSLObject.set_ech_config` at `Lib/ssl.py:1022-1028` calls `self._sslobj.set_ech_config`; `SSLSocket.set_ech_config` at `Lib/ssl.py:1479-1481` caches then delegates if connected.\n* Clinic `set_ech_config` at `Modules/clinic/_ssl.c.h:230-246` does `PyObject_GetBuffer(...,PyBUF_SIMPLE)` to `Py_buffer`.\n* `PySSLSocket.set_ech_config_impl` at `Modules/_ssl.c:2238-2279`: rejects `socket_type!=PY_SSL_CLIENT` at `Modules/_ssl.c:2242-2245`, rejects `!SSL_in_before` at `Modules/_ssl.c:2247-2250`, builds store via `ech_store_from_config` at `Modules/_ssl.c:2253-2256`, installs via `SSL_set1_echstore` at `Modules/_ssl.c:2257-2258`, restores context outer-ALPN at `Modules/_ssl.c:2265-2270`.\n* `ech_store_from_config` at `Modules/_ssl.c:5299-5338`: `len>INT_MAX→OverflowError` at `Modules/_ssl.c:5302-5305`, `BIO_write+OSSL_ECHSTORE_read_echconfiglist` at `Modules/_ssl.c:5318-5321`, `num_entries==0→SSLError` at `Modules/_ssl.c:5322-5329`.\n* Context install `set_ech_config_impl` at `Modules/_ssl.c:5353-5378`: rejects `PROTOCOL_TLS_SERVER` at `Modules/_ssl.c:5358-5363`, then `SSL_CTX_set1_echstore` under lock at `Modules/_ssl.c:5369-5371`."
+    },
+    {
+      "question": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 163,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2421
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 23
+      },
+      "costUsd": 0.0005969820000000001,
+      "ttftMs": 12076,
+      "totalMs": 15285,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py`:\n\n* `SSLContext.wrap_socket(..., ech_config=None)` at `Lib/ssl.py:481` and `wrap_bio(..., ech_config=None)` at `Lib/ssl.py:496` forward to `SSLSocket._create(..., ech_config)` at `Lib/ssl.py:492` and `SSLObject._create(..., ech_config)` at `Lib/ssl.py:502`.\n* `_check_sslobject_params` at `Lib/ssl.py:386` validates: `server_side+ech_config→ValueError` at `Lib/ssl.py:396-398`; `ech_config and not HAS_ECH→NotImplementedError` at `Lib/ssl.py:399-400`.\n* `SSLObject._create` at `Lib/ssl.py:841-842` re-validates, calls `context._wrap_bio` at `Lib/ssl.py:847-850`, then immediately `sslobj.set_ech_config(ech_config)` at `Lib/ssl.py:852-853`.\n* `SSLSocket._create` caches `self._ech_config=ech_config` at `Lib/ssl.py:1083`, then after `_wrap_socket` does `self._sslobj.set_ech_config(self._ech_config)` at `Lib/ssl.py:1142-1143`; unconnected reconnect repeats it in `_real_connect` at `Lib/ssl.py:1520-1521`. `SSLSocket.set_ech_config` at `Lib/ssl.py:1478-1481` updates cache then delegates if connected; `SSLObject.set_ech_config` at `Lib/ssl.py:1022-1028` delegates directly.\n* Clinic `PyObject_GetBuffer(...,PyBUF_SIMPLE)` at `Modules/clinic/_ssl.c.h:236-240` accepts bytes-like as `Py_buffer`.\n\nIn `Modules/_ssl.c`:\n\n* `_SSLSocket.set_ech_config_impl` at `Modules/_ssl.c:2239` rejects `socket_type!=PY_SSL_CLIENT` at `Modules/_ssl.c:2242-2245` and `!SSL_in_before` at `Modules/_ssl.c:2247-2250`.\n* `ech_store_from_config` at `Modules/_ssl.c:5300` transforms: `len>INT_MAX→OverflowError` at `Modules/_ssl.c:5302-5305`; `BIO_write+OSSL_ECHSTORE_read_echconfiglist` at `Modules/_ssl.c:5318-5319`; `num_entries==0→ERR_R_PASSED_INVALID_ARGUMENT` at `Modules/_ssl.c:5326-5329`.\n* Installs via `SSL_set1_echstore(self->ssl,store)` at `Modules/_ssl.c:2257`, then restores context outer-ALPN via `SSL_ech_set1_outer_alpn_protos` at `Modules/_ssl.c:2268-2270`.\n* `_SSLContext.set_ech_config_impl` at `Modules/_ssl.c:5354` rejects `PROTOCOL_TLS_SERVER` at `Modules/_ssl.c:5358-5362`, then installs via `SSL_CTX_set1_echstore` at `Modules/_ssl.c:5370`."
+    },
+    {
+      "question": "Q6",
+      "kind": "where",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 182,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2016
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.0005125060000000001,
+      "ttftMs": 9961,
+      "totalMs": 12628,
+      "toolReads": [],
+      "answer": "`SSLContext.load_ech_keys` in `Modules/_ssl.c:5438-5501`:\n\n* Server-only: rejects `PY_SSL_VERSION_TLS_CLIENT` with `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context` (`Modules/_ssl.c:5443-5448`), documented in `Doc/library/ssl.rst:1834`.\n* Format: file must contain `private key followed by its ECHConfigList` (`Modules/_ssl.c:5430`, `Doc/library/ssl.rst:1822-1824`). Helper reads key via `PEM_read_bio_PrivateKey(bio,NULL,_password_callback,pw_info)` (`Modules/_ssl.c:5387-5388`), then `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)` (`Modules/_ssl.c:5402-5404`).\n* Accumulates: gets existing store via `SSL_CTX_get1_echstore(ctx)` or `OSSL_ECHSTORE_new(NULL,NULL)` if empty (`Modules/_ssl.c:5392-5400`), then `SSL_CTX_set1_echstore(ctx,store)` (`Modules/_ssl.c:5412`). Docs: `Each call adds keys and configurations to those already loaded` (`Doc/library/ssl.rst:1830-1831`).\n* `for_retry`: clinic `for_retry: bool=True` (`Modules/_ssl.c:5426`); `If for_retry is true, advertise the configurations in ECH retry responses` (`Modules/_ssl.c:5434-5435`), `included in ECH retry configurations sent to clients` (`Doc/library/ssl.rst:1830-1832`).\n* Encrypted keys: `password` may be `string, bytes, bytearray, or callable` (`Modules/_ssl.c:5431-5433`, `Doc/library/ssl.rst:1826-1828`); `PyCallable_Check(password)` stored as callback else `_pwinfo_set` (`Modules/_ssl.c:5455-5462`). Example `Lib/test/certdata/ech-encrypted.pem:1-6` is `ENCRYPTED PRIVATE KEY` + `ECHCONFIG`.\n* Duplicate: compares `OSSL_ECHSTORE_num_keys` before/after (`Modules/_ssl.c:5402-5404`); `if(new_keys<=old_keys)` raises `SSL_R_PRIVATE_KEY_MISMATCH` (`Modules/_ssl.c:5408-5410`) per `We want to require a new match` (`Modules/_ssl.c:5407`), surfaced via `_setSSLError` (`Modules/_ssl.c:5492`)."
+    },
+    {
+      "question": "Q6",
+      "kind": "where",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 50735,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 4707
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 19
+      },
+      "sunkUsage": {
+        "inputTokens": 5005,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 705
+      },
+      "costUsd": 0.006014899999999999,
+      "ttftMs": 21717,
+      "totalMs": 24688,
+      "toolReads": [],
+      "answer": "`SSLContext.load_ech_keys(keyfile, password=None, *, for_retry=True)` is server-side only: `Modules/_ssl.c:5423-5426` defines the signature.\n\n* Role check: rejects `PROTOCOL_TLS_CLIENT` with `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context` (`Modules/_ssl.c:5443-5446`); `PROTOCOL_TLS_SERVER` and generic `PROTOCOL_TLS` are allowed. Docs state `Raises SSLError if the context uses PROTOCOL_TLS_CLIENT` (`Doc/library/ssl.rst:1834`).\n* File format: `The file must contain a private key followed by its ECHConfigList` (`Modules/_ssl.c:5430`). Path is converted with `PyUnicode_FSConverter` (`Modules/_ssl.c:5452`), opened with `BIO_new_file(filename,\"rb\")` under `tstate_mutex` with threads released (`Modules/_ssl.c:5468-5477`).\n* `for_retry`: passed to `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)` (`Modules/_ssl.c:5402-5404`). Documented as `If for_retry is true, the new configurations are included in ECH retry configurations sent to clients` (`Doc/library/ssl.rst:1830-1832`) and `advertise the configurations in ECH retry responses` (`Modules/_ssl.c:5434-5435`). Each call appends to existing store (`Doc/library/ssl.rst:1830-1831`).\n* Encrypted keys: `password` may be callable (`pw_info.callable=password`, `Modules/_ssl.c:5456-5457`) or string/bytes via `_pwinfo_set` (`Modules/_ssl.c:5458-5459`); only needed for encrypted keys (`Modules/_ssl.c:5431-5433`). Key is read with `PEM_read_bio_PrivateKey(...,_password_callback,pw_info)` (`Modules/_ssl.c:5387-5388`). Callback failure propagates (`Modules/_ssl.c:5483-5485`); tested with `ech-encrypted.pem` (`Lib/test/test_ssl.py:2363-2369`).\n* Duplicate: existing store is fetched with `SSL_CTX_get1_echstore` or created new (`Modules/_ssl.c:5392-5400`); key counts compared before/after (`Modules/_ssl.c:5402-5404`). If `new_keys <= old_keys`, raises `SSL_R_PRIVATE_KEY_MISMATCH` (`Modules/_ssl.c:5408-5410`) per `We want to require a new match` (`Modules/_ssl.c:5407`), surfacing as `SSLError` via `_setSSLError` (`Modules/_ssl.c:5492`)."
+    },
+    {
+      "question": "Q6",
+      "kind": "where",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 244,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2635
+      },
+      "contextUsage": {
+        "inputTokens": 47572,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 26
+      },
+      "costUsd": 0.000646346,
+      "ttftMs": 11566,
+      "totalMs": 14952,
+      "toolReads": [],
+      "answer": "`SSLContext.load_ech_keys` is server-side only:\n\n* `Modules/_ssl.c:5443-5446` rejects `PY_SSL_VERSION_TLS_CLIENT` with `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context`.\n* `Doc/library/ssl.rst:1834` documents same: `Raises SSLError if context uses PROTOCOL_TLS_SERVER` [sic: `PROTOCOL_TLS_CLIENT` in code]; `Lib/test/test_ssl.py:2137-2138` tests `client_ctx.load_ech_keys` raises `PROTOCOL_TLS_CLIENT`.\n\nFile format:\n\n* `Modules/_ssl.c:5430` / `Doc/library/ssl.rst:1823-1824`: file must be PEM `private key followed by its ECHConfigList`; `keyfile` is converted with `PyUnicode_FSConverter` and opened with `BIO_new_file(filename,\"rb\")` per `Modules/_ssl.c:5452,5471`.\n* Key read with `PEM_read_bio_PrivateKey(bio,NULL,_password_callback,pw_info)` per `Modules/_ssl.c:5387-5388`.\n\n`password` / encrypted keys:\n\n* Signature `password=None, *, for_retry=True` per `Modules/_ssl.c:5423-5426`; docs `Modules/_ssl.c:5431-5433`: `string, bytes, bytearray, or callable`, only needed for encrypted keys.\n* `Modules/_ssl.c:5455-5459`: if callable store as `pw_info.callable`, else `_pwinfo_set`; `Modules/_ssl.c:5483-5485`: if `pw_info.error`, callback exception propagates.\n\n`for_retry`:\n\n* `Modules/_ssl.c:5434-5435`: `If for_retry is true, advertise configurations in ECH retry responses`; `Doc/library/ssl.rst:1830-1832`: each call appends, `for_retry=True` includes new configs in retry configs.\n* Implemented as `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)` per `Modules/_ssl.c:5402-5404`; installed with `SSL_CTX_set1_echstore(ctx,store)` per `Modules/_ssl.c:5412`, under `tstate_mutex` + allow-threads per `Modules/_ssl.c:5468-5476`.\n\nDuplicate key:\n\n* `Modules/_ssl.c:5392-5400` reuses existing `SSL_CTX_get1_echstore` or creates new `OSSL_ECHSTORE`; `Modules/_ssl.c:5402-5404` counts keys before/after.\n* `Modules/_ssl.c:5407-5410`: `if(new_keys<=old_keys){ERR_raise(...SSL_R_PRIVATE_KEY_MISMATCH);}` — requires new match even if OpenSSL matched existing key; failure returns `0` leading to `_setSSLError` per `Modules/_ssl.c:5491-5492`, i.e. `SSLError`."
+    },
+    {
+      "question": "Q6",
+      "kind": "where",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 233,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2474
+      },
+      "contextUsage": {
+        "inputTokens": 98,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 16
+      },
+      "costUsd": 0.000610486,
+      "ttftMs": 10763,
+      "totalMs": 13617,
+      "toolReads": [],
+      "answer": "`SSLContext.load_ech_keys` is server-side only:\n\n- `Modules/_ssl.c:5443-5447` rejects `PY_SSL_VERSION_TLS_CLIENT` with `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context`.\n- File must be `private key followed by its ECHConfigList`: `Doc/library/ssl.rst:1822-1824`, `Modules/_ssl.c:5430`.\n- Path converted with `PyUnicode_FSConverter`: `Modules/_ssl.c:5452-5454`, opened `BIO_new_file(filename,\"rb\")` under `tstate_mutex` with threads released: `Modules/_ssl.c:5468-5477`.\n\nEncrypted keys:\n\n- Signature `keyfile,password=None,*,for_retry=True`: `Modules/clinic/_ssl.c.h:2210`, `Modules/_ssl.c:5422-5426`.\n- `password` accepts `string, bytes, bytearray, or callable` as in `load_cert_chain`: `Doc/library/ssl.rst:1826-1829`, `Modules/_ssl.c:5431-5433`.\n- `Modules/_ssl.c:5455-5461`: if `callable` store in `pw_info.callable`, else `_pwinfo_set(...,\"password should be a string or callable\")`.\n- Key read via `PEM_read_bio_PrivateKey(bio,NULL,_password_callback,pw_info)`: `Modules/_ssl.c:5387-5388`. Tested with `ech-encrypted.pem` (`openssl pkey -aes-256-cbc -passout pass:somepass`) using direct and `lambda:` passwords: `Lib/test/test_ssl.py:2363-2369`.\n\n`for_retry` and duplicates, `Modules/_ssl.c:5381-5418` `load_ech_keys(ctx,bio,for_retry,pw_info)`:\n\n- Reuses `SSL_CTX_get1_echstore(ctx)` or `OSSL_ECHSTORE_new`: `Modules/_ssl.c:5392-5400`.\n- `OSSL_ECHSTORE_num_keys(store,&old_keys)` then `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)`: `Modules/_ssl.c:5402-5403`. Documented as `If for_retry is true, advertise configurations in retry responses` / `included in retry configurations`: `Modules/_ssl.c:5434-5435`, `Doc/library/ssl.rst:1830-1832`.\n- Requires `new_keys>old_keys`, else `ERR_raise(ERR_LIB_SSL,SSL_R_PRIVATE_KEY_MISMATCH)`: `Modules/_ssl.c:5407-5411`, then `SSL_CTX_set1_echstore`: `Modules/_ssl.c:5412`.\n- Failure maps to existing password exception, `OSError` on open with `errno`, else `SSLError`: `Modules/_ssl.c:5482-5493`."
+    },
+    {
+      "question": "Q6",
+      "kind": "where",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 932,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2569
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 19
+      },
+      "costUsd": 0.0007019460000000002,
+      "ttftMs": 12072,
+      "totalMs": 15769,
+      "toolReads": [],
+      "answer": "`SSLContext.load_ech_keys(keyfile,password=None,*,for_retry=True)` is server-side [`Doc/library/ssl.rst:1820`](`Doc/library/ssl.rst:1820`) :\n\n* Rejects client contexts: `if(self->protocol==PY_SSL_VERSION_TLS_CLIENT)` raises `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context` [`Modules/_ssl.c:5443-5447`].\n* `keyfile` converted via `PyUnicode_FSConverter`, opened as `BIO_new_file(filename,\"rb\")` under `PyMutex_Lock(&self->tstate_mutex)` + `PySSL_BEGIN_ALLOW_THREADS` [`Modules/_ssl.c:5452-5453`](`Modules/_ssl.c:5452-5453`) [`Modules/_ssl.c:5468-5477`](`Modules/_ssl.c:5468-5477`).\n* File must be PEM `private key followed by its ECHConfigList` [`Modules/_ssl.c:5430`](`Modules/_ssl.c:5430`) [`Doc/library/ssl.rst:1822-1824`]; e.g. `ENCRYPTED PRIVATE KEY` + `ECHCONFIG` [`Lib/test/certdata/ech-encrypted.pem:1-10`].\n* Encrypted keys: `password` may be `string, bytes, bytearray, or callable` [`Modules/_ssl.c:5431-5433`]; `PyCallable_Check(password)` stores as `pw_info.callable`, else `_pwinfo_set` [`Modules/_ssl.c:5455-5461`], passed as `_password_callback` to `PEM_read_bio_PrivateKey(bio,NULL,_password_callback,&pw_info)` [`Modules/_ssl.c:5387-5389`]. Callback failure propagates as already-set exception [`Modules/_ssl.c:5483-5485`].\n* Helper gets/creates store: `SSL_CTX_get1_echstore(ctx)`, or `OSSL_ECHSTORE_new(NULL,NULL)` if none [`Modules/_ssl.c:5392-5400`], then `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)` [`Modules/_ssl.c:5402-5404`].\n* `for_retry` controls advertisement: `If for_retry is true, advertise the configurations in ECH retry responses` [`Modules/_ssl.c:5434-5436`]; each call appends: `Each call adds keys and configurations to those already loaded` [`Doc/library/ssl.rst:1830-1832`], finalized by `SSL_CTX_set1_echstore(ctx,store)` [`Modules/_ssl.c:5412`](`Modules/_ssl.c:5412`).\n* Duplicate: counts `old_keys/new_keys` via `OSSL_ECHSTORE_num_keys`; `if(new_keys<=old_keys)` raises `SSL_R_PRIVATE_KEY_MISMATCH` [`Modules/_ssl.c:5402-5410`] because `OpenSSL may match a key already in the store. We want to require a new match` [`Modules/_ssl.c:5407`](`Modules/_ssl.c:5407`), surfacing as `SSLError` via `_setSSLError` [`Modules/_ssl.c:5491-5493`]."
+    },
+    {
+      "question": "Q7",
+      "kind": "why",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 185,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1664
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 26
+      },
+      "costUsd": 0.000442406,
+      "ttftMs": 9158,
+      "totalMs": 11436,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:981-989` `newPySSLSocket()` checks `PY_SSL_CLIENT` sockets with `SSL_ech_get1_status()` and if `status==SSL_ECH_STATUS_NOT_CONFIGURED||status==SSL_ECH_STATUS_GREASE` calls `SSL_ech_set1_outer_alpn_protos(self->ssl,NULL,0)`:\n\n> `OpenSSL also applies outer ALPN to ordinary and GREASE handshakes.` (`Modules/_ssl.c:986`)\n\nThat inherited `SSL_CTX` outer list would otherwise be sent on non-ECH handshakes. Outer list is stored per-context as `ctx->outer_alpn_protocols/_len` (`Modules/_ssl.c:321-322`) by `_ssl__SSLContext__set_outer_alpn_protocols_impl()` via `SSL_CTX_ech_set1_outer_alpn_protos()` (`Modules/_ssl.c:4154-4156`).\n\n`_ssl__SSLSocket_set_ech_config_impl()` therefore restores it after `SSL_set1_echstore()` succeeds (`Modules/_ssl.c:2257-2270`): it re-takes `self->ctx` under `Py_BEGIN_CRITICAL_SECTION2`, and if `ctx->outer_alpn_protocols!=NULL` calls `SSL_ech_set1_outer_alpn_protos(self->ssl,ctx->outer_alpn_protocols,ctx->outer_alpn_protocols_len)` — explicitly `Restore the outer ALPN cleared when this socket was created without an ECH configuration` (`Modules/_ssl.c:2263-2264`)."
+    },
+    {
+      "question": "Q7",
+      "kind": "why",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 50598,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2067
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "sunkUsage": {
+        "inputTokens": 4928,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 568
+      },
+      "costUsd": 0.0054732,
+      "ttftMs": 15493,
+      "totalMs": 17215,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:981-990` `newPySSLSocket()` handles `PY_SSL_CLIENT` by calling `SSL_ech_get1_status()` and, if `status == SSL_ECH_STATUS_NOT_CONFIGURED || status == SSL_ECH_STATUS_GREASE`, calling `SSL_ech_set1_outer_alpn_protos(self->ssl, NULL, 0)`.\n\nReason is stated inline at `Modules/_ssl.c:986`: `/* OpenSSL also applies outer ALPN to ordinary and GREASE handshakes. */` — without the clear, a context-level outer list set via `SSL_CTX_ech_set1_outer_alpn_protos()` would be advertised in non-ECH handshakes.\n\n`Modules/_ssl.c:2263-2270` in `_ssl__SSLSocket_set_ech_config_impl()` reverses that clear after `SSL_set1_echstore()` succeeds: comment `/* Restore the outer ALPN cleared when this socket was created without an ECH configuration. */`, then under `Py_BEGIN_CRITICAL_SECTION2` re-applies `ctx->outer_alpn_protocols/ctx->outer_alpn_protocols_len` with `SSL_ech_set1_outer_alpn_protos()` if non-`NULL`."
+    },
+    {
+      "question": "Q7",
+      "kind": "why",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 15079,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1742
+      },
+      "contextUsage": {
+        "inputTokens": 99,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 16
+      },
+      "costUsd": 0.0019215500000000002,
+      "ttftMs": 11163,
+      "totalMs": 13164,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:981-989`, `newPySSLSocket()` queries `SSL_ech_get1_status()` immediately after `SSL_new()` and if `status == SSL_ECH_STATUS_NOT_CONFIGURED || status == SSL_ECH_STATUS_GREASE` calls `SSL_ech_set1_outer_alpn_protos(self->ssl,NULL,0)`.\n\nReason per `Modules/_ssl.c:986`: `/* OpenSSL also applies outer ALPN to ordinary and GREASE handshakes. */` — the context-level outer ALPN set via `SSL_CTX_ech_set1_outer_alpn_protos()` is inherited by new `SSL*`, so it must be cleared when the socket has no real ECH attempt to avoid altering non-ECH/GREASE negotiation.\n\n`Modules/_ssl.c:2263-2270` in `_ssl._SSLSocket.set_ech_config` reverses that: after `SSL_set1_echstore()` succeeds it re-acquires `self->ctx` and if `ctx->outer_alpn_protocols != NULL` calls `SSL_ech_set1_outer_alpn_protos()` with the context value. Comment at `Modules/_ssl.c:2263-2264`: `/* Restore the outer ALPN cleared when this socket was created without an ECH configuration. */`."
+    },
+    {
+      "question": "Q7",
+      "kind": "why",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 260,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1653
+      },
+      "contextUsage": {
+        "inputTokens": 98,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 46
+      },
+      "costUsd": 0.000448986,
+      "ttftMs": 8454,
+      "totalMs": 10215,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:981-989`, `newPySSLSocket()` checks `SSL_ech_get1_status()` for client sockets and if `status == SSL_ECH_STATUS_NOT_CONFIGURED || status == SSL_ECH_STATUS_GREASE` calls `SSL_ech_set1_outer_alpn_protos(self->ssl, NULL, 0)`.\n\nReason per `Modules/_ssl.c:986`: `/* OpenSSL also applies outer ALPN to ordinary and GREASE handshakes. */` — context-level outer ALPN set via `SSL_CTX_ech_set1_outer_alpn_protos()` in `Modules/_ssl.c:4154-4156` would otherwise leak into non-ECH handshakes, so it is cleared at creation.\n\n`_ssl._SSLSocket.set_ech_config` in `Modules/_ssl.c:2263-2270` reverses that:\n\n* `Modules/_ssl.c:2263-2264`: `/* Restore the outer ALPN cleared when this socket was created without / * an ECH configuration. */`\n* `Modules/_ssl.c:2267-2270`: if `ctx->outer_alpn_protocols != NULL`, calls `SSL_ech_set1_outer_alpn_protos(self->ssl, ctx->outer_alpn_protocols, ctx->outer_alpn_protocols_len)` under `Py_BEGIN_CRITICAL_SECTION2(self,ctx)` in `Modules/_ssl.c:2266`.\n\nThus a socket created without ECH has no outer ALPN; adding ECH per-connection re-applies the context's stored outer list from `Modules/_ssl.c:321-322`."
+    },
+    {
+      "question": "Q7",
+      "kind": "why",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 2850,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1624
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.000700906,
+      "ttftMs": 8455,
+      "totalMs": 10467,
+      "toolReads": [],
+      "answer": "In `Modules/_ssl.c:981-989`, `newPySSLSocket()` for `PY_SSL_CLIENT` calls `SSL_ech_get1_status()` and if `status == SSL_ECH_STATUS_NOT_CONFIGURED || status == SSL_ECH_STATUS_GREASE` calls `SSL_ech_set1_outer_alpn_protos(self->ssl, NULL, 0)`.\n\nReason is stated at `Modules/_ssl.c:986`: `/* OpenSSL also applies outer ALPN to ordinary and GREASE handshakes. */` — without clearing, a context-level outer list set via `SSL_CTX_ech_set1_outer_alpn_protos()` in `Modules/_ssl.c:4154-4156` (stored in `Modules/_ssl.c:321-322` `outer_alpn_protocols/_len`) would be inherited by `SSL_new` and sent on non-ECH handshakes.\n\n`_ssl._SSLSocket.set_ech_config` at `Modules/_ssl.c:2263-2271` reverses that:\n\n* comment at `Modules/_ssl.c:2263-2264`: `/* Restore the outer ALPN cleared when this socket was created without an ECH configuration. */`\n* after `SSL_set1_echstore()` succeeds, it takes `self`+`ctx` lock and if `ctx->outer_alpn_protocols != NULL` calls `SSL_ech_set1_outer_alpn_protos()` with the context values.\n\nFailure to clear at creation (`Modules/_ssl.c:989-992`) or to restore after `set_ech_config` (`Modules/_ssl.c:2274-2277`) raises via `_setSSLError()`."
+    },
+    {
+      "question": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 184,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2837
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 25
+      },
+      "costUsd": 0.0006769059999999999,
+      "ttftMs": 16609,
+      "totalMs": 18701,
+      "toolReads": [],
+      "answer": "- Before handshake: `b\"\"` — `Lib/test/test_ssl.py:2439` asserts `get_ech_retry_config()==b\"\"` for configured and unconfigured objects pre-handshake.\n- Reason: `Modules/_ssl.c:2212-2217` calls `SSL_ech_get1_retry_config()`; on failure sets `config_len=0` and builds zero-length `bytes`, so no config yet means `b\"\"`. Python `SSLObject` wrapper passes that through: `Lib/ssl.py:1034-1036`.\n- With no `SSL` object: `None` — documented at `Doc/library/ssl.rst:1517-1523` as `None` when socket has no underlying `SSL` object.\n- Reason: C guard `Modules/_ssl.c:2207-2209` does `Py_RETURN_NONE` if `self->ssl==NULL`; `SSLSocket` guard `Lib/ssl.py:1489-1491` only delegates `if self._sslobj is not None`, otherwise returns implicit `None`. Tested at `Lib/test/test_ssl.py:2103,2106`.\n- After handshake where server never authenticated: `b\"\"` — `Lib/test/test_ssl.py:2512` asserts `b\"\"` after ECH rejection by unauthenticated server; `Lib/test/test_ssl.py:2501` asserts `retry_config==b\"\"` for server without ECH.\n- Reason: `Modules/_ssl.c:2213-2215` comment `OpenSSL does not release unauthenticated retry configurations`, clears error and forces empty; same rule for exception attribute at `Modules/_ssl.c:650-656`: `only releases retry configurations once the outer handshake has authenticated the server; otherwise report none`."
+    },
+    {
+      "question": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 5389,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2431
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 16
+      },
+      "sunkUsage": {
+        "inputTokens": 5272,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 943
+      },
+      "costUsd": 0.0011162059999999998,
+      "ttftMs": 14184,
+      "totalMs": 16317,
+      "toolReads": [],
+      "answer": "- No `SSL` object: `None`.\n`Modules/_ssl.c:2207-2209`: `if(self->ssl==NULL){Py_RETURN_NONE;}`.\n`Lib/ssl.py:1489-1491`: `SSLSocket.get_ech_retry_config` only `return`s `self._sslobj.get_ech_retry_config()` `if self._sslobj is not None`, otherwise implicit `None`; covered by `Lib/test/test_ssl.py:2103,2106` asserting `IsNone`.\n\n- Before handshake with object: `b\"\"`.\n`Modules/_ssl.c:2212-2216`: if `SSL_ech_get1_retry_config()!=1`, `ERR_clear_error();config_len=0;`.\n`Modules/_ssl.c:2217-2218`: then `PyBytes_FromStringAndSize(config,config_len)` -> empty bytes.\n`Lib/test/test_ssl.py:2439`: `test_status_before_handshake` expects `get_ech_retry_config()==b''`.\n\n- After handshake where server never authenticated: `b\"\"`, same path.\n`Modules/_ssl.c:2213-2214`: `// OpenSSL does not release unauthenticated retry configurations.`\n`Modules/_ssl.c:650-654`: `/* OpenSSL only releases retry configurations once the outer handshake has authenticated the server; otherwise report none. */` then forces `config=NULL,config_len=0` on failure.\n`Lib/test/test_ssl.py:2501,2512`: rejected client against server without ECH has `retry_config==b''` and `get_ech_retry_config()==b''`."
+    },
+    {
+      "question": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 257,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2434
+      },
+      "contextUsage": {
+        "inputTokens": 99,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 42
+      },
+      "costUsd": 0.000607446,
+      "ttftMs": 13886,
+      "totalMs": 16142,
+      "toolReads": [],
+      "answer": "- Before handshake: `b\"\"`.\n  - `SSLSocket.get_ech_retry_config` delegates to `_ssl` when `_sslobj` exists: `Lib/ssl.py:1489-1491`.\n  - C impl calls `SSL_ech_get1_retry_config`; on failure clears error and forces `config_len=0`, then builds empty `bytes`: `Modules/_ssl.c:2210-2217`.\n  - Test expects `b\"\"` for configured/unconfigured pre-handshake objects: `Lib/test/test_ssl.py:2439`.\n\n- Socket with no `SSL` object: `None`.\n  - Documented: return `None` if no underlying `SSL` object, e.g. before connect/after close: `Doc/library/ssl.rst:1519-1523`.\n  - Python guard `if self._sslobj is not None` falls through to implicit `None`: `Lib/ssl.py:1490-1491`.\n  - C guard `if (self->ssl == NULL) Py_RETURN_NONE`: `Modules/_ssl.c:2207-2209`.\n\n- After handshake where server never authenticated: `b\"\"`.\n  - Same `!=1` path: OpenSSL “does not release unauthenticated retry configurations”: `Modules/_ssl.c:2212-2215`.\n  - Same rule for exception attr: “only releases retry configurations once the outer handshake has authenticated the server; otherwise report none”: `Modules/_ssl.c:650-654`.\n  - Rejected-by-non-ECH-server test expects `retry_config == b\"\"` and `get_ech_retry_config() == b\"\"`: `Lib/test/test_ssl.py:2501`, `Lib/test/test_ssl.py:2512`."
+    },
+    {
+      "question": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 46428,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2215
+      },
+      "contextUsage": {
+        "inputTokens": 13666,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 21
+      },
+      "costUsd": 0.0050858000000000006,
+      "ttftMs": 12473,
+      "totalMs": 14854,
+      "toolReads": [],
+      "answer": "- No `SSL` object: returns `None`.\n  - `Modules/_ssl.c:2207-2209`: `if (self->ssl == NULL) { Py_RETURN_NONE; }`.\n  - `Lib/ssl.py:1489-1491`: `SSLSocket.get_ech_retry_config` only returns `self._sslobj.get_ech_retry_config()` `if self._sslobj is not None`, otherwise implicit `None`.\n  - Documented in `Doc/library/ssl.rst:1519-1523`: `Return None if the socket has no underlying SSL object`.\n  - Tested in `Lib/test/test_ssl.py:2103-2106`: `assertIsNone(sock.get_ech_retry_config())` before connect/after close.\n\n- Before handshake with object: returns `b\"\"`.\n  - `Modules/_ssl.c:2210-2218`: `config=NULL,config_len=0`; if `SSL_ech_get1_retry_config(...) != 1` set `config_len=0` then `PyBytes_FromStringAndSize(...,config_len)` -> empty bytes.\n  - Tested in `Lib/test/test_ssl.py:2439`: `assertEqual(obj.get_ech_retry_config(), b'')` for `NOT_TRIED`/`NOT_CONFIGURED`.\n\n- After handshake where server never authenticated: returns `b\"\"`, same failure path.\n  - `Modules/_ssl.c:2212-2215`: on `!=1`, `ERR_clear_error(); config_len=0` with comment `// OpenSSL does not release unauthenticated retry configurations.`\n  - Same rule for exception attribute in `Modules/_ssl.c:650-654`: `/* OpenSSL only releases retry configurations once the outer handshake has authenticated the server; otherwise report none. */`\n  - Tested in `Lib/test/test_ssl.py:2497-2501` and `2512`: rejected client against server without ECH has `retry_config == b''` and `get_ech_retry_config() == b''`."
+    },
+    {
+      "question": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 166,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2467
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 24
+      },
+      "costUsd": 0.0006064820000000001,
+      "ttftMs": 16402,
+      "totalMs": 19007,
+      "toolReads": [],
+      "answer": "- Before handshake, with `SSL` object present: `b\"\"`.\n  - `Doc/library/ssl.rst:1517-1521` documents `SSLSocket.get_ech_retry_config()` returns ECH retry configuration as `bytes`, or `b\"\"` if no usable configuration available.\n  - `Modules/_ssl.c:2210-2218`: `SSL_ech_get1_retry_config(self->ssl,&config,&config_len)!=1` -> `config_len=0`, then `PyBytes_FromStringAndSize(...,config_len)` yields `b\"\"`.\n  - `Lib/ssl.py:1034-1036` (`SSLObject`) returns that result directly; `Lib/ssl.py:1489-1491` (`SSLSocket`) returns it when `self._sslobj is not None`.\n\n- Socket with no `SSL` object: `None`.\n  - `Modules/_ssl.c:2207-2209`: `if(self->ssl==NULL){Py_RETURN_NONE;}` in `_ssl._SSLSocket.get_ech_retry_config_impl`.\n  - `Lib/ssl.py:1489-1491`: `if self._sslobj is not None: return self._sslobj.get_ech_retry_config()` falls through to implicit `None`.\n  - `Doc/library/ssl.rst:1522-1523`: `Return None if the socket has no underlying SSL object`.\n\n- After handshake where server never authenticated: `b\"\"`.\n  - `Modules/_ssl.c:2212-2215`: on `SSL_ech_get1_retry_config!=1`, comment `OpenSSL does not release unauthenticated retry configurations`, `ERR_clear_error(); config_len=0;` -> empty `bytes`.\n  - Same rule for exception path, `Modules/_ssl.c:650-657`: `OpenSSL only releases retry configurations once the outer handshake has authenticated the server; otherwise report none`, resetting to `NULL/0` before `PyBytes_FromStringAndSize`."
+    },
+    {
+      "question": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "source": "A",
+      "usage": {
+        "inputTokens": 229,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2801
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 49
+      },
+      "costUsd": 0.000674206,
+      "ttftMs": 16293,
+      "totalMs": 17904,
+      "toolReads": [],
+      "answer": "No.\n\n`SSLSocket.set_ech_config` at `Lib/ssl.py:1479-1481` is:\n\n```python\nself._ech_config = ech_config\nif self._sslobj is not None:\n    self._sslobj.set_ech_config(ech_config)\n```\n\nReordering fixes only the connected case, where `Modules/_ssl.c:2242-2256` rejects server-side use, post-handshake use, and bad content via `ech_store_from_config`.\n\nIt does not fix the disconnected case: when `self._sslobj is None` no validation occurs, so the value is cached regardless of order. That cached value is later trusted by both re-apply sites:\n\n* `Lib/ssl.py:1142-1143` in `SSLSocket._create`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`\n* `Lib/ssl.py:1520-1521` in `SSLSocket._real_connect`: same pattern.\n\nThe initial write has the same gap: `Lib/ssl.py:1083` in `SSLSocket._create` does `self._ech_config = ech_config` before the validating re-apply at `1142-1143`."
+    },
+    {
+      "question": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "source": "B",
+      "usage": {
+        "inputTokens": 7871,
+        "cachedReadTokens": 147667,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2985
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "sunkUsage": {
+        "inputTokens": 5046,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 688
+      },
+      "costUsd": 0.001679434,
+      "ttftMs": 6334,
+      "totalMs": 28173,
+      "toolReads": [
+        {
+          "name": "grep",
+          "args": {
+            "path": "Lib/ssl.py",
+            "pattern": "_ech_config"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 25,
+            "offset": 838,
+            "path": "Lib/ssl.py"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 25,
+            "offset": 1015,
+            "path": "Lib/ssl.py"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 75,
+            "offset": 1075,
+            "path": "Lib/ssl.py"
+          }
+        }
+      ],
+      "answer": "Moving the cache assignment looks like a fix — I'll map every `_ech_config` access to verify.\nFound seven `_ech_config` touchpoints — I'll read the remaining paths to complete the analysis.\nNo.\n\n`Lib/ssl.py:1478-1481` is the only cached write that validates:\n\n```python\ndef set_ech_config(self, ech_config):\n    self._ech_config = ech_config\n    if self._sslobj is not None:\n        self._sslobj.set_ech_config(ech_config)\n```\n\nMoving the store after the `if self._sslobj is not None:` call would preserve the old value when `Modules/_ssl.c:2242-2256` raises `ValueError`/`SSLError` for server-side, post-handshake, or bad `ECHConfigList`, for a connected socket.\n\nIt would not cover the unconnected paths, which cache without validation:\n\n* `Lib/ssl.py:1083` in `SSLSocket._create`: `self._ech_config = ech_config` unconditionally.\n* `Lib/ssl.py:1142-1143` deferred apply on connected `_create`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`.\n* `Lib/ssl.py:1520-1521` in `_real_connect`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`.\n\nWhen `self._sslobj is None`, `SSLSocket.set_ech_config` never calls the C validator, so reorder changes nothing: an invalid value is still cached and only fails later at `1142-1143`/`1520-1521`.\n\n`Lib/ssl.py:1022-1028` (`SSLObject.set_ech_config`) and `Lib/ssl.py:853` (`SSLObject._create`) call `self._sslobj.set_ech_config` directly with no `_ech_config`, so unaffected."
+    },
+    {
+      "question": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "source": "C",
+      "usage": {
+        "inputTokens": 15102,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1773
+      },
+      "contextUsage": {
+        "inputTokens": 99,
+        "cachedReadTokens": 47473,
+        "cachedWriteTokens": 0,
+        "outputTokens": 18
+      },
+      "costUsd": 0.0019300500000000002,
+      "ttftMs": 11867,
+      "totalMs": 13784,
+      "toolReads": [],
+      "answer": "No.\n\n`SSLSocket.set_ech_config` in `Lib/ssl.py:1479-1481` is:\n\n```python\nself._ech_config = ech_config\nif self._sslobj is not None:\n    self._sslobj.set_ech_config(ech_config)\n```\n\nMoving the store after the call only fixes the `self._sslobj is not None` branch, where `Modules/_ssl.c:2242-2256` validates role, `SSL_in_before`, and parsing via `ech_store_from_config`.\n\nIt does not validate the unconnected path:\n\n* `Lib/ssl.py:1083` in `SSLSocket._create`: `self._ech_config = ech_config` stores the constructor argument without parsing it.\n* `Lib/ssl.py:1479` path when `self._sslobj is None`: stores with no `self._sslobj.set_ech_config` call to move after.\n* Both deferred uses only fail later: `Lib/ssl.py:1142-1143` in `_create` and `Lib/ssl.py:1520-1521` in `_real_connect`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`.\n\nSo an invalid `ech_config` set on a not-yet-connected socket would still be cached and still fail at connect time. The `SSLObject._create` path at `Lib/ssl.py:852-853` has no cache and is unaffected."
+    },
+    {
+      "question": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "source": "D",
+      "usage": {
+        "inputTokens": 46448,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2392
+      },
+      "contextUsage": {
+        "inputTokens": 98,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.0051232,
+      "ttftMs": 15493,
+      "totalMs": 17575,
+      "toolReads": [],
+      "answer": "No.\n\n`SSLSocket.set_ech_config` at `Lib/ssl.py:1479-1481` does:\n\n```python\nself._ech_config = ech_config\nif self._sslobj is not None:\n    self._sslobj.set_ech_config(ech_config)\n```\n\nMoving the store to after the call would preserve the old value when `self._sslobj is not None` at `Lib/ssl.py:1480` and the C validation fails.\n\nIt would not cover the `None` branch: when `self._sslobj is None`, there is no validation, so the moved assignment still caches unvalidated bytes.\n\nThat cached value is later trusted by two readers:\n\n* `Lib/ssl.py:1142-1143` in `SSLSocket._create`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`\n* `Lib/ssl.py:1520-1521` in `SSLSocket._real_connect`: `if self._ech_config is not None: self._sslobj.set_ech_config(self._ech_config)`\n\nThere is also a separate writer that moving the setter does not touch: `Lib/ssl.py:1083` in `SSLSocket._create` does `self._ech_config = ech_config` before any `SSL` object exists. `Lib/ssl.py:396-400` only rejects `ech_config` for server-side use or without `HAS_ECH`, not invalid ECHConfigList bytes, so constructor-supplied bad bytes are already cached before content validation."
+    },
+    {
+      "question": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 7441,
+        "cachedReadTokens": 202564,
+        "cachedWriteTokens": 0,
+        "outputTokens": 4915
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 16
+      },
+      "costUsd": 0.002132228,
+      "ttftMs": 18615,
+      "totalMs": 44318,
+      "toolReads": [
+        {
+          "name": "grep",
+          "args": {
+            "path": "/tmp/unvibe-spike320-YDbIVO/worktrees/rv_52e9e5187474",
+            "pattern": "_ech_config"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 80,
+            "offset": 1075,
+            "path": "/tmp/unvibe-spike320-YDbIVO/worktrees/rv_52e9e5187474/Lib/ssl.py"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 60,
+            "offset": 1473,
+            "path": "/tmp/unvibe-spike320-YDbIVO/worktrees/rv_52e9e5187474/Lib/ssl.py"
+          }
+        },
+        {
+          "name": "read",
+          "args": {
+            "limit": 25,
+            "offset": 1510,
+            "path": "/tmp/unvibe-spike320-YDbIVO/worktrees/rv_52e9e5187474/Lib/ssl.py"
+          }
+        }
+      ],
+      "answer": "Fix check needs every read and write — tracing the remaining paths.\nI've mapped all the cache sites — now pulling the exact code to verify the fix.\nThe connected case is covered — now checking whether deferred validation leaves a gap.\nNo — it fixes only the connected-socket variant.\n\n* `Lib/ssl.py:1479-1481`: `SSLSocket.set_ech_config` does `self._ech_config=ech_config` then `if self._sslobj is not None: self._sslobj.set_ech_config(ech_config)`. Moved after, a failure of the `C` validator would skip the store, preserving the prior value reused by `Lib/ssl.py:1142-1143` in `SSLSocket._create` and `Lib/ssl.py:1520-1521` in `SSLSocket._real_connect`.\n\n* Unconnected sockets have `self._sslobj is None`: `Lib/ssl.py:1083` caches `ech_config` in `_create` without validation when `connected==False`, leaving validation to `Lib/ssl.py:1520-1521`. The same is true for the setter guard at `Lib/ssl.py:1480`: when `None` no call happens, so order is irrelevant and any value is cached unvalidated.\n\n* Hence `good` then `bad` while unconnected overwrites the good value with no error; the error appears only at the later `Lib/ssl.py:1521` `set_ech_config`. That handler at `Lib/ssl.py:1531-1532` clears `self._sslobj=None` but leaves `self._ech_config` as the bad value, so the next connect retries it.\n\n* `Lib/ssl.py:853` and `Lib/ssl.py:1022-1028` (`SSLObject`) call `sslobj.set_ech_config` directly with no `_ech_config`, so unaffected."
+    },
+    {
+      "question": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "source": "A",
+      "usage": {
+        "inputTokens": 168,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1976
+      },
+      "contextUsage": {
+        "inputTokens": 43819,
+        "cachedReadTokens": 1777,
+        "cachedWriteTokens": 0,
+        "outputTokens": 15
+      },
+      "costUsd": 0.000503106,
+      "ttftMs": 9860,
+      "totalMs": 11955,
+      "toolReads": [],
+      "answer": "`ECHStatus` is built in `Lib/ssl.py:155-159` via:\n\n> ` _IntEnum._convert_('ECHStatus',__name__,lambda name:name.startswith('ECH_STATUS_'),source=_ssl)`\n\nwhose members come from `Modules/_ssl.c:7388-7398` (`ADD_INT_CONST(\"ECH_STATUS_SUCCESS\"... \"ECH_STATUS_FAILED_ECH_BAD_NAME\")`).\n\n`_ssl._SSLSocket.get_ech_status` returns the raw 3-tuple in `Modules/_ssl.c:2191-2192`:\n\n> `status=SSL_ech_get1_status(self->ssl,&inner_sni,&outer_sni)` + `Py_BuildValue(\"(izz)\",status,inner_sni,outer_sni)`\n\ni.e. `(status:int, inner_sni:str|None, outer_sni:str|None)`; `Modules/_ssl.c:2188-2189` returns `None` if `self->ssl==NULL` (cf. `Lib/test/test_ssl.py:2436-2437` expecting `(expected,None,None)`).\n\nPython splits it:\n\n* `SSLObject.get_ech_status` at `Lib/ssl.py:1030-1032`: `ECHStatus(self._sslobj.get_ech_status()[0])`.\n* `SSLSocket.get_ech_status` at `Lib/ssl.py:1484-1486`: same `[0]`-wrap, guarded by `if self._sslobj is not None`.\n* `SSLObject.outer_server_hostname` at `Lib/ssl.py:867-870`: `return self._sslobj.get_ech_status()[2]`.\n* `SSLSocket.outer_server_hostname` at `Lib/ssl.py:1168-1173`: same `[2]`, guarded by `if self._sslobj is not None`.\n\nIndex `1` (inner SNI) is never read by `ssl.py`."
+    },
+    {
+      "question": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "source": "B",
+      "usage": {
+        "inputTokens": 4923,
+        "cachedReadTokens": 45681,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1795
+      },
+      "contextUsage": {
+        "inputTokens": 43,
+        "cachedReadTokens": 45553,
+        "cachedWriteTokens": 0,
+        "outputTokens": 22
+      },
+      "sunkUsage": {
+        "inputTokens": 4951,
+        "cachedReadTokens": 91234,
+        "cachedWriteTokens": 0,
+        "outputTokens": 580
+      },
+      "costUsd": 0.0009426619999999999,
+      "ttftMs": 8352,
+      "totalMs": 10049,
+      "toolReads": [],
+      "answer": "In `Lib/ssl.py:155-159`, `ECHStatus` is built only if `HAS_ECH` by ` _IntEnum._convert_('ECHStatus',__name__,lambda name:name.startswith('ECH_STATUS_'),source=_ssl)`.\n\nSource ints are exported in `Modules/_ssl.c:7388-7398` via `ADD_INT_CONST(\"ECH_STATUS_BACKEND\",...)` through `ADD_INT_CONST(\"ECH_STATUS_FAILED_ECH_BAD_NAME\",...)`.\n\n`_ssl._SSLSocket.get_ech_status` returns a 3-tuple in `Modules/_ssl.c:2191-2192`: `SSL_ech_get1_status(self->ssl,&inner_sni,&outer_sni)` then `Py_BuildValue(\"(izz)\",status,inner_sni,outer_sni)` (`Modules/_ssl.c:2187-2195`).\n\nDivision in `Lib/ssl.py`:\n\n* `SSLObject.get_ech_status` at `Lib/ssl.py:1030-1032` uses element `0`: `ECHStatus(self._sslobj.get_ech_status()[0])`.\n* `SSLObject.outer_server_hostname` at `Lib/ssl.py:866-870` uses element `2`: `self._sslobj.get_ech_status()[2]`.\n* `SSLSocket.get_ech_status` at `Lib/ssl.py:1484-1486` uses element `0`: `ECHStatus(...[0])` when `_sslobj is not None`.\n* `SSLSocket.outer_server_hostname` at `Lib/ssl.py:1168-1173` uses element `2`: `self._sslobj.get_ech_status()[2]` when `_sslobj is not None`.\n\nElement `1` (`inner_sni`) is never exposed by those wrappers."
+    },
+    {
+      "question": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "source": "C",
+      "usage": {
+        "inputTokens": 47702,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 2402
+      },
+      "contextUsage": {
+        "inputTokens": 14947,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 20
+      },
+      "costUsd": 0.005250599999999999,
+      "ttftMs": 11467,
+      "totalMs": 13863,
+      "toolReads": [],
+      "answer": "`ECHStatus` is built from `_ssl` integer constants:\n\n* `Lib/ssl.py:155-159`: `if HAS_ECH: _IntEnum._convert_('ECHStatus',__name__, lambda name: name.startswith('ECH_STATUS_'), source=_ssl)`.\n* `Modules/_ssl.c:7388-7398`: `ADD_INT_CONST(\"ECH_STATUS_BACKEND\",SSL_ECH_STATUS_BACKEND)` through `ADD_INT_CONST(\"ECH_STATUS_FAILED_ECH_BAD_NAME\",...)`, exposing OpenSSL `SSL_ECH_STATUS_*` as `_ssl.ECH_STATUS_*`.\n\n`_ssl._SSLSocket.get_ech_status` returns the raw 3-tuple:\n\n* `Modules/_ssl.c:2188-2189`: `if (self->ssl==NULL) {Py_RETURN_NONE;}`.\n* `Modules/_ssl.c:2191-2192`: `status=SSL_ech_get1_status(self->ssl,&inner_sni,&outer_sni)` then `Py_BuildValue(\"(izz)\",status,inner_sni,outer_sni)` — `(status:int, inner: str|None, outer: str|None)`.\n* Shape confirmed by `Lib/test/test_ssl.py:2436-2437`: `obj._sslobj.get_ech_status()==(expected,None,None)` and `Lib/test/test_ssl.py:2508-2510`: `(ECH_STATUS_FAILED,'localhost','localhost')`.\n\n`ssl.py` splits index `0` vs `2`; index `1` is unused:\n\n* `SSLObject.get_ech_status` at `Lib/ssl.py:1030-1032`: `return ECHStatus(self._sslobj.get_ech_status()[0])`.\n* `SSLObject.outer_server_hostname` at `Lib/ssl.py:867-870`: `return self._sslobj.get_ech_status()[2]`.\n* `SSLSocket.get_ech_status` at `Lib/ssl.py:1484-1486`: `if self._sslobj is not None: return ECHStatus(...[0])`, otherwise `None`.\n* `SSLSocket.outer_server_hostname` at `Lib/ssl.py:1168-1173`: `if self._sslobj is not None: return self._sslobj.get_ech_status()[2]`, otherwise `None`."
+    },
+    {
+      "question": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "source": "D",
+      "usage": {
+        "inputTokens": 13794,
+        "cachedReadTokens": 32625,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1605
+      },
+      "contextUsage": {
+        "inputTokens": 98,
+        "cachedReadTokens": 46193,
+        "cachedWriteTokens": 0,
+        "outputTokens": 18
+      },
+      "costUsd": 0.0017656500000000001,
+      "ttftMs": 7343,
+      "totalMs": 9337,
+      "toolReads": [],
+      "answer": "`ECHStatus` is built in `Lib/ssl.py:155-159` via:\n\n> `if HAS_ECH:` + `_IntEnum._convert_('ECHStatus', ..., lambda name: name.startswith('ECH_STATUS_'), source=_ssl)`\n\ni.e. `IntEnum` members generated from `_ssl.ECH_STATUS_*` constants.\n\n`_ssl._SSLSocket.get_ech_status` returns a 3-tuple in `Modules/_ssl.c:2191-2192`:\n\n> `SSL_ech_get1_status(self->ssl, &inner_sni, &outer_sni)` + `Py_BuildValue(\"(izz)\", status, inner_sni, outer_sni)`\n\ni.e. `(status:int, inner: str|None, outer: str|None)`; confirmed by test expectation `Lib/test/test_ssl.py:2436-2437`: `obj._sslobj.get_ech_status() == (expected, None, None)`.\n\nDivision in `Lib/ssl.py`:\n* `SSLObject.get_ech_status` at `Lib/ssl.py:1030-1032` returns `ECHStatus(self._sslobj.get_ech_status()[0])` — index `0` coerced to enum.\n* `SSLObject.outer_server_hostname` at `Lib/ssl.py:867-870` returns `self._sslobj.get_ech_status()[2]` — index `2` raw.\n* `SSLSocket.get_ech_status` at `Lib/ssl.py:1484-1486` returns `ECHStatus(...[0])` if `self._sslobj is not None`, else implicit `None`.\n* `SSLSocket.outer_server_hostname` at `Lib/ssl.py:1169-1173` returns `...[2]` if `self._sslobj is not None`, else implicit `None`."
+    },
+    {
+      "question": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "source": "CD",
+      "usage": {
+        "inputTokens": 48404,
+        "cachedReadTokens": 0,
+        "cachedWriteTokens": 0,
+        "outputTokens": 1951
+      },
+      "contextUsage": {
+        "inputTokens": 26,
+        "cachedReadTokens": 48241,
+        "cachedWriteTokens": 0,
+        "outputTokens": 27
+      },
+      "costUsd": 0.0052306,
+      "ttftMs": 8951,
+      "totalMs": 11214,
+      "toolReads": [],
+      "answer": "`ECHStatus` is built in `Lib/ssl.py:155-159` via:\n\n```python\n_IntEnum._convert_('ECHStatus',__name__,lambda name:name.startswith('ECH_STATUS_'),source=_ssl)\n```\n\nsourcing integer constants defined in `Modules/_ssl.c:7388-7398` with `ADD_INT_CONST(\"ECH_STATUS_BACKEND\",...)` through `ADD_INT_CONST(\"ECH_STATUS_FAILED_ECH_BAD_NAME\",...)`.\n\n`_ssl._SSLSocket.get_ech_status` in `Modules/_ssl.c:2191-2192` returns a 3-tuple:\n\n```c\nint status=SSL_ech_get1_status(self->ssl,&inner_sni,&outer_sni);\nPyObject *result=Py_BuildValue(\"(izz)\",status,inner_sni,outer_sni);\n```\n\ni.e. `(status:int, inner_sni:str|None, outer_sni:str|None)`; `Modules/_ssl.c:2188-2189` returns `None` if `self->ssl==NULL`.\n\nDivision in `Lib/ssl.py`:\n\n* `SSLObject.get_ech_status` at `Lib/ssl.py:1030-1032`: `ECHStatus(self._sslobj.get_ech_status()[0])` — index `0` only.\n* `SSLObject.outer_server_hostname` at `Lib/ssl.py:866-870`: `return self._sslobj.get_ech_status()[2]` — index `2` only.\n* `SSLSocket.get_ech_status` at `Lib/ssl.py:1484-1486`: same `[0]` wrapped in `ECHStatus`, but guarded by `if self._sslobj is not None`.\n* `SSLSocket.outer_server_hostname` at `Lib/ssl.py:1168-1173`: same `[2]`, guarded by `if self._sslobj is not None`.\n\nIndex `1` (`inner_sni`) is never exposed by `ssl.py`; e.g. `Lib/test/test_ssl.py:2436-2437` asserts raw `_sslobj.get_ech_status()==(expected,None,None)` and `Lib/test/test_ssl.py:2508-2510` asserts `(...FAILED,'localhost','localhost')`."
+    }
+  ]
+}

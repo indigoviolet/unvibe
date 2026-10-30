@@ -1,0 +1,11 @@
+# Q6 (where) — source CD
+
+`SSLContext.load_ech_keys(keyfile,password=None,*,for_retry=True)` is server-side [`Doc/library/ssl.rst:1820`](`Doc/library/ssl.rst:1820`) :
+
+* Rejects client contexts: `if(self->protocol==PY_SSL_VERSION_TLS_CLIENT)` raises `Cannot load ECH keys into a PROTOCOL_TLS_CLIENT context` [`Modules/_ssl.c:5443-5447`].
+* `keyfile` converted via `PyUnicode_FSConverter`, opened as `BIO_new_file(filename,"rb")` under `PyMutex_Lock(&self->tstate_mutex)` + `PySSL_BEGIN_ALLOW_THREADS` [`Modules/_ssl.c:5452-5453`](`Modules/_ssl.c:5452-5453`) [`Modules/_ssl.c:5468-5477`](`Modules/_ssl.c:5468-5477`).
+* File must be PEM `private key followed by its ECHConfigList` [`Modules/_ssl.c:5430`](`Modules/_ssl.c:5430`) [`Doc/library/ssl.rst:1822-1824`]; e.g. `ENCRYPTED PRIVATE KEY` + `ECHCONFIG` [`Lib/test/certdata/ech-encrypted.pem:1-10`].
+* Encrypted keys: `password` may be `string, bytes, bytearray, or callable` [`Modules/_ssl.c:5431-5433`]; `PyCallable_Check(password)` stores as `pw_info.callable`, else `_pwinfo_set` [`Modules/_ssl.c:5455-5461`], passed as `_password_callback` to `PEM_read_bio_PrivateKey(bio,NULL,_password_callback,&pw_info)` [`Modules/_ssl.c:5387-5389`]. Callback failure propagates as already-set exception [`Modules/_ssl.c:5483-5485`].
+* Helper gets/creates store: `SSL_CTX_get1_echstore(ctx)`, or `OSSL_ECHSTORE_new(NULL,NULL)` if none [`Modules/_ssl.c:5392-5400`], then `OSSL_ECHSTORE_set1_key_and_read_pem(store,key,bio,for_retry)` [`Modules/_ssl.c:5402-5404`].
+* `for_retry` controls advertisement: `If for_retry is true, advertise the configurations in ECH retry responses` [`Modules/_ssl.c:5434-5436`]; each call appends: `Each call adds keys and configurations to those already loaded` [`Doc/library/ssl.rst:1830-1832`], finalized by `SSL_CTX_set1_echstore(ctx,store)` [`Modules/_ssl.c:5412`](`Modules/_ssl.c:5412`).
+* Duplicate: counts `old_keys/new_keys` via `OSSL_ECHSTORE_num_keys`; `if(new_keys<=old_keys)` raises `SSL_R_PRIVATE_KEY_MISMATCH` [`Modules/_ssl.c:5402-5410`] because `OpenSSL may match a key already in the store. We want to require a new match` [`Modules/_ssl.c:5407`](`Modules/_ssl.c:5407`), surfacing as `SSLError` via `_setSSLError` [`Modules/_ssl.c:5491-5493`].

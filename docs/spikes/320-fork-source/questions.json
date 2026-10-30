@@ -1,0 +1,116 @@
+{
+  "review": "python/cpython#160318 (cached large demo, ECH in ssl)",
+  "note": "Ground-truth keys were verified by reading the cached worktree at head c5d9c394f667b8bf89fe3271d569041f8172dfbc before any live ask. Explored = the critic session (the session with the most tool reads in the cached build; the reader used none) read or searched that area. Follow-ups reference an earlier thread in the question text so every fork source gets the same wording.",
+  "questions": [
+    {
+      "id": "Q1",
+      "kind": "why",
+      "explored": false,
+      "question": "Why does this change only offer Encrypted Client Hello when CPython is built against OpenSSL 4.0 or later, and what exactly does a user on an older OpenSSL get if they pass ech_config or look for the new APIs?",
+      "key": [
+        "HAVE_OPENSSL_ECH is defined only when OPENSSL_VERSION_NUMBER >= 0x40000000L and OPENSSL_NO_ECH is not defined (Modules/_ssl.c, the openssl/ech.h include block)",
+        "ssl.HAS_ECH mirrors that gate; Lib/ssl.py defines the ECH surface only under `if HAS_ECH:` (ECHStatus via _IntEnum._convert_, SSLObject/SSLSocket set_ech_config/get_ech_status/get_ech_retry_config/outer_server_hostname, SSLContext set_ech_config/load_ech_keys/set_outer_alpn_protocols), so those names are absent on older builds",
+        "Passing ech_config anyway raises NotImplementedError('ECH is not supported by the OpenSSL library') from _check_sslobject_params in Lib/ssl.py, and server_side plus ech_config raises ValueError first"
+      ]
+    },
+    {
+      "id": "Q2",
+      "kind": "where",
+      "explored": true,
+      "question": "Where does ssl.SSLECHRejectedError come from: which OpenSSL failure is mapped to it, and what extra data is attached to the exception when it is raised?",
+      "key": [
+        "In Modules/_ssl.c the SSL error path (fill_and_set_sslerror) remaps ERR_LIB_SSL with reason SSL_R_ECH_REQUIRED to PySSLECHRejectedErrorObject (the HAVE_OPENSSL_ECH block next to the cert-verify remap)",
+        "When the raised type is SSLECHRejectedError, the same function attaches a retry_config attribute fetched with SSL_ech_get1_retry_config, with the comment that OpenSSL only releases retry configurations once the outer handshake has authenticated the server (otherwise none/empty)",
+        "SSLECHRejectedError is a subclass of SSLError (created via add_exception; asserted in test_availability)"
+      ]
+    },
+    {
+      "id": "Q3",
+      "kind": "edge",
+      "explored": true,
+      "question": "An earlier review thread found that SSLSocket.set_ech_config caches before validating. If I call set_ech_config with invalid bytes on an already-connected socket and the call raises, what state is left behind and what happens on the next reconnect?",
+      "key": [
+        "Lib/ssl.py SSLSocket.set_ech_config assigns self._ech_config = ech_config BEFORE calling self._sslobj.set_ech_config(ech_config) (the `if HAS_ECH:` block in class SSLSocket)",
+        "The C implementation (_ssl._SSLSocket.set_ech_config in Modules/_ssl.c) then validates: client-only (ValueError for server-side), SSL_in_before (ValueError after handshake), and ech_store_from_config parses the ECHConfigList (SSLError/OverflowError on bad bytes), so the raise happens after the Python cache was already overwritten",
+        "The stale value is re-applied later: SSLSocket._real_connect and the connected branch of SSLSocket._create call self._sslobj.set_ech_config(self._ech_config) when it is not None, so the known-bad config is retried instead of the last good one; the SSLObject path has no such cache (it calls straight through)"
+      ]
+    },
+    {
+      "id": "Q4",
+      "kind": "test-coverage",
+      "explored": false,
+      "question": "What does the new ECHTests class in Lib/test/test_ssl.py actually cover, and when is most of it skipped?",
+      "key": [
+        "ECHTests (Lib/test/test_ssl.py) covers availability parity, set_ech_config (bytes/bytearray/memoryview plus TypeError cases and base64), context role errors, mixed config versions/suites, per-connection config, rejected-ECH retry config, outer ALPN (with/without ECH, not replacing inner), load_ech_keys including the password variant, a full ECH handshake, status before handshake, GREASE, rejected ECH and test_str",
+        "Most handshake-level tests are gated by requires_ech_x25519 = skipUnless(ssl.HAS_ECH and 'x25519' in SSLContext(PROTOCOL_TLS_CLIENT).get_groups()), so they skip without ECH-capable OpenSSL 4.0 or without the X25519 group; others use skipUnless(ssl.HAS_ECH)",
+        "test_availability runs more broadly and asserts hasattr parity with ssl.HAS_ECH across ssl and _ssl owners, plus that SSLECHRejectedError subclasses SSLError"
+      ]
+    },
+    {
+      "id": "Q5",
+      "kind": "cross-file",
+      "explored": true,
+      "question": "Trace an ech_config value from SSLContext.wrap_socket / wrap_bio down to OpenSSL: which layers validate it, transform it, and finally install it?",
+      "key": [
+        "Lib/ssl.py: wrap_socket/wrap_bio gained ech_config=None; SSLObject._create and SSLSocket._create call _check_sslobject_params, which rejects ech_config with server_side (ValueError) and raises NotImplementedError when HAS_ECH is false",
+        "SSLObject._create applies sslobj.set_ech_config(ech_config) right after context._wrap_bio; SSLSocket instead stores self._ech_config in _create and applies it after _wrap_socket in the connected branch and in _real_connect; a context-level SSLContext.set_ech_config exists separately",
+        "Modules/_ssl.c _SSLSocket.set_ech_config checks PY_SSL_CLIENT and SSL_in_before, then ech_store_from_config writes the buffer through a memory BIO into OSSL_ECHSTORE_read_echconfiglist and rejects an empty store, then SSL_set1_echstore installs it and the context outer ALPN is restored; SSLContext.set_ech_config uses SSL_CTX_set1_echstore and rejects PROTOCOL_TLS_SERVER contexts"
+      ]
+    },
+    {
+      "id": "Q6",
+      "kind": "where",
+      "explored": false,
+      "question": "How does server-side SSLContext.load_ech_keys work, including the for_retry flag, encrypted key files, and what happens if the PEM contains a key the store already has?",
+      "key": [
+        "Modules/_ssl.c _SSLContext.load_ech_keys rejects PROTOCOL_TLS_CLIENT contexts, converts the keyfile path, accepts password as string/bytes/bytearray or callable via _PySSLPasswordInfo, opens the file with BIO_new_file and reports OSError when the open fails with errno",
+        "load_ech_keys reads the private key with PEM_read_bio_PrivateKey and the password callback, gets or creates the context ECH store (SSL_CTX_get1_echstore / OSSL_ECHSTORE_new), then OSSL_ECHSTORE_set1_key_and_read_pem(store, key, bio, for_retry) reads the following ECHConfigList from the same BIO; for_retry (default True in Python) advertises the configs in ECH retry responses",
+        "It requires a genuinely new key match: it compares OSSL_ECHSTORE_num_keys before and after and raises SSL_R_PRIVATE_KEY_MISMATCH when new_keys <= old_keys, then installs with SSL_CTX_set1_echstore"
+      ]
+    },
+    {
+      "id": "Q7",
+      "kind": "why",
+      "explored": false,
+      "question": "Why does socket creation clear the outer ALPN list when ECH is not configured or is only GREASE, and how does set_ech_config interact with that?",
+      "key": [
+        "Modules/_ssl.c newPySSLObject: for PY_SSL_CLIENT sockets it probes SSL_ech_get1_status at creation; when the status is SSL_ECH_STATUS_NOT_CONFIGURED or SSL_ECH_STATUS_GREASE it calls SSL_ech_set1_outer_alpn_protos(ssl, NULL, 0), with the comment that OpenSSL also applies outer ALPN to ordinary and GREASE handshakes (so a stale outer list must not leak into non-ECH handshakes)",
+        "_SSLSocket.set_ech_config, after SSL_set1_echstore succeeds, restores the context's outer_alpn_protocols via SSL_ech_set1_outer_alpn_protos under the socket plus context critical sections (the outer list cleared at creation is put back once a real config exists)",
+        "Lib/ssl.py exposes SSLContext.set_outer_alpn_protocols only under `if HAS_ECH:`, encoding the list with _encode_alpn_protocol_list into _set_outer_alpn_protocols"
+      ]
+    },
+    {
+      "id": "Q8",
+      "kind": "edge",
+      "explored": false,
+      "question": "What does get_ech_retry_config return before the handshake, on a socket with no SSL object, and after a handshake where the server never authenticated — and why?",
+      "key": [
+        "Modules/_ssl.c _SSLSocket.get_ech_retry_config returns None when self->ssl is NULL; otherwise SSL_ech_get1_retry_config failing (not 1) clears the error and yields empty bytes, with the comment that OpenSSL does not release unauthenticated retry configurations",
+        "Lib/ssl.py SSLObject.get_ech_retry_config returns self._sslobj.get_ech_retry_config() directly, while SSLSocket.get_ech_retry_config returns None when self._sslobj is None and otherwise delegates; test_socket_without_ssl_object asserts None for the no-object case",
+        "The same unauthenticated rule appears on the error path: SSLECHRejectedError only carries a non-empty retry_config attribute once the outer handshake has authenticated the server"
+      ]
+    },
+    {
+      "id": "Q9",
+      "kind": "follow-up",
+      "explored": true,
+      "question": "Following up on the earlier thread about SSLSocket.set_ech_config caching before validating: would moving the self._ech_config assignment to after the self._sslobj call completely fix the stale-cache problem? Check every place that writes or reads _ech_config before answering.",
+      "key": [
+        "Writers of _ech_config: SSLSocket._create stores the constructor ech_config (self._ech_config = ech_config before any validation of the config bytes; _check_sslobject_params only checks role/HAS_ECH), and SSLSocket.set_ech_config assigns before delegating",
+        "Readers: the connected branch of _create and _real_connect apply self._sslobj.set_ech_config(self._ech_config) when not None, so a bad constructor-supplied value also fails later at wrap/connect time rather than at assignment",
+        "Moving the setter assignment after a successful _sslobj call fixes the connected-socket setter path, but the constructor path still caches an unvalidated value by design (there is no _sslobj yet on an unconnected socket, so validation is necessarily deferred until _wrap_socket/_real_connect applies it); a complete fix must also handle or explicitly accept that deferred failure, and SSLObject remains cache-free throughout"
+      ]
+    },
+    {
+      "id": "Q10",
+      "kind": "cross-file",
+      "explored": false,
+      "question": "How is ECHStatus built, and how do get_ech_status and outer_server_hostname divide up the tuple that _ssl returns?",
+      "key": [
+        "Lib/ssl.py builds ECHStatus only under `if HAS_ECH:` with _IntEnum._convert_('ECHStatus', ..., names starting with ECH_STATUS_, source=_ssl), so the members come from the C module's ECH_STATUS_* constants (added in Modules/_ssl.c module init)",
+        "Modules/_ssl.c _SSLSocket.get_ech_status returns a 3-tuple (status, inner_sni, outer_sni) from SSL_ech_get1_status, returning None when self->ssl is NULL",
+        "Lib/ssl.py SSLObject.get_ech_status wraps element [0] as ECHStatus(...), outer_server_hostname returns element [2] (the outer SNI); SSLSocket versions return None when _sslobj is None and otherwise delegate the same way"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+## Already explored (deterministic layer, source C)
+
+The experienced session for this review (critic; the session with the most tool reads) already opened the following. Do not re-read these ranges unless the question needs more than the excerpt shows.
+
+- Modules/_ssl.c lines 5295-5510 (via get_code):
+```
+    Py_RETURN_NONE;
+}
+
+#ifdef HAVE_OPENSSL_ECH
+static OSSL_ECHSTORE *
+ech_store_from_config(_sslmodulestate *state, Py_buffer *ech_config)
+{
+    if (ech_config->len > INT_MAX) {
+        PyErr_Format(PyExc_OverflowError,
+                     "ECH configuration longer than %d bytes", INT_MAX);
+        return NULL;
+    }
+```
+- Modules/_ssl.c lines 2174-2285 (via get_code):
+```
+       );
+}
+
+#ifdef HAVE_OPENSSL_ECH
+/*[clinic input]
+@critical_section
+_ssl._SSLSocket.get_ech_status
+[clinic start generated code]*/
+
+static PyObject *
+_ssl__SSLSocket_get_ech_status_impl(PySSLSocket *self)
+/*[clinic end generated code: output=263bf7fc7888e2d6 input=71320052d6f2a10f]*/
+```
+- Modules/_ssl.c lines 977-1000 (via get_code):
+```
+        return NULL;
+    }
+
+#ifdef HAVE_OPENSSL_ECH
+    if (socket_type == PY_SSL_CLIENT) {
+        char *inner_sni = NULL, *outer_sni = NULL;
+        int status = SSL_ech_get1_status(self->ssl, &inner_sni, &outer_sni);
+        OPENSSL_free(inner_sni);
+        OPENSSL_free(outer_sni);
+        /* OpenSSL also applies outer ALPN to ordinary and GREASE handshakes. */
+        if ((status == SSL_ECH_STATUS_NOT_CONFIGURED
+             || status == SSL_ECH_STATUS_GREASE)
+```
+- hunk h:Modules-_ssl.c:7103f734305b29b4 (via get_hunk; full text is in the base pack or fetchable)
+- hunk h:Modules-_ssl.c:5fd32b11e18a153f (via get_hunk; full text is in the base pack or fetchable)
+- hunk h:Lib-ssl.py:7e420a30492c8835 (via get_hunk; full text is in the base pack or fetchable)
+- searched the review for "newPySSLObject" (via search_review)
+- searched the review for "outer_alpn" (via search_review)
+- searched the review for "_wrap_bio" (via search_review)
+- Modules/_ssl.c lines 960-1079 (via read):
+```
+    self->ssl = NULL;
+    self->Socket = NULL;
+    self->ctx = (PySSLContext*)Py_NewRef(sslctx);
+    self->shutdown_seen_zero = 0;
+    self->owner = NULL;
+    self->server_hostname = NULL;
+    self->got_eof_error = 0;
+
+    /* Make sure the SSL error state is initialized */
+    ERR_clear_error();
+
+    PySSL_BEGIN_ALLOW_THREADS(sslctx)
+```
+- Modules/_ssl.c lines 860-979 (via read):
+```
+/*
+ * SSL objects
+ */
+
+static int
+_ssl_configure_hostname(PySSLSocket *self, const char* server_hostname)
+{
+    int retval = -1;
+    ASN1_OCTET_STRING *ip;
+    PyObject *hostname;
+    size_t len;
+
+```
+- Lib/ssl.py lines 1520-1560 (via get_code):
+```
+            if self._ech_config is not None:
+                self._sslobj.set_ech_config(self._ech_config)
+            if connect_ex:
+                rc = super().connect_ex(addr)
+            else:
+                rc = None
+                super().connect(addr)
+            if not rc:
+                self._connected = True
+                if self.do_handshake_on_connect:
+                    self.do_handshake()
+            return rc
+```
+- Lib/test/test_ssl.py lines 1-80 (via get_code):
+```
+# Test the support for SSL and sockets
+
+import contextlib
+import sys
+import unittest
+import unittest.mock
+from ast import literal_eval
+from threading import Thread
+from test import support
+from test.support import import_helper
+from test.support import os_helper
+from test.support import socket_helper
+```
+- Modules/_ssl.c lines 5300-5379 (via read):
+```
+ech_store_from_config(_sslmodulestate *state, Py_buffer *ech_config)
+{
+    if (ech_config->len > INT_MAX) {
+        PyErr_Format(PyExc_OverflowError,
+                     "ECH configuration longer than %d bytes", INT_MAX);
+        return NULL;
+    }
+    OSSL_ECHSTORE *store = NULL;
+    BIO *config_bio = BIO_new(BIO_s_mem());
+    if (config_bio == NULL) {
+        goto fail;
+    }
+```
+- Lib/ssl.py lines 1473-1530 (via get_code):
+```
+        else:
+            raise ValueError("No SSL wrapper around " + str(self))
+
+    if HAS_ECH:
+        @_sslcopydoc
+        def set_ech_config(self, ech_config):
+            self._ech_config = ech_config
+            if self._sslobj is not None:
+                self._sslobj.set_ech_config(ech_config)
+
+        @_sslcopydoc
+        def get_ech_status(self):
+```
+- hunk h:Lib-ssl.py:2034adb234dac57c (via get_hunk; full text is in the base pack or fetchable)
+- hunk h:Lib-ssl.py:b83a8cccacefb3f0 (via get_hunk; full text is in the base pack or fetchable)
+- hunk h:Modules-_ssl.c:3dd77d815991afae (via get_hunk; full text is in the base pack or fetchable)
+- hunk h:Modules-_ssl.c:093e801715eea316 (via get_hunk; full text is in the base pack or fetchable)
+- Modules/_ssl.c lines 970-1020 (via get_code):
+```
+
+    PySSL_BEGIN_ALLOW_THREADS(sslctx)
+    self->ssl = SSL_new(ctx);
+    PySSL_END_ALLOW_THREADS(sslctx)
+    if (self->ssl == NULL) {
+        _setSSLError(get_state_ctx(sslctx), NULL, 0, __FILE__, __LINE__);
+        Py_DECREF(self);
+        return NULL;
+    }
+
+#ifdef HAVE_OPENSSL_ECH
+    if (socket_type == PY_SSL_CLIENT) {
+```
+- Modules/_ssl.c lines 740-810 (via get_code):
+```
+#endif
+                if (err.c) {
+                    errno = err.c;
+                    return PyErr_SetFromErrno(PyExc_OSError);
+                }
+                else {
+                    p = PY_SSL_ERROR_EOF;
+                    type = state->PySSLEOFErrorObject;
+                    errstr = "EOF occurred in violation of protocol";
+                }
+            } else {
+                if (ERR_GET_LIB(e) == ERR_LIB_SSL &&
+```
+- searched the review for "outer_server_hostname" (via search_review)
+- Lib/test/test_ssl.py lines 2380-2425 (via get_code):
+```
+    def test_ech_handshake(self):
+        key, config = self.read_ech_key_and_config()
+        other_config = bytearray(config)
+        other_config[6] ^= 1  # A different config_id using the same key.
+        self.addCleanup(os_helper.unlink, os_helper.TESTFN)
+        with open(os_helper.TESTFN, 'wb') as f:
+            f.write(key + b'-----BEGIN ECHCONFIG-----\n'
+                    + base64.b64encode(other_config)
+                    + b'\n-----END ECHCONFIG-----\n')
+        client_ctx, server_ctx, hostname = testing_context()
+        client_ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+        server_ctx.load_ech_keys(data_file('ech.pem'), for_retry=False)
+```
+- Lib/test/test_ssl.py lines 1-100 (via get_code):
+```
+# Test the support for SSL and sockets
+
+import contextlib
+import sys
+import unittest
+import unittest.mock
+from ast import literal_eval
+from threading import Thread
+from test import support
+from test.support import import_helper
+from test.support import os_helper
+from test.support import socket_helper
+```
+- Lib/test/test_ssl.py lines 2324-2380 (via get_code):
+```
+    @requires_ech_x25519
+    def test_load_ech_keys(self):
+        client_ctx, ctx, hostname = testing_context()
+        filename = data_file('ech.pem')
+        for path in (filename, os.fsencode(filename),
+                     os_helper.FakePath(filename)):
+            self.assertIsNone(ctx.load_ech_keys(path))
+        self.assertRaises(TypeError, ctx.load_ech_keys, None)
+        self.assertRaises(ValueError, ctx.load_ech_keys, 'key\x00file')
+        with self.assertRaises(OSError) as cm:
+            ctx.load_ech_keys(NONEXISTINGKEY)
+        self.assertEqual(cm.exception.errno, errno.ENOENT)
+```
+
+Answered earlier in another thread: the critic found that SSLSocket.set_ech_config caches the config before the underlying call validates it, so a rejected call leaves a stale value that the next reconnect re-applies (see the finding page in the base pack).

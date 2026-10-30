@@ -1,0 +1,18 @@
+Learned note — ECH stale-cache + surrounding paths:
+
+Files/ranges and why:
+- `Lib/ssl.py:1476-1492` (`SSLSocket.set_ech_config`) — caching site for the finding; matters because it assigns before validation.
+- `Lib/ssl.py:1520-1522` (`_real_connect`) and `Lib/ssl.py:1139-1143` (`_create`, h:2034adb) — re-apply sites `if self._ech_config is not None: self._sslobj.set_ech_config`; why stale value persists across reconnect.
+- `Modules/_ssl.c:2238-2279` (`_SSLSocket.set_ech_config_impl`, in 2174-2285 range) — underlying validation; matters to prove failure occurs after cache.
+- `Modules/_ssl.c:5299-5378` (`ech_store_from_config` + `set_ech_config_impl`, in 5295-5510 range) — config parsing: `len>INT_MAX→OverflowError`, `BIO_write`+`OSSL_ECHSTORE_read_echconfiglist`, `num_entries==0→ERR_R_PASSED_INVALID_ARGUMENT`; matters for what counts as “rejected”.
+- `Modules/_ssl.c:980-995` (`newPySSLSocket`, in 960-1079 range) — clears outer ALPN via `SSL_ech_set1_outer_alpn_protos(NULL,0)` when `NOT_CONFIGURED/GREASE`; explains restore block at `Modules/_ssl.c:2265-2272`.
+- `Modules/_ssl.c:2183-2220` (`get_ech_status`/`get_ech_retry_config`) — `None` if `ssl==NULL`, `b''` on unauthenticated retry, `ERR_clear_error()`; matters for `None` vs `b''` semantics.
+
+Established facts:
+- `SSLSocket.set_ech_config` does `self._ech_config=ech_config` then `self._sslobj.set_ech_config()` (`Lib/ssl.py:1479-1481`); C impl then checks `socket_type!=PY_SSL_CLIENT` and `!SSL_in_before` → `ValueError`, plus store-parse failure → `SSLError` (`Modules/_ssl.c:2242-2256`).
+- `SSLObject` path has no cache, calls straight through (h:Lib-ssl.py:37940f) — no stale bug there.
+- Outer-ALPN restore takes `PySSLContext` ref + `Py_BEGIN_CRITICAL_SECTION2(self,ctx)` (`Modules/_ssl.c:2265-2272`).
+
+Answered: Yes — failed `set_ech_config` on connected `SSLSocket` leaves stale `_ech_config` retried on next implicit connect; fix by assigning after success. Low-medium severity, client-only.
+
+Dead ends: `search_review` for `newPySSLObject`, `_wrap_bio`, `outer_alpn`, `outer_server_hostname` did not yield a distinct BIO-creation ECH path beyond `newPySSLSocket`; `Lib/test/test_ssl.py:1-100,2324-2425` only shows harness/helpers, not the reconnect-after-failure case — no existing test covers stale cache.

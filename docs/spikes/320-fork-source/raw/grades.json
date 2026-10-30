@@ -1,0 +1,508 @@
+{
+  "dryRun": false,
+  "gradeSpendUsd": 0.024842886,
+  "askSpendUsd": 0.11118517400000001,
+  "totalSpendUsd": 0.13602806,
+  "grades": [
+    {
+      "question": "Q1",
+      "source": "CD",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 4,
+      "redundancy": 4,
+      "why": "gate/HAS_ECH/NotImplementedError right but omits server_side ValueError-first and adds divergent OSSL_ECHSTORE ranges"
+    },
+    {
+      "question": "Q1",
+      "source": "C",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 3,
+      "redundancy": 3,
+      "why": "omits ValueError-first, invents unique clinic lines 159/186/213 etc and repeats gate as code block"
+    },
+    {
+      "question": "Q1",
+      "source": "B",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 4,
+      "redundancy": 4,
+      "why": "gate and if-HAS_ECH surface right but omits ValueError-first and lists extra impl ranges"
+    },
+    {
+      "question": "Q1",
+      "source": "A",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 3,
+      "why": "only one with both 396-398 ValueError-first and 399-400 NotImplementedError but adds ungrounded SSLECHRejectedError paragraph"
+    },
+    {
+      "question": "Q1",
+      "source": "D",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches version gate, HAS_ECH/if-HAS_ECH absence, _check_sslobject_params NotImplementedError plus ValueError-first with consensus files/lines"
+    },
+    {
+      "question": "Q2",
+      "source": "C",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "Correct mapping, retry_config via SSL_ech_get1_retry_config with auth comment, and subclass; omits HAVE_OPENSSL_ECH guard."
+    },
+    {
+      "question": "Q2",
+      "source": "CD",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "Correct mapping, retry_config/b'' handling, and add_exception subclass; omits HAVE_OPENSSL_ECH guard."
+    },
+    {
+      "question": "Q2",
+      "source": "A",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "Correct mapping, retry_config construction, and subclass; omits HAVE_OPENSSL_ECH guard."
+    },
+    {
+      "question": "Q2",
+      "source": "D",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "Correct mapping with sslsock check, retry_config/b'' and subclass; omits HAVE_OPENSSL_ECH guard."
+    },
+    {
+      "question": "Q2",
+      "source": "B",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "Matches all points including HAVE_OPENSSL_ECH guard, SSL_R_ECH_REQUIRED remap, authenticated-only retry_config with b'' fallback, and subclass."
+    },
+    {
+      "question": "Q3",
+      "source": "C",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers cache-before-validate, all three C checks, and both _create/_real_connect re-applies with no waste"
+    },
+    {
+      "question": "Q3",
+      "source": "B",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers all C checks but omits _create re-apply, only cites _real_connect plus _real_close aside"
+    },
+    {
+      "question": "Q3",
+      "source": "CD",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers cache-before-validate, all three C checks, and both _create/_real_connect re-applies with no waste"
+    },
+    {
+      "question": "Q3",
+      "source": "A",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "omits client-only and handshake checks, attributes raise only to parse failure, otherwise correct on stale re-apply"
+    },
+    {
+      "question": "Q3",
+      "source": "D",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers handshake and parse failure plus both re-applies but omits client-only check"
+    },
+    {
+      "question": "Q4",
+      "source": "A",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers almost all ground-truth bullets and correct skip gates, misses test_str and adds nomemtest detail."
+    },
+    {
+      "question": "Q4",
+      "source": "B",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 2,
+      "specificity": 4,
+      "redundancy": 4,
+      "why": "misstates gating for availability/socket test, invents make_ssl_objects/for_retry placement and unauthenticated reject, misses test_str."
+    },
+    {
+      "question": "Q4",
+      "source": "CD",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "good skip summary but invents 2541 and make_rejected_client helper and misplaces socket test, misses test_str."
+    },
+    {
+      "question": "Q4",
+      "source": "C",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "closest to ground truth on parity/subclassing and OpenSSL-4.0+X25519 gating with full coverage, misses test_str."
+    },
+    {
+      "question": "Q4",
+      "source": "D",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "broad coverage but invents None/b'' behavior and ech*.pem/corrupt-key details, misses test_str."
+    },
+    {
+      "question": "Q5",
+      "source": "B",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 4,
+      "why": "matches all three layers but adds out-of-scope newPySSLSocket GREASE-clear with off symbol name."
+    },
+    {
+      "question": "Q5",
+      "source": "CD",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "exact match on _check_sslobject_params, _create/_real_connect caching, PY_SSL_CLIENT/SSL_in_before, BIO-to-ECHSTORE, SSL_set1_echstore and outer-ALPN restore."
+    },
+    {
+      "question": "Q5",
+      "source": "C",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "matches ground truth with no invention but transform described vaguely as num_entries/==0 check."
+    },
+    {
+      "question": "Q5",
+      "source": "A",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 2,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "invents num_entries!=1 exact-one requirement contradicting empty-store-only reject."
+    },
+    {
+      "question": "Q5",
+      "source": "D",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "exact match on all layers plus correct clinic buffer and socket/context setter distinction."
+    },
+    {
+      "question": "Q6",
+      "source": "CD",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches client-reject, PEM flow, store, for_retry, new-key check but omits OSError/errno on BIO open."
+    },
+    {
+      "question": "Q6",
+      "source": "B",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "same coverage as Answer 1, accurate citations, omits OSError/errno and adds unverified allowed-protocols inference."
+    },
+    {
+      "question": "Q6",
+      "source": "A",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "accurate on reject, key/store/for_retry/duplicate but omits OSError/errno on open failure."
+    },
+    {
+      "question": "Q6",
+      "source": "C",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "core mechanisms right but misstates docs as PROTOCOL_TLS_SERVER and cites divergent test lines, omits OSError."
+    },
+    {
+      "question": "Q6",
+      "source": "D",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "only answer covering all ground truth including OSError with errno, PEM/store/for_retry default True, and new_keys<=old_keys mismatch."
+    },
+    {
+      "question": "Q7",
+      "source": "D",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches creation clear and set_ech_config restore with comment/APIs, misses Lib/ssl.py HAS_ECH gate; no invented behaviour"
+    },
+    {
+      "question": "Q7",
+      "source": "CD",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 2,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "correct core but invents _setSSLError failure paths at 989-992 and 2274-2277 not in ground truth"
+    },
+    {
+      "question": "Q7",
+      "source": "B",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "matches creation clear and restore with comment/APIs, misses Lib/ssl.py gate and omits context storage lines"
+    },
+    {
+      "question": "Q7",
+      "source": "A",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches creation clear and restore plus ctx storage 321-322/4154-4156, misses Lib/ssl.py gate"
+    },
+    {
+      "question": "Q7",
+      "source": "C",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "matches creation clear and restore with comment, misses Lib/ssl.py gate and omits storage detail"
+    },
+    {
+      "question": "Q8",
+      "source": "D",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "gets None/b''/b'' and NULL guard plus unauthenticated comment right but omits SSLObject direct-return and SSLECHRejectedError name and adds doc/test numbers beyond ground truth"
+    },
+    {
+      "question": "Q8",
+      "source": "C",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "same as Answer 1 reordered, correct on three returns and ERR_clear_error/empty-bytes path but misses SSLObject layer and exception class name"
+    },
+    {
+      "question": "Q8",
+      "source": "CD",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "only answer covering all ground-truth points including SSLObject 1034-1036 direct return plus SSLSocket guard plus both unauthenticated comments"
+    },
+    {
+      "question": "Q8",
+      "source": "A",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers None/b''/b'' with both C and Python guards including SSLObject passthrough and both unauthenticated error-path comments"
+    },
+    {
+      "question": "Q8",
+      "source": "B",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "correct on None/b''/b'' and comments but omits SSLObject direct-return detail and doc cite, otherwise precise and terse"
+    },
+    {
+      "question": "Q9",
+      "source": "CD",
+      "blindLabel": "Answer 1",
+      "toolReads": 4,
+      "correctness": 3,
+      "specificity": 5,
+      "redundancy": 2,
+      "why": "covers 1083/setter writers and 1142/1520 readers + SSLObject but invents 1531-1532 clear-handler and has 3 lines of trace chatter"
+    },
+    {
+      "question": "Q9",
+      "source": "B",
+      "blindLabel": "Answer 2",
+      "toolReads": 4,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 2,
+      "why": "correct connected-only fix with both readers and both SSLObject paths but 2 lines of mapping chatter and misses 396-400 check-limit"
+    },
+    {
+      "question": "Q9",
+      "source": "D",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "exact on setter/1083 writers, 396-400 role/HAS_ECH-only limit, both readers, connected-only fix; omits SSLObject cache-free"
+    },
+    {
+      "question": "Q9",
+      "source": "C",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "correct writers/readers and connected-only deferred failure with partial SSLObject, misses 396-400 check-limit"
+    },
+    {
+      "question": "Q9",
+      "source": "A",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 3,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "correct connected-only fix with 1083 and both readers but omits check-limit and SSLObject cache-free"
+    },
+    {
+      "question": "Q10",
+      "source": "CD",
+      "blindLabel": "Answer 1",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches tuple split and NULL->None but omits if HAS_ECH guard for ECHStatus"
+    },
+    {
+      "question": "Q10",
+      "source": "B",
+      "blindLabel": "Answer 2",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "includes HAS_ECH and [0]/[2] split but omits None when ssl is NULL"
+    },
+    {
+      "question": "Q10",
+      "source": "C",
+      "blindLabel": "Answer 3",
+      "toolReads": 0,
+      "correctness": 5,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "covers HAS_ECH, C tuple + NULL->None, and [0]/[2] with SSLSocket None guard"
+    },
+    {
+      "question": "Q10",
+      "source": "D",
+      "blindLabel": "Answer 4",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 4,
+      "redundancy": 5,
+      "why": "includes HAS_ECH and [0]/[2] split but omits NULL->None and C ADD_INT_CONST source"
+    },
+    {
+      "question": "Q10",
+      "source": "A",
+      "blindLabel": "Answer 5",
+      "toolReads": 0,
+      "correctness": 4,
+      "specificity": 5,
+      "redundancy": 5,
+      "why": "matches tuple split and NULL->None but omits if HAS_ECH guard for ECHStatus"
+    }
+  ]
+}
