@@ -23,7 +23,7 @@ import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import { codeLineHtml } from "../diff/highlight/codeHtml.js";
 import "../diff/highlight/highlight.css";
-import { clampCitedRange } from "./highlightWindow.js";
+import { centeredScrollTop, clampCitedRange } from "./highlightWindow.js";
 import { useFileTokens } from "./useFileTokens.js";
 import "./file.css";
 
@@ -131,24 +131,45 @@ export function FileView({ reviewId, path, commit, start, end, lookupPage, onOpe
   const focusEnd = focus.end;
   const tokens = useFileTokens(path, lines, focusStart, focusEnd);
 
-  // #317: scroll the cited range into view. The file loads in chunks,
-  // so the cited row may not exist yet — only mark the range scrolled
-  // once its row is actually found, and let later chunk arrivals (this
-  // effect re-runs as `lines` grows) retry. A new range in an
-  // already-open tab is a new key, so it scrolls again.
+  // #317: centre the cited range in the pane. The file loads in
+  // chunks, so the cited row may not exist yet: scroll as soon as it
+  // does, keep re-centring as later chunks land (this effect re-runs
+  // as `lines` grows), and only mark the range settled once the whole
+  // file is in — the final position is computed a double frame after
+  // that render, when layout has settled. A new range in an
+  // already-open tab is a new key, so it centres again. Ranges taller
+  // than the pane put their top a third of the way down.
   useEffect(() => {
     if (!lines || totalLines === 0) return;
     const key = `${path}@${commit}:${focusStart}-${focusEnd}`;
     if (scrolledFor.current === key) return;
-    const el = document.querySelector(
-      `[data-code-file="${CSS.escape(`${path}@${commit}`)}"] [data-code-line="${focusStart}"]`,
-    );
-    if (!el) return;
-    scrolledFor.current = key;
-    const raf = requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "center" });
+    const rootEl = document.querySelector(`[data-code-file="${CSS.escape(`${path}@${commit}`)}"]`);
+    const startEl = rootEl?.querySelector(`[data-code-line="${focusStart}"]`);
+    if (!startEl) return;
+    const endEl = rootEl?.querySelector(`[data-code-line="${focusEnd}"]`) ?? startEl;
+    if (lines.length >= totalLines) scrolledFor.current = key;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const pane = document.getElementById("right");
+        if (!pane) {
+          startEl.scrollIntoView({ block: "center" });
+          return;
+        }
+        const paneRect = pane.getBoundingClientRect();
+        const first = startEl.getBoundingClientRect();
+        const last = endEl.getBoundingClientRect();
+        pane.scrollTop = centeredScrollTop({
+          viewportHeight: pane.clientHeight,
+          targetTop: first.top - paneRect.top + pane.scrollTop,
+          targetHeight: last.bottom - first.top,
+        });
+      });
     });
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [lines, totalLines, path, commit, focusStart, focusEnd]);
 
   const byLine = useMemo(() => {

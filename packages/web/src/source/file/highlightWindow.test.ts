@@ -1,6 +1,6 @@
 /** Window planning for file-tab highlighting (#317): cited range first. */
 import { describe, expect, it } from "vitest";
-import { clampCitedRange, planHighlightWindows } from "./highlightWindow.js";
+import { centeredScrollTop, clampCitedRange, planHighlightWindows } from "./highlightWindow.js";
 
 describe("clampCitedRange", () => {
   it("clamps a past-the-end range to the file", () => {
@@ -10,6 +10,19 @@ describe("clampCitedRange", () => {
   it("keeps an in-range citation and defaults a missing start", () => {
     expect(clampCitedRange(5, 7, 100)).toEqual({ start: 5, end: 7 });
     expect(clampCitedRange(undefined, undefined, 100)).toEqual({ start: 1, end: 1 });
+  });
+});
+
+describe("centeredScrollTop", () => {
+  it("centres a short range in the pane", () => {
+    // Range 1000..1056 in a 600px pane: centre 1028 lands at 300.
+    expect(centeredScrollTop({ viewportHeight: 600, targetTop: 1000, targetHeight: 56 })).toBe(728);
+  });
+  it("puts a taller-than-pane range's top a third of the way down", () => {
+    expect(centeredScrollTop({ viewportHeight: 600, targetTop: 1000, targetHeight: 900 })).toBe(800);
+  });
+  it("never scrolls above the top", () => {
+    expect(centeredScrollTop({ viewportHeight: 600, targetTop: 10, targetHeight: 20 })).toBe(0);
   });
 });
 

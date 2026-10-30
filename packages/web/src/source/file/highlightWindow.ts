@@ -29,6 +29,26 @@ export function clampCitedRange(
 }
 
 /**
+ * Scroll offset that centres a target range in the pane (#317): the
+ * range's centre lands on the pane's centre; a range taller than the
+ * pane instead puts its top a third of the way down. `targetTop` is
+ * the range's top in pane-content coordinates.
+ */
+export function centeredScrollTop(args: {
+  viewportHeight: number;
+  targetTop: number;
+  targetHeight: number;
+}): number {
+  const { viewportHeight, targetTop, targetHeight } = args;
+  if (viewportHeight <= 0) return Math.max(0, targetTop);
+  const offset =
+    targetHeight >= viewportHeight
+      ? viewportHeight / 3
+      : (viewportHeight - targetHeight) / 2;
+  return Math.max(0, targetTop - offset);
+}
+
+/**
  * Partition `[1, totalLines]` into chunks of at most `chunkLines`,
  * ordered so the chunk containing `[focusStart, focusEnd]` comes first
  * and the rest follow by distance to the focus.

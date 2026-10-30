@@ -70,6 +70,20 @@ test.describe("J317 file tab scroll + syntax highlight", () => {
     }, line);
   }
 
+  /** True when the range's centre is within 20% of the pane's centre. */
+  async function rangeCentred(page: import("@playwright/test").Page, start: number, end: number): Promise<boolean> {
+    return page.evaluate(([s, e]) => {
+      const first = document.querySelector(`.codefile [data-code-line="${s}"]`);
+      const last = document.querySelector(`.codefile [data-code-line="${e}"]`);
+      const pane = document.getElementById("right");
+      if (!first || !last || !pane) return false;
+      const p = pane.getBoundingClientRect();
+      const rangeCentre = (first.getBoundingClientRect().top + last.getBoundingClientRect().bottom) / 2;
+      const paneCentre = (p.top + p.bottom) / 2;
+      return Math.abs(rangeCentre - paneCentre) <= 0.2 * p.height;
+    }, [start, end]);
+  }
+
   test("citation scrolls the cited range into view with syntax tokens; a second citation re-scrolls", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
@@ -133,6 +147,7 @@ test.describe("J317 file tab scroll + syntax highlight", () => {
     const tPaint = Date.now() - t0;
     await expect(page.locator('.codefile [data-code-line="2500"]')).toHaveClass(/cited/, { timeout: 30_000 });
     await expect.poll(() => rowInPane(page, 2500), { timeout: 30_000 }).toBe(true);
+    await expect.poll(() => rangeCentred(page, 2500, 2502), { timeout: 30_000 }).toBe(true);
     const tScroll = Date.now() - t0;
     console.log(`J317 timing: tab-visible=${tPaint}ms cited-in-view=${tScroll}ms`);
     const top1 = await page.evaluate(() => document.getElementById("right")?.scrollTop ?? -1);
@@ -145,6 +160,7 @@ test.describe("J317 file tab scroll + syntax highlight", () => {
     await expect(page.getByRole("tab", { name: "big.py" })).toHaveCount(1);
     await expect(page.locator('.codefile [data-code-line="120"]')).toHaveClass(/cited/, { timeout: 30_000 });
     await expect.poll(() => rowInPane(page, 120), { timeout: 30_000 }).toBe(true);
+    await expect.poll(() => rangeCentred(page, 120, 121), { timeout: 30_000 }).toBe(true);
     const top2 = await page.evaluate(() => document.getElementById("right")?.scrollTop ?? -1);
     expect(top2).toBeLessThan(top1);
     await expect.poll(async () => page.locator('.codefile [data-code-line="120"] [class*="shk-"]').count(), { timeout: 30_000 }).toBeGreaterThan(0);
