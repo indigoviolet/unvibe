@@ -3561,3 +3561,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   with tour frame `packages/web/visual-tour/314/loose-list.png`
   (git-ignored), inspected. No existing parse test encoded the bug, so
   none changed for it. Full gates not yet run.
+
+## Addendum: #317 (branch `fix/317-code-citation-file-tab`)
+
+- **File-tab scroll (§7/§9):** a `code:` citation into a file outside
+  the diff now scrolls the cited range into view (centred). The old
+  code marked the range scrolled before checking the row existed, so
+  on any file whose cited lines arrive in a later 200-line slice the
+  scroll fired against a missing row and never retried. The scroll
+  now waits for the cited row, retries as slices land, and re-scrolls
+  when a later citation names a different range in the already-open
+  tab.
+- **File-tab syntax highlighting (§7):** file-tab lines carry the
+  diff's Shiki highlighting (same grammar choice from the file name,
+  same CSS-variable theme, so light/dark and UI themes match the
+  diff). Tokenising happens in 200-line windows — the cited range's
+  window first, the rest by distance — each awaited, so a large file
+  paints plain immediately and colours land progressively without
+  blocking the UI; unknown languages stay plain.
+  Evidence: web `src/source/file/highlightWindow.test.ts` (clamping,
+  window coverage/order) and journey
+  `e2e/journeys/j317-file-tab-scroll-highlight.spec.ts` (real service:
+  citation to line 2500 of a 3000-line non-diff file asserts the row
+  is inside the pane, the pane scrolled, and `shk-*` tokens render;
+  a second citation to line 120 re-scrolls). Full gates not yet run.
