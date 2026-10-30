@@ -385,6 +385,32 @@ export interface RepoChangesResponse {
   cursor: string | null;
 }
 
+/**
+ * #298: one review's fresh status from the batched per-repo check
+ * (`POST /api/repos/:id/review-statuses`). Served only when the start
+ * page loads or its Refresh is pressed — never polled. `stale` means
+ * the PR/branch head differs from the review's current version head
+ * ("new commits"); it only sets the tag, nothing is re-ingested.
+ */
+export interface ReviewStatusUpdate {
+  reviewId: string;
+  /** Present on PR-backed reviews. */
+  prNumber?: number;
+  /** #224: normalised PR state from gh. Absent when gh did not say. */
+  prState?: PrState;
+  /** #224: normalised review decision from gh. Absent when none. */
+  reviewDecision?: PrReviewDecision;
+  /** Current head SHA reported by gh (PR) or local git (branch), when known. */
+  headSha?: string;
+  /** Head moved since the review was fetched ("new commits"). */
+  stale: boolean;
+}
+
+/** #298: `POST /api/repos/:id/review-statuses` — one status per review of the repo. */
+export interface RepoReviewStatusesResponse {
+  statuses: ReviewStatusUpdate[];
+}
+
 // --- reviews -------------------------------------------------------------
 
 /**
@@ -547,6 +573,14 @@ interface ReviewSnapshotBase {
    * successful update pass. Absent on fresh reviews.
    */
   versionStatus?: import("./versions.js").VersionStatus;
+  /**
+   * #298: head SHA seen by the start page's batched status check when
+   * it differs from `version.headSha` ("new commits" on the Reviews
+   * list). Only a tag: no version is created and nothing is ingested
+   * until the review is opened/refreshed, which clears it by building
+   * the real new version. Absent when the head is steady.
+   */
+  pendingHeadSha?: string;
   /**
    * M5: reader-pinned excerpts stored in the snapshot so refresh can remap
    * them by content (`needsRepining` when not found again).

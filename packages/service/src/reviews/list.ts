@@ -150,7 +150,11 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const pendingComments = (snapshot?.annotations ?? []).filter(
       (a) => (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt && a.replies.some((r) => r.kind === "comment"),
     ).length;
-    const stale = snapshot?.versionStatus?.stale ?? false;
+    // #298: the start page's batched status check only sets the tag
+    // (`pendingHeadSha`); a real refresh's `versionStatus` also counts.
+    const stale =
+      (snapshot?.versionStatus?.stale ?? false) ||
+      (snapshot?.pendingHeadSha !== undefined && snapshot.pendingHeadSha !== snapshot.version.headSha);
     // #224: PR badges from the gh data stored on the description at
     // ingest/refresh time (no gh call here, per this module's contract).
     const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;

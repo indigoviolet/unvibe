@@ -241,6 +241,15 @@ UI); nothing below was edited by this pass.
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
+- Reviews-list statuses fresh on load/Refresh (#298) — met
+  (`repos/review-statuses.ts`: one batched GraphQL query per repo
+  covers every PR-backed review — state, displayed decision and head
+  SHA, including merged/closed PRs absent from the open PR lists;
+  branch reviews use the local git tip; only the stored state and
+  the `pendingHeadSha` tag change, no re-ingest; runs only from the
+  start page's load/Refresh via `POST /api/repos/:id/review-statuses`;
+  `review-statuses-298.test.ts`, journey
+  `j298-refresh-review-statuses.spec.ts`).
 <- Selections remembered — met (selector in `localStorage`,
   `start.spec.ts` persistence round-trip; last-opened ordering in
   `reviews/list.ts`).
