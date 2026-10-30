@@ -526,6 +526,18 @@ export function commentCardAnchor(anchor: ActionAnchor): ActionAnchor | null {
  */
 export const SCROLL_GRACE_MS = 500;
 
+/**
+ * Whether a scroll still counts as the app's own follow-up to the bar
+ * being summoned (issue #319): the bar was requested within the grace
+ * window and the selection it belongs to is still live. Keyed on the
+ * synchronously set `shownAt`, not on committed toolbar state — a scroll
+ * landing between `setPending` and the React commit must not hide a bar
+ * whose selection is still live.
+ */
+export function isInScrollGrace(now: number, shownAt: number, selectionLive: boolean): boolean {
+  return selectionLive && shownAt > 0 && now - shownAt >= 0 && now - shownAt < SCROLL_GRACE_MS;
+}
+
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   // Over-cap selections show a plain note in the bar instead of the
@@ -657,6 +669,10 @@ export function SelectionToolbar() {
         const threadEl = (anchorEl as HTMLElement).closest?.("[data-thread]") as HTMLElement | null;
         const inThreadId = threadEl?.dataset.thread ?? (threadEl?.id ?? "");
         const inReplyId = replyEl?.dataset.reply ?? "";
+        // Set synchronously at commit-request time (issue #319): the
+        // scroll grace in onScroll reads this, so a scroll landing before
+        // React commits `pending` still counts as in-grace.
+        shownAt.current = Date.now();
         setPending({
           quote,
           anchor:
@@ -675,7 +691,6 @@ export function SelectionToolbar() {
           ...(hunkRange ? { diffRange: hunkRange } : {}),
         });
         setNotice(null);
-        shownAt.current = Date.now();
         // Position after render (needs the bar's size).
         window.setTimeout(place, 0);
       }, 0);
@@ -719,7 +734,13 @@ export function SelectionToolbar() {
     const onScroll = (): void => {
       // Issue #147: a scroll landing just after the bar shows is the app's
       // own — the selection is still live, so follow it instead of hiding.
-      if (pendingRef.current !== null && Date.now() - shownAt.current < SCROLL_GRACE_MS) {
+      // Issue #319: grace is keyed on the synchronously set `shownAt` and
+      // a live selection, not on committed state: a scroll landing between
+      // `setPending` and the React commit (when `pendingRef` is still
+      // null) must not hide a bar whose selection is still live.
+      const sel = window.getSelection();
+      const selectionLive = sel !== null && sel.rangeCount > 0 && !sel.isCollapsed;
+      if (isInScrollGrace(Date.now(), shownAt.current, selectionLive)) {
         place();
         return;
       }
