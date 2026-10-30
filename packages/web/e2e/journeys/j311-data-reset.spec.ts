@@ -216,7 +216,7 @@ test.describe("J311 data-format notice", () => {
     // would restart through systemd against the real install).
     const scratchHome = mkdtempSync(path.join(os.tmpdir(), "unvibe-j311-home-"));
     const svc = await startService(dataDir, {
-      extraEnv: { UNVIBE_UPDATER_BACKEND: "fake", HOME: scratchHome },
+      extraEnv: { UNVIBE_UPDATER_BACKEND: "fake", UNVIBE_TEST: "1", HOME: scratchHome },
     });
     try {
       await page.goto(`${svc.origin}/?token=${svc.token}`);
