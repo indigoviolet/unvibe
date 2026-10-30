@@ -76,6 +76,10 @@ async function makeHarness(opts: {
   const db = openDatabase(":memory:");
   migrate(db);
   const dataDir = tempDir();
+  // Scratch data dir for loadConfig() in the switch route (#313): the
+  // port lookup must resolve this dir, never the real data dir.
+  const savedDataDirEnv = process.env.UNVIBE_DATA_DIR;
+  process.env.UNVIBE_DATA_DIR = dataDir;
   // Scratch home for the switch route's login-unit detection (issue #280):
   // never the real home, so a managed real home never reads as managed.
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-home-"));
@@ -131,6 +135,8 @@ async function makeHarness(opts: {
     shutdownCalls: () => shutdowns,
     close: async () => {
       process.argv[1] = savedArgv1;
+      if (savedDataDirEnv === undefined) delete process.env.UNVIBE_DATA_DIR;
+      else process.env.UNVIBE_DATA_DIR = savedDataDirEnv;
       await created.app.close();
     },
   };

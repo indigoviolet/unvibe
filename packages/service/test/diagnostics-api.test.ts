@@ -61,7 +61,13 @@ describe("diagnostics endpoints", () => {
       runner.enqueue({ cmd: git, args: ["--version"], stdout: "git version 2.50.0", stderr: "", code: 0 });
       const db = openDatabase(":memory:");
       migrate(db);
+      // Scratch data dir (#313): diagnostics resolves loadConfig(), which
+      // must never resolve the real data dir in a test.
+      const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-diag-data-"));
+      const savedDataDirEnv = process.env.UNVIBE_DATA_DIR;
+      process.env.UNVIBE_DATA_DIR = dataDir;
       const { app } = await createApp("tok-secret-xyz", {
+        dataDir,
         settings: new SettingsStore(db),
         jobs: new JobQueue(),
         autoPipeline: false,
@@ -92,6 +98,8 @@ describe("diagnostics endpoints", () => {
         expect(text).not.toContain("tok-secret-xyz");
       } finally {
         await app.close();
+        if (savedDataDirEnv === undefined) delete process.env.UNVIBE_DATA_DIR;
+        else process.env.UNVIBE_DATA_DIR = savedDataDirEnv;
       }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -107,7 +115,12 @@ describe("diagnostics endpoints", () => {
     const runner = new FakeCommandRunner();
     const db = openDatabase(":memory:");
     migrate(db);
+    // Scratch data dir (#313), as above.
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-diag-data-"));
+    const savedDataDirEnv = process.env.UNVIBE_DATA_DIR;
+    process.env.UNVIBE_DATA_DIR = dataDir;
     const { app } = await createApp("tok", {
+      dataDir,
       settings: new SettingsStore(db),
       jobs: new JobQueue(),
       autoPipeline: false,
@@ -131,6 +144,8 @@ describe("diagnostics endpoints", () => {
       expect(Array.isArray(body.diagnostics.tools)).toBe(true);
     } finally {
       await app.close();
+      if (savedDataDirEnv === undefined) delete process.env.UNVIBE_DATA_DIR;
+      else process.env.UNVIBE_DATA_DIR = savedDataDirEnv;
     }
   });
 
