@@ -41,6 +41,7 @@ import type {
   Repo,
   RepoChange,
   RepoChangesResponse,
+  RepoReviewStatusesResponse,
   ReposResponse,
   Review,
   ReviewAction,
@@ -1921,6 +1922,8 @@ export const mockApi = {
     await wait(50);
     return { status: "picked", path: "/mock/picked/checkout" };
   },
+
+  refreshReviewStatuses: async (): Promise<RepoReviewStatusesResponse> => ({ statuses: [] }),
 
   repoChanges: async (
     id: string,
