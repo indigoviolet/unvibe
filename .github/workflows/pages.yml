@@ -4,7 +4,7 @@
 # dispatch. No build step: `site/` is plain HTML + CSS + one image.
 # The owner enables Pages once in the repository settings (Settings →
 # Pages → Source: GitHub Actions); afterwards every merge to `main`
-# touching `site/` republishes https://indigoviolet.github.io/unvibe/.
+# touching `site/` republishes https://unvibe.xyz (github.io redirects there).
 
 name: pages
 
