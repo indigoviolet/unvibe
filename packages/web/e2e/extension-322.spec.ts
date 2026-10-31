@@ -36,7 +36,8 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 const EXTENSION_DIR = fileURLToPath(new URL("../../../extension", import.meta.url));
 const SHOT = fileURLToPath(new URL("../test-results/extension-button.png", import.meta.url));
-const SHOT_CONFIRM = fileURLToPath(new URL("../test-results/open-confirm.png", import.meta.url));
+const SHOT_CONFIRM_1440 = fileURLToPath(new URL("../test-results/open-confirm-1440.png", import.meta.url));
+const SHOT_CONFIRM_960 = fileURLToPath(new URL("../test-results/open-confirm-960.png", import.meta.url));
 const OWNER = "acme";
 const NAME = "app";
 const PR_NUMBER = 7;
@@ -228,8 +229,13 @@ test.describe("extension PR button (#322)", () => {
     });
     await expect(page.getByTestId("open-confirm")).toBeVisible();
     await expect(page.getByRole("button", { name: "Start review" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Unvibe" })).toBeVisible();
-    await page.screenshot({ path: SHOT_CONFIRM });
+    // Frames for owner review: 1440 and 960, light (the context default).
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({ path: SHOT_CONFIRM_1440 });
+    await page.setViewportSize({ width: 960, height: 900 });
+    await page.screenshot({ path: SHOT_CONFIRM_960 });
     expect(JSON.stringify((await apiJson(svc, "GET", "/api/repos")).json)).toBe(
       JSON.stringify((reposBefore as { json: unknown }).json),
     );
