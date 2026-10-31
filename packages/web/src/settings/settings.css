@@ -107,15 +107,7 @@ mark.tm {
 .settings-doc .grouphead .hint {
   font-size: 13px;
 }
-/* #274 stronger field labels, vertically centred on the control. */
-.settings-doc .ui-field {
-  align-items: center;
-}
-.settings-doc .ui-field > label {
-  font-size: 13px;
-  color: var(--ink);
-  padding-top: 0;
-}
+/* Row layout is the shared Field (#328); no per-section alignment here. */
 /* #274 field-level errors: red border on the control, icon + tinted box. */
 .settings-doc .ui-field:has(.err) .ui-select {
   border-color: var(--del-ink);

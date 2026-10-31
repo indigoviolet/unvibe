@@ -16,20 +16,20 @@ export interface Field {
   step?: string;
   /** Stored as ms, edited in minutes (#201). */
   minutes?: boolean;
-  /** #225: input width sized for the value (px), not full-width. */
-  width?: number;
+  /** Unit shown beside the number field (#328); width is shared. */
+  unit?: string;
 }
 /** ms -> minutes for the control; minutes -> ms on save. */
 export const msToMinutes = (ms: number): number => ms / 60000;
 export const minutesToMs = (minutes: number): number => Math.round(minutes * 60000);
 
 const FIELDS: Field[] = [
-  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 16.", width: 96 },
-  { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full (tokens)", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000.", width: 140 },
-  { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01", width: 96 },
-  { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000.", width: 140 },
-  { key: "cacheLifetimeMs", label: "Close idle agent sessions after (minutes)", hint: "Default 5 min.", minutes: true, width: 96 },
-  { key: "idleExitMinutes", label: "Stop the service when idle for (minutes)", hint: "0 means never. Default 10.", width: 96 },
+  { key: "sessionsPerProvider", label: "Agent sessions at once, per provider", hint: "Up to this many main-model sessions and up to this many small-model sessions at once, for each provider. 1 to 32. Default 16." },
+  { key: "inlineBudgetTokens", label: "Largest diff sent to the agent in full", hint: "Larger diffs are sent as summaries and the agent fetches the rest when it needs it. Default 40,000.", unit: "tokens" },
+  { key: "rebuildSupersededRatio", label: "Rebuild the agent's context when this share of it is out of date", hint: "Above 0, up to 1. Default 0.2.", step: "0.01" },
+  { key: "rebuildAppendedTokens", label: "Rebuild the agent's context after this many added tokens", hint: "Default 10,000.", unit: "tokens" },
+  { key: "cacheLifetimeMs", label: "Close idle agent sessions after", hint: "Default 5 min.", minutes: true, unit: "minutes" },
+  { key: "idleExitMinutes", label: "Stop the service when idle for", hint: "0 means never. Default 10.", unit: "minutes" },
 ];
 
 export function LimitsSection({
@@ -101,16 +101,14 @@ export function LimitsSection({
             htmlFor="auto-go-deeper-toggle"
             help="When on, each go-deeper card is written in the background once the guide is ready. When off, a card is written only when you click Generate."
           >
-            <span style={{ paddingTop: 2 }}>
-              <Checkbox
-                id="auto-go-deeper-toggle"
-                testId="auto-go-deeper-toggle"
-                ariaLabel="Write go-deeper cards automatically"
-                checked={settings.autoGoDeeper === true}
-                disabled={toggling}
-                onChange={() => void toggleAutoGoDeeper()}
-              />
-            </span>
+            <Checkbox
+              id="auto-go-deeper-toggle"
+              testId="auto-go-deeper-toggle"
+              ariaLabel="Write go-deeper cards automatically"
+              checked={settings.autoGoDeeper === true}
+              disabled={toggling}
+              onChange={() => void toggleAutoGoDeeper()}
+            />
           </UiField>
         {FIELDS.map((f) => (
           <UiField
@@ -126,14 +124,16 @@ export function LimitsSection({
                 </span>
               ))}
           >
-            <Input
-              id={`limit-${f.key}`}
-              type="number"
-              step={f.step ?? "1"}
-              style={{ width: f.width ?? 120, maxWidth: "100%" }}
-              value={value(f)}
-              onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-            />
+            <span className="ui-numunit">
+              <Input
+                id={`limit-${f.key}`}
+                type="number"
+                step={f.step ?? "1"}
+                value={value(f)}
+                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+              />
+              {f.unit ? <span className="ui-unit">{f.unit}</span> : null}
+            </span>
           </UiField>
         ))}
         {errors
