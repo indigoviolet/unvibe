@@ -673,7 +673,6 @@ export function StartPage(): React.JSX.Element {
 
   // Prior sessions (front-screen list, filtered to the selected repo
   // and to change reviews below — document reviews live on /documents).
-  const [showWeb, setShowWeb] = useState(false);
   const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -1323,7 +1322,7 @@ export function StartPage(): React.JSX.Element {
   // below so they stay openable and removable.
   // #228 leaves Reviews unfiltered (owner decision): only the
   // requested-review groups below read the author filter.
-  const changeSessions = (sessions ?? []).filter((s) => s.kind !== "document" && (showWeb || s.kind !== "web"));
+  const changeSessions = (sessions ?? []).filter((s) => s.kind !== "document" && s.kind !== "web");
   const visibleSessions = changeSessions.filter((s) => s.repoId === selectedId);
   const demoSessions = (sessions ?? []).filter((s) => s.repoId === "demo");
   const showDemoEntry = demoSessions.length === 0 && demo.length > 0;
@@ -1463,10 +1462,6 @@ export function StartPage(): React.JSX.Element {
 
           {/* Reviews for the selected repo, then the demo row. */}
           <h1 className="divider">Reviews</h1>
-          <label className="hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input type="checkbox" data-testid="show-web-reviews" checked={showWeb} onChange={(e) => setShowWeb(e.target.checked)} />
-            Show web threads
-          </label>
           {mainProblem ? (
             <p className="hint" data-testid="newreview-agent-hint">
               The main model isn&apos;t ready ({mainProblem.summary}), so the guide may not be written. You can
