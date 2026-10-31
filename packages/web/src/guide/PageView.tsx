@@ -106,6 +106,9 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     }
     return n;
   };
+  // #324: denominator is every hunk in the review (hidden included —
+  // countOf never filters them), so shares sum to the total.
+  const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const otherCount = countOf(undefined);
   const plotlineOf = (id: string | undefined): Plotline | undefined =>
     id === undefined ? undefined : plotlines.find((p) => p.id === id);
@@ -164,6 +167,27 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   return (
     <UiCard as="section" variant="inset" className="plotlines" aria-label="Plotlines">
       <h2>Plotlines</h2>
+      {totalHunks > 0 ? (
+        <div
+          className="plshare"
+          role="img"
+          aria-label={`Hunk shares: ${rows.map((r) => `${r.name} ${r.count} of ${totalHunks}`).join(", ")}`}
+        >
+          {rows.map((r, i) => (
+            <span
+              key={r.id}
+              className="plshare-seg"
+              data-share={r.id}
+              title={`${r.name}: ${r.count}/${totalHunks}`}
+              style={{
+                width: `${(r.count / totalHunks) * 100}%`,
+                background: `var(--plseg-${i % 5})`,
+                opacity: r.id === PLOTLINE_OTHER_ID ? 0.45 : 0.75,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
       <ul>
         {rows.map((r) => {
           const active = snapshot?.diffFilter?.plotline === r.id;
@@ -214,7 +238,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                 }
                 trailing={
                   <Badge tone="outline">
-                    {r.count === 0 ? "no hunks" : r.count === 1 ? "1 hunk" : `${r.count} hunks`}
+                    {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                   </Badge>
                 }
               />

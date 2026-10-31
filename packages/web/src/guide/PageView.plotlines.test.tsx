@@ -65,7 +65,7 @@ describe("PageView plotlines", () => {
     const names = [...(box?.querySelectorAll(".plname") ?? [])].map((el) => el.textContent ?? "");
     expect(names).toEqual(["Unfold folded values", "Prove the unfolding works", "Other"]);
     const chips = [...(box?.querySelectorAll(".ui-row .ui-badge") ?? [])].map((el) => el.textContent ?? "");
-    expect(chips.filter((c) => /hunks?$/.test(c))).toHaveLength(3);
+    expect(chips.filter((c) => /^\d+\/\d+$/.test(c))).toHaveLength(3);
     // #242: chips are bordered pills (the outline Badge, which reads on
     // the sunk card), including the builds-on target.
     for (const chip of box?.querySelectorAll(".ui-badge") ?? []) {
@@ -116,6 +116,54 @@ describe("PageView plotlines", () => {
     await vi.waitFor(() => {
       expect(useReview.getState().snapshot?.diffFilter?.plotline).toBeUndefined();
     });
+  });
+
+  it("#324 shares sum to the total, Other included, hidden hunks counted", async () => {
+    const snap = await mockApi.review("demo");
+    const total = snap.files.reduce((n, f) => n + f.hunks.length, 0);
+    expect(total).toBeGreaterThan(0);
+    await renderRoot();
+    const box = document.querySelector(".plotlines")!;
+    const shares = [...box.querySelectorAll(".ui-row .ui-badge")]
+      .map((el) => el.textContent ?? "")
+      .filter((c) => /^\d+\/\d+$/.test(c))
+      .map((c) => c.split("/").map(Number) as [number, number]);
+    expect(shares).toHaveLength(3); // two plotlines + Other
+    for (const [, den] of shares) expect(den).toBe(total);
+    expect(shares.reduce((n, [num]) => n + num, 0)).toBe(total);
+    // One stacked bar, segments in row order summing to full width.
+    const segs = [...box.querySelectorAll(".plshare-seg")] as HTMLElement[];
+    expect(segs).toHaveLength(3);
+    expect(box.querySelector(".plshare")).toHaveAttribute("aria-label", expect.stringContaining(`of ${total}`));
+  });
+
+  it("#324 without Other, shares still sum to the total", async () => {
+    const snap = await mockApi.review("demo");
+    const first = snap.plotlines![0]!.id;
+    snap.hunkStates = snap.hunkStates.map((s) => ({ ...s, plotline: first }));
+    const covered = new Set(snap.hunkStates.map((s) => s.contentHash));
+    for (const f of snap.files)
+      for (const h of f.hunks)
+        if (!covered.has(h.contentHash))
+          snap.hunkStates.push({ contentHash: h.contentHash, folded: false, reviewed: false, plotline: first });
+    const total = snap.files.reduce((n, f) => n + f.hunks.length, 0);
+    useReview.getState().setSnapshot(snap);
+    const root = snap.pages.find((p) => p.kind === "root")!;
+    const lookupPage = (id: string): import("@unvibe/shared").Page | undefined =>
+      useReview.getState().snapshot?.pages.find((p) => p.id === id);
+    render(
+      <MemoryRouter>
+        <PageView reviewId="demo" page={root} lookupPage={lookupPage} onOpenPage={() => {}} onJumpToCard={() => {}} />
+      </MemoryRouter>,
+    );
+    const box = document.querySelector(".plotlines")!;
+    expect(box.textContent).not.toContain("Other");
+    const shares = [...box.querySelectorAll(".ui-row .ui-badge")]
+      .map((el) => el.textContent ?? "")
+      .filter((c) => /^\d+\/\d+$/.test(c))
+      .map((c) => c.split("/").map(Number) as [number, number]);
+    expect(shares.length).toBeGreaterThan(0);
+    expect(shares.reduce((n, [num]) => n + num, 0)).toBe(total);
   });
 
   it("stays off finding pages", async () => {
