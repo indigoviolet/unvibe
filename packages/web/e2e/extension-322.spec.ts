@@ -8,9 +8,14 @@
  * and lands on the review, the token cookie drives the worker's lookup,
  * no page request leaves to a non-local origin, and an unknown extension
  * origin is refused by the service.
+ *
+ * #333 extends this with the Conversation header (title with the Merge
+ * status / Code buttons beside it): a second fixture mimics that shape
+ * with structure only, and a second test asserts one button per header
+ * shape with no duplicates across Turbo-style tab swaps.
  */
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +54,55 @@ button{font:inherit}</style></head>
 </div>
 <main><p>Fixture PR body. Served locally; github.com is routed here.</p></main>
 </body></html>`;
+
+// #333: the Conversation header shape — the PR title with the Merge
+// status / Code buttons beside it, none of the classic `.gh-header-*`
+// hooks. Structure only (own class names plus a data attribute, an
+// ARIA group label, and the "Code" button text the content script keys
+// off); the shared style block also covers the classic shape so
+// Turbo-style in-page swaps between the two stay styled.
+const CONVERSATION_STYLE = `body{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;color:#1f2328;background:#fff}
+.pr-conversation-header{border-bottom:1px solid #d1d9e0;padding:16px 24px}
+.pr-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pr-title{font-size:28px;font-weight:400;margin:0}
+.pr-title-actions{display:inline-flex;gap:8px;margin-left:auto}
+.pr-title-actions button{font:inherit;font-size:12px;font-weight:500;height:28px;padding:0 12px;border-radius:6px;border:1px solid rgba(31,35,40,.15);background:#f6f8fa;color:#1f2328;cursor:pointer}
+.pr-meta{color:#59636e;margin-top:8px}
+.gh-header{border-bottom:1px solid #d1d9e0;padding-bottom:16px;margin:24px 24px 0}.gh-header-title{font-size:28px;font-weight:400}
+.gh-header-actions{display:inline-block;margin-left:12px}.gh-header-meta{color:#59636e;margin-top:8px}
+button{font:inherit}
+@media (prefers-color-scheme: dark){
+body{background:#0d1117;color:#e6edf3}
+.pr-conversation-header{border-color:#30363d}
+.pr-title-actions button{background:#21262d;color:#e6edf3;border-color:rgba(240,246,252,.1)}
+.pr-meta{color:#9198a1}
+.gh-header{border-color:#30363d}.gh-header-meta{color:#9198a1}
+}`;
+
+const CONVERSATION_BODY = `<header class="pr-conversation-header">
+  <div class="pr-title-row">
+    <h1 class="pr-title">Fix the thing <span>#${PR_NUMBER}</span></h1>
+    <div class="pr-title-actions" data-testid="pr-conversation-header-actions" role="group" aria-label="Pull request header actions"><button type="button">Merge status</button> <button type="button">Code</button></div>
+  </div>
+  <div class="pr-meta"><strong>author</strong> wants to merge 1 commit into <code>main</code> from <code>feature</code></div>
+</header>
+<main><p>Fixture PR body. Served locally; github.com is routed here.</p></main>`;
+
+const CONVERSATION_FIXTURE_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fix the thing · Pull Request #${PR_NUMBER} · ${OWNER}/${NAME}</title>
+<style>${CONVERSATION_STYLE}</style></head>
+<body>
+${CONVERSATION_BODY}
+</body></html>`;
+
+// Classic Files-tab header body for the in-page tab-swap step (same
+// markup shape as FIXTURE_HTML above).
+const CLASSIC_SWAP_BODY = `<div class="gh-header">
+  <div class="gh-header-show"><h1 class="gh-header-title">Fix the thing <span>#${PR_NUMBER}</span></h1></div>
+  <div class="gh-header-actions"><button type="button">Review changes</button> <button type="button">Code</button></div>
+  <div class="gh-header-meta"><strong>author</strong> wants to merge 1 commit into <code>main</code> from <code>feature</code></div>
+</div>
+<main><p>Fixture PR body. Served locally; github.com is routed here.</p></main>`;
 
 function writeFakeGh(binDir: string, logDir: string, repoDir: string): void {
   const script = `#!/bin/sh
@@ -243,5 +297,85 @@ test.describe("extension PR button (#322)", () => {
     });
     expect(good.status).toBe(200);
     expect(await good.json()).toMatchObject({ exists: true });
+  });
+
+  test("conversation header: one button across tab swaps (#333)", async () => {
+    test.setTimeout(240_000);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext333-profile-"));
+    const shotsDir = fileURLToPath(new URL("../visual-tour", import.meta.url));
+    mkdirSync(shotsDir, { recursive: true });
+    const ctx = await chromium.launchPersistentContext(profileDir, {
+      channel: "chromium",
+      headless: true,
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    try {
+      await ctx.route("https://github.com/**", async (route) => {
+        await route.fulfill({ status: 200, contentType: "text/html", body: CONVERSATION_FIXTURE_HTML });
+      });
+      const page = await ctx.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(PR_URL);
+
+      // Conversation header: exactly one button, in the actions beside
+      // Merge status / Code, with the u-mark icon and a known label.
+      const button = page.locator("#unvibe-review-button");
+      await expect(button).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(
+        page.locator('[data-testid="pr-conversation-header-actions"] #unvibe-review-button'),
+      ).toBeVisible();
+      await expect(button.locator("svg.unvibe-review-icon")).toBeVisible();
+      await expect(button).toHaveText(/^(Review in Unvibe|Open review|Start Unvibe)$/);
+      await page.locator(".pr-conversation-header").screenshot({
+        path: path.join(shotsDir, "extension-333-conversation-light.png"),
+      });
+
+      // Same header, dark theme.
+      await page.emulateMedia({ colorScheme: "dark" });
+      await page.locator(".pr-conversation-header").screenshot({
+        path: path.join(shotsDir, "extension-333-conversation-dark.png"),
+      });
+      await page.emulateMedia({ colorScheme: "light" });
+
+      // Turbo-style morph drops the data attribute: the ARIA/structure
+      // hooks still land the same single button in the header actions.
+      await page.evaluate(() => {
+        document.querySelector("[data-testid]")?.removeAttribute("data-testid");
+      });
+      await expect(button).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(
+        page.locator('[aria-label="Pull request header actions"] #unvibe-review-button'),
+      ).toBeVisible();
+
+      // Tab swap to the classic Files-tab header: the button moves,
+      // it does not duplicate.
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, CLASSIC_SWAP_BODY);
+      await expect(page.locator(".gh-header-actions #unvibe-review-button")).toBeVisible({
+        timeout: 30_000,
+      });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+
+      // No header at all: fails quietly, and recovers when it returns.
+      await page.evaluate(() => {
+        document.body.innerHTML = "<main><p>No header on this tab.</p></main>";
+      });
+      await page.waitForTimeout(800);
+      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, CONVERSATION_BODY);
+      await expect(button).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+
+      expect(errors).toEqual([]);
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profileDir, { recursive: true, force: true });
+    }
   });
 });
