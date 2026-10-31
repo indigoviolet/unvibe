@@ -161,6 +161,14 @@ How `packages/service/src/agent/factory.ts` picks the runner:
 - `replay`: recorded sessions over `fixtures/urllib3-5020/`. No tokens, no network. Use it for the demo and for any test that exercises agent behaviour. Recordings match by prompt markers, not by repo, so replay on a non-fixture repo still writes fixture content there; only use it on the fixture or in agent-behaviour specs.
 - `none`: pipeline disabled. Reviews open as diff + metadata with no guide. Use it in real-service specs that do not test agent behaviour, so no background pipeline mutates the review mid-test.
 
+## Chrome extension (#322)
+
+`extension/` is an MV3 extension loaded unpacked (no store packaging yet): `chrome://extensions` → Developer mode → **Load unpacked** → pick `extension/`. The manifest `key` pins the extension id (`fmmhgmdbecooajgmpkmcclidchaekiko`, `PINNED_EXTENSION_ID` in `packages/shared/src/extension.ts`), so the service can allowlist exactly `chrome-extension://<id>` — for `GET /api/extension/pr-status` only (CORS + the origin gate; the install token is still required). Set `UNVIBE_EXTENSION_ID` on the service to allowlist a different build; an invalid value allows none. `/open?pr=<url>` is the browser deep link the button opens: it reuses the create-or-open review path (cloning the repo first when unknown) and redirects to the review.
+
+Access model: the content script (GitHub PR pages only) holds no token and makes no requests; only the background worker calls the service, reading the `__unvibe_token` cookie via `chrome.cookies` and sending it as Bearer to loopback origins. The token never goes to github.com. The worker probes the service on ports 4517–4521 (`unvibe.localhost`, then `127.0.0.1`).
+
+Tests: `packages/web/e2e/extension-322.spec.ts` (persistent Chromium with the unpacked extension, `github.com` routed to a local fixture, real service + stub `gh`; frame at `packages/web/test-results/extension-button.png`), plus unit tests for the origin allowlist and deep-link parser (`packages/shared/test/extension.test.ts`, `packages/service/test/extension-322.test.ts`, `host.test.ts`).
+
 ## Tests
 
 There are two suites (issue #119). The fast suite is `mise run check`
@@ -223,6 +231,7 @@ Rules:
 | `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | SQLite DB (`unvibe.db`), `token`, lock, `worktrees/<review-id>/`. |
 | `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. The start-at-login unit bakes in `0` (issue #108: a login-started service never idle-exits). |
 | `UNVIBE_AGENT` | live agents | `replay` / `none` (see above). |
+| `UNVIBE_EXTENSION_ID` | pinned id in `extension/manifest.json` | The one Chrome extension id allowlisted for `/api/extension/pr-status` (#322). Invalid values allow no extension. |
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads (stderr). |
 | `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` | login-shell PATH | Override the agent executable (else `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`). |
 | `UNVIBE_REPO_ROOTS` | `~/src`, `~/dev`, … | `path.delimiter`-separated roots for checkout detection. |

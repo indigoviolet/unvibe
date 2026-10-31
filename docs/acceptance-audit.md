@@ -3594,3 +3594,23 @@ hunk coverage) is reported for a separate issue, not fixed here.
   citation to line 2500 of a 3000-line non-diff file asserts the row
   is inside the pane, the pane scrolled, and `shk-*` tokens render;
   a second citation to line 120 re-scrolls). Full gates not yet run.
+
+## Addendum: #322 part 1 (branch `feat/322-chrome-extension`)
+
+- **Chrome extension (PR button):** an MV3 extension in `extension/`,
+  loaded unpacked, adds "Review in Unvibe" / "Open review" to GitHub PR
+  pages. Only the background worker talks to the local service, reading
+  the `__unvibe_token` cookie via `chrome.cookies` and sending it as
+  Bearer to loopback; the content script holds no token. The service
+  allowlists the exact pinned extension origin for
+  `GET /api/extension/pr-status` only (CORS + origin gate;
+  `UNVIBE_EXTENSION_ID` overrides, never a wildcard), and `/open?pr=…`
+  opens or creates the review (cloning an unknown repo) and redirects
+  to it. Part 2 (side panel) is not built.
+  Evidence: unit tests `packages/shared/test/extension.test.ts`,
+  `packages/service/test/extension-322.test.ts` and the extension cases
+  in `packages/service/test/host.test.ts`; Playwright
+  `packages/web/e2e/extension-322.spec.ts` (unpacked extension on a
+  local github.com fixture against the real service with stub `gh`)
+  with frame `packages/web/test-results/extension-button.png`,
+  inspected. Full gates not yet run.
