@@ -1283,7 +1283,21 @@ test.describe("visual tour passes", () => {
       { id: "environment", name: "Environment", marker: "Re-check" },
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
+      { id: "extension", name: "Extension", marker: "Show extension folder" },
     ] as const) {
+      if (tab.id === "extension") {
+        // #322: seed 4 repos so the frame shows Active-repo checkboxes
+        // with the 3 most recent ticked (default).
+        const existing = (await apiJson(svc!.origin, svc!.token, "GET", "/api/repos")) as { repos: { id: string; localPath: string }[] };
+        if (existing.repos.filter((r) => r.id !== "demo" && r.localPath).length < 4) {
+          for (let i = 1; i <= 4; i++) {
+            const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-tour-ext${i}-`));
+            await makeScratchRepo(dir);
+            await journeyGit(dir, "remote", "add", "origin", `https://github.com/acme/tour${i}.git`);
+            await apiJson(svc!.origin, svc!.token, "POST", "/api/repos", { path: dir });
+          }
+        }
+      }
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
       if (tab.id === "version") {

@@ -28,6 +28,7 @@ import { PromptsSection } from "./PromptsSection.js";
 import { VersionSection } from "./VersionSection.js";
 import { AppearanceSection } from "./AppearanceSection.js";
 import { RepositoriesSection } from "./RepositoriesSection.js";
+import { ExtensionSection } from "./ExtensionSection.js";
 import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
@@ -35,6 +36,7 @@ const SETTING_TABS = [
   { id: "appearance", label: "Appearance" },
   { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
+  { id: "extension", label: "Extension" },
   { id: "access", label: "Access" },
   { id: "environment", label: "Environment" },
   { id: "prompts", label: "Prompts" },
@@ -123,6 +125,9 @@ export function SettingsPage(): React.JSX.Element {
               </TabPanel>
               <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
                 <ModelsSection settings={settings} onSaved={setSettings} />
+              </TabPanel>
+              <TabPanel idPrefix="settings" id="extension" active={tab === "extension"}>
+                <ExtensionSection settings={settings} onSaved={setSettings} />
               </TabPanel>
               <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
                 <AccessSection settings={settings} onSaved={setSettings} />

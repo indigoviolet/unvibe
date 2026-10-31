@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
+import { isDefaultGuideTitle, isDocumentReview, isWebReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -161,7 +161,7 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
     // Issue #222: document reviews have no guide pipeline; the document is ready.
     const guide =
-      snapshot !== null && isDocumentReview(snapshot)
+      snapshot !== null && (isDocumentReview(snapshot) || isWebReview(snapshot))
         ? { status: "ready" as const, detail: undefined as string | undefined }
         : guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
@@ -169,7 +169,7 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
-      ...(snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
+      ...(snapshot !== null && isWebReview(snapshot) ? { kind: "web" as const } : snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
       repoId: row.repo_id,
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,

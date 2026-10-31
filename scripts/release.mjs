@@ -210,6 +210,7 @@ copy("packages/service/dist/update-helper.js", "packages/service/dist/update-hel
 // loads from beside its bundle — shipped verbatim, no install step.
 copy("packages/service/dist/grammars", "packages/service/dist/grammars");
 copy("packages/web/dist", "packages/web/dist");
+copy("extension", "extension");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
 copy("README.md", "README.md");

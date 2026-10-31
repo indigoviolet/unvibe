@@ -21,10 +21,10 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
 import {
-  EXTENSION_PR_STATUS_PATH,
   PINNED_EXTENSION_ID,
   extensionOrigin,
   isAllowedExtensionOrigin,
+  isExtensionEndpoint,
   isExtensionId,
 } from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
@@ -228,7 +228,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     // #322: only the pr-status endpoint may be called from the exact
     // allowlisted extension origin (CORS + origin check). Every other
     // route keeps the loopback-only rule for extension origins.
-    const isExtensionEndpoint = pathname === EXTENSION_PR_STATUS_PATH;
+    const isExtEndpoint = isExtensionEndpoint(pathname);
     // #322 fix: `GET /open` never mutates (redirect or confirm page), so
     // a cross-site navigation may reach it — foreign Origin/Referer are
     // relaxed for that one read. `POST /open` (the mutation) and every
@@ -236,16 +236,16 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     const isOpenRead = pathname === "/open" && req.method === "GET";
     const allowed = hostCheckAllows(
       { headers: req.headers as Record<string, string | string[] | undefined> },
-      isExtensionEndpoint ? { extensionIds } : isOpenRead ? { relaxedOrigin: true } : {},
+      isExtEndpoint ? { extensionIds } : isOpenRead ? { relaxedOrigin: true } : {},
     );
     if (!allowed.ok) {
       reply.code(403).send({ error: `forbidden: ${allowed.reason}` });
       return;
     }
-    if (isExtensionEndpoint && allowedExtensionOrigin && isAllowedExtensionOrigin(req.headers["origin"], extensionIds)) {
+    if (isExtEndpoint && allowedExtensionOrigin && isAllowedExtensionOrigin(req.headers["origin"], extensionIds)) {
       reply.header("access-control-allow-origin", allowedExtensionOrigin);
       reply.header("vary", "Origin");
-      reply.header("access-control-allow-methods", "GET, OPTIONS");
+      reply.header("access-control-allow-methods", "GET, PUT, POST, OPTIONS");
       reply.header("access-control-allow-headers", "authorization, content-type");
       if (req.method === "OPTIONS") {
         // CORS preflight carries no token; the token gate below is for

@@ -689,6 +689,8 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
   autoGoDeeper: true,
+  extensionActiveRepoIds: null,
+  extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };
 
 function getMockSettings(): Settings {
@@ -3615,6 +3617,9 @@ export const mockApi = {
     };
   },
 
+  extensionStatus: async () => ({ extensionPath: "/mock/unvibe/extension", lastWorkerCallAt: null, connected: false }),
+  extensionOpenFolder: async () => ({ ok: true }),
+
   viewer: async () => ({ login: "you" }),
 
   settings: async (): Promise<Settings> => getMockSettings(),
@@ -3649,6 +3654,7 @@ export const mockApi = {
         { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
         { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
       ],
+      pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],
     };
     const models = catalog[provider];
     if (!models) {

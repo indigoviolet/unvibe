@@ -315,6 +315,10 @@ run = "npm run build --workspace @unvibe/shared && UNVIBE_LIVE=1 UNVIBE_ALLOW_LI
 description = "Live pi check (#279): subscription login, review tools in a fork, resume, usage split on real pi (needs the owner's pi login and go; small spend; never run by check)"
 run = "npm run build --workspace @unvibe/shared && UNVIBE_PI_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 npm run test:live:pi --workspace @unvibe/service"
 
+[tasks."test:live:panel-322"]
+description = "Live panel check (#322 part 2): pi + muse-spark answers fixture questions across active repos, pilot first, $0.25 cap (never run by check)"
+run = "UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-panel-322.mjs"
+
 [tasks."demo:large:build"]
 description = "Live large-demo build (#309): pi + muse-spark over one owner-picked public PR, $1 cap, saves the cache (token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/demo-large-build.mjs"
