@@ -1330,6 +1330,57 @@ test.describe("visual tour passes", () => {
           expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
         }
       }
+      if (tab.id === "limits") {
+        // #328 standard settings row: help under the label on the
+        // left, control alone on the right top-aligned with the
+        // label, one number width, unit beside the field, hairlines
+        // between rows. Runs at 1440 and 960 in every pass.
+        const rows = await page.locator('section[aria-label="Limits"] .ui-field').evaluateAll((els) =>
+          els.map((el) => {
+            const rect = (n: Element | null): { x: number; y: number; w: number; right: number; bottom: number } | null => {
+              if (!n) return null;
+              const b = n.getBoundingClientRect();
+              return { x: b.x, y: b.y, w: b.width, right: b.right, bottom: b.bottom };
+            };
+            return {
+              field: rect(el),
+              label: rect(el.querySelector(".ui-field-label")),
+              help: rect(el.querySelector(".ui-help")),
+              control: rect(el.querySelector(".ui-field-control")),
+              input: rect(el.querySelector('input[type="number"]')),
+              unit: rect(el.querySelector(".ui-unit")),
+              unitText: el.querySelector(".ui-unit")?.textContent ?? "",
+              borderTop: getComputedStyle(el).borderTopWidth,
+            };
+          }),
+        );
+        expect(rows.length, "limits: one checkbox row + six number rows").toBe(7);
+        for (const [i, row] of rows.entries()) {
+          expect(row.label, `limits row ${i}: label`).not.toBeNull();
+          expect(row.help, `limits row ${i}: help`).not.toBeNull();
+          expect(row.control, `limits row ${i}: control`).not.toBeNull();
+          expect(Math.abs(row.help!.x - row.label!.x), `limits row ${i}: help under label (same left edge)`).toBeLessThanOrEqual(2);
+          expect(row.help!.y, `limits row ${i}: help below label`).toBeGreaterThanOrEqual(row.label!.bottom - 2);
+          expect(row.help!.right, `limits row ${i}: help stays in the left column`).toBeLessThanOrEqual(row.control!.x + 2);
+          expect(Math.abs(row.control!.y - row.label!.y), `limits row ${i}: control top-aligned with label`).toBeLessThanOrEqual(4);
+          expect(Math.abs(row.control!.right - row.field!.right), `limits row ${i}: control pinned to the right edge`).toBeLessThanOrEqual(2);
+          expect(row.help!.w, `limits row ${i}: help takes the remaining width`).toBeGreaterThan(row.control!.w);
+          if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
+        }
+        const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
+        expect(widths.length, "limits: six number inputs").toBe(6);
+        expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
+        const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
+        expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
+        const inputRights = rows.flatMap((r) => (r.input ? [r.input.right] : []));
+        expect(Math.max(...inputRights) - Math.min(...inputRights), "limits: number inputs share the same right edge").toBeLessThanOrEqual(1);
+        for (const row of rows) {
+          if (!row.unit || !row.unitText) continue;
+          expect(row.input, "limits: unit row has an input").not.toBeNull();
+          expect(row.unit.x, "limits: unit beside the field").toBeGreaterThanOrEqual(row.input!.right);
+          expect(Math.abs(row.unit.y - row.input!.y), "limits: unit aligned with the field").toBeLessThanOrEqual(12);
+        }
+      }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
     }
