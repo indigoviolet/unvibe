@@ -18,6 +18,9 @@ export const TOKEN_COOKIE_NAME = "__unvibe_token";
 /** The only service endpoint the extension may call cross-origin. */
 export const EXTENSION_PR_STATUS_PATH = "/api/extension/pr-status";
 
+/** #322 part 2 spike: side-panel endpoints, same allowlist + token. */
+export const EXTENSION_PANEL_PREFIX = "/api/extension/panel";
+
 /** Chrome extension ids: 32 letters a–p (base16 over a–p). */
 export function isExtensionId(value: string): boolean {
   return /^[a-p]{32}$/.test(value);
