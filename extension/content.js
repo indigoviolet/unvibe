@@ -3,7 +3,8 @@
  * button to every GitHub PR tab, including the Conversation header.
  * It never talks to the service and never sees the
  * token — it asks the background worker whether a review exists and asks
- * it to open the review tab. Fails quietly if GitHub's DOM has moved.
+ * it to start (or open) the review; the worker calls the service itself
+ * and opens the review tab. Fails quietly if GitHub's DOM has moved.
  */
 (function () {
   "use strict";
@@ -123,8 +124,21 @@
             return;
           }
           try {
-            chrome.runtime.sendMessage({ type: "unvibe:open", prUrl }, () => {
+            chrome.runtime.sendMessage({ type: "unvibe:open", prUrl }, (res) => {
               void chrome.runtime.lastError;
+              // #335: the worker opens the review itself; a failure shows
+              // an honest state on the button, never a blank tab.
+              if (res && res.ok === false) {
+                const labelNow = labelEl(btn);
+                labelNow.textContent = "Couldn't start review";
+                btn.title =
+                  res.error === "unauthenticated"
+                    ? "Unvibe isn't connected in this browser — run: unvibe open"
+                    : res.error === "down"
+                      ? "Unvibe isn't running — run: unvibe open"
+                      : `Unvibe couldn't start the review: ${res.error}`;
+                setTimeout(() => setState(btn, btn.dataset.state || "missing"), 4000);
+              }
             });
           } catch {
             // Worker gone (extension reloaded): fail quietly.

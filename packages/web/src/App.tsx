@@ -6,6 +6,7 @@ import { api } from "./api/client.js";
 import { syncUiThemeFromSettings } from "./theme/theme.js";
 import { RouteShellBoundary } from "./components/ErrorBoundary.js";
 import { DebugPageRoute } from "./debug/DebugPage.js";
+import { OpenConfirmPage } from "./open/OpenConfirmPage.js";
 import { ReviewRoute } from "./ReviewRoute.js";
 import { SettingsPage } from "./settings/SettingsPage.js";
 import { StartPage } from "./start/StartPage.js";
@@ -60,6 +61,8 @@ export function App() {
         <Routes>
         <Route path="/" element={<StartPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
+        {/* #335: the confirm step for plain `/open?pr=…` links (the service redirects here when no review exists yet). */}
+        <Route path="/open/confirm" element={<OpenConfirmPage />} />
         {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
         {/* Static `debug` outranks the splat: the per-review debug page. */}
         <Route path="/review/:id/debug" element={<DebugPageRoute />} />

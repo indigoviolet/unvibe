@@ -11,7 +11,7 @@
  */
 const TOKEN_COOKIE = "__unvibe_token";
 const PR_STATUS_PATH = "/api/extension/pr-status";
-const DEFAULT_ORIGIN = "http://unvibe.localhost:4517";
+const OPEN_PATH = "/api/extension/open";
 
 // The service normally listens on 4517 (UNVIBE_PORT). A few following
 // ports are probed too so a service moved one port over still works.
@@ -100,11 +100,37 @@ async function prStatus(prUrl) {
   }
 }
 
+/**
+ * #335: the button never uses `/open`. The worker calls the
+ * authenticated create-or-open endpoint itself (Bearer token, allowlisted
+ * extension origin, like the other worker calls) and opens the review
+ * directly — no confirmation step. A failure answers `{ ok: false }` so
+ * the content script can show an honest state on the button instead of
+ * a blank tab; nothing is opened then.
+ */
 async function openReview(prUrl) {
   const svc = await findService();
-  const origin = svc ? svc.origin : DEFAULT_ORIGIN;
-  await chrome.tabs.create({ url: `${origin}/open?pr=${encodeURIComponent(prUrl)}` });
-  return { ok: true, origin };
+  if (!svc) return { ok: false, error: "down" };
+  if (!svc.token) return { ok: false, error: "unauthenticated", origin: svc.origin };
+  try {
+    const res = await fetchWithTimeout(
+      `${svc.origin}${OPEN_PATH}`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ pr: prUrl }),
+      },
+      60000,
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || typeof body.reviewId !== "string" || !body.reviewId) {
+      return { ok: false, error: (body && body.error) || `http ${res.status}`, origin: svc.origin };
+    }
+    await chrome.tabs.create({ url: `${svc.origin}/review/${body.reviewId}` });
+    return { ok: true, origin: svc.origin };
+  } catch {
+    return { ok: false, error: "down" };
+  }
 }
 
 // ---- #322 part 2: side panel (worker is still the only service caller) ----
