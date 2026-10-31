@@ -28,7 +28,7 @@ export function StackBadge({ info, currentNumber, onOpenPr }: {
         data-testid="stack-badge"
         aria-label={`Stack position ${label}${info.source === "inferred" ? " (inferred stack)" : ""}`}
         title={info.source === "inferred" ? `Inferred stack ${label}` : `Stack ${label}`}
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
         style={{
           background: `light-dark(${pair.light.bg}, ${pair.dark.bg})`,
           color: `light-dark(${pair.light.fg}, ${pair.dark.fg})`,
@@ -46,7 +46,7 @@ export function StackBadge({ info, currentNumber, onOpenPr }: {
             background: "var(--surface, #fff)", color: "var(--text, #111)", border: "1px solid var(--border, #ccc)",
             borderRadius: 8, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", textAlign: "left",
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
         >
           <div style={{ fontSize: 11, opacity: 0.7, padding: "2px 6px" }}>
             {info.source === "inferred" ? "Inferred stack" : "Stack"} · review bottom first
@@ -55,7 +55,7 @@ export function StackBadge({ info, currentNumber, onOpenPr }: {
             <button
               key={m.number} type="button" data-testid={`stack-entry-${m.number}`}
               aria-current={m.number === currentNumber ? "true" : undefined}
-              onClick={() => { setOpen(false); onOpenPr(m.number, m.title, m.headRefName); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); onOpenPr(m.number, m.title, m.headRefName); }}
               style={{
                 display: "flex", gap: 6, width: "100%", textAlign: "left", padding: "5px 6px", borderRadius: 6,
                 background: m.number === currentNumber ? "rgba(127,127,127,0.15)" : "transparent",
