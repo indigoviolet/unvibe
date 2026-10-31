@@ -1,0 +1,28 @@
+/* Unvibe button on GitHub PR pages (#322). Uses GitHub's own colour
+   variables where present (light and dark follow GitHub's theme), with
+   standalone fallbacks so the button also reads on a plain page. */
+.unvibe-review-btn {
+  margin-left: 8px;
+  padding: 0 12px;
+  height: 28px;
+  vertical-align: middle;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 6px;
+  background: var(--button-primary-bgColor-rest, #1f883d);
+  border: 1px solid var(--button-default-borderColor-rest, rgba(31, 35, 40, 0.15));
+  color: #fff;
+}
+.unvibe-review-btn:hover {
+  filter: brightness(1.07);
+}
+@media (prefers-color-scheme: dark) {
+  .unvibe-review-btn {
+    background: var(--button-primary-bgColor-rest, #238636);
+    border-color: rgba(240, 246, 252, 0.1);
+    color: #fff;
+  }
+}
