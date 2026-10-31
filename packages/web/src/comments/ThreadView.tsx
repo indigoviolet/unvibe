@@ -432,9 +432,9 @@ function CommentReplyView({
     body = <p dangerouslySetInnerHTML={{ __html: html }} />;
   }
   // Issue #315 follow-up: a reviewer comment shows the avatar only — no
-  // kind chip, no "Reviewer comment" label. A postable comment (one the
-  // Outbox can carry to GitHub — a question never posts) carries a small
-  // muted Outbox mark instead. The accessible name keeps the role.
+  // kind chip, no "Reviewer comment" label. The thread header's Outbox
+  // toggle already shows the postable/posted state; the accessible name
+  // keeps the role.
   const commentLabel = reply.kind === "persona" ? "Persona note" : "Reviewer comment";
   return (
     <div
@@ -449,16 +449,6 @@ function CommentReplyView({
       <span className="av you" role="img" aria-label="You">
         <Icon name="person" />
       </span>
-      {reply.kind === "comment" ? (
-        <span
-          className="outbox-mark"
-          role="img"
-          aria-label="Posts to GitHub from the Outbox"
-          data-tip="Posts to GitHub from the Outbox"
-        >
-          <Icon name="send" />
-        </span>
-      ) : null}
       {body}
     </div>
   );

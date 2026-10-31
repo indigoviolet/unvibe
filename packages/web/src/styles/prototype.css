@@ -1476,10 +1476,6 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .spike-thread .spike-reply { display: block; position: relative; padding: 10px 0; border-top: 1px solid var(--line); }
 .spike-thread .spike-reply:first-of-type { border-top: none; }
 .spike-thread .spike-reply > .av { float: left; width: 20px; height: 20px; margin: 1px 8px 0 0; }
-/* #315 follow-up: the Outbox mark on postable comments — the same send
-   glyph as the thread's Outbox toggle, small and muted. */
-.spike-thread .spike-reply > .outbox-mark { float: left; display: inline-grid; place-items: center; width: 16px; height: 20px; margin-right: 4px; color: var(--muted); }
-.spike-thread .spike-reply > .outbox-mark .ic { width: 12px; height: 12px; }
 .spike-thread .spike-reply > .ctl { position: absolute; top: 6px; right: 0; }
 .spike-thread .spike-reply > p { margin: 1px 0 0; }
 /* A paragraph (or sub-heading) first block flows beside the avatar; its

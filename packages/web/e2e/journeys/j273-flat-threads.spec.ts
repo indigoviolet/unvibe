@@ -230,7 +230,7 @@ test.describe("J273 flat threads", () => {
     await page.screenshot({ path: "test-results/j273-expanded.png" });
   });
 
-  test("inline avatars, Outbox mark and replies-after-first counts (#331, #315 follow-up)", async ({
+  test("inline avatars and replies-after-first counts (#331, #315 follow-up)", async ({
     page,
   }) => {
     test.setTimeout(300_000);
@@ -239,7 +239,7 @@ test.describe("J273 flat threads", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
-    // A long lone reviewer comment: avatar only, Outbox mark, no chips.
+    // A long lone reviewer comment: avatar only, no chips, no mark.
     await selectText(page, "#C-problem", "untidy");
     await page.locator('#selbar [data-act="note"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
@@ -257,10 +257,7 @@ test.describe("J273 flat threads", () => {
     await expect(loneReply.locator(".kind")).toHaveCount(0);
     await expect(loneReply.locator(".ans-q")).toHaveCount(0);
     await expect(loneReply).toHaveAttribute("aria-label", "Reviewer comment");
-    await expect(loneReply.locator(".outbox-mark")).toHaveAttribute(
-      "aria-label",
-      "Posts to GitHub from the Outbox",
-    );
+    await expect(loneReply.locator(".outbox-mark")).toHaveCount(0);
     // A lone opening comment shows no reply count.
     await expect(lone.locator("[data-count]")).toHaveCount(0);
     // The comment's first line starts on the avatar's line; later lines
@@ -334,7 +331,7 @@ test.describe("J273 flat threads", () => {
 
     // ONE frame: the list-first agent thread (question on the avatar's
     // line, list below it) above the lone reviewer-comment thread
-    // (avatar only, Outbox mark, no count, wrapped inline text). Threads
+    // (avatar only, no count, wrapped inline text). Threads
     // render in anchor order, so the b2-anchored lone thread is last.
     await listed.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
     await page.waitForTimeout(300);
