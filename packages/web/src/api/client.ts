@@ -70,6 +70,7 @@ import type {
   UpdateSwitchRequest,
   UpdateSwitchResponse,
   ViewerResponse,
+  StatsExport,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -453,6 +454,8 @@ const realApi = {
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
+  /** #323: anonymized stats export (Settings → Debug). */
+  statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
   updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),

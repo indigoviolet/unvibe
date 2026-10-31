@@ -19,6 +19,7 @@ import { api, friendlyError } from "../api/client.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
+import { DebugSection } from "./DebugSection.js";
 import { AccessSection } from "./AccessSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
@@ -39,6 +40,7 @@ const SETTING_TABS = [
   { id: "prompts", label: "Prompts" },
   { id: "limits", label: "Limits" },
   { id: "version", label: "Version" },
+  { id: "debug", label: "Debug" },
   { id: "data", label: "Data" },
 ] as const;
 
@@ -136,6 +138,9 @@ export function SettingsPage(): React.JSX.Element {
               </TabPanel>
               <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
                 <VersionSection settings={settings} onSaved={setSettings} />
+              </TabPanel>
+              <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
+                <DebugSection />
               </TabPanel>
               <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
                 <DataSection />
