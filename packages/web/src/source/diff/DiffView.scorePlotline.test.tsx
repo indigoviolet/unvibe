@@ -65,6 +65,10 @@ describe("DiffView scores and plotlines", () => {
     // dot is an indicator, not a filter button (#325).
     const dot = document.querySelector('.dhunk-h .score-ind[data-score="substantive"]');
     expect(dot?.getAttribute("data-tip")).toBe("Substantive");
+    // Owner follow-up (#325): the dot alone is visible — the level name
+    // lives in the tooltip and the accessible name, not beside the dot.
+    expect(dot?.getAttribute("aria-label")).toBe("Substantive");
+    expect(dot?.textContent).toBe("");
     expect(document.querySelector("[data-scorepick]")).toBeNull();
   });
 
