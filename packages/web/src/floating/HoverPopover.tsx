@@ -276,7 +276,7 @@ export function HoverPopover() {
       if (term) {
         const cite = resolveBlockCitations(snap, [{ target: term.citation }])[0];
         const chip =
-          cite && !cite.unverified
+          cite && !cite.unverified && term.citation.trim() !== ""
             ? `<button class="lk" type="button" data-src="${esc(term.citation)}" aria-label="Source" data-tip="Show in source">${esc(citationRange(term.citation) ?? cite.label)}</button>`
             : "";
         content =

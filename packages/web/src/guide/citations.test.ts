@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
-import { canonicalRevealTarget, resolveCitation } from "./citations.js";
+import { canonicalRevealTarget, citationChip, resolveCitation } from "./citations.js";
+import type { ResolvedCitation } from "./citations.js";
 
 const CONN = "src-urllib3-connection.py";
 
@@ -123,6 +124,48 @@ describe("resolveCitation", () => {
   it("leaves a hunk citation raw when the file is unknown", () => {
     const r = resolveCitation(snapshot(), { target: "h:nope:abc" });
     expect(r.label).toBe("h:nope:abc");
+  });
+});
+
+describe("citationChip (#336: never an empty chip)", () => {
+  const rc = (target: string, unverified?: boolean): ResolvedCitation => ({
+    target,
+    label: target,
+    snippet: "",
+    unverified,
+  });
+
+  it("returns null when there are no citations", () => {
+    expect(citationChip([])).toBeNull();
+  });
+
+  it("returns null when every citation is unverified", () => {
+    expect(citationChip([rc(`diff:${CONN}:80-81`, true)])).toBeNull();
+  });
+
+  it("drops blank targets, returning null when nothing remains", () => {
+    expect(citationChip([rc(""), rc("   ")])).toBeNull();
+  });
+
+  it("shows the line range for a single diff citation", () => {
+    expect(citationChip([rc(`diff:${CONN}:80-82`)])).toEqual({
+      targets: [`diff:${CONN}:80-82`],
+      text: "L80–82",
+    });
+  });
+
+  it("falls back to the count for a single non-line citation, never empty text", () => {
+    const chip = citationChip([rc("desc:d-p1")]);
+    expect(chip).not.toBeNull();
+    expect(chip!.targets).toEqual(["desc:d-p1"]);
+    expect(chip!.text).not.toBe("");
+    expect(chip!.text).toBe("1");
+  });
+
+  it("skips blank first targets instead of rendering them", () => {
+    const chip = citationChip([rc("  "), rc(`diff:${CONN}:81`)]);
+    expect(chip?.targets).toEqual([`diff:${CONN}:81`]);
+    expect(chip?.text).toBe("L81");
   });
 });
 
