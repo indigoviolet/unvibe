@@ -225,9 +225,10 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url;
     const pathname = urlPathname(url);
-    // #322: only the pr-status endpoint may be called from the exact
-    // allowlisted extension origin (CORS + origin check). Every other
-    // route keeps the loopback-only rule for extension origins.
+    // #322/#335: only the extension endpoints (`isExtensionEndpoint`:
+    // pr-status, open, panel) may be called from the exact allowlisted
+    // extension origin (CORS + origin check). Every other route keeps
+    // the loopback-only rule for extension origins.
     const isExtEndpoint = isExtensionEndpoint(pathname);
     // #322 fix: `GET /open` never mutates (redirect or confirm page), so
     // a cross-site navigation may reach it — foreign Origin/Referer are
