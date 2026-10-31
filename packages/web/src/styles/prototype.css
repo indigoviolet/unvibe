@@ -964,22 +964,27 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .ui-card.child .ctl { border: 0; padding-bottom: 0; }
 /* #274 toolbars on hover: the card toolbar lives in the heading row,
    the reply toolbar floats at the reply's top-right (#331) — both show
-   on hover or keyboard focus only. Icon buttons are 32px. Issue #336:
-   the reply toolbar is a right float, not an overlay: the text always
-   wraps short of it, so it can never cover the first line. It stays in
-   flow with `visibility` (the `.ans-older` pattern), so hover reveals it
-   with no layout shift. */
+   on hover or keyboard focus only. Card icon buttons are 32px. Issue
+   #336: the reply toolbar is a right float, not an overlay: the text
+   always wraps short of it, so it can never cover the first line. It
+   stays in flow with `visibility` (the `.ans-older` pattern), so hover
+   reveals it with no layout shift. */
 .chead .ctl { margin: 0; padding: 0; border: 0; opacity: 0; transition: opacity .15s; }
 .spike-thread .spike-reply > .ctl {
   float: right;
-  margin: 0 0 4px 8px;
+  margin: calc((var(--text-prose) * var(--leading-prose) - 26px) / 2 + 1px) 0 0 8px;
   padding: 0;
   border: 0;
   opacity: 0;
   visibility: hidden;
   transition: opacity .15s, visibility .15s;
 }
-.chead .ctl .ib, .spike-thread .spike-reply > .ctl .ib { width: 32px; height: 32px; }
+/* Issue #336 follow-up: the reply toolbar fits its first line — base
+   icon buttons and the depth pill are 26px tall with borders, no bottom
+   margin, and the top margin centres those 26px on the line box, so the
+   float never reaches the second line box. Only card toolbars keep the
+   32px buttons. */
+.chead .ctl .ib { width: 32px; height: 32px; }
 .ui-card:hover .chead .ctl, .ui-card:focus-within .chead .ctl,
 .spike-reply:hover > .ctl, .spike-reply:focus-within > .ctl { opacity: 1; visibility: visible; }
 @media (prefers-reduced-motion: reduce) { .chead .ctl, .spike-thread .spike-reply > .ctl { transition: none; } }

@@ -52,6 +52,11 @@ async function replyChrome(reply: Locator): Promise<{
   firstCenter: number;
   firstTop: number;
   inline: boolean;
+  lineCount: number;
+  secondRight: number | null;
+  secondTop: number | null;
+  bands: { top: number; left: number; bottom: number; right: number }[];
+  replyRight: number;
   ctl: { top: number; left: number; bottom: number; right: number } | null;
   first: { top: number; left: number; bottom: number; right: number };
 } | null> {
@@ -69,7 +74,6 @@ async function replyChrome(reply: Locator): Promise<{
     range.selectNodeContents(text);
     const rects = Array.from(range.getClientRects());
     if (rects.length === 0) return null;
-    const first = rects[0]!;
     const box = (r: DOMRect): { top: number; left: number; bottom: number; right: number } => ({
       top: r.top,
       left: r.left,
@@ -77,14 +81,40 @@ async function replyChrome(reply: Locator): Promise<{
       right: r.right,
     });
     const ctl = el.querySelector(":scope > .ctl");
+    // Range rects fragment at inline elements (code, links, chips), so
+    // group them into visual lines by vertical overlap (fragment tops
+    // on one line spread several px across mixed fonts) before
+    // measuring line spans.
+    const bands: DOMRect[][] = [];
+    for (const r of rects) {
+      const band = bands.find((b) => {
+        const top = Math.min(...b.map((x) => x.top));
+        const bottom = Math.max(...b.map((x) => x.bottom));
+        return r.top <= bottom - 2 && r.bottom >= top + 2;
+      });
+      if (band) band.push(r);
+      else bands.push([r]);
+    }
+    const merged = bands.map((b) => ({
+      top: Math.min(...b.map((r) => r.top)),
+      left: Math.min(...b.map((r) => r.left)),
+      bottom: Math.max(...b.map((r) => r.bottom)),
+      right: Math.max(...b.map((r) => r.right)),
+    }));
+    const firstLine = merged[0]!;
     return {
       avCenter: (a.top + a.bottom) / 2,
       avBottom: a.bottom,
-      firstCenter: (first.top + first.bottom) / 2,
-      firstTop: first.top,
+      firstCenter: (firstLine.top + firstLine.bottom) / 2,
+      firstTop: firstLine.top,
       inline: text.tagName !== "LI",
+      lineCount: merged.length,
+      secondRight: merged.length >= 2 ? merged[1]!.right : null,
+      secondTop: merged.length >= 2 ? merged[1]!.top : null,
+      bands: merged,
+      replyRight: (el as HTMLElement).getBoundingClientRect().right,
       ctl: ctl instanceof HTMLElement ? box(ctl.getBoundingClientRect()) : null,
-      first: box(first),
+      first: firstLine,
     };
   });
 }
@@ -485,6 +515,32 @@ test.describe("J273 flat threads", () => {
     // list-first agent answer keeps the #331 fallback (content below the
     // avatar) instead of a centred first line.
     const checkChrome = async (label: string): Promise<void> => {
+      // #336 follow-up: the toolbar float shortens at most the first
+      // line. A non-final wrapped line always spans its available width,
+      // so when a third line exists the second must reach the reply's
+      // right edge — otherwise the float is still pushing line 2.
+      const expectFullSecondLine = (
+        geo: NonNullable<Awaited<ReturnType<typeof replyChrome>>>,
+        what: string,
+      ): void => {
+        // The float must not reach the second line at all.
+        if (geo.lineCount >= 2 && geo.ctl && geo.secondTop !== null) {
+          expect(
+            geo.ctl.bottom,
+            `${label}: ${what} toolbar stays clear of the second line`,
+          ).toBeLessThanOrEqual(geo.secondTop + 1);
+        }
+        // So the second line spans nearly the full width. The slack is
+        // word-wrap leftover (a long word left ~80px in dark mode);
+        // the defect left a toolbar-wide ~250px gap, which this
+        // still catches comfortably.
+        if (geo.lineCount >= 3) {
+          expect(
+            geo.secondRight,
+            `${label}: ${what} second line spans full width`,
+          ).toBeGreaterThanOrEqual(geo.replyRight - 128);
+        }
+      };
       const humanGeo = await replyChrome(human);
       expect(humanGeo, `${label}: human chrome measurable`).not.toBeNull();
       expect(humanGeo!.inline, `${label}: human comment flows inline`).toBe(true);
@@ -499,6 +555,7 @@ test.describe("J273 flat threads", () => {
           Math.abs(ansGeo!.avCenter - ansGeo!.firstCenter),
           `${label}: agent avatar centred`,
         ).toBeLessThanOrEqual(2);
+        expectFullSecondLine(ansGeo!, "agent answer");
       } else {
         expect(
           ansGeo!.firstTop,
@@ -522,6 +579,7 @@ test.describe("J273 flat threads", () => {
         Math.abs(explGeo!.avCenter - explGeo!.firstCenter),
         `${label}: explain avatar centred`,
       ).toBeLessThanOrEqual(2);
+      expectFullSecondLine(explGeo!, "explain reply");
     };
 
     // Light: thread top in view, prose-first explain reply hovered so the
