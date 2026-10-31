@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ReleaseNotes,
   Settings,
   UpdateBlockedJob,
   UpdateBuildInfo,
@@ -29,6 +30,7 @@ import { downloadOutboxMarkdown } from "../data-format/outboxDownload.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
 import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
+import { ReleaseNotesView } from "./ReleaseNotesView.js";
 import { blockedJobLine, channelRowMiddle, channelRowState, isNewerAvailable, outcomeLine, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
 const SWITCH_TIMEOUT_MS = 180_000;
@@ -64,6 +66,12 @@ export function VersionSection({
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
   const [healthVersion, setHealthVersion] = useState<string | null>(null);
+  // #330: current build's notes (local) + per-channel newest notes fetched
+  // only when a row's Notes is opened. No polling.
+  const [currentNotes, setCurrentNotes] = useState<ReleaseNotes | null>(null);
+  const [channelNotes, setChannelNotes] = useState<Record<string, ReleaseNotes | null>>({});
+  const [notesOpenRef, setNotesOpenRef] = useState<string | null>(null);
+  const [notesLoadingRef, setNotesLoadingRef] = useState<string | null>(null);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -122,8 +130,35 @@ export function VersionSection({
       }
       // Releases are always listed (#231), regardless of the toggle.
       if (!cancelled.current) void loadChannels(st?.build ?? null);
+      try {
+        const rn = await api.releaseNotes();
+        if (!cancelled.current) setCurrentNotes(rn.notes);
+      } catch {
+        // No notes shipped: the section below says so.
+      }
     })();
   }, []);
+
+  const toggleChannelNotes = useCallback(
+    async (ref: string) => {
+      if (notesOpenRef === ref) {
+        setNotesOpenRef(null);
+        return;
+      }
+      setNotesOpenRef(ref);
+      if (ref in channelNotes) return;
+      setNotesLoadingRef(ref);
+      try {
+        const res = await api.updateNotes(ref);
+        if (!cancelled.current) setChannelNotes((prev) => ({ ...prev, [ref]: res.notes }));
+      } catch {
+        if (!cancelled.current) setChannelNotes((prev) => ({ ...prev, [ref]: null }));
+      } finally {
+        if (!cancelled.current) setNotesLoadingRef(null);
+      }
+    },
+    [channelNotes, notesOpenRef],
+  );
 
   const toggle = useCallback(async () => {
     setToggling(true);
@@ -286,8 +321,22 @@ export function VersionSection({
             onForceConfirm={(ref) => void commitSwitch(ref, true)}
             onRefresh={() => void loadChannels(status?.build ?? null, true)}
             refreshing={refreshing}
+            notesOpenRef={notesOpenRef}
+            channelNotes={channelNotes}
+            notesLoadingRef={notesLoadingRef}
+            onToggleNotes={(ref) => void toggleChannelNotes(ref)}
           />
         ) : null}
+        <div data-testid="current-release-notes" style={{ marginTop: 12 }}>
+          <p className="hint" style={{ margin: "0 0 4px" }}>
+            Current build notes
+          </p>
+          {currentNotes ? (
+            <ReleaseNotesView notes={currentNotes} />
+          ) : (
+            <p className="hint">No release notes shipped with this build.</p>
+          )}
+        </div>
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}
@@ -346,6 +395,10 @@ function VersionList({
   onForceConfirm,
   onRefresh,
   refreshing,
+  notesOpenRef,
+  channelNotes,
+  notesLoadingRef,
+  onToggleNotes,
 }: {
   rows: UpdateChannel[];
   build: UpdateBuildInfo | null;
@@ -358,6 +411,10 @@ function VersionList({
   onForceConfirm: (ref: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  notesOpenRef: string | null;
+  channelNotes: Record<string, ReleaseNotes | null>;
+  notesLoadingRef: string | null;
+  onToggleNotes: (ref: string) => void;
 }): React.JSX.Element {
   return (
     <div className="ver-list ui-list">
@@ -379,6 +436,10 @@ function VersionList({
           onCancel={onCancel}
           onConfirm={onConfirm}
           onForceConfirm={onForceConfirm}
+          notesOpen={notesOpenRef === c.ref}
+          channelNote={c.ref in channelNotes ? channelNotes[c.ref] : undefined}
+          notesLoading={notesLoadingRef === c.ref}
+          onToggleNotes={onToggleNotes}
         />
       ))}
     </div>
@@ -400,6 +461,10 @@ function VersionRow({
   onCancel,
   onConfirm,
   onForceConfirm,
+  notesOpen,
+  channelNote,
+  notesLoading,
+  onToggleNotes,
 }: {
   row: UpdateChannel;
   build: UpdateBuildInfo | null;
@@ -410,6 +475,10 @@ function VersionRow({
   onCancel: () => void;
   onConfirm: (ref: string) => void;
   onForceConfirm: (ref: string) => void;
+  notesOpen: boolean;
+  channelNote: ReleaseNotes | null | undefined;
+  notesLoading: boolean;
+  onToggleNotes: (ref: string) => void;
 }): React.JSX.Element {
   // Publish → try → fix → publish loop: the installed commit behind the
   // published one gets an Update action (same switch flow, from === to,
@@ -447,6 +516,17 @@ function VersionRow({
           Switch
         </Button>
       ) : null}
+      <Button
+        variant="quiet"
+        size="sm"
+        type="button"
+        aria-label={`Notes for ${c.ref}`}
+        data-testid="channel-notes-toggle"
+        data-ref={c.ref}
+        onClick={() => onToggleNotes(c.ref)}
+      >
+        {notesOpen ? "Hide notes" : "Notes"}
+      </Button>
     </>
   );
   return (
@@ -472,6 +552,17 @@ function VersionRow({
       ) : isBlocked && blocked ? (
         <div className="ver-note">
           <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
+        </div>
+      ) : null}
+      {notesOpen ? (
+        <div className="ver-note" data-testid="channel-release-notes" data-ref={c.ref}>
+          {notesLoading ? (
+            <p className="hint">Loading notes…</p>
+          ) : channelNote ? (
+            <ReleaseNotesView notes={channelNote} />
+          ) : (
+            <p className="hint">No release notes for this channel yet.</p>
+          )}
         </div>
       ) : null}
     </>

@@ -58,7 +58,9 @@ import type {
   SubmitReviewResponse,
   SummarizeHunkResponse,
   ThinkingResponse,
+  ReleaseNotesResponse,
   UpdateChannelsResponse,
+  UpdateNotesResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateDiffFilterRequest,
@@ -458,6 +460,9 @@ const realApi = {
   statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
+  releaseNotes: (): Promise<ReleaseNotesResponse> => get("/api/release-notes"),
+  updateNotes: (ref: string): Promise<UpdateNotesResponse> =>
+    get(`/api/update/notes?ref=${encodeURIComponent(ref)}`),
   updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),
   updateChannels: (refresh?: boolean): Promise<UpdateChannelsResponse> =>
     get(`/api/update/channels${refresh ? "?refresh=1" : ""}`),

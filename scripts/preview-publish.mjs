@@ -30,7 +30,7 @@
  *   corresponds to commits (never a dirty tree).
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,7 @@ import {
   assertPreviewDeleteRef,
   assertPreviewPushRefspec,
   branchSlug,
+  buildReleaseArgs,
   isValidPreviewVersion,
   previewPushRefspec,
   previewRef,
@@ -54,12 +55,13 @@ const rawArgs = process.argv.slice(2).filter((a) => a !== "--");
 if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
   console.log(
     [
-      "usage: mise run preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune]",
+      "usage: mise run preview:publish [-- <branch>] [--push] [--as-is] [--all] [--prune] [--notes-file <file>]",
       "  <branch>  publish that branch (default: this checkout's branch; --all publishes many)",
       "  default   build main merged with the branch in a throwaway worktree (no worktree needed)",
       "  --as-is   build the branch exactly as it stands (old behaviour)",
       "  --all     publish every local branch with commits not on main, plus main itself",
       "  --prune   list preview/* refs whose source branch is merged or deleted (dry run)",
+      "  --notes-file <file>  publisher notes JSON merged into release-notes.json (#330; see DEVELOPMENT.md)",
       "  --push    push published preview/<slug> refs; with --prune, delete the listed refs",
       "            locally and on origin (otherwise only prints the commands)",
       "  refuses a dirty tree for --as-is builds in place; merged builds come",
@@ -73,8 +75,27 @@ const doPush = rawArgs.includes("--push");
 const asIs = rawArgs.includes("--as-is");
 const all = rawArgs.includes("--all");
 const prune = rawArgs.includes("--prune");
-const branchArg = rawArgs.find((a) => !a.startsWith("-")) ?? null;
-for (const a of rawArgs) {
+// #330: --notes-file <path> (value is not a branch name).
+let notesFile = null;
+const positionalArgs = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  if (rawArgs[i] === "--notes-file") {
+    if (!rawArgs[i + 1]) {
+      console.error("preview: --notes-file needs a file path");
+      process.exit(2);
+    }
+    notesFile = path.resolve(rawArgs[i + 1]);
+    i++;
+  } else {
+    positionalArgs.push(rawArgs[i]);
+  }
+}
+if (notesFile && !existsSync(notesFile)) {
+  console.error(`preview: notes file not found: ${notesFile}`);
+  process.exit(2);
+}
+const branchArg = positionalArgs.find((a) => !a.startsWith("-")) ?? null;
+for (const a of positionalArgs) {
   if (a.startsWith("-") && !["--push", "--as-is", "--all", "--prune"].includes(a)) {
     console.error(`preview: unknown flag ${JSON.stringify(a)} (see --help)`);
     process.exit(2);
@@ -248,14 +269,15 @@ function publishMerged(branch) {
     buildAndRelease({
       dir,
       ref,
-      releaseArgs: [
-        "--version", version,
-        "--branch", ref,
-        "--source-branch", branch,
-        "--source-commit", sourceSha,
-        "--base-branch", BASE,
-        "--base-commit", mainSha,
-      ],
+      releaseArgs: buildReleaseArgs({
+        version,
+        branch: ref,
+        sourceBranch: branch,
+        sourceCommit: sourceSha,
+        baseBranch: BASE,
+        baseCommit: mainSha,
+        notesFile,
+      }),
       label,
     });
     pushOrPrint(slug, ref, version, label);
@@ -310,7 +332,7 @@ function publishAsIs(branch, worktreeDir) {
     buildAndRelease({
       dir,
       ref,
-      releaseArgs: ["--version", version, "--branch", ref, "--source-branch", branch, "--source-commit", sourceSha],
+      releaseArgs: buildReleaseArgs({ version, branch: ref, sourceBranch: branch, sourceCommit: sourceSha, notesFile }),
       label,
     });
     pushOrPrint(slug, ref, version, label);

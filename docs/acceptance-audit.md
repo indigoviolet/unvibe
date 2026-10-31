@@ -3504,6 +3504,19 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `DATA_FORMAT` at the new tag differs from the previous tag
   (unstamped counts as 0), via the pure helpers in
   `scripts/release-notes-lib.mjs`.
+- **Release notes in every build (#330):** `release-notes.json` ships
+  inside previews and releases (generator
+  `scripts/generate-release-notes.mjs`, helpers
+  `scripts/release-notes-gen-lib.mjs`; previous build = the channel
+  ref's prior shipped notes, `release` falling back to the previous
+  tag). Publisher entries (`--notes-file` on `preview:publish` /
+  `release:tag`) merge over generated one-liners. The app shows a
+  one-time What's new card after a switch and current + per-channel
+  notes in Settings → Version (fetched on open only, plain text);
+  `release-notes.mjs` renders the GitHub body from the same file.
+  Evidence: `test/release-notes-gen.test.ts`, journey
+  `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frames
+  `whats-new-card-1440-light` / `version-notes-1440-light`.
 - Evidence: shared `test/data-format.test.ts`; service
   `test/data-format.test.ts` (check states, stamp, move-aside never
   deletes + collision, combined export, doctor line),

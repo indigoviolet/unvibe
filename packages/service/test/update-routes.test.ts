@@ -255,6 +255,8 @@ describe("update channels", () => {
           return base.listChannels();
         },
         switchTo: (ref: string) => base.switchTo(ref),
+        getCurrentReleaseNotes: () => base.getCurrentReleaseNotes(),
+        getChannelReleaseNotes: (ref: string) => base.getChannelReleaseNotes(ref),
       }),
     });
     try {

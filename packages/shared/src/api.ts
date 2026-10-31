@@ -1815,6 +1815,48 @@ export interface UpdateStatusResponse {
   outcome: SwitchOutcome | null;
 }
 
+// --- release notes (issue #330) ------------------------------------------
+
+/**
+ * One issue folded into a build. `summary` is the generated one-liner
+ * (issue title's first line, else the cleaned merge subject). The
+ * human-written fields come from the publisher's notes file; they render
+ * as plain text only, never HTML.
+ */
+export interface ReleaseNotesItem {
+  number: number;
+  title: string;
+  summary: string;
+  url: string;
+  whatChanged?: string;
+  whatToTry?: string;
+  caveats?: string;
+}
+
+/** `release-notes.json` shipped inside every build (previews + releases). */
+export interface ReleaseNotes {
+  channel: string;
+  version: string;
+  previousVersion: string | null;
+  commit: string | null;
+  previousCommit: string | null;
+  dataFormat: number | null;
+  previousDataFormat: number | null;
+  dataResetNeeded: boolean;
+  generatedAt: string;
+  items: ReleaseNotesItem[];
+}
+
+/** `GET /api/release-notes` — the running build's own notes (null when none shipped). */
+export interface ReleaseNotesResponse {
+  notes: ReleaseNotes | null;
+}
+
+/** `GET /api/update/notes?ref=<channel>` — a channel's newest notes, fetched on view open only. */
+export interface UpdateNotesResponse {
+  notes: ReleaseNotes | null;
+}
+
 // --- WebSocket events ----------------------------------------------------
 /**
  * WS `/api/events?review=:id` event union: job progress, streamed text,
