@@ -306,6 +306,7 @@ function citationsOf(block: Block): string[] {
       return block.citations.map((c) => c.target);
     case "list":
       return [...block.citations.map((c) => c.target), ...block.items.flatMap((it) => it.citations.map((c) => c.target))];
+    case "heading":
     case "table":
     case "code":
     case "diagram":
@@ -1478,6 +1479,7 @@ export class Pipeline {
             items: b.items.map((it) => ({ ...it, citations: mark(it.citations) })),
             citations: mark(b.citations),
           };
+        case "heading":
         case "table":
         case "code":
         case "diagram":

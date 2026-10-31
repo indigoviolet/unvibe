@@ -188,6 +188,7 @@ export function cardCitations(card: Card): Citation[] {
     for (const b of blocks) {
       switch (b.type) {
         case "paragraph":
+        case "heading":
         case "table":
         case "code":
         case "diagram":
@@ -229,6 +230,7 @@ export function remapCardCitations(card: Card, ctx: CitationCtx): number {
     for (const b of blocks) {
       switch (b.type) {
         case "paragraph":
+        case "heading":
         case "table":
         case "code":
         case "diagram":
