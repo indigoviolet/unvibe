@@ -1,5 +1,5 @@
 /** J81: `code:` citations outside the diff — hover, file tab, comment. */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
@@ -35,6 +35,16 @@ test.describe("J81 code citations outside the diff", () => {
     writeFileSync(path.join(repoDir, "app.py"), "def main():\n    return 2\n");
     await git(repoDir, "add", ".");
     await git(repoDir, "commit", "-m", "feature work");
+    // Issue #332: a file whose path carries route-group parens and a
+    // dynamic-segment bracket pair (Next.js-style, contents arbitrary).
+    const pageFile = path.join(repoDir, "src", "app", "(group)", "items", "[id]", "page.tsx");
+    mkdirSync(path.dirname(pageFile), { recursive: true });
+    writeFileSync(
+      pageFile,
+      "export default function Page({ params }: { params: { id: string } }) {\n  return <h1>Item {params.id}</h1>;\n}\n",
+    );
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "route with group and segment");
     const headSha = (await git(repoDir, "rev-parse", "HEAD")).trim();
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-bin-"));
@@ -128,6 +138,13 @@ test.describe("J81 code citations outside the diff", () => {
         card("c-beta", "Uses the helper beta value.", `code:helper.py:2@${head}`),
         card("c-past", "Cites past the end.", `code:helper.py:2-99@${head}`),
         card("c-missing", "Cites a missing file.", `code:nope.py:1@${head}`, true),
+        // Issue #332: a bracket-path file outside the diff renders a
+        // working chip that opens the file tab.
+        card(
+          "c-brackets",
+          "Route group page shows the item.",
+          `code:src/app/(group)/items/[id]/page.tsx:2@${head}`,
+        ),
       );
       db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
         row.rev + 1,
@@ -213,5 +230,31 @@ test.describe("J81 code citations outside the diff", () => {
     await page.getByRole("button", { name: "Close helper.py" }).click();
     await expect(page.locator(".codefile")).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Diff" })).toBeVisible();
+  });
+
+  test("bracket-path citation renders a chip and opens the file tab (issue #332)", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-c-brackets")).toContainText("Route group page shows the item.", {
+      timeout: 60_000,
+    });
+
+    // A chip, not raw [[code:…]] text, and verified (no unverified marker).
+    const chip = page.locator("#C-c-brackets .lk[data-refs]");
+    await expect(chip).toHaveCount(1, { timeout: 30_000 });
+    await expect(page.locator("#C-c-brackets .lk.unverified")).toHaveCount(0);
+    await expect(page.locator("#C-c-brackets")).not.toContainText("[[code:");
+
+    // Hover previews the cited line; the frame goes to /tmp for the report.
+    await chip.hover();
+    await expect(page.locator("#pop")).toContainText("Item", { timeout: 30_000 });
+    await page.locator("#C-c-brackets").screenshot({ path: "/tmp/j332-bracket-chip.png" });
+
+    // Click opens the file tab at the cited line.
+    await chip.click();
+    await expect(page.getByRole("tab", { name: "page.tsx" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".codefile")).toContainText("Item");
+    await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
   });
 });
