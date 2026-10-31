@@ -112,6 +112,26 @@ img.wm[src*="unvibe-vibe"] { margin-right: .2em; }
   max-width: 32em;
 }
 
+.try-demo {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 28px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.demo-btn {
+  display: inline-block;
+  background: var(--ink);
+  color: #FBF8F2;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+}
+.demo-btn:hover { opacity: .88; color: #FBF8F2; }
+
 .install { max-width: 720px; }
 .install-code {
   display: flex;

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { ReadinessCheck, ReadinessResponse, ReloadResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { STATIC_DEMO } from "../demo.js";
 import { Badge, Button, Card, ListRow } from "../ui/index.js";
 
 /**
@@ -105,9 +106,11 @@ export function EnvironmentSection(): React.JSX.Element {
                 <Button variant="secondary" size="sm" type="button" onClick={() => void reload()} disabled={reloading} data-testid="reload-everything">
                   {reloading ? "Reloading…" : "Reload environment"}
                 </Button>
-                <Link className="ui-btn" data-variant="secondary" data-size="sm" to="/doctor">
-                  Doctor page
-                </Link>
+                {STATIC_DEMO ? null : (
+                  <Link className="ui-btn" data-variant="secondary" data-size="sm" to="/doctor">
+                    Doctor page
+                  </Link>
+                )}
                 {report.cached ? <span className="hint">Checked earlier. Re-check to run the checks again.</span> : null}
               </div>
             }

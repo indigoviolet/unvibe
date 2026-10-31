@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { DataFormatStatusResponse } from "@unvibe/shared";
 import { DataFormatNotice } from "./data-format/DataFormatNotice.js";
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router";
+import { STATIC_DEMO } from "./demo.js";
 import { api } from "./api/client.js";
 import { syncUiThemeFromSettings } from "./theme/theme.js";
 import { RouteShellBoundary } from "./components/ErrorBoundary.js";
-import { DebugPageRoute } from "./debug/DebugPage.js";
+import { DebugPageRoute, DemoDebugRedirect } from "./debug/DebugPage.js";
 import { OpenConfirmPage } from "./open/OpenConfirmPage.js";
 import { ReviewRoute } from "./ReviewRoute.js";
 import { SettingsPage } from "./settings/SettingsPage.js";
@@ -54,6 +55,31 @@ export function App() {
       <BrowserRouter>
         <DataFormatNotice status={format} />
       </BrowserRouter>
+    );
+  // Static demo (#334): hash routing works from any static subpath
+  // (`/demo`), and `/` opens the demo review straight away.
+  if (STATIC_DEMO)
+    return (
+      <HashRouter>
+        <RouteShellBoundary>
+          <Routes>
+            <Route path="/" element={<Navigate to="/review/demo" replace />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
+            {/* Static `debug` outranks the splat: hidden in the static demo
+                (#334, fixture internals) — back to the review. */}
+            <Route
+              path="/review/:id/debug"
+              element={STATIC_DEMO ? <DemoDebugRedirect /> : <DebugPageRoute />}
+            />
+            <Route path="/review/:id/*" element={<ReviewRoute />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            {/* No doctor on the static demo (#334, local-machine
+                internals) — back to Settings. */}
+            <Route path="/doctor" element={<Navigate replace to="/settings" />} />
+          </Routes>
+        </RouteShellBoundary>
+      </HashRouter>
     );
   return (
     <BrowserRouter>

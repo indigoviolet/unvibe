@@ -83,6 +83,23 @@ run = "npx --workspace @unvibe/web playwright test e2e/visual-tour.spec.ts"
 description = "Install Playwright browsers for e2e tests"
 run = "npx --workspace @unvibe/web playwright install chromium"
 
+[tasks."demo:build"]
+description = "Build the static in-browser demo (issue #334): mock-mode web build with the fixture baked in, relative base, into packages/web/dist-demo + a size report"
+depends = ["build:shared"]
+run = "VITE_MOCK=1 VITE_DEMO=1 mise run op -- npm run build --workspace @unvibe/web -- --outDir dist-demo && node scripts/demo-size-report.mjs packages/web/dist-demo"
+sources = ["package.json", "package-lock.json", "tsconfig.base.json", "packages/web/src/**/*", "packages/web/package.json", "packages/web/tsconfig.json", "packages/web/e2e/**/*", "packages/web/index.html", "packages/web/public/**/*", "packages/web/vite.config.ts", "packages/web/playwright.config.ts", "packages/shared/src/**/*", "fixtures/urllib3-5020/**/*"]
+outputs = ["packages/web/dist-demo", "packages/web/dist-demo/index.html"]
+
+[tasks."demo:test"]
+description = "Static demo behaviour on a static file server (issue #334): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, size budget"
+depends = ["demo:build"]
+run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts"
+
+[tasks."demo:sync"]
+description = "Static demo sync check (issue #334): key screens compared between the static build and the real service in replay mode (joins the slow suite: needs a build + browser, like the other e2e)"
+depends = ["build", "demo:build"]
+run = "npx --workspace @unvibe/web playwright test e2e/static-demo-sync.spec.ts"
+
 [tasks."build:shared"]
 description = "Build @unvibe/shared"
 run = "mise run op -- npm run build --workspace @unvibe/shared"
