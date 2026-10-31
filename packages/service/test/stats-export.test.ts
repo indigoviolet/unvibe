@@ -99,7 +99,7 @@ function seededSnapshot(): ReviewSnapshot {
       },
     ],
     hunkStates: [], fileStates: [],
-    viewPrefs: { showExistingComments: false, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [], contributions: [], logTail: [], rev: 1,
   } as unknown as ReviewSnapshot;
 }

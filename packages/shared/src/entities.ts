@@ -942,12 +942,8 @@ export interface ReviewViewPrefs {
   showExistingComments: boolean;
   /** The comments menu's "Already on GitHub" section is collapsed. */
   existingCommentsCollapsed: boolean;
-  /**
-   * Issue #325: the diff toolbar's hide level. Absent in data stored
-   * before the selector existed, which reads as the default
-   * (`uninteresting`) — stored data stays readable, no format bump.
-   */
-  hideLevel?: HideLevel;
+  /** Issue #325: the diff toolbar's hide level, remembered per review. */
+  hideLevel: HideLevel;
 }
 
 /** Default view prefs for a new review (issue #296): existing GitHub comments start hidden. */

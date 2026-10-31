@@ -45,7 +45,8 @@ export async function registerView(app: FastifyInstance, ctx: ServiceContext): P
         if (existingCommentsCollapsed !== undefined) {
           draft.viewPrefs.existingCommentsCollapsed = existingCommentsCollapsed;
         }
-        if (hideLevel !== undefined) draft.viewPrefs.hideLevel = normalizeHideLevel(hideLevel) ?? undefined;
+        const level = hideLevel !== undefined ? normalizeHideLevel(hideLevel) : null;
+        if (level !== null) draft.viewPrefs.hideLevel = level;
       });
     } catch (err) {
       return reply.code(404).send({ error: (err as Error).message });

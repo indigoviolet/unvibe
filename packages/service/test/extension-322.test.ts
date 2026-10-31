@@ -26,7 +26,7 @@ function seedSnapshot(): ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],

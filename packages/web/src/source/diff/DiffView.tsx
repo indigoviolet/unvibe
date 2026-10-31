@@ -28,7 +28,6 @@ import {
   hideLevelStats,
   hunkMatchesFilter,
   HUNK_PASS_FANOUT_LIMIT,
-  normalizeHideLevel,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
@@ -341,10 +340,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [snapshot],
   );
 
-  // Issue #325: the hide level is remembered per review in viewPrefs;
-  // absent (older stored data) reads as the default.
-  const hideLevel: HideLevel =
-    normalizeHideLevel(snapshot?.viewPrefs.hideLevel) ?? DEFAULT_HIDE_LEVEL;
+  // Issue #325: the hide level is remembered per review in viewPrefs
+  // (required in the stored shape; the default here only covers the
+  // not-yet-loaded snapshot).
+  const hideLevel: HideLevel = snapshot ? snapshot.viewPrefs.hideLevel : DEFAULT_HIDE_LEVEL;
   const setHideLevel = useCallback(
     (level: HideLevel) => {
       api.updateView(reviewId, { hideLevel: level }).catch(() => {

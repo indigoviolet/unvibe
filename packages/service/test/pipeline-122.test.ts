@@ -79,7 +79,7 @@ async function makeDemoReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"])
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],

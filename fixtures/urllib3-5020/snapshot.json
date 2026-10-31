@@ -2185,7 +2185,8 @@
   "fileStates": [],
   "viewPrefs": {
     "showExistingComments": true,
-    "existingCommentsCollapsed": false
+    "existingCommentsCollapsed": false,
+    "hideLevel": "uninteresting"
   },
   "jobs": [
     {

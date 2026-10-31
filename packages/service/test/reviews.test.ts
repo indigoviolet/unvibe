@@ -418,7 +418,7 @@ describe("hunk routes", () => {
         method: "PATCH",
         url: `/api/reviews/${id}/view`,
         headers: authed,
-        payload: { showExistingComments: false, existingCommentsCollapsed: false },
+        payload: { showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
       });
       expect(hidden.statusCode).toBe(200);
       expect(ctx.reviews.getSnapshot(id)?.viewPrefs).toEqual({ showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" });
