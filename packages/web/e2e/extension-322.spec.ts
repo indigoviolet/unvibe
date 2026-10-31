@@ -328,12 +328,20 @@ test.describe("extension PR button (#322)", () => {
       ).toBeVisible();
       await expect(button.locator("svg.unvibe-review-icon")).toBeVisible();
       await expect(button).toHaveText(/^(Review in Unvibe|Open review|Start Unvibe)$/);
+      // Brand look survives host button rules: computed background is
+      // indigo #38309E with white text.
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+        "rgb(56, 48, 158)",
+      );
+      expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
       await page.locator(".pr-conversation-header").screenshot({
         path: path.join(shotsDir, "extension-333-conversation-light.png"),
       });
-
       // Same header, dark theme.
       await page.emulateMedia({ colorScheme: "dark" });
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+        "rgb(56, 48, 158)",
+      );
       await page.locator(".pr-conversation-header").screenshot({
         path: path.join(shotsDir, "extension-333-conversation-dark.png"),
       });
