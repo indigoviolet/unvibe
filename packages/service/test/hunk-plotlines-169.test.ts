@@ -215,9 +215,10 @@ describe("hunk-pass scores + deterministic rules on top (#169)", () => {
       // One-line change: never mechanical (and never hidden).
       expect(scoreOf("hone")).toBe("routine");
       expect(hiddenOf("hone")).toBeUndefined();
-      // Guide-cited: never hidden; the score is kept as returned.
+      // Guide-cited: no exemption since #325; hidden as returned, and
+      // the score is kept as returned.
       expect(scoreOf("hcited")).toBe("routine");
-      expect(hiddenOf("hcited")).toBeUndefined();
+      expect(hiddenOf("hcited")).toBe("import-only change");
       // Invented level reads as routine.
       expect(scoreOf("hother")).toBe("routine");
     } finally {

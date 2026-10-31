@@ -220,8 +220,10 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
  * - `routine`: also hides `mechanical` hunks.
  * - `substantive`: shows only `substantive` and `needs-attention`.
  * - `needs-attention`: shows only `needs-attention`.
- * Guide-cited and individually unhidden hunks stay visible at every
- * level, and a hunk with no score yet is never hidden by its score.
+ * Individually unhidden hunks stay visible at every level, and a
+ * hunk with no score yet is never hidden by its score. Guide-cited
+ * hunks hide like any other (owner decision, #325); clicking their
+ * citation reveals them through the diff's per-hunk unhide.
  */
 export const HIDE_LEVELS = ["all", "uninteresting", "routine", "substantive", "needs-attention"] as const;
 export type HideLevel = (typeof HIDE_LEVELS)[number];
@@ -322,9 +324,11 @@ export function hideCategoryForLevel(
 export function shouldHideAtLevel(
   hunk: HideHunkInput,
   level: HideLevel,
-  opts: { cited?: boolean; unhidden?: boolean } = {},
+  opts: { unhidden?: boolean } = {},
 ): boolean {
-  if (opts.cited || opts.unhidden) return false;
+  // Only the user's own reveal exempts a hunk; guide citations do
+  // not (owner decision, #325) — clicking a citation reveals instead.
+  if (opts.unhidden) return false;
   return hideCategoryForLevel(hunk, level) !== null;
 }
 export interface HideLevelStats {
@@ -334,21 +338,19 @@ export interface HideLevelStats {
   mechanical: number;
   routine: number;
   substantive: number;
-  keptCited: number;
   keptShown: number;
 }
 export function hideLevelStats(
-  hunks: Iterable<HideHunkInput & { cited?: boolean; unhidden?: boolean }>,
+  hunks: Iterable<HideHunkInput & { unhidden?: boolean }>,
   level: HideLevel,
 ): HideLevelStats {
   const stats: HideLevelStats = {
-    total: 0, hidden: 0, uninteresting: 0, mechanical: 0, routine: 0, substantive: 0, keptCited: 0, keptShown: 0,
+    total: 0, hidden: 0, uninteresting: 0, mechanical: 0, routine: 0, substantive: 0, keptShown: 0,
   };
   for (const h of hunks) {
     stats.total += 1;
     const cat = hideCategoryForLevel(h, level);
     if (cat === null) continue;
-    if (h.cited) { stats.keptCited += 1; continue; }
     if (h.unhidden) { stats.keptShown += 1; continue; }
     stats.hidden += 1;
     if (cat === "uninteresting") stats.uninteresting += 1;
@@ -358,6 +360,13 @@ export function hideLevelStats(
   }
   return stats;
 }
+/**
+ * The toolbar button's short state (issue #325): the true hidden
+ * count, or "All shown" only when nothing is hidden.
+ */
+export function hideButtonLabel(stats: HideLevelStats): string {
+  return stats.hidden > 0 ? `Hiding ${stats.hidden}` : "All shown";
+}
 export function formatHideLevelStats(stats: HideLevelStats): string {
   const parts: string[] = [];
   if (stats.uninteresting > 0) parts.push(`${stats.uninteresting} uninteresting`);
@@ -366,10 +375,7 @@ export function formatHideLevelStats(stats: HideLevelStats): string {
   if (stats.substantive > 0) parts.push(`${stats.substantive} substantive`);
   let text = `Hiding ${stats.hidden} of ${stats.total} ${stats.total === 1 ? "hunk" : "hunks"}`;
   if (parts.length > 0) text += `: ${parts.join(", ")}`;
-  const kept: string[] = [];
-  if (stats.keptCited > 0) kept.push(`${stats.keptCited} kept because cited`);
-  if (stats.keptShown > 0) kept.push(`${stats.keptShown} kept because shown`);
-  if (kept.length > 0) text += ` · ${kept.join(", ")}`;
+  if (stats.keptShown > 0) text += ` · ${stats.keptShown} kept because shown`;
   return text;
 }
 

@@ -32,7 +32,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import type {
-  ReleaseNotesResponse,
   UpdateBlockedJob,
   UpdateChannel,
   UpdateChannelsResponse,
@@ -202,14 +201,6 @@ export async function registerUpdate(
   app.get("/api/update/status", async (_req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
     return buildStatus();
-  });
-
-  // #330: the running build's shipped notes (local read, no network).
-  app.get("/api/release-notes", async (_req, reply) => {
-    const updater = deps.updater;
-    if (!updater) return reply.code(501).send({ error: "not available in this build" });
-    const res: ReleaseNotesResponse = { notes: await updater.getCurrentReleaseNotes() };
-    return res;
   });
 
   // #330: a channel's newest notes, fetched from its ref on demand only

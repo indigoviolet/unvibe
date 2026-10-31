@@ -123,7 +123,7 @@ test.describe("J325 hide-level selector", () => {
     await expect(page.locator('[data-hidecat="routine"]')).toHaveAttribute("data-hidden", "false");
     await page.locator('[data-hidecat="routine"]').click();
     await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
-    await expect(selector).toHaveAttribute("data-tip", /^Hiding 4 of 8 hunks:/);
+    await expect(selector).toHaveAttribute("data-tip", /^Hiding 5 of 8 hunks:/);
     await revealAll(page);
     await expect(page.locator("button.hid")).toHaveCount(3);
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -137,15 +137,24 @@ test.describe("J325 hide-level selector", () => {
     await expect(page.locator("button.hid")).toHaveCount(3);
 
     // Individually unhide the socket-level mechanical hunk, then go to
-    // Needs attention: it stays visible, as do guide-cited hunks.
+    // Needs attention: it stays visible. Guide-cited hunks no longer
+    // stay visible (owner decision, #325): the cited connection hunk
+    // hides like any other, and the tooltip drops "kept because cited".
     await page.locator(`[id="F-${TSOCK}"] button.hid`).first().click();
     await expect(page.locator(`[data-hunk="${TSOCK}:0"]`)).toBeVisible();
     // Clicking the shown Substantive row moves the threshold past it.
     await clickCategory(page, "substantive", "needs-attention");
     await expect(page.locator(`[data-hunk="${TSOCK}:0"]`)).toBeVisible();
-    await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toBeVisible();
-    await expect(selector).toHaveAttribute("data-tip", /kept because cited/);
+    await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toHaveCount(0);
     await expect(selector).toHaveAttribute("data-tip", /kept because shown/);
+    await expect(selector).not.toHaveAttribute("data-tip", /kept because cited/);
+    await expect(selector).toContainText("Hiding 7");
+    await expect(selector).toHaveAttribute("data-eye", "off");
+
+    // Clicking its guide citation reveals the hidden hunk through the
+    // per-hunk unhide and scrolls to it.
+    await page.locator('.lk[data-refs="diff:src-urllib3-connection.py:80-88"]').first().click();
+    await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toBeVisible({ timeout: 15_000 });
 
     // Clicking the most important hidden row (Substantive) shows it
     // again: the threshold moves down by one.
@@ -162,5 +171,7 @@ test.describe("J325 hide-level selector", () => {
     await expect(page.locator('[data-hidelevel-current="all"]')).toBeVisible();
     await expect(page.locator("button.hid")).toHaveCount(0);
     await expect(selector).toContainText("All shown");
+    // Nothing hidden: the button shows an open eye, not eye-off.
+    await expect(selector).toHaveAttribute("data-eye", "open");
   });
 });

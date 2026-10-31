@@ -66,9 +66,8 @@ export function VersionSection({
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
   const [healthVersion, setHealthVersion] = useState<string | null>(null);
-  // #330: current build's notes (local) + per-channel newest notes fetched
-  // only when a row's Notes is opened. No polling.
-  const [currentNotes, setCurrentNotes] = useState<ReleaseNotes | null>(null);
+  // #330: per-channel newest notes fetched only when a row's Notes is
+  // opened. No polling.
   const [channelNotes, setChannelNotes] = useState<Record<string, ReleaseNotes | null>>({});
   const [notesOpenRef, setNotesOpenRef] = useState<string | null>(null);
   const [notesLoadingRef, setNotesLoadingRef] = useState<string | null>(null);
@@ -130,12 +129,6 @@ export function VersionSection({
       }
       // Releases are always listed (#231), regardless of the toggle.
       if (!cancelled.current) void loadChannels(st?.build ?? null);
-      try {
-        const rn = await api.releaseNotes();
-        if (!cancelled.current) setCurrentNotes(rn.notes);
-      } catch {
-        // No notes shipped: the section below says so.
-      }
     })();
   }, []);
 
@@ -327,16 +320,6 @@ export function VersionSection({
             onToggleNotes={(ref) => void toggleChannelNotes(ref)}
           />
         ) : null}
-        <div data-testid="current-release-notes" style={{ marginTop: 12 }}>
-          <p className="hint" style={{ margin: "0 0 4px" }}>
-            Current build notes
-          </p>
-          {currentNotes ? (
-            <ReleaseNotesView notes={currentNotes} />
-          ) : (
-            <p className="hint">No release notes shipped with this build.</p>
-          )}
-        </div>
         {status?.pending && !switchingTo ? (
           <p className="warnline" data-testid="update-pending">
             A switch to {status.pending.to} is in progress (started {timeAgoIso(status.pending.startedAt) ?? "recently"}

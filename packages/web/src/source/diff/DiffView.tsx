@@ -24,6 +24,7 @@ import {
   formatHideLevelStats,
   HIDE_CATEGORIES,
   HIDE_CATEGORY_LABELS,
+  hideButtonLabel,
   hideLevelAfterCategoryClick,
   hideLevelHiddenUpTo,
   hideLevelStats,
@@ -48,7 +49,6 @@ import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } fr
 import { Button, DiffStat } from "../../ui/index.js";
 import {
   buildFileTree,
-  citedHunkHashes,
   filterFiles,
   hunkOverlaps,
   shouldHideHunk,
@@ -337,11 +337,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [states],
   );
 
-  const cited = useMemo(
-    () =>
-      snapshot ? citedHunkHashes(snapshot.files, snapshot.pages, snapshot.annotations) : new Set<string>(),
-    [snapshot],
-  );
 
   // Issue #325: the hide level is remembered per review in viewPrefs
   // (required in the stored shape; the default here only covers the
@@ -361,16 +356,14 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         level: hideLevel,
         score: states.get(h.contentHash)?.score,
         unhidden: !!unhidden[h.contentHash],
-        cited: cited.has(h.contentHash),
       }),
-    [hideLevel, states, unhidden, cited],
+    [hideLevel, states, unhidden],
   );
   const hideStats = useMemo(() => {
     const all = (snapshot?.files ?? []).flatMap((f) =>
       f.hunks.map((h) => ({
         ...h,
         score: states.get(h.contentHash)?.score,
-        cited: cited.has(h.contentHash),
         unhidden: !!unhidden[h.contentHash],
       })),
     );
@@ -380,9 +373,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       if (cat !== null) counts.set(cat, (counts.get(cat) ?? 0) + 1);
     }
     return { current: hideLevelStats(all, hideLevel), counts };
-  }, [snapshot, states, cited, unhidden, hideLevel]);
+  }, [snapshot, states, unhidden, hideLevel]);
   const hideTip = formatHideLevelStats(hideStats.current);
-  const hideBtnLabel = hideStats.current.hidden > 0 ? `Hiding ${hideStats.current.hidden}` : "All shown";
+  const hideBtnLabel = hideButtonLabel(hideStats.current);
 
   const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
   const hunkStateOf = useCallback(
@@ -669,7 +662,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             level: hideLevel,
             score: st.get(h.contentHash)?.score,
             unhidden: !!unhidden[h.contentHash],
-            cited: cited.has(h.contentHash),
           })
         ) {
           return;
@@ -704,7 +696,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
       );
     }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter, hideLevel]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, actions, plotActive, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -849,6 +841,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           level={hideLevel}
           tip={hideTip}
           buttonLabel={hideBtnLabel}
+          anyHidden={hideStats.current.hidden > 0}
           counts={hideStats.counts}
           onCategory={(cat) => setHideLevel(hideLevelAfterCategoryClick(hideLevel, cat))}
         />
@@ -1041,12 +1034,15 @@ function HideLevelSelector({
   level,
   tip,
   buttonLabel,
+  anyHidden,
   counts,
   onCategory,
 }: {
   level: HideLevel;
   tip: string;
   buttonLabel: string;
+  /** Open eye when nothing is hidden ("All shown"), eye-off otherwise. */
+  anyHidden: boolean;
   counts: ReadonlyMap<HideCategory, number>;
   onCategory: (category: HideCategory) => void;
 }): ReactNode {
@@ -1170,12 +1166,13 @@ function HideLevelSelector({
         aria-label={`Hide level: ${buttonLabel}. ${tip}`}
         data-tip={tip}
         data-hidelevel-current={level}
+        data-eye={anyHidden ? "off" : "open"}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); }
         }}
       >
-        <Icon name="eyeOff" />
+        <Icon name={anyHidden ? "eyeOff" : "eye"} />
         <span className="hlevel-lbl">{buttonLabel}</span>
         <Icon name="down" />
       </Button>

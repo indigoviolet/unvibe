@@ -1841,9 +1841,17 @@ test.describe("visual tour hide-level selector (#325)", () => {
     await page.goto(`${svc325.origin}/review/${review325}?token=${svc325.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    // Move the threshold to Routine (clicking the shown Routine row):
+    // guide-cited hunks hide like any other now (#325), so the button
+    // counts the truly hidden hunks and the menu shows Routine greyed.
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="routine"]').click();
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
     await page.getByRole("button", { name: /Hide level:/ }).click();
     await expect(page.getByRole("menu", { name: "Hunk categories" })).toBeVisible();
     await expect(page.getByRole("menuitemcheckbox", { name: /Needs attention/ })).toBeVisible();
+    await expect(page.locator('[data-hidecat="routine"]')).toHaveAttribute("data-hidden", "true");
+    await expect(page.getByRole("button", { name: /Hide level:/ })).toContainText("Hiding 5");
     // The open menu is legitimately topmost over the pinned headers,
     // so this frame runs the layout check only, not the pinned checks.
     await checkLayout(page, "hide-level-open");
@@ -3472,9 +3480,11 @@ test.describe("release notes tour (#330)", () => {
     await page.goto(`${notesSvc.origin}/settings?token=${notesSvc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Version" }).click();
-    await expect(page.getByTestId("current-release-notes")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("current-release-notes")).toHaveCount(0);
+    await page.locator('[data-testid="channel-notes-toggle"][data-ref="release"]').click();
+    await expect(page.locator('[data-testid="channel-release-notes"][data-ref="release"]')).toBeVisible({ timeout: 15_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     await checkLayout(page, "version-notes");
-    await shot(page, "version-notes", "1440-light", "Current build notes");
+    await shot(page, "version-notes", "1440-light", "Earlier release notes");
   });
 });

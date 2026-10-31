@@ -1,13 +1,16 @@
 /**
- * #322 part 1: the unpacked Chrome extension on a local GitHub PR fixture.
+ * #322 part 1 + #335: the unpacked Chrome extension on a local GitHub PR
+ * fixture.
  *
  * Real built service (stub `gh`, scratch repo), persistent Chromium with
  * `--load-extension`, and `github.com` routed to a local fixture page that
- * mimics a PR header — never real GitHub. Checks: the button appears,
- * reads "Open review" once a review exists, clicking opens `/open?pr=…`
- * and lands on the review, the token cookie drives the worker's lookup,
- * no page request leaves to a non-local origin, and an unknown extension
- * origin is refused by the service.
+ * mimics a PR header — never real GitHub. Checks: the button appears;
+ * clicking it makes the worker call the create-or-open endpoint itself
+ * and lands on the review with no confirm page; a plain `/open?pr=…`
+ * link still shows the styled in-app confirm and creates nothing until
+ * confirmed; the token cookie drives the worker's lookup, no page request
+ * leaves to a non-local origin, and an unknown extension origin is refused
+ * by the service.
  *
  * #333 extends this with the Conversation header (title with the Merge
  * status / Code buttons beside it): a second fixture mimics that shape
@@ -33,6 +36,8 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 const EXTENSION_DIR = fileURLToPath(new URL("../../../extension", import.meta.url));
 const SHOT = fileURLToPath(new URL("../test-results/extension-button.png", import.meta.url));
+const SHOT_CONFIRM_1440 = fileURLToPath(new URL("../test-results/open-confirm-1440.png", import.meta.url));
+const SHOT_CONFIRM_960 = fileURLToPath(new URL("../test-results/open-confirm-960.png", import.meta.url));
 const OWNER = "acme";
 const NAME = "app";
 const PR_NUMBER = 7;
@@ -177,7 +182,7 @@ test.describe("extension PR button (#322)", () => {
     }
   });
 
-  test("button appears, opens /open, then reads Open review", async () => {
+  test("button starts the review directly; plain links keep the styled confirm", async () => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     userDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-profile-"));
@@ -205,7 +210,8 @@ test.describe("extension PR button (#322)", () => {
     await page.screenshot({ path: SHOT, clip: { x: 0, y: 0, width: 760, height: 190 } });
 
     // CSRF check: a cross-site link to /open for a NEW repo must not
-    // clone or create anything — it only lands on the confirm page.
+    // clone or create anything — it only lands on the styled in-app
+    // confirm page.
     const reposBefore = await apiJson(svc, "GET", "/api/repos");
     const reviewsBefore = await apiJson(svc, "GET", "/api/reviews");
     await page.evaluate((href) => {
@@ -216,9 +222,20 @@ test.describe("extension PR button (#322)", () => {
       document.body.appendChild(a);
     }, `${svc.origin}/open?pr=${encodeURIComponent("https://github.com/othercorp/other/pull/3")}`);
     await page.locator("#cross-site-open").click();
+    // The service redirects to the web app's confirm route, which renders
+    // inside the app frame (top bar, app styling) — not bare HTML.
     await expect(page.getByRole("heading", { name: "Review othercorp/other#3 in Unvibe?" })).toBeVisible({
       timeout: 30_000,
     });
+    await expect(page.getByTestId("open-confirm")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start review" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Unvibe" })).toBeVisible();
+    // Frames for owner review: 1440 and 960, light (the context default).
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({ path: SHOT_CONFIRM_1440 });
+    await page.setViewportSize({ width: 960, height: 900 });
+    await page.screenshot({ path: SHOT_CONFIRM_960 });
     expect(JSON.stringify((await apiJson(svc, "GET", "/api/repos")).json)).toBe(
       JSON.stringify((reposBefore as { json: unknown }).json),
     );
@@ -237,36 +254,30 @@ test.describe("extension PR button (#322)", () => {
     });
     expect(foreignPost.status).toBe(403);
 
-    // Back to the PR: the button is still there.
-    await page.goto(PR_URL);
-    await expect(button).toHaveText("Review in Unvibe", { timeout: 30_000 });
-
-    // Click: the worker opens /open?pr=… in a new tab. GET never mutates,
-    // so the new tab shows the in-app confirm page; its POST creates the
-    // review and redirects to it.
-    const [confirmPage] = await Promise.all([
-      context.waitForEvent("page", { timeout: 30_000 }),
-      button.click(),
-    ]);
-    await expect(
-      confirmPage.getByRole("heading", { name: "Review acme/app#7 in Unvibe?" }),
-    ).toBeVisible({ timeout: 30_000 });
-    const reviewPage = confirmPage;
-    await reviewPage.getByRole("button", { name: "Start review" }).click();
-    await reviewPage.waitForURL(/\/review\/[^/]+$/, { timeout: 60_000 });
-    expect(reviewPage.url().startsWith(`${svc.origin}/review/`)).toBe(true);
+    // The plain-link confirm flow still creates the review on confirm:
+    // open the confirm for this PR and start it there.
+    await page.goto(`${svc.origin}/open?pr=${encodeURIComponent(PR_URL)}`);
+    await expect(page.getByRole("heading", { name: "Review acme/app#7 in Unvibe?" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.getByRole("button", { name: "Start review" }).click();
+    await page.waitForURL(/\/review\/[^/]+$/, { timeout: 60_000 });
+    expect(page.url().startsWith(`${svc.origin}/review/`)).toBe(true);
     // The review lands (ingest via the stub gh): loading clears.
-    await expect(reviewPage.getByTestId("review-loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.getByTestId("review-loading")).toBeHidden({ timeout: 60_000 });
 
-    // Now a review exists: the fixture button says so, and clicking it
-    // goes straight to the review (no confirm page for an existing one).
-    await page.reload();
+    // Back to the PR: a review exists now, so the button reads Open
+    // review — and clicking it goes straight to the review. The worker
+    // calls the create-or-open endpoint itself; there is no confirm page.
+    await page.goto(PR_URL);
     await expect(button).toHaveText("Open review", { timeout: 30_000 });
     const [againPage] = await Promise.all([
       context.waitForEvent("page", { timeout: 30_000 }),
       button.click(),
     ]);
     await againPage.waitForURL(/\/review\/[^/]+$/, { timeout: 60_000 });
+    expect(againPage.url().startsWith(`${svc.origin}/review/`)).toBe(true);
+    await expect(againPage.getByTestId("open-confirm")).toHaveCount(0);
     await againPage.close();
 
     // The token cookie drives that: without it the worker cannot know.
@@ -282,6 +293,7 @@ test.describe("extension PR button (#322)", () => {
     expect(seen.length).toBeGreaterThan(0);
 
     // An unknown extension origin is refused; the pinned one is not.
+    // The new create-or-open endpoint refuses it too.
     const bad = await fetch(`${svc.origin}/api/extension/pr-status?pr=${encodeURIComponent(PR_URL)}`, {
       headers: {
         origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -289,6 +301,16 @@ test.describe("extension PR button (#322)", () => {
       },
     });
     expect(bad.status).toBe(403);
+    const badOpen = await fetch(`${svc.origin}/api/extension/open`, {
+      method: "POST",
+      headers: {
+        origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        authorization: `Bearer ${svc.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ pr: PR_URL }),
+    });
+    expect(badOpen.status).toBe(403);
     const good = await fetch(`${svc.origin}/api/extension/pr-status?pr=${encodeURIComponent(PR_URL)}`, {
       headers: {
         origin: "chrome-extension://fmmhgmdbecooajgmpkmcclidchaekiko",

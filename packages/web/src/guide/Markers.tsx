@@ -28,7 +28,7 @@ import { revealSource } from "../source/reveal.js";
 import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
-import { citationRange } from "./citations.js";
+import { citationChip } from "./citations.js";
 
 interface Props {
   citations: ResolvedCitation[];
@@ -40,7 +40,9 @@ interface Props {
 }
 
 export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPage }: Props) {
-  const verified = citations.filter((c) => !c.unverified);
+  // Issue #336: the prose chip never renders empty — `citationChip` is
+  // null unless at least one verified, non-blank target exists.
+  const chip = citationChip(citations);
   // Threads that never had a quote keep the bare bubble marker (PRD §4.6);
   // quoted threads get footnote chips when their highlight is lost.
   const unquoted = threads.filter((t) => !t.anchor.quotedText);
@@ -64,20 +66,20 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
     (t) => !!t.anchor.quotedText && (t.replies ?? []).some((r) => r.kind === "comment"),
   );
   const notes = footnotes ?? [];
-  if (!verified.length && !unquoted.length && !notes.length && !quotedThreads.length) return null;
+  if (!chip && !unquoted.length && !notes.length && !quotedThreads.length) return null;
   return (
     <span className="lo">
-      {verified.length > 0 && (
+      {chip && (
         <button
           className="lk"
           type="button"
-          data-refs={verified.map((c) => c.target).join("|")}
-          data-src={verified[0].target}
-          aria-label={verified.length > 1 ? `${verified.length} sources` : "Source"}
+          data-refs={chip.targets.join("|")}
+          data-src={chip.targets[0]}
+          aria-label={chip.targets.length > 1 ? `${chip.targets.length} sources` : "Source"}
           data-tip="Show in source"
-          onClick={() => revealSource(verified[0].target)}
+          onClick={() => revealSource(chip.targets[0])}
         >
-          {citationRange(verified[0].target) ?? (verified.length > 1 ? verified.length : "")}
+          {chip.text}
         </button>
       )}
       {unquoted.length > 0 && (

@@ -82,10 +82,10 @@ export interface HostCheckRequest {
 
 export interface HostCheckOptions {
   /**
-   * #322: exact `chrome-extension://<id>` origins allowed for this one
-   * request (the extension pr-status endpoint only). Never a wildcard:
-   * every other endpoint keeps the loopback-only rule, so an extension
-   * origin anywhere else is still refused.
+   * #322/#335: exact `chrome-extension://<id>` origins allowed for this
+   * one request (an extension endpoint: pr-status, open, or panel).
+   * Never a wildcard: every other endpoint keeps the loopback-only rule,
+   * so an extension origin anywhere else is still refused.
    */
   extensionIds?: readonly string[];
   /**

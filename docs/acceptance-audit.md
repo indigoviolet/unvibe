@@ -963,12 +963,13 @@ needed (that deviation is closed, not added).
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
   cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
-  run with reason, click reveals; one-line never hidden; cited never
-  hidden) — met, and since #325 it is the default of the diff toolbar's
+  run with reason, click reveals; one-line never hidden; guide-cited
+  hunks hide like any other since the #325 owner decision — clicking
+  their citation reveals them) — met, and since #325 it is the default of the diff toolbar's
   hide menu (an ordered category list — Uninteresting · Mechanical ·
   Routine · Substantive · Needs attention — over the one threshold
   remembered per review in `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
-  buttons; guide-cited and individually unhidden hunks stay visible at
+  buttons; individually unhidden hunks stay visible at
   every level, and the selector tooltip carries the live hidden count
   with a breakdown) (`packages/shared/src/scores.ts` hide levels,
   `j325-hide-level.spec.ts`, tour frame `hide-level-open-1440-light.png`).
@@ -3510,9 +3511,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `scripts/release-notes-gen-lib.mjs`; previous build = always the
   newest `v*` tag reachable from HEAD, on every channel). Publisher entries (`--notes-file` on `preview:publish` /
   `release:tag`) merge over generated one-liners. Release notes live
-  only in Settings → Version: current + per-channel notes (fetched on
-  open only, plain text); `release-notes.mjs` renders the GitHub body
-  from the same file.
+  only in Settings → Version, per channel (fetched on Notes open only,
+  plain text; no current-build block); `release-notes.mjs` renders the
+  GitHub body from the same file.
   Evidence: `test/release-notes-gen.test.ts`, journey
   `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frame
   `version-notes-1440-light`.
@@ -3709,3 +3710,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `panel-322.test.ts`, `extension-322.test.ts`, journeys
   `j322-extension.spec.ts` + `extension-panel-322.spec.ts` (frame
   inspected), `check-global-install` green. Full gates not yet run.
+
+## Addendum: #335 (branch `fix/335-extension-start-review`)
+
+- **Extension starts the review via the worker:** the button no longer
+  opens `/open`. The background worker POSTs the PR URL to the new
+  `POST /api/extension/open` (Bearer [REDACTED] exact allowlisted extension
+  origin, same gate as pr-status/panel) and opens the answered
+  `/review/<id>` directly — no confirmation step. The endpoint clones
+  an unknown repo first and reuses an existing review, sharing the
+  `POST /open` open path. Failures (service down, clone error) answer
+  `{ ok: false }` and show an honest state on the button, never a blank
+  tab. `/open` keeps the confirm step for plain links only: `GET /open`
+  still never mutates (existing review redirects; anything else redirects
+  to the `/open/confirm` web-app route), and the confirm now renders
+  inside the app frame (top bar, app styling) with a Start button that
+  POSTs to `/open` and navigates to the review. No stored-shape change,
+  so `DATA_FORMAT` stays 1. Evidence: `extension-322.test.ts` (new
+  endpoint creates/reuses with Bearer [REDACTED] extension origin, foreign
+  origin/tokenless 403/401, GET still read-only) and Playwright
+  `e2e/extension-322.spec.ts` (button lands on `/review/<id>` with no
+  confirm; plain link shows the styled confirm and creates on Start;
+  unknown origin refused on both worker endpoints) with frame
+  `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
+  Full gates not yet run.
