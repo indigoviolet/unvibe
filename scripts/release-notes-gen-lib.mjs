@@ -2,15 +2,12 @@
  * Release-notes generator helpers (#330), dependency-free so vitest can
  * import them directly (same pattern as preview-lib.mjs).
  *
- * Previous-build rule: the previous build of a channel is the commit the
- * channel ref (`release` or `preview/<slug>`) pointed at before this
- * publish overwrote it. Its `release-notes.json` (read via
- * `git show <ref>:release-notes.json`) gives `previousVersion` and its
- * source `commit`, which anchors `git log <prev>..HEAD --merges`. When
- * a channel has no readable previous notes, every channel falls back
- * to the newest `v*` tag reachable from HEAD (`previousVersion` is that
- * tag's version); `previousVersion: null` and full history only when
- * there is no such tag at all.
+ * Previous-build rule (owner decision on #330): the previous build is
+ * ALWAYS the newest `v*` release tag reachable from HEAD, on every
+ * channel — preview notes are cumulative since the last release. When
+ * building the release itself, the current version's tag is excluded.
+ * `previousVersion: null` and full history only when there is no such
+ * tag at all. The tag anchors `git log <prev>..HEAD --merges`.
  *
  * One-liner rule: `summary` is the issue title's first line when `gh`
  * returns one; otherwise the merge subject with its `Merge ...` prefix
@@ -213,25 +210,15 @@ export async function generateReleaseNotes({
     return r.code === 0 ? r.stdout : null;
   };
 
-  // Previous build: channel ref's shipped notes, else previous tag.
+  // Previous build (owner decision on #330): ALWAYS the newest `v*`
+  // release tag reachable from HEAD, on every channel — preview notes
+  // are cumulative since the last release. The current version's tag is
+  // excluded when building that release itself. No tag at all -> null
+  // and the full history is listed.
   let previousVersion = null;
   let previousCommit = null;
   let previousDataFormat = null;
-  const prevNotesRaw = await gitShow(channel, "release-notes.json");
-  if (prevNotesRaw) {
-    try {
-      const prev = JSON.parse(prevNotesRaw);
-      if (typeof prev?.version === "string") previousVersion = prev.version;
-      if (typeof prev?.commit === "string") previousCommit = prev.commit;
-      if (Number.isInteger(prev?.dataFormat)) previousDataFormat = prev.dataFormat;
-    } catch {
-      // Unreadable previous notes: treat as no previous build.
-    }
-  }
-  // No readable previous notes (e.g. a preview channel's first publish
-  // under #330): fall back to the newest `v*` tag reachable from HEAD
-  // for every channel. Null + full history only when there is no tag.
-  if (previousCommit === null) {
+  {
     const cur = `v${version}`;
     let prevTag = null;
     const desc = await run("git", ["describe", "--tags", "--abbrev=0", head]);
@@ -254,7 +241,7 @@ export async function generateReleaseNotes({
       previousCommit = prevTag;
     }
   }
-  if (previousDataFormat === null && previousCommit) {
+  if (previousCommit) {
     const src = await gitShow(previousCommit, "packages/shared/src/data-format.ts");
     if (src !== null) previousDataFormat = parseDataFormat(src);
   }
