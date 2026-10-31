@@ -28,6 +28,8 @@
  *   neither header and are unaffected (the token still applies).
  */
 
+import { isAllowedExtensionOrigin } from "@unvibe/shared";
+
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set([
   "127.0.0.1",
   "localhost",
@@ -78,10 +80,38 @@ export interface HostCheckRequest {
   headers: Record<string, string | string[] | undefined>;
 }
 
+export interface HostCheckOptions {
+  /**
+   * #322: exact `chrome-extension://<id>` origins allowed for this one
+   * request (the extension pr-status endpoint only). Never a wildcard:
+   * every other endpoint keeps the loopback-only rule, so an extension
+   * origin anywhere else is still refused.
+   */
+  extensionIds?: readonly string[];
+  /**
+   * #322 fix: skip the Origin/Referer check for this one request (the
+   * read-only `GET /open`, so a cross-site link still lands on the
+   * in-app confirm page instead of a bare 403). The Host must still be
+   * loopback, the token gate still applies, and the endpoint this
+   * relaxes must never mutate — the mutation is a separate POST behind
+   * the full gate.
+   */
+  relaxedOrigin?: boolean;
+}
+
 /** Combined gate for the service `onRequest` hook. */
-export function hostCheckAllows(req: HostCheckRequest): { ok: true } | { ok: false; reason: string } {
+export function hostCheckAllows(
+  req: HostCheckRequest,
+  opts: HostCheckOptions = {},
+): { ok: true } | { ok: false; reason: string } {
   if (!isLoopbackHost(req.headers["host"])) return { ok: false, reason: "host is not loopback" };
-  if (!isAllowedOrigin(req.headers["origin"])) return { ok: false, reason: "origin is not loopback" };
-  if (!isAllowedOrigin(req.headers["referer"])) return { ok: false, reason: "referer is not loopback" };
+  if (opts.relaxedOrigin) return { ok: true };
+  const ext = opts.extensionIds ?? [];
+  const originOk =
+    isAllowedOrigin(req.headers["origin"]) || isAllowedExtensionOrigin(req.headers["origin"], ext);
+  if (!originOk) return { ok: false, reason: "origin is not loopback" };
+  const refererOk =
+    isAllowedOrigin(req.headers["referer"]) || isAllowedExtensionOrigin(req.headers["referer"], ext);
+  if (!refererOk) return { ok: false, reason: "referer is not loopback" };
   return { ok: true };
 }

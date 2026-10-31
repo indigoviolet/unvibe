@@ -20,6 +20,13 @@ import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
+import {
+  EXTENSION_PR_STATUS_PATH,
+  PINNED_EXTENSION_ID,
+  extensionOrigin,
+  isAllowedExtensionOrigin,
+  isExtensionId,
+} from "@unvibe/shared";
 import { hasValidToken } from "./auth.js";
 import { errorCodeFor, errorCodeOf } from "./errors.js";
 import { CONTENT_SECURITY_POLICY } from "./security/csp.js";
@@ -79,6 +86,8 @@ export interface CreateAppOptions extends RouteDeps, ReviewsRouteDeps {
   updater?: Updater;
   /** Switch spawn + shutdown wiring (provided by `serve()`; switch answers 501 without it). */
   updateHooks?: UpdateHooks;
+  /** #322: allowlisted Chrome extension id (default: the pinned id, or `UNVIBE_EXTENSION_ID`). */
+  extensionId?: string;
   /**
    * Idle-exit wiring (PRD §14, owned by the shell milestone). `idleMs`
    * defaults to 10 minutes; non-positive disables. `hasJobs` should report
@@ -206,20 +215,46 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     };
   };
 
+  // #322: the one allowlisted extension id. An invalid configured id
+  // allows no extension at all (fail closed, never a wildcard).
+  const configuredExtensionId = (opts.extensionId ?? process.env.UNVIBE_EXTENSION_ID ?? PINNED_EXTENSION_ID).trim();
+  const extensionIds: readonly string[] = isExtensionId(configuredExtensionId) ? [configuredExtensionId] : [];
+  const allowedExtensionOrigin = extensionIds.length ? extensionOrigin(extensionIds[0]) : null;
+
   // Global auth gate.
   app.addHook("onRequest", async (req, reply) => {
     const url = req.url;
-    // DNS-rebinding / cross-site defense (defense in depth behind the
-    // install token): only loopback Host and loopback Origin/Referer ever
-    // reach a handler. Applies to every route including /api/health and
-    // the MCP mount (WebSocket handshakes pass through here too).
-    const allowed = hostCheckAllows({ headers: req.headers as Record<string, string | string[] | undefined> });
+    const pathname = urlPathname(url);
+    // #322: only the pr-status endpoint may be called from the exact
+    // allowlisted extension origin (CORS + origin check). Every other
+    // route keeps the loopback-only rule for extension origins.
+    const isExtensionEndpoint = pathname === EXTENSION_PR_STATUS_PATH;
+    // #322 fix: `GET /open` never mutates (redirect or confirm page), so
+    // a cross-site navigation may reach it — foreign Origin/Referer are
+    // relaxed for that one read. `POST /open` (the mutation) and every
+    // other route keep the full check.
+    const isOpenRead = pathname === "/open" && req.method === "GET";
+    const allowed = hostCheckAllows(
+      { headers: req.headers as Record<string, string | string[] | undefined> },
+      isExtensionEndpoint ? { extensionIds } : isOpenRead ? { relaxedOrigin: true } : {},
+    );
     if (!allowed.ok) {
       reply.code(403).send({ error: `forbidden: ${allowed.reason}` });
       return;
     }
+    if (isExtensionEndpoint && allowedExtensionOrigin && isAllowedExtensionOrigin(req.headers["origin"], extensionIds)) {
+      reply.header("access-control-allow-origin", allowedExtensionOrigin);
+      reply.header("vary", "Origin");
+      reply.header("access-control-allow-methods", "GET, OPTIONS");
+      reply.header("access-control-allow-headers", "authorization, content-type");
+      if (req.method === "OPTIONS") {
+        // CORS preflight carries no token; the token gate below is for
+        // the real request only.
+        reply.code(204).send();
+        return;
+      }
+    }
     if (url === "/api/health" || url.startsWith("/api/health?")) return;
-    const pathname = urlPathname(url);
     // Static build assets and installable-app files carry no review data;
     // the shell + API + WS are gated.
     if (pathname.startsWith("/assets/") || PUBLIC_STATIC_EXACT.has(pathname)) return;

@@ -3615,3 +3615,34 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/stacks-321.test.ts`, journey `e2e/journeys/j321-stacked-prs.spec.ts`
   with frames `packages/web/visual-tour/stack-list-1440-light.png` and
   `stack-popover-1440-light.png` (git-ignored), inspected. Full gates not yet run.
+
+
+## Addendum: #322 part 1 (branch `feat/322-chrome-extension`)
+
+- **Chrome extension (PR button):** an MV3 extension in `extension/`,
+  loaded unpacked, adds "Review in Unvibe" / "Open review" to GitHub PR
+  pages. Only the background worker talks to the local service, reading
+  the `__unvibe_token` cookie via `chrome.cookies` and sending it as
+  Bearer to loopback; the content script holds no token. The service
+  allowlists the exact pinned extension origin for
+  `GET /api/extension/pr-status` only (CORS + origin gate;
+  `UNVIBE_EXTENSION_ID` overrides, never a wildcard), and `/open?pr=…`
+  opens or creates the review (cloning an unknown repo) and redirects
+  to it. Part 2 (side panel) is not built.
+  Evidence: unit tests `packages/shared/test/extension.test.ts`,
+  `packages/service/test/extension-322.test.ts` and the extension cases
+  in `packages/service/test/host.test.ts`; Playwright
+  `packages/web/e2e/extension-322.spec.ts` (unpacked extension on a
+  local github.com fixture against the real service with stub `gh`)
+  with frame `packages/web/test-results/extension-button.png`,
+  inspected. Full gates not yet run.
+- **#322 security fix (same branch):** `GET /open` no longer mutates —
+  it redirects to an existing review or renders an in-app confirm
+  page; only a `POST /open` from the app origin (loopback Host/Origin
+  gate plus token) clones/creates. The extension opens `/open` and the
+  user confirms in the app (no worker POST endpoint). Evidence:
+  `extension-322.test.ts` (cross-site GET shows confirm, records no
+  repo/review; foreign POST 403; app POST creates; existing review
+  redirects) and the extension Playwright journey (cross-site link
+  from the fixture page, confirm click, straight redirect once the
+  review exists).
