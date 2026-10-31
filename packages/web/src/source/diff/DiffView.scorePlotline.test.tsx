@@ -8,11 +8,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
 import { DiffView } from "./DiffView.js";
+import { revealSource } from "./revealSource.js";
 
 beforeEach(() => {
   localStorage.clear();
@@ -116,13 +117,22 @@ describe("DiffView scores and plotlines", () => {
     // socket-level first hunk, and the changelog.
     expect(document.querySelectorAll("button.hid")).toHaveLength(3);
     expect(screen.getByRole("button", { name: /Hide level:/ }).getAttribute("data-tip")).toMatch(/^Hiding \d+ of 8 hunks:/);
-    // Clicking the shown Substantive row moves the threshold past it;
-    // Needs attention keeps the guide-cited connection hunk visible.
+    // Clicking the shown Substantive row moves the threshold past it.
+    // Guide-cited hunks no longer stay visible (owner decision, #325):
+    // the cited connection hunk hides like any other.
     await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
     await fireEvent.click(document.querySelector('[data-hidecat="substantive"]') as HTMLElement);
     expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("needs-attention");
+    expect(document.querySelector(`[data-hunk="${CONN}:0"]`)).toBeNull();
+    expect(screen.getByRole("button", { name: /Hide level:/ }).getAttribute("data-tip")).toBe(
+      "Hiding 8 of 8 hunks: 3 uninteresting, 1 mechanical, 1 routine, 3 substantive",
+    );
+    expect(screen.getByRole("button", { name: /Hide level:/ }).textContent).toContain("Hiding 8");
+    // Clicking its citation reveals it through the per-hunk unhide.
+    await act(async () => {
+      expect(revealSource(`diff:${CONN}:80`)).toBe(true);
+    });
     expect(document.querySelector(`[data-hunk="${CONN}:0"]`)).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Hide level:/ }).getAttribute("data-tip")).toContain("kept because cited");
     // Clicking the most important hidden row (Substantive) shows it
     // again: the threshold moves down by one.
     await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));

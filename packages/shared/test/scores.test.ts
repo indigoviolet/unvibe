@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatHideLevelStats,
+  hideButtonLabel,
   hideLevelAfterCategoryClick,
   hideLevelForHiddenUpTo,
   hideLevelHiddenUpTo,
@@ -177,10 +178,9 @@ describe("hide levels (#325)", () => {
     // Higher levels still hide uninteresting hunks.
     expect(shouldHideAtLevel(h({ hiddenReason: "imports", score: "substantive" }), "needs-attention")).toBe(true);
   });
-  it("never hides unscored, one-line-uninteresting, cited or unhidden hunks", () => {
+  it("never hides unscored, one-line-uninteresting, or unhidden hunks", () => {
     expect(shouldHideAtLevel(h({}), "needs-attention")).toBe(false);
     expect(shouldHideAtLevel(h({ hiddenReason: "imports", added: 1, removed: 0 }), "uninteresting")).toBe(false);
-    expect(shouldHideAtLevel(h({ score: "mechanical" }), "routine", { cited: true })).toBe(false);
     expect(shouldHideAtLevel(h({ hiddenReason: "imports" }), "uninteresting", { unhidden: true })).toBe(false);
     expect(normalizeHideLevel("routine")).toBe("routine");
     expect(normalizeHideLevel("bogus")).toBeNull();
@@ -193,14 +193,14 @@ describe("hide levels (#325)", () => {
       h({ score: "routine" }),
       h({ score: "substantive" }),
       h({ score: "needs-attention" }),
-      h({ score: "mechanical", cited: true }),
+      h({ score: "mechanical" }),
       h({ hiddenReason: "imports", unhidden: true }),
     ], "substantive");
     expect(stats).toEqual({
-      total: 7, hidden: 3, uninteresting: 1, mechanical: 1, routine: 1, substantive: 0, keptCited: 1, keptShown: 1,
+      total: 7, hidden: 4, uninteresting: 1, mechanical: 2, routine: 1, substantive: 0, keptShown: 1,
     });
     expect(formatHideLevelStats(stats)).toBe(
-      "Hiding 3 of 7 hunks: 1 uninteresting, 1 mechanical, 1 routine · 1 kept because cited, 1 kept because shown",
+      "Hiding 4 of 7 hunks: 1 uninteresting, 2 mechanical, 1 routine · 1 kept because shown",
     );
     expect(formatHideLevelStats(hideLevelStats([], "all"))).toBe("Hiding 0 of 0 hunks");
   });
@@ -227,6 +227,22 @@ describe("hide levels (#325)", () => {
     // Needs attention always shows.
     expect(hideLevelAfterCategoryClick("all", "needs-attention")).toBe("all");
     expect(hideLevelAfterCategoryClick("needs-attention", "needs-attention")).toBe("needs-attention");
+  });
+  it("button label counts truly hidden hunks; All shown only at zero", () => {
+    // The reported state, after the owner decision to drop the cited
+    // exemption: threshold hides up to Routine and the two routine
+    // hunks (guide-cited, but that no longer keeps them) are hidden.
+    const state = hideLevelStats([
+      h({ score: "routine" }), h({ score: "routine" }),
+      h({ score: "substantive" }), h({ score: "substantive" }), h({ score: "substantive" }),
+      h({ score: "substantive" }), h({ score: "substantive" }),
+    ], "substantive");
+    expect(state.hidden).toBe(2);
+    expect(hideButtonLabel(state)).toBe("Hiding 2");
+    // Only the user's own unhide keeps a hunk visible.
+    const unhidden = hideLevelStats([h({ score: "mechanical", unhidden: true })], "routine");
+    expect(hideButtonLabel(unhidden)).toBe("All shown");
+    expect(hideButtonLabel(hideLevelStats([], "all"))).toBe("All shown");
   });
   it("assigns hunks to menu categories, hide reason first", () => {
     expect(hunkCategory(h({ hiddenReason: "imports", score: "substantive" }))).toBe("uninteresting");

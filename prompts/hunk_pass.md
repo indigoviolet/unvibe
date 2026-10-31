@@ -33,9 +33,6 @@ summary is not the place to define them; just name them exactly.
 
 {{hunk}}
 
-A hunk marked `CITED-BY-GUIDE` is cited by the guide: it is always
-interesting, whatever it contains.
-
 ## Output
 
 One Markdown line — the summary: what the hunk does, not how. Under 140
@@ -54,9 +51,9 @@ block on its own.
 
 Set `hiddenReason` to a one-line reason only for generated files,
 import-only changes, or docs/config churn (e.g. `"import-only change"`);
-otherwise null. Never mark uninteresting: a hunk cited by the guide, a
-hunk with a one-line functional change, or anything you are unsure about.
-When unsure, it is interesting.
+otherwise null. Never mark uninteresting: a hunk with a one-line
+functional change, or anything you are unsure about. When unsure, it
+is interesting. (Guide citations do not exempt a hunk from hiding.)
 
 Set `score` to one ordered level for how much the hunk matters to a
 reader: `mechanical` (renames, formatting, generated, imports),
