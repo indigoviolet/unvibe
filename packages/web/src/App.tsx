@@ -74,7 +74,9 @@ export function App() {
             />
             <Route path="/review/:id/*" element={<ReviewRoute />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/doctor" element={<DoctorPage />} />
+            {/* No doctor on the static demo (#334, local-machine
+                internals) — back to Settings. */}
+            <Route path="/doctor" element={<Navigate replace to="/settings" />} />
           </Routes>
         </RouteShellBoundary>
       </HashRouter>

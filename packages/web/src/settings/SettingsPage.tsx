@@ -49,9 +49,14 @@ const SETTING_TABS = [
 
 /**
  * Static demo (#334): the Debug section (stats-export plumbing aimed at a
- * local machine, not a website) is hidden — nav entry, panel and all.
+ * local machine) and the Version section (nothing to switch on a static
+ * website) are hidden — nav entries, panels and all.
  */
-const VISIBLE_SETTING_TABS = STATIC_DEMO ? SETTING_TABS.filter((t) => t.id !== "debug") : SETTING_TABS;
+const DEMO_HIDDEN_TABS: readonly string[] = ["debug", "version"];
+
+const VISIBLE_SETTING_TABS = STATIC_DEMO
+  ? SETTING_TABS.filter((t) => !DEMO_HIDDEN_TABS.includes(t.id))
+  : SETTING_TABS;
 
 const SETTING_TAB_IDS: readonly string[] = VISIBLE_SETTING_TABS.map((t) => t.id);
 
@@ -102,11 +107,11 @@ export function SettingsPage(): React.JSX.Element {
     return () => {};
   }, [location.search, location.hash, setTab, tab]);
 
-  // Hidden in the demo: an explicit `?tab=debug` redirects to the first
+  // Hidden in the demo: an explicit tab there redirects to the first
   // section instead of falling back silently. After every hook, so the
   // early return never skips one.
   const rawTab = new URLSearchParams(location.search).get("tab");
-  if (STATIC_DEMO && rawTab === "debug") {
+  if (STATIC_DEMO && rawTab !== null && DEMO_HIDDEN_TABS.includes(rawTab)) {
     const next = new URLSearchParams(location.search);
     next.set("tab", FIRST_SETTING_TAB);
     return <Navigate replace to={{ pathname: location.pathname, search: `?${next.toString()}` }} />;
@@ -138,9 +143,11 @@ export function SettingsPage(): React.JSX.Element {
       <TabPanel idPrefix="settings" id="limits" active={tab === "limits"}>
         <LimitsSection settings={loaded} onSaved={setSettings} />
       </TabPanel>
-      <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
-        <VersionSection settings={loaded} onSaved={setSettings} />
-      </TabPanel>
+      {STATIC_DEMO ? null : (
+        <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
+          <VersionSection settings={loaded} onSaved={setSettings} />
+        </TabPanel>
+      )}
       {STATIC_DEMO ? null : (
         <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
           <DebugSection />

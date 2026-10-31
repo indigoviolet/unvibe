@@ -7,8 +7,9 @@
  * recording shows the honest install message, comments persist across
  * reload (Reset demo clears them), hunk summaries come from the
  * recordings, Submit is disabled with an install pointer, and Settings
- * are read-only — all with no request beyond the static origin. Debug
- * surfaces stay hidden: no Settings tab or route, no per-review page.
+ * are read-only — all with no request beyond the static origin. Debug,
+ * Version and Doctor stay hidden: no Settings tabs or routes for the
+ * first two, no per-review debug page, no Doctor route or link.
  *
  * Needs `mise run demo:build` first (skipped without it).
  */
@@ -268,17 +269,23 @@ test("settings are read-only in the demo", async ({ page }) => {
   await expect(page.locator(".settings-panel")).not.toContainText("mock-main");
   await expect(page.locator(".settings-panel")).not.toContainText("Mock Main");
   await page.screenshot({ path: `${SHOTS}/demo-settings-models.png` });
-  // No Debug section in the demo: no nav entry, and the tab redirects to
-  // the first section instead of falling back silently.
-  await expect(page.locator('[role="tablist"]').getByRole("tab", { name: "Debug" })).toHaveCount(0);
+  // No Debug or Version section in the demo: no nav entries, and either
+  // tab redirects to the first section instead of falling back silently.
+  const tabs = page.locator('[role="tablist"]');
+  await expect(tabs.getByRole("tab", { name: "Debug" })).toHaveCount(0);
+  await expect(tabs.getByRole("tab", { name: "Version" })).toHaveCount(0);
   await page.goto(`${origin()}/#/settings?tab=debug`);
   await expect(page).toHaveURL(/#\/settings\?tab=appearance/);
   await expect(page.locator(".settings-title")).toContainText("Appearance");
-  await expect(page.locator('[role="tablist"]').getByRole("tab", { name: "Debug" })).toHaveCount(0);
+  await page.goto(`${origin()}/#/settings?tab=version`);
+  await expect(page).toHaveURL(/#\/settings\?tab=appearance/);
+  await expect(page.locator(".settings-title")).toContainText("Appearance");
+  await expect(tabs.getByRole("tab", { name: "Debug" })).toHaveCount(0);
+  await expect(tabs.getByRole("tab", { name: "Version" })).toHaveCount(0);
   expect(violations).toEqual([]);
 });
 
-test("debug page is hidden in the demo", async ({ page }) => {
+test("debug page and doctor page are hidden in the demo", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   // No Debug entry point on the review, and the route redirects back.
   await gotoDemo(page);
@@ -288,6 +295,13 @@ test("debug page is hidden in the demo", async ({ page }) => {
     timeout: 30_000,
   });
   await expect(page).toHaveURL(/#\/review\/demo/);
+  // Doctor redirects to Settings, and Environment drops its Doctor link.
+  await page.goto(`${origin()}/#/doctor`);
+  await expect(page).toHaveURL(/#\/settings/);
+  await expect(page.getByText("Settings are read-only in the static demo")).toBeVisible({ timeout: 30_000 });
+  await page.locator('[role="tablist"]').getByRole("tab", { name: "Environment" }).click();
+  await expect(page.locator('[data-testid="env-git"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("link", { name: "Doctor page" })).toHaveCount(0);
   expect(violations).toEqual([]);
 });
 
