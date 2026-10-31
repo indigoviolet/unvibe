@@ -17,7 +17,7 @@ import { apiJson, git, writeFakeGitOffline, realGitPath } from "./journeys/journ
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const EXTENSION_DIR = fileURLToPath(new URL("../../../extension", import.meta.url));
-const SHOT = fileURLToPath(new URL("../test-results/extension-panel-322.png", import.meta.url));
+const SHOT = fileURLToPath(new URL("../visual-tour/extension-panel-322.png", import.meta.url));
 const CANDIDATE_PORTS = [4517, 4518, 4519, 4520, 4521];
 const PAGE_URL = "https://github.com/acme/service/issues/12";
 const FIXTURE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Token check fails · Issue #12 · acme/service</title></head>

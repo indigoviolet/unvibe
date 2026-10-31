@@ -88,7 +88,8 @@ export function ExtensionSection({ settings, onSaved }: { settings: Settings; on
       <Card>
         <p><b>Panel model</b></p>
         <Field label="Provider" htmlFor="ext-prov">
-          <Select id="ext-prov" value={pick.provider} onValueChange={(v) => void saveModel({ provider: v })} options={providers.map((p) => ({ value: p, label: p }))} />
+          <Select id="ext-prov" value={pick.provider} onValueChange={(v) => void saveModel({ provider: v })}
+            options={[...(providers.includes(pick.provider) ? [] : [pick.provider]), ...providers].map((p) => ({ value: p, label: p }))} />
         </Field>
         <Field label="Model" htmlFor="ext-model">
           {models === null ? <span className="hint">Loading models…</span> : (
