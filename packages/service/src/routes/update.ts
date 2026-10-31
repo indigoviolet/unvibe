@@ -32,10 +32,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import type {
+  ReleaseNotesResponse,
   UpdateBlockedJob,
   UpdateChannel,
   UpdateChannelsResponse,
   UpdateJobsBlockedBody,
+  UpdateNotesResponse,
   UpdateStatusResponse,
   UpdateSwitchRequest,
   UpdateSwitchResponse,
@@ -200,6 +202,30 @@ export async function registerUpdate(
   app.get("/api/update/status", async (_req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
     return buildStatus();
+  });
+
+  // #330: the running build's shipped notes (local read, no network).
+  app.get("/api/release-notes", async (_req, reply) => {
+    const updater = deps.updater;
+    if (!updater) return reply.code(501).send({ error: "not available in this build" });
+    const res: ReleaseNotesResponse = { notes: await updater.getCurrentReleaseNotes() };
+    return res;
+  });
+
+  // #330: a channel's newest notes, fetched from its ref on demand only
+  // (Settings → Version open / row expand). No polling, no cache.
+  app.get("/api/update/notes", async (req, reply) => {
+    const updater = deps.updater;
+    if (!updater) return reply.code(501).send({ error: "not available in this build" });
+    const q = req.query as Record<string, string | undefined>;
+    const ref = typeof q["ref"] === "string" ? q["ref"].trim() : "";
+    if (!ref) return reply.code(400).send({ error: "missing ref: GET /api/update/notes?ref=<channel>" });
+    try {
+      const res: UpdateNotesResponse = { notes: await updater.getChannelReleaseNotes(ref) };
+      return res;
+    } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
   });
 
   app.get("/api/update/channels", async (req, reply) => {

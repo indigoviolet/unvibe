@@ -50,6 +50,7 @@ import type {
   ReviewSummary,
   Settings,
   SwitchOutcome,
+  ReleaseNotes,
   UpdateBuildInfo,
   UpdateChannel,
   UpdateDiffFilterRequest,
@@ -1743,6 +1744,52 @@ function writeUpdatePersisted(next: { current: string; outcome: SwitchOutcome | 
 let mockUpdatePending: UpdatePendingSwitch | null = null;
 /** True while the mock "service" is down mid-switch (health throws). */
 let mockUpdateDown = false;
+
+const MOCK_RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  release: {
+    channel: "release",
+    version: "0.0.1",
+    previousVersion: null,
+    commit: "b535a30ccccccc",
+    previousCommit: null,
+    dataFormat: 1,
+    previousDataFormat: null,
+    dataResetNeeded: false,
+    generatedAt: new Date(NOW - 3 * 86400_000).toISOString(),
+    items: [
+      {
+        number: 36,
+        title: "Version picker",
+        summary: "Version picker",
+        url: "https://github.com/indigoviolet/unvibe/issues/36",
+        whatChanged: "You can switch builds from Settings.",
+        whatToTry: "Open Settings → Version and switch channels.",
+      },
+    ],
+  },
+  "preview/feat-x": {
+    channel: "preview/feat-x",
+    version: "0.0.1-preview.feat-x.abc1234",
+    previousVersion: "0.0.1",
+    commit: "abc1234def5678",
+    previousCommit: "b535a30ccccccc",
+    dataFormat: 1,
+    previousDataFormat: 1,
+    dataResetNeeded: false,
+    generatedAt: new Date(NOW - 3600_000).toISOString(),
+    items: [
+      {
+        number: 330,
+        title: "Release notes inside every build",
+        summary: "Release notes inside every build",
+        url: "https://github.com/indigoviolet/unvibe/issues/330",
+        whatChanged: "Every build now ships its release notes.",
+        whatToTry: "Open Settings → Version and read the notes.",
+        caveats: "Full gates not yet run.",
+      },
+    ],
+  },
+};
 
 function mockUpdateChannels(): UpdateChannel[] {
   const { current } = readUpdatePersisted();
@@ -3729,6 +3776,17 @@ export const mockApi = {
     );
     emitContributions();
     return { ok: true as const, dismissedId: contributionId };
+  },
+
+  releaseNotes: async () => {
+    await wait(20);
+    const { current } = readUpdatePersisted();
+    return { notes: MOCK_RELEASE_NOTES[current] ?? null };
+  },
+
+  updateNotes: async (ref: string) => {
+    await wait(20);
+    return { notes: MOCK_RELEASE_NOTES[ref] ?? null };
   },
 
   updateStatus: async (): Promise<UpdateStatusResponse> => {

@@ -267,6 +267,16 @@ branch (`mise run preview:publish -- <branch> --push`) and install it with
 `unvibe update preview/<slug>`; nothing but finals ever touches the
 `release` ref users install from.
 
+Release notes (#330): every build ships `release-notes.json` (channel,
+version, previous version, folded-in issues with a generated one-liner
+plus link, and the data-reset flag). `release:tag --notes-file <file>`
+copies the publisher's notes file to `release-notes-input.json` in the
+bump commit, so the workflow's `mise run release` merges it into the
+build; `scripts/release-notes.mjs` then renders the GitHub Release body
+from that same file (keeping the #311 data-reset section), so the two
+never drift. Write an entry on every publish — see the notes-file format
+under Preview builds below. Previews never create GitHub prereleases.
+
 Tag → branch → install command:
 
 | Tag | Version | Branch (pushed) | Pre-release | Install |
@@ -355,7 +365,33 @@ mise run preview:publish -- --push        # also push preview/<slug> (opt-in)
 mise run preview:publish -- --as-is      # build the branch as it stands (old behaviour)
 mise run preview:publish -- --all        # every local branch ahead of main, plus main itself
 mise run preview:publish -- --prune      # list stale preview/* refs (dry run; --push deletes)
+mise run preview:publish -- feat/other --notes-file notes.json  # merge publisher notes into the build (#330)
 ```
+
+Publisher notes file (#330): JSON with one entry per issue — write one
+on every publish (the same text as the issue comment). Either a map or
+an `{ "items": [...] }` / bare array of `{ number, ... }`:
+
+```json
+{
+  "330": {
+    "whatChanged": "Every build now ships its release notes.",
+    "whatToTry": "Open Settings → Version and read the notes.",
+    "caveats": "Full gates not yet run."
+  }
+}
+```
+
+All three fields are optional plain text. The file merges into the
+build's `release-notes.json`: an entry's `whatChanged` first line
+becomes that issue's one-liner and all its fields render in the app and
+the GitHub Release body; issues without an entry fall back to the
+generated one-liner (issue title's first line, else the cleaned merge
+subject). `release:tag --notes-file <file>` takes the same file. The
+generator is `scripts/generate-release-notes.mjs` (pure helpers in
+`scripts/release-notes-gen-lib.mjs`); the previous build of a channel is
+the commit its ref pointed at before the publish, read from that ref's
+own `release-notes.json` (`release` falls back to the previous `v*` tag).
 
 What it does (`scripts/preview-publish.mjs`, pure helpers in
 `scripts/preview-lib.mjs`): by default it builds current local `main`

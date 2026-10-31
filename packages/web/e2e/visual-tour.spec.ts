@@ -3345,3 +3345,77 @@ test.describe("data reset notice tour (#311)", () => {
     });
   }
 });
+
+test.describe("release notes tour (#330)", () => {
+  let notesDataDir = "";
+  let notesSvc: RunningService | null = null;
+  const NOTES_VERSION = "0.0.1-preview.feat-x.abc1234";
+
+  test.beforeAll(async () => {
+    notesDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notes-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(notesDataDir, "unvibe.db"));
+    db.exec("PRAGMA user_version = 1");
+    db.close();
+    mkdirSync(path.join(notesDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", kind: "release", version: "0.0.1", commit: "b535a30ccccccc", sourceBranch: null, builtAt: "2026-10-28T00:00:00.000Z", dataFormat: 1 },
+        { ref: "preview/feat-x", kind: "preview", version: NOTES_VERSION, commit: "abc1234def5678", sourceBranch: "feat/x", builtAt: "2026-10-31T00:00:00.000Z", dataFormat: 1 },
+      ]),
+    );
+    writeFileSync(path.join(notesDataDir, "update", "current-ref"), "preview/feat-x\n");
+    writeFileSync(
+      path.join(notesDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "release", to: "preview/feat-x", finishedAt: "2026-10-31T00:00:00.000Z", fromVersion: "0.0.1", toVersion: NOTES_VERSION }) + "\n",
+    );
+    const item = {
+      number: 330,
+      title: "Release notes inside every build",
+      summary: "Release notes inside every build",
+      url: "https://github.com/indigoviolet/unvibe/issues/330",
+      whatChanged: "Every build now ships its release notes.",
+      whatToTry: "Open Settings, then Version, and read the notes.",
+      caveats: "Full gates not yet run.",
+    };
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-release-notes.json"),
+      JSON.stringify({
+        "preview/feat-x": { channel: "preview/feat-x", version: NOTES_VERSION, previousVersion: "0.0.1", commit: "abc1234def5678", previousCommit: "b535a30ccccccc", dataFormat: 1, previousDataFormat: 1, dataResetNeeded: false, generatedAt: "2026-10-31T00:00:00.000Z", items: [item] },
+        release: { channel: "release", version: "0.0.1", previousVersion: null, commit: "b535a30ccccccc", previousCommit: null, dataFormat: 1, previousDataFormat: null, dataResetNeeded: false, generatedAt: "2026-10-28T00:00:00.000Z", items: [{ ...item, summary: "Earlier release notes" }] },
+      }),
+    );
+    notesSvc = await startService(notesDataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+
+  test.afterAll(async () => {
+    await notesSvc?.stop().catch(() => {});
+    notesSvc = null;
+    rmSync(notesDataDir, { recursive: true, force: true });
+  });
+
+  test("whats-new card (1440-light)", async ({ page }) => {
+    if (!notesSvc) throw new Error("notes service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${notesSvc.origin}/?token=${notesSvc.token}`);
+    await expect(page.getByTestId("whats-new-card")).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "whats-new-card");
+    await shot(page, "whats-new-card", "1440-light", `What's new in ${NOTES_VERSION}`);
+  });
+
+  test("version notes (1440-light)", async ({ page }) => {
+    if (!notesSvc) throw new Error("notes service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${notesSvc.origin}/settings?token=${notesSvc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Version" }).click();
+    await expect(page.getByTestId("current-release-notes")).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "version-notes");
+    await shot(page, "version-notes", "1440-light", "Current build notes");
+  });
+});

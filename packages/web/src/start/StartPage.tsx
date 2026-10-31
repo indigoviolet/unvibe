@@ -73,6 +73,7 @@ import { ingestStepLabel } from "../guide/stageLabels.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { Tooltip } from "../floating/Tooltip.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
+import { WhatsNewCard } from "./WhatsNewCard.js";
 import {
   clearAllKeptLists,
   getKeptLists,
@@ -1460,6 +1461,7 @@ export function StartPage(): React.JSX.Element {
             </div>
           ) : null}
 
+          <WhatsNewCard />
           {/* Reviews for the selected repo, then the demo row. */}
           <h1 className="divider">Reviews</h1>
           {mainProblem ? (
