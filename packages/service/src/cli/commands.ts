@@ -37,6 +37,7 @@ export const CLI_USAGE = [
   "  doctor [--strict]      check node, git, gh, agents, PATH, data dir, port (exit 1 on problems with --strict)",
   "  update --list          list the channels you can install (release, preview/*)",
   "  update <channel> [--yes]  install that channel (npm install -g github:indigoviolet/unvibe#<channel>); --yes accepts a data-format reset warning",
+  "  stats export [--out <file>]  write an anonymized usage-statistics file (local only)",
   "  reset-data [--yes]     move data this version cannot read aside (never deletes) and start fresh",
   "  version                print the installed version",
   "  (no command)           start the service in the foreground",
@@ -372,6 +373,27 @@ export async function runCli(argv: string[]): Promise<number> {
       return cmdDoctorCmd(rest);
     case "update":
       return cmdUpdate(rest);
+    case "stats": {
+      const { STATS_USAGE, parseStatsExportOut, runStatsExport } = await import("./stats-export.js");
+      const [sub, ...subArgs] = rest;
+      if (sub === "--help" || sub === "-h" || sub === undefined) {
+        console.log(STATS_USAGE);
+        return sub === undefined ? 2 : 0;
+      }
+      if (sub !== "export") {
+        console.error(`unknown stats command: ${sub}\n\n${STATS_USAGE}`);
+        return 2;
+      }
+      const parsed = parseStatsExportOut(subArgs);
+      if ("error" in parsed) {
+        console.error(`${parsed.error}\n\n${STATS_USAGE}`);
+        return 2;
+      }
+      const config = loadConfig();
+      const done = runStatsExport({ dataDir: config.dataDir, ...(parsed.out ? { out: parsed.out } : {}) });
+      console.log(`wrote anonymized stats (${done.reviews} reviews, ${done.jobs} jobs) to ${done.path}`);
+      return 0;
+    }
     case "reset-data":
       return cmdResetData(rest);
     case "--version":

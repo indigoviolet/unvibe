@@ -246,6 +246,11 @@ run = "mise run build && node packages/service/dist/index.js setup"
 description = "Build, then run unvibe doctor (environment checks)"
 run = "mise run build && node packages/service/dist/index.js doctor"
 
+[tasks."stats:summary"]
+description = "Print a readable summary of one anonymized stats export (reads only that file)"
+raw = true
+run = "node scripts/stats-summary.mjs"
+
 [tasks.e2e]
 description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninstall"
 run = "mise run build && node scripts/e2e-linux.mjs"
