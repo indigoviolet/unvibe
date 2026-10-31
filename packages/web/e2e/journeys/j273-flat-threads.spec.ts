@@ -180,7 +180,8 @@ test.describe("J273 flat threads", () => {
     expect((followThread as unknown as { post: boolean }).post).toBe(false);
 
     // Collapse-all turns every thread into one row; expanding restores this one.
-    await page.locator('[data-testid="collapse-threads"]').click();
+    // #326: the control is an icon button in the review top bar.
+    await page.getByRole("button", { name: "Collapse threads" }).click();
     const row = page.locator(`button.spike-row[data-row="${threadId}"]`);
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(/1 reply|2 replies|3 replies/);

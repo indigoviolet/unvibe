@@ -201,11 +201,11 @@ test("on-demand concept page renders with no bookmark control (#216, #240)", asy
   await page.locator('#page a.cx[data-link="concept:ows-rws"]').first().click();
   await expect(page).toHaveURL(/\/review\/demo\/page\/c-ows-rws/);
   // The on-demand concept page renders (mock and replay titles differ,
-  // so assert non-empty, not exact text) with no bookmark control —
-  // only the #273 collapse-all control lives in the title row.
+  // so assert non-empty, not exact text) with no bookmark control and
+  // (#326) no collapse control in the title row — it lives in the top bar.
   await expect(page.locator("#page h1.title")).not.toBeEmpty({ timeout: 15_000 });
-  await expect(page.locator("#page .title-row button")).toHaveCount(1);
-  await expect(page.locator('#page .title-row [data-testid="collapse-threads"]')).toBeVisible();
+  await expect(page.locator("#page .title-row button")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Collapse threads" })).toBeVisible();
 });
 
 test("finding page carries its label and evidence", async ({ page }) => {
