@@ -500,15 +500,20 @@ export function ThreadCollapsedRow({
   // Never show empty quote marks: a thread with no quoted text (e.g. a
   // line comment) is just question · snippet · count.
   const rowQuote = (thread.anchor.quotedText ?? "").trim();
+  // Owner decision (#331 follow-up): the count is replies after the first
+  // entry — a lone opening comment shows no count, matching the header.
+  const followups = thread.replies.length - 1;
   return (
     <button type="button" className="spike-row" data-row={thread.id} onClick={onExpand} aria-label={`Expand thread ${thread.anchor.quotedText}`}>
       {rowQuote !== "" ? <span className="spike-row-q">“{thread.anchor.quotedText}”</span> : null}
       <span className="spike-row-first">{firstHeading}</span>
       <span className="spike-row-sep">·</span>
       <span className="spike-row-snip">{snippet}</span>
-      <span className="spike-row-count">
-        {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
-      </span>
+      {followups > 0 ? (
+        <span className="spike-row-count">
+          {followups} {followups === 1 ? "reply" : "replies"}
+        </span>
+      ) : null}
       <Icon name="right" />
     </button>
   );
@@ -677,9 +682,13 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         <span className="hint thd-loc">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
-        <span className="count" data-count={thread.id}>
-          {replies.length} {replies.length === 1 ? "reply" : "replies"}
-        </span>
+        {/* Owner decision (#331 follow-up): the count is replies after the
+            first entry — a lone opening comment shows no count. */}
+        {replies.length > 1 ? (
+          <span className="count" data-count={thread.id}>
+            {replies.length - 1} {replies.length - 1 === 1 ? "reply" : "replies"}
+          </span>
+        ) : null}
         {!isNew && hasCommentReplies ? (
           <button
             className="ib pr"
