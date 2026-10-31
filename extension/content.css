@@ -1,7 +1,11 @@
-/* Unvibe button on GitHub PR pages (#322). Uses GitHub's own colour
-   variables where present (light and dark follow GitHub's theme), with
-   standalone fallbacks so the button also reads on a plain page. */
+/* Unvibe button on GitHub PR pages (#322, #333). Brand indigo #38309E
+   with the "u" mark icon; white text passes contrast on the indigo in
+   GitHub's light and dark themes. Height and radius match the GitHub
+   buttons it sits beside (Merge status / Code). */
 .unvibe-review-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: 8px;
   padding: 0 12px;
   height: 28px;
@@ -12,17 +16,27 @@
   white-space: nowrap;
   cursor: pointer;
   border-radius: 6px;
-  background: var(--button-primary-bgColor-rest, #1f883d);
+  background: #38309e;
   border: 1px solid var(--button-default-borderColor-rest, rgba(31, 35, 40, 0.15));
   color: #fff;
 }
 .unvibe-review-btn:hover {
-  filter: brightness(1.07);
+  filter: brightness(1.12);
+}
+.unvibe-review-btn:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: 2px;
+}
+.unvibe-review-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex: none;
 }
 @media (prefers-color-scheme: dark) {
   .unvibe-review-btn {
-    background: var(--button-primary-bgColor-rest, #238636);
-    border-color: rgba(240, 246, 252, 0.1);
+    background: #38309e;
+    border-color: rgba(240, 246, 252, 0.18);
     color: #fff;
   }
 }
