@@ -6,7 +6,11 @@
 import { describe, expect, it } from "vitest";
 import {
   formatHideLevelStats,
+  hideLevelAfterCategoryClick,
+  hideLevelForHiddenUpTo,
+  hideLevelHiddenUpTo,
   hideLevelStats,
+  hunkCategory,
   hunkMatchesFilter,
   MAX_PLOTLINES,
   normalizeHideLevel,
@@ -199,5 +203,35 @@ describe("hide levels (#325)", () => {
       "Hiding 3 of 7 hunks: 1 uninteresting, 1 mechanical, 1 routine · 1 kept because cited, 1 kept because shown",
     );
     expect(formatHideLevelStats(hideLevelStats([], "all"))).toBe("Hiding 0 of 0 hunks");
+  });
+  it("maps stored levels to hidden-up-to thresholds and back", () => {
+    expect(hideLevelHiddenUpTo("all")).toBe(-1);
+    expect(hideLevelHiddenUpTo("uninteresting")).toBe(0);
+    expect(hideLevelHiddenUpTo("routine")).toBe(1);
+    expect(hideLevelHiddenUpTo("substantive")).toBe(2);
+    expect(hideLevelHiddenUpTo("needs-attention")).toBe(3);
+    expect(hideLevelForHiddenUpTo(-1)).toBe("all");
+    expect(hideLevelForHiddenUpTo(0)).toBe("uninteresting");
+    expect(hideLevelForHiddenUpTo(2)).toBe("substantive");
+    expect(hideLevelForHiddenUpTo(99)).toBe("needs-attention");
+  });
+  it("menu clicks move the one threshold up or down (#325 redesign)", () => {
+    // Shown row: hides it and everything less important.
+    expect(hideLevelAfterCategoryClick("uninteresting", "routine")).toBe("substantive");
+    expect(hideLevelAfterCategoryClick("all", "uninteresting")).toBe("uninteresting");
+    // Most important hidden row: shows it, threshold moves down one.
+    expect(hideLevelAfterCategoryClick("substantive", "routine")).toBe("routine");
+    expect(hideLevelAfterCategoryClick("uninteresting", "uninteresting")).toBe("all");
+    // Lower hidden row: shows it and everything more important.
+    expect(hideLevelAfterCategoryClick("needs-attention", "mechanical")).toBe("uninteresting");
+    // Needs attention always shows.
+    expect(hideLevelAfterCategoryClick("all", "needs-attention")).toBe("all");
+    expect(hideLevelAfterCategoryClick("needs-attention", "needs-attention")).toBe("needs-attention");
+  });
+  it("assigns hunks to menu categories, hide reason first", () => {
+    expect(hunkCategory(h({ hiddenReason: "imports", score: "substantive" }))).toBe("uninteresting");
+    expect(hunkCategory(h({ hiddenReason: "imports", added: 1, removed: 0 }))).toBeNull();
+    expect(hunkCategory(h({ score: "mechanical" }))).toBe("mechanical");
+    expect(hunkCategory(h({}))).toBeNull();
   });
 });

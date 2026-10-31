@@ -119,11 +119,11 @@ describe("DiffView", () => {
     await renderDiff();
     expect(document.querySelectorAll("button.hid")).toHaveLength(2);
     await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
-    await fireEvent.click(document.querySelector('[data-hidelevel="all"]') as HTMLElement);
+    await fireEvent.click(document.querySelector('[data-hidecat="uninteresting"]') as HTMLElement);
     expect(document.querySelectorAll("button.hid")).toHaveLength(0);
     expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("all");
     await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
-    await fireEvent.click(document.querySelector('[data-hidelevel="uninteresting"]') as HTMLElement);
+    await fireEvent.click(document.querySelector('[data-hidecat="uninteresting"]') as HTMLElement);
     expect(document.querySelectorAll("button.hid")).toHaveLength(2);
     expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("uninteresting");
   });
@@ -297,7 +297,7 @@ describe("DiffView", () => {
     // column, so code rows carry exactly one number cell, while the
     // modified conn file keeps both.
     await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
-    await fireEvent.click(document.querySelector('[data-hidelevel="all"]') as HTMLElement);
+    await fireEvent.click(document.querySelector('[data-hidecat="uninteresting"]') as HTMLElement);
     const added = document.getElementById("F-changelog-1362.bugfix.rst")!;
     const addedTables = [...added.querySelectorAll("table.diff:not(.split)")];
     expect(addedTables.length).toBeGreaterThan(0);

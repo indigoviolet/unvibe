@@ -253,18 +253,71 @@ export interface HideHunkInput {
   added: number;
   removed: number;
 }
+
+/**
+ * The menu's categories (owner redesign, #325), least to most
+ * important. The stored hide level is one threshold over this list:
+ * it hides every category up to a point. `needs-attention` is never
+ * hidden, so the threshold ranges over indexes -1 (none) to 3.
+ */
+export const HIDE_CATEGORIES = ["uninteresting", "mechanical", "routine", "substantive", "needs-attention"] as const;
+export type HideCategory = (typeof HIDE_CATEGORIES)[number];
+export const HIDE_CATEGORY_LABELS: Record<HideCategory, string> = {
+  uninteresting: "Uninteresting",
+  mechanical: "Mechanical",
+  routine: "Routine",
+  substantive: "Substantive",
+  "needs-attention": "Needs attention",
+};
+/** Highest category index a level hides (-1 hides nothing). */
+export function hideLevelHiddenUpTo(level: HideLevel): number {
+  switch (level) {
+    case "all": return -1;
+    case "uninteresting": return 0;
+    case "routine": return 1;
+    case "substantive": return 2;
+    case "needs-attention": return 3;
+  }
+}
+/** The stored level hiding categories up to `upTo` (clamped to -1..3). */
+export function hideLevelForHiddenUpTo(upTo: number): HideLevel {
+  switch (Math.max(-1, Math.min(3, upTo))) {
+    case -1: return "all";
+    case 0: return "uninteresting";
+    case 1: return "routine";
+    case 2: return "substantive";
+    default: return "needs-attention";
+  }
+}
+/**
+ * The level after clicking a menu category: clicking a shown category
+ * hides it and everything less important; clicking a hidden category
+ * shows it and everything more important. Needs attention is always
+ * shown, so clicking it changes nothing.
+ */
+export function hideLevelAfterCategoryClick(level: HideLevel, category: HideCategory): HideLevel {
+  const idx = HIDE_CATEGORIES.indexOf(category);
+  if (idx === HIDE_CATEGORIES.length - 1) return level;
+  const upTo = hideLevelHiddenUpTo(level);
+  return hideLevelForHiddenUpTo(idx <= upTo ? idx - 1 : idx);
+}
+/**
+ * Which menu category a hunk belongs to: a hide reason (past the
+ * one-line exemption) wins over the score; a hunk with neither
+ * belongs to no category and is never hidden.
+ */
+export function hunkCategory(hunk: HideHunkInput): HideCategory | null {
+  if (hunk.hiddenReason && hunk.added + hunk.removed > 1) return "uninteresting";
+  return hunk.score ?? null;
+}
 /** Why a level would hide this hunk, ignoring cited/unhidden overrides. */
 export function hideCategoryForLevel(
   hunk: HideHunkInput,
   level: HideLevel,
 ): "uninteresting" | HunkScoreLevel | null {
-  if (level === "all") return null;
-  if (hunk.hiddenReason && hunk.added + hunk.removed > 1) return "uninteresting";
-  const floor = hideLevelFloor(level);
-  if (floor !== undefined && hunk.score !== undefined && hunkScoreRank(hunk.score) < hunkScoreRank(floor)) {
-    return hunk.score;
-  }
-  return null;
+  const cat = hunkCategory(hunk);
+  if (cat === null) return null;
+  return HIDE_CATEGORIES.indexOf(cat) <= hideLevelHiddenUpTo(level) ? cat : null;
 }
 export function shouldHideAtLevel(
   hunk: HideHunkInput,
