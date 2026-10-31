@@ -3594,3 +3594,24 @@ hunk coverage) is reported for a separate issue, not fixed here.
   citation to line 2500 of a 3000-line non-diff file asserts the row
   is inside the pane, the pane scrolled, and `shk-*` tokens render;
   a second citation to line 120 re-scrolls). Full gates not yet run.
+
+## Addendum: #321 (branch `feat/321-stacked-prs`)
+
+- **Stacked PRs:** badge `position/size` in a colour hashed from the
+  stack root (fixed 8-colour palette, light/dark pairs) on the start-page
+  PR lists, the Reviews list and the review header; clicking opens a
+  popover listing the stack in review order (base branch at the bottom,
+  current PR marked, siblings named) where each entry opens that PR's
+  review, starting one if needed. Inferred stacks carry a `~` marker.
+- **Native stacks finding:** GitHub GraphQL exposes
+  `PullRequest.stack { number, size, baseRefName, entries { position,
+  pullRequest } }` and `PullRequest.stackEntry { position }` (verified by
+  introspection with `gh api graphql`, GITHUB_TOKEN unset, 2026-10-31).
+  The service prefers native data and falls back to implicit inference
+  from one paged `repository.pullRequests` query per repo, fetched only
+  on page load/Refresh (`GET /api/repos/:id/stacks`). No stored shape
+  changes, so `DATA_FORMAT` stays 1.
+- Evidence: shared `test/stacks.test.ts`, service
+  `test/stacks-321.test.ts`, journey `e2e/journeys/j321-stacked-prs.spec.ts`
+  with frames `packages/web/visual-tour/stack-list-1440-light.png` and
+  `stack-popover-1440-light.png` (git-ignored), inspected. Full gates not yet run.
