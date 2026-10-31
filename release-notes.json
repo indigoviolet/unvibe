@@ -1,0 +1,196 @@
+{
+  "channel": "preview/main-rc",
+  "version": "0.0.13-preview.main-rc.8cde3e9",
+  "previousVersion": "0.0.13",
+  "commit": "8cde3e9c6b0862e843ae1465a9bb18fdc5edb6d9",
+  "previousCommit": "v0.0.13",
+  "dataFormat": 1,
+  "previousDataFormat": 1,
+  "dataResetNeeded": false,
+  "generatedAt": "2026-10-31T12:19:38.793Z",
+  "items": [
+    {
+      "number": 334,
+      "title": "Interactive demo on unvibe.xyz/demo: static, in-browser, replaying the recorded fixture",
+      "summary": "An in-browser demo of the recorded urllib3 review is built for unvibe.xyz/demo, linked from the landing page as Try the demo. It replays the same recordings with the same matcher as the service (now shared), keeps comments in the browser with a Reset demo, and disables Submit and settings.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/334",
+      "whatChanged": "An in-browser demo of the recorded urllib3 review is built for unvibe.xyz/demo, linked from the landing page as Try the demo. It replays the same recordings with the same matcher as the service (now shared), keeps comments in the browser with a Reset demo, and disables Submit and settings.",
+      "whatToTry": "Nothing changes in the installed app beyond the shared replay matcher; the demo goes live on unvibe.xyz with the next release.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 336,
+      "title": "Threads: reply hover controls overlap the first line of text; an empty citation chip renders",
+      "summary": "Reply hover controls no longer draw over the text (a compact toolbar floats beside the first line only); a citation chip can never render empty; each avatar is centred on its own first line (serif AI replies and sans human replies), in light, dark and Studio fonts.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/336",
+      "whatChanged": "Reply hover controls no longer draw over the text (a compact toolbar floats beside the first line only); a citation chip can never render empty; each avatar is centred on its own first line (serif AI replies and sans human replies), in light, dark and Studio fonts.",
+      "whatToTry": "Hover an agent reply in a thread, and look at the end of a reply with citations.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 335,
+      "title": "Extension: Review in Unvibe lands on a bare confirm page; start the review via the worker instead",
+      "summary": "The extension's Review in Unvibe button now starts the review itself and opens it directly, with no confirm page; failures show on the button. Plain /open?pr= links still ask first, on a confirm page styled inside the app.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/335",
+      "whatChanged": "The extension's Review in Unvibe button now starts the review itself and opens it directly, with no confirm page; failures show on the button. Plain /open?pr= links still ask first, on a confirm page styled inside the app.",
+      "whatToTry": "Reload the extension on chrome://extensions and click Review in Unvibe on a PR.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 330,
+      "title": "Release notes inside every build (previews and releases), shown in the app",
+      "summary": "Every build ships its release notes, cumulative since the last release. Settings → Version shows each channel's notes (what updating would bring) behind its Notes button.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/330",
+      "whatChanged": "Every build ships its release notes, cumulative since the last release. Settings → Version shows each channel's notes (what updating would bring) behind its Notes button.",
+      "whatToTry": "Open Settings → Version and press Notes on a channel.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 325,
+      "title": "Diff: turn Hide uninteresting into a level selector (default as today, up to >= substantive), with a hidden-count tooltip",
+      "summary": "The diff Hide menu is an ordered category list (Uninteresting · Mechanical · Routine · Substantive · Needs attention) with swatches, counts and eye icons; clicking a row hides it and everything less important. It hides exactly what you ask: guide-cited hunks are no longer exempt, and clicking a citation to a hidden hunk reveals it. Hunk headers show only the score dot. The button shows an open eye when nothing is hidden.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/325",
+      "whatChanged": "The diff Hide menu is an ordered category list (Uninteresting · Mechanical · Routine · Substantive · Needs attention) with swatches, counts and eye icons; clicking a row hides it and everything less important. It hides exactly what you ask: guide-cited hunks are no longer exempt, and clicking a citation to a hidden hunk reveals it. Hunk headers show only the score dot. The button shows an open eye when nothing is hidden.",
+      "whatToTry": "Open a review diff, hide up to Routine, then click a guide citation that points into a hidden hunk.",
+      "caveats": "Needs attention can never be hidden. The hunk prompt no longer forbids marking cited hunks uninteresting, so newly built guides may hide more. Full gates not yet run."
+    },
+    {
+      "number": 333,
+      "title": "Extension: Review in Unvibe button missing on the PR Conversation tab; give it Unvibe's look",
+      "summary": "The extension's Review in Unvibe button now shows on every PR tab, including the Conversation page beside Merge status and Code, in Unvibe indigo with the u mark.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/333",
+      "whatChanged": "The extension's Review in Unvibe button now shows on every PR tab, including the Conversation page beside Merge status and Code, in Unvibe indigo with the u mark.",
+      "whatToTry": "Reload the extension on chrome://extensions, open a PR's Conversation tab and switch tabs.",
+      "caveats": "Tested against fixture pages, not live GitHub. Full gates not yet run."
+    },
+    {
+      "number": 332,
+      "title": "Citations with ( ) or [ ] in the path render as raw [[code:…]] text",
+      "summary": "Citations whose path contains ( ) [ ] (e.g. Next.js route groups and dynamic segments) or a scoped @ folder now render as chips instead of raw [[code:…]] text.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/332",
+      "whatChanged": "Citations whose path contains ( ) [ ] (e.g. Next.js route groups and dynamic segments) or a scoped @ folder now render as chips instead of raw [[code:…]] text.",
+      "whatToTry": "Open a review of a repo with such paths and check the guide citations hover and open the file.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 315,
+      "title": "Ask threads: drop the redundant comment/Reviewer comment/ask chips (avatars already say who's speaking)",
+      "summary": "Threads show only the avatar: no kind chip or role label on any thread kind. The reply count ignores the opening comment, so a lone comment shows no count.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/315",
+      "whatChanged": "Threads show only the avatar: no kind chip or role label on any thread kind. The reply count ignores the opening comment, so a lone comment shows no count.",
+      "whatToTry": "Add a comment and look at its header and the collapsed row.",
+      "caveats": "Explain replies no longer show their question line. Full gates not yet run."
+    },
+    {
+      "number": 322,
+      "title": "Chrome extension: Review in Unvibe from GitHub PRs, and a side panel to Explain/Ask about any page with local repos",
+      "summary": "Chrome extension: a Review in Unvibe button on GitHub PRs, and a side panel that answers questions about any page by reading your active repos (repo-qualified citations). Settings → Extension has install help, active-repo checkboxes (default the 3 most recent) and the panel model (default muse-spark). Web-page threads are listed under Documents → Web pages; Reviews shows only PRs and branches.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/322",
+      "whatChanged": "Chrome extension: a Review in Unvibe button on GitHub PRs, and a side panel that answers questions about any page by reading your active repos (repo-qualified citations). Settings → Extension has install help, active-repo checkboxes (default the 3 most recent) and the panel model (default muse-spark). Web-page threads are listed under Documents → Web pages; Reviews shows only PRs and branches.",
+      "whatToTry": "Settings → Extension: Show extension folder, then load it unpacked on chrome://extensions. Open any page, open the side panel, select text and Ask.",
+      "caveats": "Citation click-through to the app comes after v1. The panel page is plainly styled. Full gates not yet run."
+    },
+    {
+      "number": 331,
+      "title": "Threads: reply text should start on the avatar's line, not below it",
+      "summary": "A reply's text starts on the avatar's line and wraps back to the normal padding; a reply that opens with a list, code, diagram or table starts below the avatar.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/331",
+      "whatChanged": "A reply's text starts on the avatar's line and wraps back to the normal padding; a reply that opens with a list, code, diagram or table starts below the avatar.",
+      "whatToTry": "Open a thread with replies in the guide or the diff.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 328,
+      "title": "Settings → Limits: rows are cramped (help text squeezed into a narrow right column)",
+      "summary": "Settings rows put the label and help on the left and the control alone on the right; Limits number inputs line up with units beside them.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/328",
+      "whatChanged": "Settings rows put the label and help on the left and the control alone on the right; Limits number inputs line up with units beside them.",
+      "whatToTry": "Open Settings → Limits, Models and Appearance.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 321,
+      "title": "Stacked PRs: show stack membership and review order (badge 2/3 in a per-stack colour) on the PR list and review page",
+      "summary": "The stack badge (1/3) now sits inside the repo#PR button in the review top bar; clicking it opens the stack popover.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/321",
+      "whatChanged": "The stack badge (1/3) now sits inside the repo#PR button in the review top bar; clicking it opens the stack popover.",
+      "whatToTry": "Open a review of a stacked PR and click the badge.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 327,
+      "title": "Guide: render ### as real sub-headings (Decisions, Invariants, Known uncertainties, Interfaces)",
+      "summary": "### headings in guide cards now render as sub-headings (Decisions, Invariants, Known uncertainties, Interfaces).",
+      "url": "https://github.com/indigoviolet/unvibe/issues/327",
+      "whatChanged": "### headings in guide cards now render as sub-headings (Decisions, Invariants, Known uncertainties, Interfaces).",
+      "whatToTry": "Open the demo's Decisions card.",
+      "caveats": "Only guides written by this build get sub-headings. Full gates not yet run."
+    },
+    {
+      "number": 326,
+      "title": "Review page: move Collapse threads from the page header into the top bar",
+      "summary": "Collapse threads moved from the guide title row to an icon in the review top bar.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/326",
+      "whatChanged": "Collapse threads moved from the guide title row to an icon in the review top bar.",
+      "whatToTry": "Open a review with threads and use the icon after Debug in the top bar.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 324,
+      "title": "Plotlines card: show each plotline's share of all hunks (3/10) so it reads as exhaustive",
+      "summary": "Plotlines show each plotline's share of all hunks (2/8) and a thin stacked bar under the title.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/324",
+      "whatChanged": "Plotlines show each plotline's share of all hunks (2/8) and a thin stacked bar under the title.",
+      "whatToTry": "Open the demo guide's Plotlines card.",
+      "caveats": "Full gates not yet run."
+    },
+    {
+      "number": 323,
+      "title": "Debug: export anonymized usage statistics from real reviews",
+      "summary": "Debug: export anonymized usage statistics from real reviews",
+      "url": "https://github.com/indigoviolet/unvibe/issues/323"
+    },
+    {
+      "number": 313,
+      "title": "e2e has no guard against rewriting the real login unit (the #280 guard is vitest-only)",
+      "summary": "e2e has no guard against rewriting the real login unit (the #280 guard is vitest-only)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/313"
+    },
+    {
+      "number": 280,
+      "title": "update.test.ts rewrites the real ~/.config/systemd/user/unvibe.service on dev machines",
+      "summary": "update.test.ts rewrites the real ~/.config/systemd/user/unvibe.service on dev machines",
+      "url": "https://github.com/indigoviolet/unvibe/issues/280"
+    },
+    {
+      "number": 319,
+      "title": "CI-only e2e failures on main at v0.0.13: comments.spec GitHub action link, j303 cross-node quote",
+      "summary": "CI-only e2e failures on main at v0.0.13: comments.spec GitHub action link, j303 cross-node quote",
+      "url": "https://github.com/indigoviolet/unvibe/issues/319"
+    },
+    {
+      "number": 298,
+      "title": "Start screen: Refresh also updates the status of the reviews list",
+      "summary": "Start screen: Refresh also updates the status of the reviews list",
+      "url": "https://github.com/indigoviolet/unvibe/issues/298"
+    },
+    {
+      "number": 306,
+      "title": "Shared select popup has no z-index and may paint under cards",
+      "summary": "Shared select popup has no z-index and may paint under cards",
+      "url": "https://github.com/indigoviolet/unvibe/issues/306"
+    },
+    {
+      "number": 317,
+      "title": "File tab: a code: citation opens and highlights the lines but doesn't scroll to them; the file isn't syntax highlighted",
+      "summary": "File tab: a code: citation opens and highlights the lines but doesn't scroll to them; the file isn't syntax highlighted",
+      "url": "https://github.com/indigoviolet/unvibe/issues/317"
+    },
+    {
+      "number": 318,
+      "title": "README: fresh screenshots, replace the Using it text with feature screenshots, remove stale bits",
+      "summary": "README: fresh screenshots, replace the Using it text with feature screenshots, remove stale bits",
+      "url": "https://github.com/indigoviolet/unvibe/issues/318"
+    }
+  ]
+}

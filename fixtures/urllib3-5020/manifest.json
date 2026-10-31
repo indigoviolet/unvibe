@@ -1,0 +1,299 @@
+{
+  "recordings": [
+    {
+      "kind": "reader",
+      "file": "reader.md"
+    },
+    {
+      "kind": "critic",
+      "file": "critic.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "obs-fold",
+      "file": "concept-obs-fold.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "http-headers",
+      "file": "concept-http-headers.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "header-injection",
+      "file": "concept-header-injection.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "regex-performance",
+      "file": "concept-regex-performance.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "ows-rws",
+      "file": "concept-ows-rws.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "set-cookie",
+      "file": "concept-set-cookie.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "requests-cookies",
+      "file": "concept-requests-cookies.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "conn:0",
+      "file": "hunk-conn-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "conn:1",
+      "file": "hunk-conn-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:0",
+      "file": "hunk-tconn-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:1",
+      "file": "hunk-tconn-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:2",
+      "file": "hunk-tconn-2.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tsock:0",
+      "file": "hunk-tsock-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tsock:1",
+      "file": "hunk-tsock-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "log:0",
+      "file": "hunk-log-0.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "flow",
+      "file": "go-deeper-flow.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "design",
+      "file": "go-deeper-design.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "regex",
+      "file": "go-deeper-regex.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "check",
+      "file": "go-deeper-check.md"
+    },
+    {
+      "kind": "depth",
+      "key": "problem:simple",
+      "file": "depth-problem-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "problem:deep",
+      "file": "depth-problem-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "central:simple",
+      "file": "depth-central-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "central:deep",
+      "file": "depth-central-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "expansion:deep",
+      "file": "depth-expansion-deep.md"
+    },
+    {
+      "kind": "examples",
+      "key": "problem",
+      "file": "examples-problem.md"
+    },
+    {
+      "kind": "examples",
+      "key": "central",
+      "file": "examples-central.md"
+    },
+    {
+      "kind": "diagram",
+      "key": "fold",
+      "file": "diagram-fold.md"
+    },
+    {
+      "kind": "diagram",
+      "key": "path",
+      "file": "diagram-path.md"
+    },
+    {
+      "kind": "explain",
+      "key": "normalize-long",
+      "pattern": "## Selected text\\n\\n> _normalize_header_values",
+      "file": "explain-normalize-long.md"
+    },
+    {
+      "kind": "explain",
+      "key": "obs-fold",
+      "pattern": "obs-fold|fold|unfold|continuation|line folding",
+      "file": "explain-obs-fold.md"
+    },
+    {
+      "kind": "explain",
+      "key": "http-headers",
+      "pattern": "HTTPHeaderDict|HTTPMessage|http\\.client|email\\.message|headers object",
+      "file": "explain-http-headers.md"
+    },
+    {
+      "kind": "explain",
+      "key": "header-injection",
+      "pattern": "inject|CRLF|response splitting|line break|smuggl|re-emit",
+      "file": "explain-header-injection.md"
+    },
+    {
+      "kind": "explain",
+      "key": "regex",
+      "pattern": "regex|backtrack|ReDoS|quadratic|lookbehind|linear",
+      "file": "explain-regex.md"
+    },
+    {
+      "kind": "explain",
+      "key": "set-cookie",
+      "pattern": "cookie|Set-Cookie|comma",
+      "file": "explain-set-cookie.md"
+    },
+    {
+      "kind": "explain",
+      "key": "ows-rws",
+      "pattern": "OWS|RWS|whitespace|\\bSP\\b|HTAB|tab",
+      "file": "explain-ows-rws.md"
+    },
+    {
+      "kind": "explain",
+      "key": "rfc-9112",
+      "pattern": "RFC|9112|9110|obsolete|spec",
+      "file": "explain-rfc-9112.md"
+    },
+    {
+      "kind": "explain",
+      "key": "requests",
+      "pattern": "requests|downstream|consumer|cookie jar|_original_response",
+      "file": "explain-requests.md"
+    },
+    {
+      "kind": "explain",
+      "key": "fast-path",
+      "pattern": "fast path|common case",
+      "file": "explain-fast-path.md"
+    },
+    {
+      "kind": "ask",
+      "key": "list-first",
+      "pattern": "packing list",
+      "file": "ask-list-first.md"
+    },
+    {
+      "kind": "ask",
+      "key": "bare-lf",
+      "pattern": "\\blf\\b|bare|newline only",
+      "file": "ask-bare-lf.md"
+    },
+    {
+      "kind": "ask",
+      "key": "order",
+      "pattern": "order|ordering|duplicate",
+      "file": "ask-order.md"
+    },
+    {
+      "kind": "ask",
+      "key": "identity",
+      "pattern": "identity|same object|in place|copy",
+      "file": "ask-identity.md"
+    },
+    {
+      "kind": "ask",
+      "key": "cost",
+      "pattern": "cost|slow|performance|O\\(|quadratic|speed",
+      "file": "ask-cost.md"
+    },
+    {
+      "kind": "ask",
+      "key": "tests",
+      "pattern": "test|cover",
+      "file": "ask-tests.md"
+    },
+    {
+      "kind": "ask",
+      "key": "two-spaces",
+      "pattern": "two spaces|double space|adjacent|one  three",
+      "file": "ask-two-spaces.md"
+    },
+    {
+      "kind": "ask",
+      "key": "cookie",
+      "pattern": "cookie|set-cookie",
+      "file": "ask-cookie.md"
+    },
+    {
+      "kind": "ask",
+      "key": "regex",
+      "pattern": "regex|lookbehind|pattern",
+      "file": "ask-regex.md"
+    },
+    {
+      "kind": "ask",
+      "key": "header-name",
+      "pattern": "name|colon|before the colon",
+      "file": "ask-header-name.md"
+    },
+    {
+      "kind": "ask",
+      "key": "reject-vs-unfold",
+      "pattern": "reject|rfc|safer",
+      "file": "ask-reject-vs-unfold.md"
+    },
+    {
+      "kind": "ask",
+      "key": "forwarding",
+      "pattern": "forward|proxy",
+      "file": "ask-forwarding.md"
+    },
+    {
+      "kind": "second-opinion",
+      "key": "f-lf:blind",
+      "file": "second-opinion-f-lf-blind.md"
+    },
+    {
+      "kind": "second-opinion",
+      "key": "f-perf:blind",
+      "file": "second-opinion-f-perf-blind.md"
+    },
+    {
+      "kind": "second-opinion",
+      "key": "central:check",
+      "file": "second-opinion-central-check.md"
+    }
+  ]
+}
