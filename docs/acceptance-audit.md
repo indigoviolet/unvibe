@@ -3604,6 +3604,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   popover listing the stack in review order (base branch at the bottom,
   current PR marked, siblings named) where each entry opens that PR's
   review, starting one if needed. Inferred stacks carry a `~` marker.
+  Follow-up: in the review header the badge sits inside the repo#PR
+  button, right after the PR number; clicking it still opens the
+  popover instead of the PR link.
 - **Native stacks finding:** GitHub GraphQL exposes
   `PullRequest.stack { number, size, baseRefName, entries { position,
   pullRequest } }` and `PullRequest.stackEntry { position }` (verified by

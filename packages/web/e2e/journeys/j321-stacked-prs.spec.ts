@@ -122,6 +122,40 @@ test.describe("J321 stacked PRs", () => {
     await expect(page).toHaveURL(/\/review\//, { timeout: 60_000 });
     // Review header carries the same stack badge (1/3 for the root PR).
     await expect(page.getByTestId("stack-badge").first()).toContainText("1/3", { timeout: 60_000 });
+    // #321 follow-up: the header badge sits INSIDE the repo#PR button,
+    // right after the PR number, in the stack colour.
+    const headerBadge = page.getByTestId("stack-badge").first();
+    const headerLink = page.locator("#reviewbar a.ui-btn").first();
+    await expect(headerLink).toContainText("acme/widgets#11");
+    expect(await headerBadge.evaluate((el) => el.closest("a.ui-btn") !== null)).toBe(true);
+    expect(await headerBadge.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(colors[0]);
+    await page.locator("#reviewbar").screenshot({ path: path.join(SHOTS, "stack-header-badge-1440-light.png") });
+    // Clicking the badge opens the popover, not the GitHub PR link.
+    const pagesBefore = page.context().pages().length;
+    await headerBadge.click();
+    await expect(page.getByTestId("stack-popover")).toBeVisible();
+    expect(page.context().pages().length).toBe(pagesBefore);
+    await expect(page).toHaveURL(/\/review\//);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("stack-popover")).toHaveCount(0);
+    // At 960 the bar still fits on one line with the badge inside.
+    await page.setViewportSize({ width: 960, height: 900 });
+    await page.waitForTimeout(300);
+    expect(await headerBadge.evaluate((el) => el.closest("a.ui-btn") !== null)).toBe(true);
+    const fit960 = await page.evaluate(() => {
+      const bar = document.getElementById("reviewbar")!;
+      const kids = [...bar.children].map((el) => el.getBoundingClientRect());
+      let overlap = false;
+      for (let i = 0; i < kids.length; i++)
+        for (let j = i + 1; j < kids.length; j++)
+          if (kids[i].left < kids[j].right && kids[j].left < kids[i].right && kids[i].top < kids[j].bottom && kids[j].top < kids[i].bottom) overlap = true;
+      return { h: bar.getBoundingClientRect().height, overlap, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+    expect(fit960.overlap).toBe(false);
+    expect(fit960.overflow).toBe(false);
+    expect(fit960.h).toBeLessThan(64);
+    await page.locator("#reviewbar").screenshot({ path: path.join(SHOTS, "stack-header-badge-960-light.png") });
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     // Reviews list on the start page shows the badge too.
     await page.goto(`${svc.origin}/?token=${svc.token}`);

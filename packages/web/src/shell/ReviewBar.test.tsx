@@ -275,6 +275,49 @@ describe("ReviewBar", () => {
     expect(screen.queryByRole("button", { name: "Expand threads" })).toBeNull();
   });
 
+  it("stack badge sits inside the PR button and opens the popover (#321)", async () => {
+    const spy = vi.spyOn(api, "repoStacks").mockResolvedValue({
+      stacks: {
+        5011: {
+          position: 1, size: 3, rootNumber: 5011, colorIndex: 0, source: "inferred",
+          baseRefName: "main",
+          members: [
+            { number: 5011, title: "Base change", headRefName: "feat-a" },
+            { number: 5012, title: "Middle change", headRefName: "feat-b" },
+            { number: 5013, title: "Top change", headRefName: "feat-c" },
+          ],
+        },
+      },
+    } as never);
+    try {
+      const snap = await api.review("r-old");
+      useReview.getState().setSnapshot({
+        ...snap,
+        review: { ...snap.review, id: "r-old", repoId: "urllib3", prNumber: 5011 },
+      } as typeof snap);
+      render(
+        <MemoryRouter initialEntries={["/review/r-old"]}>
+          <ReviewBar reviewId="r-old" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+        </MemoryRouter>,
+      );
+      // Inside the GitHub PR button, right after the PR number. Query
+      // the link first, then the badge inside it (the identity summary
+      // arriving re-renders the bar, detaching earlier nodes).
+      const github = await screen.findByRole("link", { name: /urllib3\/urllib3#5011/ }, { timeout: 5000 });
+      const badge = await screen.findByTestId("stack-badge", {}, { timeout: 5000 });
+      expect(badge).toHaveTextContent("1/3");
+      expect(github).toContainElement(badge);
+      expect(github.getAttribute("href")).toBe("https://github.com/urllib3/urllib3/pull/5011");
+      // Same height as before: the bar button keeps its small height.
+      // Clicking the badge opens the popover, not the PR link.
+      fireEvent.click(badge);
+      expect(await screen.findByTestId("stack-popover")).toBeInTheDocument();
+      expect(screen.getByTestId("stack-entry-5013")).toHaveTextContent("Top change");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("toggles call their handlers", async () => {
     const onToggleGuide = vi.fn();
     const onToggleSource = vi.fn();

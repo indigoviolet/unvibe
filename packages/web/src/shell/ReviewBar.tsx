@@ -10,7 +10,8 @@
  *   link box after owner/repo#N, #234: none when open) — #254: document
  *   reviews show a document icon plus the document's short name (its
  *   `DocumentContent.title`; no filename is stored) with an ellipsis and
- *   the full name on hover — and the Refresh
+ *   the full name on hover — the stack badge (#321) sits INSIDE the PR
+ *   link right after the PR number — and the Refresh
  *   button next to the link (#241: same handler/check/banner as the diff
  *   toolbar owned, tooltip "Refresh", hidden for document reviews which
  *   never had it),
@@ -151,6 +152,16 @@ export function ReviewBar({
       document.title = prev;
     };
   }, [snapshot]);
+  const stackBadge =
+    stackInfo && stackPrNumber !== undefined && stackRepoId ? (
+      <StackBadge
+        info={stackInfo}
+        currentNumber={stackPrNumber}
+        onOpenPr={(prNumber, title) => {
+          void api.createReview({ repoId: stackRepoId, pr: prNumber, title }).then((snap) => navigate(`/review/${snap.review.id}`)).catch(() => {});
+        }}
+      />
+    ) : null;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
@@ -178,20 +189,15 @@ export function ReviewBar({
             title="Open PR on GitHub"
           >
             {short}
+            {stackBadge}
             <PrBadges prState={prState} reviewDecision={reviewDecision} />
           </a>
         ) : (
-          <span className="num">{short}</span>
+          <>
+            <span className="num">{short}</span>
+            {stackBadge}
+          </>
         )}
-        {stackInfo && stackPrNumber !== undefined && stackRepoId ? (
-          <StackBadge
-            info={stackInfo}
-            currentNumber={stackPrNumber}
-            onOpenPr={(prNumber, title) => {
-              void api.createReview({ repoId: stackRepoId, pr: prNumber, title }).then((snap) => navigate(`/review/${snap.review.id}`)).catch(() => {});
-            }}
-          />
-        ) : null}
         {!isDocument ? (
           <button
             className="ib bd"
