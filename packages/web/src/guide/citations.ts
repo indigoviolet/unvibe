@@ -32,6 +32,27 @@ export function citationRange(target: string): string | null {
   return parsed.start === parsed.end ? `L${parsed.start}` : `L${parsed.start}–${parsed.end}`;
 }
 
+export interface CitationChip {
+  targets: string[];
+  text: string;
+}
+
+/**
+ * Issue #336: the compact prose citation chip for a block, or null when no
+ * chip should render. Never an empty chip: unverified citations are
+ * excluded (#264), blank targets are dropped, a single non-line target
+ * falls back to the count ("1", the #274 rule), and with nothing left
+ * there is no chip at all.
+ */
+export function citationChip(citations: ResolvedCitation[]): CitationChip | null {
+  const valid = citations.filter((c) => !c.unverified && c.target.trim() !== "");
+  if (valid.length === 0) return null;
+  return {
+    targets: valid.map((c) => c.target),
+    text: citationRange(valid[0].target) ?? String(valid.length),
+  };
+}
+
 function resolveFile(
   snapshot: ReviewSnapshot,
   key: string,

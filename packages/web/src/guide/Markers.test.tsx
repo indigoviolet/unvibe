@@ -260,3 +260,25 @@ describe("BlockMarkers", () => {
     expect(link?.textContent).toMatch(/channel_correlation/);
   });
 });
+
+describe("BlockMarkers prose chip (#336: never empty)", () => {
+  it("renders a count chip for a single non-line citation, never empty text", () => {
+    const { container } = render(
+      <BlockMarkers citations={[rc("desc:d-p1")]} threads={[]} blockId="b" />,
+    );
+    const chip = container.querySelector("button.lk[data-refs]");
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent?.trim()).toBe("1");
+  });
+
+  it("renders no chip when every target is blank or unverified", () => {
+    const { container } = render(
+      <BlockMarkers
+        citations={[rc(""), rc("diff:conn:82", true)]}
+        threads={[]}
+        blockId="b"
+      />,
+    );
+    expect(container.querySelector("button.lk[data-refs]")).toBeNull();
+  });
+});
