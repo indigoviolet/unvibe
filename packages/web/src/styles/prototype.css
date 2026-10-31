@@ -1568,7 +1568,5 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
   .spike-row-q { display: none; }
 }
 
-/* "Collapse threads" / "Expand threads" control in the guide pane header:
-   single-line small button, right-aligned, never wrapping or crowding the title. */
-.ib.spike-collapse-all { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; width: auto; min-width: max-content; flex: none; white-space: nowrap; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-button); font-size: var(--text-label); color: var(--ink); }
-.spike-collapse-label { font-weight: var(--weight-label); }
+/* #326: "Collapse threads" / "Expand threads" is an icon button in the
+   review top bar (`.rbar .ib` sizing applies); no guide-header rule. */

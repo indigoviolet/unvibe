@@ -123,16 +123,18 @@ describe("PageView card boundaries", () => {
   });
 });
 
-describe("page header title row (#240: no bookmark)", () => {
+describe("page header title row (#240: no bookmark, #326: no collapse control)", () => {
   test("a page with no type label has no eyebrow row; the title sits on its own line", () => {
     show({ id: "root", kind: "root", title: "Guide", cards: [] } as Page);
     expect(document.querySelector(".eyebrow")).toBeNull();
     const row = document.querySelector(".title-row");
     expect(row).not.toBeNull();
     expect(row?.querySelector("h1.title")).toHaveTextContent("b");
-    // Only the #273 collapse-all control lives in the title row now.
-    expect(row?.querySelectorAll("button")).toHaveLength(1);
-    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
+    // #326: Collapse threads moved to the review top bar — the title
+    // gets the full width, no button beside it.
+    expect(row?.querySelectorAll("button")).toHaveLength(0);
+    expect(document.querySelector('[data-testid="collapse-threads"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Collapse threads" })).toBeNull();
   });
 
   test("a finding page keeps its type label above the title row", () => {
@@ -146,15 +148,15 @@ describe("page header title row (#240: no bookmark)", () => {
     expect(document.querySelector(".eyebrow")).toHaveTextContent("Agent finding · medium confidence");
     const row = document.querySelector(".title-row");
     expect(row?.querySelector("h1.title")).toHaveTextContent("A finding");
-    expect(row?.querySelectorAll("button")).toHaveLength(1);
-    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
+    expect(row?.querySelectorAll("button")).toHaveLength(0);
+    expect(document.querySelector('[data-testid="collapse-threads"]')).toBeNull();
   });
 
   test("a concept page carries no bookmark control either", () => {
     show({ id: "c-x", kind: "concept", title: "A concept", cards: [] } as Page);
     const row = document.querySelector(".title-row");
-    expect(row?.querySelectorAll("button")).toHaveLength(1);
-    expect(row?.querySelector('[data-testid="collapse-threads"]')).not.toBeNull();
+    expect(row?.querySelectorAll("button")).toHaveLength(0);
+    expect(document.querySelector('[data-testid="collapse-threads"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Save to this repo" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Unsave from this repo" })).toBeNull();
   });

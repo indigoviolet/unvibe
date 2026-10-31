@@ -914,7 +914,7 @@ test.describe("visual tour passes", () => {
     await page.waitForTimeout(800);
     await stepChecks(page, "thread-replylink");
     await shot(page, "thread-replylink", suffix, "explain");
-    await page.locator('[data-testid="collapse-threads"]').click();
+    await page.getByRole("button", { name: "Collapse threads" }).click();
     await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "threads-collapsed");
     await shot(page, "threads-collapsed", suffix, "reply");
@@ -926,8 +926,8 @@ test.describe("visual tour passes", () => {
     expect(seedId).toBeTruthy();
     // Collapse-all is global (store): switch it back off so later scenes
     // start from expanded threads.
-    await page.locator('[data-testid="collapse-threads"]').click();
-    await expect(page.locator('[data-testid="collapse-threads"]')).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
+    await page.getByRole("button", { name: "Expand threads" }).click();
+    await expect(page.getByRole("button", { name: "Collapse threads" })).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
 
     // PR description tab (#263): paragraphs, a bullet list, a numbered
     // list past 9 items and inline code, in the shared Card. No

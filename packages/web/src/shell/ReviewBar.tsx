@@ -18,7 +18,9 @@
  *   single-version reviews, the current version annotated in the
  *   dropdown, an older shown version flagged with a warning border),
  *   and Debug as an icon button (hidden until the review finishes
- *   opening, issue #92). #235: no PR title here (it lives as the guide
+ *   opening, issue #92), then Collapse/Expand threads as an icon button
+ *   (#326, moved from the guide header; hidden when there are no
+ *   threads). #235: no PR title here (it lives as the guide
  *   heading), no open-externally button (the GitHub link opens the PR),
  *   no preview/full-access badges (front page only). No Settings gear:
  *   Settings is reached from the start page. #245: every control is one
@@ -72,6 +74,8 @@ export function ReviewBar({
   // states), so the icon waits until the review is ready. One snapshot
   // subscription (never behind a short-circuit) so the hook order is
   // stable across the loading → ready transition.
+  const collapseAll = useReview((s) => s.collapseAll);
+  const setCollapseAll = useReview((s) => s.setCollapseAll);
   const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
     (snapshot?.ingest.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
@@ -210,6 +214,19 @@ export function ReviewBar({
           >
             <Icon name="bug" />
           </Link>
+        ) : null}
+        {(snapshot?.annotations?.length ?? 0) > 0 ? (
+          <button
+            className="ib bd"
+            type="button"
+            data-testid="collapse-threads"
+            data-tip={collapseAll ? "Expand threads" : "Collapse threads"}
+            aria-label={collapseAll ? "Expand threads" : "Collapse threads"}
+            aria-pressed={collapseAll}
+            onClick={() => setCollapseAll(!collapseAll)}
+          >
+            <Icon name={collapseAll ? "unfold" : "fold"} />
+          </button>
         ) : null}
       </div>
       <span className="seg" role="group" aria-label="Panes">

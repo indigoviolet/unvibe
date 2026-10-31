@@ -243,6 +243,38 @@ describe("ReviewBar", () => {
     expect(screen.getByRole("link", { name: "Debug" })).toHaveAttribute("href", "/review/opening-1/debug");
   });
 
+  it("Collapse threads icon button toggles collapseAll (#326)", async () => {
+    await renderBar("demo", "urllib3/urllib3#5020");
+    const btn = screen.getByRole("button", { name: "Collapse threads" });
+    expect(btn).toHaveAttribute("data-tip", "Collapse threads");
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    expect(document.getElementById("reviewbar")).toContainElement(btn);
+    // Icon only: no visible text label.
+    expect(btn.textContent?.trim()).toBe("");
+    expect(btn.querySelector("svg.ic")).not.toBeNull();
+    fireEvent.click(btn);
+    expect(useReview.getState().collapseAll).toBe(true);
+    const expanded = screen.getByRole("button", { name: "Expand threads" });
+    expect(expanded).toHaveAttribute("data-tip", "Expand threads");
+    expect(expanded).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(expanded);
+    expect(useReview.getState().collapseAll).toBe(false);
+    expect(screen.getByRole("button", { name: "Collapse threads" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("hides Collapse threads when the review has no threads (#326)", async () => {
+    const snap = await api.review("demo");
+    useReview.getState().setSnapshot({ ...snap, annotations: [] });
+    render(
+      <MemoryRouter initialEntries={["/review/demo"]}>
+        <ReviewBar reviewId="demo" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+      </MemoryRouter>,
+    );
+    await screen.findByText("urllib3/urllib3#5020", {}, { timeout: 5000 });
+    expect(screen.queryByRole("button", { name: "Collapse threads" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Expand threads" })).toBeNull();
+  });
+
   it("toggles call their handlers", async () => {
     const onToggleGuide = vi.fn();
     const onToggleSource = vi.fn();

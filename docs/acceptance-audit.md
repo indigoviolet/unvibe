@@ -739,11 +739,12 @@ needed (that deviation is closed, not added).
   Ask label instead of the “Reading the diff…” fallback
   (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”, journey J273).
-- Collapse-all threads (issue #268, built in #273): the guide pane
-  header control collapses every thread, comments included, to one-line
-  rows (quote · question · latest snippet · reply count); expanding a
-  row restores that thread — met (store `collapseAll`/`expandedThreads`,
-  `ThreadCollapsedRow`, journey J273, visual-tour collapsed frames).
+- Collapse-all threads (issue #268, built in #273; moved #326): the
+  review top-bar icon button collapses every thread, comments included,
+  to one-line rows (quote · question · latest snippet · reply count);
+  expanding a row restores that thread — met (store
+  `collapseAll`/`expandedThreads`, `ThreadCollapsedRow`, journey J273,
+  visual-tour collapsed frames).
 - Comments menu (two counted tabs in the segmented control — Comments
   (This review + On GitHub) and Outbox (#236; opening shows Comments,
   the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep

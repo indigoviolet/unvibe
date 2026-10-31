@@ -7,7 +7,7 @@
  * inline under the card (or description block, or diff line) they started
  * from. Controls (depth, principle, second opinion) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
- * and highlights it. "Collapse threads" in the guide pane header collapses
+ * and highlights it. "Collapse threads" in the review top bar collapses
  * every thread to one-line rows; expanding a row restores that thread.
  *
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
