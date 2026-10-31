@@ -3395,17 +3395,6 @@ test.describe("release notes tour (#330)", () => {
     rmSync(notesDataDir, { recursive: true, force: true });
   });
 
-  test("whats-new card (1440-light)", async ({ page }) => {
-    if (!notesSvc) throw new Error("notes service not running");
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${notesSvc.origin}/?token=${notesSvc.token}`);
-    await expect(page.getByTestId("whats-new-card")).toBeVisible({ timeout: 30_000 });
-    await page.evaluate(() => document.fonts.ready).catch(() => {});
-    await checkLayout(page, "whats-new-card");
-    await shot(page, "whats-new-card", "1440-light", `What's new in ${NOTES_VERSION}`);
-  });
-
   test("version notes (1440-light)", async ({ page }) => {
     if (!notesSvc) throw new Error("notes service not running");
     test.setTimeout(120_000);

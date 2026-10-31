@@ -3509,13 +3509,13 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `scripts/generate-release-notes.mjs`, helpers
   `scripts/release-notes-gen-lib.mjs`; previous build = always the
   newest `v*` tag reachable from HEAD, on every channel). Publisher entries (`--notes-file` on `preview:publish` /
-  `release:tag`) merge over generated one-liners. The app shows a
-  one-time What's new card after a switch and current + per-channel
-  notes in Settings → Version (fetched on open only, plain text);
-  `release-notes.mjs` renders the GitHub body from the same file.
+  `release:tag`) merge over generated one-liners. Release notes live
+  only in Settings → Version: current + per-channel notes (fetched on
+  open only, plain text); `release-notes.mjs` renders the GitHub body
+  from the same file.
   Evidence: `test/release-notes-gen.test.ts`, journey
-  `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frames
-  `whats-new-card-1440-light` / `version-notes-1440-light`.
+  `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frame
+  `version-notes-1440-light`.
 - Evidence: shared `test/data-format.test.ts`; service
   `test/data-format.test.ts` (check states, stamp, move-aside never
   deletes + collision, combined export, doctor line),

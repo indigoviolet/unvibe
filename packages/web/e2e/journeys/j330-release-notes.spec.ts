@@ -1,8 +1,8 @@
 /**
  * J330: release notes in the app on the real service (fake updater, no
- * network). An updated build shows the What's new card once on the start
- * page, and Settings → Version shows the current notes plus a channel's
- * newest notes fetched on demand. Issue text renders as plain text.
+ * network). Release notes live only on Settings → Version: the current
+ * notes plus a channel's newest notes fetched on demand. Issue text
+ * renders as plain text.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -86,24 +86,9 @@ test.describe("J330 release notes", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("updated build shows What's new once; Version shows current + channel notes", async ({ page }) => {
+  test("Version shows current + channel notes", async ({ page }) => {
     test.setTimeout(180_000);
     if (!svc) throw new Error("no service");
-
-    await page.goto(`${svc.origin}/?token=${svc.token}`);
-    const card = page.getByTestId("whats-new-card");
-    await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card).toContainText(`What's new in ${NEW_VERSION}`);
-    await expect(card).toContainText("What to try:");
-    await expect(card).toContainText("Full gates not yet run. <b>not bold</b>");
-    // Plain text only: the literal tag never becomes an element.
-    await expect(card.locator("b")).toHaveCount(0);
-
-    await page.getByTestId("whats-new-dismiss").click();
-    await expect(card).toHaveCount(0);
-    await page.reload();
-    await expect(page.getByText("Open a PR by URL or number")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("whats-new-card")).toHaveCount(0);
 
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
@@ -113,6 +98,10 @@ test.describe("J330 release notes", () => {
     const current = page.getByTestId("current-release-notes");
     await expect(current).toBeVisible({ timeout: 15_000 });
     await expect(current).toContainText("Every build now ships its release notes.");
+    await expect(current).toContainText("What to try:");
+    await expect(current).toContainText("Full gates not yet run. <b>not bold</b>");
+    // Plain text only: the literal tag never becomes an element.
+    await expect(current.locator("b")).toHaveCount(0);
 
     const toggle = page.getByTestId("version-picker-toggle");
     if (!(await toggle.isChecked())) await toggle.click();
