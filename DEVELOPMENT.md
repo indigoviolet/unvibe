@@ -391,7 +391,10 @@ subject). `release:tag --notes-file <file>` takes the same file. The
 generator is `scripts/generate-release-notes.mjs` (pure helpers in
 `scripts/release-notes-gen-lib.mjs`); the previous build of a channel is
 the commit its ref pointed at before the publish, read from that ref's
-own `release-notes.json` (`release` falls back to the previous `v*` tag).
+own `release-notes.json`. A channel with no readable previous notes
+falls back to the newest `v*` tag reachable from HEAD for every channel
+(`previousVersion` is that tag's version); null and full history only
+when there is no such tag at all.
 
 What it does (`scripts/preview-publish.mjs`, pure helpers in
 `scripts/preview-lib.mjs`): by default it builds current local `main`
