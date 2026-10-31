@@ -144,7 +144,7 @@ export function LimitsSection({
             </p>
           ))}
         </div>
-        <div className="frow" style={{ gap: 8, marginTop: 8 }}>
+        <div className="frow" style={{ gap: 8, marginTop: "var(--space-5)" }}>
           <Button variant="primary" type="button" disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save limits"}
           </Button>

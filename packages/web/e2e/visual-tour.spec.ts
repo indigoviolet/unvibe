@@ -1338,6 +1338,7 @@ test.describe("visual tour passes", () => {
               return { x: b.x, y: b.y, w: b.width, right: b.right, bottom: b.bottom };
             };
             return {
+              field: rect(el),
               label: rect(el.querySelector(".ui-field-label")),
               help: rect(el.querySelector(".ui-help")),
               control: rect(el.querySelector(".ui-field-control")),
@@ -1356,6 +1357,8 @@ test.describe("visual tour passes", () => {
           expect(row.help!.y, `limits row ${i}: help below label`).toBeGreaterThanOrEqual(row.label!.bottom - 2);
           expect(row.help!.right, `limits row ${i}: help stays in the left column`).toBeLessThanOrEqual(row.control!.x + 2);
           expect(Math.abs(row.control!.y - row.label!.y), `limits row ${i}: control top-aligned with label`).toBeLessThanOrEqual(4);
+          expect(Math.abs(row.control!.right - row.field!.right), `limits row ${i}: control pinned to the right edge`).toBeLessThanOrEqual(2);
+          expect(row.help!.w, `limits row ${i}: help takes the remaining width`).toBeGreaterThan(row.control!.w);
           if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
         }
         const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
