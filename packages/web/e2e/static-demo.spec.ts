@@ -248,7 +248,21 @@ test("settings are read-only in the demo", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await page.goto(`${origin()}/#/settings`);
   await expect(page.getByText("Settings are read-only in the static demo")).toBeVisible({ timeout: 30_000 });
+  // One shared mechanism: a disabled fieldset around every section.
+  const assertReadOnly = async (): Promise<void> => {
+    const fs = page.locator(".settings-panel fieldset[disabled]");
+    await expect(fs).toBeVisible({ timeout: 10_000 });
+    const controls = fs.locator("button, input, select, textarea");
+    const n = await controls.count();
+    expect(n, "expected form controls on the read-only page").toBeGreaterThan(0);
+    for (let i = 0; i < n; i++) await expect(controls.nth(i)).toBeDisabled({ timeout: 10_000 });
+  };
+  await assertReadOnly();
   await page.screenshot({ path: `${SHOTS}/demo-settings.png` });
+  // A second section with the custom select: still read-only.
+  await page.locator('[role="tablist"]').getByRole("tab", { name: "Models" }).click();
+  await assertReadOnly();
+  await page.screenshot({ path: `${SHOTS}/demo-settings-models.png` });
   expect(violations).toEqual([]);
 });
 

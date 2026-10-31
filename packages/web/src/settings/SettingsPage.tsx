@@ -93,6 +93,44 @@ export function SettingsPage(): React.JSX.Element {
     return () => {};
   }, [location.search, location.hash, setTab, tab]);
 
+  const renderPanels = (loaded: Settings): React.JSX.Element => (
+    <>
+      <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
+        <AppearanceSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="repositories" active={tab === "repositories"}>
+        <RepositoriesSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
+        <ModelsSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="extension" active={tab === "extension"}>
+        <ExtensionSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
+        <AccessSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="environment" active={tab === "environment"}>
+        <EnvironmentSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="prompts" active={tab === "prompts"}>
+        <PromptsSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="limits" active={tab === "limits"}>
+        <LimitsSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
+        <VersionSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
+        <DebugSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
+        <DataSection />
+      </TabPanel>
+    </>
+  );
+
   return (
     <div className="app">
       <Toast />
@@ -102,7 +140,7 @@ export function SettingsPage(): React.JSX.Element {
           {STATIC_DEMO ? (
             <p className="hint" role="note">
               Settings are read-only in the static demo.{" "}
-              <a href={DEMO_INSTALL_URL} target="_blank" rel="noreferrer">
+              <a className="cx pg" href={DEMO_INSTALL_URL} target="_blank" rel="noreferrer">
                 Install Unvibe
               </a>{" "}
               to change them.
@@ -127,39 +165,20 @@ export function SettingsPage(): React.JSX.Element {
               />
               <div className="settings-panel">
                 <h2 className="settings-title">{SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
-              <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
-                <AppearanceSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="repositories" active={tab === "repositories"}>
-                <RepositoriesSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
-                <ModelsSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="extension" active={tab === "extension"}>
-                <ExtensionSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
-                <AccessSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="environment" active={tab === "environment"}>
-                <EnvironmentSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="prompts" active={tab === "prompts"}>
-                <PromptsSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="limits" active={tab === "limits"}>
-                <LimitsSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
-                <VersionSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
-                <DebugSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
-                <DataSection />
-              </TabPanel>
+                {STATIC_DEMO ? (
+                  // One shared mechanism for the read-only demo: every
+                  // mutating control in every section is a native
+                  // button/input/select (custom Select triggers render a
+                  // button), so one disabled fieldset makes the whole page
+                  // visibly read-only — including Appearance, whose theme
+                  // saves through the API and is therefore not client-only.
+                  // The section tabs stay live above this fieldset.
+                  <fieldset disabled className="settings-readonly">
+                    {renderPanels(settings)}
+                  </fieldset>
+                ) : (
+                  renderPanels(settings)
+                )}
               </div>
             </div>
           ) : null}
