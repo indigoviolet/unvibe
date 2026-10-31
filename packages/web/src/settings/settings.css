@@ -195,6 +195,18 @@ mark.tm {
   margin: 0;
   min-width: 0;
 }
+/* Static demo (#334): disabled selects and inputs stay legible — muted
+   text at full opacity on the disabled fill. Without this the Base UI
+   select trigger (a button) stacks `button:disabled { opacity: .35 }` on
+   top of the 35%-ink `--text-disabled`, rendering nearly invisible.
+   Buttons keep the app's standard disabled-button fade (opacity), which
+   already reads as disabled. */
+.settings-readonly .ui-select:disabled,
+.settings-readonly .ui-input:disabled,
+.settings-readonly select:disabled {
+  opacity: 1;
+  color: var(--muted);
+}
 .settings-title {
   font: 600 22px var(--serif);
   margin: 4px 0 14px;

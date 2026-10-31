@@ -830,6 +830,36 @@ let existingComments: import("@unvibe/shared").ExistingReviewComment[] = seedExi
 
 const SETTINGS_KEY = "unvibe.mock.settings";
 
+/**
+ * Static demo (#334): the public demo shows what a real install shows —
+ * the service static catalogue (`STATIC_MODEL_INFO` in
+ * `packages/service/src/settings/models.ts`) and its defaults
+ * (`DEFAULT_SETTINGS` in `packages/service/src/settings/store.ts`),
+ * never mock ids. Non-demo mock mode keeps the mock names below (e2e
+ * asserts on them). The pi entry is real: it is the panel default in
+ * the service defaults.
+ */
+const DEMO_MODEL_CATALOG: Record<string, import("@unvibe/shared").ModelInfo[]> = {
+  claude: [
+    { id: "claude-opus-5-5", name: "Opus 5.5" },
+    { id: "claude-sonnet-5-5", name: "Sonnet 5.5" },
+    { id: "claude-haiku-5-5", name: "Haiku 5.5" },
+  ],
+  codex: [
+    { id: "gpt-6.1-sol", name: "Sol 6.1" },
+    { id: "gpt-5.6-terra", name: "Terra 5.6" },
+    { id: "gpt-6-luna", name: "Luna 6" },
+  ],
+  pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],
+};
+
+/** Role picks in the static demo: the real service defaults. */
+const DEMO_ROLE_PICKS = {
+  main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
+  small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
+  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
+} as const;
+
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
@@ -851,6 +881,12 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
 };
 
 function getMockSettings(): Settings {
+  if (STATIC_DEMO) {
+    // Real service defaults, and stored overrides from mock-mode runs are
+    // ignored so a stale localStorage can't leak mock ids into the demo.
+    // Saves refuse anyway (read-only banner).
+    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS };
+  }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
 }
 
@@ -959,11 +995,22 @@ function seedJobs(): Job[] {
   // does. Debug still lists the recorded jobs. Fills during the session
   // create and settle their own jobs, which the pill shows honestly.
   if (STATIC_DEMO) {
-    return jobs.map((j) =>
-      j.state === "done"
-        ? j
-        : { ...j, state: "done" as const, error: undefined, nextRetryAt: undefined },
-    );
+    // Real model ids too: debug lists the recorded jobs, and a real
+    // install would have recorded the service defaults, never mock ids.
+    const demoModel: Record<string, string> = {
+      "mock-main": DEMO_ROLE_PICKS.main.model,
+      "mock-small": DEMO_ROLE_PICKS.small.model,
+      "mock-opus": "claude-opus-5-5",
+      "mock-second": DEMO_ROLE_PICKS.secondOpinion.model,
+      "mock-mini": "gpt-5.6-terra",
+    };
+    return jobs.map((j) => ({
+      ...j,
+      model: demoModel[j.model] ?? j.model,
+      state: "done" as const,
+      error: undefined,
+      nextRetryAt: undefined,
+    }));
   }
   return jobs;
 }
@@ -1210,9 +1257,9 @@ function readMockReadiness(): ReadinessResponse {
     checks: [
       { id: "git", label: "git", status: "ok", summary: "git found", fix: "", settingsAnchor: "#environment" },
       { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
-      { id: "agent:main", label: "Main model", status: "ok", summary: "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:small", label: "Small model", status: "ok", summary: "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:main", label: "Main model", status: "ok", summary: STATIC_DEMO ? "claude/claude-opus-5-5 ready" : "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:small", label: "Small model", status: "ok", summary: STATIC_DEMO ? "claude/claude-haiku-5-5 ready" : "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
+      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: STATIC_DEMO ? "codex/gpt-6.1-sol ready" : "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
       { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
     ],
     generatedAt: Date.now(),
@@ -1414,14 +1461,14 @@ function emitJobs(): void {
 function trackMockJob(
   jobId: string,
   kind: Job["kind"],
-  opts?: { cardId?: string; annotationId?: string; dedupeKey?: string },
+  opts?: { cardId?: string; annotationId?: string; dedupeKey?: string; provider?: string; model?: string },
 ): void {
   if (mockJobs.some((j) => j.id === jobId)) return;
   mockJobs.push({
     id: jobId,
     kind,
-    provider: "claude",
-    model: "mock-main",
+    provider: opts?.provider ?? "claude",
+    model: opts?.model ?? (STATIC_DEMO ? DEMO_ROLE_PICKS.main.model : "mock-main"),
     effort: "",
     reviewId: "demo",
     priority: 100,
@@ -1825,10 +1872,12 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
       serviceVersion: "0.0.1",
     },
     warnings: [],
-    models: {
-      claude: [{ id: "mock-main", name: "Mock Main", description: "Mock main model for tests" }],
-      codex: [{ id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" }],
-    },
+    models: STATIC_DEMO
+      ? DEMO_MODEL_CATALOG
+      : {
+          claude: [{ id: "mock-main", name: "Mock Main", description: "Mock main model for tests" }],
+          codex: [{ id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" }],
+        },
   };
 }
 
@@ -2844,13 +2893,14 @@ export const mockApi = {
       const verdict = a.mode === "blind" ? "partly" : "disagrees";
       const missed =
         a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
-      const resultId = `so-${a.cardId}-${a.mode}-mock-second`;
+      const soModel = STATIC_DEMO ? DEMO_ROLE_PICKS.secondOpinion.model : "mock-second";
+      const resultId = `so-${a.cardId}-${a.mode}-${soModel}`;
       const result = {
         id: resultId,
         cardId: a.cardId,
         mode: a.mode,
         provider: "codex",
-        model: "mock-second",
+        model: soModel,
         verdict,
         reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
         blocks: [
@@ -2871,7 +2921,7 @@ export const mockApi = {
         createdAt: Date.now(),
         jobId,
       };
-      trackMockJob(jobId, "second-opinion", { cardId: a.cardId });
+      trackMockJob(jobId, "second-opinion", { cardId: a.cardId, provider: "codex", model: soModel });
       const timer = window.setTimeout(() => {
         pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
         settleMockJob(jobId);
@@ -3904,18 +3954,20 @@ export const mockApi = {
   },
 
   models: async (provider: string): Promise<ModelsResponse> => {
-    const catalog: Record<string, import("@unvibe/shared").ModelInfo[]> = {
-      claude: [
-        { id: "mock-main", name: "Mock Main", description: "Mock main model for tests" },
-        { id: "mock-small", name: "Mock Small", description: "Mock small model for tests" },
-        { id: "mock-opus", name: "Mock Opus", description: "Mock opus-class model for tests" },
-      ],
-      codex: [
-        { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
-        { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
-      ],
-      pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],
-    };
+    const catalog: Record<string, import("@unvibe/shared").ModelInfo[]> = STATIC_DEMO
+      ? DEMO_MODEL_CATALOG
+      : {
+          claude: [
+            { id: "mock-main", name: "Mock Main", description: "Mock main model for tests" },
+            { id: "mock-small", name: "Mock Small", description: "Mock small model for tests" },
+            { id: "mock-opus", name: "Mock Opus", description: "Mock opus-class model for tests" },
+          ],
+          codex: [
+            { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
+            { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
+          ],
+          pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],
+        };
     const models = catalog[provider];
     if (!models) {
       throw new Error(

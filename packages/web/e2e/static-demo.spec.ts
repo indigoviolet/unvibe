@@ -262,6 +262,10 @@ test("settings are read-only in the demo", async ({ page }) => {
   // A second section with the custom select: still read-only.
   await page.locator('[role="tablist"]').getByRole("tab", { name: "Models" }).click();
   await assertReadOnly();
+  // The demo shows the real service defaults, never mock ids.
+  await expect(page.getByText("Opus 5.5 (claude-opus-5-5)").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".settings-panel")).not.toContainText("mock-main");
+  await expect(page.locator(".settings-panel")).not.toContainText("Mock Main");
   await page.screenshot({ path: `${SHOTS}/demo-settings-models.png` });
   expect(violations).toEqual([]);
 });
