@@ -83,6 +83,8 @@ import {
   setKeptLists,
   setKeptViewer,
 } from "./keptChanges.js";
+import { StackBadge } from "./StackBadge.js";
+import type { PrStackInfo } from "@unvibe/shared";
 
 const REPO_KEY = "unvibe.start.repoId";
 
@@ -665,6 +667,8 @@ export function StartPage(): React.JSX.Element {
   // True when GET /api/repos itself failed (offline service).
   const [reposError, setReposError] = useState(false);
   const [demo, setDemo] = useState<RepoChange[]>([]);
+  // #321: stack info per PR number for the selected repo (load/Refresh only).
+  const [stacks, setStacks] = useState<Record<number, PrStackInfo>>({});
   const [opening, setOpening] = useState<string | null>(null);
 
   // Prior sessions (front-screen list, filtered to the selected repo
@@ -761,6 +765,8 @@ export function StartPage(): React.JSX.Element {
     // effort and never polled — it rides this load only, and the
     // sessions reload below picks up what it stored.
     const statusRefresh = api.refreshReviewStatuses(id).catch(() => null);
+    // #321: stack data rides the same load/Refresh (one paged query per repo).
+    void api.repoStacks(id).then((r) => { if (loadSeq.current === seq) setStacks(r.stacks); }).catch(() => {});
     // Settled, not all-or-nothing: one failing filter must not sink the
     // others (branches are local even when the gh-backed PR lists fail).
     // Raced against a timeout so the page can never stick on "Loading…"
@@ -1138,6 +1144,15 @@ export function StartPage(): React.JSX.Element {
     [navigate, openReview],
   );
 
+  // #321: open another stack member's review (starting one if needed).
+  const openStackPr = useCallback(
+    (prNumber: number, title: string) => {
+      if (!selectedId) return;
+      void openReview(`stack-${prNumber}`, { repoId: selectedId, pr: prNumber, title });
+    },
+    [openReview, selectedId],
+  );
+
   const removeSession = useCallback(
     async (id: string) => {
       setDeleting(id);
@@ -1471,6 +1486,8 @@ export function StartPage(): React.JSX.Element {
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
                   onOpen={() => navigate(`/review/${s.id}`)}
+                  stackInfo={s.prNumber !== undefined ? stacks[s.prNumber] : undefined}
+                  onOpenStackPr={openStackPr}
                 />
               ))}
               {demoSessions.map((s) => (
@@ -1654,6 +1671,8 @@ export function StartPage(): React.JSX.Element {
                     onShowAll={() => selectRecency("all")}
                     owner={selected?.owner ?? null}
                     name={selected?.name ?? null}
+                    stacks={stacks}
+                    onOpenStackPr={openStackPr}
                     onOpen={(c, i) =>
                       openChange(c, i, {
                         repoId: selectedId,
@@ -1717,6 +1736,8 @@ export function StartPage(): React.JSX.Element {
                         opening={opening}
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
+                        stackInfo={c.prNumber !== undefined ? stacks[c.prNumber] : undefined}
+                        onOpenStackPr={openStackPr}
                         onOpen={(row, j) =>
                           openChange(row, j, {
                             repoId: selectedId,
@@ -1753,6 +1774,8 @@ export function StartPage(): React.JSX.Element {
                         opening={opening}
                         owner={selected?.owner ?? null}
                         name={selected?.name ?? null}
+                        stackInfo={c.prNumber !== undefined ? stacks[c.prNumber] : undefined}
+                        onOpenStackPr={openStackPr}
                         onOpen={(row, j) =>
                           openChange(row, j, {
                             repoId: selectedId,
@@ -1839,6 +1862,8 @@ export function SessionRow({
   setConfirmDelete,
   removeSession,
   onOpen,
+  stackInfo,
+  onOpenStackPr,
 }: {
   s: ReviewSummary;
   opening: string | null;
@@ -1847,6 +1872,8 @@ export function SessionRow({
   setConfirmDelete: (id: string | null) => void;
   removeSession: (id: string) => Promise<void>;
   onOpen: () => void;
+  stackInfo?: PrStackInfo;
+  onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
 }): React.JSX.Element {
   // #94: where the review names a GitHub PR, the number links to the PR
   // page (new tab). Branch-only reviews and the demo get no link. The
@@ -1990,6 +2017,9 @@ export function SessionRow({
       </div>
       <div className="frow" style={{ gap: 4, alignItems: "center" }}>
         <PrBadges prState={s.prState} reviewDecision={s.reviewDecision} />
+        {stackInfo && s.prNumber !== undefined && onOpenStackPr ? (
+          <StackBadge info={stackInfo} currentNumber={s.prNumber} onOpenPr={onOpenStackPr} />
+        ) : null}
         {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
         {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
         {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
@@ -2079,6 +2109,8 @@ function ChangeRow({
   onOpen,
   owner,
   name,
+  stackInfo,
+  onOpenStackPr,
 }: {
   c: RepoChange;
   i: number;
@@ -2086,6 +2118,8 @@ function ChangeRow({
   onOpen: (c: RepoChange, i: number) => void;
   owner: string | null;
   name: string | null;
+  stackInfo?: PrStackInfo;
+  onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
 }): React.JSX.Element {
   const hasSize = typeof c.additions === "number" || typeof c.deletions === "number";
   const prLabel = c.kind === "pr" ? (c.prNumber !== undefined ? `#${c.prNumber}` : "PR") : null;
@@ -2148,9 +2182,12 @@ function ChangeRow({
           <span className="cx2">{c.title}</span>
         </button>
       </div>
-      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision ? (
+      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision || stackInfo ? (
         <div className="frow" style={{ gap: 4, alignItems: "center" }}>
           <PrBadges prState={c.prState} reviewDecision={c.reviewDecision} />
+          {stackInfo && c.prNumber !== undefined && onOpenStackPr ? (
+            <StackBadge info={stackInfo} currentNumber={c.prNumber} onOpenPr={onOpenStackPr} />
+          ) : null}
           {c.reviewId ? <span className="prtag">review</span> : null}
           {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
           {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
@@ -2172,6 +2209,8 @@ function ChangeSection({
   onOpen,
   owner,
   name,
+  stacks,
+  onOpenStackPr,
 }: {
   title: string;
   changes: RepoChange[];
@@ -2189,6 +2228,8 @@ function ChangeSection({
   onOpen: (c: RepoChange, i: number) => void;
   owner: string | null;
   name: string | null;
+  stacks?: Record<number, PrStackInfo>;
+  onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
 }): React.JSX.Element {
   // #274 compact empty states: the heading carries a 0 count badge instead
   // of a full empty line. Filter notes (with their Show-all way back) stay.
@@ -2215,7 +2256,7 @@ function ChangeSection({
         ) : null
       ) : (
         changes.map((c, i) => (
-          <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} />
+          <ChangeRow key={changeKey(c, i)} c={c} i={i} opening={opening} onOpen={onOpen} owner={owner} name={name} stackInfo={c.prNumber !== undefined ? stacks?.[c.prNumber] : undefined} onOpenStackPr={onOpenStackPr} />
         ))
       )}
     </>

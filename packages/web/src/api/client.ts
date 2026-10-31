@@ -318,6 +318,9 @@ const realApi = {
     return get(`/api/repos/${encodeURIComponent(id)}/changes${qs ? `?${qs}` : ""}`);
   },
 
+  /** #321: stack info per open PR for one repo (load/Refresh only). */
+  repoStacks: (id: string): Promise<import("@unvibe/shared").RepoStacksResponse> =>
+    get(`/api/repos/${encodeURIComponent(id)}/stacks`),
   /** #298: batched review-status refresh for one repo (load/Refresh only). */
   refreshReviewStatuses: (id: string): Promise<RepoReviewStatusesResponse> =>
     post(`/api/repos/${encodeURIComponent(id)}/review-statuses`),

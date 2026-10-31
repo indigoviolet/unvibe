@@ -44,6 +44,10 @@ import { useRefresh } from "../versions/useRefresh.js";
 import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { PrBadges } from "../ui/index.js";
+import { StackBadge } from "../start/StackBadge.js";
+import type { PrStackInfo } from "@unvibe/shared";
+import { useNavigate } from "react-router";
+import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
@@ -62,6 +66,8 @@ export function ReviewBar({
   onToggleSource: () => void;
 }): React.JSX.Element {
   const { short, prUrl, prState, reviewDecision } = useReviewIdentity(reviewId);
+  const navigate = useNavigate();
+  const [stackInfo, setStackInfo] = useState<PrStackInfo | null>(null);
   // #92: the Debug page needs a finished open (its reads refuse earlier
   // states), so the icon waits until the review is ready. One snapshot
   // subscription (never behind a short-circuit) so the hook order is
@@ -94,6 +100,15 @@ export function ReviewBar({
   // No polling. The guard keeps StrictMode/remounts to one call per
   // review open.
   const sourceRepoId = snapshot?.review.repoId;
+  const stackRepoId = snapshot?.review.repoId;
+  const stackPrNumber = snapshot?.review.prNumber;
+  // #321: stack badge in the header — same per-repo data, fetched on open.
+  useEffect(() => {
+    if (!stackRepoId || stackRepoId === "demo" || stackPrNumber === undefined) return;
+    let cancelled = false;
+    api.repoStacks(stackRepoId).then((r) => { if (!cancelled) setStackInfo(r.stacks[stackPrNumber] ?? null); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [stackRepoId, stackPrNumber]);
   const autoRefreshKey = useRef<string | null>(null);
   useEffect(() => {
     if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
@@ -164,6 +179,15 @@ export function ReviewBar({
         ) : (
           <span className="num">{short}</span>
         )}
+        {stackInfo && stackPrNumber !== undefined && stackRepoId ? (
+          <StackBadge
+            info={stackInfo}
+            currentNumber={stackPrNumber}
+            onOpenPr={(prNumber, title) => {
+              void api.createReview({ repoId: stackRepoId, pr: prNumber, title }).then((snap) => navigate(`/review/${snap.review.id}`)).catch(() => {});
+            }}
+          />
+        ) : null}
         {!isDocument ? (
           <button
             className="ib bd"

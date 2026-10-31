@@ -16,6 +16,7 @@ export {
   refreshRepoReviewStatuses,
   type ReviewStatusesDeps,
 } from "./review-statuses.js";
+export { fetchRepoStacks, parseStacksPage } from "./stacks.js";
 export { listWorktrees, resolveContextRepo } from "./worktrees.js";
 export { pickFolder, type PickFolderOptions } from "./pick-folder.js";
 export {
