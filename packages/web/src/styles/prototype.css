@@ -962,15 +962,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .ui-card.pend .go:hover { background: var(--accent-soft); }
 .ctl { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 4px 0 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
 .ui-card.child .ctl { border: 0; padding-bottom: 0; }
-/* #274 toolbars on hover: the card/reply toolbar lives in the heading
-   row and shows on hover or keyboard focus only. Icon buttons are 32px. */
-.chead .ctl, .spike-reply-head .ctl { margin: 0; padding: 0; border: 0; opacity: 0; transition: opacity .15s; }
-.spike-thread .spike-reply-head .ans-q { flex: 1; }
-.spike-reply-head .ctl { align-self: center; }
-.chead .ctl .ib, .spike-reply-head .ctl .ib { width: 32px; height: 32px; }
+/* #274 toolbars on hover: the card toolbar lives in the heading row,
+   the reply toolbar floats at the reply's top-right corner (#331) — both
+   show on hover or keyboard focus only. Icon buttons are 32px. */
+.chead .ctl, .spike-thread .spike-reply > .ctl { margin: 0; padding: 0; border: 0; opacity: 0; transition: opacity .15s; }
+.chead .ctl .ib, .spike-thread .spike-reply > .ctl .ib { width: 32px; height: 32px; }
 .ui-card:hover .chead .ctl, .ui-card:focus-within .chead .ctl,
-.spike-reply:hover .spike-reply-head .ctl, .spike-reply:focus-within .spike-reply-head .ctl { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .chead .ctl, .spike-reply-head .ctl { transition: none; } }
+.spike-reply:hover > .ctl, .spike-reply:focus-within > .ctl { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .chead .ctl, .spike-thread .spike-reply > .ctl { transition: none; } }
 .depth { display: inline-flex; align-items: center; border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); overflow: hidden; margin-right: 4px; height: 24px; }
 .depth button { border: 0; background: none; width: 24px; height: 22px; font-size: 14px; line-height: 1; color: var(--muted); }
 .depth button:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
@@ -1469,18 +1468,25 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
 .spike-thread { margin-left: 0; container-type: inline-size; }
 
-/* Issue #301: the reply avatar sits inline in the first line, with the
-   badge — no 22px avatar column indenting the body. From the second
-   line on, the body uses the thread's normal padding. */
-.spike-thread .spike-reply { display: block; padding: 10px 0; border-top: 1px solid var(--line); }
+/* Issue #331: every reply is avatar-only (#315 follow-up), so the avatar
+   floats inline and the first line of text starts right after it. The
+   following lines wrap back to the thread's normal padding: the avatar
+   is a float, not a hanging indent. A first block that can't flow inline
+   (a list, code, diagram or table) clears the float and starts below it. */
+.spike-thread .spike-reply { display: block; position: relative; padding: 10px 0; border-top: 1px solid var(--line); }
 .spike-thread .spike-reply:first-of-type { border-top: none; }
-.spike-thread .spike-reply-head .av { width: 20px; height: 20px; }
-.spike-thread .spike-reply > p { margin: 4px 0 0; }
-.spike-thread .spike-reply-head { display: flex; align-items: center; gap: 8px; }
+.spike-thread .spike-reply > .av { float: left; width: 20px; height: 20px; margin: 1px 8px 0 0; }
 /* #315 follow-up: the Outbox mark on postable comments — the same send
    glyph as the thread's Outbox toggle, small and muted. */
-.spike-thread .spike-reply-head .outbox-mark { display: inline-grid; place-items: center; width: 16px; height: 20px; color: var(--muted); flex: none; }
-.spike-thread .spike-reply-head .outbox-mark .ic { width: 12px; height: 12px; }
+.spike-thread .spike-reply > .outbox-mark { float: left; display: inline-grid; place-items: center; width: 16px; height: 20px; margin-right: 4px; color: var(--muted); }
+.spike-thread .spike-reply > .outbox-mark .ic { width: 12px; height: 12px; }
+.spike-thread .spike-reply > .ctl { position: absolute; top: 6px; right: 0; }
+.spike-thread .spike-reply > p { margin: 1px 0 0; }
+/* A paragraph (or sub-heading) first block flows beside the avatar; its
+   top margin would push it off the avatar's line, so it starts flush. */
+.spike-thread .spike-reply > .exp-b > .blk:first-child > :first-child { margin-top: 1px; }
+/* Any other first block clears the float and starts below the avatar. */
+.spike-thread .spike-reply > .exp-b > :first-child:not(.blk:has(> p.prose, > h3.subhead)) { clear: left; }
 
 /* Kind badges: teal pills for agent answers, amber for reviewer comments.
    (Specificity beats the legacy `.thd .kind` label style.) */
@@ -1517,10 +1523,10 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 /* Issue #293: an Ask question is a reviewer entry with its answer as the
    reply directly under it — no rule and no blank gap between the two.
    Issue #315: neither entry carries a kind chip or heading (avatars say
-   who's speaking), so the answer's toolbar sits right via margin-left. */
+   who's speaking). Issue #331: the answer's toolbar floats at the
+   top-right corner so the body starts on the avatar's line. */
 .spike-thread .spike-reply.ask-question { padding-bottom: 2px; }
 .spike-thread .spike-reply.ask-question + .spike-reply.ask-answer { border-top: none; padding-top: 2px; }
-.spike-thread .spike-reply.ask-answer .spike-reply-head .ctl { margin-left: auto; }
 
 /* Thread header quote vs location (#273): the quote truncates with an
    ellipsis, but never to a stub — below ~440px of thread width (the diff

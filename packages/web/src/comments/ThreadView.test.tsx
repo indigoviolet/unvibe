@@ -263,16 +263,17 @@ describe("ThreadView authorship (owner decision: icons, not text)", () => {
     expect(container.querySelector(".msg .who")).toBeNull();
   });
 
-  test("avatars sit inline in the reply's first line; no avatar column (issue #301)", () => {
+  test("avatars float inline in the reply's first line; no heading row (issue #331)", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector(".spike-reply");
     expect(reply).not.toBeNull();
-    // No two-column avatar layout: the old main wrapper is gone and the
-    // avatar is the first child of the heading row.
+    // No two-column avatar layout and no heading row: the avatar is a
+    // direct child of the reply (floated inline by CSS) and the text
+    // starts on its line.
     expect(reply?.querySelector(".spike-reply-main")).toBeNull();
-    const head = reply?.querySelector(".spike-reply-head");
-    expect(head?.firstElementChild?.classList.contains("av")).toBe(true);
+    expect(reply?.querySelector(".spike-reply-head")).toBeNull();
+    expect(reply?.firstElementChild?.classList.contains("av")).toBe(true);
   });
 });
 

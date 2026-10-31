@@ -3,7 +3,8 @@
  *
  * One thread component for everything: Explain/Ask answers and reviewer
  * comments are replies with a `kind` (`ask`, `explain`, `comment`, with
- * `persona` reserved in the type only), badged by kind. Threads render
+ * `persona` reserved in the type only), marked by an avatar and an
+ * accessible name (no kind badges — #315). Threads render
  * inline under the card (or description block, or diff line) they started
  * from. Controls (depth, principle, second opinion) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
@@ -139,12 +140,13 @@ function isAskWithQuestion(reply: Reply): boolean {
   return reply.kind === "ask" && (reply.question?.trim() ?? "") !== "";
 }
 
-/** Reviewer-styled question entry for an Ask reply (#293). Issue #301:
- * the avatar sits inline in the first line; the body below uses the
- * thread's normal padding (no avatar column). Issue #315: no kind chip
- * and no "Reviewer comment" label — the reviewer avatar alone says
- * who's speaking. The entry keeps an accessible name ("Your question")
- * so screen readers still tell it apart from the agent answer. */
+/** Reviewer-styled question entry for an Ask reply (#293). Issue #331:
+ * the avatar floats inline so the question starts on its line, and the
+ * following lines wrap back to the thread's normal padding (no avatar
+ * column, no hanging indent). Issue #315: no kind chip and no
+ * "Reviewer comment" label — the reviewer avatar alone says who's
+ * speaking. The entry keeps an accessible name ("Your question") so
+ * screen readers still tell it apart from the agent answer. */
 function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
   const question = (reply.question ?? "").trim();
   return (
@@ -157,11 +159,9 @@ function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): Re
       role="article"
       aria-label="Your question"
     >
-      <div className="spike-reply-head">
-        <span className="av you" role="img" aria-label="You">
-          <Icon name="person" />
-        </span>
-      </div>
+      <span className="av you" role="img" aria-label="You">
+        <Icon name="person" />
+      </span>
       <p>{question}</p>
     </div>
   );
@@ -302,12 +302,12 @@ function AgentReplyView({
       role="article"
       aria-label={agentLabel}
     >
-      <div className="spike-reply-head">
-        <span className="av ai" role="img" aria-label="Agent">
-          <Icon name="spark" />
-        </span>
-        {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
-        {awaitingAnswer ? null : (
+      <span className="av ai" role="img" aria-label="Agent">
+        <Icon name="spark" />
+      </span>
+      {/* #274: the toolbar floats at the reply's top-right corner,
+          hover/focus-revealed, so the body starts on the avatar's line. */}
+      {awaitingAnswer ? null : (
           <div className="ctl">
               <DepthControl
                 level={reply.level}
@@ -346,7 +346,6 @@ function AgentReplyView({
               />
             </div>
           )}
-      </div>
       {showWorking && !errorText ? <Working text={workingLabel} /> : null}
       {noAgent ? (
         <div className="perr" role="status">
@@ -447,21 +446,19 @@ function CommentReplyView({
       role="article"
       aria-label={commentLabel}
     >
-      <div className="spike-reply-head">
-        <span className="av you" role="img" aria-label="You">
-          <Icon name="person" />
+      <span className="av you" role="img" aria-label="You">
+        <Icon name="person" />
+      </span>
+      {reply.kind === "comment" ? (
+        <span
+          className="outbox-mark"
+          role="img"
+          aria-label="Posts to GitHub from the Outbox"
+          data-tip="Posts to GitHub from the Outbox"
+        >
+          <Icon name="send" />
         </span>
-        {reply.kind === "comment" ? (
-          <span
-            className="outbox-mark"
-            role="img"
-            aria-label="Posts to GitHub from the Outbox"
-            data-tip="Posts to GitHub from the Outbox"
-          >
-            <Icon name="send" />
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       {body}
     </div>
   );
