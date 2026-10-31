@@ -28,6 +28,7 @@ import {
   type ReposResponse,
   type RepoChangesResponse,
   type RepoReviewStatusesResponse,
+  type RepoStacksResponse,
   type RepoWorktreesResponse,
 } from "@unvibe/shared";
 import {
@@ -41,6 +42,7 @@ import {
   newRepoId,
   pickFolder,
   refreshManagedCheckout,
+  fetchRepoStacks,
   refreshRepoReviewStatuses,
   removeRepo,
   repoChanges,
@@ -212,6 +214,18 @@ export async function registerRepos(
       repo,
     );
     return { statuses } satisfies RepoReviewStatusesResponse;
+  });
+
+  // #321: stacked-PR data for one repo (one paged GraphQL query; the web
+  // calls it on page load and Refresh only — no polling). Best effort.
+  app.get("/api/repos/:id/stacks", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return { stacks: {} } satisfies RepoStacksResponse;
+    let repo = ctx.repos.get(id);
+    if (!repo) repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
+    if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    const stacks = await fetchRepoStacks(ctx.runner, repo);
+    return { stacks } satisfies RepoStacksResponse;
   });
 
   app.get("/api/repos/:id/changes", async (req, reply) => {

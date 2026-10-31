@@ -406,6 +406,11 @@ export interface ReviewStatusUpdate {
   stale: boolean;
 }
 
+/** #321: `GET /api/repos/:id/stacks` — stack info per open PR number (load/Refresh only). */
+export interface RepoStacksResponse {
+  stacks: Record<number, import("./stacks.js").PrStackInfo>;
+}
+
 /** #298: `POST /api/repos/:id/review-statuses` — one status per review of the repo. */
 export interface RepoReviewStatusesResponse {
   statuses: ReviewStatusUpdate[];
