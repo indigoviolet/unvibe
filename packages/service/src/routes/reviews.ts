@@ -64,6 +64,7 @@ import {
   listReviewSummaries,
   touchReviewOpened,
 } from "../reviews/index.js";
+import { registerExtensionRoutes } from "./extension.js";
 import { hasAnySubmitLease } from "../update/index.js";
 import { fetchExistingComments } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
@@ -554,6 +555,23 @@ export async function registerReviews(
   // create for the same source awaits the in-flight insert instead of
   // adding a second row; entries live only for the synchronous insert.
   const inFlightCreates = new Map<string, Promise<BeginCreateResult>>();
+
+  // #322: extension pr-status + `/open` deep link, sharing this module's
+  // dedupe/reuse machinery so the extension opens the same review the
+  // start page would.
+  await registerExtensionRoutes(app, ctx, {
+    lookupPrReview: (repoId, pr) => findReusableReview(ctx, repoId, pr, undefined),
+    openPrReview: async (repoId, pr) => {
+      const r = await beginReviewFromSource(
+        ctx,
+        { ...(pipeline ? { pipeline } : {}), autoPipeline },
+        pendingIngests,
+        inFlightCreates,
+        { repoId, pr },
+      );
+      return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
+    },
+  });
 
   // Front screen: every review opened before, across ALL repos, most
   // recent first (PRD §4.2). No gh/git calls; summaries come from durable

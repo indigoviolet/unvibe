@@ -1,4 +1,5 @@
 /** Service runtime config: env → resolved values. */
+import { PINNED_EXTENSION_ID } from "@unvibe/shared";
 import { DEFAULT_IDLE_MS } from "./lifecycle/index.js";
 import { assertNotRealHomeForWrite, isTestRun, realDataDir, realHomeDir } from "./update/service-manager.js";
 
@@ -19,6 +20,13 @@ export interface ServiceConfig {
    * negative disables idle exit. Env `UNVIBE_IDLE_MS`.
    */
   idleMs: number;
+  /**
+   * #322: the one Chrome extension id whose exact origin
+   * (`chrome-extension://<id>`) may call `/api/extension/pr-status`.
+   * Env `UNVIBE_EXTENSION_ID`; defaults to the pinned id in
+   * `extension/manifest.json`. An invalid value allows no extension.
+   */
+  extensionId: string;
 }
 
 export function defaultDataDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -52,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     port: Number.isSafeInteger(port) ? port : 4517,
     dataDir,
     idleMs: Number.isFinite(idleMs) ? idleMs : DEFAULT_IDLE_MS,
+    extensionId: (env.UNVIBE_EXTENSION_ID ?? PINNED_EXTENSION_ID).trim(),
   };
 }
 
