@@ -174,6 +174,12 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,
       title,
+      ...(snapshot !== null && isWebReview(snapshot)
+        ? {
+            webHost: (() => { try { return new URL(snapshot.web.url).host; } catch { return snapshot.web.url; } })(),
+            webQuestions: snapshot.web.messages.filter((m) => m.role === "user").length,
+          }
+        : {}),
       branch: row.branch,
       ...(row.pr_number !== null ? { prNumber: row.pr_number } : {}),
       createdAt: row.created_at,

@@ -38,7 +38,7 @@ test.describe("J322 extension settings + web reviews", () => {
     rmSync(repoDir, { recursive: true, force: true });
   });
 
-  test("settings extension, panel ask, reviews toggle", async ({ page }) => {
+  test("settings extension, panel ask, documents web group", async ({ page }) => {
     await page.goto(`${svc!.origin}/settings?tab=extension&token=${svc!.token}`);
     await expect(page.getByTestId("extension-show-folder")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("extension-path")).toContainText("extension");
@@ -53,11 +53,18 @@ test.describe("J322 extension settings + web reviews", () => {
       question: "Where is validateToken?",
     });
     expect(asked.status).toBe(200);
-    // Hidden by default on the start page; toggle shows it.
+    // Never in Reviews (PRs and branches only, no toggle any more).
     await page.goto(`${svc!.origin}/?token=${svc!.token}`);
-    await expect(page.getByTestId("show-web-reviews")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("show-web-reviews")).toHaveCount(0);
     await expect(page.getByText("A page")).toHaveCount(0);
-    await page.getByTestId("show-web-reviews").check();
-    await expect(page.getByText("A page")).toBeVisible({ timeout: 15_000 });
+    // Visible under Documents, in its own Web pages group.
+    await page.goto(`${svc!.origin}/documents?token=${svc!.token}`);
+    const row = page.getByTestId("web-thread-row");
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await expect(row).toContainText("A page");
+    await expect(row).toContainText("github.com");
+    await expect(row).toContainText("1 question");
+    await expect(row).toContainText(/just now|ago/);
   });
 });

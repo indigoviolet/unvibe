@@ -678,6 +678,10 @@ export interface ReviewSummary {
   repoName: string;
   /** PR title or branch name. */
   title: string;
+  /** Issue #322: web reviews only — the page's site (host). */
+  webHost?: string;
+  /** Issue #322: web reviews only — questions asked in the page thread. */
+  webQuestions?: number;
   branch: string;
   prNumber?: number;
   createdAt: number;

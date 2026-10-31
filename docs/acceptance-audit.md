@@ -3696,8 +3696,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (active-repo checkboxes defaulting to the 3 most recent, panel model
   picker defaulting to muse-spark, install help with the shipped folder,
   Show folder/Copy path, three steps, connected status from the last
-  worker call in memory, reload note), web threads hidden from Reviews
-  by default with a Show-web toggle, and quote clicks that say
+  worker call in memory, reload note), web threads never in Reviews (they list under Documents in a
+  Web pages group), and quote clicks that say
   "not on the page any more" when the quote is gone. Panel reads stay
   inside active-repo worktrees (realpath lockdown, read-only always,
   repo-qualified citations); one agent turn per ask, no background

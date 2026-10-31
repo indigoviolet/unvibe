@@ -2363,6 +2363,29 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await expect(page.locator('.pane-loading .dots')).toHaveCount(0);
   });
 });
+test("visual tour documents web group (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-web322-"));
+  try {
+    await makeScratchRepo(dir);
+    await journeyGit(dir, "remote", "add", "origin", "https://github.com/acme/weblib.git");
+    await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: dir });
+    const asked = (await apiJson(svc.origin, svc.token, "POST", "/api/extension/panel/ask", {
+      url: "https://github.com/acme/weblib/issues/5", title: "Widget fails to load", selection: "", context: "widget page",
+      question: "Where is validateToken?",
+    })) as unknown as { reviewId?: string };
+    expect(asked.reviewId).toBeTruthy();
+    await page.goto(`${svc.origin}/documents?token=${svc.token}`);
+    await expect(page.getByTestId("web-thread-row")).toContainText("Widget fails to load", { timeout: 15_000 });
+    await expect(page.getByTestId("web-thread-row")).toContainText("github.com");
+    await checkLayout(page, "documents-web-1440-light");
+    await shot(page, "documents-web", "1440-light", "Widget fails to load");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 // Issue #222: the start page's New document review form and a document
 // review (rendered blocks, an Explain answer, an Ask answer, a comment,
 // and a `code:` citation opening the second context repo's file) in the
