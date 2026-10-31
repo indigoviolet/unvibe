@@ -841,6 +841,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           level={hideLevel}
           tip={hideTip}
           buttonLabel={hideBtnLabel}
+          anyHidden={hideStats.current.hidden > 0}
           counts={hideStats.counts}
           onCategory={(cat) => setHideLevel(hideLevelAfterCategoryClick(hideLevel, cat))}
         />
@@ -1033,12 +1034,15 @@ function HideLevelSelector({
   level,
   tip,
   buttonLabel,
+  anyHidden,
   counts,
   onCategory,
 }: {
   level: HideLevel;
   tip: string;
   buttonLabel: string;
+  /** Open eye when nothing is hidden ("All shown"), eye-off otherwise. */
+  anyHidden: boolean;
   counts: ReadonlyMap<HideCategory, number>;
   onCategory: (category: HideCategory) => void;
 }): ReactNode {
@@ -1162,12 +1166,13 @@ function HideLevelSelector({
         aria-label={`Hide level: ${buttonLabel}. ${tip}`}
         data-tip={tip}
         data-hidelevel-current={level}
+        data-eye={anyHidden ? "off" : "open"}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); }
         }}
       >
-        <Icon name="eyeOff" />
+        <Icon name={anyHidden ? "eyeOff" : "eye"} />
         <span className="hlevel-lbl">{buttonLabel}</span>
         <Icon name="down" />
       </Button>

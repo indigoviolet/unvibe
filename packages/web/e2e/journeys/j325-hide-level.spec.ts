@@ -149,6 +149,7 @@ test.describe("J325 hide-level selector", () => {
     await expect(selector).toHaveAttribute("data-tip", /kept because shown/);
     await expect(selector).not.toHaveAttribute("data-tip", /kept because cited/);
     await expect(selector).toContainText("Hiding 7");
+    await expect(selector).toHaveAttribute("data-eye", "off");
 
     // Clicking its guide citation reveals the hidden hunk through the
     // per-hunk unhide and scrolls to it.
@@ -170,5 +171,7 @@ test.describe("J325 hide-level selector", () => {
     await expect(page.locator('[data-hidelevel-current="all"]')).toBeVisible();
     await expect(page.locator("button.hid")).toHaveCount(0);
     await expect(selector).toContainText("All shown");
+    // Nothing hidden: the button shows an open eye, not eye-off.
+    await expect(selector).toHaveAttribute("data-eye", "open");
   });
 });
