@@ -176,10 +176,10 @@ test("reply drafts survive unrelated re-renders; Discard clears", async ({ page 
   // An unrelated change elsewhere re-renders the panes through a WS patch
   // (Hide uninteresting toggles prefs without folding the open hunk).
   await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidelevel="all"]').click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(slot.locator("textarea")).toHaveValue("keep me");
   await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidelevel="uninteresting"]').click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(slot.locator("textarea")).toHaveValue("keep me");
   // Discard on a new thread removes it without posting.
   await slot.getByRole("button", { name: "Discard" }).click();

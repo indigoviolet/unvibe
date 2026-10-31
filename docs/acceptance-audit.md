@@ -964,10 +964,10 @@ needed (that deviation is closed, not added).
   cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
-  hidden) — met, and since #325 it is the default level of the diff
-  toolbar's hide-level selector (All · Hide uninteresting · ≥ routine ·
-  ≥ substantive · Needs attention, remembered per review in
-  `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
+  hidden) — met, and since #325 it is the default of the diff toolbar's
+  hide menu (an ordered category list — Uninteresting · Mechanical ·
+  Routine · Substantive · Needs attention — over the one threshold
+  remembered per review in `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
   buttons; guide-cited and individually unhidden hunks stay visible at
   every level, and the selector tooltip carries the live hidden count
   with a breakdown) (`packages/shared/src/scores.ts` hide levels,

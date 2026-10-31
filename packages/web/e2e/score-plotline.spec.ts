@@ -38,7 +38,7 @@ test("Files list has no score dots or legend (#184)", async ({ page }) => {
 
 test("the hide-level selector hides below its level and All restores (#325)", async ({ page }) => {
   await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidelevel="substantive"]').click();
+  await page.locator('[data-hidecat="routine"]').click();
   // Substantive hunks live in the conn file and one socket-level test hunk.
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TSOCK}"]`)).toBeVisible();
@@ -47,7 +47,7 @@ test("the hide-level selector hides below its level and All restores (#325)", as
   await expect(page.locator("[data-scorepick]")).toHaveCount(0);
   // All restores every hunk.
   await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidelevel="all"]').click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(page.locator("button.hid")).toHaveCount(0);
   // The filter menu no longer carries score/plotline radio groups.
   await page.getByRole("button", { name: "Show file list" }).click();

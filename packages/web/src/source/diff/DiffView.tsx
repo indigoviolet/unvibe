@@ -22,12 +22,15 @@ import {
   DEFAULT_HIDE_LEVEL,
   DEFAULT_REVIEW_VIEW_PREFS,
   formatHideLevelStats,
-  HIDE_LEVELS,
-  HIDE_LEVEL_LABELS,
-  HIDE_LEVEL_SCORES,
+  HIDE_CATEGORIES,
+  HIDE_CATEGORY_LABELS,
+  hideLevelAfterCategoryClick,
+  hideLevelHiddenUpTo,
   hideLevelStats,
+  hunkCategory,
   hunkMatchesFilter,
   HUNK_PASS_FANOUT_LIMIT,
+  type HideCategory,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
@@ -371,12 +374,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         unhidden: !!unhidden[h.contentHash],
       })),
     );
-    return {
-      current: hideLevelStats(all, hideLevel),
-      byLevel: new Map(HIDE_LEVELS.map((l) => [l, hideLevelStats(all, l)])),
-    };
+    const counts = new Map<HideCategory, number>(HIDE_CATEGORIES.map((c) => [c, 0]));
+    for (const h of all) {
+      const cat = hunkCategory(h);
+      if (cat !== null) counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return { current: hideLevelStats(all, hideLevel), counts };
   }, [snapshot, states, cited, unhidden, hideLevel]);
   const hideTip = formatHideLevelStats(hideStats.current);
+  const hideBtnLabel = hideStats.current.hidden > 0 ? `Hiding ${hideStats.current.hidden}` : "All shown";
 
   const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
   const hunkStateOf = useCallback(
@@ -839,7 +845,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             <Icon name="split" />
           </button>
         </span>
-        <HideLevelSelector level={hideLevel} tip={hideTip} byLevel={hideStats.byLevel} onSelect={setHideLevel} />
+        <HideLevelSelector
+          level={hideLevel}
+          tip={hideTip}
+          buttonLabel={hideBtnLabel}
+          counts={hideStats.counts}
+          onCategory={(cat) => setHideLevel(hideLevelAfterCategoryClick(hideLevel, cat))}
+        />
         <button
           className="x"
           type="button"
@@ -1018,21 +1030,25 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 }
 
 /**
- * Issue #325: the hide-level selector. One control for "how much do I
- * see": it replaces the Hide-uninteresting toggle and the per-hunk
- * score filter buttons. Its tooltip carries the live hidden count
- * with a breakdown; options carry the score colours they map to.
+ * Issue #325: the hide-category menu. Rows are the hunk categories,
+ * least to most important; the stored hide level is the one threshold
+ * over them. A hidden row is greyed with an eye-off icon; clicking a
+ * shown row hides it and everything above it, clicking a hidden row
+ * shows it and everything below it. The button carries the eye-off
+ * icon plus the hidden-hunk count; its tooltip is the breakdown.
  */
 function HideLevelSelector({
   level,
   tip,
-  byLevel,
-  onSelect,
+  buttonLabel,
+  counts,
+  onCategory,
 }: {
   level: HideLevel;
   tip: string;
-  byLevel: ReadonlyMap<HideLevel, { hidden: number }>;
-  onSelect: (level: HideLevel) => void;
+  buttonLabel: string;
+  counts: ReadonlyMap<HideCategory, number>;
+  onCategory: (category: HideCategory) => void;
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -1040,6 +1056,7 @@ function HideLevelSelector({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const upTo = hideLevelHiddenUpTo(level);
   useLayoutEffect(() => {
     if (!open) return;
     const place = (): void => {
@@ -1082,53 +1099,60 @@ function HideLevelSelector({
   }, [open ]);
   useEffect(() => {
     if (open && pos) {
-      const at = HIDE_LEVELS.indexOf(level);
+      const at = Math.max(0, upTo);
       (itemRefs.current[at] ?? itemRefs.current[0])?.focus();
     }
-  }, [open, pos, level]);
+  }, [open, pos, upTo]);
   const move = (dir: 1 | -1): void => {
     const el = document.activeElement as HTMLElement | null;
     const at = itemRefs.current.findIndex((b) => b === el);
-    const n = HIDE_LEVELS.length;
+    const n = HIDE_CATEGORIES.length;
     const next = at < 0 ? (dir === 1 ? 0 : n - 1) : (at + dir + n) % n;
     itemRefs.current[next]?.focus();
   };
-  const choose = (next: HideLevel): void => {
+  const choose = (cat: HideCategory): void => {
     setOpen(false);
-    onSelect(next);
+    onCategory(cat);
     btnRef.current?.focus();
   };
   const menu = open ? (
     <div
       ref={menuRef}
       className="fmenu portal hlevel-menu"
-      role="listbox"
-      aria-label="Hide level"
+      role="menu"
+      aria-label="Hunk categories"
       style={pos ? { position: "fixed", top: pos.top, left: pos.left } : { position: "fixed", visibility: "hidden" }}
       onKeyDown={(e) => {
         if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
         else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
         else if (e.key === "Home") { e.preventDefault(); itemRefs.current[0]?.focus(); }
-        else if (e.key === "End") { e.preventDefault(); itemRefs.current[HIDE_LEVELS.length - 1]?.focus(); }
+        else if (e.key === "End") { e.preventDefault(); itemRefs.current[HIDE_CATEGORIES.length - 1]?.focus(); }
       }}
     >
-      {HIDE_LEVELS.map((l, i) => {
-        const score = HIDE_LEVEL_SCORES[l];
-        const hidden = byLevel.get(l)?.hidden ?? 0;
+      {HIDE_CATEGORIES.map((cat, i) => {
+        const hidden = i <= upTo;
+        const count = counts.get(cat) ?? 0;
         return (
           <button
-            key={l}
+            key={cat}
             ref={(el) => { itemRefs.current[i] = el; }}
             type="button"
-            role="option"
-            aria-selected={l === level}
-            data-hidelevel={l}
-            onClick={() => choose(l)}
+            role="menuitemcheckbox"
+            aria-checked={!hidden}
+            aria-label={`${HIDE_CATEGORY_LABELS[cat]}, ${count} ${count === 1 ? "hunk" : "hunks"}, ${hidden ? "hidden" : "shown"}`}
+            data-hidecat={cat}
+            data-hidden={hidden ? "true" : "false"}
+            className={hidden ? "cat-hidden" : undefined}
+            onClick={() => choose(cat)}
           >
-            <span className="tick" aria-hidden="true">{l === level ? "✓" : ""}</span>
-            {score ? <span className="score-dot" data-score={score} aria-hidden="true" /> : <span className="hlevel-nodot" aria-hidden="true" />}
-            <span className="lbl">{HIDE_LEVEL_LABELS[l]}</span>
-            <span className="cnt">{hidden} hidden</span>
+            {cat === "uninteresting" ? (
+              <span className="cat-dot" aria-hidden="true" />
+            ) : (
+              <span className="score-dot" data-score={cat} aria-hidden="true" />
+            )}
+            <span className="lbl">{HIDE_CATEGORY_LABELS[cat]}</span>
+            <span className="cnt">{count}</span>
+            <Icon name={hidden ? "eyeOff" : "eye"} />
           </button>
         );
       })}
@@ -1141,9 +1165,9 @@ function HideLevelSelector({
         variant="secondary"
         size="sm"
         type="button"
-        aria-haspopup="listbox"
+        aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Hide level: ${HIDE_LEVEL_LABELS[level]}. ${tip}`}
+        aria-label={`Hide level: ${buttonLabel}. ${tip}`}
         data-tip={tip}
         data-hidelevel-current={level}
         onClick={() => setOpen((v) => !v)}
@@ -1152,7 +1176,7 @@ function HideLevelSelector({
         }}
       >
         <Icon name="eyeOff" />
-        <span className="hlevel-lbl">{HIDE_LEVEL_LABELS[level]}</span>
+        <span className="hlevel-lbl">{buttonLabel}</span>
         <Icon name="down" />
       </Button>
       {menu ? createPortal(menu, document.body) : null}

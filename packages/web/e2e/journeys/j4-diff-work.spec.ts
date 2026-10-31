@@ -61,12 +61,12 @@ test.describe("J4 diff work", () => {
 
     // Hide level (#325): substantive hunks are the conn change (from the recordings).
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await page.locator('[data-hidelevel="substantive"]').click();
+    await page.locator('[data-hidecat="routine"]').click();
     await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible({ timeout: 15_000 });
     await expect(connFile).toBeVisible();
     await expect(page.locator("[data-scorepick]")).toHaveCount(0);
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await page.locator('[data-hidelevel="uninteresting"]').click();
+    await page.locator('[data-hidecat="mechanical"]').click();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
 
     // Mark a file reviewed; it survives reload.
@@ -124,7 +124,7 @@ test.describe("J4 diff work", () => {
 
     // Hide level on top of both (#325).
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await page.locator('[data-hidelevel="substantive"]').click();
+    await page.locator('[data-hidecat="routine"]').click();
     await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible({ timeout: 15_000 });
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
@@ -135,7 +135,7 @@ test.describe("J4 diff work", () => {
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await page.locator('[data-hidelevel="uninteresting"]').click();
+    await page.locator('[data-hidecat="mechanical"]').click();
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
 

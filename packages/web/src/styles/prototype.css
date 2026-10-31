@@ -528,8 +528,9 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .score-dot[data-score="needs-attention"] { background: var(--score-needs-attention, #d55e00); }
 .score-ind { display: inline-flex; align-items: center; flex: none; }
 .hlevel-lbl { white-space: nowrap; }
-.hlevel-nodot { width: 8px; flex: none; }
-.hlevel-menu [aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.cat-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--muted, #5c6472); }
+.hlevel-menu button.cat-hidden { color: var(--muted); opacity: .55; }
+.hlevel-menu button .ic { width: 14px; height: 14px; flex: none; }
 /* Plotline tag on the hunk header: a neutral chip, reserving colour for
    the score dot. */
 .ptag { font-size: 10.5px; color: var(--muted); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; flex: none; }

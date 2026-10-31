@@ -1176,7 +1176,7 @@ test.describe("visual tour passes", () => {
     // The added changelog file hides under Hide-uninteresting: reveal it
     // (later steps assert no hidden counts, so this is safe here).
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await page.locator('[data-hidelevel="all"]').click();
+    await page.locator('[data-hidecat="uninteresting"]').click();
     await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
     await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
     await stepChecks(page, "diff-gutter-added");
@@ -1780,6 +1780,39 @@ test.describe("visual tour hide-level selector (#325)", () => {
     test.setTimeout(240_000);
     data325 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-325-data-"));
     review325 = createSeededDemoReview(data325, "tour-325-seed");
+    // Deterministic hunk scores (what the hunk pass would store), so
+    // the menu frame shows real per-category counts.
+    const scores: Record<string, string> = {
+      "src/urllib3/connection.py:0": "substantive",
+      "src/urllib3/connection.py:1": "substantive",
+      "test/test_connection.py:0": "mechanical",
+      "test/test_connection.py:1": "mechanical",
+      "test/test_connection.py:2": "routine",
+      "test/with_dummyserver/test_socketlevel.py:0": "mechanical",
+      "test/with_dummyserver/test_socketlevel.py:1": "substantive",
+      "changelog/1362.bugfix.rst:0": "routine",
+    };
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data325, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review325) as { snapshot: string };
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; hunks: { contentHash: string }[] }[];
+        hunkStates: { contentHash: string; score?: string }[];
+      };
+      const byHash = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+      for (const f of snap.files) {
+        f.hunks.forEach((h, i) => {
+          const entry = byHash.get(h.contentHash) ?? { contentHash: h.contentHash };
+          entry.score = scores[`${f.path}:${i}`];
+          byHash.set(h.contentHash, entry);
+        });
+      }
+      snap.hunkStates = [...byHash.values()];
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review325);
+    } finally {
+      db.close();
+    }
     svc325 = await startService(data325, { agent: "none" });
   });
   test.afterAll(async () => {
@@ -1795,8 +1828,8 @@ test.describe("visual tour hide-level selector (#325)", () => {
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /Hide level:/ }).click();
-    await expect(page.getByRole("listbox", { name: "Hide level" })).toBeVisible();
-    await expect(page.getByRole("option", { name: /Needs attention/ })).toBeVisible();
+    await expect(page.getByRole("menu", { name: "Hunk categories" })).toBeVisible();
+    await expect(page.getByRole("menuitemcheckbox", { name: /Needs attention/ })).toBeVisible();
     // The open menu is legitimately topmost over the pinned headers,
     // so this frame runs the layout check only, not the pinned checks.
     await checkLayout(page, "hide-level-open");

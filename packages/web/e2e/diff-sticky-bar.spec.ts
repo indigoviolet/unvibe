@@ -493,7 +493,7 @@ test("gutter is digits + padding; added files drop the empty column (#261)", asy
   // The demo's changelog file is a new file hidden by Hide-uninteresting:
   // reveal it first (the toggle persists only in this test's context).
   await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidelevel="all"]').click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(page.locator('[id="F-changelog-1362.bugfix.rst"]')).toBeVisible();
   // Hunk bodies render lazily: scroll the added file into view so its
   // tables mount before measuring.
