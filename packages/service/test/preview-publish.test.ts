@@ -60,6 +60,13 @@ describe("preview version", () => {
     );
   });
 
+  it("prefixes an all-digit short sha with a leading zero so the version stays semver", () => {
+    const v = previewVersion("0.0.13", "main-rc", "0659205");
+    expect(v).toBe("0.0.13-preview.main-rc.g0659205");
+    expect(isValidPreviewVersion(v)).toBe(true);
+    expect(previewVersion("0.0.13", "main-rc", "1234567")).toBe("0.0.13-preview.main-rc.1234567");
+  });
+
   it("accepts the brief's shape as strict semver", () => {
     expect(isValidPreviewVersion("0.0.1-preview.feat-preview-builds.4d31b17")).toBe(true);
     expect(isValidPreviewVersion("0.0.1-preview.main.abcdef0")).toBe(true);
@@ -281,6 +288,8 @@ describe("preview publish dry-run ships release-notes.json (#330)", () => {
       writeFileSync(path.join(repo, "LICENSE"), "MIT\n");
       mkdirSync(path.join(repo, "prompts"), { recursive: true });
       writeFileSync(path.join(repo, "prompts", "p.md"), "prompt\n");
+      mkdirSync(path.join(repo, "extension"), { recursive: true });
+      writeFileSync(path.join(repo, "extension", "manifest.json"), "{}\n");
       mkdirSync(path.join(repo, "fixtures", "urllib3-5020"), { recursive: true });
       writeFileSync(path.join(repo, "fixtures", "urllib3-5020", "x.md"), "fixture\n");
       mkdirSync(path.join(repo, "packages", "shared", "src"), { recursive: true });
