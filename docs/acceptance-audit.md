@@ -963,12 +963,13 @@ needed (that deviation is closed, not added).
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
   cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
-  run with reason, click reveals; one-line never hidden; cited never
-  hidden) — met, and since #325 it is the default of the diff toolbar's
+  run with reason, click reveals; one-line never hidden; guide-cited
+  hunks hide like any other since the #325 owner decision — clicking
+  their citation reveals them) — met, and since #325 it is the default of the diff toolbar's
   hide menu (an ordered category list — Uninteresting · Mechanical ·
   Routine · Substantive · Needs attention — over the one threshold
   remembered per review in `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
-  buttons; guide-cited and individually unhidden hunks stay visible at
+  buttons; individually unhidden hunks stay visible at
   every level, and the selector tooltip carries the live hidden count
   with a breakdown) (`packages/shared/src/scores.ts` hide levels,
   `j325-hide-level.spec.ts`, tour frame `hide-level-open-1440-light.png`).

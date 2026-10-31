@@ -882,8 +882,7 @@ export class Pipeline {
     // #123: the hunk pass needs only the diff, so it starts at ingest
     // instead of waiting for the reader. Small-model jobs run in their own
     // queue bucket, never behind the critics. The CITED-BY-GUIDE hint is
-    // absent this early (no guide yet); `unhideCitedHunks` repairs hides
-    // that the guide later contradicts.
+    // absent this early (no guide yet).
     await this.enqueueHunkPass(reviewId);
   }
 
@@ -1089,7 +1088,8 @@ export class Pipeline {
    * Store one hunk-pass result (#99), shared by `summarizeHunk` and the
    * hunk-pass stage (the two copied parse blocks). A missing summary stores
    * nothing, so the hunk shows the Summarize action again instead of
-   * garbage. Guide-cited and one-line hunks are never hidden.
+   * garbage. One-line hunks are never hidden; guide-cited hunks hide
+   * like any other (owner decision, #325).
    *
    * Issue #169: the score is stored alongside, resolved against the
    * deterministic rules (`resolveHunkScore`): an unusable value reads as
@@ -1100,7 +1100,7 @@ export class Pipeline {
     let hiddenReason = result.hiddenReason;
     const live = this.opts.reviews.getSnapshot(reviewId);
     const isOneLine = live ? this.isOneLineChange(live, contentHash) : false;
-    if (live && (this.isCitedByGuide(reviewId, contentHash) || isOneLine)) {
+    if (live && isOneLine) {
       hiddenReason = null;
     }
     const score = resolveHunkScore(result.score, { isOneLine });
@@ -1118,28 +1118,6 @@ export class Pipeline {
       if (fileHunk) {
         if (hiddenReason) fileHunk.hiddenReason = hiddenReason;
         else delete fileHunk.hiddenReason;
-      }
-    });
-  }
-
-  /**
-   * #123: a hunk hidden as uninteresting before the guide existed must not
-   * stay hidden once the guide cites it. Runs when the reader lands; hunks
-   * applied later check the live guide in `applyHunkSummary`, so either
-   * order is safe (both are single atomic mutates on live state).
-   */
-  private async unhideCitedHunks(reviewId: string): Promise<void> {
-    const snapshot = this.opts.reviews.getSnapshot(reviewId);
-    if (!snapshot) return;
-    const cited = snapshot.files
-      .flatMap((f) => f.hunks)
-      .filter((h) => h.hiddenReason && this.isCitedByGuide(reviewId, h.contentHash))
-      .map((h) => h.contentHash);
-    if (cited.length === 0) return;
-    const wanted = new Set(cited);
-    await this.opts.reviews.mutate(reviewId, (draft) => {
-      for (const h of draft.files.flatMap((f) => f.hunks)) {
-        if (wanted.has(h.contentHash)) delete h.hiddenReason;
       }
     });
   }
@@ -2181,8 +2159,6 @@ export class Pipeline {
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
     // #123: the hunk pass starts in startReview now (at ingest), not here.
-    // Hunks hidden before the guide existed are unhidden when cited.
-    await this.unhideCitedHunks(reviewId);
     // Issue #107: past the fan-out limit the ingest-time pass enqueues
     // nothing (no guide exists yet to cite), so fan out the guide-cited
     // hunks now that the reader landed; the rest stay on demand. Under the

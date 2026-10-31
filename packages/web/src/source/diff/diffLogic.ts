@@ -7,8 +7,8 @@
  * `prototype.html` (its code is a sketch — this is a port of behaviour and
  * class names, not code).
  */
-import type { Thread, Block, DiffFilter, HideLevel, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
-import { hunkMatchesFilter, hunkScoreRank, parseId, shouldHideAtLevel } from "@unvibe/shared";
+import type { DiffFilter, HideLevel, Hunk, HunkLine, HunkScoreLevel, ReviewFile } from "@unvibe/shared";
+import { hunkMatchesFilter, hunkScoreRank, shouldHideAtLevel } from "@unvibe/shared";
 
 // --- folder tree ---------------------------------------------------------
 
@@ -245,46 +245,6 @@ export function hunkOverlaps(h: Hunk, start: number, end: number): boolean {
   return start <= h.newEnd && end >= h.newStart;
 }
 
-// --- guide citations -----------------------------------------------------------
-
-function blockCitations(blocks: Block[], out: string[]): void {
-  for (const b of blocks) {
-    for (const c of b.citations ?? []) out.push(c.target);
-    if (b.type === "aside") blockCitations(b.inner, out);
-  }
-}
-
-/**
- * Content hashes of hunks the guide cites (PRD §4.13: never hidden).
- * Reads `diff:` targets from every block citation; `h:` targets map
- * directly. Ranges resolve against new-side line ranges.
- */
-export function citedHunkHashes(
-  files: ReviewFile[],
-  pages: Page[],
-  annotations: Thread[],
-): Set<string> {
-  const targets: string[] = [];
-  for (const p of pages) for (const c of p.cards ?? []) blockCitations(c.blocks ?? [], targets);
-  void annotations;
-  const byKey = new Map(files.map((f) => [f.fileKey, f]));
-  const out = new Set<string>();
-  for (const t of targets) {
-    const id = parseId(t);
-    if (!id) continue;
-    if (id.kind === "h") {
-      out.add(id.contentHash);
-    } else if (id.kind === "diff") {
-      const f = byKey.get(id.fileKey);
-      if (!f) continue;
-      for (const h of f.hunks) {
-        if (hunkOverlaps(h, id.start, id.end)) out.add(h.contentHash);
-      }
-    }
-  }
-  return out;
-}
-
 // --- hide decision ---------------------------------------------------------------
 
 export interface HideDecision {
@@ -294,18 +254,17 @@ export interface HideDecision {
   score?: HunkScoreLevel;
   /** User clicked "show" on this hunk's hidden row (transient, per session). */
   unhidden: boolean;
-  /** The guide cites this hunk. */
-  cited: boolean;
 }
 
 /**
  * A hunk hides when the hide level covers it (issue #325: a
  * `hiddenReason`, never on a one-line change, or a score below the
- * level's floor), the user hasn't revealed it, and the guide doesn't
- * cite it.
+ * level's floor), unless the user has revealed it. Guide citations
+ * do not exempt a hunk (owner decision, #325); clicking a citation
+ * reveals it through the diff's per-hunk unhide instead.
  */
 export function shouldHideHunk(hunk: Hunk, d: HideDecision): boolean {
-  return shouldHideAtLevel({ ...hunk, score: d.score }, d.level, { cited: d.cited, unhidden: d.unhidden });
+  return shouldHideAtLevel({ ...hunk, score: d.score }, d.level, { unhidden: d.unhidden });
 }
 
 /** Fallback one-line "why it's skippable" copy per hidden reason. */

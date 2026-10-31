@@ -497,7 +497,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
     }
   }, 60000);
 
-  it("a hunk cited by the guide is never hidden", async () => {
+  it("a one-line hunk is never hidden, cited or not", async () => {
     const agents = new FakeAgentRunner([
       {
         match: "Hunk pass",
@@ -530,6 +530,9 @@ describe("pipeline failure paths (scripted fakes)", () => {
       expect(ctx.jobs.get(job.id)?.state).toBe("done");
       const snap = ctx.reviews.getSnapshot(id)!;
       const hunk = snap.files[0].hunks[0];
+      // This demo hunk is a one-line change: never hidden. (The
+      // multi-line guide-cited case, hidden since #325 dropped the
+      // cited exemption, is covered in hunk-plotlines-169.test.ts.)
       expect(hunk.hiddenReason).toBeUndefined();
       expect(snap.hunkStates.find((s) => s.contentHash === "h111")?.summary).toBe("S");
     } finally {
