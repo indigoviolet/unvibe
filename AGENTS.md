@@ -53,6 +53,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
   - Part done, part left: split the issue into sub-issues, one per piece. Close the ones that are done and on `main`, leave the rest open under the parent.
   - Close the issue when its work is merged into `main`, never at "implemented on a branch". Close it yourself with a comment naming the merge commit and the branch: `Closes #N` only takes effect on push, and agents do not push. Remove the status labels when it closes.
 - Spikes, evaluations and experiments never go to `main`. They live on a pushed branch named `spike/<topic>` (harness, screenshots and write-up together) and are linked from their issue. Only work that is adopted gets merged.
+- Every spike or evaluation starts with a cheap pilot (one or two cases) that confirms the effect being measured actually occurs in the setup: for example, tool reads happen, or the session to fork exists. If it doesn't, stop and report that the setup can't answer the question, before the full run.
 - Never develop in the main checkout. It stays on `main` with a clean tree. Before the first edit, create a git worktree on a new branch (a Paseo worktree workspace, whose setup in `paseo.json` copies `.env` and installs) and do all edits, installs, builds and commits there. This holds for small changes too.
 - Commit in small logical commits on your branch; do not push, do not touch other worktrees.
 - Finished work never sits on a local branch waiting. Once it is verified, do one of two things:
