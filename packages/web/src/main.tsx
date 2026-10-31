@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { initTokenFromUrl } from "./api/client.js";
+import { STATIC_DEMO } from "./demo.js";
 import { initSentry } from "./sentry.js";
 // Self-hosted fonts (no external requests, PRD §16). Default theme is
 // stack B (issue #274): Literata variable (prose, enables the lighter
@@ -24,8 +25,10 @@ ensureThemeFonts(currentUiTheme());
 
 // Installable web app (PRD §14): cache the app shell + offline page.
 // Moved here from an inline <script> so the HTML shell can serve a strict
-// CSP without `unsafe-inline` for scripts.
-if ("serviceWorker" in navigator) {
+// CSP without `unsafe-inline` for scripts. The static demo (#334) skips it:
+// no absolute `/sw.js` scope on a static subpath, and the demo must make no
+// non-relative requests.
+if (!STATIC_DEMO && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   });

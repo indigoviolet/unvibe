@@ -54,6 +54,8 @@ import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
+import { STATIC_DEMO, resetStaticDemo } from "../demo.js";
+import { Button } from "../ui/index.js";
 
 export function ReviewBar({
   reviewId,
@@ -198,7 +200,7 @@ export function ReviewBar({
             {stackBadge}
           </>
         )}
-        {!isDocument ? (
+        {!isDocument && !STATIC_DEMO ? (
           <button
             className="ib bd"
             type="button"
@@ -249,6 +251,17 @@ export function ReviewBar({
         </button>
       </span>
       <span className="ra">
+        {STATIC_DEMO ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            title="Clear your demo comments and reload the demo"
+            onClick={() => resetStaticDemo()}
+          >
+            Reset demo
+          </Button>
+        ) : null}
         <CommentsMenu reviewId={reviewId} />
         <SubmitPanel reviewId={reviewId} primary />
         {showJobs ? (

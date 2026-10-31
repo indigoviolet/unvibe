@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { DataFormatStatusResponse } from "@unvibe/shared";
 import { DataFormatNotice } from "./data-format/DataFormatNotice.js";
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router";
+import { STATIC_DEMO } from "./demo.js";
 import { api } from "./api/client.js";
 import { syncUiThemeFromSettings } from "./theme/theme.js";
 import { RouteShellBoundary } from "./components/ErrorBoundary.js";
@@ -53,6 +54,25 @@ export function App() {
       <BrowserRouter>
         <DataFormatNotice status={format} />
       </BrowserRouter>
+    );
+  // Static demo (#334): hash routing works from any static subpath
+  // (`/demo`), and `/` opens the demo review straight away.
+  if (STATIC_DEMO)
+    return (
+      <HashRouter>
+        <RouteShellBoundary>
+          <Routes>
+            <Route path="/" element={<Navigate to="/review/demo" replace />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            {/* Splat: the guide keeps its page in the URL (`/review/:id/page/:pageId`). */}
+            {/* Static `debug` outranks the splat: the per-review debug page. */}
+            <Route path="/review/:id/debug" element={<DebugPageRoute />} />
+            <Route path="/review/:id/*" element={<ReviewRoute />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/doctor" element={<DoctorPage />} />
+          </Routes>
+        </RouteShellBoundary>
+      </HashRouter>
     );
   return (
     <BrowserRouter>

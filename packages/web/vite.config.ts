@@ -46,6 +46,9 @@ export default defineConfig(({ command, mode }) => ({
       },
     },
   },
+  // Static demo (#334, `VITE_DEMO=1`): relative base so the build runs
+  // from any static subpath (`/demo` on GitHub Pages).
+  base: process.env.VITE_DEMO === "1" ? "./" : "/",
   build: {
     outDir: "dist",
     emptyOutDir: true,

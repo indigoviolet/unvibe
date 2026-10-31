@@ -64,7 +64,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -77,6 +77,8 @@ import {
   mockSeedD2Block,
   mockUnavailableD2Block,
 } from "./d2diagrams.js";
+import { demoAnswer, demoCardBlocks, demoHunkSummary, isDemoPersistedThread } from "./demo.js";
+import { DEMO_COMMENTS_KEY, STATIC_DEMO } from "../demo.js";
 
 export const MOCK_MODE: boolean =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
@@ -333,6 +335,120 @@ function qualifyMockBlock(blockId: string): string {
   return `${found.ownerId}#${found.blockId}`;
 }
 
+/**
+ * Static demo (#334): the passage an Explain/Ask is about — the quote plus
+ * the host block's own text. The shared matcher runs on this, so the demo
+ * replays the recording for the recorded passage (and only then). Card,
+ * glossary and change-list context stay out on purpose: the service prompt
+ * carries them, but the demo answers the passage the user asked about, and
+ * anything without a recording gets the honest install message instead of
+ * an ambient-context match.
+ */
+function demoHostBlockText(
+  host:
+    | { kind: string; blockId?: string; paragraphId?: string; commentId?: string; fileKey?: string; contentHash?: string }
+    | undefined,
+  quote: string,
+): string {
+  if (!host) return quote;
+  if (host.kind === "block" && host.blockId) {
+    const block = demoFindBlock(host.blockId);
+    if (block) {
+      try {
+        return blockPlainText(block as never);
+      } catch {
+        return quote;
+      }
+    }
+    return quote;
+  }
+  if (host.kind === "description" && host.paragraphId) {
+    const text = demoDescriptionText(host.paragraphId);
+    if (text) return text;
+    return quote;
+  }
+  if (host.kind === "comment" && host.commentId) {
+    const thread = annotations.find((a) => a.id === host.commentId);
+    const reply = thread?.replies?.find((r) => (r as { kind?: string }).kind === "comment");
+    if (reply) {
+      try {
+        const text = (reply.blocks as never[]).map((b) => blockPlainText(b as never)).join("\n\n");
+        if (text.trim()) return text;
+      } catch {
+        // Fall through to the quote.
+      }
+    }
+    return quote;
+  }
+  if (host.kind === "hunk" && host.fileKey && host.contentHash) {
+    const thread = annotations.find(
+      (a) =>
+        (a.anchor.host as { kind?: string; fileKey?: string; contentHash?: string }).kind === "hunk" &&
+        (a.anchor.host as { fileKey?: string }).fileKey === host.fileKey &&
+        (a.anchor.host as { contentHash?: string }).contentHash === host.contentHash,
+    );
+    const first = thread?.replies?.[0];
+    if (first) {
+      try {
+        const text = (first.blocks as never[]).map((b) => blockPlainText(b as never)).join("\n\n");
+        if (text.trim()) return text;
+      } catch {
+        // Fall through to the quote.
+      }
+    }
+    return quote;
+  }
+  // Code and diff-line hosts: the snapshot offers only the quote (the
+  // service reveals the real lines from git, which the static demo has not).
+  return quote;
+}
+
+/** Plain text of one description paragraph (tags stripped). */
+function demoDescriptionText(paragraphId: string): string | null {
+  try {
+    const html = (description as { html?: string }).html ?? "";
+    const m = html.match(new RegExp(`id="${paragraphId}"[^>]*>([\\s\\S]*?)</(?:p|li|h\\d)>`, "i"));
+    if (!m) return null;
+    return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function demoFindBlock(blockId: string): import("@unvibe/shared").Block | null {
+  const hash = blockId.indexOf("#");
+  const short = hash >= 0 ? blockId.slice(hash + 1) : blockId;
+  const scan = (blocks: { id: string; type: string; inner?: { id: string }[] }[]): import("@unvibe/shared").Block | null => {
+    for (const b of blocks) {
+      if (b.id === blockId || b.id === short) return b as unknown as import("@unvibe/shared").Block;
+      if (b.type === "aside") {
+        for (const ib of b.inner ?? []) {
+          if (ib.id === blockId || ib.id === short) return ib as unknown as import("@unvibe/shared").Block;
+        }
+      }
+    }
+    return null;
+  };
+  for (const p of mockPages) {
+    for (const c of p.cards) {
+      const hit = scan(c.blocks as never[]);
+      if (hit) return hit;
+    }
+  }
+  for (const a of annotations) {
+    for (const t of a.replies ?? []) {
+      const hit = scan(t.blocks as never[]);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/** Matching input for one demo turn: quote + question + host passage. */
+function demoMatchText(quote: string, message: string | undefined, host: { kind: string; blockId?: string; paragraphId?: string; commentId?: string; fileKey?: string; contentHash?: string } | undefined): string {
+  return [quote, message, demoHostBlockText(host, quote)].filter((s): s is string => !!s && s.trim() !== "").join("\n\n");
+}
+
 function findMockBlock(blockId: string): { ownerId: string; blockId: string } | null {
   const hash = blockId.indexOf("#");
   const owner = hash >= 0 ? blockId.slice(0, hash) : null;
@@ -582,7 +698,47 @@ function seedAnnotations(): import("@unvibe/shared").Thread[] {
   for (const a of list) if (a.type === "thread") a.pinned = true;
   return list;
 }
-let annotations: import("@unvibe/shared").Thread[] = seedAnnotations();
+/**
+ * Static demo (#334): user-authored comment threads survive reloads in
+ * localStorage. Stored threads are comment-only (no working/job state —
+ * fills never persist) and merge onto the seeded fixture annotations.
+ */
+function loadDemoComments(): import("@unvibe/shared").Thread[] {
+  if (!STATIC_DEMO) return [];
+  try {
+    const raw = localStorage.getItem(DEMO_COMMENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as import("@unvibe/shared").Thread[]).filter(isDemoPersistedThread);
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoComments(): void {
+  if (!STATIC_DEMO) return;
+  try {
+    const kept = annotations.filter(isDemoPersistedThread).map((t) => {
+      const copy = JSON.parse(JSON.stringify(t)) as typeof t;
+      copy.working = null;
+      copy.error = null;
+      delete copy.jobId;
+      delete copy.reply;
+      for (const r of copy.replies ?? []) {
+        r.working = null;
+        r.error = null;
+        delete r.jobId;
+      }
+      return copy;
+    });
+    localStorage.setItem(DEMO_COMMENTS_KEY, JSON.stringify(kept));
+  } catch {
+    // Private mode: the session still works, it just won't persist.
+  }
+}
+
+let annotations: import("@unvibe/shared").Thread[] = [...seedAnnotations(), ...loadDemoComments()];
 let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
   JSON.stringify(MOCK_PAGES),
 ) as import("@unvibe/shared").Page[];
@@ -608,7 +764,8 @@ function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
     mockMultilineD2Block() as never,
   ];
 }
-seedMockD2Diagrams(mockPages);
+// The static demo (#334) shows the real fixture, not mock test scaffolding.
+if (!STATIC_DEMO) seedMockD2Diagrams(mockPages);
 let description = { ...MOCK_DESCRIPTION };
 function seedExistingComments(): import("@unvibe/shared").ExistingReviewComment[] {
   const made = (
@@ -1191,7 +1348,9 @@ function findHunkKey(hash: string): string | null {
 }
 
 /** Emit the annotations list through the WS-patch path (drafts survive). */
-function emitAnnotations(): void {  const baseRev = rev;
+function emitAnnotations(): void {
+  saveDemoComments();
+  const baseRev = rev;
   rev += 1;
   useReview.getState().applyEvent({
     type: "patch",
@@ -2611,7 +2770,7 @@ export const mockApi = {
     // Held while `unvibe.mock.turnFillHold` is set (issue #152), and
     // mirrored onto the promoted page card when the turn moved (issue
     // #152: Open as page mid-fill keeps filling the page).
-    const answerTurnLater = (tid: string, replyId: string, text: string, jobId: string): void => {
+    const answerTurnLater = (tid: string, replyId: string, text: string, jobId: string, kind: "explain" | "ask" = "ask", match?: string): void => {
       window.setTimeout(() => {
         void (async () => {
           await awaitTurnFillRelease();
@@ -2619,6 +2778,36 @@ export const mockApi = {
           const live = annotations.find((x) => x.id === tid);
           const turn = live && (live.type === "thread" || live.type === "link") ? (live.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (!live || !turn) return;
+          // Static demo (#334): answer from the replay recordings through
+          // the shared matcher (or the honest install message), streamed
+          // as a first half then the rest — like the app's own fills.
+          if (STATIC_DEMO) {
+            const { blocks } = demoAnswer(kind, match ?? (text || live.anchor.quotedText));
+            const half = blocks.length > 1 ? Math.ceil(blocks.length / 2) : blocks.length;
+            turn.blocks = blocks.slice(0, half) as never;
+            turn.revision += 1;
+            emitAnnotations();
+            await new Promise((r) => setTimeout(r, 350));
+            const live2 = annotations.find((x) => x.id === tid);
+            const turn2 =
+              live2 && (live2.type === "thread" || live2.type === "link")
+                ? (live2.replies ?? []).find((t) => t.id === replyId)
+                : undefined;
+            if (!live2 || !turn2) return;
+            turn2.blocks = blocks as never;
+            turn2.revision += 1;
+            turn2.working = null;
+            turn2.error = null;
+            turn2.jobId = undefined;
+            live2.working = null;
+            live2.error = null;
+            live2.jobId = undefined;
+            delete live2.reply;
+            mirrorMockPromotedTurn(tid, replyId);
+            dropSettledMockPromotedTurns(tid);
+            emitAnnotations();
+            return;
+          }
           turn.blocks = mockExplainBlocks(text || live.anchor.quotedText) as never;
           turn.revision += 1;
           turn.working = null;
@@ -2831,7 +3020,7 @@ export const mockApi = {
           emitAnnotations();
           const askJobId = `mock-ask-${target.id}-${replyId}`;
           trackMockJob(askJobId, "ask", { annotationId: target.id });
-          answerTurnLater(target.id, replyId, (a as { message: string }).message, askJobId);
+          answerTurnLater(target.id, replyId, (a as { message: string }).message, askJobId, "ask", demoMatchText(quote, (a as { message: string }).message, target.anchor.host as never));
           return { accepted: true, annotationId: target.id, replyId, jobId: askJobId };
         }
         // Issue #138: a non-hunk anchor starts a fresh thread.
@@ -2892,7 +3081,7 @@ export const mockApi = {
         } as unknown as import("@unvibe/shared").Thread);
         emitAnnotations();
         trackMockJob(askJobId, "ask", { annotationId: id });
-        answerTurnLater(id, replyId, a.message, askJobId);
+        answerTurnLater(id, replyId, a.message, askJobId, "ask", demoMatchText(a.quote, a.message, host as never));
         return { accepted: true, annotationId: id, replyId, jobId: askJobId };
       }
       const annotationId = (a as { annotationId: string }).annotationId;
@@ -2927,7 +3116,7 @@ export const mockApi = {
         emitAnnotations();
         const replyJobId = `mock-reply-${found.id}-${replyId}`;
         trackMockJob(replyJobId, "ask", { annotationId: found.id });
-        answerTurnLater(found.id, replyId, (a as { message: string }).message, replyJobId);
+        answerTurnLater(found.id, replyId, (a as { message: string }).message, replyJobId, "ask", demoMatchText(found.anchor.quotedText, (a as { message: string }).message, found.anchor.host as never));
         return { accepted: true, annotationId: found.id, replyId, jobId: replyJobId };
       }
       const turns = found.replies ?? [];
@@ -2960,7 +3149,7 @@ export const mockApi = {
         )?.cardId;
         if (cardId) retargetMockJob(retryJobId, cardId);
       }
-      answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId);
+      answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId, "ask", demoMatchText(found.anchor.quotedText, last.question ?? undefined, found.anchor.host as never));
       return { accepted: true, annotationId: found.id, replyId: last.id, jobId: retryJobId };
     }
     // M4 interaction (mock): explain, depth, examples, diagram, undo,
@@ -3010,7 +3199,7 @@ export const mockApi = {
         emitAnnotations();
         const explainJobId = `mock-explain-${target.id}-${replyId}`;
         trackMockJob(explainJobId, "ask", { annotationId: target.id });
-        answerTurnLater(target.id, replyId, a.quote, explainJobId);
+        answerTurnLater(target.id, replyId, a.quote, explainJobId, "explain", demoMatchText(a.quote, undefined, target.anchor.host as never));
         return { accepted: true, annotationId: target.id, replyId, jobId: explainJobId };
       }
       const anchor: import("@unvibe/shared").ActionAnchor = a.anchor;
@@ -3066,7 +3255,7 @@ export const mockApi = {
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
       trackMockJob(jobId, "ask", { annotationId: id });
-      answerTurnLater(id, replyId, a.quote, jobId);
+      answerTurnLater(id, replyId, a.quote, jobId, "explain", demoMatchText(a.quote, undefined, host as never));
       return { accepted: true, annotationId: id, replyId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
@@ -3084,7 +3273,9 @@ export const mockApi = {
         const target = mockPages.flatMap((p) => p.cards).find((c) => c.id === card.id);
         if (!target || !target.pending) return;
         delete target.pending;
-        target.blocks = [
+        // Static demo (#334): go-deeper cards fill from their recordings.
+        const demoBlocks = STATIC_DEMO ? demoCardBlocks("go-deeper", card.id.replace(/^g-/, ""), card.id) : null;
+        target.blocks = (demoBlocks ?? [
           {
             type: "paragraph",
             id: `${card.id}-b1`,
@@ -3092,7 +3283,7 @@ export const mockApi = {
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
           { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
-        ] as never;
+        ]) as never;
         target.revision += 1;
         emitPages();
       }, 700);
@@ -3136,7 +3327,7 @@ export const mockApi = {
           const live = annotations.find((x) => x.id === annId);
           const turn = live?.type === "thread" ? (live.replies ?? []).find((t) => t.id === replyId) : undefined;
           if (!live || !turn) return;
-          turn.blocks = mockExplainBlocks(message) as never;
+          turn.blocks = (STATIC_DEMO ? demoAnswer("ask", demoMatchText(message, message, ref.annotation.anchor.host as never)).blocks : mockExplainBlocks(message)) as never;
           turn.revision += 1;
           turn.working = null;
           live.working = null;
@@ -3183,7 +3374,7 @@ export const mockApi = {
         const found = annotations.find((x) => x.id === id);
         const turn = found?.type === "thread" ? (found.replies ?? []).find((t) => t.id === replyId) : undefined;
         if (!found || !turn) return;
-        turn.blocks = mockExplainBlocks(item.label) as never;
+        turn.blocks = (STATIC_DEMO ? demoAnswer("ask", demoMatchText(item.label, item.ask ?? item.label, { kind: "block", blockId: `${cardId}#${block.id}` })).blocks : mockExplainBlocks(item.label)) as never;
         turn.revision += 1;
         turn.working = null;
         found.working = null;
@@ -3213,6 +3404,25 @@ export const mockApi = {
         settleMockJob(jobId);
         const live = mockPages.find((p) => p.id === pageId);
         if (!live) return;
+        // Static demo (#334): concept pages fill from their recordings.
+        const demoBlocks = STATIC_DEMO ? demoCardBlocks("concept-page", slug, `concept-page: ${slug}`) : null;
+        if (demoBlocks) {
+          live.title = slug === "obs-fold" ? "Obsolete line folding (obs-fold)" : `${slug} (demo concept)`;
+          live.cards = [
+            {
+              id: `cc-${slug}`,
+              pageId,
+              title: null,
+              level: "standard",
+              collapsed: false,
+              revision: 2,
+              blocks: demoBlocks,
+              undoStack: [],
+            },
+          ] as never;
+          emitPages();
+          return;
+        }
         // The demo's obs-fold page is the one the specs read closely:
         // give it its recorded title, its OWS/RWS link and an example
         // aside, like the replayed recording (#216 on-demand fill).
@@ -3406,6 +3616,16 @@ export const mockApi = {
   summarizeHunk: async (_id: string, hash: string): Promise<{ jobId: string }> => {
     await wait(600);
     const key = findHunkKey(hash);
+    // Static demo (#334): summaries come from the hunk recordings, never
+    // the canned map.
+    if (STATIC_DEMO && key) {
+      const [fileKey, index] = key.split(/:(?=\d+$)/);
+      const summary = (index !== undefined ? demoHunkSummary(fileKey, Number(index)) : null) ?? "No recorded summary for this hunk.";
+      const prev = hunkStates.get(hash) ?? { contentHash: hash, folded: false, reviewed: false };
+      hunkStates.set(hash, { ...prev, summary });
+      emitHunkStates();
+      return { jobId: `mock-${hash}` };
+    }
     const summary =
       (key && HUNK_SUMMARIES[key]) || "Mock summary: this hunk normalizes folded header values.";
     const prev = hunkStates.get(hash) ?? { contentHash: hash, folded: false, reviewed: false };
@@ -3543,7 +3763,18 @@ export const mockApi = {
   deleteComment: async (_id: string, commentId: string) => {
     const idx = annotations.findIndex((a) => a.id === commentId);
     if (idx < 0) throw new Error("unknown comment");
-    annotations.splice(idx, 1);
+    const [removed] = annotations.splice(idx, 1);
+    // Owner decision (#161), mirrored from the service: the idle hunk
+    // summary is the collapsed state of the hunk thread, so deleting a
+    // hunk thread removes the hunk's stored summary too.
+    const host = removed.anchor.host as { kind?: string; contentHash?: string };
+    if (host.kind === "hunk" && host.contentHash) {
+      const state = hunkStates.get(host.contentHash);
+      if (state && "summary" in state) {
+        delete state.summary;
+        emitHunkStates();
+      }
+    }
     emitAnnotations();
     return { ok: true };
   },
@@ -3568,6 +3799,19 @@ export const mockApi = {
   },
 
   submit: async (_id: string, body?: { dryRun?: boolean }) => {
+    // Static demo (#334): nothing reaches GitHub. The panel shows the
+    // install pointer instead of a post button.
+    if (STATIC_DEMO) {
+      if (body?.dryRun) {
+        return {
+          posted: false,
+          commentCount: 0,
+          descriptionUpdated: false,
+          reason: "The static demo can't post to GitHub — install Unvibe to submit your own reviews.",
+        };
+      }
+      throw new Error("The static demo can't post to GitHub — install Unvibe to submit your own reviews.");
+    }
     const preview = buildMockPreview();
     if (body?.dryRun) {
       return { posted: false, commentCount: 0, descriptionUpdated: false, preview };
@@ -3625,6 +3869,10 @@ export const mockApi = {
   settings: async (): Promise<Settings> => getMockSettings(),
 
   saveSettings: async (body: Partial<Settings>): Promise<Settings> => {
+    // Static demo (#334): settings are read-only; the page says why.
+    if (STATIC_DEMO) {
+      throw new Error("Settings are read-only in the static demo — install Unvibe to change them.");
+    }
     // Mirror the service rule (issue #160): enabling full access needs the
     // acknowledgement in the same update; turning it off clears it.
     if (body.fullAccess === true && body.fullAccessAcknowledgedAt == null) {

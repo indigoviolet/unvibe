@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { DEMO_INSTALL_URL, STATIC_DEMO } from "../demo.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
@@ -98,6 +99,15 @@ export function SettingsPage(): React.JSX.Element {
       <ScreenTopBar crumbs={[{ label: "Settings" }]} showBadge hideSettings />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc settings-doc">
+          {STATIC_DEMO ? (
+            <p className="hint" role="note">
+              Settings are read-only in the static demo.{" "}
+              <a href={DEMO_INSTALL_URL} target="_blank" rel="noreferrer">
+                Install Unvibe
+              </a>{" "}
+              to change them.
+            </p>
+          ) : null}
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}

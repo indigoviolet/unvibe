@@ -1,5 +1,6 @@
 node_modules/
 packages/*/dist/
+packages/*/dist-demo/
 packages/*/node_modules/
 *.local
 .env
