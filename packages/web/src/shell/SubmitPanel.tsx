@@ -22,6 +22,7 @@ import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
+import { DEMO_SUBMIT_DISABLED_REASON, STATIC_DEMO } from "../demo.js";
 import { Badge, Button } from "../ui/index.js";
 
 const READ_ONLY_REASON = "Viewing an older version · read-only · back to current to submit";
@@ -189,6 +190,27 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
   // so the hook order never changes.
   const ingestStatus = snapshot?.ingest.status ?? "ready";
   if (ingestStatus !== "ready") return null;
+
+  // Static demo (#334): Submit is visibly disabled with the reason in
+  // its tooltip — nothing reaches GitHub. The mock's dryRun reason and
+  // submit refusal stay as backstops behind this button.
+  if (STATIC_DEMO) {
+    return (
+      <span id="submitSlot">
+        <Button
+          variant={primary ? "primary" : "secondary"}
+          size="sm"
+          type="button"
+          data-submit=""
+          aria-expanded={false}
+          disabled
+          title={DEMO_SUBMIT_DISABLED_REASON}
+        >
+          Submit review{count > 0 ? <Badge tone="warn">{count}</Badge> : null}
+        </Button>
+      </span>
+    );
+  }
 
   return (
     <span id="submitSlot">

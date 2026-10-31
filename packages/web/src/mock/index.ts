@@ -78,7 +78,7 @@ import {
   mockUnavailableD2Block,
 } from "./d2diagrams.js";
 import { demoAnswer, demoCardBlocks, demoHunkSummary, isDemoPersistedThread } from "./demo.js";
-import { DEMO_COMMENTS_KEY, STATIC_DEMO } from "../demo.js";
+import { DEMO_COMMENTS_KEY, DEMO_SUBMIT_DISABLED_REASON, STATIC_DEMO } from "../demo.js";
 
 export const MOCK_MODE: boolean =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK === "1";
@@ -855,7 +855,7 @@ function getMockSettings(): Settings {
 }
 
 function seedJobs(): Job[] {
-  return [
+  const jobs: Job[] = [
     {
       id: "job-reader-1",
       kind: "reader",
@@ -954,6 +954,18 @@ function seedJobs(): Job[] {
       promptSnapshot: "Critique the change: findings with evidence.",
     },
   ];
+  // Static demo (#334): nothing is live — the seeded pipeline shape shows
+  // as finished, so the job-count pill doesn't claim running work it never
+  // does. Debug still lists the recorded jobs. Fills during the session
+  // create and settle their own jobs, which the pill shows honestly.
+  if (STATIC_DEMO) {
+    return jobs.map((j) =>
+      j.state === "done"
+        ? j
+        : { ...j, state: "done" as const, error: undefined, nextRetryAt: undefined },
+    );
+  }
+  return jobs;
 }
 
 let mockJobs: Job[] = seedJobs();
@@ -3799,18 +3811,18 @@ export const mockApi = {
   },
 
   submit: async (_id: string, body?: { dryRun?: boolean }) => {
-    // Static demo (#334): nothing reaches GitHub. The panel shows the
-    // install pointer instead of a post button.
+    // Static demo (#334): nothing reaches GitHub. The button is visibly
+    // disabled with the reason in its tooltip; this stays as a backstop.
     if (STATIC_DEMO) {
       if (body?.dryRun) {
         return {
           posted: false,
           commentCount: 0,
           descriptionUpdated: false,
-          reason: "The static demo can't post to GitHub — install Unvibe to submit your own reviews.",
+          reason: DEMO_SUBMIT_DISABLED_REASON,
         };
       }
-      throw new Error("The static demo can't post to GitHub — install Unvibe to submit your own reviews.");
+      throw new Error(DEMO_SUBMIT_DISABLED_REASON);
     }
     const preview = buildMockPreview();
     if (body?.dryRun) {

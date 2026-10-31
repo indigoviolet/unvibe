@@ -232,13 +232,15 @@ test("hunk summaries come from the recordings", async ({ page }) => {
   expect(violations).toEqual([]);
 });
 
-test("submit is disabled with an install pointer", async ({ page }) => {
+test("submit is visibly disabled with the reason in its tooltip", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
-  await page.locator("#submitSlot [data-submit]").click();
-  const panel = page.locator("#submitSlot .submit");
-  await expect(panel).toContainText("can't post to GitHub", { timeout: 10_000 });
-  await expect(panel).toContainText("install Unvibe", { timeout: 10_000 });
+  const submit = page.locator("#submitSlot [data-submit]");
+  await expect(submit).toBeDisabled({ timeout: 10_000 });
+  await expect(submit).toHaveAttribute(
+    "title",
+    "The static demo can't post to GitHub — install Unvibe to submit your own reviews.",
+  );
   expect(violations).toEqual([]);
 });
 
@@ -246,6 +248,7 @@ test("settings are read-only in the demo", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await page.goto(`${origin()}/#/settings`);
   await expect(page.getByText("Settings are read-only in the static demo")).toBeVisible({ timeout: 30_000 });
+  await page.screenshot({ path: `${SHOTS}/demo-settings.png` });
   expect(violations).toEqual([]);
 });
 

@@ -17,6 +17,10 @@ export const STATIC_DEMO: boolean =
 /** Where the demo sends people who want to ask their own questions. */
 export const DEMO_INSTALL_URL = "https://unvibe.xyz/#install";
 
+/** Why every GitHub action is disabled in the static demo. */
+export const DEMO_SUBMIT_DISABLED_REASON =
+  "The static demo can't post to GitHub — install Unvibe to submit your own reviews.";
+
 /** localStorage key for the demo's user-authored comment threads. */
 export const DEMO_COMMENTS_KEY = "unvibe.demo.comments.v1";
 
