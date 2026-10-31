@@ -16,7 +16,7 @@ export function ReleaseNotesView({ notes }: { notes: ReleaseNotes }): React.JSX.
       <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
         {notes.items.map((item) => (
           <li key={item.number} style={{ marginBottom: 8 }}>
-            <a href={item.url} target="_blank" rel="noreferrer">
+            <a className="cx pg" href={item.url} target="_blank" rel="noreferrer">
               #{item.number}
             </a>{" "}
             <span>{item.summary}</span>
