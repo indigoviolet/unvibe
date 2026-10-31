@@ -40,6 +40,62 @@ async function firstLineGeometry(reply: Locator): Promise<{
   });
 }
 
+/** Reply chrome geometry (#336): avatar vs first-line centres, and the
+ * hover toolbar vs the first text line. The toolbar keeps its wrap space
+ * while hidden, so its rect is measurable before hover; hover only
+ * changes visibility. An agent reply is prose-first (text on the avatar's
+ * line, `inline`) or list-first (content below the avatar, the #331
+ * fallback): the first text line is a paragraph/heading or a list item. */
+async function replyChrome(reply: Locator): Promise<{
+  avCenter: number;
+  avBottom: number;
+  firstCenter: number;
+  firstTop: number;
+  inline: boolean;
+  ctl: { top: number; left: number; bottom: number; right: number } | null;
+  first: { top: number; left: number; bottom: number; right: number };
+} | null> {
+  return reply.evaluate((el) => {
+    const av = el.querySelector(":scope > .av");
+    const text =
+      el.querySelector(":scope > p") ??
+      el.querySelector(
+        ":scope > .exp-b .blk:first-child > p.prose, :scope > .exp-b .blk:first-child > h3.subhead",
+      ) ??
+      el.querySelector(":scope > .exp-b .blk:first-child li");
+    if (!(av instanceof HTMLElement) || !(text instanceof HTMLElement)) return null;
+    const a = av.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const rects = Array.from(range.getClientRects());
+    if (rects.length === 0) return null;
+    const first = rects[0]!;
+    const box = (r: DOMRect): { top: number; left: number; bottom: number; right: number } => ({
+      top: r.top,
+      left: r.left,
+      bottom: r.bottom,
+      right: r.right,
+    });
+    const ctl = el.querySelector(":scope > .ctl");
+    return {
+      avCenter: (a.top + a.bottom) / 2,
+      avBottom: a.bottom,
+      firstCenter: (first.top + first.bottom) / 2,
+      firstTop: first.top,
+      inline: text.tagName !== "LI",
+      ctl: ctl instanceof HTMLElement ? box(ctl.getBoundingClientRect()) : null,
+      first: box(first),
+    };
+  });
+}
+
+function intersects(
+  a: { top: number; left: number; bottom: number; right: number },
+  b: { top: number; left: number; bottom: number; right: number },
+): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 interface Reply {
@@ -368,5 +424,170 @@ test.describe("J273 flat threads", () => {
         ".spike-row-count",
       ),
     ).toHaveCount(0);
+  });
+
+  test("reply chrome: controls never overlap, chips never empty, avatars centred (#336)", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+
+    // One thread: a one-line human comment plus an agent answer.
+    await selectText(page, "#C-problem", "folded");
+    await page.locator('#selbar [data-act="note"]').click();
+    const composer = page.locator("#C-problem .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible({ timeout: 10_000 });
+    const humanText = "Fold handling looks right.";
+    await composer.locator("textarea").fill(humanText);
+    await composer.getByRole("button", { name: "Save" }).click();
+    const thread = page.locator("#C-problem section.ithread[data-thread]", {
+      hasText: humanText,
+    });
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+    const threadId = await thread.getAttribute("data-thread");
+    expect(threadId).toBeTruthy();
+    await thread.locator('textarea[aria-label="Reply"]').fill("Does a cookie header change this?");
+    await thread.getByRole("button", { name: "Reply", exact: true }).click();
+    await expect
+      .poll(async () => (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.length ?? 0, {
+        timeout: 90_000,
+      })
+      .toBe(2);
+    const human = thread.locator('[data-reply][data-kind="comment"]').first();
+    const answer = thread.locator("[data-ask-answer]").first();
+    await expect(answer.locator(".exp-b")).not.toBeEmpty({ timeout: 90_000 });
+
+    // Explain "Fold" inside the thread appends a prose-first explain reply
+    // in the same thread (flat): its recording is deterministic, so the
+    // agent-avatar-centring assertion always has an inline case.
+    await selectText(page, `#C-problem section.ithread[data-thread="${threadId}"]`, "Fold");
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect
+      .poll(async () => (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.length ?? 0, {
+        timeout: 90_000,
+      })
+      .toBe(3);
+    const expl = thread.locator('[data-reply][data-kind="explain"]').first();
+    await expect(expl.locator(".exp-b")).not.toBeEmpty({ timeout: 90_000 });
+
+    // No citation chip in the thread renders with empty text.
+    const chips = thread.locator(".lk[data-refs]");
+    const chipCount = await chips.count();
+    for (let i = 0; i < chipCount; i++) {
+      expect(((await chips.nth(i).textContent()) ?? "").trim()).not.toBe("");
+    }
+
+    // Avatars centre on their own first line's box (agent serif prose and
+    // human sans alike), and the hovered toolbar never covers the text. A
+    // list-first agent answer keeps the #331 fallback (content below the
+    // avatar) instead of a centred first line.
+    const checkChrome = async (label: string): Promise<void> => {
+      const humanGeo = await replyChrome(human);
+      expect(humanGeo, `${label}: human chrome measurable`).not.toBeNull();
+      expect(humanGeo!.inline, `${label}: human comment flows inline`).toBe(true);
+      expect(
+        Math.abs(humanGeo!.avCenter - humanGeo!.firstCenter),
+        `${label}: human avatar centred`,
+      ).toBeLessThanOrEqual(2);
+      const ansGeo = await replyChrome(answer);
+      expect(ansGeo, `${label}: agent chrome measurable`).not.toBeNull();
+      if (ansGeo!.inline) {
+        expect(
+          Math.abs(ansGeo!.avCenter - ansGeo!.firstCenter),
+          `${label}: agent avatar centred`,
+        ).toBeLessThanOrEqual(2);
+      } else {
+        expect(
+          ansGeo!.firstTop,
+          `${label}: list-first answer starts below the avatar`,
+        ).toBeGreaterThanOrEqual(ansGeo!.avBottom - 2);
+      }
+      await answer.hover();
+      await page.waitForTimeout(400);
+      const hovered = await replyChrome(answer);
+      expect(hovered?.ctl, `${label}: toolbar present`).not.toBeNull();
+      expect(
+        intersects(hovered!.ctl!, hovered!.first),
+        `${label}: toolbar clear of first line`,
+      ).toBe(false);
+      // The explain reply is prose-first by its recording: the agent
+      // avatar centres on its first line in every theme.
+      const explGeo = await replyChrome(expl);
+      expect(explGeo, `${label}: explain chrome measurable`).not.toBeNull();
+      expect(explGeo!.inline, `${label}: explain reply flows inline`).toBe(true);
+      expect(
+        Math.abs(explGeo!.avCenter - explGeo!.firstCenter),
+        `${label}: explain avatar centred`,
+      ).toBeLessThanOrEqual(2);
+    };
+
+    // Light: thread top in view, prose-first explain reply hovered so the
+    // toolbar shows.
+    await thread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
+    await page.waitForTimeout(300);
+    await checkChrome("light");
+    await expl.locator("p.prose").first().hover();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: "test-results/j336-thread-light.png" });
+
+    // Narrow: the toolbar still clears the first line.
+    await page.setViewportSize({ width: 390, height: 800 });
+    await thread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
+    await page.waitForTimeout(300);
+    await answer.hover();
+    await page.waitForTimeout(400);
+    const narrow = await replyChrome(answer);
+    expect(narrow?.ctl, "narrow: toolbar present").not.toBeNull();
+    expect(intersects(narrow!.ctl!, narrow!.first), "narrow: toolbar clear of first line").toBe(false);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Dark: same geometry through the dark palette.
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(400);
+    await thread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
+    await page.waitForTimeout(300);
+    await checkChrome("dark");
+    await expl.locator("p.prose").first().hover();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: "test-results/j336-thread-dark.png" });
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // Studio fonts: saved server-side so the boot path applies them.
+    await apiJson(svc, "PUT", "/api/settings", { uiTheme: "studio" });
+    await page.reload();
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => document.documentElement.getAttribute("data-ui-theme")),
+        { timeout: 15_000 },
+      )
+      .toBe("studio");
+    const studioThread = page.locator(`#C-problem section.ithread[data-thread="${threadId}"]`);
+    await expect(studioThread).toBeVisible({ timeout: 15_000 });
+    await studioThread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
+    await page.waitForTimeout(300);
+    await checkChrome("studio");
+    await expl.locator("p.prose").first().hover();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: "test-results/j336-thread-studio.png" });
+
+    // End of the reply: citations, if any, all labelled.
+    const studioAnswer = studioThread.locator("[data-ask-answer]").first();
+    const studioChips = studioThread.locator(".lk[data-refs]");
+    if ((await studioChips.count()) > 0) {
+      await studioChips
+        .first()
+        .evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
+      await page.waitForTimeout(300);
+    } else {
+      await studioAnswer.evaluate((el) => el.scrollIntoView({ block: "end", inline: "nearest" }));
+      await page.waitForTimeout(300);
+    }
+    await page.screenshot({ path: "test-results/j336-citations-studio.png" });
+    await apiJson(svc, "PUT", "/api/settings", { uiTheme: "default" });
   });
 });
