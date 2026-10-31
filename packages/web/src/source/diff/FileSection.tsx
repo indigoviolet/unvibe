@@ -717,9 +717,8 @@ function HunkBlock(
           <Icon name={folded ? "right" : "down"} />
         </button>
         {score ? (
-          <span className="score-ind" data-score={score} data-tip={HUNK_SCORE_LABELS[score]}>
+          <span className="score-ind" role="img" aria-label={HUNK_SCORE_LABELS[score]} data-score={score} data-tip={HUNK_SCORE_LABELS[score]}>
             <span className="score-dot" data-score={score} aria-hidden="true" />
-            <span className="score-txt">{HUNK_SCORE_LABELS[score]}</span>
           </span>
         ) : null}
         <span className="hl2" data-tip={h.header}>

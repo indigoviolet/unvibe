@@ -526,8 +526,7 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .score-dot[data-score="routine"] { background: var(--score-routine, #56b4e9); }
 .score-dot[data-score="substantive"] { background: var(--score-substantive, #e69f00); }
 .score-dot[data-score="needs-attention"] { background: var(--score-needs-attention, #d55e00); }
-.score-ind { display: inline-flex; align-items: center; gap: 5px; flex: none; }
-.score-txt { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.score-ind { display: inline-flex; align-items: center; flex: none; }
 .hlevel-lbl { white-space: nowrap; }
 .hlevel-nodot { width: 8px; flex: none; }
 .hlevel-menu [aria-selected="true"] { color: var(--ink); font-weight: 600; }
