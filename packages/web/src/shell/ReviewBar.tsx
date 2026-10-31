@@ -213,7 +213,7 @@ export function ReviewBar({
           </button>
         ) : null}
         <VersionSwitcher />
-        {ingestReady ? (
+        {ingestReady && !STATIC_DEMO ? (
           <Link
             className="ib bd"
             to={`/review/${encodeURIComponent(reviewId)}/debug`}

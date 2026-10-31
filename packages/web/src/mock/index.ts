@@ -127,6 +127,9 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function getRepos(): Repo[] {
+  // Static demo (#334): only the fixture repo under review — the filler
+  // `you/demo-lib` detected repo would read as fake on a public page.
+  if (STATIC_DEMO) return SEED_REPOS.filter((r) => !r.detected);
   const added = readJson<Repo[]>(ADDED_KEY, []);
   // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
   // repos added during the test still listed.

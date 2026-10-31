@@ -13,7 +13,7 @@
  * mounted behind `hidden`, so unsaved form edits survive a tab switch.
  */
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { DEMO_INSTALL_URL, STATIC_DEMO } from "../demo.js";
@@ -47,7 +47,16 @@ const SETTING_TABS = [
   { id: "data", label: "Data" },
 ] as const;
 
-const SETTING_TAB_IDS: readonly string[] = SETTING_TABS.map((t) => t.id);
+/**
+ * Static demo (#334): the Debug section (stats-export plumbing aimed at a
+ * local machine, not a website) is hidden — nav entry, panel and all.
+ */
+const VISIBLE_SETTING_TABS = STATIC_DEMO ? SETTING_TABS.filter((t) => t.id !== "debug") : SETTING_TABS;
+
+const SETTING_TAB_IDS: readonly string[] = VISIBLE_SETTING_TABS.map((t) => t.id);
+
+/** First visible section: where an explicit `?tab=debug` lands in the demo. */
+const FIRST_SETTING_TAB = VISIBLE_SETTING_TABS[0].id;
 
 export function SettingsPage(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -93,6 +102,16 @@ export function SettingsPage(): React.JSX.Element {
     return () => {};
   }, [location.search, location.hash, setTab, tab]);
 
+  // Hidden in the demo: an explicit `?tab=debug` redirects to the first
+  // section instead of falling back silently. After every hook, so the
+  // early return never skips one.
+  const rawTab = new URLSearchParams(location.search).get("tab");
+  if (STATIC_DEMO && rawTab === "debug") {
+    const next = new URLSearchParams(location.search);
+    next.set("tab", FIRST_SETTING_TAB);
+    return <Navigate replace to={{ pathname: location.pathname, search: `?${next.toString()}` }} />;
+  }
+
   const renderPanels = (loaded: Settings): React.JSX.Element => (
     <>
       <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
@@ -122,9 +141,11 @@ export function SettingsPage(): React.JSX.Element {
       <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
         <VersionSection settings={loaded} onSaved={setSettings} />
       </TabPanel>
-      <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
-        <DebugSection />
-      </TabPanel>
+      {STATIC_DEMO ? null : (
+        <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
+          <DebugSection />
+        </TabPanel>
+      )}
       <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
         <DataSection />
       </TabPanel>
@@ -158,13 +179,13 @@ export function SettingsPage(): React.JSX.Element {
             <div className="settings-layout">
               <Tabs
                 label="Settings sections"
-                tabs={SETTING_TABS}
+                tabs={VISIBLE_SETTING_TABS}
                 active={tab}
                 onSelect={setTab}
                 idPrefix="settings"
               />
               <div className="settings-panel">
-                <h2 className="settings-title">{SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
+                <h2 className="settings-title">{VISIBLE_SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
                 {STATIC_DEMO ? (
                   // One shared mechanism for the read-only demo: every
                   // mutating control in every section is a native

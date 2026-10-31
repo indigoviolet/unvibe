@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import type { ExtensionStatusResponse, ModelInfo, Repo, Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { STATIC_DEMO } from "../demo.js";
 import { Button, Card, Checkbox, Field, Select } from "../ui/index.js";
 import { modelLabel } from "./ModelsSection.js";
 
@@ -58,12 +59,21 @@ export function ExtensionSection({ settings, onSaved }: { settings: Settings; on
         <div>
           <p><b>Extension folder</b></p>
           <p className="hint">Ships inside the installed Unvibe package, so it matches the running version.</p>
-          <p><code data-testid="extension-path" style={{ wordBreak: "break-all" }}>{status?.extensionPath ?? "…"}</code></p>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <Button type="button" data-testid="extension-show-folder" onClick={() => { void api.extensionOpenFolder().catch((e: unknown) => setError(friendlyError(e))); }}>Show extension folder</Button>
-            <Button type="button" data-testid="extension-copy-path" onClick={() => void doCopy("path", status?.extensionPath ?? "")}>Copy path</Button>
-            {copied === "path" ? <span className="hint">Copied</span> : null}
-          </div>
+          {STATIC_DEMO ? (
+            // No local install on the static demo site: the folder path and
+            // its actions are meaningless here, while the install steps
+            // below still apply once Unvibe is installed.
+            <p className="hint">Install Unvibe to see the extension folder path here.</p>
+          ) : (
+            <>
+              <p><code data-testid="extension-path" style={{ wordBreak: "break-all" }}>{status?.extensionPath ?? "…"}</code></p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Button type="button" data-testid="extension-show-folder" onClick={() => { void api.extensionOpenFolder().catch((e: unknown) => setError(friendlyError(e))); }}>Show extension folder</Button>
+                <Button type="button" data-testid="extension-copy-path" onClick={() => void doCopy("path", status?.extensionPath ?? "")}>Copy path</Button>
+                {copied === "path" ? <span className="hint">Copied</span> : null}
+              </div>
+            </>
+          )}
         </div>
         <div data-testid="extension-steps">
           <p>Install in Chrome (no Web Store listing):</p>
