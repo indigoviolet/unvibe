@@ -1,15 +1,15 @@
 /**
- * Release notes shipped inside a build (#330): the running build's own
- * `release-notes.json` (beside its package.json) and a channel's newest
- * copy fetched from its git ref over `gh api` — only when the caller
- * asks (Settings → Version open / Notes expand), never polled.
+ * Release notes shipped inside a build (#330): a channel's newest copy
+ * fetched from its git ref over `gh api` — only when the caller asks
+ * (Settings → Version Notes expand), never polled. The same file ships
+ * in the build for the channel fetch and the GitHub Release body.
  */
 import fs from "node:fs";
 import path from "node:path";
 import type { ReleaseNotes, ReleaseNotesItem } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/gh.js";
-import { UNVIBE_REPO, findInstalledPackagePath } from "./channels.js";
+import { UNVIBE_REPO } from "./channels.js";
 import { fakeChannelsPath, updateDir } from "./state.js";
 
 function strOrNull(v: unknown): string | null {
@@ -56,19 +56,6 @@ export function parseReleaseNotes(raw: unknown): ReleaseNotes | null {
     generatedAt: typeof d.generatedAt === "string" ? d.generatedAt : "",
     items,
   };
-}
-
-/** The running build's notes: `release-notes.json` beside its package.json. */
-export function readCurrentReleaseNotes(scriptPath: string | undefined): ReleaseNotes | null {
-  if (!scriptPath) return null;
-  const pkgPath = findInstalledPackagePath(scriptPath);
-  if (!pkgPath) return null;
-  try {
-    const raw = fs.readFileSync(path.join(path.dirname(pkgPath), "release-notes.json"), "utf8");
-    return parseReleaseNotes(JSON.parse(raw));
-  } catch {
-    return null;
-  }
 }
 
 /** Decode a `gh api .../contents/release-notes.json?ref=` response. */

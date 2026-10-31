@@ -3511,9 +3511,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `scripts/release-notes-gen-lib.mjs`; previous build = always the
   newest `v*` tag reachable from HEAD, on every channel). Publisher entries (`--notes-file` on `preview:publish` /
   `release:tag`) merge over generated one-liners. Release notes live
-  only in Settings → Version: current + per-channel notes (fetched on
-  open only, plain text); `release-notes.mjs` renders the GitHub body
-  from the same file.
+  only in Settings → Version, per channel (fetched on Notes open only,
+  plain text; no current-build block); `release-notes.mjs` renders the
+  GitHub body from the same file.
   Evidence: `test/release-notes-gen.test.ts`, journey
   `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frame
   `version-notes-1440-light`.

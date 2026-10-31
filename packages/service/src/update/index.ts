@@ -32,7 +32,6 @@ export {
   fakeReleaseNotesPath,
   fetchRefReleaseNotes,
   parseReleaseNotes,
-  readCurrentReleaseNotes,
   readFakeReleaseNotes,
 } from "./release-notes.js";
 export {

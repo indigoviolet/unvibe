@@ -1,8 +1,8 @@
 /**
  * J330: release notes in the app on the real service (fake updater, no
- * network). Release notes live only on Settings → Version: the current
- * notes plus a channel's newest notes fetched on demand. Issue text
- * renders as plain text.
+ * network). Release notes live only on Settings → Version, per channel:
+ * a channel's newest notes fetched on demand (no current-build block).
+ * Issue text renders as plain text.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -86,7 +86,7 @@ test.describe("J330 release notes", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("Version shows current + channel notes", async ({ page }) => {
+  test("Version shows only per-channel notes (no current-build block)", async ({ page }) => {
     test.setTimeout(180_000);
     if (!svc) throw new Error("no service");
 
@@ -95,13 +95,9 @@ test.describe("J330 release notes", () => {
     await page.getByRole("tab", { name: "Version" }).click();
     await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
 
-    const current = page.getByTestId("current-release-notes");
-    await expect(current).toBeVisible({ timeout: 15_000 });
-    await expect(current).toContainText("Every build now ships its release notes.");
-    await expect(current).toContainText("What to try:");
-    await expect(current).toContainText("Full gates not yet run. <b>not bold</b>");
-    // Plain text only: the literal tag never becomes an element.
-    await expect(current.locator("b")).toHaveCount(0);
+    // No current-build notes block: notes live per channel only.
+    await expect(page.getByTestId("current-release-notes")).toHaveCount(0);
+    await expect(page.getByText("Current build notes")).toHaveCount(0);
 
     const toggle = page.getByTestId("version-picker-toggle");
     if (!(await toggle.isChecked())) await toggle.click();
@@ -110,5 +106,9 @@ test.describe("J330 release notes", () => {
     const channelNotes = page.locator('[data-testid="channel-release-notes"][data-ref="release"]');
     await expect(channelNotes).toBeVisible({ timeout: 15_000 });
     await expect(channelNotes).toContainText("Earlier release notes");
+    await expect(channelNotes).toContainText("What to try:");
+    await expect(channelNotes).toContainText("Full gates not yet run. <b>not bold</b>");
+    // Plain text only: the literal tag never becomes an element.
+    await expect(channelNotes.locator("b")).toHaveCount(0);
   });
 });

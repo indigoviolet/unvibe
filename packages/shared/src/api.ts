@@ -1873,11 +1873,6 @@ export interface ReleaseNotes {
   items: ReleaseNotesItem[];
 }
 
-/** `GET /api/release-notes` — the running build's own notes (null when none shipped). */
-export interface ReleaseNotesResponse {
-  notes: ReleaseNotes | null;
-}
-
 /** `GET /api/update/notes?ref=<channel>` — a channel's newest notes, fetched on view open only. */
 export interface UpdateNotesResponse {
   notes: ReleaseNotes | null;
