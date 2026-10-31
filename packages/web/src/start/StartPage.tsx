@@ -286,7 +286,7 @@ export function byUpdatedDesc(a: RepoChange, b: RepoChange): number {
   return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
 }
 
-function timeAgo(ts: number): string {
+export function timeAgo(ts: number): string {
   const d = Date.now() - ts;
   if (d < 60_000) return "just now";
   if (d < 3600_000) return `${Math.floor(d / 60_000)}m ago`;

@@ -65,5 +65,6 @@ test.describe("J322 extension settings + web reviews", () => {
     await expect(row).toContainText("A page");
     await expect(row).toContainText("github.com");
     await expect(row).toContainText("1 question");
+    await expect(row).toContainText(/just now|ago/);
   });
 });

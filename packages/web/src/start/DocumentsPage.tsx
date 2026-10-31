@@ -11,7 +11,7 @@ import { api, friendlyError } from "../api/client.js";
 import { Button } from "../ui/index.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { DocumentForm, SessionRow } from "./StartPage.js";
+import { DocumentForm, SessionRow, timeAgo } from "./StartPage.js";
 
 export function DocumentsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -118,10 +118,10 @@ export function DocumentsPage(): React.JSX.Element {
               {webs.map((s) => (
                 <div key={s.id} className="ci" data-testid="web-thread-row">
                   <button className="cj" type="button" onClick={() => navigate(`/review/${s.id}`)}>
-                    <span className="cw">{s.title || s.webHost || "Web page"}</span>
-                    <span className="cx2">
-                      {s.webHost ?? ""} · {s.webQuestions ?? 0} question{(s.webQuestions ?? 0) === 1 ? "" : "s"} · {new Date(s.lastOpened).toLocaleString()}
+                    <span className="cw">
+                      {s.webHost ?? ""} · {s.webQuestions ?? 0} question{(s.webQuestions ?? 0) === 1 ? "" : "s"} · {timeAgo(s.lastOpened)}
                     </span>
+                    <span className="cx2">{s.title || s.webHost || "Web page"}</span>
                   </button>
                 </div>
               ))}
