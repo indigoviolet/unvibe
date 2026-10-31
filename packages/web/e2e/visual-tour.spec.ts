@@ -1344,6 +1344,7 @@ test.describe("visual tour passes", () => {
               control: rect(el.querySelector(".ui-field-control")),
               input: rect(el.querySelector('input[type="number"]')),
               unit: rect(el.querySelector(".ui-unit")),
+              unitText: el.querySelector(".ui-unit")?.textContent ?? "",
               borderTop: getComputedStyle(el).borderTopWidth,
             };
           }),
@@ -1364,8 +1365,12 @@ test.describe("visual tour passes", () => {
         const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
         expect(widths.length, "limits: six number inputs").toBe(6);
         expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
+        const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
+        expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
+        const inputRights = rows.flatMap((r) => (r.input ? [r.input.right] : []));
+        expect(Math.max(...inputRights) - Math.min(...inputRights), "limits: number inputs share the same right edge").toBeLessThanOrEqual(1);
         for (const row of rows) {
-          if (!row.unit) continue;
+          if (!row.unit || !row.unitText) continue;
           expect(row.input, "limits: unit row has an input").not.toBeNull();
           expect(row.unit.x, "limits: unit beside the field").toBeGreaterThanOrEqual(row.input!.right);
           expect(Math.abs(row.unit.y - row.input!.y), "limits: unit aligned with the field").toBeLessThanOrEqual(12);

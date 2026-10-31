@@ -23,7 +23,7 @@
 .ui-field-control .ui-input[type="number"]{width:128px;flex:none}
 .ui-field-control .ui-select{width:360px;max-width:100%}
 .ui-numunit{display:inline-flex;align-items:center;gap:var(--space-2);min-width:0}
-.ui-unit{font-size:var(--text-sm);color:var(--text-secondary);white-space:nowrap}
+.ui-unit{font-size:var(--text-sm);color:var(--text-secondary);white-space:nowrap;flex:none;width:52px;text-align:left}
 @media (max-width:700px){.ui-field{grid-template-columns:minmax(0,1fr)}.ui-field-control{margin-top:var(--space-1);justify-self:stretch}.ui-field-control .ui-select{width:100%}}
 .ui-card{border:var(--border-width) solid var(--card-plain-border);border-radius:var(--radius-card);padding:var(--space-4);color:var(--text-primary)}
 .ui-card[data-variant="plain"]{background:var(--card-plain-bg);box-shadow:none}

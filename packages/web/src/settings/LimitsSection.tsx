@@ -132,7 +132,7 @@ export function LimitsSection({
                 value={value(f)}
                 onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
               />
-              {f.unit ? <span className="ui-unit">{f.unit}</span> : null}
+              <span className="ui-unit">{f.unit ?? ""}</span>
             </span>
           </UiField>
         ))}
