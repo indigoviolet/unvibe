@@ -870,6 +870,11 @@ test.describe("visual tour passes", () => {
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
+    // #327: the Decisions card's ### sub-headings render as real
+    // sub-headings (h3.subhead), not as serif body paragraphs.
+    for (const label of ["Invariants", "Known uncertainties", "Interfaces"]) {
+      await expect(page.locator("#C-decisions h3.subhead").filter({ hasText: label })).toBeVisible();
+    }
     await stepChecks(page, "guide-decisions");
     await shot(page, "guide-decisions", suffix, "Decisions and questions");
     await page.locator("#C-problem").scrollIntoViewIfNeeded();

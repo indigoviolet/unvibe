@@ -977,6 +977,9 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .blk { position: relative; }
 .prose, .lst li { font-family: var(--prose-font); font-size: var(--text-prose); line-height: var(--leading-prose); max-width: 68ch; }
 .prose { margin: 10px 0; }
+/* #327 card sub-headings (### and deeper): sans, semibold, ink, with
+   more air above than below so the section they open reads as theirs. */
+.subhead { font-family: var(--sans); font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--ink); margin: 18px 0 6px; max-width: 68ch; }
 /* #274 lighter dark-mode prose: the variable Literata carries 370 cleanly.
    Studio/Console prose fonts are static, so they stay at 400. */
 @media (prefers-color-scheme: dark) {

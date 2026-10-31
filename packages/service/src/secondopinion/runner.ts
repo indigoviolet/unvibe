@@ -479,6 +479,7 @@ function withValidation(
           items: b.items.map((it) => ({ ...it, citations: mark(it.citations) })),
           citations: mark(b.citations),
         };
+      case "heading":
       case "table":
       case "code":
       case "diagram":

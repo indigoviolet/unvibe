@@ -26,6 +26,8 @@ function blockText(block: Block): string {
   switch (block.type) {
     case "paragraph":
       return [block.text.standard, block.text.simple ?? "", block.text.deep ?? ""].join("\n");
+    case "heading":
+      return block.html;
     case "list":
       return block.items.map((i) => i.html).join("\n");
     case "table":

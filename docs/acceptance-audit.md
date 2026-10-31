@@ -3647,3 +3647,21 @@ hunk coverage) is reported for a separate issue, not fixed here.
   redirects) and the extension Playwright journey (cross-site link
   from the fixture page, confirm click, straight redirect once the
   review exists).
+
+## Addendum: #327 (branch `fix/327-guide-subheadings`)
+
+- **Guide sub-headings (§4.4):** `###` headings (and deeper, rendered the
+  same) inside a card are now a real `heading` block in the shared content
+  model instead of plain paragraphs; `##` card splitting and
+  `### Follow-ups` are unchanged. `BlockView` renders them as
+  `h3.subhead` (15px, semibold, sans, `--ink`, 18px above / 6px below),
+  and `renderMarkdown` round-trips them as `###`. Additive block kind
+  only: stored guides keep their existing blocks, so `DATA_FORMAT` stays 1.
+  Evidence: shared `test/content-parse.test.ts` "parseBlocks sub-headings"
+  (levels, inline/citations, round-trip, Follow-ups and `##`/`#`
+  unchanged), web `BlockView.heading.test.tsx`, targeted service tests
+  (`pipeline` snapshot equivalence, `validate`, `snapshot`,
+  `second-opinion`), and the visual-tour 1440-light pass asserting the
+  Decisions card's `Invariants` / `Known uncertainties` / `Interfaces`
+  sub-headings, frame `packages/web/visual-tour/guide-decisions-1440-light.png`
+  (git-ignored), inspected. Full gates not yet run.

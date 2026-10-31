@@ -14,6 +14,8 @@ function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
       return block.text.standard;
+    case "heading":
+      return block.html.replace(/<[^>]+>/g, " ");
     case "list":
       return block.items.map((it) => it.html.replace(/<[^>]+>/g, " ")).join("\n");
     case "table":
