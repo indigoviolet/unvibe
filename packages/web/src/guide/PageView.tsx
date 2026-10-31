@@ -121,7 +121,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     const active = snapshot?.diffFilter?.plotline === plotId;
     const body = {
       plotline: active ? null : plotId,
-      score: snapshot?.diffFilter?.score ?? null,
     };
     api
       .updateDiffFilter(reviewId, body)

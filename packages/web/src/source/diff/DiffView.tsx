@@ -17,8 +17,19 @@
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { DiffFilter, Hunk, HunkScoreLevel, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
-import { DEFAULT_REVIEW_VIEW_PREFS, HUNK_SCORE_LABELS, hunkMatchesFilter, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import type { DiffFilter, HideLevel, Hunk, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import {
+  DEFAULT_HIDE_LEVEL,
+  DEFAULT_REVIEW_VIEW_PREFS,
+  formatHideLevelStats,
+  HIDE_LEVELS,
+  HIDE_LEVEL_LABELS,
+  HIDE_LEVEL_SCORES,
+  hideLevelStats,
+  hunkMatchesFilter,
+  HUNK_PASS_FANOUT_LIMIT,
+  normalizeHideLevel,
+} from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
@@ -68,7 +79,6 @@ const CATS = [
 
 interface DiffPrefs {
   view: DiffViewMode;
-  hideUninteresting: boolean;
   hideReviewed: boolean;
   cats: string[];
   filesOpen: boolean;
@@ -76,7 +86,6 @@ interface DiffPrefs {
 
 const DEFAULT_PREFS: DiffPrefs = {
   view: "unified",
-  hideUninteresting: true,
   hideReviewed: false,
   cats: CATS.map((c) => c.k),
   filesOpen: false,
@@ -89,7 +98,6 @@ function loadPrefs(): DiffPrefs {
     const p = JSON.parse(raw) as Partial<DiffPrefs>;
     return {
       view: p.view === "split" ? "split" : "unified",
-      hideUninteresting: p.hideUninteresting ?? true,
       hideReviewed: p.hideReviewed ?? false,
       cats: Array.isArray(p.cats) && p.cats.length > 0 ? p.cats : [...DEFAULT_PREFS.cats],
       filesOpen: p.filesOpen ?? false,
@@ -333,15 +341,43 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [snapshot],
   );
 
+  // Issue #325: the hide level is remembered per review in viewPrefs;
+  // absent (older stored data) reads as the default.
+  const hideLevel: HideLevel =
+    normalizeHideLevel(snapshot?.viewPrefs.hideLevel) ?? DEFAULT_HIDE_LEVEL;
+  const setHideLevel = useCallback(
+    (level: HideLevel) => {
+      api.updateView(reviewId, { hideLevel: level }).catch(() => {
+        toast("Couldn't save the hide level");
+      });
+    },
+    [reviewId],
+  );
   const isHidden = useCallback(
     (h: Hunk) =>
       shouldHideHunk(h, {
-        hideUninteresting: prefs.hideUninteresting,
+        level: hideLevel,
+        score: states.get(h.contentHash)?.score,
         unhidden: !!unhidden[h.contentHash],
         cited: cited.has(h.contentHash),
       }),
-    [prefs.hideUninteresting, unhidden, cited],
+    [hideLevel, states, unhidden, cited],
   );
+  const hideStats = useMemo(() => {
+    const all = (snapshot?.files ?? []).flatMap((f) =>
+      f.hunks.map((h) => ({
+        ...h,
+        score: states.get(h.contentHash)?.score,
+        cited: cited.has(h.contentHash),
+        unhidden: !!unhidden[h.contentHash],
+      })),
+    );
+    return {
+      current: hideLevelStats(all, hideLevel),
+      byLevel: new Map(HIDE_LEVELS.map((l) => [l, hideLevelStats(all, l)])),
+    };
+  }, [snapshot, states, cited, unhidden, hideLevel]);
+  const hideTip = formatHideLevelStats(hideStats.current);
 
   const cats = useMemo(() => new Set(prefs.cats), [prefs.cats]);
   const hunkStateOf = useCallback(
@@ -351,7 +387,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     },
     [states],
   );
-  const plotActive = plotFilter.plotline !== undefined || plotFilter.score !== undefined;
+  const plotActive = plotFilter.plotline !== undefined;
   const visible = useMemo(
     () =>
       snapshot
@@ -421,7 +457,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       if (readOnly) return;
       const body = {
         ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
-        ...(next.score !== undefined ? { score: next.score } : { score: null }),
       };
       api.updateDiffFilter(reviewId, body).catch(() => {
         toast("Couldn't save the filter");
@@ -430,18 +465,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [reviewId, readOnly],
   );
 
-  // Owner direction (#169): dots and chips are the selectors — clicking
-  // one toggles that dimension of the stored filter; there are no radio
-  // groups in the filter menu any more.
-  const toggleScore = useCallback(
-    (level: HunkScoreLevel) => {
-      const next: DiffFilter = { ...plotFilter };
-      if (next.score === level) delete next.score;
-      else next.score = level;
-      setPlotFilterAndPersist(next);
-    },
-    [plotFilter, setPlotFilterAndPersist],
-  );
+  // Issue #169: the header plotline chip is the selector — clicking it
+  // toggles the stored plotline filter.
   const togglePlotline = useCallback(
     (id: string) => {
       const next: DiffFilter = { ...plotFilter };
@@ -488,9 +513,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         const seen = file.hunks.some(
           (h) =>
             hunkOverlaps(h, target.start as number, end) &&
-            hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, activeFilter),
+            hunkMatchesFilter(st.get(h.contentHash)?.plotline, activeFilter),
         );
-        if (!seen && (activeFilter.plotline !== undefined || activeFilter.score !== undefined)) {
+        if (!seen && activeFilter.plotline !== undefined) {
           setPlotFilterAndPersist({});
         }
       }
@@ -636,14 +661,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       f.hunks.forEach((h) => {
         if (
           shouldHideHunk(h, {
-            hideUninteresting: prefs.hideUninteresting,
+            level: hideLevel,
+            score: st.get(h.contentHash)?.score,
             unhidden: !!unhidden[h.contentHash],
             cited: cited.has(h.contentHash),
           })
         ) {
           return;
         }
-        if (!hunkMatchesFilter(st.get(h.contentHash)?.score, st.get(h.contentHash)?.plotline, plotFilter)) {
+        if (!hunkMatchesFilter(st.get(h.contentHash)?.plotline, plotFilter)) {
           return;
         }
         targets.push({ file: f, hunk: h });
@@ -673,7 +699,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
       );
     }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, cited, actions, plotActive, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -742,19 +768,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   return (
     <div>
       <div className="dtool">
-        {plotFilter.score !== undefined ? (
-          <span className="fchip" data-filterchip="score">
-            Score: {HUNK_SCORE_LABELS[plotFilter.score].toLowerCase()} or higher · {hiddenHunks} hidden
-            <button
-              type="button"
-              aria-label="Clear score filter"
-              data-tip="Clear filter"
-              onClick={() => toggleScore(plotFilter.score as HunkScoreLevel)}
-            >
-              ×
-            </button>
-          </span>
-        ) : null}
         {plotFilter.plotline !== undefined ? (
           <span className="fchip" data-filterchip="plotline">
             Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden
@@ -827,21 +840,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             <Icon name="split" />
           </button>
         </span>
-        <button
-          className="x"
-          type="button"
-          aria-pressed={prefs.hideUninteresting}
-          data-tip="Hide uninteresting"
-          aria-label="Hide uninteresting"
-          onClick={() =>
-            setPrefs((p) => {
-              if (!p.hideUninteresting) setUnhidden({});
-              return { ...p, hideUninteresting: !p.hideUninteresting };
-            })
-          }
-        >
-          <Icon name="eyeOff" />
-        </button>
+        <HideLevelSelector level={hideLevel} tip={hideTip} byLevel={hideStats.byLevel} onSelect={setHideLevel} />
         <button
           className="x"
           type="button"
@@ -992,7 +991,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               onFollowUp={onFollowUp ?? (() => {})}
               plotFilter={plotActive ? plotFilter : undefined}
               plotlineNames={plotlineNames}
-              onSelectScore={toggleScore}
               onSelectPlotline={togglePlotline}
               isHidden={isHidden}
               actions={actions}
@@ -1017,6 +1015,149 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Issue #325: the hide-level selector. One control for "how much do I
+ * see": it replaces the Hide-uninteresting toggle and the per-hunk
+ * score filter buttons. Its tooltip carries the live hidden count
+ * with a breakdown; options carry the score colours they map to.
+ */
+function HideLevelSelector({
+  level,
+  tip,
+  byLevel,
+  onSelect,
+}: {
+  level: HideLevel;
+  tip: string;
+  byLevel: ReadonlyMap<HideLevel, { hidden: number }>;
+  onSelect: (level: HideLevel) => void;
+}): ReactNode {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ctlRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (): void => {
+      const btn = btnRef.current;
+      const menu = menuRef.current;
+      if (!btn || !menu) return;
+      const br = btn.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      const left = Math.max(8, Math.min(br.right - w, window.innerWidth - w - 8));
+      const top = br.bottom + h + 8 <= window.innerHeight ? br.bottom + 4 : Math.max(8, br.top - h - 4);
+      setPos((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [open ]);
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent): void => {
+      const n = e.target as Node;
+      if (!ctlRef.current?.contains(n) && !menuRef.current?.contains(n)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open ]);
+  useEffect(() => {
+    if (open && pos) {
+      const at = HIDE_LEVELS.indexOf(level);
+      (itemRefs.current[at] ?? itemRefs.current[0])?.focus();
+    }
+  }, [open, pos, level]);
+  const move = (dir: 1 | -1): void => {
+    const el = document.activeElement as HTMLElement | null;
+    const at = itemRefs.current.findIndex((b) => b === el);
+    const n = HIDE_LEVELS.length;
+    const next = at < 0 ? (dir === 1 ? 0 : n - 1) : (at + dir + n) % n;
+    itemRefs.current[next]?.focus();
+  };
+  const choose = (next: HideLevel): void => {
+    setOpen(false);
+    onSelect(next);
+    btnRef.current?.focus();
+  };
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      className="fmenu portal hlevel-menu"
+      role="listbox"
+      aria-label="Hide level"
+      style={pos ? { position: "fixed", top: pos.top, left: pos.left } : { position: "fixed", visibility: "hidden" }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+        else if (e.key === "Home") { e.preventDefault(); itemRefs.current[0]?.focus(); }
+        else if (e.key === "End") { e.preventDefault(); itemRefs.current[HIDE_LEVELS.length - 1]?.focus(); }
+      }}
+    >
+      {HIDE_LEVELS.map((l, i) => {
+        const score = HIDE_LEVEL_SCORES[l];
+        const hidden = byLevel.get(l)?.hidden ?? 0;
+        return (
+          <button
+            key={l}
+            ref={(el) => { itemRefs.current[i] = el; }}
+            type="button"
+            role="option"
+            aria-selected={l === level}
+            data-hidelevel={l}
+            onClick={() => choose(l)}
+          >
+            <span className="tick" aria-hidden="true">{l === level ? "✓" : ""}</span>
+            {score ? <span className="score-dot" data-score={score} aria-hidden="true" /> : <span className="hlevel-nodot" aria-hidden="true" />}
+            <span className="lbl">{HIDE_LEVEL_LABELS[l]}</span>
+            <span className="cnt">{hidden} hidden</span>
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+  return (
+    <span className="fctl" ref={ctlRef}>
+      <Button
+        ref={btnRef}
+        variant="secondary"
+        size="sm"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Hide level: ${HIDE_LEVEL_LABELS[level]}. ${tip}`}
+        data-tip={tip}
+        data-hidelevel-current={level}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); }
+        }}
+      >
+        <Icon name="eyeOff" />
+        <span className="hlevel-lbl">{HIDE_LEVEL_LABELS[level]}</span>
+        <Icon name="down" />
+      </Button>
+      {menu ? createPortal(menu, document.body) : null}
+    </span>
   );
 }
 

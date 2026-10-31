@@ -522,18 +522,20 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    level as a tooltip or label (header, Files list, legend, filter rows),
    and all four levels read in both themes. */
 .score-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
-.score-dot[data-score="mechanical"] { background: var(--score-mechanical); }
-.score-dot[data-score="routine"] { background: var(--score-routine); }
-.score-dot[data-score="substantive"] { background: var(--score-substantive); }
-.score-dot[data-score="needs-attention"] { background: var(--score-needs-attention); }
+.score-dot[data-score="mechanical"] { background: var(--score-mechanical, #999); }
+.score-dot[data-score="routine"] { background: var(--score-routine, #56b4e9); }
+.score-dot[data-score="substantive"] { background: var(--score-substantive, #e69f00); }
+.score-dot[data-score="needs-attention"] { background: var(--score-needs-attention, #d55e00); }
+.score-ind { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.score-txt { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.hlevel-lbl { white-space: nowrap; }
+.hlevel-nodot { width: 8px; flex: none; }
+.hlevel-menu [aria-selected="true"] { color: var(--ink); font-weight: 600; }
 /* Plotline tag on the hunk header: a neutral chip, reserving colour for
    the score dot. */
 .ptag { font-size: 10.5px; color: var(--muted); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; flex: none; }
-/* Dots and chips are the score/plotline selectors (owner direction,
-   #169): real buttons; the selected one is outlined and filled. */
-.score-pick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid transparent; background: none; border-radius: 50%; padding: 0; flex: none; cursor: pointer; }
-.score-pick:hover { border-color: var(--line); background: var(--sunk); }
-.score-pick.sel { border-color: var(--ink); background: var(--sunk); box-shadow: 0 0 0 1px var(--ink); }
+/* The plotline chip is a selector (#169): a real button; the selected
+   one is outlined and filled. Score dots are indicators only (#325). */
 .ptag-pick { cursor: pointer; background: none; font: inherit; font-size: 10.5px; }
 .ptag-pick:hover { background: var(--sunk); }
 .ptag-pick.sel { color: var(--ink); border-color: var(--ink); background: var(--sunk); font-weight: 600; }
