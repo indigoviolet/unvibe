@@ -39,7 +39,7 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -1170,7 +1170,8 @@ test.describe("visual tour passes", () => {
     await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
     // The added changelog file hides under Hide-uninteresting: reveal it
     // (later steps assert no hidden counts, so this is safe here).
-    await page.getByRole("button", { name: "Hide uninteresting" }).click();
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidelevel="all"]').click();
     await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
     await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
     await stepChecks(page, "diff-gutter-added");
@@ -1711,6 +1712,40 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
       await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
     });
   }
+});
+
+// Hide-level selector (#325): one frame, 1440 light, the selector open
+// with its options and score swatches.
+test.describe("visual tour hide-level selector (#325)", () => {
+  let data325 = "";
+  let svc325: RunningService | null = null;
+  let review325 = "";
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    data325 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-325-data-"));
+    review325 = createSeededDemoReview(data325, "tour-325-seed");
+    svc325 = await startService(data325, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc325?.stop().catch(() => {});
+    svc325 = null;
+    rmSync(data325, { recursive: true, force: true });
+  });
+  test("hide-level selector open (1440-light)", async ({ page }) => {
+    if (!svc325) throw new Error("hide-level service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc325.origin}/review/${review325}?token=${svc325.token}`);
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await expect(page.getByRole("listbox", { name: "Hide level" })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Needs attention/ })).toBeVisible();
+    // The open menu is legitimately topmost over the pinned headers,
+    // so this frame runs the layout check only, not the pinned checks.
+    await checkLayout(page, "hide-level-open");
+    await shot(page, "hide-level-open", "1440-light", "Needs attention");
+  });
 });
 
 

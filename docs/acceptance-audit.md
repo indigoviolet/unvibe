@@ -963,7 +963,15 @@ needed (that deviation is closed, not added).
   cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; cited never
-  hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
+  hidden) — met, and since #325 it is the default level of the diff
+  toolbar's hide-level selector (All · Hide uninteresting · ≥ routine ·
+  ≥ substantive · Needs attention, remembered per review in
+  `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
+  buttons; guide-cited and individually unhidden hunks stay visible at
+  every level, and the selector tooltip carries the live hidden count
+  with a breakdown) (`packages/shared/src/scores.ts` hide levels,
+  `j325-hide-level.spec.ts`, tour frame `hide-level-open-1440-light.png`).
+  The original toggle behaviour — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
   live runs: “hide violations: none”). Issue #283: the row is one
   flowing line (label, then the summary at full width — inline or on a
