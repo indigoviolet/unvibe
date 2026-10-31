@@ -187,6 +187,21 @@ export function buildUnvibeField({
 }
 
 /**
+ * Args for `scripts/release.mjs` from a publish (#330): the publisher's
+ * optional human notes file rides along so the build ships
+ * `release-notes.json` with those entries merged in.
+ */
+export function buildReleaseArgs({ version, branch, sourceBranch, sourceCommit, baseBranch, baseCommit, notesFile }) {
+  const out = ["--version", version, "--branch", branch];
+  if (sourceBranch) out.push("--source-branch", sourceBranch);
+  if (sourceCommit) out.push("--source-commit", sourceCommit);
+  if (baseBranch) out.push("--base-branch", baseBranch);
+  if (baseCommit) out.push("--base-commit", baseCommit);
+  if (notesFile) out.push("--notes-file", notesFile);
+  return out;
+}
+
+/**
  * Prune selection for `preview:publish --prune` (issue #41): the
  * `preview/*` refs whose source branch is merged into the base or no
  * longer exists locally.

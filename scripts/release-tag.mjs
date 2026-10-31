@@ -11,16 +11,34 @@
 // release shape (candidates go out as `preview/main-rc` via
 // `mise run preview:publish -- --push`).
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2).filter((a) => a !== "--");
-const raw = args.find((a) => !a.startsWith("-"));
-const skipCi = args.includes("--skip-ci-check");
+let notesFileArg = null;
+const positional = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--notes-file") {
+    if (!args[i + 1]) {
+      console.error("release-tag: --notes-file needs a file path");
+      process.exit(1);
+    }
+    notesFileArg = args[i + 1];
+    i++;
+  } else {
+    positional.push(args[i]);
+  }
+}
+const raw = positional.find((a) => !a.startsWith("-"));
+const skipCi = positional.includes("--skip-ci-check");
 if (!raw) {
-  console.error("usage: mise run release:tag -- <version> [--skip-ci-check]\n  e.g. mise run release:tag -- 0.0.1");
+  console.error("usage: mise run release:tag -- <version> [--skip-ci-check] [--notes-file <file>]\n  e.g. mise run release:tag -- 0.0.1");
+  process.exit(1);
+}
+if (notesFileArg && !existsSync(path.resolve(notesFileArg))) {
+  console.error(`release-tag: notes file not found: ${notesFileArg}`);
   process.exit(1);
 }
 const version = raw.startsWith("v") ? raw.slice(1) : raw;
@@ -117,8 +135,15 @@ bumpConst("packages/service/src/mcp/registry.ts", "MCP_SERVICE_VERSION");
 // Sync package-lock.json versions without a full install.
 sh("npm", ["install", "--package-lock-only", "--ignore-scripts"]);
 
+// #330: publisher notes ride the tag as release-notes-input.json so the
+// release workflow's `mise run release` merges them into the build.
+if (notesFileArg) {
+  copyFileSync(path.resolve(notesFileArg), path.join(ROOT, "release-notes-input.json"));
+  console.log(`release-tag: release-notes-input.json <- ${notesFileArg}`);
+}
+
 // 6. Commit the bump + tag.
-sh("git", ["add", "package.json", "packages/service/package.json", "packages/shared/package.json", "packages/web/package.json", "package-lock.json", "packages/service/src/server.ts", "packages/service/src/mcp/registry.ts"]);
+sh("git", ["add", "package.json", "packages/service/package.json", "packages/shared/package.json", "packages/web/package.json", "package-lock.json", "packages/service/src/server.ts", "packages/service/src/mcp/registry.ts", ...(notesFileArg ? ["release-notes-input.json"] : [])]);
 const staged = sh("git", ["status", "--porcelain"]);
 if (!staged) {
   console.log("release-tag: version already current, no bump commit needed");

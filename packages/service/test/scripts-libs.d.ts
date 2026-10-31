@@ -45,6 +45,15 @@ declare module "*preview-lib.mjs" {
     baseCommit?: string | null;
     dataFormat?: number | null;
   }): UnvibeField;
+  export function buildReleaseArgs(input: {
+    version: string;
+    branch: string;
+    sourceBranch?: string | null;
+    sourceCommit?: string | null;
+    baseBranch?: string | null;
+    baseCommit?: string | null;
+    notesFile?: string | null;
+  }): string[];
   export function selectPruneRefs(
     entries: { ref: string; sourceBranch?: string | null }[],
     mergedBranches: string[],
@@ -56,6 +65,23 @@ declare module "*preview-lib.mjs" {
 declare module "*release-notes-lib.mjs" {
   export function parseDataFormat(source: string | null | undefined): number | null;
   export function dataResetSection(prevFormat: number | null, nextFormat: number | null, version: string): string | null;
+}
+
+declare module "*release-notes-gen-lib.mjs" {
+  export function extractIssueNumbers(...texts: (string | null | undefined)[]): number[];
+  export function parseMergeLog(output: string): { sha: string; subject: string; body: string; issues: number[] }[];
+  export function cleanMergeSubject(subject: string): string;
+  export function firstLine(text: string | null | undefined): string;
+  export function chooseSummary(input: { title?: string; subject?: string }): string;
+  export function parseHumanNotes(raw: unknown): Record<number, { whatChanged?: string; whatToTry?: string; caveats?: string }>;
+  export function mergeHumanNotes<T extends { number: number; summary: string }>(
+    items: T[],
+    human: Record<number, { whatChanged?: string; whatToTry?: string; caveats?: string }>,
+  ): (T & { whatChanged?: string; whatToTry?: string; caveats?: string })[];
+  export function buildReleaseNotes(input: Record<string, unknown>): Record<string, unknown>;
+  export function issueUrl(repo: string, number: number): string;
+  export function generateReleaseNotes(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  export function renderReleaseBody(notes: Record<string, unknown>, opts?: { branch?: string }): string;
 }
 
 declare module "*global-install-lib.mjs" {

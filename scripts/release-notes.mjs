@@ -10,10 +10,11 @@
 // with no credentials, and the attached tarball downloads from its plain
 // releases/download URL with no login.
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { dataResetSection, parseDataFormat } from "./release-notes-lib.mjs";
+import { renderReleaseBody } from "./release-notes-gen-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -31,6 +32,33 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 const tag = flag("--tag") ?? (rawVersion.startsWith("v") ? rawVersion : `v${version}`);
 const out = flag("--output") ?? flag("-o") ?? null;
 const branch = "release";
+
+// #330: render from the build's release-notes.json when present so the
+// GitHub body and the in-app notes never drift. Falls back to the legacy
+// git-log body for tags built before the file shipped.
+const notesFileArg = flag("--notes-file");
+const notesCandidates = notesFileArg
+  ? [path.resolve(ROOT, notesFileArg)]
+  : [path.join(ROOT, "release", "release-notes.json"), path.join(ROOT, "release-notes.json")];
+const notesPath = notesCandidates.find((p) => existsSync(p)) ?? null;
+if (notesPath) {
+  let notes = null;
+  try {
+    notes = JSON.parse(readFileSync(notesPath, "utf8"));
+  } catch {
+    notes = null;
+  }
+  if (notes && typeof notes.version === "string" && Array.isArray(notes.items)) {
+    const body = renderReleaseBody(notes, { branch });
+    if (out) {
+      writeFileSync(path.resolve(ROOT, out), body);
+      console.log(`release-notes: wrote ${out} (from ${path.relative(ROOT, notesPath)})`);
+    } else {
+      console.log(body);
+    }
+    process.exit(0);
+  }
+}
 
 function sh(cmd, argv) {
   const r = spawnSync(cmd, argv, { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
