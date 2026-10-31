@@ -19,7 +19,7 @@ import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
-import { fetchRefReleaseNotes, readCurrentReleaseNotes, readFakeReleaseNotes } from "./release-notes.js";
+import { fetchRefReleaseNotes, readFakeReleaseNotes } from "./release-notes.js";
 import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
 
@@ -51,8 +51,6 @@ export interface Updater {
   listChannels(): Promise<UpdateChannel[]>;
   /** Back up the DB, then install the ref globally. Call only with the service stopped. */
   switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
-  /** #330: the running build's shipped notes (null when none). Local read, no network. */
-  getCurrentReleaseNotes(): Promise<ReleaseNotes | null>;
   /** #330: a channel's newest shipped notes. Fetched only when the caller asks. */
   getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null>;
 }
@@ -113,10 +111,6 @@ export class RealUpdater implements Updater {
   async listChannels(): Promise<UpdateChannel[]> {
     const installed = readInstalledBuild(this.serviceScriptPath, this.serviceVersion);
     return listRealChannels(this.runner, installed);
-  }
-
-  async getCurrentReleaseNotes(): Promise<ReleaseNotes | null> {
-    return readCurrentReleaseNotes(this.serviceScriptPath);
   }
 
   async getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null> {
@@ -262,12 +256,6 @@ export class FakeUpdater implements Updater {
       dataFormat: c.dataFormat ?? null,
       current: c.ref === current,
     }));
-  }
-
-  async getCurrentReleaseNotes(): Promise<ReleaseNotes | null> {
-    if (!this.dataDir) return null;
-    const current = this.current();
-    return readFakeReleaseNotes(this.dataDir, current);
   }
 
   async getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null> {

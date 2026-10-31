@@ -3480,9 +3480,11 @@ test.describe("release notes tour (#330)", () => {
     await page.goto(`${notesSvc.origin}/settings?token=${notesSvc.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Version" }).click();
-    await expect(page.getByTestId("current-release-notes")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("current-release-notes")).toHaveCount(0);
+    await page.locator('[data-testid="channel-notes-toggle"][data-ref="release"]').click();
+    await expect(page.locator('[data-testid="channel-release-notes"][data-ref="release"]')).toBeVisible({ timeout: 15_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     await checkLayout(page, "version-notes");
-    await shot(page, "version-notes", "1440-light", "Current build notes");
+    await shot(page, "version-notes", "1440-light", "Earlier release notes");
   });
 });

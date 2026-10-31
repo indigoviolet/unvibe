@@ -3784,12 +3784,6 @@ export const mockApi = {
     return { ok: true as const, dismissedId: contributionId };
   },
 
-  releaseNotes: async () => {
-    await wait(20);
-    const { current } = readUpdatePersisted();
-    return { notes: MOCK_RELEASE_NOTES[current] ?? null };
-  },
-
   updateNotes: async (ref: string) => {
     await wait(20);
     return { notes: MOCK_RELEASE_NOTES[ref] ?? null };
