@@ -228,7 +228,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     // #322: only the pr-status endpoint may be called from the exact
     // allowlisted extension origin (CORS + origin check). Every other
     // route keeps the loopback-only rule for extension origins.
-    const isExtensionEndpoint = pathname === EXTENSION_PR_STATUS_PATH;
+    const isExtensionEndpoint = pathname === EXTENSION_PR_STATUS_PATH || pathname.startsWith("/api/extension/panel");
     // #322 fix: `GET /open` never mutates (redirect or confirm page), so
     // a cross-site navigation may reach it — foreign Origin/Referer are
     // relaxed for that one read. `POST /open` (the mutation) and every
@@ -245,7 +245,7 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     if (isExtensionEndpoint && allowedExtensionOrigin && isAllowedExtensionOrigin(req.headers["origin"], extensionIds)) {
       reply.header("access-control-allow-origin", allowedExtensionOrigin);
       reply.header("vary", "Origin");
-      reply.header("access-control-allow-methods", "GET, OPTIONS");
+      reply.header("access-control-allow-methods", "GET, POST, PUT, OPTIONS");
       reply.header("access-control-allow-headers", "authorization, content-type");
       if (req.method === "OPTIONS") {
         // CORS preflight carries no token; the token gate below is for

@@ -107,7 +107,44 @@ async function openReview(prUrl) {
   return { ok: true, origin };
 }
 
+// ---- #322 part 2 spike: side panel (worker is still the only caller) ----
+const PANEL_PREFIX = "/api/extension/panel";
+try { void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }); } catch { /* older Chrome */ }
+
+async function panelCall(method, path, body) {
+  const svc = await findService();
+  if (!svc) return { error: "down" };
+  if (!svc.token) return { error: "unauthenticated", origin: svc.origin };
+  try {
+    const res = await fetchWithTimeout(`${svc.origin}${PANEL_PREFIX}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }, 15000);
+    const json = await res.json().catch(() => null);
+    if (!res.ok) return { error: (json && json.error) || `http ${res.status}`, origin: svc.origin };
+    return { ...(json || {}), origin: svc.origin };
+  } catch { return { error: "down" }; }
+}
+
+async function captureActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.id) return { url: "", title: "", selection: "", context: "" };
+  try {
+    return await chrome.tabs.sendMessage(tab.id, { type: "unvibe:capture" });
+  } catch {
+    return { url: tab.url || "", title: tab.title || "", selection: "", context: "" };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && typeof msg.type === "string" && msg.type.startsWith("unvibe:panel")) {
+    if (msg.type === "unvibe:panel-capture") { void captureActiveTab().then(sendResponse, () => sendResponse({ url: "", title: "", selection: "", context: "" })); return true; }
+    if (msg.type === "unvibe:panel-active-repos") { void panelCall("GET", "/active-repos").then(sendResponse, () => sendResponse({ error: "down" })); return true; }
+    if (msg.type === "unvibe:panel-thread") { void panelCall("GET", `/thread?url=${encodeURIComponent(msg.url || "")}`).then(sendResponse, () => sendResponse({ error: "down" })); return true; }
+    if (msg.type === "unvibe:panel-ask") { void panelCall("POST", "/ask", msg.body || {}).then(sendResponse, () => sendResponse({ error: "down" })); return true; }
+    return false;
+  }
   if (!msg || typeof msg.prUrl !== "string") return false;
   if (msg.type === "unvibe:pr-status") {
     void prStatus(msg.prUrl).then(sendResponse, () => sendResponse({ state: "error" }));

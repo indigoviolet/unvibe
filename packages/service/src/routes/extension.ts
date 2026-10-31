@@ -26,6 +26,14 @@ import {
 import { addManagedRepo, CloneError } from "../repos/index.js";
 import type { ServiceContext } from "./context.js";
 import { listAllRepos } from "./repos.js";
+import {
+  capPageCapture, estimateTokens, isGitHubPage, pageKey,
+  type PanelThread,
+} from "@unvibe/shared";
+import { PanelStore } from "../panel/store.js";
+import { retrieveAcrossRepos } from "../panel/retriever.js";
+
+export const PANEL_PREFIX = "/api/extension/panel";
 
 export interface ExtensionReviewHelpers {
   lookupPrReview: (
@@ -74,6 +82,53 @@ export async function registerExtensionRoutes(
       }
     },
   );
+  // ---- #322 part 2 spike: side-panel web-document threads ----
+  const panel = new PanelStore(ctx.dataDir);
+  const activeRepos = async () => {
+    const all = await listAllRepos(ctx);
+    const real = all.filter((r) => r.localPath);
+    const ids = panel.activeRepoIds ?? real.slice(0, 3).map((r) => r.id);
+    return { all: real, active: real.filter((r) => ids.includes(r.id)) };
+  };
+  app.get(`${PANEL_PREFIX}/active-repos`, async () => {
+    const { all, active } = await activeRepos();
+    return { repos: all.map((r) => ({ id: r.id, owner: r.owner, name: r.name, active: active.some((a) => a.id === r.id) })) };
+  });
+  app.put(`${PANEL_PREFIX}/active-repos`, async (req, reply) => {
+    const body = (req.body ?? {}) as { repoIds?: unknown };
+    if (!Array.isArray(body.repoIds) || body.repoIds.some((x) => typeof x !== "string")) {
+      return reply.code(400).send({ error: "repoIds: string[] required" });
+    }
+    panel.setActiveRepoIds(body.repoIds as string[]);
+    return { ok: true };
+  });
+  app.get(`${PANEL_PREFIX}/thread`, async (req, reply) => {
+    const url = (req.query as { url?: string }).url ?? "";
+    if (!isGitHubPage(url)) return reply.code(400).send({ error: "spike scope: github.com pages only" });
+    const key = pageKey(url);
+    return panel.thread(key) ?? { pageKey: key, url, title: "", messages: [] } satisfies PanelThread;
+  });
+  app.post(`${PANEL_PREFIX}/ask`, async (req, reply) => {
+    const b = (req.body ?? {}) as { url?: string; title?: string; selection?: string; context?: string; question?: string };
+    if (!b.url || !isGitHubPage(b.url)) return reply.code(400).send({ error: "spike scope: github.com pages only" });
+    const question = (b.question ?? "").trim();
+    if (!question) return reply.code(400).send({ error: "question required" });
+    const cap = capPageCapture({ url: b.url, title: b.title ?? "", selection: b.selection ?? "", context: b.context ?? "", capturedAt: Date.now() });
+    const { active } = await activeRepos();
+    // Spike: deterministic retriever stands in for the agent turn (no live
+    // tokens). It reads only active worktrees; see docs/spikes/322-side-panel.
+    const r = retrieveAcrossRepos(active, question, cap.selection);
+    const key = pageKey(cap.url);
+    const thread: PanelThread = panel.thread(key) ?? { pageKey: key, url: cap.url, title: cap.title, messages: [] };
+    thread.title = cap.title || thread.title;
+    thread.messages.push(
+      { role: "user", text: cap.selection ? `“${cap.selection}”\n${question}` : question, citations: [], reposUsed: [], reads: [], at: Date.now() },
+      { role: "assistant", text: r.answer, citations: r.citations, reposUsed: r.reposUsed, reads: r.reads, at: Date.now() },
+    );
+    panel.putThread(thread);
+    return { thread, tokensEstimate: estimateTokens(cap.context + question) + 400, reposUsed: r.reposUsed };
+  });
+
   app.get(EXTENSION_PR_STATUS_PATH, async (req, reply) => {
     const query = req.query as { pr?: string };
     let parsed;

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unvibe</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header>
+  <strong>Unvibe</strong>
+  <span id="page-kind">web document · spike</span>
+</header>
+<section id="page-box">
+  <div id="page-title">No GitHub page captured yet</div>
+  <div id="page-url"></div>
+  <div id="selection-box" hidden></div>
+  <button id="refresh" type="button">Refresh page</button>
+</section>
+<section>
+  <h2>Active repos</h2>
+  <div id="repos"><span class="muted">Loading…</span></div>
+  <p class="muted">The agent reads across all of these and picks the relevant ones per question.</p>
+</section>
+<section>
+  <h2>Thread</h2>
+  <div id="thread"><p class="muted">One thread for this page. Ask below — nothing is sent until you do.</p></div>
+</section>
+<form id="ask-form">
+  <label for="question">Ask about this page</label>
+  <textarea id="question" rows="3" placeholder="How does validateToken work with fetchSession?"></textarea>
+  <button id="ask" type="submit">Ask</button>
+  <span id="status" role="status"></span>
+</form>
+<script src="panel.js"></script>
+</body>
+</html>

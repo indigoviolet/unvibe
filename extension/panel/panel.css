@@ -1,0 +1,14 @@
+:root { color-scheme: light dark; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 12px; font-size: 13px; line-height: 1.45; }
+header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #8884; padding-bottom: 8px; }
+h2 { font-size: 12px; margin: 14px 0 6px; }
+.muted { opacity: .65; }
+#page-url { word-break: break-all; opacity: .65; font-size: 12px; }
+#selection-box { border: 1px solid #8884; padding: 6px 8px; margin: 6px 0; white-space: pre-wrap; }
+.chip { display: inline-block; border: 1px solid #8886; border-radius: 999px; padding: 1px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
+.msg { border-top: 1px solid #8883; padding: 8px 0; white-space: pre-wrap; word-break: break-word; }
+.msg .role { font-weight: 600; font-size: 12px; }
+.cite { font-family: ui-monospace, monospace; font-size: 11px; border: 1px solid #8886; padding: 0 4px; margin: 2px 2px 0 0; display: inline-block; }
+textarea { width: 100%; box-sizing: border-box; font: inherit; }
+button { font: inherit; cursor: pointer; margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
