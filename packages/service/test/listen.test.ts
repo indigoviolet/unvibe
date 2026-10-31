@@ -64,7 +64,7 @@ describe("listen() loopback dual-bind", () => {
   it("answers on 127.0.0.1, ::1 and unvibe.localhost (same port), loopback only", async () => {
     const { app } = await createApp("tok", {});
     try {
-      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0 });
+      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0, extensionId: "" });
       expect(url).toMatch(/^http:\/\/unvibe\.localhost:\d+$/);
       const port = Number(new URL(url).port);
       expect(port).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe("listen() loopback dual-bind", () => {
   it("serves WebSocket upgrades on ::1 too", async () => {
     const { app } = await createApp("tok", {});
     try {
-      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0 });
+      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0, extensionId: "" });
       const port = Number(new URL(url).port);
       const socket = new WebSocket(`ws://[::1]:${port}/api/events?review=rv_x&token=tok`);
       const outcome = await new Promise<string>((resolve) => {
@@ -111,7 +111,7 @@ describe("listen() loopback dual-bind", () => {
   it("applies the gate and token check on the ::1 companion (plain HTTP)", async () => {
     const { app } = await createApp("tok", {});
     try {
-      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0 });
+      const url = await listen(app, { host: "127.0.0.1", port: 0, dataDir: "", idleMs: 0, extensionId: "" });
       const port = Number(new URL(url).port);
       // Bad Host on the companion socket: refused before auth.
       expect(await rawStatus("::1", port, "evil.com", "Authorization: Bearer tok\r\n")).toBe(403);
@@ -132,7 +132,7 @@ describe("listen() loopback dual-bind", () => {
     const { app } = await createApp("tok", {});
     try {
       await expect(
-        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0 }),
+        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0, extensionId: "" }),
       ).rejects.toThrow(/\[::1\].*already in use.*cookie/);
     } finally {
       await app.close();
@@ -145,7 +145,7 @@ describe("listen() loopback dual-bind", () => {
     const { app } = await createApp("tok", {});
     try {
       await expect(
-        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0 }),
+        listen(app, { host: "127.0.0.1", port: held.port, dataDir: "", idleMs: 0, extensionId: "" }),
       ).rejects.toThrow(/already in use.*UNVIBE_PORT/);
     } finally {
       await app.close();
