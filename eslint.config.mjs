@@ -16,6 +16,7 @@ export default tseslint.config(
         setTimeout: "readonly",
         clearTimeout: "readonly",
         MutationObserver: "readonly",
+        URLSearchParams: "readonly",
       },
     },
   },
