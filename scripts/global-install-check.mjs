@@ -133,6 +133,13 @@ function s(secMs) {
  * they must exist in the installed copy. (No adapter packages exist in
  * node_modules anymore.)
  */
+/** Chrome extension (#322): shipped inside the installed package so Settings → Extension points at a folder matching the running version. */
+function checkExtensionFiles(installedPkgDir, label) {
+  for (const f of ["extension/manifest.json", "extension/background.js"]) {
+    assert(fs.existsSync(path.join(installedPkgDir, f)), `${label}: ships ${f}`);
+  }
+}
+
 function checkAdapterBundles(installedPkgDir, label) {
   for (const f of ["packages/service/dist/index.js", "packages/service/dist/adapters/claude.js", "packages/service/dist/adapters/codex.js", "packages/service/dist/update-helper.js"]) {
     const full = path.join(installedPkgDir, f);
@@ -486,6 +493,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
 
   checkAdapterBundles(installedPkg, label);
   checkGrammarFiles(installedPkg, label);
+  checkExtensionFiles(installedPkg, label);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
 
   // Third-party notices (issue #14): the installed package must contain the

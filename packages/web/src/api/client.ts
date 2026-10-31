@@ -442,6 +442,8 @@ const realApi = {
   outbox: (id: string): Promise<OutboxResponse> =>
     get(`/api/reviews/${encodeURIComponent(id)}/outbox`),
 
+  extensionStatus: (): Promise<import("@unvibe/shared").ExtensionStatusResponse> => get("/api/extension/status"),
+  extensionOpenFolder: (): Promise<{ ok: boolean }> => post("/api/extension/open-folder", {}),
   viewer: (): Promise<ViewerResponse> => get("/api/viewer"),
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Partial<Settings>): Promise<Settings> =>

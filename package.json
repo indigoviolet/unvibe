@@ -15,6 +15,7 @@
     "package.json",
     "packages/service/dist/**",
     "packages/web/dist/**",
+    "extension/**",
     "prompts/**",
     "fixtures/urllib3-5020/**",
     "README.md"

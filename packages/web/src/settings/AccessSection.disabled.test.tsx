@@ -32,6 +32,8 @@ function settingsWith(fullAccess: boolean): Settings {
   versionPickerEnabled: false,
     fullAccess,
     autoGoDeeper: true,
+  extensionActiveRepoIds: null,
+  extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: fullAccess ? 123 : null,
   };
 }
