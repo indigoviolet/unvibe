@@ -7,10 +7,10 @@
  * publish overwrote it. Its `release-notes.json` (read via
  * `git show <ref>:release-notes.json`) gives `previousVersion` and its
  * source `commit`, which anchors `git log <prev>..HEAD --merges`. When
- * the ref has no readable notes (first publish of the channel), the
- * `release` channel falls back to the previous `v*` tag; anything else
- * with no previous build reports `previousVersion: null` and lists the
- * merges reachable from HEAD.
+ * a channel has no readable previous notes, every channel falls back
+ * to the newest `v*` tag reachable from HEAD (`previousVersion` is that
+ * tag's version); `previousVersion: null` and full history only when
+ * there is no such tag at all.
  *
  * One-liner rule: `summary` is the issue title's first line when `gh`
  * returns one; otherwise the merge subject with its `Merge ...` prefix
@@ -228,16 +228,30 @@ export async function generateReleaseNotes({
       // Unreadable previous notes: treat as no previous build.
     }
   }
-  if (previousCommit === null && channel === "release") {
-    const tagsRaw = await run("git", ["tag", "--list", "v*", "--sort=-v:refname"]);
-    if (tagsRaw.code === 0) {
-      const tags = tagsRaw.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
-      const cur = `v${version}`;
-      const prevTag = tags.find((t) => t !== cur) ?? null;
-      if (prevTag) {
-        previousVersion = prevTag.replace(/^v/, "");
-        previousCommit = prevTag;
+  // No readable previous notes (e.g. a preview channel's first publish
+  // under #330): fall back to the newest `v*` tag reachable from HEAD
+  // for every channel. Null + full history only when there is no tag.
+  if (previousCommit === null) {
+    const cur = `v${version}`;
+    let prevTag = null;
+    const desc = await run("git", ["describe", "--tags", "--abbrev=0", head]);
+    if (desc.code === 0) {
+      const t = desc.stdout.trim();
+      if (/^v\d+\.\d+\.\d+$/.test(t) && t !== cur) prevTag = t;
+    }
+    if (prevTag === null) {
+      const tagsRaw = await run("git", ["tag", "--list", "v*", "--merged", head, "--sort=-v:refname"]);
+      if (tagsRaw.code === 0) {
+        const tags = tagsRaw.stdout
+          .split("\n")
+          .map((s) => s.trim())
+          .filter((t) => /^v\d+\.\d+\.\d+$/.test(t));
+        prevTag = tags.find((t) => t !== cur) ?? null;
       }
+    }
+    if (prevTag) {
+      previousVersion = prevTag.replace(/^v/, "");
+      previousCommit = prevTag;
     }
   }
   if (previousDataFormat === null && previousCommit) {

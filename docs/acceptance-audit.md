@@ -3508,8 +3508,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   inside previews and releases (generator
   `scripts/generate-release-notes.mjs`, helpers
   `scripts/release-notes-gen-lib.mjs`; previous build = the channel
-  ref's prior shipped notes, `release` falling back to the previous
-  tag). Publisher entries (`--notes-file` on `preview:publish` /
+  ref's prior shipped notes, else the newest `v*` tag reachable from
+  HEAD for every channel). Publisher entries (`--notes-file` on `preview:publish` /
   `release:tag`) merge over generated one-liners. The app shows a
   one-time What's new card after a switch and current + per-channel
   notes in Settings → Version (fetched on open only, plain text);

@@ -102,7 +102,28 @@ describe("generateReleaseNotes", () => {
     expect(notes.dataFormat).toBe(2);
   });
 
-  it("handles a missing previous build (first publish of the channel)", async () => {
+  it("falls back to the newest reachable v* tag for any channel with no previous notes", async () => {
+    const { runner, calls } = fakeRunner({
+      "describe": { stdout: "v0.0.1\n" },
+      "show v0.0.1:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "log v0.0.1..HEAD": { stdout: MERGES },
+      "issue view 330": { stdout: JSON.stringify({ title: "Release notes in builds", url: "https://github.com/indigoviolet/unvibe/issues/330" }) },
+      "issue view 311": { stdout: JSON.stringify({ title: "Data format gate", url: "https://github.com/indigoviolet/unvibe/issues/311" }) },
+      "show HEAD:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "rev-parse HEAD": { stdout: "headsha999\n" },
+    });
+    const notes = (await generateReleaseNotes({
+      runner: runner as never,
+      channel: "preview/new-thing",
+      version: "0.0.1-preview.new-thing.head999",
+    })) as { previousVersion: string | null; previousCommit: string | null; items: { number: number }[] };
+    expect(notes.previousVersion).toBe("0.0.1");
+    expect(notes.previousCommit).toBe("v0.0.1");
+    expect(notes.items.map((i) => i.number)).toEqual([330, 311]);
+    expect(calls.some((c) => c.args.join(" ").includes("v0.0.1..HEAD"))).toBe(true);
+  });
+
+  it("handles a missing previous build with no tag at all (null, full history)", async () => {
     const { runner } = fakeRunner({
       "log HEAD": { stdout: MERGES },
       "issue view 330": { stdout: JSON.stringify({ title: "Release notes in builds", url: "https://github.com/indigoviolet/unvibe/issues/330" }) },
