@@ -46,6 +46,10 @@ export const DEFAULT_SETTINGS: Settings = {
   fullAccessAcknowledgedAt: null,
   /** Issue #217: go-deeper cards write themselves after the guide. On by default. */
   autoGoDeeper: true,
+  /** Issue #322: null = never chosen (service defaults to 3 most recent). */
+  extensionActiveRepoIds: null,
+  /** Issue #322: panel turns default to muse-spark. */
+  extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };
 
 function isModelPick(v: unknown): v is ModelPick {
@@ -59,6 +63,14 @@ function isModelPick(v: unknown): v is ModelPick {
 /** Validate a partial update; returns error messages (empty = valid). */
 export function validateSettings(patch: Record<string, unknown>): string[] {
   const errors: string[] = [];
+  const extIds = patch["extensionActiveRepoIds"];
+  if (extIds !== undefined && extIds !== null && (!Array.isArray(extIds) || extIds.some((x) => typeof x !== "string"))) {
+    errors.push("extensionActiveRepoIds must be null or an array of repo id strings");
+  }
+  const extModel = patch["extensionModel"];
+  if (extModel !== undefined && (!isModelPick(extModel) || !extModel.provider || !extModel.model)) {
+    errors.push("extensionModel must be { provider, model } with non-empty strings");
+  }
   for (const role of ["main", "small", "secondOpinion"] as const) {
     const v = patch[role];
     if (v === undefined) continue;

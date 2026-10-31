@@ -34,6 +34,7 @@ import type {
   Version,
 } from "./entities.js";
 import type { DiffFilter, HideLevel, Plotline, ReviewCommit } from "./scores.js";
+import type { PanelThread, WebContent } from "./webdoc.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -609,12 +610,21 @@ interface ReviewSnapshotBase {
 export interface ChangeReviewSnapshot extends ReviewSnapshotBase {
   document?: undefined;
   contextRepos?: undefined;
+  web?: undefined;
 }
 
 /** Issue #222: a document review — the pasted document and its context repos. */
 export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
   document: DocumentContent;
   contextRepos: ContextRepoRef[];
+  web?: undefined;
+}
+
+/** Issue #322: a web review — one panel thread per captured page. */
+export interface WebReviewSnapshot extends ReviewSnapshotBase {
+  document?: undefined;
+  contextRepos?: undefined;
+  web: WebContent;
 }
 
 /**
@@ -622,7 +632,7 @@ export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
  * derived, never stored: a snapshot carrying the pasted document is a
  * document review; every other snapshot is a change review.
  */
-export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot;
+export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot | WebReviewSnapshot;
 
 /** Issue #222: true when the snapshot is a document review's. */
 export function isDocumentReview(
@@ -631,8 +641,16 @@ export function isDocumentReview(
   return snap.document !== undefined;
 }
 
-/** Issue #222: the derived review kind of a snapshot. */
-export function reviewKindOf(snap: Pick<ReviewSnapshot, "document">): ReviewKind {
+/** Issue #322: true when the snapshot is a web (panel) review's. */
+export function isWebReview(
+  snap: Pick<ReviewSnapshot, "web">,
+): snap is WebReviewSnapshot {
+  return snap.web !== undefined;
+}
+
+/** The derived review kind of a snapshot. */
+export function reviewKindOf(snap: Pick<ReviewSnapshot, "document" | "web">): ReviewKind {
+  if (isWebReview(snap)) return "web";
   return isDocumentReview(snap) ? "document" : "change";
 }
 
@@ -1374,6 +1392,10 @@ export interface Settings {
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
+  /** Issue #322: repos the extension panel may read. Null = never chosen (service defaults to 3 most recent); [] = none. */
+  extensionActiveRepoIds: string[] | null;
+  /** Issue #322: model for panel turns. Default muse-spark. */
+  extensionModel: ModelPick;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -1852,3 +1874,45 @@ export type ReviewEvent =
 
 /** Re-exported entity slices used by route stubs. */
 export type { Thread, Card, Page, Reply, ReplyKind };
+
+// --- extension panel (#322 part 2) ---------------------------------------
+
+/** One repo in Settings → Extension / panel active-repo lists. */
+export interface ExtensionRepoInfo {
+  id: string;
+  owner: string;
+  name: string;
+  active: boolean;
+}
+
+/** `GET /api/extension/panel/active-repos` response. */
+export interface PanelActiveReposResponse {
+  repos: ExtensionRepoInfo[];
+}
+
+/** `POST /api/extension/panel/ask` request (capture only on Ask). */
+export interface PanelAskRequest {
+  url: string;
+  title?: string;
+  selection?: string;
+  context?: string;
+  question: string;
+}
+
+/** `POST /api/extension/panel/ask` response. */
+export interface PanelAskResponse {
+  thread: PanelThread;
+  reviewId: string;
+  reposUsed: string[];
+  tokensEstimate: number;
+}
+
+/** `GET /api/extension/status` — install help in Settings → Extension. */
+export interface ExtensionStatusResponse {
+  /** Absolute path of the shipped extension folder (installed package). */
+  extensionPath: string;
+  /** Epoch ms of the last background-worker call, or null. In memory only. */
+  lastWorkerCallAt: number | null;
+  /** Connected = worker called within the recent window. */
+  connected: boolean;
+}

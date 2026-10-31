@@ -39,7 +39,7 @@ export interface Repo {
  * every other review is a change review. There is no stored `kind`
  * field and no fallback read.
  */
-export type ReviewKind = "change" | "document";
+export type ReviewKind = "change" | "document" | "web";
 
 /** Issue #222: where a document review's context repo is read from. */
 export type ContextRepoSource = "worktree" | "origin-main" | "local";

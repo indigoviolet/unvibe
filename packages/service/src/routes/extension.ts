@@ -16,16 +16,27 @@
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
-  EXTENSION_PR_STATUS_PATH,
-  ingestStatusOf,
-  parseOpenPrUrl,
-  type PrReviewStatusResponse,
-  type Repo,
-  type ReviewSnapshot,
+  EXTENSION_PANEL_PREFIX, EXTENSION_PR_STATUS_PATH,
+  capPageCapture, captureHash, estimateTokens, ingestStatusOf, pageKey, parseOpenPrUrl,
+  DEFAULT_REVIEW_VIEW_PREFS,
+  type AgentRunner, type ExtensionStatusResponse, type PanelActiveReposResponse,
+  type PanelAskRequest, type PanelAskResponse, type PanelThread,
+  type PrReviewStatusResponse, type Repo, type ReviewSnapshot, type Settings, type Version,
 } from "@unvibe/shared";
 import { addManagedRepo, CloneError } from "../repos/index.js";
+import { newReviewId } from "../ingest/index.js";
+import { transaction } from "../store/index.js";
+import { retrieveAcrossRepos } from "../panel/retriever.js";
+import { panelAnswer } from "../panel/ask.js";
+import { extensionFolderPath, lastWorkerCall, noteWorkerCall, openExtensionFolder, workerConnected } from "../panel/status.js";
+import type { SettingsStore } from "../settings/index.js";
 import type { ServiceContext } from "./context.js";
 import { listAllRepos } from "./repos.js";
+
+export interface ExtensionPanelDeps {
+  settings?: SettingsStore;
+  agents?: AgentRunner;
+}
 
 export interface ExtensionReviewHelpers {
   lookupPrReview: (
@@ -60,6 +71,7 @@ export async function registerExtensionRoutes(
   app: FastifyInstance,
   ctx: ServiceContext,
   helpers: ExtensionReviewHelpers,
+  panelDeps: ExtensionPanelDeps = {},
 ): Promise<void> {
   // The confirm page posts a plain HTML form; the app otherwise speaks
   // JSON only. Parse urlencoded bodies into a flat object.
@@ -74,7 +86,129 @@ export async function registerExtensionRoutes(
       }
     },
   );
+  // ---- #322 part 2: side panel ----
+  const panelSettings = (): Settings | null => {
+    try { return panelDeps.settings?.get() ?? null; } catch { return null; }
+  };
+  const activeRepos = async (): Promise<{ all: Repo[]; active: Repo[] }> => {
+    const all = (await listAllRepos(ctx)).filter((r) => r.localPath);
+    const s = panelSettings();
+    const ids = s?.extensionActiveRepoIds ?? all.slice(0, 3).map((r) => r.id);
+    return { all, active: all.filter((r) => ids.includes(r.id)) };
+  };
+  const findWebReview = (key: string): { id: string; snapshot: ReviewSnapshot } | null => {
+    const rows = ctx.db.prepare("SELECT review_id FROM review_snapshots").all() as { review_id: string }[];
+    for (const row of rows) {
+      const snap = ctx.reviews.getSnapshot(row.review_id);
+      if (snap?.web && snap.web.pageKey === key) return { id: row.review_id, snapshot: snap };
+    }
+    return null;
+  };
+  app.get(`${EXTENSION_PANEL_PREFIX}/active-repos`, async () => {
+    noteWorkerCall();
+    const { all, active } = await activeRepos();
+    const body: PanelActiveReposResponse = {
+      repos: all.map((r) => ({ id: r.id, owner: r.owner, name: r.name, active: active.some((a) => a.id === r.id) })),
+    };
+    return body;
+  });
+  app.put(`${EXTENSION_PANEL_PREFIX}/active-repos`, async (req, reply) => {
+    noteWorkerCall();
+    const body = (req.body ?? {}) as { repoIds?: unknown };
+    if (!panelDeps.settings) return reply.code(501).send({ error: "not available in this build" });
+    if (!Array.isArray(body.repoIds) || body.repoIds.some((x) => typeof x !== "string")) {
+      return reply.code(400).send({ error: "repoIds: string[] required" });
+    }
+    panelDeps.settings.update({ extensionActiveRepoIds: body.repoIds as string[] });
+    return { ok: true };
+  });
+  app.get(`${EXTENSION_PANEL_PREFIX}/thread`, async (req, reply) => {
+    noteWorkerCall();
+    const url = (req.query as { url?: string }).url ?? "";
+    let key: string;
+    try { key = pageKey(url); } catch { return reply.code(400).send({ error: "url required" }); }
+    const found = findWebReview(key);
+    if (!found?.snapshot.web) {
+      const empty: PanelThread = { pageKey: key, url, title: "", messages: [] };
+      return empty;
+    }
+    const w = found.snapshot.web;
+    const thread: PanelThread = { pageKey: w.pageKey, url: w.url, title: w.title, messages: w.messages };
+    return thread;
+  });
+  app.post(`${EXTENSION_PANEL_PREFIX}/ask`, async (req, reply) => {
+    noteWorkerCall();
+    const b = (req.body ?? {}) as PanelAskRequest;
+    if (!b.url) return reply.code(400).send({ error: "url required" });
+    const question = (b.question ?? "").trim();
+    if (!question) return reply.code(400).send({ error: "question required" });
+    let key: string;
+    try { key = pageKey(b.url); } catch { return reply.code(400).send({ error: "url required" }); }
+    const cap = capPageCapture({ url: b.url, title: b.title ?? "", selection: b.selection ?? "", context: b.context ?? "", capturedAt: Date.now() });
+    const { active } = await activeRepos();
+    const retrieval = retrieveAcrossRepos(active, question, cap.selection);
+    const s = panelSettings();
+    const pick = s?.extensionModel ?? { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" };
+    const answer = await panelAnswer(panelDeps.agents, pick, active[0]?.localPath ?? ctx.dataDir, question, cap, retrieval);
+    const userText = cap.selection ? `"${cap.selection}"\n${question}` : question;
+    const now = Date.now();
+    let found = findWebReview(key);
+    let reviewId: string;
+    if (!found) {
+      reviewId = newReviewId();
+      const hash = captureHash(cap.context || cap.url);
+      const version: Version = { n: 1, headSha: hash, mergeBaseSha: hash, baseRef: "web", fetchedAt: now, idMapping: {} };
+      const snapshot: ReviewSnapshot = {
+        review: { id: reviewId, repoId: active[0]?.id ?? "web", branch: "web", versions: [version], currentVersion: 1, createdAt: now },
+        web: { url: cap.url, title: cap.title, pageKey: key, captureHash: hash, context: cap.context, messages: [] },
+        version, files: [], pages: [], annotations: [], hunkStates: [], fileStates: [],
+        viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS }, jobs: [], contributions: [], logTail: [], rev: 1,
+        ingest: { status: "ready" },
+      };
+      transaction(ctx.db, () => {
+        ctx.db.prepare("INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(reviewId, active[0]?.id ?? "web", "web", null, 1, now, JSON.stringify({ title: cap.title || cap.url }));
+        ctx.db.prepare("INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING")
+          .run(reviewId, 1, hash, hash, "web", now, "{}");
+        ctx.reviews.putSnapshot(reviewId, snapshot);
+      });
+      found = { id: reviewId, snapshot };
+    }
+    reviewId = found.id;
+    const updated = await ctx.reviews.mutate(reviewId, (draft) => {
+      if (!draft.web) return;
+      draft.web.title = cap.title || draft.web.title;
+      draft.web.messages.push(
+        { role: "user", text: userText, citations: [], reposUsed: [], reads: [], at: now },
+        { role: "assistant", text: answer.text, citations: answer.citations, reposUsed: retrieval.reposUsed, reads: retrieval.reads, at: Date.now(), ...(cap.selection ? { quote: cap.selection } : {}) },
+      );
+    });
+    const w = updated.snapshot.web!;
+    const thread: PanelThread = { pageKey: w.pageKey, url: w.url, title: w.title, messages: w.messages };
+    const body: PanelAskResponse = { thread, reviewId, reposUsed: retrieval.reposUsed, tokensEstimate: estimateTokens(cap.context + question) + 400 };
+    return body;
+  });
+
+  // ---- install help (Settings → Extension, app origin) ----
+  app.get("/api/extension/status", async () => {
+    const body: ExtensionStatusResponse = {
+      extensionPath: extensionFolderPath(),
+      lastWorkerCallAt: lastWorkerCall(),
+      connected: workerConnected(),
+    };
+    return body;
+  });
+  app.post("/api/extension/open-folder", async (_req, reply) => {
+    try {
+      await openExtensionFolder(ctx.runner);
+      return { ok: true };
+    } catch (err) {
+      return reply.code(500).send({ error: (err as Error).message });
+    }
+  });
+
   app.get(EXTENSION_PR_STATUS_PATH, async (req, reply) => {
+    noteWorkerCall();
     const query = req.query as { pr?: string };
     let parsed;
     try {

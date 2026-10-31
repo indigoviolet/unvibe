@@ -571,6 +571,9 @@ export async function registerReviews(
       );
       return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
     },
+  }, {
+    ...((deps as RouteDeps).settings ? { settings: (deps as RouteDeps).settings } : {}),
+    ...((deps as RouteDeps).agents ? { agents: (deps as RouteDeps).agents } : {}),
   });
 
   // Front screen: every review opened before, across ALL repos, most

@@ -18,6 +18,25 @@ export const TOKEN_COOKIE_NAME = "__unvibe_token";
 /** The only service endpoint the extension may call cross-origin. */
 export const EXTENSION_PR_STATUS_PATH = "/api/extension/pr-status";
 
+/** Panel endpoints (#322 part 2), same pinned-origin + token gate. */
+export const EXTENSION_PANEL_PREFIX = "/api/extension/panel";
+export const EXTENSION_PANEL_PATHS = [
+  "/api/extension/panel/active-repos",
+  "/api/extension/panel/thread",
+  "/api/extension/panel/ask",
+] as const;
+
+export function isExtensionEndpoint(pathname: string): boolean {
+  return pathname === EXTENSION_PR_STATUS_PATH || (EXTENSION_PANEL_PATHS as readonly string[]).includes(pathname);
+}
+
+/** Worker call counts as "connected" in Settings within this window. */
+export const EXTENSION_CONNECTED_WINDOW_MS = 10 * 60 * 1000;
+
+export function isExtensionConnected(lastCallAt: number | null, now: number): boolean {
+  return lastCallAt !== null && now - lastCallAt <= EXTENSION_CONNECTED_WINDOW_MS;
+}
+
 /** Chrome extension ids: 32 letters a–p (base16 over a–p). */
 export function isExtensionId(value: string): boolean {
   return /^[a-p]{32}$/.test(value);
