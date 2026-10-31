@@ -2203,7 +2203,8 @@
   "fileStates": [],
   "viewPrefs": {
     "showExistingComments": false,
-    "existingCommentsCollapsed": false
+    "existingCommentsCollapsed": false,
+    "hideLevel": "uninteresting"
   },
   "jobs": [
     {

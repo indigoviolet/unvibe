@@ -7,8 +7,8 @@
  * `prototype.html` (its code is a sketch — this is a port of behaviour and
  * class names, not code).
  */
-import type { Thread, Block, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
-import { hunkMatchesFilter, hunkScoreRank, parseId } from "@unvibe/shared";
+import type { Thread, Block, DiffFilter, HideLevel, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
+import { hunkMatchesFilter, hunkScoreRank, parseId, shouldHideAtLevel } from "@unvibe/shared";
 
 // --- folder tree ---------------------------------------------------------
 
@@ -168,11 +168,11 @@ export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile
   );
 }
 
-/** True when a hunk passes the score/plotline filter (absent = all pass). */
+/** True when a hunk passes the plotline filter (absent = all pass). */
 export function hunkPlotVisible(hunk: Hunk, filter: Pick<FileFilter, "plot" | "hunkStateOf">): boolean {
-  if (!filter.plot || (filter.plot.plotline === undefined && filter.plot.score === undefined)) return true;
+  if (!filter.plot || filter.plot.plotline === undefined) return true;
   const st = filter.hunkStateOf?.(hunk.contentHash);
-  return hunkMatchesFilter(st?.score, st?.plotline, filter.plot);
+  return hunkMatchesFilter(st?.plotline, filter.plot);
 }
 
 /**
@@ -288,7 +288,10 @@ export function citedHunkHashes(
 // --- hide decision ---------------------------------------------------------------
 
 export interface HideDecision {
-  hideUninteresting: boolean;
+  /** Issue #325: the toolbar's hide level for this review. */
+  level: HideLevel;
+  /** The hunk's score, when its pass has landed. */
+  score?: HunkScoreLevel;
   /** User clicked "show" on this hunk's hidden row (transient, per session). */
   unhidden: boolean;
   /** The guide cites this hunk. */
@@ -296,16 +299,13 @@ export interface HideDecision {
 }
 
 /**
- * A hunk hides only when Hide-uninteresting is on, it carries a
- * `hiddenReason` from the snapshot, the user hasn't revealed it, the guide
- * doesn't cite it — and it isn't a one-line change (PRD §4.13: one-line
- * changes are never hidden).
+ * A hunk hides when the hide level covers it (issue #325: a
+ * `hiddenReason`, never on a one-line change, or a score below the
+ * level's floor), the user hasn't revealed it, and the guide doesn't
+ * cite it.
  */
 export function shouldHideHunk(hunk: Hunk, d: HideDecision): boolean {
-  if (!d.hideUninteresting || d.unhidden || d.cited) return false;
-  if (!hunk.hiddenReason) return false;
-  if (hunk.added + hunk.removed <= 1) return false;
-  return true;
+  return shouldHideAtLevel({ ...hunk, score: d.score }, d.level, { cited: d.cited, unhidden: d.unhidden });
 }
 
 /** Fallback one-line "why it's skippable" copy per hidden reason. */

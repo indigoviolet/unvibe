@@ -117,7 +117,7 @@ async function setupWith(pages: ReviewSnapshot["pages"], annotations: ReviewSnap
   const description = descriptionFor("First para.\n\nSecond para.\n");
   writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
   ctx.reviews.putSnapshot(reviewId, {
-    review, version, files, description, pages, annotations, hunkStates: [], fileStates: [], viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false }, jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
+    review, version, files, description, pages, annotations, hunkStates: [], fileStates: [], viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" }, jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
   });
   return { app, ctx, reviewId, agents };
 }

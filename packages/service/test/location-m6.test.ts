@@ -22,7 +22,7 @@ function snapshotWith(annotations: Thread[], files = [sourceFile()], pages: Revi
     annotations,
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],

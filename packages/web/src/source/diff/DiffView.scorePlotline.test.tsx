@@ -39,7 +39,6 @@ async function renderDiff() {
 const CONN = "src-urllib3-connection.py";
 const TCONN = "test-test_connection.py";
 const TSOCK = "test-with_dummyserver-test_socketlevel.py";
-const LOG = "changelog-1362.bugfix.rst";
 
 describe("DiffView scores and plotlines", () => {
   it("shows score dots and plotline tags on hunk headers", async () => {
@@ -62,10 +61,11 @@ describe("DiffView scores and plotlines", () => {
     expect(document.querySelectorAll(".flist .score-dot")).toHaveLength(0);
     expect(document.querySelector(".legend")).toBeNull();
     expect(document.querySelector(".prog")).toBeNull();
-    // The level lives on the hunk dot's own tooltip instead.
-    const dot = document.querySelector('.dhunk-h [data-scorepick="substantive"]');
-    expect(dot?.getAttribute("data-tip")).toBe("Show substantive hunks or higher");
-
+    // The level lives on the hunk dot's own tooltip instead, and the
+    // dot is an indicator, not a filter button (#325).
+    const dot = document.querySelector('.dhunk-h .score-ind[data-score="substantive"]');
+    expect(dot?.getAttribute("data-tip")).toBe("Substantive");
+    expect(document.querySelector("[data-scorepick]")).toBeNull();
   });
 
   it("filters by plotline from a header chip and remembers it with the review", async () => {
@@ -84,27 +84,46 @@ describe("DiffView scores and plotlines", () => {
     expect(document.querySelector('[data-filterchip="plotline"]')).toBeNull();
   });
 
-  it("filters by score from a hunk dot and clears from the actions-bar chip", async () => {
+  it("hides by score from the hide-level selector, with tooltip counts (#325)", async () => {
     await renderDiff();
-    await fireEvent.click(document.querySelector('.dhunk-h [data-scorepick="mechanical"]') as HTMLElement);
-
+    expect(document.querySelector("[data-scorepick]")).toBeNull();
+    const selector = screen.getByRole("button", { name: /Hide level:/ });
+    expect(selector.getAttribute("data-tip")).toBe("Hiding 3 of 8 hunks: 3 uninteresting");
+    await fireEvent.click(selector);
+    const listbox = screen.getByRole("listbox", { name: "Hide level" });
+    expect(listbox.querySelectorAll('[role="option"]')).toHaveLength(5);
+    expect(document.querySelector('[data-hidelevel="routine"] .score-dot')?.getAttribute("data-score")).toBe("routine");
+    await fireEvent.click(document.querySelector('[data-hidelevel="substantive"]') as HTMLElement);
+    expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("substantive");
+    expect(document.getElementById(`F-${CONN}`)).not.toBeNull();
+    expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
+    // Mechanical/routine hunks now sit in hidden rows: tconn run,
+    // socket-level first hunk, and the changelog.
+    expect(document.querySelectorAll("button.hid")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Hide level:/ }).getAttribute("data-tip")).toMatch(/^Hiding \d+ of 8 hunks:/);
+    // Needs attention keeps the guide-cited connection hunk visible.
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidelevel="needs-attention"]') as HTMLElement);
+    expect(document.querySelector(`[data-hunk="${CONN}:0"]`)).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Hide level:/ }).getAttribute("data-tip")).toContain("kept because cited");
   });
 
-  it("combines plotline and score, composed with Hide uninteresting", async () => {
+  it("combines plotline and hide level", async () => {
     await renderDiff();
     await fireEvent.click(document.querySelector('[data-plotpick="unfold-tests"]') as HTMLElement);
     // The import-only run in the tests file is unfold-tests too, so its
     // hidden row stays while Hide uninteresting is on.
     expect(document.querySelectorAll("button.hid")).toHaveLength(1);
     expect(document.getElementById(`F-${CONN}`)).toBeNull();
-    await fireEvent.click(document.querySelector('[data-hunk] [data-scorepick="substantive"]') as HTMLElement);
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidelevel="substantive"]') as HTMLElement);
     // Only the socket-level test hunk is unfold-tests + substantive.
     expect(document.getElementById(`F-${TSOCK}`)).not.toBeNull();
-    expect(document.getElementById(`F-${TCONN}`)).toBeNull();
-    expect(document.getElementById(`F-${LOG}`)).toBeNull();
-    expect(useReview.getState().snapshot?.diffFilter).toEqual({ plotline: "unfold-tests", score: "substantive" });
-    // Nothing hidden remains under both filters.
-    expect(document.querySelectorAll("button.hid")).toHaveLength(0);
+    expect(useReview.getState().snapshot?.diffFilter).toEqual({ plotline: "unfold-tests" });
+    expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("substantive");
+    // The test-connection hunks are below the level: one hidden row.
+    expect(document.querySelectorAll("button.hid")).toHaveLength(1);
+    expect(document.querySelector(`[data-hunk="${TSOCK}:1"]`)).not.toBeNull();
   });
 
   it("shows markers on activated hunk cards too", async () => {

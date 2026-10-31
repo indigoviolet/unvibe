@@ -209,40 +209,140 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
   return { plotlines, assignment, dropped: { unknown, duplicates, extraPlotlines } };
 }
 
+// --- hide levels (issue #325) --------------------------------------------------
+
+/**
+ * The diff toolbar's level selector, replacing both the old
+ * Hide-uninteresting toggle and the per-hunk score filter buttons.
+ * Each level includes the ones before it:
+ * - `all`: nothing hidden.
+ * - `uninteresting` (default): hunks with a `hiddenReason`, as before.
+ * - `routine`: also hides `mechanical` hunks.
+ * - `substantive`: shows only `substantive` and `needs-attention`.
+ * - `needs-attention`: shows only `needs-attention`.
+ * Guide-cited and individually unhidden hunks stay visible at every
+ * level, and a hunk with no score yet is never hidden by its score.
+ */
+export const HIDE_LEVELS = ["all", "uninteresting", "routine", "substantive", "needs-attention"] as const;
+export type HideLevel = (typeof HIDE_LEVELS)[number];
+export const DEFAULT_HIDE_LEVEL: HideLevel = "uninteresting";
+export const HIDE_LEVEL_LABELS: Record<HideLevel, string> = {
+  all: "All",
+  uninteresting: "Hide uninteresting",
+  routine: "≥ routine",
+  substantive: "≥ substantive",
+  "needs-attention": "Needs attention",
+};
+/** Score shown beside a selector option, when the level is a score floor. */
+export const HIDE_LEVEL_SCORES: Partial<Record<HideLevel, HunkScoreLevel>> = {
+  routine: "routine",
+  substantive: "substantive",
+  "needs-attention": "needs-attention",
+};
+export function normalizeHideLevel(value: unknown): HideLevel | null {
+  if (typeof value !== "string") return null;
+  return (HIDE_LEVELS as readonly string[]).includes(value) ? (value as HideLevel) : null;
+}
+/** Lowest score a level shows, or undefined when it sets no score floor. */
+export function hideLevelFloor(level: HideLevel): HunkScoreLevel | undefined {
+  return HIDE_LEVEL_SCORES[level];
+}
+export interface HideHunkInput {
+  hiddenReason?: string;
+  score?: HunkScoreLevel;
+  added: number;
+  removed: number;
+}
+/** Why a level would hide this hunk, ignoring cited/unhidden overrides. */
+export function hideCategoryForLevel(
+  hunk: HideHunkInput,
+  level: HideLevel,
+): "uninteresting" | HunkScoreLevel | null {
+  if (level === "all") return null;
+  if (hunk.hiddenReason && hunk.added + hunk.removed > 1) return "uninteresting";
+  const floor = hideLevelFloor(level);
+  if (floor !== undefined && hunk.score !== undefined && hunkScoreRank(hunk.score) < hunkScoreRank(floor)) {
+    return hunk.score;
+  }
+  return null;
+}
+export function shouldHideAtLevel(
+  hunk: HideHunkInput,
+  level: HideLevel,
+  opts: { cited?: boolean; unhidden?: boolean } = {},
+): boolean {
+  if (opts.cited || opts.unhidden) return false;
+  return hideCategoryForLevel(hunk, level) !== null;
+}
+export interface HideLevelStats {
+  total: number;
+  hidden: number;
+  uninteresting: number;
+  mechanical: number;
+  routine: number;
+  substantive: number;
+  keptCited: number;
+  keptShown: number;
+}
+export function hideLevelStats(
+  hunks: Iterable<HideHunkInput & { cited?: boolean; unhidden?: boolean }>,
+  level: HideLevel,
+): HideLevelStats {
+  const stats: HideLevelStats = {
+    total: 0, hidden: 0, uninteresting: 0, mechanical: 0, routine: 0, substantive: 0, keptCited: 0, keptShown: 0,
+  };
+  for (const h of hunks) {
+    stats.total += 1;
+    const cat = hideCategoryForLevel(h, level);
+    if (cat === null) continue;
+    if (h.cited) { stats.keptCited += 1; continue; }
+    if (h.unhidden) { stats.keptShown += 1; continue; }
+    stats.hidden += 1;
+    if (cat === "uninteresting") stats.uninteresting += 1;
+    else if (cat === "mechanical") stats.mechanical += 1;
+    else if (cat === "routine") stats.routine += 1;
+    else if (cat === "substantive") stats.substantive += 1;
+  }
+  return stats;
+}
+export function formatHideLevelStats(stats: HideLevelStats): string {
+  const parts: string[] = [];
+  if (stats.uninteresting > 0) parts.push(`${stats.uninteresting} uninteresting`);
+  if (stats.mechanical > 0) parts.push(`${stats.mechanical} mechanical`);
+  if (stats.routine > 0) parts.push(`${stats.routine} routine`);
+  if (stats.substantive > 0) parts.push(`${stats.substantive} substantive`);
+  let text = `Hiding ${stats.hidden} of ${stats.total} ${stats.total === 1 ? "hunk" : "hunks"}`;
+  if (parts.length > 0) text += `: ${parts.join(", ")}`;
+  const kept: string[] = [];
+  if (stats.keptCited > 0) kept.push(`${stats.keptCited} kept because cited`);
+  if (stats.keptShown > 0) kept.push(`${stats.keptShown} kept because shown`);
+  if (kept.length > 0) text += ` · ${kept.join(", ")}`;
+  return text;
+}
+
 // --- diff filter -------------------------------------------------------------
 
 /**
- * The diff's score/plotline filter (one dropdown in the filter menu).
- * Absent fields mean "all". Applies at hunk level and composes with
- * every existing filter (Hide uninteresting, name, type, reviewed):
- * a hunk shows only when all of them pass, and files with no passing
- * hunk drop out. Unlike Hide uninteresting it is an explicit choice,
- * so it also applies to guide-cited hunks.
+ * The diff's plotline filter. Absent means "all". Applies at hunk
+ * level and composes with every other filter (hide level, name, type,
+ * reviewed): a hunk shows only when all of them pass, and files with
+ * no passing hunk drop out. Unlike the hide level it is an explicit
+ * choice, so it also applies to guide-cited hunks. Score filtering
+ * lives in the hide level above (issue #325), not here.
  */
 export interface DiffFilter {
   /** Plotline id, or "other" for unassigned hunks. Absent = all. */
   plotline?: string;
-  /** Score level. Absent = all. */
-  score?: HunkScoreLevel;
 }
 
 /**
- * True when a hunk with this score/plotline passes the filter. The
- * score level is a floor, not an exact match: choosing a level shows
- * that level or higher. A hunk with no score yet (its pass has not
- * landed) matches any score, so pending work is never filtered away;
- * a hunk with no plotline reads as "other".
+ * True when a hunk with this plotline passes the filter; a hunk with
+ * no plotline reads as "other".
  */
 export function hunkMatchesFilter(
-  score: HunkScoreLevel | undefined,
   plotline: string | undefined,
   filter: DiffFilter | undefined,
 ): boolean {
-  if (!filter) return true;
-  if (filter.score !== undefined && score !== undefined && hunkScoreRank(score) < hunkScoreRank(filter.score)) return false;
-  if (filter.plotline !== undefined) {
-    const have = plotline ?? PLOTLINE_OTHER_ID;
-    if (have !== filter.plotline) return false;
-  }
-  return true;
+  if (!filter || filter.plotline === undefined) return true;
+  return (plotline ?? PLOTLINE_OTHER_ID) === filter.plotline;
 }

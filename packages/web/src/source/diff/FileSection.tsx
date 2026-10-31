@@ -144,8 +144,7 @@ interface SectionProps {
   plotFilter?: DiffFilter;
   /** Issue #169: plotline id → display name, for the hunk header tag. */
   plotlineNames?: ReadonlyMap<string, string>;
-  /** Owner direction (#169): the header dot/chip are the filter selectors. */
-  onSelectScore?: (level: HunkScoreLevel) => void;
+  /** Issue #169: the header plotline chip is a filter selector. */
   onSelectPlotline?: (id: string) => void;
   isHidden: (hunk: Hunk) => boolean;
   actions: HunkActions;
@@ -577,21 +576,31 @@ function HiddenRow({
   file: ReviewFile;
   indices: number[];
   briefs: Readonly<Record<string, string>> | null;
-  summaries: ReadonlyMap<string, { summary?: string }>;
+  summaries: ReadonlyMap<string, { summary?: string; score?: HunkScoreLevel }>;
   onUnhide(hashes: string[]): void;
 }): ReactNode {
-  const reasons = [...new Set(indices.map((i) => file.hunks[i].hiddenReason).filter((r) => r !== undefined))].join(
-    ", ",
-  );
+  const reasons = [
+    ...new Set(
+      indices.map((i) => {
+        const h = file.hunks[i];
+        if (h.hiddenReason) return h.hiddenReason;
+        const s = summaries.get(h.contentHash)?.score;
+        return s ? `${HUNK_SCORE_LABELS[s].toLowerCase()} score` : undefined;
+      }).filter((r) => r !== undefined),
+    ),
+  ].join(", ");
   const added = indices.reduce((s, i) => s + file.hunks[i].added, 0);
   const removed = indices.reduce((s, i) => s + file.hunks[i].removed, 0);
   const brief = [...new Set(
-    indices.map(
-      (i) =>
+    indices.map((i) => {
+      const h = file.hunks[i];
+      const s = summaries.get(h.contentHash)?.score;
+      return (
         briefs?.[`${file.fileKey}:${i}`] ??
-        summaries.get(file.hunks[i].contentHash)?.summary ??
-        hiddenDetail(file.hunks[i].hiddenReason),
-    ),
+        summaries.get(h.contentHash)?.summary ??
+        (h.hiddenReason ? hiddenDetail(h.hiddenReason) : s ? `${HUNK_SCORE_LABELS[s]} changes.` : hiddenDetail(undefined))
+      );
+    }),
   )]
     .filter(Boolean)
     .join(" ");
@@ -708,17 +717,10 @@ function HunkBlock(
           <Icon name={folded ? "right" : "down"} />
         </button>
         {score ? (
-          <button
-            type="button"
-            className={`score-pick${props.plotFilter?.score === score ? " sel" : ""}`}
-            aria-pressed={props.plotFilter?.score === score}
-            aria-label={`Show ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks or higher`}
-            data-scorepick={score}
-            data-tip={props.plotFilter?.score === score ? "Show all hunks" : `Show ${HUNK_SCORE_LABELS[score].toLowerCase()} hunks or higher`}
-            onClick={() => props.onSelectScore?.(score)}
-          >
+          <span className="score-ind" data-score={score} data-tip={HUNK_SCORE_LABELS[score]}>
             <span className="score-dot" data-score={score} aria-hidden="true" />
-          </button>
+            <span className="score-txt">{HUNK_SCORE_LABELS[score]}</span>
+          </span>
         ) : null}
         <span className="hl2" data-tip={h.header}>
           <b>
@@ -903,7 +905,7 @@ export function FileSection(props: SectionProps): ReactNode {
     // (not even a hidden row); the caller drops files left with none.
     const plotVisible = (hunk: Hunk): boolean => {
       const s = props.states.get(hunk.contentHash);
-      return hunkMatchesFilter(s?.score, s?.plotline, props.plotFilter);
+      return hunkMatchesFilter(s?.plotline, props.plotFilter);
     };
     const groups = groupHunks(file.hunks, props.isHidden);
     return groups.map((g) => {

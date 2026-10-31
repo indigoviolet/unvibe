@@ -9,7 +9,7 @@
  *   comments from the agents' context.
  */
 import type { FastifyInstance } from "fastify";
-import type { UpdateViewRequest } from "@unvibe/shared";
+import { normalizeHideLevel, type UpdateViewRequest } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import { ingestRefusal } from "../reviews/index.js";
 
@@ -20,14 +20,17 @@ export async function registerView(app: FastifyInstance, ctx: ServiceContext): P
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid view patch body" });
     }
-    const { showExistingComments, existingCommentsCollapsed } = body;
+    const { showExistingComments, existingCommentsCollapsed, hideLevel } = body;
     if (showExistingComments !== undefined && typeof showExistingComments !== "boolean") {
       return reply.code(400).send({ error: "showExistingComments must be a boolean" });
     }
     if (existingCommentsCollapsed !== undefined && typeof existingCommentsCollapsed !== "boolean") {
       return reply.code(400).send({ error: "existingCommentsCollapsed must be a boolean" });
     }
-    if (showExistingComments === undefined && existingCommentsCollapsed === undefined) {
+    if (hideLevel !== undefined && normalizeHideLevel(hideLevel) === null) {
+      return reply.code(400).send({ error: "hideLevel must be a hide level" });
+    }
+    if (showExistingComments === undefined && existingCommentsCollapsed === undefined && hideLevel === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
 
@@ -42,6 +45,8 @@ export async function registerView(app: FastifyInstance, ctx: ServiceContext): P
         if (existingCommentsCollapsed !== undefined) {
           draft.viewPrefs.existingCommentsCollapsed = existingCommentsCollapsed;
         }
+        const level = hideLevel !== undefined ? normalizeHideLevel(hideLevel) : null;
+        if (level !== null) draft.viewPrefs.hideLevel = level;
       });
     } catch (err) {
       return reply.code(404).send({ error: (err as Error).message });

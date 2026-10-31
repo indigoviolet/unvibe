@@ -49,9 +49,9 @@ test.describe("J225 review polish", () => {
     const unfoldSvg = await unfold.locator("svg").innerHTML();
     expect(foldSvg).not.toBe(unfoldSvg);
 
-    await expect(page.getByRole("button", { name: "Hide uninteresting" })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: /Hide level:/ })).toHaveAttribute(
       "data-tip",
-      "Hide uninteresting",
+      /^Hiding \d+ of \d+ hunks/,
     );
     // #241: Refresh lives in the review top bar now (next to the status
     // icon), tooltip exactly "Refresh" — and no longer in the diff toolbar.

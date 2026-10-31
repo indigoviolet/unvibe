@@ -5,12 +5,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  formatHideLevelStats,
+  hideLevelStats,
   hunkMatchesFilter,
   MAX_PLOTLINES,
+  normalizeHideLevel,
   normalizeHunkScore,
   normalizePlotlines,
   PLOTLINE_OTHER_ID,
   resolveHunkScore,
+  shouldHideAtLevel,
 } from "../src/scores.js";
 
 describe("normalizeHunkScore", () => {
@@ -140,32 +144,60 @@ describe("normalizePlotlines", () => {
 
 describe("hunkMatchesFilter", () => {
   it("passes everything without a filter", () => {
-    expect(hunkMatchesFilter(undefined, undefined, undefined)).toBe(true);
-    expect(hunkMatchesFilter("mechanical", "x", {})).toBe(true);
-  });
-
-  it("matches by score level or higher", () => {
-    expect(hunkMatchesFilter("routine", undefined, { score: "routine" })).toBe(true);
-    expect(hunkMatchesFilter("substantive", undefined, { score: "routine" })).toBe(true);
-    expect(hunkMatchesFilter("needs-attention", undefined, { score: "substantive" })).toBe(true);
-    expect(hunkMatchesFilter("mechanical", undefined, { score: "routine" })).toBe(false);
-  });
-
-  it("never filters away a hunk whose score has not landed", () => {
-    expect(hunkMatchesFilter(undefined, undefined, { score: "routine" })).toBe(true);
+    expect(hunkMatchesFilter(undefined, undefined)).toBe(true);
+    expect(hunkMatchesFilter("x", {})).toBe(true);
   });
 
   it("matches by plotline, reading unassigned as other", () => {
-    expect(hunkMatchesFilter(undefined, "retry", { plotline: "retry" })).toBe(true);
-    expect(hunkMatchesFilter(undefined, "tests", { plotline: "retry" })).toBe(false);
-    expect(hunkMatchesFilter(undefined, undefined, { plotline: PLOTLINE_OTHER_ID })).toBe(true);
-    expect(hunkMatchesFilter(undefined, "retry", { plotline: PLOTLINE_OTHER_ID })).toBe(false);
+    expect(hunkMatchesFilter("retry", { plotline: "retry" })).toBe(true);
+    expect(hunkMatchesFilter("tests", { plotline: "retry" })).toBe(false);
+    expect(hunkMatchesFilter(undefined, { plotline: PLOTLINE_OTHER_ID })).toBe(true);
+    expect(hunkMatchesFilter("retry", { plotline: PLOTLINE_OTHER_ID })).toBe(false);
   });
+});
 
-  it("requires both when both are set", () => {
-    const filter = { plotline: "retry", score: "substantive" as const };
-    expect(hunkMatchesFilter("substantive", "retry", filter)).toBe(true);
-    expect(hunkMatchesFilter("routine", "retry", filter)).toBe(false);
-    expect(hunkMatchesFilter("substantive", "tests", filter)).toBe(false);
+describe("hide levels (#325)", () => {
+  const h = (over: Partial<Parameters<typeof shouldHideAtLevel>[0]> & { cited?: boolean; unhidden?: boolean } = {}) => ({
+    added: 2, removed: 1, ...over,
+  });
+  it("maps each level to what it hides", () => {
+    expect(shouldHideAtLevel(h({ hiddenReason: "imports" }), "all")).toBe(false);
+    expect(shouldHideAtLevel(h({ hiddenReason: "imports" }), "uninteresting")).toBe(true);
+    expect(shouldHideAtLevel(h({ score: "mechanical" }), "uninteresting")).toBe(false);
+    expect(shouldHideAtLevel(h({ score: "mechanical" }), "routine")).toBe(true);
+    expect(shouldHideAtLevel(h({ score: "routine" }), "routine")).toBe(false);
+    expect(shouldHideAtLevel(h({ score: "routine" }), "substantive")).toBe(true);
+    expect(shouldHideAtLevel(h({ score: "substantive" }), "substantive")).toBe(false);
+    expect(shouldHideAtLevel(h({ score: "substantive" }), "needs-attention")).toBe(true);
+    expect(shouldHideAtLevel(h({ score: "needs-attention" }), "needs-attention")).toBe(false);
+    // Higher levels still hide uninteresting hunks.
+    expect(shouldHideAtLevel(h({ hiddenReason: "imports", score: "substantive" }), "needs-attention")).toBe(true);
+  });
+  it("never hides unscored, one-line-uninteresting, cited or unhidden hunks", () => {
+    expect(shouldHideAtLevel(h({}), "needs-attention")).toBe(false);
+    expect(shouldHideAtLevel(h({ hiddenReason: "imports", added: 1, removed: 0 }), "uninteresting")).toBe(false);
+    expect(shouldHideAtLevel(h({ score: "mechanical" }), "routine", { cited: true })).toBe(false);
+    expect(shouldHideAtLevel(h({ hiddenReason: "imports" }), "uninteresting", { unhidden: true })).toBe(false);
+    expect(normalizeHideLevel("routine")).toBe("routine");
+    expect(normalizeHideLevel("bogus")).toBeNull();
+    expect(normalizeHideLevel(undefined)).toBeNull();
+  });
+  it("counts hidden hunks with a partitioned breakdown and kept counts", () => {
+    const stats = hideLevelStats([
+      h({ hiddenReason: "imports", score: "mechanical" }),
+      h({ score: "mechanical" }),
+      h({ score: "routine" }),
+      h({ score: "substantive" }),
+      h({ score: "needs-attention" }),
+      h({ score: "mechanical", cited: true }),
+      h({ hiddenReason: "imports", unhidden: true }),
+    ], "substantive");
+    expect(stats).toEqual({
+      total: 7, hidden: 3, uninteresting: 1, mechanical: 1, routine: 1, substantive: 0, keptCited: 1, keptShown: 1,
+    });
+    expect(formatHideLevelStats(stats)).toBe(
+      "Hiding 3 of 7 hunks: 1 uninteresting, 1 mechanical, 1 routine · 1 kept because cited, 1 kept because shown",
+    );
+    expect(formatHideLevelStats(hideLevelStats([], "all"))).toBe("Hiding 0 of 0 hunks");
   });
 });

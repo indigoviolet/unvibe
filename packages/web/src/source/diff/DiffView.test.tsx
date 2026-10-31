@@ -115,14 +115,17 @@ describe("DiffView", () => {
     await waitFor(() => expect(connSection().querySelector(".dbody")).not.toBeNull());
   });
 
-  it("toggles Hide uninteresting off and on", async () => {
+  it("switches the hide level to All and back (#325)", async () => {
     await renderDiff();
-    const toggle = screen.getByRole("button", { name: "Hide uninteresting" });
     expect(document.querySelectorAll("button.hid")).toHaveLength(2);
-    await fireEvent.click(toggle);
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidelevel="all"]') as HTMLElement);
     expect(document.querySelectorAll("button.hid")).toHaveLength(0);
-    await fireEvent.click(toggle);
+    expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("all");
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidelevel="uninteresting"]') as HTMLElement);
     expect(document.querySelectorAll("button.hid")).toHaveLength(2);
+    expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("uninteresting");
   });
 
   it("expands a hidden run on click", async () => {
@@ -293,7 +296,8 @@ describe("DiffView", () => {
     // reveal it first, then assert. Every unified table hides the old
     // column, so code rows carry exactly one number cell, while the
     // modified conn file keeps both.
-    await fireEvent.click(screen.getByRole("button", { name: "Hide uninteresting" }));
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidelevel="all"]') as HTMLElement);
     const added = document.getElementById("F-changelog-1362.bugfix.rst")!;
     const addedTables = [...added.querySelectorAll("table.diff:not(.split)")];
     expect(addedTables.length).toBeGreaterThan(0);
@@ -380,7 +384,7 @@ function makeNoSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -429,7 +433,7 @@ function makeOverLimitSnapshot(): import("@unvibe/shared").ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],

@@ -1791,7 +1791,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -1819,7 +1819,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -2162,7 +2162,7 @@ export const mockApi = {
       annotations: [],
       hunkStates: [],
       fileStates: [],
-      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
       jobs: [],
       contributions: [],
       logTail: [],
@@ -2242,7 +2242,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2297,7 +2297,7 @@ export const mockApi = {
         annotations: [],
         hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
         jobs: [],
         contributions: [],
         logTail: [],
@@ -2431,7 +2431,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -2462,7 +2462,7 @@ export const mockApi = {
             annotations: [],
             hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
             jobs: [],
             contributions: [],
             logTail: [],
@@ -3333,13 +3333,14 @@ export const mockApi = {
     _id: string,
     body: import("@unvibe/shared").UpdateViewRequest,
   ): Promise<{ ok: boolean }> => {
-    if (body.showExistingComments !== undefined || body.existingCommentsCollapsed !== undefined) {
+    if (body.showExistingComments !== undefined || body.existingCommentsCollapsed !== undefined || body.hideLevel !== undefined) {
       mockViewPrefs = {
         ...mockViewPrefs,
         ...(body.showExistingComments !== undefined ? { showExistingComments: body.showExistingComments } : {}),
         ...(body.existingCommentsCollapsed !== undefined
           ? { existingCommentsCollapsed: body.existingCommentsCollapsed }
           : {}),
+        ...(body.hideLevel !== undefined ? { hideLevel: body.hideLevel } : {}),
       };
       const baseRev = rev;
       rev += 1;
@@ -3367,20 +3368,14 @@ export const mockApi = {
   // Issue #169: mirrors the service PATCH semantics (null clears a field;
   // unknown plotlines and levels are refused).
   updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
-    const { plotline, score } = body;
+    const { plotline } = body;
     if (plotline !== undefined && plotline !== null) {
       const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
       if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
     }
-    if (score !== undefined && score !== null) {
-      const levels: readonly string[] = ["mechanical", "routine", "substantive", "needs-attention"];
-      if (!levels.includes(score)) throw new Error(`unknown score ${score}`);
-    }
-    const next: DiffFilter = { ...(mockDiffFilter ?? {}) };
+    const next: DiffFilter = mockDiffFilter?.plotline ? { plotline: mockDiffFilter.plotline } : {};
     if (plotline === null) delete next.plotline;
     else if (plotline !== undefined) next.plotline = plotline;
-    if (score === null) delete next.score;
-    else if (score !== undefined) next.score = score;
     mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
     emitDiffFilter();
     return { ok: true };

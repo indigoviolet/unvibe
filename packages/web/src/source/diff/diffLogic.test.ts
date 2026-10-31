@@ -132,18 +132,25 @@ describe("filterFiles", () => {
 
 describe("shouldHideHunk", () => {
   const hidden = hunk({ hiddenReason: "imports", added: 1, removed: 1 });
-  it("requires Hide-uninteresting and a hidden reason", () => {
-    expect(shouldHideHunk(hidden, { hideUninteresting: false, unhidden: false, cited: false })).toBe(false);
-    expect(shouldHideHunk(hunk(), { hideUninteresting: true, unhidden: false, cited: false })).toBe(false);
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: false, cited: false })).toBe(true);
+  it("requires the uninteresting level and a hidden reason", () => {
+    expect(shouldHideHunk(hidden, { level: "all", unhidden: false, cited: false })).toBe(false);
+    expect(shouldHideHunk(hunk(), { level: "uninteresting", unhidden: false, cited: false })).toBe(false);
+    expect(shouldHideHunk(hidden, { level: "uninteresting", unhidden: false, cited: false })).toBe(true);
   });
-  it("never hides one-line changes", () => {
+  it("hides by score at the higher levels (#325)", () => {
+    expect(shouldHideHunk(hunk(), { level: "routine", score: "mechanical", unhidden: false, cited: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "substantive", score: "routine", unhidden: false, cited: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", score: "substantive", unhidden: false, cited: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", score: "needs-attention", unhidden: false, cited: false })).toBe(false);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", unhidden: false, cited: false })).toBe(false);
+  });
+  it("never hides one-line uninteresting changes", () => {
     const oneLine = hunk({ hiddenReason: "imports", added: 1, removed: 0 });
-    expect(shouldHideHunk(oneLine, { hideUninteresting: true, unhidden: false, cited: false })).toBe(false);
+    expect(shouldHideHunk(oneLine, { level: "uninteresting", unhidden: false, cited: false })).toBe(false);
   });
-  it("never hides revealed or guide-cited hunks", () => {
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: true, cited: false })).toBe(false);
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: false, cited: true })).toBe(false);
+  it("never hides revealed or guide-cited hunks at any level", () => {
+    expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: true, cited: false })).toBe(false);
+    expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: false, cited: true })).toBe(false);
   });
 });
 
