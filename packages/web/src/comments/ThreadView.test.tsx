@@ -223,22 +223,31 @@ describe("Ask thread entries (issue #315)", () => {
     expect(a?.querySelector(".ctl")).not.toBeNull();
   });
 
-  test("explain replies keep their kind badge and heading", () => {
+  test("explain replies show the avatar only, named for screen readers", () => {
     const explaining = thread({ replies: [mkAgent("explain", "Why is this so?")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [explaining] });
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector('[data-reply][data-kind="explain"]');
-    expect(reply?.querySelector(".kind-explain")).not.toBeNull();
-    expect(reply?.querySelector(".ans-q")).toHaveTextContent(/Explain/);
+    expect(reply?.querySelector(".av.ai")).not.toBeNull();
+    expect(reply?.querySelector(".kind")).toBeNull();
+    expect(reply?.querySelector(".ans-q")).toBeNull();
+    expect(reply?.getAttribute("aria-label")).toBe("Agent explanation");
+    expect(reply?.querySelector(".ctl")).not.toBeNull();
   });
 
-  test("real reviewer comments keep their badge and label", () => {
+  test("real reviewer comments show the avatar only, with an Outbox mark", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector('[data-reply][data-kind="comment"]');
-    expect(reply?.querySelector(".kind-comment")).not.toBeNull();
-    expect(reply).toHaveTextContent("Reviewer comment");
+    expect(reply?.querySelector(".av.you")).not.toBeNull();
+    expect(reply?.querySelector(".kind")).toBeNull();
+    expect(reply?.querySelector(".ans-q")).toBeNull();
+    expect(reply).not.toHaveTextContent("Reviewer comment");
+    expect(reply?.getAttribute("aria-label")).toBe("Reviewer comment");
+    const mark = reply?.querySelector(".outbox-mark");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("aria-label")).toBe("Posts to GitHub from the Outbox");
   });
 });
 
@@ -254,16 +263,17 @@ describe("ThreadView authorship (owner decision: icons, not text)", () => {
     expect(container.querySelector(".msg .who")).toBeNull();
   });
 
-  test("avatars sit inline in the reply's first line; no avatar column (issue #301)", () => {
+  test("avatars float inline in the reply's first line; no heading row (issue #331)", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector(".spike-reply");
     expect(reply).not.toBeNull();
-    // No two-column avatar layout: the old main wrapper is gone and the
-    // avatar is the first child of the heading row.
+    // No two-column avatar layout and no heading row: the avatar is a
+    // direct child of the reply (floated inline by CSS) and the text
+    // starts on its line.
     expect(reply?.querySelector(".spike-reply-main")).toBeNull();
-    const head = reply?.querySelector(".spike-reply-head");
-    expect(head?.firstElementChild?.classList.contains("av")).toBe(true);
+    expect(reply?.querySelector(".spike-reply-head")).toBeNull();
+    expect(reply?.firstElementChild?.classList.contains("av")).toBe(true);
   });
 });
 

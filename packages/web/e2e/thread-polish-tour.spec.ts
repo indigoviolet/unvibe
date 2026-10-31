@@ -147,14 +147,14 @@ for (const combo of [
     await expect(thread.locator('[data-reply][data-kind="explain"] .exp-b').first()).not.toBeEmpty({
       timeout: 90_000,
     });
-    // Issue #301: inline avatar, neutral surface, thread at rest.
+    // Issue #331: inline avatar, neutral surface, thread at rest.
     await thread.scrollIntoViewIfNeeded();
-    await expect(thread.locator(".spike-reply-head .av.ai").first()).toBeVisible();
+    await expect(thread.locator(".spike-reply > .av.ai").first()).toBeVisible();
     await shot(page, "polish-thread-rest", suffix);
 
     // Hover-revealed reply toolbar with the new Second opinion icon.
     await thread.locator('[data-reply][data-kind="explain"] .exp-b').first().hover();
-    await expect(thread.locator(".spike-reply-head .ctl").first()).toBeVisible({ timeout: 10_000 });
+    await expect(thread.locator(".spike-reply > .ctl").first()).toBeVisible({ timeout: 10_000 });
     await shot(page, "polish-reply-toolbar", suffix);
 
     // The single Reply box asks a follow-up (#293 shape: comment + answer).

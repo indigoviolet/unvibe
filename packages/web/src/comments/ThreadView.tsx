@@ -3,7 +3,8 @@
  *
  * One thread component for everything: Explain/Ask answers and reviewer
  * comments are replies with a `kind` (`ask`, `explain`, `comment`, with
- * `persona` reserved in the type only), badged by kind. Threads render
+ * `persona` reserved in the type only), marked by an avatar and an
+ * accessible name (no kind badges — #315). Threads render
  * inline under the card (or description block, or diff line) they started
  * from. Controls (depth, principle, second opinion) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
@@ -132,17 +133,6 @@ function headerLabel(
   return "Comment";
 }
 
-function replyHeading(reply: Reply, anchorQuote: string): string {
-  if (reply.kind === "comment") return "Reviewer comment";
-  if (reply.kind === "persona") return "Persona note";
-  if (reply.kind === "explain") {
-    const q = reply.question ?? anchorQuote;
-    return `Explain · “${q.length > 80 ? `${q.slice(0, 79)}…` : q}”`;
-  }
-  const q = reply.question ?? "";
-  return q ? `Ask · ${q.length > 100 ? `${q.slice(0, 99)}…` : q}` : "Ask";
-}
-
 /** Issue #293: an Ask question renders as a reviewer-styled entry from the
  * stored `reply.question` — no stored change, so it never enters the
  * Outbox/Submit path (those read only `kind === "comment"` replies). */
@@ -150,12 +140,13 @@ function isAskWithQuestion(reply: Reply): boolean {
   return reply.kind === "ask" && (reply.question?.trim() ?? "") !== "";
 }
 
-/** Reviewer-styled question entry for an Ask reply (#293). Issue #301:
- * the avatar sits inline in the first line; the body below uses the
- * thread's normal padding (no avatar column). Issue #315: no kind chip
- * and no "Reviewer comment" label — the reviewer avatar alone says
- * who's speaking. The entry keeps an accessible name ("Your question")
- * so screen readers still tell it apart from the agent answer. */
+/** Reviewer-styled question entry for an Ask reply (#293). Issue #331:
+ * the avatar floats inline so the question starts on its line, and the
+ * following lines wrap back to the thread's normal padding (no avatar
+ * column, no hanging indent). Issue #315: no kind chip and no
+ * "Reviewer comment" label — the reviewer avatar alone says who's
+ * speaking. The entry keeps an accessible name ("Your question") so
+ * screen readers still tell it apart from the agent answer. */
 function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
   const question = (reply.question ?? "").trim();
   return (
@@ -168,11 +159,9 @@ function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): Re
       role="article"
       aria-label="Your question"
     >
-      <div className="spike-reply-head">
-        <span className="av you" role="img" aria-label="You">
-          <Icon name="person" />
-        </span>
-      </div>
+      <span className="av you" role="img" aria-label="You">
+        <Icon name="person" />
+      </span>
       <p>{question}</p>
     </div>
   );
@@ -298,32 +287,27 @@ function AgentReplyView({
     ));
 
   const askAnswerClass = hideQuestion ? " ask-answer" : "";
-  // Issue #301: the AI avatar sits inline at the start of the reply's
-  // first line (with the kind badge except on Ask answers — #315), the
-  // body below uses the thread's normal padding (no avatar column).
+  // Issue #315 follow-up: every agent reply shows the avatar only — no
+  // kind chip, no role label. For Ask the question is its own entry just
+  // above; Explain shows the answer only. The accessible name keeps the
+  // replies distinguishable for screen readers.
+  const agentLabel = reply.kind === "explain" ? "Agent explanation" : "Agent answer";
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
       id={reply.id}
       data-reply={reply.id}
       data-kind={reply.kind}
-      {...(hideQuestion ? { "data-ask-answer": reply.id, role: "article", "aria-label": "Agent answer" } : {})}
+      {...(hideQuestion ? { "data-ask-answer": reply.id } : {})}
+      role="article"
+      aria-label={agentLabel}
     >
-      <div className="spike-reply-head">
-        <span className="av ai" role="img" aria-label="Agent">
-          <Icon name="spark" />
-        </span>
-        {/* Issue #315: an Ask answer shows only the AI avatar — no kind
-            chip, no question heading (the question is its own entry just
-            above). Other kinds keep their badge + heading. */}
-        {hideQuestion ? null : (
-          <>
-            <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
-            <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>
-          </>
-        )}
-        {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
-        {awaitingAnswer ? null : (
+      <span className="av ai" role="img" aria-label="Agent">
+        <Icon name="spark" />
+      </span>
+      {/* #274: the toolbar floats at the reply's top-right corner,
+          hover/focus-revealed, so the body starts on the avatar's line. */}
+      {awaitingAnswer ? null : (
           <div className="ctl">
               <DepthControl
                 level={reply.level}
@@ -362,7 +346,6 @@ function AgentReplyView({
               />
             </div>
           )}
-      </div>
       {showWorking && !errorText ? <Working text={workingLabel} /> : null}
       {noAgent ? (
         <div className="perr" role="status">
@@ -448,15 +431,34 @@ function CommentReplyView({
   } else {
     body = <p dangerouslySetInnerHTML={{ __html: html }} />;
   }
+  // Issue #315 follow-up: a reviewer comment shows the avatar only — no
+  // kind chip, no "Reviewer comment" label. A postable comment (one the
+  // Outbox can carry to GitHub — a question never posts) carries a small
+  // muted Outbox mark instead. The accessible name keeps the role.
+  const commentLabel = reply.kind === "persona" ? "Persona note" : "Reviewer comment";
   return (
-    <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind="comment" data-comment={threadId}>
-      <div className="spike-reply-head">
-        <span className="av you" role="img" aria-label="You">
-          <Icon name="person" />
+    <div
+      className={`spike-reply${flash ? " flash" : ""}`}
+      id={reply.id}
+      data-reply={reply.id}
+      data-kind="comment"
+      data-comment={threadId}
+      role="article"
+      aria-label={commentLabel}
+    >
+      <span className="av you" role="img" aria-label="You">
+        <Icon name="person" />
+      </span>
+      {reply.kind === "comment" ? (
+        <span
+          className="outbox-mark"
+          role="img"
+          aria-label="Posts to GitHub from the Outbox"
+          data-tip="Posts to GitHub from the Outbox"
+        >
+          <Icon name="send" />
         </span>
-        <span className="kind kind-comment">comment</span>
-        <span className="ans-q">Reviewer comment</span>
-      </div>
+      ) : null}
       {body}
     </div>
   );
@@ -498,15 +500,20 @@ export function ThreadCollapsedRow({
   // Never show empty quote marks: a thread with no quoted text (e.g. a
   // line comment) is just question · snippet · count.
   const rowQuote = (thread.anchor.quotedText ?? "").trim();
+  // Owner decision (#331 follow-up): the count is replies after the first
+  // entry — a lone opening comment shows no count, matching the header.
+  const followups = thread.replies.length - 1;
   return (
     <button type="button" className="spike-row" data-row={thread.id} onClick={onExpand} aria-label={`Expand thread ${thread.anchor.quotedText}`}>
       {rowQuote !== "" ? <span className="spike-row-q">“{thread.anchor.quotedText}”</span> : null}
       <span className="spike-row-first">{firstHeading}</span>
       <span className="spike-row-sep">·</span>
       <span className="spike-row-snip">{snippet}</span>
-      <span className="spike-row-count">
-        {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
-      </span>
+      {followups > 0 ? (
+        <span className="spike-row-count">
+          {followups} {followups === 1 ? "reply" : "replies"}
+        </span>
+      ) : null}
       <Icon name="right" />
     </button>
   );
@@ -675,9 +682,13 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         <span className="hint thd-loc">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
-        <span className="count" data-count={thread.id}>
-          {replies.length} {replies.length === 1 ? "reply" : "replies"}
-        </span>
+        {/* Owner decision (#331 follow-up): the count is replies after the
+            first entry — a lone opening comment shows no count. */}
+        {replies.length > 1 ? (
+          <span className="count" data-count={thread.id}>
+            {replies.length - 1} {replies.length - 1 === 1 ? "reply" : "replies"}
+          </span>
+        ) : null}
         {!isNew && hasCommentReplies ? (
           <button
             className="ib pr"
