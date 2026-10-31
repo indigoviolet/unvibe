@@ -3710,3 +3710,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `panel-322.test.ts`, `extension-322.test.ts`, journeys
   `j322-extension.spec.ts` + `extension-panel-322.spec.ts` (frame
   inspected), `check-global-install` green. Full gates not yet run.
+
+## Addendum: #335 (branch `fix/335-extension-start-review`)
+
+- **Extension starts the review via the worker:** the button no longer
+  opens `/open`. The background worker POSTs the PR URL to the new
+  `POST /api/extension/open` (Bearer [REDACTED] exact allowlisted extension
+  origin, same gate as pr-status/panel) and opens the answered
+  `/review/<id>` directly — no confirmation step. The endpoint clones
+  an unknown repo first and reuses an existing review, sharing the
+  `POST /open` open path. Failures (service down, clone error) answer
+  `{ ok: false }` and show an honest state on the button, never a blank
+  tab. `/open` keeps the confirm step for plain links only: `GET /open`
+  still never mutates (existing review redirects; anything else redirects
+  to the `/open/confirm` web-app route), and the confirm now renders
+  inside the app frame (top bar, app styling) with a Start button that
+  POSTs to `/open` and navigates to the review. No stored-shape change,
+  so `DATA_FORMAT` stays 1. Evidence: `extension-322.test.ts` (new
+  endpoint creates/reuses with Bearer [REDACTED] extension origin, foreign
+  origin/tokenless 403/401, GET still read-only) and Playwright
+  `e2e/extension-322.spec.ts` (button lands on `/review/<id>` with no
+  confirm; plain link shows the styled confirm and creates on Start;
+  unknown origin refused on both worker endpoints) with frame
+  `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
+  Full gates not yet run.

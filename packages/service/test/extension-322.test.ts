@@ -8,6 +8,7 @@
  * - `/open?pr=…`: an existing review redirects to it.
  */
 import { describe, expect, it } from "vitest";
+import type { FastifyInstance } from "fastify";
 import { PINNED_EXTENSION_ID, extensionOrigin, type ReviewSnapshot } from "@unvibe/shared";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import { createApp } from "../src/server.js";
@@ -171,7 +172,7 @@ describe("/open deep link", () => {
     }
   });
 
-  it("GET never mutates: a new PR (even cross-site) only gets the confirm page", async () => {
+  it("GET never mutates: a new PR (even cross-site) only redirects to the in-app confirm", async () => {
     const { app, ctx } = await seededApp();
     try {
       const reposBefore = ctx.repos.list().map((r) => r.id);
@@ -185,10 +186,11 @@ describe("/open deep link", () => {
           referer: "https://evil.example/post",
         },
       });
-      expect(known.statusCode).toBe(200);
-      expect(known.body).toContain("Review acme/app#99 in Unvibe?");
-      expect(known.body).toContain('method="post"');
-      // Unknown repo: still just the page, no clone.
+      expect(known.statusCode).toBe(302);
+      expect(known.headers.location).toBe(
+        `/open/confirm?pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+      );
+      // Unknown repo: still just the redirect, no clone.
       const unknown = await app.inject({
         method: "GET",
         url: `/open?pr=${encodeURIComponent("https://github.com/othercorp/other/pull/3")}`,
@@ -198,9 +200,10 @@ describe("/open deep link", () => {
           referer: "https://evil.example/post",
         },
       });
-      expect(unknown.statusCode).toBe(200);
-      expect(unknown.body).toContain("Review othercorp/other#3 in Unvibe?");
-      expect(unknown.body).toContain("clone");
+      expect(unknown.statusCode).toBe(302);
+      expect(unknown.headers.location).toBe(
+        `/open/confirm?pr=${encodeURIComponent("https://github.com/othercorp/other/pull/3")}`,
+      );
       // Nothing was recorded: same repos, and no review for either PR.
       expect(ctx.repos.list().map((r) => r.id)).toEqual(reposBefore);
       for (const pr of ["https://github.com/acme/app/pull/99", "https://github.com/othercorp/other/pull/3"]) {
@@ -281,6 +284,91 @@ describe("/open deep link", () => {
         headers: { origin: GOOD_ORIGIN, authorization: AUTH },
       });
       expect(status.json()).toMatchObject({ exists: true });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("extension open endpoint (#335)", () => {
+  const OPEN = "/api/extension/open";
+  const PR99 = "https://github.com/acme/app/pull/99";
+
+  function postOpen(app: FastifyInstance, pr: string, headers: Record<string, string> = {}) {
+    return app.inject({
+      method: "POST",
+      url: OPEN,
+      headers: { origin: GOOD_ORIGIN, authorization: AUTH, "content-type": "application/json", ...headers },
+      payload: JSON.stringify({ pr }),
+    });
+  }
+
+  it("creates the review with Bearer [REDACTED] extension origin, then reuses it", async () => {
+    const { app } = await seededApp();
+    try {
+      const first = await postOpen(app, PR99);
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({ prUrl: PR99 });
+      const reviewId = (first.json() as { reviewId: string }).reviewId;
+      expect(typeof reviewId).toBe("string");
+      const second = await postOpen(app, PR99);
+      expect(second.statusCode).toBe(200);
+      expect(second.json()).toMatchObject({ reviewId, prUrl: PR99 });
+      const status = await app.inject({
+        method: "GET",
+        url: `/api/extension/pr-status?pr=${encodeURIComponent(PR99)}`,
+        headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+      });
+      expect(status.json()).toMatchObject({ exists: true, reviewId });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("is refused with a foreign origin or without the token", async () => {
+    const { app, ctx } = await seededApp();
+    try {
+      const foreign = await postOpen(app, PR99, { origin: BAD_ORIGIN });
+      expect(foreign.statusCode).toBe(403);
+      const noToken = await app.inject({
+        method: "POST",
+        url: OPEN,
+        headers: { origin: GOOD_ORIGIN, "content-type": "application/json" },
+        payload: JSON.stringify({ pr: PR99 }),
+      });
+      expect(noToken.statusCode).toBe(401);
+      // The allowlisted origin stays refused everywhere else.
+      const elsewhere = await app.inject({
+        method: "GET",
+        url: "/api/reviews",
+        headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+      });
+      expect(elsewhere.statusCode).toBe(403);
+      // Nothing was recorded.
+      expect(ctx.repos.list()).toHaveLength(1);
+      const status = await app.inject({
+        method: "GET",
+        url: `/api/extension/pr-status?pr=${encodeURIComponent(PR99)}`,
+        headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+      });
+      expect(status.json()).toMatchObject({ exists: false });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a bad PR URL with 400 and answers CORS preflight", async () => {
+    const { app } = await seededApp();
+    try {
+      const bad = await postOpen(app, "https://github.com/acme/app");
+      expect(bad.statusCode).toBe(400);
+      const preflight = await app.inject({
+        method: "OPTIONS",
+        url: OPEN,
+        headers: { origin: GOOD_ORIGIN, "access-control-request-method": "POST" },
+      });
+      expect(preflight.statusCode).toBe(204);
+      expect(preflight.headers["access-control-allow-origin"]).toBe(GOOD_ORIGIN);
     } finally {
       await app.close();
     }
