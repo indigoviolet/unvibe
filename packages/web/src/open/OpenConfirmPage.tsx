@@ -4,20 +4,22 @@
  * `GET /open` never mutates (any site can link to it and the token cookie
  * rides along), so a PR with no review yet redirects here instead of
  * starting one. The page renders inside the normal app frame — same top
- * bar and styling as the start page — and its Start button POSTs to
- * `/open` from the app origin (same protection as the app's other
- * mutations), then navigates to the review. The extension button never
- * lands here: the worker opens `/review/<id>` directly.
+ * bar, card and styling as the start page (the #311 reset-notice frame)
+ * — and its Start button POSTs to `/open` from the app origin (same
+ * protection as the app's other mutations), then navigates to the review.
+ * The extension button never lands here: the worker opens
+ * `/review/<id>` directly.
  */
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { parseOpenPrUrl } from "@unvibe/shared";
 import { friendlyError, getToken } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { Button } from "../ui/index.js";
+import { Button, Card } from "../ui/index.js";
 
 export function OpenConfirmPage(): React.JSX.Element {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const raw = params.get("pr") ?? "";
   let parsed = null;
   let parseError: string | null = null;
@@ -63,47 +65,57 @@ export function OpenConfirmPage(): React.JSX.Element {
   return (
     <div className="app start">
       <ScreenTopBar showBadge />
+      {/* Start-page disco-ball art (#281): static, pointer-transparent. */}
+      <div className="start-watermark" aria-hidden="true">
+        <img src="/disco-ball.svg" alt="" />
+      </div>
       <main className="col" style={{ padding: 24 }}>
+        {/* 720px: the heading's single-line measure, so the wrapped copy
+            and the actions share one right edge (#311). */}
         <div className="doc" style={{ maxWidth: 720 }} data-testid="open-confirm">
-          {parsed && name ? (
-            <>
-              <h1>Review {name} in Unvibe?</h1>
-              <p>
-                This will start a new review of this pull request in Unvibe. If Unvibe doesn&apos;t have{" "}
-                {parsed.owner}/{parsed.name} yet, it clones that repo into its own storage first. Opening a
-                review runs the guide pipeline, which can use agent tokens.
-              </p>
-              <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-                <Button
-                  variant="primary"
-                  type="button"
-                  onClick={() => void start()}
-                  disabled={starting}
-                  data-testid="open-confirm-start"
-                >
-                  {starting ? "Starting…" : "Start review"}
-                </Button>
-                <Link className="ib bd" to="/">
-                  Cancel
-                </Link>
-              </div>
-              {error ? (
-                <p className="hint" role="alert" style={{ marginTop: 12 }}>
-                  {error}
+          <Card variant="plain" style={{ padding: "12px 16px" }}>
+            {parsed && name ? (
+              <>
+                <h1 style={{ marginTop: 0 }}>Review {name} in Unvibe?</h1>
+                <p>
+                  This will start a new review of this pull request in Unvibe. If Unvibe doesn&apos;t have{" "}
+                  {parsed.owner}/{parsed.name} yet, it clones that repo into its own storage first. Opening a
+                  review runs the guide pipeline, which can use agent tokens.
                 </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <h1>Can&apos;t open that link</h1>
-              <p>{parseError ?? "Missing pr: expected /open?pr=https://github.com/owner/name/pull/123."}</p>
-              <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-                <Link className="ib bd" to="/">
-                  Back to the start page
-                </Link>
-              </div>
-            </>
-          )}
+                <div className="frow" style={{ gap: 8, alignItems: "center" }}>
+                  <Button
+                    variant="primary"
+                    type="button"
+                    onClick={() => void start()}
+                    disabled={starting}
+                    data-testid="open-confirm-start"
+                  >
+                    {starting ? "Starting…" : "Start review"}
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={() => navigate("/")} disabled={starting}>
+                    Cancel
+                  </Button>
+                </div>
+                {error ? (
+                  <p className="hint" role="alert" style={{ marginTop: 12, marginBottom: 0 }}>
+                    {error}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <h1 style={{ marginTop: 0 }}>Can&apos;t open that link</h1>
+                <p style={{ marginBottom: 12 }}>
+                  {parseError ?? "Missing pr: expected /open?pr=https://github.com/owner/name/pull/123."}
+                </p>
+                <div className="frow" style={{ gap: 8, alignItems: "center" }}>
+                  <Button variant="secondary" type="button" onClick={() => navigate("/")}>
+                    Back to the start page
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
         </div>
       </main>
     </div>
