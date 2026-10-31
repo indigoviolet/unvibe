@@ -150,20 +150,70 @@ test.describe("extension PR button (#322)", () => {
     await expect(button).toHaveText("Review in Unvibe");
     await page.screenshot({ path: SHOT, clip: { x: 0, y: 0, width: 760, height: 190 } });
 
-    // Click: the worker opens /open?pr=… in a new tab, which redirects to
-    // the (newly created) review.
-    const [reviewPage] = await Promise.all([
+    // CSRF check: a cross-site link to /open for a NEW repo must not
+    // clone or create anything — it only lands on the confirm page.
+    const reposBefore = await apiJson(svc, "GET", "/api/repos");
+    const reviewsBefore = await apiJson(svc, "GET", "/api/reviews");
+    await page.evaluate((href) => {
+      const a = document.createElement("a");
+      a.id = "cross-site-open";
+      a.href = href;
+      a.textContent = "cross-site open";
+      document.body.appendChild(a);
+    }, `${svc.origin}/open?pr=${encodeURIComponent("https://github.com/othercorp/other/pull/3")}`);
+    await page.locator("#cross-site-open").click();
+    await expect(page.getByRole("heading", { name: "Review othercorp/other#3 in Unvibe?" })).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(JSON.stringify((await apiJson(svc, "GET", "/api/repos")).json)).toBe(
+      JSON.stringify((reposBefore as { json: unknown }).json),
+    );
+    expect(JSON.stringify((await apiJson(svc, "GET", "/api/reviews")).json)).toBe(
+      JSON.stringify((reviewsBefore as { json: unknown }).json),
+    );
+    // A POST from a foreign origin is refused outright.
+    const foreignPost = await fetch(`${svc.origin}/open`, {
+      method: "POST",
+      headers: {
+        origin: "https://evil.example",
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Bearer ${svc.token}`,
+      },
+      body: `pr=${encodeURIComponent(PR_URL)}`,
+    });
+    expect(foreignPost.status).toBe(403);
+
+    // Back to the PR: the button is still there.
+    await page.goto(PR_URL);
+    await expect(button).toHaveText("Review in Unvibe", { timeout: 30_000 });
+
+    // Click: the worker opens /open?pr=… in a new tab. GET never mutates,
+    // so the new tab shows the in-app confirm page; its POST creates the
+    // review and redirects to it.
+    const [confirmPage] = await Promise.all([
       context.waitForEvent("page", { timeout: 30_000 }),
       button.click(),
     ]);
+    await expect(
+      confirmPage.getByRole("heading", { name: "Review acme/app#7 in Unvibe?" }),
+    ).toBeVisible({ timeout: 30_000 });
+    const reviewPage = confirmPage;
+    await reviewPage.getByRole("button", { name: "Start review" }).click();
     await reviewPage.waitForURL(/\/review\/[^/]+$/, { timeout: 60_000 });
     expect(reviewPage.url().startsWith(`${svc.origin}/review/`)).toBe(true);
     // The review lands (ingest via the stub gh): loading clears.
     await expect(reviewPage.getByTestId("review-loading")).toBeHidden({ timeout: 60_000 });
 
-    // Now a review exists: the fixture button says so.
+    // Now a review exists: the fixture button says so, and clicking it
+    // goes straight to the review (no confirm page for an existing one).
     await page.reload();
     await expect(button).toHaveText("Open review", { timeout: 30_000 });
+    const [againPage] = await Promise.all([
+      context.waitForEvent("page", { timeout: 30_000 }),
+      button.click(),
+    ]);
+    await againPage.waitForURL(/\/review\/[^/]+$/, { timeout: 60_000 });
+    await againPage.close();
 
     // The token cookie drives that: without it the worker cannot know.
     await context.clearCookies();

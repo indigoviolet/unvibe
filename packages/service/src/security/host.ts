@@ -88,6 +88,15 @@ export interface HostCheckOptions {
    * origin anywhere else is still refused.
    */
   extensionIds?: readonly string[];
+  /**
+   * #322 fix: skip the Origin/Referer check for this one request (the
+   * read-only `GET /open`, so a cross-site link still lands on the
+   * in-app confirm page instead of a bare 403). The Host must still be
+   * loopback, the token gate still applies, and the endpoint this
+   * relaxes must never mutate — the mutation is a separate POST behind
+   * the full gate.
+   */
+  relaxedOrigin?: boolean;
 }
 
 /** Combined gate for the service `onRequest` hook. */
@@ -96,6 +105,7 @@ export function hostCheckAllows(
   opts: HostCheckOptions = {},
 ): { ok: true } | { ok: false; reason: string } {
   if (!isLoopbackHost(req.headers["host"])) return { ok: false, reason: "host is not loopback" };
+  if (opts.relaxedOrigin) return { ok: true };
   const ext = opts.extensionIds ?? [];
   const originOk =
     isAllowedOrigin(req.headers["origin"]) || isAllowedExtensionOrigin(req.headers["origin"], ext);

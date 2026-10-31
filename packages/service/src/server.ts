@@ -229,9 +229,14 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     // allowlisted extension origin (CORS + origin check). Every other
     // route keeps the loopback-only rule for extension origins.
     const isExtensionEndpoint = pathname === EXTENSION_PR_STATUS_PATH;
+    // #322 fix: `GET /open` never mutates (redirect or confirm page), so
+    // a cross-site navigation may reach it — foreign Origin/Referer are
+    // relaxed for that one read. `POST /open` (the mutation) and every
+    // other route keep the full check.
+    const isOpenRead = pathname === "/open" && req.method === "GET";
     const allowed = hostCheckAllows(
       { headers: req.headers as Record<string, string | string[] | undefined> },
-      isExtensionEndpoint ? { extensionIds } : {},
+      isExtensionEndpoint ? { extensionIds } : isOpenRead ? { relaxedOrigin: true } : {},
     );
     if (!allowed.ok) {
       reply.code(403).send({ error: `forbidden: ${allowed.reason}` });

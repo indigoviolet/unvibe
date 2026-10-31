@@ -3614,3 +3614,13 @@ hunk coverage) is reported for a separate issue, not fixed here.
   local github.com fixture against the real service with stub `gh`)
   with frame `packages/web/test-results/extension-button.png`,
   inspected. Full gates not yet run.
+- **#322 security fix (same branch):** `GET /open` no longer mutates —
+  it redirects to an existing review or renders an in-app confirm
+  page; only a `POST /open` from the app origin (loopback Host/Origin
+  gate plus token) clones/creates. The extension opens `/open` and the
+  user confirms in the app (no worker POST endpoint). Evidence:
+  `extension-322.test.ts` (cross-site GET shows confirm, records no
+  repo/review; foreign POST 403; app POST creates; existing review
+  redirects) and the extension Playwright journey (cross-site link
+  from the fixture page, confirm click, straight redirect once the
+  review exists).

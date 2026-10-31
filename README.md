@@ -98,7 +98,7 @@ When new commits arrive, a banner offers Update, which carries your comments and
 
 ## Browser extension (optional)
 
-The Chrome extension in `extension/` adds a **Review in Unvibe** button (or **Open review**, when one exists) to GitHub PR pages. Clicking it opens the review in your local Unvibe, creating it — and cloning the repo — if needed.
+The Chrome extension in `extension/` adds a **Review in Unvibe** button (or **Open review**, when one exists) to GitHub PR pages. Clicking it opens your local Unvibe: an existing review opens directly, and for a new one Unvibe first asks you to confirm in the app — only that confirmation clones the repo (when it is new to Unvibe) and starts the review. A link or redirect to the deep link alone never clones or starts anything; the opening action is a confirmed POST inside the app.
 
 To load it unpacked: open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the `extension/` folder. The service must be running (`unvibe open`); if it isn't, the button says **Start Unvibe**.
 

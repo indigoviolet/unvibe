@@ -170,4 +170,119 @@ describe("/open deep link", () => {
       await app.close();
     }
   });
+
+  it("GET never mutates: a new PR (even cross-site) only gets the confirm page", async () => {
+    const { app, ctx } = await seededApp();
+    try {
+      const reposBefore = ctx.repos.list().map((r) => r.id);
+      // Known repo, no review for PR 99, arriving as a cross-site link.
+      const known = await app.inject({
+        method: "GET",
+        url: `/open?pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+        headers: {
+          cookie: "__unvibe_token=tok",
+          accept: "text/html",
+          referer: "https://evil.example/post",
+        },
+      });
+      expect(known.statusCode).toBe(200);
+      expect(known.body).toContain("Review acme/app#99 in Unvibe?");
+      expect(known.body).toContain('method="post"');
+      // Unknown repo: still just the page, no clone.
+      const unknown = await app.inject({
+        method: "GET",
+        url: `/open?pr=${encodeURIComponent("https://github.com/othercorp/other/pull/3")}`,
+        headers: {
+          cookie: "__unvibe_token=tok",
+          accept: "text/html",
+          referer: "https://evil.example/post",
+        },
+      });
+      expect(unknown.statusCode).toBe(200);
+      expect(unknown.body).toContain("Review othercorp/other#3 in Unvibe?");
+      expect(unknown.body).toContain("clone");
+      // Nothing was recorded: same repos, and no review for either PR.
+      expect(ctx.repos.list().map((r) => r.id)).toEqual(reposBefore);
+      for (const pr of ["https://github.com/acme/app/pull/99", "https://github.com/othercorp/other/pull/3"]) {
+        const status = await app.inject({
+          method: "GET",
+          url: `/api/extension/pr-status?pr=${encodeURIComponent(pr)}`,
+          headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+        });
+        expect(status.json()).toMatchObject({ exists: false });
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("POST from a foreign origin is refused and creates nothing", async () => {
+    const { app, ctx } = await seededApp();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/open",
+        headers: {
+          cookie: "__unvibe_token=tok",
+          origin: "https://evil.example",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        payload: `pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(ctx.repos.list()).toHaveLength(1);
+      const status = await app.inject({
+        method: "GET",
+        url: `/api/extension/pr-status?pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+        headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+      });
+      expect(status.json()).toMatchObject({ exists: false });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("POST without a token is refused", async () => {
+    const { app } = await seededApp();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/open",
+        headers: {
+          origin: "http://unvibe.localhost:4517",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        payload: `pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("POST from the app origin performs the open and redirects to the review", async () => {
+    const { app } = await seededApp();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/open",
+        headers: {
+          cookie: "__unvibe_token=tok",
+          origin: "http://unvibe.localhost:4517",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        payload: `pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+      });
+      expect(res.statusCode).toBe(303);
+      expect(res.headers.location).toMatch(/^\/review\//);
+      const status = await app.inject({
+        method: "GET",
+        url: `/api/extension/pr-status?pr=${encodeURIComponent("https://github.com/acme/app/pull/99")}`,
+        headers: { origin: GOOD_ORIGIN, authorization: AUTH },
+      });
+      expect(status.json()).toMatchObject({ exists: true });
+    } finally {
+      await app.close();
+    }
+  });
 });
