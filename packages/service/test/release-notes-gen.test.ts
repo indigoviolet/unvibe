@@ -35,14 +35,6 @@ const MERGES = [
   "bbb222\x1fMerge pull request #311 from feat/data-format\x1fCloses #311\x1e",
 ].join("\n");
 
-const PREV_NOTES = JSON.stringify({
-  channel: "preview/feat-x",
-  version: "0.0.1-preview.feat-x.old111",
-  commit: "prevsha000",
-  dataFormat: 1,
-  items: [],
-});
-
 describe("parseMergeLog + one-liner rule", () => {
   it("parses merges and extracts issue numbers", () => {
     const merges = parseMergeLog(MERGES);
@@ -59,12 +51,12 @@ describe("parseMergeLog + one-liner rule", () => {
 });
 
 describe("generateReleaseNotes", () => {
-  it("lists merges since the previous build with gh titles", async () => {
+  it("lists merges since the newest reachable tag with gh titles (never reads the channel ref's notes)", async () => {
     const { runner, calls } = fakeRunner({
-      "show preview/feat-x:release-notes.json": { stdout: PREV_NOTES },
-      "show prevsha000:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "describe": { stdout: "v0.0.0\n" },
+      "show v0.0.0:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
       "rev-parse HEAD": { stdout: "headsha999\n" },
-      "log prevsha000..HEAD": { stdout: MERGES },
+      "log v0.0.0..HEAD": { stdout: MERGES },
       "issue view 330": { stdout: JSON.stringify({ title: "Release notes in builds", url: "https://github.com/indigoviolet/unvibe/issues/330" }) },
       "issue view 311": { stdout: JSON.stringify({ title: "Data format gate", url: "https://github.com/indigoviolet/unvibe/issues/311" }) },
       "show HEAD:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
@@ -75,19 +67,19 @@ describe("generateReleaseNotes", () => {
       version: "0.0.1-preview.feat-x.head999",
       generatedAt: "2026-10-31T00:00:00.000Z",
     })) as { previousVersion: string; items: { number: number; summary: string }[]; dataResetNeeded: boolean };
-    expect(notes.previousVersion).toBe("0.0.1-preview.feat-x.old111");
+    expect(notes.previousVersion).toBe("0.0.0");
     expect(notes.items.map((i) => i.number)).toEqual([330, 311]);
     expect(notes.items[0].summary).toBe("Release notes in builds");
     expect(notes.dataResetNeeded).toBe(false);
     expect(calls.some((c) => c.cmd === "gh")).toBe(true);
+    expect(calls.some((c) => c.args.join(" ").includes("release-notes.json"))).toBe(false);
   });
 
-  it("flags a data reset when DATA_FORMAT changed since the previous build", async () => {
+  it("flags a data reset when DATA_FORMAT changed since the previous tag", async () => {
     const { runner } = fakeRunner({
-      "show release:release-notes.json": {
-        stdout: JSON.stringify({ channel: "release", version: "0.0.1", commit: "prevsha000", dataFormat: 1, items: [] }),
-      },
-      "log prevsha000..HEAD": { stdout: MERGES },
+      "describe": { stdout: "v0.0.1\n" },
+      "show v0.0.1:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "log v0.0.1..HEAD": { stdout: MERGES },
       "issue view": { stdout: JSON.stringify({ title: "T", url: "https://example.invalid/1" }), code: 0 },
       "show HEAD:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 2;" },
       "rev-parse HEAD": { stdout: "headsha999\n" },
@@ -102,7 +94,26 @@ describe("generateReleaseNotes", () => {
     expect(notes.dataFormat).toBe(2);
   });
 
-  it("falls back to the newest reachable v* tag for any channel with no previous notes", async () => {
+  it("excludes the current version's tag when building that release itself", async () => {
+    const { runner } = fakeRunner({
+      "describe": { stdout: "v0.0.2\n" },
+      "tag --list": { stdout: "v0.0.2\nv0.0.1\n" },
+      "show v0.0.1:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "log v0.0.1..HEAD": { stdout: MERGES },
+      "issue view": { stdout: JSON.stringify({ title: "T", url: "https://github.com/indigoviolet/unvibe/issues/330" }) },
+      "show HEAD:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "rev-parse HEAD": { stdout: "headsha999\n" },
+    });
+    const notes = (await generateReleaseNotes({
+      runner: runner as never,
+      channel: "release",
+      version: "0.0.2",
+    })) as { previousVersion: string | null; previousCommit: string | null };
+    expect(notes.previousVersion).toBe("0.0.1");
+    expect(notes.previousCommit).toBe("v0.0.1");
+  });
+
+  it("uses the newest reachable v* tag on every channel (cumulative since the last release)", async () => {
     const { runner, calls } = fakeRunner({
       "describe": { stdout: "v0.0.1\n" },
       "show v0.0.1:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },

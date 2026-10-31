@@ -389,12 +389,11 @@ the GitHub Release body; issues without an entry fall back to the
 generated one-liner (issue title's first line, else the cleaned merge
 subject). `release:tag --notes-file <file>` takes the same file. The
 generator is `scripts/generate-release-notes.mjs` (pure helpers in
-`scripts/release-notes-gen-lib.mjs`); the previous build of a channel is
-the commit its ref pointed at before the publish, read from that ref's
-own `release-notes.json`. A channel with no readable previous notes
-falls back to the newest `v*` tag reachable from HEAD for every channel
-(`previousVersion` is that tag's version); null and full history only
-when there is no such tag at all.
+`scripts/release-notes-gen-lib.mjs`); the previous build is always the
+newest `v*` release tag reachable from HEAD, on every channel, so
+preview notes are cumulative since the last release (`previousVersion`
+is that tag's version; building that release itself excludes its tag).
+Null and full history only when there is no such tag at all.
 
 What it does (`scripts/preview-publish.mjs`, pure helpers in
 `scripts/preview-lib.mjs`): by default it builds current local `main`
