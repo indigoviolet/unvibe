@@ -6,7 +6,7 @@
  * columns where noted in the service's migration 001.
  */
 import type { SecondOpinionMode } from "./prompts.js";
-import type { HunkScoreLevel } from "./scores.js";
+import type { HideLevel, HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
 export interface Repo {
@@ -942,12 +942,19 @@ export interface ReviewViewPrefs {
   showExistingComments: boolean;
   /** The comments menu's "Already on GitHub" section is collapsed. */
   existingCommentsCollapsed: boolean;
+  /**
+   * Issue #325: the diff toolbar's hide level. Absent in data stored
+   * before the selector existed, which reads as the default
+   * (`uninteresting`) — stored data stays readable, no format bump.
+   */
+  hideLevel?: HideLevel;
 }
 
 /** Default view prefs for a new review (issue #296): existing GitHub comments start hidden. */
 export const DEFAULT_REVIEW_VIEW_PREFS: ReviewViewPrefs = {
   showExistingComments: false,
   existingCommentsCollapsed: false,
+  hideLevel: "uninteresting",
 };
 
 export type JobKind =

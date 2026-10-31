@@ -531,14 +531,14 @@ describe("diff-filter persistence (#169)", () => {
       let res = await patch({ plotline: "thread-one" });
       expect(res.statusCode).toBe(200);
       expect(ctx.reviews.getSnapshot(id)?.diffFilter).toEqual({ plotline: "thread-one" });
+      // Score filtering moved to the hide level (#325): the
+      // diff-filter endpoint no longer accepts a score field.
       res = await patch({ score: "needs-attention" });
-      expect(res.statusCode).toBe(200);
-      expect(ctx.reviews.getSnapshot(id)?.diffFilter).toEqual({ plotline: "thread-one", score: "needs-attention" });
+      expect(res.statusCode).toBe(400);
+      expect(ctx.reviews.getSnapshot(id)?.diffFilter).toEqual({ plotline: "thread-one" });
       res = await patch({ plotline: "nope" });
       expect(res.statusCode).toBe(400);
-      res = await patch({ score: "hot" });
-      expect(res.statusCode).toBe(400);
-      res = await patch({ plotline: null, score: null });
+      res = await patch({ plotline: null });
       expect(res.statusCode).toBe(200);
       expect(ctx.reviews.getSnapshot(id)?.diffFilter).toBeUndefined();
       // The stored shape rides the snapshot API too.

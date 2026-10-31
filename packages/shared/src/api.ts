@@ -33,7 +33,7 @@ import type {
   Thread,
   Version,
 } from "./entities.js";
-import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
+import type { DiffFilter, HideLevel, Plotline, ReviewCommit } from "./scores.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -1045,6 +1045,8 @@ export interface UpdateFileRequest {
 export interface UpdateViewRequest {
   showExistingComments?: boolean;
   existingCommentsCollapsed?: boolean;
+  /** Issue #325: the diff toolbar's hide level, remembered per review. */
+  hideLevel?: HideLevel;
 }
 
 export interface SummarizeHunkResponse {
@@ -1061,13 +1063,13 @@ export interface SummarizeHunkResponse {
 
 /**
  * Issue #169: `PATCH /api/reviews/:id/diff-filter` — the diff's
- * score/plotline filter, remembered with the review. Each field is a
- * plotline id (or "other") / score level; explicit null clears it.
- * Unknown plotline ids and levels are refused (400).
+ * plotline filter, remembered with the review. The field is a
+ * plotline id (or "other"); explicit null clears it. Unknown
+ * plotline ids are refused (400). Score filtering lives in the
+ * hide level (issue #325), not here.
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
-  score?: HunkScoreLevel | null;
 }
 
 /**
