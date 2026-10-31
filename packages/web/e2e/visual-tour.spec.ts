@@ -1283,6 +1283,7 @@ test.describe("visual tour passes", () => {
       { id: "environment", name: "Environment", marker: "Re-check" },
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
+      { id: "extension", name: "Extension", marker: "Show extension folder" },
     ] as const) {
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });

@@ -3676,3 +3676,24 @@ hunk coverage) is reported for a separate issue, not fixed here.
   Decisions card's `Invariants` / `Known uncertainties` / `Interfaces`
   sub-headings, frame `packages/web/visual-tour/guide-decisions-1440-light.png`
   (git-ignored), inspected. Full gates not yet run.
+
+## Addendum: #322 part 2 (branch `feat/322-side-panel`)
+
+- **Side panel + web reviews:** MV3 side panel (one thread per page on a
+  `web` review kind, hash-based capture staleness), Settings → Extension
+  (active-repo checkboxes defaulting to the 3 most recent, panel model
+  picker defaulting to muse-spark, install help with the shipped folder,
+  Show folder/Copy path, three steps, connected status from the last
+  worker call in memory, reload note), web threads hidden from Reviews
+  by default with a Show-web toggle, and quote clicks that say
+  "not on the page any more" when the quote is gone. Panel reads stay
+  inside active-repo worktrees (realpath lockdown, read-only always,
+  repo-qualified citations); one agent turn per ask, no background
+  passes. `extension/` ships in the npm tarball and the global-install
+  check asserts it. Live check (separate $0.25 cap): muse-spark passed
+  5/5 fixture questions for $0.0052; the owner's rerun model is pending.
+  Additive Settings fields + a new snapshot shape only, so
+  `DATA_FORMAT` stays 1. Evidence: `webdoc.test.ts`,
+  `panel-322.test.ts`, `extension-322.test.ts`, journeys
+  `j322-extension.spec.ts` + `extension-panel-322.spec.ts` (frame
+  inspected), `check-global-install` green. Full gates not yet run.

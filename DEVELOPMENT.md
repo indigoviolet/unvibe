@@ -169,6 +169,8 @@ Access model: the content script (GitHub PR pages only) holds no token and makes
 
 Tests: `packages/web/e2e/extension-322.spec.ts` (persistent Chromium with the unpacked extension, `github.com` routed to a local fixture, real service + stub `gh`; frame at `packages/web/test-results/extension-button.png`), plus unit tests for the origin allowlist and deep-link parser (`packages/shared/test/extension.test.ts`, `packages/service/test/extension-322.test.ts`, `host.test.ts`).
 
+Part 2 (side panel): the manifest also declares a side panel (`extension/panel/`) and a capture content script on github.com pages; capture happens only when the panel asks. Panel endpoints (`/api/extension/panel/*`) share the pinned-origin + token gate. One thread per page lives on a `web` review (hidden from Reviews by default, Show-web toggle on the start page); Settings → Extension holds the active-repo checkboxes (default: 3 most recent), the panel model picker (default muse-spark) and install help — `extension/` ships inside the installed package (`extension/**` in the tarball, asserted by `check-global-install`), Show extension folder opens it via `open`/`xdg-open` through the command runner, and the connected line reads the last worker call held in memory. The live repo-picking check is `mise run test:live:panel-322 -- --cap 0.25 [--model <id>]` (never run by check). Tests: `packages/shared/test/webdoc.test.ts`, `packages/service/test/panel-322.test.ts`, journeys `packages/web/e2e/journeys/j322-extension.spec.ts` and `packages/web/e2e/extension-panel-322.spec.ts` (frame at `packages/web/test-results/extension-panel-322.png`).
+
 ## Tests
 
 There are two suites (issue #119). The fast suite is `mise run check`

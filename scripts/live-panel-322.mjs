@@ -1,4 +1,4 @@
-/*global console process Buffer setTimeout clearTimeout*/
+/*global console process setTimeout clearTimeout*/
 // Live panel check (#322 part 2, Step 1), run as:
 //   mise run test:live:panel-322 -- --cap 0.25 [--provider pi] [--model <id>]
 //
