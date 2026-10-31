@@ -419,6 +419,22 @@ describe("renderInline (Markdown inside a block)", () => {
     expect(r.citations).toEqual([{ target: "code:src/__init__.py:1-3" }]);
   });
 
+  it("recognises citations whose paths contain brackets (issue #332)", () => {
+    const p = "src/app/(group)/items/[id]/page.tsx";
+    for (const s of [
+      `see [[code:${p}:433-492]] done`,
+      `[see [[code:${p}:433-492]]]`,
+      `([[code:${p}:433-492]])`,
+    ]) {
+      const r = renderInline(s);
+      expect(r.citations).toEqual([{ target: `code:${p}:433-492` }]);
+      expect(r.html).not.toContain("[[code:");
+    }
+    const labelled = renderInline(`see [[code:${p}:433-492|the page]] done`);
+    expect(labelled.citations).toEqual([{ target: `code:${p}:433-492` }]);
+    expect(labelled.html).toBe("see the page done");
+  });
+
   it("handles a token next to bold text", () => {
     const r = renderInline("**Hi** [[concept:x|Ex]]");
     expect(r.html).toBe('<strong>Hi</strong> <a class="cx" data-link="concept:x">Ex</a>');

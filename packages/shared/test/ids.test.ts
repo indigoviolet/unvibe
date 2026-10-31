@@ -60,6 +60,44 @@ describe("parseId", () => {
     expect(parseId("ann:x1")).toEqual({ kind: "ann", id: "x1" });
   });
 
+  it("parses code ids whose paths contain brackets, @, +, ~ (issue #332)", () => {
+    expect(parseId("code:src/app/(group)/items/[id]/page.tsx:433-492")).toEqual({
+      kind: "code",
+      path: "src/app/(group)/items/[id]/page.tsx",
+      start: 433,
+      end: 492,
+      sha: undefined,
+    });
+    expect(parseId("code:dir/[...slug]/route.ts:1-5")).toEqual({
+      kind: "code",
+      path: "dir/[...slug]/route.ts",
+      start: 1,
+      end: 5,
+      sha: undefined,
+    });
+    expect(parseId("code:pkg/@scope/x.ts:10-20")).toEqual({
+      kind: "code",
+      path: "pkg/@scope/x.ts",
+      start: 10,
+      end: 20,
+      sha: undefined,
+    });
+    expect(parseId("code:pkg/@scope/x.ts:10-20@abc123")).toEqual({
+      kind: "code",
+      path: "pkg/@scope/x.ts",
+      start: 10,
+      end: 20,
+      sha: "abc123",
+    });
+    expect(parseId("code:a+b/c~d.ts:3")).toEqual({
+      kind: "code",
+      path: "a+b/c~d.ts",
+      start: 3,
+      end: 3,
+      sha: undefined,
+    });
+  });
+
   it("rejects malformed ids", () => {
     expect(parseId("")).toBeNull();
     expect(parseId("nope")).toBeNull();

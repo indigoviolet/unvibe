@@ -17,6 +17,7 @@
  * genuinely summary-less reply yields no summary rather than garbage (the
  * diff pane shows its Summarize action again for those hunks).
  */
+import { replaceLinkTokens } from "../links.js";
 import type { ReplyData } from "./types.js";
 import { normalizeHunkScore, type HunkScoreLevel } from "../scores.js";
 import { findFences } from "./split.js";
@@ -115,8 +116,7 @@ function bareJsonCandidates(text: string): string[] {
 
 /** `[[target]]` / `[[target|label]]` tokens to plain text (label or nothing). */
 function stripLinkTokens(line: string): string {
-  return line
-    .replace(/\[\[([^\]|[\]]*)(?:\|([^\]]*))?\]\]/g, (_m, _target, label) => (typeof label === "string" ? label : ""))
+  return replaceLinkTokens(line, (t) => t.label ?? "")
     .replace(/[ \t]+/g, " ")
     .trim();
 }
