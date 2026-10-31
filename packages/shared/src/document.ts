@@ -38,6 +38,8 @@ export function documentBlockText(block: DocumentBlock): string {
   switch (b.type) {
     case "paragraph":
       return stripTags(b.text.standard);
+    case "heading":
+      return stripTags(b.html);
     case "list":
       return b.items.map((it) => stripTags(it.html)).join("\n");
     case "table":

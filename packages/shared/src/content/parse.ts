@@ -26,6 +26,8 @@
  *   verbatim. A fenced `mermaid` block is ordinary code, not a diagram.
  * - Follow-ups: a `### Follow-ups` heading turns the next list into a
  *   `FollowUpBlock`. Items are `Label` or `Label | ask: question`.
+ * - Sub-headings (issue #327): any other `###` heading (and deeper,
+ *   rendered the same) → `HeadingBlock` with inline Markdown rendered.
  * - Finding references: a paragraph holding exactly
  *   `Finding: [[page:<id>]]` → `FindingLinkBlock`.
  * - Asides: `::: example`, `::: principle` (or `::: underlying-principle`)
@@ -331,6 +333,14 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
     blocks.push({ type: "paragraph", id: nextId(), text: paraText, citations: rendered.citations });
   }
 
+  function emitHeading(raw: string): void {
+    const text = raw.replace(/\n/g, " ").trim();
+    if (!text) return;
+    const rendered = renderInline(text);
+    blocks.push({ type: "heading", id: nextId(), html: rendered.html.trim(), citations: rendered.citations });
+    diagramAwaitingCaption = false;
+  }
+
   function buildTableHtml(header: string[], bodyRows: string[][]): { html: string; citations: Citation[] } {
     const cell = (content: string, tag: "th" | "td"): { html: string; citations: Citation[] } => {
       const r = renderInline(content);
@@ -458,7 +468,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
         if (inline?.type === "inline") texts.push(inline.content);
         i += 3;
       } else if (t.type === "heading_open") {
-        // Headings inside items demote to plain text, as at top level.
+        // Headings inside items demote to plain text (items hold no blocks).
         const inline = tokens[i + 1];
         if (inline?.type === "inline") texts.push(inline.content);
         i += 3;
@@ -676,9 +686,14 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
           ) {
             followUpNext = true;
             clearCaptionWait();
+          } else if (level >= 3) {
+            // Sub-headings (issue #327): ### and deeper are real heading
+            // blocks, rendered the same at any depth. Only ## (card
+            // split) and Follow-ups above are structural otherwise.
+            if (followUpNext) followUpNext = false;
+            emitHeading(text);
           } else {
-            // Other headings render as plain text (only ## and Follow-ups
-            // are structural).
+            // A lone # heading renders as plain text.
             if (followUpNext) followUpNext = false;
             emitParagraph(text);
           }
@@ -744,6 +759,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
 function citationsOf(block: Block): Citation[] {
   switch (block.type) {
     case "paragraph":
+    case "heading":
       return block.citations;
     case "list":
       return block.citations;
@@ -782,6 +798,10 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
           scanHtml(b.text.standard);
           if (b.text.simple) scanHtml(b.text.simple);
           if (b.text.deep) scanHtml(b.text.deep);
+          break;
+        case "heading":
+          for (const c of b.citations) push(citations, c.target);
+          scanHtml(b.html);
           break;
         case "list":
           for (const c of b.citations) push(citations, c.target);
@@ -989,6 +1009,9 @@ export function renderMarkdown(blocks: Block[]): string {
   const parts: string[] = [];
   for (const b of blocks) {
     switch (b.type) {
+      case "heading":
+        parts.push(`### ${withCitations(inlineToMarkdown(b.html), b.citations)}`);
+        break;
       case "paragraph":
         parts.push(withCitations(inlineToMarkdown(b.text.standard), b.citations));
         if (b.text.simple) parts.push(`::: simple\n${inlineToMarkdown(b.text.simple)}\n:::`);

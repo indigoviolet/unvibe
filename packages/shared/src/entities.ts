@@ -338,6 +338,7 @@ export interface PendingCard {
 
 export type BlockType =
   | "paragraph"
+  | "heading"
   | "list"
   | "table"
   | "code"
@@ -358,6 +359,20 @@ export interface ParagraphBlock {
   type: "paragraph";
   id: string;
   text: DepthText;
+  citations: Citation[];
+}
+
+/**
+ * Sub-heading inside a card (`###` and deeper in the reply Markdown,
+ * issue #327). `##` stays the card boundary and `### Follow-ups` stays
+ * its own block, so every other `###`+ heading lands here, rendered the
+ * same at any depth. Inline Markdown is rendered like a paragraph's.
+ */
+export interface HeadingBlock {
+  type: "heading";
+  id: string;
+  /** Rendered inline HTML (emphasis, code spans, `[[…]]` links). */
+  html: string;
   citations: Citation[];
 }
 
@@ -472,6 +487,7 @@ export interface AsideBlock {
 
 export type Block =
   | ParagraphBlock
+  | HeadingBlock
   | ListBlock
   | TableBlock
   | CodeBlock

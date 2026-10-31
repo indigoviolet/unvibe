@@ -325,6 +325,55 @@ describe("parseBlocks lists (issue #314)", () => {
   });
 });
 
+describe("parseBlocks sub-headings (issue #327)", () => {
+  it("parses ### and deeper headings as heading blocks, not paragraphs", () => {
+    const blocks = parseBlocks("Intro.\n\n### Decisions\n\nBody.\n\n#### Invariants\n\nMore.\n\n##### Known uncertainties\n\nDeep.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "heading", "paragraph", "heading", "paragraph", "heading", "paragraph"]);
+    const heading = blocks[1];
+    expect(heading.type).toBe("heading");
+    if (heading.type !== "heading") return;
+    expect(heading.html).toBe("Decisions");
+    expect(heading.citations).toEqual([]);
+    expect(blocks.map((b) => b.id)).toEqual(["b1", "b2", "b3", "b4", "b5", "b6", "b7"]);
+  });
+
+  it("renders inline Markdown and citations inside a heading", () => {
+    const blocks = parseBlocks("### Interfaces with **reach** [[diff:conn:80-82]]\n");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("heading");
+    if (blocks[0].type !== "heading") return;
+    expect(blocks[0].html).toBe("Interfaces with <strong>reach</strong>");
+    expect(blocks[0].citations).toEqual([{ target: "diff:conn:80-82" }]);
+    const { citations } = collectTargets(blocks);
+    expect(citations).toEqual(["diff:conn:80-82"]);
+  });
+
+  it("round-trips a heading through renderMarkdown as ###", () => {
+    const blocks = parseBlocks("## Card\n\n### Decisions\n\nBody [[diff:conn:1-2]].\n");
+    // parseBlocks skips the ## boundary; parseCards owns it.
+    const cardBlocks = parseCards("## Card\n\n### Decisions\n\nBody [[diff:conn:1-2]].\n")[0].blocks;
+    expect(cardBlocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    const md = renderMarkdown(cardBlocks);
+    expect(md).toContain("### Decisions");
+    const back = parseBlocks(md);
+    expect(back.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    expect(back[0]).toEqual(cardBlocks[0]);
+    expect(blocks.length).toBeGreaterThan(0);
+  });
+
+  it("keeps ### Follow-ups as a follow-up block, not a heading", () => {
+    const blocks = parseBlocks("### Follow-ups\n\n- Why? | ask: why\n");
+    expect(blocks.map((b) => b.type)).toEqual(["follow-up"]);
+  });
+
+  it("keeps ## as a card boundary and # as a paragraph", () => {
+    const cards = parseCards("# Top\n\n## Card\n\n### Sub\n\nBody.\n");
+    expect(cards.map((c) => c.title)).toEqual([null, "Card"]);
+    expect(cards[0].blocks.map((b) => b.type)).toEqual(["paragraph"]);
+    expect(cards[1].blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+  });
+});
+
 describe("renderInline (Markdown inside a block)", () => {
   it("renders bold, italic, strikethrough and code spans", () => {
     expect(renderInline("**Recording.** record_cmd picks").html).toBe(
