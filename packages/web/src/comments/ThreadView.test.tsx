@@ -223,22 +223,31 @@ describe("Ask thread entries (issue #315)", () => {
     expect(a?.querySelector(".ctl")).not.toBeNull();
   });
 
-  test("explain replies keep their kind badge and heading", () => {
+  test("explain replies show the avatar only, named for screen readers", () => {
     const explaining = thread({ replies: [mkAgent("explain", "Why is this so?")] });
     useReview.getState().setSnapshot({ ...useReview.getState().snapshot!, annotations: [explaining] });
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector('[data-reply][data-kind="explain"]');
-    expect(reply?.querySelector(".kind-explain")).not.toBeNull();
-    expect(reply?.querySelector(".ans-q")).toHaveTextContent(/Explain/);
+    expect(reply?.querySelector(".av.ai")).not.toBeNull();
+    expect(reply?.querySelector(".kind")).toBeNull();
+    expect(reply?.querySelector(".ans-q")).toBeNull();
+    expect(reply?.getAttribute("aria-label")).toBe("Agent explanation");
+    expect(reply?.querySelector(".ctl")).not.toBeNull();
   });
 
-  test("real reviewer comments keep their badge and label", () => {
+  test("real reviewer comments show the avatar only, with an Outbox mark", () => {
     const found = useReview.getState().snapshot?.annotations[0] as Thread;
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={found} /></MemoryRouter>);
     const reply = container.querySelector('[data-reply][data-kind="comment"]');
-    expect(reply?.querySelector(".kind-comment")).not.toBeNull();
-    expect(reply).toHaveTextContent("Reviewer comment");
+    expect(reply?.querySelector(".av.you")).not.toBeNull();
+    expect(reply?.querySelector(".kind")).toBeNull();
+    expect(reply?.querySelector(".ans-q")).toBeNull();
+    expect(reply).not.toHaveTextContent("Reviewer comment");
+    expect(reply?.getAttribute("aria-label")).toBe("Reviewer comment");
+    const mark = reply?.querySelector(".outbox-mark");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("aria-label")).toBe("Posts to GitHub from the Outbox");
   });
 });
 

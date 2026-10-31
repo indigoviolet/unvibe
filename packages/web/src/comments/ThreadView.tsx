@@ -132,17 +132,6 @@ function headerLabel(
   return "Comment";
 }
 
-function replyHeading(reply: Reply, anchorQuote: string): string {
-  if (reply.kind === "comment") return "Reviewer comment";
-  if (reply.kind === "persona") return "Persona note";
-  if (reply.kind === "explain") {
-    const q = reply.question ?? anchorQuote;
-    return `Explain · “${q.length > 80 ? `${q.slice(0, 79)}…` : q}”`;
-  }
-  const q = reply.question ?? "";
-  return q ? `Ask · ${q.length > 100 ? `${q.slice(0, 99)}…` : q}` : "Ask";
-}
-
 /** Issue #293: an Ask question renders as a reviewer-styled entry from the
  * stored `reply.question` — no stored change, so it never enters the
  * Outbox/Submit path (those read only `kind === "comment"` replies). */
@@ -298,30 +287,25 @@ function AgentReplyView({
     ));
 
   const askAnswerClass = hideQuestion ? " ask-answer" : "";
-  // Issue #301: the AI avatar sits inline at the start of the reply's
-  // first line (with the kind badge except on Ask answers — #315), the
-  // body below uses the thread's normal padding (no avatar column).
+  // Issue #315 follow-up: every agent reply shows the avatar only — no
+  // kind chip, no role label. For Ask the question is its own entry just
+  // above; Explain shows the answer only. The accessible name keeps the
+  // replies distinguishable for screen readers.
+  const agentLabel = reply.kind === "explain" ? "Agent explanation" : "Agent answer";
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
       id={reply.id}
       data-reply={reply.id}
       data-kind={reply.kind}
-      {...(hideQuestion ? { "data-ask-answer": reply.id, role: "article", "aria-label": "Agent answer" } : {})}
+      {...(hideQuestion ? { "data-ask-answer": reply.id } : {})}
+      role="article"
+      aria-label={agentLabel}
     >
       <div className="spike-reply-head">
         <span className="av ai" role="img" aria-label="Agent">
           <Icon name="spark" />
         </span>
-        {/* Issue #315: an Ask answer shows only the AI avatar — no kind
-            chip, no question heading (the question is its own entry just
-            above). Other kinds keep their badge + heading. */}
-        {hideQuestion ? null : (
-          <>
-            <span className={`kind kind-${reply.kind}`}>{reply.kind}</span>
-            <span className="ans-q">{replyHeading(reply, thread.anchor.quotedText ?? "")}</span>
-          </>
-        )}
         {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
         {awaitingAnswer ? null : (
           <div className="ctl">
@@ -448,14 +432,35 @@ function CommentReplyView({
   } else {
     body = <p dangerouslySetInnerHTML={{ __html: html }} />;
   }
+  // Issue #315 follow-up: a reviewer comment shows the avatar only — no
+  // kind chip, no "Reviewer comment" label. A postable comment (one the
+  // Outbox can carry to GitHub — a question never posts) carries a small
+  // muted Outbox mark instead. The accessible name keeps the role.
+  const commentLabel = reply.kind === "persona" ? "Persona note" : "Reviewer comment";
   return (
-    <div className={`spike-reply${flash ? " flash" : ""}`} id={reply.id} data-reply={reply.id} data-kind="comment" data-comment={threadId}>
+    <div
+      className={`spike-reply${flash ? " flash" : ""}`}
+      id={reply.id}
+      data-reply={reply.id}
+      data-kind="comment"
+      data-comment={threadId}
+      role="article"
+      aria-label={commentLabel}
+    >
       <div className="spike-reply-head">
         <span className="av you" role="img" aria-label="You">
           <Icon name="person" />
         </span>
-        <span className="kind kind-comment">comment</span>
-        <span className="ans-q">Reviewer comment</span>
+        {reply.kind === "comment" ? (
+          <span
+            className="outbox-mark"
+            role="img"
+            aria-label="Posts to GitHub from the Outbox"
+            data-tip="Posts to GitHub from the Outbox"
+          >
+            <Icon name="send" />
+          </span>
+        ) : null}
       </div>
       {body}
     </div>

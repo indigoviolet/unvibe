@@ -1477,6 +1477,10 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .spike-thread .spike-reply-head .av { width: 20px; height: 20px; }
 .spike-thread .spike-reply > p { margin: 4px 0 0; }
 .spike-thread .spike-reply-head { display: flex; align-items: center; gap: 8px; }
+/* #315 follow-up: the Outbox mark on postable comments — the same send
+   glyph as the thread's Outbox toggle, small and muted. */
+.spike-thread .spike-reply-head .outbox-mark { display: inline-grid; place-items: center; width: 16px; height: 20px; color: var(--muted); flex: none; }
+.spike-thread .spike-reply-head .outbox-mark .ic { width: 12px; height: 12px; }
 
 /* Kind badges: teal pills for agent answers, amber for reviewer comments.
    (Specificity beats the legacy `.thd .kind` label style.) */
