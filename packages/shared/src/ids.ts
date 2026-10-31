@@ -54,7 +54,11 @@ function parseLineRange(s: string): { start: number; end: number } | null {
 function splitSha(s: string): { head: string; sha?: string } {
   const at = s.lastIndexOf("@");
   if (at < 0) return { head: s };
-  return { head: s.slice(0, at), sha: s.slice(at + 1) };
+  const sha = s.slice(at + 1);
+  // A `@` can belong to the path itself (issue #332: scoped packages
+  // like `pkg/@scope/x.ts`); only split when the suffix is a real sha.
+  if (!new RegExp(`^${SHA}$`).test(sha)) return { head: s };
+  return { head: s.slice(0, at), sha };
 }
 
 /**

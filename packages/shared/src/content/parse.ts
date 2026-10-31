@@ -176,7 +176,7 @@ const FENCE_OPEN = /^```\s*([A-Za-z0-9_-]*)\s*$/;
 const FENCE_CLOSE = /^```\s*$/;
 const DIRECTIVE_OPEN = /^:::\s*([A-Za-z][\w-]*)\s*$/;
 const DIRECTIVE_CLOSE = /^:::\s*$/;
-const FINDING_LINE = /^finding:\s*(\[\[[^\]]+\]\])\s*$/i;
+const FINDING_LINE = /^finding:\s*(\[\[.*\]\])\s*$/i;
 
 function parseFollowItem(text: string): FollowUpItem {
   const pipe = text.indexOf("|");
