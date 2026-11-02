@@ -57,14 +57,39 @@ export function parseMergeLog(output) {
   return out;
 }
 
-/** Merge subject without its `Merge pull request #N from ...` / `Merge branch ...` shell. */
+/**
+ * Merge subject without its merge shell. A trailing `(#N: text)`
+ * parenthetical carries the real description — take its text. Else
+ * strip `Merge pull request #N from <branch>`, `Merge [branch] ...`
+ * and any `into <branch>` tail, for quoted and unquoted branch names.
+ */
 export function cleanMergeSubject(subject) {
   let s = String(subject ?? "").trim();
+  const paren = /\((#\d+[:\s][^)]*)\)/.exec(s);
+  if (paren) {
+    const inner = paren[1].replace(/^#\d+[:\s]*/, "").trim();
+    if (inner) return inner;
+  }
   s = s.replace(/^Merge pull request #\d+ from \S+\s*/i, "").trim();
   s = s.replace(/^Merge branch '[^']+'(?:\s+of\s+\S+)?\s*/i, "").trim();
   s = s.replace(/^Merge branch "[^"]+"(?:\s+of\s+\S+)?\s*/i, "").trim();
   s = s.replace(/^Merge remote-tracking branch '[^']+'\s*/i, "").trim();
+  // Unquoted branch merge: `Merge feat/x into main-rc` is all shell.
+  s = s.replace(/^Merge \S+ into \S+\s*/i, "").trim();
+  s = s.replace(/^into \S+\s*/i, "").trim();
+  s = s.replace(/\s+into \S+$/i, "").trim();
   return s;
+}
+
+/**
+ * True when a human `whatChanged` adds more than the one-liner: it is
+ * not shown separately when it merely repeats the summary (its first
+ * line became the summary); it is shown when it carries extra lines.
+ */
+export function whatChangedAddsMore(item) {
+  const wc = typeof item?.whatChanged === "string" ? item.whatChanged.trim() : "";
+  if (!wc) return false;
+  return wc !== String(item?.summary ?? "").trim();
 }
 
 /** First non-empty line of a text, trimmed. */
@@ -350,7 +375,7 @@ export function renderReleaseBody(notes, { branch = "release" } = {}) {
     if (notes.previousVersion) lines.push(`Changes since ${notes.previousVersion}:`, "");
     for (const item of notes.items) {
       lines.push(`- [#${item.number}](${item.url}) ${item.summary}`);
-      if (item.whatChanged) lines.push(`  - What changed: ${item.whatChanged}`);
+      if (whatChangedAddsMore(item)) lines.push(`  - What changed: ${item.whatChanged}`);
       if (item.whatToTry) lines.push(`  - What to try: ${item.whatToTry}`);
       if (item.caveats) lines.push(`  - Caveats: ${item.caveats}`);
     }

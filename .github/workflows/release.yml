@@ -115,6 +115,12 @@ jobs:
         env:
           UNVIBE_RELEASE_VERSION: ${{ steps.rel.outputs.version }}
           UNVIBE_RELEASE_BRANCH: ${{ steps.rel.outputs.branch }}
+          # #330: the release-notes generator inside the build resolves
+          # issue titles with `gh issue view`. In Actions `gh` needs a
+          # token even for this public repo; the read-only Actions token
+          # is fine for that. (GH_TOKEN, not GITHUB_TOKEN: the generator
+          # deliberately unsets GITHUB_TOKEN per PRD §15.)
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
 
       # The build-dependent guards (release notices, helper bundle, dist
