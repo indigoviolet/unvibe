@@ -91,8 +91,10 @@ test.describe("J272 closed-card failure is recorded", () => {
     await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 15_000 });
 
     // Retry gives a clean answer: no raw trailing block, no internal ids.
+    // (#336: landed is blocks with no working marker, not .ctl visibility.)
     await failed.getByRole("button", { name: "Retry" }).click();
-    await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+    await expect(failed.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+    await expect(failed.locator(".working")).toHaveCount(0, { timeout: 30_000 });
     const retried = after.locator(".exp-b").nth(1);
     await expect(retried).not.toBeEmpty({ timeout: 60_000 });
     await expect(retried).not.toContainText('{"contribute"');

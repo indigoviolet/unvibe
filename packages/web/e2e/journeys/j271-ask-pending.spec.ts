@@ -68,7 +68,10 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(pending.locator(".ctl")).toHaveCount(0);
 
     // Once the answer lands, the kept draft sends as the next turn.
-    await expect(pending.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+    // (#336: the reply toolbar reveals on hover, so "landed" is the
+    // answer's blocks with no working marker — never .ctl visibility.)
+    await expect(pending.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+    await expect(pending.locator(".working")).toHaveCount(0, { timeout: 30_000 });
     await expect(send).toBeEnabled({ timeout: 30_000 });
     await send.click();
     // Issue #293: the follow-up question is its own reviewer entry.
@@ -141,8 +144,10 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
     await expect(after.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
     // Retry lands the answer; the box comes back with the kept draft.
+    // (#336: as above — landed is blocks with no working marker.)
     await failed.getByRole("button", { name: "Retry" }).click();
-    await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+    await expect(failed.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+    await expect(failed.locator(".working")).toHaveCount(0, { timeout: 30_000 });
     const kept = after.getByPlaceholder(/Ask a follow-up/);
     await expect(kept).toBeVisible({ timeout: 30_000 });
     await expect(kept).toHaveValue("One more thing about folds?", { timeout: 30_000 });
