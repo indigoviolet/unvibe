@@ -66,7 +66,9 @@ outputs = []
 description = "Playwright behaviour tests against mock mode (needs browsers: mise run playwright-install)"
 # The real-service specs boot `packages/service/dist/index.js`; ensure a build
 # exists first (issue #39). A fresh build is skipped, so this is a no-op then.
-depends = ["build"]
+# The static-demo specs (#334) run against `dist-demo`: build it every time,
+# so they never test a stale bundle and never silently skip on a clean tree.
+depends = ["build", "demo:build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
 [tasks.journeys]
