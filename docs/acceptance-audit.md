@@ -551,7 +551,13 @@ needed (that deviation is closed, not added).
   `ReplyBox.tsx` with `followupDraft`, `conversation.test.ts`,
   journeys J2/J9/J15/J17/J273). Issue #301 removed “Ask about this”:
   the Reply box is the only way a comment leads to an agent reply, and
-  the answer is never submitted.
+  the answer is never submitted. The Outbox toggle shows on any thread
+  with comment replies and works there whatever kind of reply started
+  the thread (issue #339: the mock rejected `post` on type `thread`;
+  service, mock and Submit now share the one-thread model and only
+  `kind === "comment"` replies ever post) — met (`ThreadView.tsx`
+  `hasCommentReplies`, `routes/comments.ts`, `mock/index.ts`
+  `updateComment`, journeys J339 + J223, static-demo t-seed test).
   The header never shows an empty or near-empty quote: no quoted text
   (e.g. a line comment) shows only the location, and below ~440px of
   thread width (diff pane at 960px) the quote hides entirely via a
