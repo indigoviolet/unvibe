@@ -3796,31 +3796,22 @@ export const mockApi = {
   updateComment: async (_id: string, commentId: string, body: import("@unvibe/shared").UpdateCommentRequest) => {
     const thread = annotations.find((a) => a.id === commentId);
     if (!thread) throw new Error("unknown comment");
-    // Issue #136: `open` and the reply-box draft (`reply`) apply to
-    // conversation cards too (dotted-link click). Post/draft stay
-    // comment-only.
-    if (thread.type === "thread") {
-      if (body.open !== undefined) thread.open = body.open;
-      if (body.pinned !== undefined) thread.pinned = body.pinned;
-      if (body.post !== undefined || body.draft !== undefined) {
-        throw new Error(`annotation ${commentId} is not a thread`);
-      }
-      if (body.reply === null) delete thread.reply;
-      else if (body.reply !== undefined) thread.reply = body.reply;
-      emitAnnotations();
-      return { ok: true };
-    }
-    if (!thread.replies.some((r) => r.kind === "comment")) throw new Error("unknown comment");
-    if (body.pinned !== undefined) throw new Error(`annotation ${commentId} is not a conversation`);
-    if (body.post !== undefined) {
-      thread.post = body.post;
-      if (body.post) thread.open = true;
-    }
+    // Issue #273/#339: one thread kind. Post/draft (Outbox), open, the
+    // reply/followupDraft boxes, and pin all apply to threads, whatever
+    // kind of reply started them — mirroring the service PATCH. Submit
+    // and the Outbox only ever carry `kind === "comment"` replies (never
+    // agent text), so the toggle works on any thread with comment
+    // replies and is simply inert without them.
+    if (thread.type !== "thread" && thread.type !== "link") throw new Error("unknown comment");
+    if (body.open !== undefined) thread.open = body.open;
+    if (body.pinned !== undefined) thread.pinned = body.pinned;
+    if (body.post !== undefined) thread.post = body.post;
     if (body.draft === null) delete thread.draft;
     else if (body.draft !== undefined) thread.draft = body.draft;
-    if (body.open !== undefined) thread.open = body.open;
     if (body.reply === null) delete thread.reply;
     else if (body.reply !== undefined) thread.reply = body.reply;
+    if (body.followupDraft === null) delete thread.followupDraft;
+    else if (body.followupDraft !== undefined) thread.followupDraft = body.followupDraft;
     emitAnnotations();
     return { ok: true };
   },

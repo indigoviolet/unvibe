@@ -222,6 +222,22 @@ test("comments persist across reload; Reset demo clears them", async ({ page }) 
   expect(violations).toEqual([]);
 });
 
+test("Outbox toggle works on the seeded thread (#339)", async ({ page }) => {
+  const violations = await sameOriginOnly(page);
+  await gotoDemo(page);
+  await closeSeedCard(page);
+  // t-seed is a type `thread` with one comment reply: the toggle used to
+  // fail with "annotation t-seed is not a thread".
+  const thread = page.locator('#C-central section.ithread[data-thread="t-seed"]');
+  await expect(thread).toBeVisible({ timeout: 10_000 });
+  await expect(thread.getByRole("button", { name: "Add to Outbox" })).toBeVisible({ timeout: 10_000 });
+  await thread.getByRole("button", { name: "Add to Outbox" }).click();
+  await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#toast")).not.toContainText("Couldn't update the Outbox");
+  await thread.screenshot({ path: "test-results/static-demo-t-seed-outbox.png" });
+  expect(violations).toEqual([]);
+});
+
 test("hunk summaries come from the recordings", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
