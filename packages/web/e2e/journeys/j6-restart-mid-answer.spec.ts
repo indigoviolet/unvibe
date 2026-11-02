@@ -105,9 +105,11 @@ test.describe("J6 restart mid-answer", () => {
       await expect(settled.locator(".ctl")).toHaveCount(0);
       await expect(settled.getByPlaceholder(/Ask a follow-up/)).toHaveCount(0);
       // Retry is the way forward: it refills the reply, and then the
-      // toolbar and follow-up box appear.
+      // follow-up box appears (#336: the toolbar itself stays hidden
+      // until hovered, so landed is blocks with no working marker).
       await settled.getByRole("button", { name: "Retry" }).click();
-      await expect(settled.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
+      await expect(settled.locator(".exp-b").last()).not.toBeEmpty({ timeout: 120_000 });
+      await expect(settled.locator(".working")).toHaveCount(0, { timeout: 30_000 });
       await expect(settled.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     } else {
       await expect(settled.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
