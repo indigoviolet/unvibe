@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/dist-demo/**", "site/demo/**", "**/node_modules/**"] },
+  { ignores: ["**/dist/**", "**/dist-demo/**", "site/demo/**", "release/**", "**/node_modules/**"] },
   {
     // #322: the Chrome extension is plain browser JS (no build, no types).
     files: ["extension/**/*.js"],
