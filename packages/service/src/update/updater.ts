@@ -13,12 +13,13 @@
  *   `<dataDir>/update/current-ref`. Never touches the network, npm or git.
  */
 import fs from "node:fs";
-import type { UpdateChannel } from "@unvibe/shared";
+import type { ReleaseNotes, UpdateChannel } from "@unvibe/shared";
 // Subpath import: the update helper bundle must not pull in the shared barrel.
 import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/runner.js";
 import { listChannels as listRealChannels, readInstalledBuild } from "./channels.js";
+import { fetchRefReleaseNotes, readFakeReleaseNotes } from "./release-notes.js";
 import { runSwitchCore } from "./switch.js";
 import { fakeChannelsPath, readCurrentRef, writeCurrentRef } from "./state.js";
 
@@ -50,6 +51,8 @@ export interface Updater {
   listChannels(): Promise<UpdateChannel[]>;
   /** Back up the DB, then install the ref globally. Call only with the service stopped. */
   switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }>;
+  /** #330: a channel's newest shipped notes. Fetched only when the caller asks. */
+  getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null>;
 }
 
 export interface RealUpdaterOptions {
@@ -108,6 +111,10 @@ export class RealUpdater implements Updater {
   async listChannels(): Promise<UpdateChannel[]> {
     const installed = readInstalledBuild(this.serviceScriptPath, this.serviceVersion);
     return listRealChannels(this.runner, installed);
+  }
+
+  async getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null> {
+    return fetchRefReleaseNotes(this.runner, ref);
   }
 
   async switchTo(ref: string, opts?: SwitchToOptions): Promise<{ from: string; to: string }> {
@@ -249,6 +256,11 @@ export class FakeUpdater implements Updater {
       dataFormat: c.dataFormat ?? null,
       current: c.ref === current,
     }));
+  }
+
+  async getChannelReleaseNotes(ref: string): Promise<ReleaseNotes | null> {
+    if (!this.dataDir) return null;
+    return readFakeReleaseNotes(this.dataDir, ref);
   }
 
   async switchTo(ref: string): Promise<{ from: string; to: string }> {

@@ -109,9 +109,20 @@ test.describe("J214 explain inside a thread", () => {
     await expect(thread).toBeVisible({ timeout: 60_000 });
 
     const body = thread.locator('[data-reply][data-kind="comment"]').first();
-    const word = await body.evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "bare");
+    // The guide test above runs first on this same thread and turns its
+    // first word into an in-thread link button (#273 rlink) — and the
+    // selection toolbar never answers inside a button or link. Pick the
+    // first word outside any interactive element instead.
+    const word = await body.evaluate((el) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if ((node as Text).parentElement?.closest?.("button, a")) continue;
+        const m = (node as Text).data.match(/[A-Za-z]{4,}/);
+        if (m) return m[0];
+      }
+      return "bare";
+    });
     await selectText(page, `[data-thread="${ai.id}"] [data-reply][data-kind="comment"]`, word);
-    await page.locator('#selbar [data-act="explain"]').click();
 
     await expect
       .poll(async () => (await annotations(svc!, reviewId)).find((a) => a.id === ai.id)?.replies.length ?? 0, {

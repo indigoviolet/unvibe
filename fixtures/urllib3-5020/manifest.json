@@ -210,6 +210,12 @@
     },
     {
       "kind": "ask",
+      "key": "list-first",
+      "pattern": "packing list",
+      "file": "ask-list-first.md"
+    },
+    {
+      "kind": "ask",
       "key": "bare-lf",
       "pattern": "\\blf\\b|bare|newline only",
       "file": "ask-bare-lf.md"

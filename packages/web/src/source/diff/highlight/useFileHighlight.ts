@@ -17,9 +17,10 @@
  */
 
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import type { Hunk } from "@unvibe/shared";
 import { cachedHunk, detectLanguage, highlightDisabled, highlightHunk, highlightVersion } from "./shiki.js";
-import { waitForSelectionClear } from "./selectionGuard.js";
+import { deferWhileDiffSelectionActive } from "./selectionGuard.js";
 import type { LineTokens } from "./tokenize.js";
 
 export interface FileTokens {
@@ -65,16 +66,24 @@ export function useFileHighlight(path: string, hunks: Hunk[], active: boolean): 
         if (cachedHunk(h.contentHash, path) !== undefined) continue;
         const out = await highlightHunk(h, path);
         if (cancelled) return;
-        // Don't collapse the user's live diff selection: wait for it to
-        // clear (bounded) before swapping this hunk's text nodes.
-        await waitForSelectionClear(undefined, () => cancelled);
+        // Don't collapse the user's live diff selection: re-check right
+        // before applying the tokens and defer the swap while a
+        // selection exists in the diff cells (issue #319) — a selection
+        // created while this hunk was tokenising (bounded; past the
+        // bound the upgrade lands anyway).
+        await deferWhileDiffSelectionActive(undefined, () => cancelled);
         if (cancelled) return;
         if (out) {
-          setByHash((prev) => {
-            if (prev.has(h.contentHash)) return prev;
-            const nextMap = new Map(prev);
-            nextMap.set(h.contentHash, out);
-            return nextMap;
+          // Apply in the same task as the guard's final check: a
+          // scheduled-but-uncommitted swap could otherwise land after a
+          // selection created in between (issue #319).
+          flushSync(() => {
+            setByHash((prev) => {
+              if (prev.has(h.contentHash)) return prev;
+              const nextMap = new Map(prev);
+              nextMap.set(h.contentHash, out);
+              return nextMap;
+            });
           });
         }
         setVersion(highlightVersion());

@@ -522,18 +522,20 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    level as a tooltip or label (header, Files list, legend, filter rows),
    and all four levels read in both themes. */
 .score-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
-.score-dot[data-score="mechanical"] { background: var(--score-mechanical); }
-.score-dot[data-score="routine"] { background: var(--score-routine); }
-.score-dot[data-score="substantive"] { background: var(--score-substantive); }
-.score-dot[data-score="needs-attention"] { background: var(--score-needs-attention); }
+.score-dot[data-score="mechanical"] { background: var(--score-mechanical, #999); }
+.score-dot[data-score="routine"] { background: var(--score-routine, #56b4e9); }
+.score-dot[data-score="substantive"] { background: var(--score-substantive, #e69f00); }
+.score-dot[data-score="needs-attention"] { background: var(--score-needs-attention, #d55e00); }
+.score-ind { display: inline-flex; align-items: center; flex: none; }
+.hlevel-lbl { white-space: nowrap; }
+.cat-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--muted, #5c6472); }
+.hlevel-menu button.cat-hidden { color: var(--muted); opacity: .55; }
+.hlevel-menu button .ic { width: 14px; height: 14px; flex: none; }
 /* Plotline tag on the hunk header: a neutral chip, reserving colour for
    the score dot. */
 .ptag { font-size: 10.5px; color: var(--muted); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; flex: none; }
-/* Dots and chips are the score/plotline selectors (owner direction,
-   #169): real buttons; the selected one is outlined and filled. */
-.score-pick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid transparent; background: none; border-radius: 50%; padding: 0; flex: none; cursor: pointer; }
-.score-pick:hover { border-color: var(--line); background: var(--sunk); }
-.score-pick.sel { border-color: var(--ink); background: var(--sunk); box-shadow: 0 0 0 1px var(--ink); }
+/* The plotline chip is a selector (#169): a real button; the selected
+   one is outlined and filled. Score dots are indicators only (#325). */
 .ptag-pick { cursor: pointer; background: none; font: inherit; font-size: 10.5px; }
 .ptag-pick:hover { background: var(--sunk); }
 .ptag-pick.sel { color: var(--ink); border-color: var(--ink); background: var(--sunk); font-weight: 600; }
@@ -827,6 +829,11 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines { margin: 14px 0 4px; font-size: 13px; }
 .ui-card.plotlines { padding: 8px 14px; }
 .plotlines h2 { font-size: 11px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; letter-spacing: .08em; text-transform: uppercase; }
+/* #324: one quiet stacked share bar under the title. Segment colours
+   come from theme vars so it reads in light and dark. */
+.plotlines { --plseg-0: var(--accent); --plseg-1: var(--add-ink); --plseg-2: var(--warn); --plseg-3: var(--ok); --plseg-4: var(--muted); }
+.plshare { display: flex; height: 5px; border-radius: 99px; overflow: hidden; background: var(--line); margin: 4px 0 6px; }
+.plshare-seg { display: block; height: 100%; min-width: 2px; }
 .plotlines ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .plotlines li { min-width: 0; }
 .plotlines .ui-row { border-top: 0; border-radius: var(--radius-6); padding: var(--space-2) var(--space-2); min-height: 0; }
@@ -892,11 +899,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prblock-tools .author-combo:focus-within { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
 .prblock-tools .author-combo > button { display: inline-flex; flex: none; align-items: center; justify-content: center; background: none; border: 0; padding: 0; margin: 0; color: var(--text-muted); cursor: pointer; }
 .prblock-tools .author-combo > button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); border-radius: var(--radius-4); }
-/* The dropdown lives in a body-level portal: like every other popover
-   it needs its own z-index to paint above the start page's `main`
-   stacking context (the option rows assert present but paint under the
-   card without it). Same level as the other popovers. */
-.author-combo-positioner { z-index: 30; }
+/* The combobox dropdown shares the select's positioner class
+   (`.ui-select-positioner` in ui.css), so its z-index lives there too. */
 .spin { display: inline-grid; place-items: center; animation: prspin 1s linear infinite; }
 @keyframes prspin { to { transform: rotate(360deg); } }
 /* Reduced motion: the refresh icon stays still while fetching (the tooltip
@@ -958,15 +962,40 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .ui-card.pend .go:hover { background: var(--accent-soft); }
 .ctl { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 4px 0 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
 .ui-card.child .ctl { border: 0; padding-bottom: 0; }
-/* #274 toolbars on hover: the card/reply toolbar lives in the heading
-   row and shows on hover or keyboard focus only. Icon buttons are 32px. */
-.chead .ctl, .spike-reply-head .ctl { margin: 0; padding: 0; border: 0; opacity: 0; transition: opacity .15s; }
-.spike-thread .spike-reply-head .ans-q { flex: 1; }
-.spike-reply-head .ctl { align-self: center; }
-.chead .ctl .ib, .spike-reply-head .ctl .ib { width: 32px; height: 32px; }
+/* #274 toolbars on hover: the card toolbar lives in the heading row,
+   the reply toolbar floats at the reply's top-right (#331) — both show
+   on hover or keyboard focus only. Card icon buttons are 32px. Issue
+   #336: the reply toolbar is a right float, not an overlay: the text
+   always wraps short of it, so it can never cover the first line. It
+   stays in flow with `visibility` (the `.ans-older` pattern), so hover
+   reveals it with no layout shift. */
+.chead .ctl { margin: 0; padding: 0; border: 0; opacity: 0; transition: opacity .15s; }
+.spike-thread .spike-reply > .ctl {
+  float: right;
+  margin: calc((var(--text-prose) * var(--leading-prose) - 26px) / 2 + 1px) 0 0 8px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .15s, visibility .15s;
+  /* v0.0.14 gate: answer blocks render inside `.blk`, which is
+     position:relative — a positioned box paints and hit-tests above a
+     non-positioned float, so the revealed toolbar's own box kept sending
+     its clicks to the paragraph underneath. Relative + z-index keeps the
+     geometry (the float still reserves its space) while the toolbar wins
+     hit-testing inside its own box. */
+  position: relative;
+  z-index: 1;
+}
+/* Issue #336 follow-up: the reply toolbar fits its first line — base
+   icon buttons and the depth pill are 26px tall with borders, no bottom
+   margin, and the top margin centres those 26px on the line box, so the
+   float never reaches the second line box. Only card toolbars keep the
+   32px buttons. */
+.chead .ctl .ib { width: 32px; height: 32px; }
 .ui-card:hover .chead .ctl, .ui-card:focus-within .chead .ctl,
-.spike-reply:hover .spike-reply-head .ctl, .spike-reply:focus-within .spike-reply-head .ctl { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .chead .ctl, .spike-reply-head .ctl { transition: none; } }
+.spike-reply:hover > .ctl, .spike-reply:focus-within > .ctl { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .chead .ctl, .spike-thread .spike-reply > .ctl { transition: none; } }
 .depth { display: inline-flex; align-items: center; border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); overflow: hidden; margin-right: 4px; height: 24px; }
 .depth button { border: 0; background: none; width: 24px; height: 22px; font-size: 14px; line-height: 1; color: var(--muted); }
 .depth button:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
@@ -975,6 +1004,9 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .blk { position: relative; }
 .prose, .lst li { font-family: var(--prose-font); font-size: var(--text-prose); line-height: var(--leading-prose); max-width: 68ch; }
 .prose { margin: 10px 0; }
+/* #327 card sub-headings (### and deeper): sans, semibold, ink, with
+   more air above than below so the section they open reads as theirs. */
+.subhead { font-family: var(--sans); font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--ink); margin: 18px 0 6px; max-width: 68ch; }
 /* #274 lighter dark-mode prose: the variable Literata carries 370 cleanly.
    Studio/Console prose fonts are static, so they stay at 400. */
 @media (prefers-color-scheme: dark) {
@@ -1462,14 +1494,28 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
 .spike-thread { margin-left: 0; container-type: inline-size; }
 
-/* Issue #301: the reply avatar sits inline in the first line, with the
-   badge — no 22px avatar column indenting the body. From the second
-   line on, the body uses the thread's normal padding. */
-.spike-thread .spike-reply { display: block; padding: 10px 0; border-top: 1px solid var(--line); }
+/* Issue #331: every reply is avatar-only (#315 follow-up), so the avatar
+   floats inline and the first line of text starts right after it. The
+   following lines wrap back to the thread's normal padding: the avatar
+   is a float, not a hanging indent. A first block that can't flow inline
+   (a list, code, diagram or table) clears the float and starts below it. */
+.spike-thread .spike-reply { display: block; position: relative; padding: 10px 0; border-top: 1px solid var(--line); }
 .spike-thread .spike-reply:first-of-type { border-top: none; }
-.spike-thread .spike-reply-head .av { width: 20px; height: 20px; }
-.spike-thread .spike-reply > p { margin: 4px 0 0; }
-.spike-thread .spike-reply-head { display: flex; align-items: center; gap: 8px; }
+.spike-thread .spike-reply > .av { float: left; width: 20px; height: 20px; margin: 1px 8px 0 0; }
+/* Issue #336: the agent avatar centres on its first line's box. The
+   reviewer avatar's 1px margin already centres it on the smaller sans
+   line; the AI avatar sits against the larger serif prose line, so its
+   top margin is half the leftover line box (plus the paragraph's 1px).
+   Keyed off the type vars, so Studio and Console follow automatically. */
+.spike-thread .spike-reply > .av.ai { margin-top: calc((var(--text-prose) * var(--leading-prose) - 20px) / 2 + 1px); }
+.spike-thread .spike-reply > p { margin: 1px 0 0; }
+/* A paragraph (or sub-heading) first block flows beside the avatar; its
+   top margin would push it off the avatar's line, so it starts flush. */
+.spike-thread .spike-reply > .exp-b > .blk:first-child > :first-child { margin-top: 1px; }
+/* Any other first block clears the floats (avatar left, toolbar right)
+   and starts below them — issue #336: a list-first reply must clear the
+   toolbar too, since it keeps its wrap space while hidden. */
+.spike-thread .spike-reply > .exp-b > :first-child:not(.blk:has(> p.prose, > h3.subhead)) { clear: both; }
 
 /* Kind badges: teal pills for agent answers, amber for reviewer comments.
    (Specificity beats the legacy `.thd .kind` label style.) */
@@ -1505,10 +1551,11 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 
 /* Issue #293: an Ask question is a reviewer entry with its answer as the
    reply directly under it — no rule and no blank gap between the two.
-   The answer keeps only its kind badge, so its toolbar stays right. */
+   Issue #315: neither entry carries a kind chip or heading (avatars say
+   who's speaking). Issue #331: the answer's toolbar floats at the
+   top-right corner so the body starts on the avatar's line. */
 .spike-thread .spike-reply.ask-question { padding-bottom: 2px; }
 .spike-thread .spike-reply.ask-question + .spike-reply.ask-answer { border-top: none; padding-top: 2px; }
-.spike-thread .spike-reply.ask-answer .spike-reply-head .ctl { margin-left: auto; }
 
 /* Thread header quote vs location (#273): the quote truncates with an
    ellipsis, but never to a stub — below ~440px of thread width (the diff
@@ -1570,7 +1617,5 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
   .spike-row-q { display: none; }
 }
 
-/* "Collapse threads" / "Expand threads" control in the guide pane header:
-   single-line small button, right-aligned, never wrapping or crowding the title. */
-.ib.spike-collapse-all { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; width: auto; min-width: max-content; flex: none; white-space: nowrap; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-button); font-size: var(--text-label); color: var(--ink); }
-.spike-collapse-label { font-weight: var(--weight-label); }
+/* #326: "Collapse threads" / "Expand threads" is an icon button in the
+   review top bar (`.rbar .ib` sizing applies); no guide-header rule. */

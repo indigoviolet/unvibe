@@ -1308,8 +1308,14 @@
               ]
             },
             {
-              "type": "paragraph",
+              "type": "heading",
               "id": "b3",
+              "html": "Invariants",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
               "text": {
                 "standard": "The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests.  "
               },
@@ -1323,8 +1329,14 @@
               ]
             },
             {
+              "type": "heading",
+              "id": "b5",
+              "html": "Known uncertainties",
+              "citations": []
+            },
+            {
               "type": "paragraph",
-              "id": "b4",
+              "id": "b6",
               "text": {
                 "standard": "Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. "
               },
@@ -1335,8 +1347,14 @@
               ]
             },
             {
+              "type": "heading",
+              "id": "b7",
+              "html": "Interfaces",
+              "citations": []
+            },
+            {
               "type": "paragraph",
-              "id": "b5",
+              "id": "b8",
               "text": {
                 "standard": "No new public interface is added. The existing header views keep their shape: urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> hold the same names, order and duplicates, with folded values unfolded in both.  ",
                 "simple": "Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.",
@@ -1996,7 +2014,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_you_zuuy5s",
+          "id": "ans_you_4eguwv",
           "kind": "comment",
           "who": "you",
           "question": null,
@@ -2036,7 +2054,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_agent_ywurgg",
+          "id": "ans_agent_bfkc6h",
           "kind": "comment",
           "who": "agent",
           "question": null,
@@ -2077,7 +2095,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_agent_cudlcd",
+          "id": "ans_agent_pb467a",
           "kind": "comment",
           "who": "agent",
           "question": null,
@@ -2118,7 +2136,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_you_nxxkx2",
+          "id": "ans_you_s59wrl",
           "kind": "comment",
           "who": "you",
           "question": null,
@@ -2184,8 +2202,9 @@
   ],
   "fileStates": [],
   "viewPrefs": {
-    "showExistingComments": true,
-    "existingCommentsCollapsed": false
+    "showExistingComments": false,
+    "existingCommentsCollapsed": false,
+    "hideLevel": "uninteresting"
   },
   "jobs": [
     {

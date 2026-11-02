@@ -16,3 +16,8 @@ export * from "./scores.js";
 export * from "./outbox.js";
 export * from "./glossary.js";
 export * from "./data-format.js";
+export * from "./stacks.js";
+export * from "./extension.js";
+export * from "./webdoc.js";
+export * from "./stats.js";
+export * from "./replay-match.js";

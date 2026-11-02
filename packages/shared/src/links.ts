@@ -11,6 +11,8 @@
  * Validation against a review (existence, ranges, anchors) comes later.
  */
 
+import { parseId } from "./ids.js";
+
 export interface LinkToken {
   /** Full matched text, e.g. `[[concept:idempotency|idempotency]]`. */
   raw: string;
@@ -27,11 +29,18 @@ export interface LinkToken {
 /**
  * Find all `[[…]]` tokens in Markdown text.
  *
- * Rules (simplest viable):
+ * Rules:
  * - `[[` opens a token; the token ends at the first `]]` after it.
  * - Empty targets are ignored.
- * - The target may not contain `[` or `]`; the label may not contain `]`.
- *   (A `|` inside the label is kept as part of the label: split on first `|`.)
+ * - The label may not contain `[` or `]` (a `|` inside the label is kept
+ *   as part of the label: split on first `|`).
+ * - The target may contain `[` and `]` for paths with brackets (issue
+ *   #332: Next.js route groups and dynamic segments, e.g.
+ *   `[[code:src/app/(group)/items/[id]/page.tsx:433-492]]`). Such a
+ *   target must parse as a real ID (`parseId`); anything else with
+ *   brackets stays literal so casual `[[…]]` prose is never eaten.
+ * - A nested `[[` inside the target is never a token: scanning resumes
+ *   just inside the outer open so the inner token is still found.
  * - Fenced code spans are NOT skipped here — callers that need that should
  *   strip code first. Documented so later agents know the boundary.
  * - Unclosed `[[` is ignored.
@@ -45,13 +54,22 @@ export function tokenizeLinks(text: string): LinkToken[] {
     const close = text.indexOf("]]", open + 2);
     if (close < 0) break;
     const inner = text.slice(open + 2, close);
-    i = close + 2;
-    if (!inner) continue;
-    if (inner.includes("[") || inner.includes("]")) continue;
     const pipe = inner.indexOf("|");
     const idText = (pipe < 0 ? inner : inner.slice(0, pipe)).trim();
     const label = pipe < 0 ? undefined : inner.slice(pipe + 1);
-    if (!idText) continue;
+    const labelOk = label === undefined || (!label.includes("[") && !label.includes("]"));
+    const bracketed = idText.includes("[") || idText.includes("]");
+    const ok =
+      idText !== "" &&
+      labelOk &&
+      !idText.includes("[[") &&
+      (!bracketed || parseId(idText) !== null);
+    if (!ok) {
+      // Not a token at this open: rescan from just inside it so a real
+      // token nested in the rejected span is still found.
+      i = open + 2;
+      continue;
+    }
     out.push({
       raw: text.slice(open, close + 2),
       idText,
@@ -59,6 +77,7 @@ export function tokenizeLinks(text: string): LinkToken[] {
       start: open,
       end: close + 2,
     });
+    i = close + 2;
   }
   return out;
 }

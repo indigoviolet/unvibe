@@ -1,17 +1,25 @@
-# Unvibe front-door page (issue #150): deploy `site/` to GitHub Pages.
+# Unvibe front-door page + static demo (issue #334): deploy `site/` to
+# GitHub Pages, with the in-browser demo built into `site/demo/`.
 #
-# Runs only when `site/` changes (CI minutes are scarce), plus manual
-# dispatch. No build step: `site/` is plain HTML + CSS + one image.
+# Runs on merges to `main` touching the page, the web app, the shared
+# matcher it replays through, the fixture it replays, or this workflow —
+# plus manual dispatch. The demo build needs no secrets and no browsers:
+# plain `mise run demo:build` (mock-mode web build, fixture baked in).
 # The owner enables Pages once in the repository settings (Settings →
-# Pages → Source: GitHub Actions); afterwards every merge to `main`
-# touching `site/` republishes https://unvibe.xyz (github.io redirects there).
+# Pages → Source: GitHub Actions); afterwards every such merge
+# republishes https://unvibe.xyz (github.io redirects there), with the
+# demo at https://unvibe.xyz/demo.
+#
+# CI minutes stay scoped: `site/`-only changes rebuild the demo too (the
+# workflow has no cheap way to know the demo is unaffected), but branch
+# pushes never run it — only merges to `main` and manual dispatch.
 
 name: pages
 
 on:
   push:
     branches: ["main"]
-    paths: ["site/**"]
+    paths: ["site/**", "packages/web/**", "packages/shared/**", "fixtures/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -29,13 +37,40 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out
         uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install workspace dependencies
+        run: mise run install
+        timeout-minutes: 10
+
+      - name: Build the static demo
+        run: mise run demo:build
+        timeout-minutes: 15
+
+      - name: Stage the site
+        run: rm -rf site/demo && cp -r packages/web/dist-demo site/demo
+
       - name: Upload the page
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

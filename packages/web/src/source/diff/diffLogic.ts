@@ -7,8 +7,8 @@
  * `prototype.html` (its code is a sketch — this is a port of behaviour and
  * class names, not code).
  */
-import type { Thread, Block, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
-import { hunkMatchesFilter, hunkScoreRank, parseId } from "@unvibe/shared";
+import type { DiffFilter, HideLevel, Hunk, HunkLine, HunkScoreLevel, ReviewFile } from "@unvibe/shared";
+import { hunkMatchesFilter, hunkScoreRank, shouldHideAtLevel } from "@unvibe/shared";
 
 // --- folder tree ---------------------------------------------------------
 
@@ -168,11 +168,11 @@ export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile
   );
 }
 
-/** True when a hunk passes the score/plotline filter (absent = all pass). */
+/** True when a hunk passes the plotline filter (absent = all pass). */
 export function hunkPlotVisible(hunk: Hunk, filter: Pick<FileFilter, "plot" | "hunkStateOf">): boolean {
-  if (!filter.plot || (filter.plot.plotline === undefined && filter.plot.score === undefined)) return true;
+  if (!filter.plot || filter.plot.plotline === undefined) return true;
   const st = filter.hunkStateOf?.(hunk.contentHash);
-  return hunkMatchesFilter(st?.score, st?.plotline, filter.plot);
+  return hunkMatchesFilter(st?.plotline, filter.plot);
 }
 
 /**
@@ -245,67 +245,26 @@ export function hunkOverlaps(h: Hunk, start: number, end: number): boolean {
   return start <= h.newEnd && end >= h.newStart;
 }
 
-// --- guide citations -----------------------------------------------------------
-
-function blockCitations(blocks: Block[], out: string[]): void {
-  for (const b of blocks) {
-    for (const c of b.citations ?? []) out.push(c.target);
-    if (b.type === "aside") blockCitations(b.inner, out);
-  }
-}
-
-/**
- * Content hashes of hunks the guide cites (PRD §4.13: never hidden).
- * Reads `diff:` targets from every block citation; `h:` targets map
- * directly. Ranges resolve against new-side line ranges.
- */
-export function citedHunkHashes(
-  files: ReviewFile[],
-  pages: Page[],
-  annotations: Thread[],
-): Set<string> {
-  const targets: string[] = [];
-  for (const p of pages) for (const c of p.cards ?? []) blockCitations(c.blocks ?? [], targets);
-  void annotations;
-  const byKey = new Map(files.map((f) => [f.fileKey, f]));
-  const out = new Set<string>();
-  for (const t of targets) {
-    const id = parseId(t);
-    if (!id) continue;
-    if (id.kind === "h") {
-      out.add(id.contentHash);
-    } else if (id.kind === "diff") {
-      const f = byKey.get(id.fileKey);
-      if (!f) continue;
-      for (const h of f.hunks) {
-        if (hunkOverlaps(h, id.start, id.end)) out.add(h.contentHash);
-      }
-    }
-  }
-  return out;
-}
-
 // --- hide decision ---------------------------------------------------------------
 
 export interface HideDecision {
-  hideUninteresting: boolean;
+  /** Issue #325: the toolbar's hide level for this review. */
+  level: HideLevel;
+  /** The hunk's score, when its pass has landed. */
+  score?: HunkScoreLevel;
   /** User clicked "show" on this hunk's hidden row (transient, per session). */
   unhidden: boolean;
-  /** The guide cites this hunk. */
-  cited: boolean;
 }
 
 /**
- * A hunk hides only when Hide-uninteresting is on, it carries a
- * `hiddenReason` from the snapshot, the user hasn't revealed it, the guide
- * doesn't cite it — and it isn't a one-line change (PRD §4.13: one-line
- * changes are never hidden).
+ * A hunk hides when the hide level covers it (issue #325: a
+ * `hiddenReason`, never on a one-line change, or a score below the
+ * level's floor), unless the user has revealed it. Guide citations
+ * do not exempt a hunk (owner decision, #325); clicking a citation
+ * reveals it through the diff's per-hunk unhide instead.
  */
 export function shouldHideHunk(hunk: Hunk, d: HideDecision): boolean {
-  if (!d.hideUninteresting || d.unhidden || d.cited) return false;
-  if (!hunk.hiddenReason) return false;
-  if (hunk.added + hunk.removed <= 1) return false;
-  return true;
+  return shouldHideAtLevel({ ...hunk, score: d.score }, d.level, { unhidden: d.unhidden });
 }
 
 /** Fallback one-line "why it's skippable" copy per hidden reason. */

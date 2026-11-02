@@ -241,6 +241,15 @@ UI); nothing below was edited by this pass.
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
   `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
   refresh banner counts).
+- Reviews-list statuses fresh on load/Refresh (#298) — met
+  (`repos/review-statuses.ts`: one batched GraphQL query per repo
+  covers every PR-backed review — state, displayed decision and head
+  SHA, including merged/closed PRs absent from the open PR lists;
+  branch reviews use the local git tip; only the stored state and
+  the `pendingHeadSha` tag change, no re-ingest; runs only from the
+  start page's load/Refresh via `POST /api/repos/:id/review-statuses`;
+  `review-statuses-298.test.ts`, journey
+  `j298-refresh-review-statuses.spec.ts`).
 <- Selections remembered — met (selector in `localStorage`,
   `start.spec.ts` persistence round-trip; last-opened ordering in
   `reviews/list.ts`).
@@ -682,7 +691,11 @@ needed (that deviation is closed, not added).
   so the question never enters the Outbox/Submit path (both read only
   `kind === "comment"` replies) — met (`comments/ThreadView.tsx`
   `AskQuestionView` + `ask-answer`, `prototype.css` gap rules, journey J273
-  #293 asserts).
+  #293 asserts; issue #315 drops the kind chips and the "Reviewer
+  comment" label from both Ask entries — just avatar plus text — with
+  `aria-label="Your question"` / `"Agent answer"` on the entries for
+  screen readers. Explain replies and real reviewer comments keep
+  their badge + heading).
   Only Ask sends text to the agent; clicking a diff line opens a
   Comment. Only comment-kind replies are submitted — pure agent threads
   stay out of the Outbox and the submit path skips threads without
@@ -726,11 +739,12 @@ needed (that deviation is closed, not added).
   Ask label instead of the “Reading the diff…” fallback
   (`comments/NewThreadComposer.tsx`, `comments/ThreadView.tsx`,
   `comments/doubleIndicator.test.tsx` “Ask”, journey J273).
-- Collapse-all threads (issue #268, built in #273): the guide pane
-  header control collapses every thread, comments included, to one-line
-  rows (quote · question · latest snippet · reply count); expanding a
-  row restores that thread — met (store `collapseAll`/`expandedThreads`,
-  `ThreadCollapsedRow`, journey J273, visual-tour collapsed frames).
+- Collapse-all threads (issue #268, built in #273; moved #326): the
+  review top-bar icon button collapses every thread, comments included,
+  to one-line rows (quote · question · latest snippet · reply count);
+  expanding a row restores that thread — met (store
+  `collapseAll`/`expandedThreads`, `ThreadCollapsedRow`, journey J273,
+  visual-tour collapsed frames).
 - Comments menu (two counted tabs in the segmented control — Comments
   (This review + On GitHub) and Outbox (#236; opening shows Comments,
   the top-bar “N in Outbox” pill opens the Outbox tab); the sections keep
@@ -949,8 +963,17 @@ needed (that deviation is closed, not added).
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
   cases, `hunk-summary.spec.ts` promoted flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
-  run with reason, click reveals; one-line never hidden; cited never
-  hidden) — met (`ingest/uninteresting.ts` + hunk-pass override
+  run with reason, click reveals; one-line never hidden; guide-cited
+  hunks hide like any other since the #325 owner decision — clicking
+  their citation reveals them) — met, and since #325 it is the default of the diff toolbar's
+  hide menu (an ordered category list — Uninteresting · Mechanical ·
+  Routine · Substantive · Needs attention — over the one threshold
+  remembered per review in `viewPrefs.hideLevel`, absorbing the old per-hunk score filter
+  buttons; individually unhidden hunks stay visible at
+  every level, and the selector tooltip carries the live hidden count
+  with a breakdown) (`packages/shared/src/scores.ts` hide levels,
+  `j325-hide-level.spec.ts`, tour frame `hide-level-open-1440-light.png`).
+  The original toggle behaviour — met (`ingest/uninteresting.ts` + hunk-pass override
   `runner.ts:1383`, `diff.spec.ts` “hide uninteresting collapses runs”,
   live runs: “hide violations: none”). Issue #283: the row is one
   flowing line (label, then the summary at full width — inline or on a
@@ -3482,6 +3505,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `DATA_FORMAT` at the new tag differs from the previous tag
   (unstamped counts as 0), via the pure helpers in
   `scripts/release-notes-lib.mjs`.
+- **Release notes in every build (#330):** `release-notes.json` ships
+  inside previews and releases (generator
+  `scripts/generate-release-notes.mjs`, helpers
+  `scripts/release-notes-gen-lib.mjs`; previous build = always the
+  newest `v*` tag reachable from HEAD, on every channel). Publisher entries (`--notes-file` on `preview:publish` /
+  `release:tag`) merge over generated one-liners. Release notes live
+  only in Settings → Version, per channel (fetched on Notes open only,
+  plain text; no current-build block); `release-notes.mjs` renders the
+  GitHub body from the same file.
+  Evidence: `test/release-notes-gen.test.ts`, journey
+  `e2e/journeys/j330-release-notes.spec.ts`, visual-tour frame
+  `version-notes-1440-light`.
 - Evidence: shared `test/data-format.test.ts`; service
   `test/data-format.test.ts` (check states, stamp, move-aside never
   deletes + collision, combined export, doctor line),
@@ -3520,4 +3555,182 @@ hunk coverage) is reported for a separate issue, not fixed here.
   without drafts incl. deep link, and the go-back helper drill on a
   scratch HOME/data dir/prefix with byte-identical data), tour
   frames `data-reset-notice-1440-{light,dark}.png` re-inspected.
+  Full gates not yet run.
+- **Owner follow-up (branch `fix/311-notice-card-width`):** the
+  notice column is sized to the text's measure (720px, the heading's
+  single-line width) instead of the 760px start column, so the
+  Export / Go back / Reset cards' outer edges line up with the
+  heading and paragraphs instead of extending past the wrapped
+  text. One shared width rule (the `.doc` max-width in
+  `DataFormatNotice`); contents, buttons and behaviour unchanged.
+  The j311 journey asserts every card's left/right edges match the
+  heading's within 1px at 1440px and 800px, and the tour scene adds
+  `data-reset-notice-800-{light,dark}.png` frames. Full gates not
+  yet run.
+- **#314 (guide blocks from markdown-it tokens; §4.4):** the block layer
+  (`parseBlocks` in `packages/shared/src/content/parse.ts`) is rebuilt on
+  markdown-it's block tokens instead of the hand line scanner, so a blank
+  line no longer ends a list: a loose numbered list ("1. a", blank line,
+  "2. b", …) is one `list` block rendering as one `<ol>` numbered 1–4,
+  not several one-item lists each rendering "1.". Ordered lists keep
+  their start number (`ListBlock.start`, absent means 1, rendered as
+  `<ol start>`), continuation paragraphs / nested lists / fences / tables
+  inside items stay inside the item, and every other convention is
+  unchanged (per-paragraph/item citations with the block union, `[[…]]`
+  tokens, d2 fences with `link:` cites and caption, mermaid as code,
+  asides, callouts, follow-ups, title fallback and echo strip, card
+  splitting). Block IDs stay stable on append (a growing loose list
+  keeps its ID). No stored-shape break: `start` is absent on older
+  snapshots, which render exactly as before, so `DATA_FORMAT` stays 1.
+  Evidence: shared `test/content-parse.test.ts` "parseBlocks lists"
+  (loose/tight ordered/unordered, continuation, nested, list+paragraph,
+  start 3 with round trip, fence in item, per-item citations, ID
+  stability, `:::` adjacency, citation round trip) and web
+  `BlockView.list.test.tsx` `<ol start>` rendering; journey
+  `e2e/journeys/j314-loose-lists.spec.ts` (real service over a seeded
+  review: one `<ol>` with four `<li>`, no `start`, texts 1–4 in order)
+  with tour frame `packages/web/visual-tour/314/loose-list.png`
+  (git-ignored), inspected. No existing parse test encoded the bug, so
+  none changed for it. Full gates not yet run.
+
+## Addendum: #317 (branch `fix/317-code-citation-file-tab`)
+
+- **File-tab scroll (§7/§9):** a `code:` citation into a file outside
+  the diff now scrolls the cited range into view (centred). The old
+  code marked the range scrolled before checking the row existed, so
+  on any file whose cited lines arrive in a later 200-line slice the
+  scroll fired against a missing row and never retried. The scroll
+  now waits for the cited row, retries as slices land, and re-scrolls
+  when a later citation names a different range in the already-open
+  tab.
+- **File-tab syntax highlighting (§7):** file-tab lines carry the
+  diff's Shiki highlighting (same grammar choice from the file name,
+  same CSS-variable theme, so light/dark and UI themes match the
+  diff). Tokenising happens in 200-line windows — the cited range's
+  window first, the rest by distance — each awaited, so a large file
+  paints plain immediately and colours land progressively without
+  blocking the UI; unknown languages stay plain.
+  Evidence: web `src/source/file/highlightWindow.test.ts` (clamping,
+  window coverage/order) and journey
+  `e2e/journeys/j317-file-tab-scroll-highlight.spec.ts` (real service:
+  citation to line 2500 of a 3000-line non-diff file asserts the row
+  is inside the pane, the pane scrolled, and `shk-*` tokens render;
+  a second citation to line 120 re-scrolls). Full gates not yet run.
+
+## Addendum: #321 (branch `feat/321-stacked-prs`)
+
+- **Stacked PRs:** badge `position/size` in a colour hashed from the
+  stack root (fixed 8-colour palette, light/dark pairs) on the start-page
+  PR lists, the Reviews list and the review header; clicking opens a
+  popover listing the stack in review order (base branch at the bottom,
+  current PR marked, siblings named) where each entry opens that PR's
+  review, starting one if needed. Inferred stacks carry a `~` marker.
+  Follow-up: in the review header the badge sits inside the repo#PR
+  button, right after the PR number; clicking it still opens the
+  popover instead of the PR link.
+- **Native stacks finding:** GitHub GraphQL exposes
+  `PullRequest.stack { number, size, baseRefName, entries { position,
+  pullRequest } }` and `PullRequest.stackEntry { position }` (verified by
+  introspection with `gh api graphql`, GITHUB_TOKEN unset, 2026-10-31).
+  The service prefers native data and falls back to implicit inference
+  from one paged `repository.pullRequests` query per repo, fetched only
+  on page load/Refresh (`GET /api/repos/:id/stacks`). No stored shape
+  changes, so `DATA_FORMAT` stays 1.
+- Evidence: shared `test/stacks.test.ts`, service
+  `test/stacks-321.test.ts`, journey `e2e/journeys/j321-stacked-prs.spec.ts`
+  with frames `packages/web/visual-tour/stack-list-1440-light.png` and
+  `stack-popover-1440-light.png` (git-ignored), inspected. Full gates not yet run.
+
+
+## Addendum: #322 part 1 (branch `feat/322-chrome-extension`)
+
+- **Chrome extension (PR button):** an MV3 extension in `extension/`,
+  loaded unpacked, adds "Review in Unvibe" / "Open review" to GitHub PR
+  pages. Only the background worker talks to the local service, reading
+  the `__unvibe_token` cookie via `chrome.cookies` and sending it as
+  Bearer to loopback; the content script holds no token. The service
+  allowlists the exact pinned extension origin for
+  `GET /api/extension/pr-status` only (CORS + origin gate;
+  `UNVIBE_EXTENSION_ID` overrides, never a wildcard), and `/open?pr=…`
+  opens or creates the review (cloning an unknown repo) and redirects
+  to it. Part 2 (side panel) is not built.
+  Evidence: unit tests `packages/shared/test/extension.test.ts`,
+  `packages/service/test/extension-322.test.ts` and the extension cases
+  in `packages/service/test/host.test.ts`; Playwright
+  `packages/web/e2e/extension-322.spec.ts` (unpacked extension on a
+  local github.com fixture against the real service with stub `gh`)
+  with frame `packages/web/test-results/extension-button.png`,
+  inspected. Full gates not yet run.
+- **#322 security fix (same branch):** `GET /open` no longer mutates —
+  it redirects to an existing review or renders an in-app confirm
+  page; only a `POST /open` from the app origin (loopback Host/Origin
+  gate plus token) clones/creates. The extension opens `/open` and the
+  user confirms in the app (no worker POST endpoint). Evidence:
+  `extension-322.test.ts` (cross-site GET shows confirm, records no
+  repo/review; foreign POST 403; app POST creates; existing review
+  redirects) and the extension Playwright journey (cross-site link
+  from the fixture page, confirm click, straight redirect once the
+  review exists).
+
+## Addendum: #327 (branch `fix/327-guide-subheadings`)
+
+- **Guide sub-headings (§4.4):** `###` headings (and deeper, rendered the
+  same) inside a card are now a real `heading` block in the shared content
+  model instead of plain paragraphs; `##` card splitting and
+  `### Follow-ups` are unchanged. `BlockView` renders them as
+  `h3.subhead` (15px, semibold, sans, `--ink`, 18px above / 6px below),
+  and `renderMarkdown` round-trips them as `###`. Additive block kind
+  only: stored guides keep their existing blocks, so `DATA_FORMAT` stays 1.
+  Evidence: shared `test/content-parse.test.ts` "parseBlocks sub-headings"
+  (levels, inline/citations, round-trip, Follow-ups and `##`/`#`
+  unchanged), web `BlockView.heading.test.tsx`, targeted service tests
+  (`pipeline` snapshot equivalence, `validate`, `snapshot`,
+  `second-opinion`), and the visual-tour 1440-light pass asserting the
+  Decisions card's `Invariants` / `Known uncertainties` / `Interfaces`
+  sub-headings, frame `packages/web/visual-tour/guide-decisions-1440-light.png`
+  (git-ignored), inspected. Full gates not yet run.
+
+## Addendum: #322 part 2 (branch `feat/322-side-panel`)
+
+- **Side panel + web reviews:** MV3 side panel (one thread per page on a
+  `web` review kind, hash-based capture staleness), Settings → Extension
+  (active-repo checkboxes defaulting to the 3 most recent, panel model
+  picker defaulting to muse-spark, install help with the shipped folder,
+  Show folder/Copy path, three steps, connected status from the last
+  worker call in memory, reload note), web threads never in Reviews (they list under Documents in a
+  Web pages group), and quote clicks that say
+  "not on the page any more" when the quote is gone. Panel reads stay
+  inside active-repo worktrees (realpath lockdown, read-only always,
+  repo-qualified citations); one agent turn per ask, no background
+  passes. `extension/` ships in the npm tarball and the global-install
+  check asserts it. Live check (separate $0.25 cap): muse-spark passed
+  5/5 fixture questions for $0.0052; the owner's rerun model is pending.
+  Additive Settings fields + a new snapshot shape only, so
+  `DATA_FORMAT` stays 1. Evidence: `webdoc.test.ts`,
+  `panel-322.test.ts`, `extension-322.test.ts`, journeys
+  `j322-extension.spec.ts` + `extension-panel-322.spec.ts` (frame
+  inspected), `check-global-install` green. Full gates not yet run.
+
+## Addendum: #335 (branch `fix/335-extension-start-review`)
+
+- **Extension starts the review via the worker:** the button no longer
+  opens `/open`. The background worker POSTs the PR URL to the new
+  `POST /api/extension/open` (Bearer [REDACTED] exact allowlisted extension
+  origin, same gate as pr-status/panel) and opens the answered
+  `/review/<id>` directly — no confirmation step. The endpoint clones
+  an unknown repo first and reuses an existing review, sharing the
+  `POST /open` open path. Failures (service down, clone error) answer
+  `{ ok: false }` and show an honest state on the button, never a blank
+  tab. `/open` keeps the confirm step for plain links only: `GET /open`
+  still never mutates (existing review redirects; anything else redirects
+  to the `/open/confirm` web-app route), and the confirm now renders
+  inside the app frame (top bar, app styling) with a Start button that
+  POSTs to `/open` and navigates to the review. No stored-shape change,
+  so `DATA_FORMAT` stays 1. Evidence: `extension-322.test.ts` (new
+  endpoint creates/reuses with Bearer [REDACTED] extension origin, foreign
+  origin/tokenless 403/401, GET still read-only) and Playwright
+  `e2e/extension-322.spec.ts` (button lands on `/review/<id>` with no
+  confirm; plain link shows the styled confirm and creates on Start;
+  unknown origin refused on both worker endpoints) with frame
+  `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
   Full gates not yet run.

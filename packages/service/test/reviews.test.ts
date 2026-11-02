@@ -418,10 +418,26 @@ describe("hunk routes", () => {
         method: "PATCH",
         url: `/api/reviews/${id}/view`,
         headers: authed,
-        payload: { showExistingComments: false, existingCommentsCollapsed: false },
+        payload: { showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
       });
       expect(hidden.statusCode).toBe(200);
-      expect(ctx.reviews.getSnapshot(id)?.viewPrefs).toEqual({ showExistingComments: false, existingCommentsCollapsed: false });
+      expect(ctx.reviews.getSnapshot(id)?.viewPrefs).toEqual({ showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" });
+      // Hide level (#325): validated and persisted per review.
+      const badLevel = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { hideLevel: "bogus" },
+      });
+      expect(badLevel.statusCode).toBe(400);
+      const level = await app.inject({
+        method: "PATCH",
+        url: `/api/reviews/${id}/view`,
+        headers: authed,
+        payload: { hideLevel: "substantive" },
+      });
+      expect(level.statusCode).toBe(200);
+      expect(ctx.reviews.getSnapshot(id)?.viewPrefs.hideLevel).toBe("substantive");
     } finally {
       await app.close();
     }

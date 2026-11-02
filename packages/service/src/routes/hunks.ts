@@ -17,7 +17,7 @@
  *   plotline id (or "other") / score level; explicit null clears it.
  */
 import type { FastifyInstance } from "fastify";
-import { normalizeHunkScore, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import { PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import type { UpdateDiffFilterRequest, UpdateFileRequest, UpdateHunkRequest } from "@unvibe/shared";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
@@ -142,14 +142,11 @@ export async function registerHunks(
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid filter body" });
     }
-    const { plotline, score } = body;
+    const { plotline } = body;
     if (plotline !== undefined && plotline !== null && typeof plotline !== "string") {
       return reply.code(400).send({ error: "plotline must be a plotline or null" });
     }
-    if (score !== undefined && score !== null && normalizeHunkScore(score) === null) {
-      return reply.code(400).send({ error: "score must be mechanical, routine, substantive or needs-attention" });
-    }
-    if (plotline === undefined && score === undefined) {
+    if (plotline === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
 
@@ -164,12 +161,9 @@ export async function registerHunks(
 
     try {
       await ctx.reviews.mutate(id, (draft) => {
-        const next = { ...(draft.diffFilter ?? {}) };
+        const next: { plotline?: string } = draft.diffFilter?.plotline ? { plotline: draft.diffFilter.plotline } : {};
         if (plotline === null) delete next.plotline;
         else if (plotline !== undefined) next.plotline = plotline;
-        if (score === null) delete next.score;
-        else if (score !== undefined) next.score = normalizeHunkScore(score) ?? undefined;
-        if (next.score === undefined) delete next.score;
         if (Object.keys(next).length === 0) delete draft.diffFilter;
         else draft.diffFilter = next;
       });

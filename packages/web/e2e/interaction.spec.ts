@@ -10,9 +10,23 @@
  * restore now live in J2/J266 against the real service — #258.)
  */
 import { expect, test } from "./network-guard.js";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { selectText } from "./select-text.js";
+
+/**
+ * Click a reply-toolbar button (#336: the toolbar reveals on hover or
+ * keyboard focus, and is visibility:hidden otherwise — invisible to both
+ * the accessibility tree and focus(). Hover first so the button resolves
+ * and takes focus, then focus so the reveal survives the click's
+ * scroll-into-view, then click with full actionability checks on).
+ */
+async function clickReplyControl(reply: Locator, label: string): Promise<void> {
+  const btn = reply.locator(`.ctl button[aria-label="${label}"]`);
+  await reply.hover();
+  await btn.evaluate((el) => (el as HTMLElement).focus());
+  await btn.click();
+}
 
 // Opt-in CPU throttling for reproducing timing races locally (issue #266):
 // set UNVIBE_E2E_CPU_THROTTLE=4 (or higher); unset, this is a no-op.
@@ -44,7 +58,7 @@ test("1c. the reply box answers in the same thread (issue #136)", async ({ page 
   await expect(thread.locator("[data-ask-question]").last()).toContainText("What about ordering?");
   await expect(answers.nth(1).locator(".ans-q")).toHaveCount(0);
   // Per-reply controls address the reply: depth on the second reply.
-  await answers.nth(1).locator(".ctl").getByRole("button", { name: "Simpler" }).click();
+  await clickReplyControl(answers.nth(1), "Simpler");
   await expect(answers.nth(1).locator(".prose").first()).toContainText("is about unfolding folded header values", { timeout: 8000 });
 });
 
@@ -116,13 +130,14 @@ test("5. second opinion works on replies and survives depth", async ({ page }) =
   // The fixture seeds an open explain thread on the problem card.
   const thread = page.locator('#C-problem section.ithread[data-thread]').first();
   await expect(thread).toBeVisible({ timeout: 5000 });
-  await thread.getByRole("button", { name: /Second opinion/ }).click();
+  const reply = thread.locator("[data-reply]").first();
+  await clickReplyControl(reply, "Second opinion (check this claim)");
   await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
   // Depth on the reply leaves the result attached: wait for the depth
   // change itself (Undo enables only once the depth action lands — the
   // block is already visible, so waiting on it would prove nothing), then
   // check the result survived it.
-  await thread.getByRole("button", { name: "Simpler" }).click();
+  await clickReplyControl(reply, "Simpler");
   await expect(thread.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 5000 });
   await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
 });

@@ -46,6 +46,7 @@ import type {
   ReplyCommentRequest,
   ReposResponse,
   RepoChangesResponse,
+  RepoReviewStatusesResponse,
   RepoWorktreesResponse,
   ReviewAction,
   ReviewSnapshot,
@@ -58,6 +59,7 @@ import type {
   SummarizeHunkResponse,
   ThinkingResponse,
   UpdateChannelsResponse,
+  UpdateNotesResponse,
   UpdateCommentRequest,
   UpdateDescriptionRequest,
   UpdateDiffFilterRequest,
@@ -69,6 +71,7 @@ import type {
   UpdateSwitchRequest,
   UpdateSwitchResponse,
   ViewerResponse,
+  StatsExport,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -317,6 +320,12 @@ const realApi = {
     return get(`/api/repos/${encodeURIComponent(id)}/changes${qs ? `?${qs}` : ""}`);
   },
 
+  /** #321: stack info per open PR for one repo (load/Refresh only). */
+  repoStacks: (id: string): Promise<import("@unvibe/shared").RepoStacksResponse> =>
+    get(`/api/repos/${encodeURIComponent(id)}/stacks`),
+  /** #298: batched review-status refresh for one repo (load/Refresh only). */
+  refreshReviewStatuses: (id: string): Promise<RepoReviewStatusesResponse> =>
+    post(`/api/repos/${encodeURIComponent(id)}/review-statuses`),
   createReview: (body: CreateReviewRequest): Promise<CreateReviewResponse> =>
     post("/api/reviews", body),
   /** Issue #222: create a document review (answered with its ready snapshot). */
@@ -434,6 +443,8 @@ const realApi = {
   outbox: (id: string): Promise<OutboxResponse> =>
     get(`/api/reviews/${encodeURIComponent(id)}/outbox`),
 
+  extensionStatus: (): Promise<import("@unvibe/shared").ExtensionStatusResponse> => get("/api/extension/status"),
+  extensionOpenFolder: (): Promise<{ ok: boolean }> => post("/api/extension/open-folder", {}),
   viewer: (): Promise<ViewerResponse> => get("/api/viewer"),
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Partial<Settings>): Promise<Settings> =>
@@ -446,8 +457,12 @@ const realApi = {
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
+  /** #323: anonymized stats export (Settings → Debug). */
+  statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
+  updateNotes: (ref: string): Promise<UpdateNotesResponse> =>
+    get(`/api/update/notes?ref=${encodeURIComponent(ref)}`),
   updateStatus: (): Promise<UpdateStatusResponse> => get("/api/update/status"),
   updateChannels: (refresh?: boolean): Promise<UpdateChannelsResponse> =>
     get(`/api/update/channels${refresh ? "?refresh=1" : ""}`),

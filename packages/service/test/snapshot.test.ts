@@ -20,8 +20,9 @@ describe("snapshot build", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
     // 49 base recordings (one combined critic recording, #215; no
     // concept-stubs recording, #216) + 3 second-opinion recordings
-    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10).
-    expect(counts).toHaveLength(54);
+    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10)
+    // + 1 list-first ask recording (#331).
+    expect(counts).toHaveLength(55);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

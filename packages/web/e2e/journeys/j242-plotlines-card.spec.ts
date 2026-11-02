@@ -41,7 +41,13 @@ test.describe("J242 plotlines card", () => {
     // #242: no numbering; every row carries its hunk count as a chip
     // in the same trailing slot.
     await expect(box.locator(".plorder")).toHaveCount(0);
-    await expect(box.locator(".ui-row .ui-badge", { hasText: /hunks?/ }).first()).toBeVisible();
+    await expect(box.locator(".ui-row .ui-badge", { hasText: /^\d+\/\d+$/ }).first()).toBeVisible();
+    // #324: shares sum to the total and one stacked bar mirrors them.
+    const shareText = await box.locator(".ui-row .ui-badge").allTextContents();
+    const shares = shareText.filter((c) => /^\d+\/\d+$/.test(c.trim())).map((c) => c.trim().split("/").map(Number));
+    expect(shares.length).toBeGreaterThan(0);
+    expect(shares.reduce((n, [num]) => n + (num ?? 0), 0)).toBe(shares[0]?.[1]);
+    await expect(box.locator(".plshare-seg")).toHaveCount(shares.length);
     // Builds on names the earlier plotline in a chip.
     const chip = box.locator('[data-buildson="unfold"]');
     await expect(chip).toContainText("Unfold folded values");

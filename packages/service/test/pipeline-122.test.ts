@@ -79,7 +79,7 @@ async function makeDemoReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"])
     annotations: [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -226,7 +226,7 @@ describe("#123 hunk pass starts at ingest", () => {
     process.env.UNVIBE_REPO_ROOTS = "";
   });
 
-  it("hunk summaries land before the reader finishes; a hide the guide contradicts is undone", async () => {
+  it("hunk summaries land before the reader finishes; a guide citation does not undo a hide (#325)", async () => {
     const agents = new FakeAgentRunner([
       {
         match: "Hunk pass",
@@ -299,8 +299,9 @@ describe("#123 hunk pass starts at ingest", () => {
       await ctx.jobs.drain(15000);
       const snap = ctx.reviews.getSnapshot(id)!;
       expect(snap.hunkStates.filter((h) => h.summary).length).toBe(2);
-      // The guide cites h222 now: the early hide is undone.
-      expect(snap.files.flatMap((f) => f.hunks).find((h) => h.contentHash === "h222")?.hiddenReason).toBeUndefined();
+      // The guide cites h222 now, but #325 (owner decision): a citation no
+      // longer undoes a hide; clicking the citation reveals the hunk instead.
+      expect(snap.files.flatMap((f) => f.hunks).find((h) => h.contentHash === "h222")?.hiddenReason).toBe("imports");
       expect(ctx.jobs.listByReview(id).find((j) => j.kind === "reader")?.state).toBe("done");
     } finally {
       await app.close();

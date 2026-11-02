@@ -128,7 +128,9 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
         <img src="/disco-ball.svg" alt="" />
       </div>
       <main className="col" style={{ padding: 24 }}>
-        <div className="doc" style={{ maxWidth: 760 }} data-testid="data-format-notice">
+        {/* 720px: the heading's single-line measure, so the wrapped
+            intro/hint text and the cards share one right edge (#311). */}
+        <div className="doc" style={{ maxWidth: 720 }} data-testid="data-format-notice">
           <h1>This version can&apos;t read your existing reviews</h1>
           <p>
             Your stored data is{" "}

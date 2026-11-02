@@ -11,7 +11,7 @@ import { api, friendlyError } from "../api/client.js";
 import { Button } from "../ui/index.js";
 import { Toast, toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { DocumentForm, SessionRow } from "./StartPage.js";
+import { DocumentForm, SessionRow, timeAgo } from "./StartPage.js";
 
 export function DocumentsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -61,6 +61,7 @@ export function DocumentsPage(): React.JSX.Element {
   }, []);
 
   const docs = (sessions ?? []).filter((s) => s.kind === "document");
+  const webs = (sessions ?? []).filter((s) => s.kind === "web");
 
   return (
     <div className="app">
@@ -104,6 +105,29 @@ export function DocumentsPage(): React.JSX.Element {
               {docs.length === 0 ? (
                 <p className="hint" data-testid="documents-empty">
                   No documents yet. Paste one above to start a review.
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          <h1 className="divider">Web pages</h1>
+          {sessions === null ? (
+            <p className="hint">Loading web pages…</p>
+          ) : (
+            <div aria-label="Web pages" data-testid="documents-web-group" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {webs.map((s) => (
+                <div key={s.id} className="ci" data-testid="web-thread-row">
+                  <button className="cj" type="button" onClick={() => navigate(`/review/${s.id}`)}>
+                    <span className="cw">
+                      {s.webHost ?? ""} · {s.webQuestions ?? 0} question{(s.webQuestions ?? 0) === 1 ? "" : "s"} · {timeAgo(s.lastOpened)}
+                    </span>
+                    <span className="cx2">{s.title || s.webHost || "Web page"}</span>
+                  </button>
+                </div>
+              ))}
+              {webs.length === 0 ? (
+                <p className="hint" data-testid="documents-web-empty">
+                  No web-page threads yet. Ask from the side panel on any page.
                 </p>
               ) : null}
             </div>

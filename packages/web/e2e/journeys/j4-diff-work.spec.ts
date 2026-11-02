@@ -59,12 +59,14 @@ test.describe("J4 diff work", () => {
     await page.locator('[data-filterchip="plotline"] button').click();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
 
-    // Score filter: substantive hunks are the conn change (from the recordings).
-    await page.locator('.dhunk-h [data-scorepick="substantive"]').first().click();
-    await expect(page.locator('[data-filterchip="score"]')).toContainText("Score: substantive", { timeout: 15_000 });
+    // Hide level (#325): substantive hunks are the conn change (from the recordings).
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="routine"]').click();
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible({ timeout: 15_000 });
     await expect(connFile).toBeVisible();
-    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-    await page.locator('[data-filterchip="score"] button').click();
+    await expect(page.locator("[data-scorepick]")).toHaveCount(0);
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="mechanical"]').click();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
 
     // Mark a file reviewed; it survives reload.
@@ -101,7 +103,7 @@ test.describe("J4 diff work", () => {
         { timeout: 90_000 },
       )
       .toBe(8);
-    await expect(page.locator('.dhunk-h [data-scorepick="substantive"]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.dhunk-h .score-ind[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
 
     // File-type filter first: Tests off hides both test files.
     await page.getByRole("button", { name: "Show file list" }).click();
@@ -120,18 +122,20 @@ test.describe("J4 diff work", () => {
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
     await expect(page.locator(`[id="F-${TSOCK}"]`)).toHaveCount(0);
 
-    // Level on top of both; the chip names it as a floor.
-    await page.locator('.dhunk-h [data-scorepick="substantive"]').first().click();
-    await expect(page.locator('[data-filterchip="score"]')).toContainText("Score: substantive or higher", { timeout: 15_000 });
+    // Hide level on top of both (#325).
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="routine"]').click();
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible({ timeout: 15_000 });
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
 
     // Clearing one filter leaves the others exactly as they were.
     await page.locator('[data-filterchip="plotline"] button').click();
-    await expect(page.locator('[data-filterchip="score"]')).toContainText("Score: substantive or higher");
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-    await page.locator('[data-filterchip="score"] button').click();
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="mechanical"]').click();
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
 

@@ -13,6 +13,7 @@
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
+import { PINNED_EXTENSION_ID } from "@unvibe/shared";
 import { hostCheckAllows, isAllowedOrigin, isLoopbackHost } from "../src/security/host.js";
 import { createApp } from "../src/server.js";
 import { RealCommandRunner } from "../src/exec/index.js";
@@ -145,6 +146,35 @@ describe("hostCheckAllows", () => {
       ok: false,
       reason: "host is not loopback",
     });
+  });
+});
+
+describe("extension origin allowlist (#322)", () => {
+  it("allows the exact extension origin only when listed, only where passed", () => {
+    const origin = `chrome-extension://${PINNED_EXTENSION_ID}`;
+    expect(
+      hostCheckAllows(
+        { headers: { host: "unvibe.localhost:4517", origin } },
+        { extensionIds: [PINNED_EXTENSION_ID] },
+      ),
+    ).toEqual({ ok: true });
+    // Not listed for this request: refused like any cross-site origin.
+    expect(hostCheckAllows({ headers: { host: "unvibe.localhost:4517", origin } })).toEqual({
+      ok: false,
+      reason: "origin is not loopback",
+    });
+    // A different extension id: refused even where extensions are allowed.
+    expect(
+      hostCheckAllows(
+        {
+          headers: {
+            host: "unvibe.localhost:4517",
+            origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+        },
+        { extensionIds: [PINNED_EXTENSION_ID] },
+      ),
+    ).toEqual({ ok: false, reason: "origin is not loopback" });
   });
 });
 

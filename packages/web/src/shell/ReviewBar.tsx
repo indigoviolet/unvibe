@@ -10,7 +10,8 @@
  *   link box after owner/repo#N, #234: none when open) — #254: document
  *   reviews show a document icon plus the document's short name (its
  *   `DocumentContent.title`; no filename is stored) with an ellipsis and
- *   the full name on hover — and the Refresh
+ *   the full name on hover — the stack badge (#321) sits INSIDE the PR
+ *   link right after the PR number — and the Refresh
  *   button next to the link (#241: same handler/check/banner as the diff
  *   toolbar owned, tooltip "Refresh", hidden for document reviews which
  *   never had it),
@@ -18,7 +19,9 @@
  *   single-version reviews, the current version annotated in the
  *   dropdown, an older shown version flagged with a warning border),
  *   and Debug as an icon button (hidden until the review finishes
- *   opening, issue #92). #235: no PR title here (it lives as the guide
+ *   opening, issue #92), then Collapse/Expand threads as an icon button
+ *   (#326, moved from the guide header; hidden when there are no
+ *   threads). #235: no PR title here (it lives as the guide
  *   heading), no open-externally button (the GitHub link opens the PR),
  *   no preview/full-access badges (front page only). No Settings gear:
  *   Settings is reached from the start page. #245: every control is one
@@ -44,9 +47,15 @@ import { useRefresh } from "../versions/useRefresh.js";
 import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { PrBadges } from "../ui/index.js";
+import { StackBadge } from "../start/StackBadge.js";
+import type { PrStackInfo } from "@unvibe/shared";
+import { useNavigate } from "react-router";
+import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
+import { STATIC_DEMO, resetStaticDemo } from "../demo.js";
+import { Button } from "../ui/index.js";
 
 export function ReviewBar({
   reviewId,
@@ -62,10 +71,14 @@ export function ReviewBar({
   onToggleSource: () => void;
 }): React.JSX.Element {
   const { short, prUrl, prState, reviewDecision } = useReviewIdentity(reviewId);
+  const navigate = useNavigate();
+  const [stackInfo, setStackInfo] = useState<PrStackInfo | null>(null);
   // #92: the Debug page needs a finished open (its reads refuse earlier
   // states), so the icon waits until the review is ready. One snapshot
   // subscription (never behind a short-circuit) so the hook order is
   // stable across the loading → ready transition.
+  const collapseAll = useReview((s) => s.collapseAll);
+  const setCollapseAll = useReview((s) => s.setCollapseAll);
   const snapshot = useReview((s) => s.snapshot);
   const ingestReady =
     (snapshot?.ingest.status ?? "ready") === "ready" && (snapshot?.version?.n ?? 0) >= 1;
@@ -94,6 +107,15 @@ export function ReviewBar({
   // No polling. The guard keeps StrictMode/remounts to one call per
   // review open.
   const sourceRepoId = snapshot?.review.repoId;
+  const stackRepoId = snapshot?.review.repoId;
+  const stackPrNumber = snapshot?.review.prNumber;
+  // #321: stack badge in the header — same per-repo data, fetched on open.
+  useEffect(() => {
+    if (!stackRepoId || stackRepoId === "demo" || stackPrNumber === undefined) return;
+    let cancelled = false;
+    api.repoStacks(stackRepoId).then((r) => { if (!cancelled) setStackInfo(r.stacks[stackPrNumber] ?? null); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [stackRepoId, stackPrNumber]);
   const autoRefreshKey = useRef<string | null>(null);
   useEffect(() => {
     if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
@@ -132,6 +154,16 @@ export function ReviewBar({
       document.title = prev;
     };
   }, [snapshot]);
+  const stackBadge =
+    stackInfo && stackPrNumber !== undefined && stackRepoId ? (
+      <StackBadge
+        info={stackInfo}
+        currentNumber={stackPrNumber}
+        onOpenPr={(prNumber, title) => {
+          void api.createReview({ repoId: stackRepoId, pr: prNumber, title }).then((snap) => navigate(`/review/${snap.review.id}`)).catch(() => {});
+        }}
+      />
+    ) : null;
   return (
     <div className="rbar" id="reviewbar">
       <div className="rid">
@@ -159,12 +191,16 @@ export function ReviewBar({
             title="Open PR on GitHub"
           >
             {short}
+            {stackBadge}
             <PrBadges prState={prState} reviewDecision={reviewDecision} />
           </a>
         ) : (
-          <span className="num">{short}</span>
+          <>
+            <span className="num">{short}</span>
+            {stackBadge}
+          </>
         )}
-        {!isDocument ? (
+        {!isDocument && !STATIC_DEMO ? (
           <button
             className="ib bd"
             type="button"
@@ -177,7 +213,7 @@ export function ReviewBar({
           </button>
         ) : null}
         <VersionSwitcher />
-        {ingestReady ? (
+        {ingestReady && !STATIC_DEMO ? (
           <Link
             className="ib bd"
             to={`/review/${encodeURIComponent(reviewId)}/debug`}
@@ -186,6 +222,19 @@ export function ReviewBar({
           >
             <Icon name="bug" />
           </Link>
+        ) : null}
+        {(snapshot?.annotations?.length ?? 0) > 0 ? (
+          <button
+            className="ib bd"
+            type="button"
+            data-testid="collapse-threads"
+            data-tip={collapseAll ? "Expand threads" : "Collapse threads"}
+            aria-label={collapseAll ? "Expand threads" : "Collapse threads"}
+            aria-pressed={collapseAll}
+            onClick={() => setCollapseAll(!collapseAll)}
+          >
+            <Icon name={collapseAll ? "unfold" : "fold"} />
+          </button>
         ) : null}
       </div>
       <span className="seg" role="group" aria-label="Panes">
@@ -202,6 +251,17 @@ export function ReviewBar({
         </button>
       </span>
       <span className="ra">
+        {STATIC_DEMO ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            title="Clear your demo comments and reload the demo"
+            onClick={() => resetStaticDemo()}
+          >
+            Reset demo
+          </Button>
+        ) : null}
         <CommentsMenu reviewId={reviewId} />
         <SubmitPanel reviewId={reviewId} primary />
         {showJobs ? (

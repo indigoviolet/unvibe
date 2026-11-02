@@ -71,9 +71,15 @@ Three choices carry the change:
 - Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see [[concept:obs-fold|obsolete line folding]]).
 - Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
 
+### Invariants
+
 The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests. [[diff:conn:91-110]] [[diff:conn:650-651]]
 
+### Known uncertainties
+
 Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. [[diff:conn:80-88]]
+
+### Interfaces
 
 No new public interface is added. The existing header views keep their shape: urllib3's `HTTPHeaderDict` and the original `HTTPMessage` hold the same names, order and duplicates, with folded values unfolded in both. [[diff:conn:650-651]] [[desc:d-p2]]
 

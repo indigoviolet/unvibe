@@ -114,6 +114,47 @@ describe("BlockView list citations (#165)", () => {
   });
 });
 
+describe("BlockView ordered start (issue #314)", () => {
+  it("renders <ol start> only when the start is not 1", () => {
+    seed();
+    const started = {
+      type: "list",
+      id: "b1",
+      ordered: true,
+      start: 3,
+      items: [
+        { html: "third", citations: [] },
+        { html: "fourth", citations: [] },
+      ],
+      citations: [],
+    } as unknown as Block;
+    const { container } = render(
+      <BlockView
+        block={started}
+        level="standard"
+        threads={[]}
+        cardId="c1"
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    expect(container.querySelector("ol.lst")?.getAttribute("start")).toBe("3");
+
+    const plain = { ...started, start: undefined } as unknown as Block;
+    const second = render(
+      <BlockView
+        block={plain}
+        level="standard"
+        threads={[]}
+        cardId="c1"
+        onOpenPage={() => {}}
+        onFollowUp={() => {}}
+      />,
+    );
+    expect(second.container.querySelector("ol.lst")?.hasAttribute("start")).toBe(false);
+  });
+});
+
 describe("uncoveredListCitations (issue #305)", () => {
   function resolved(targets: string[]) {
     const snap = useReview.getState().snapshot;

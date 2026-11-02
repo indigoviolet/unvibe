@@ -2,7 +2,24 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**"] },
+  { ignores: ["**/dist/**", "**/dist-demo/**", "site/demo/**", "**/node_modules/**"] },
+  {
+    // #322: the Chrome extension is plain browser JS (no build, no types).
+    files: ["extension/**/*.js"],
+    languageOptions: {
+      globals: {
+        chrome: "readonly",
+        window: "readonly",
+        document: "readonly",
+        fetch: "readonly",
+        AbortController: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        MutationObserver: "readonly",
+        URLSearchParams: "readonly",
+      },
+    },
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

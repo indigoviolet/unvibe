@@ -102,6 +102,7 @@ async function serveGeneration(
   const created = await createApp(token, {
     ...(db ? { db } : {}),
     dataDir: config.dataDir,
+    extensionId: config.extensionId,
     mcpBaseUrl: `http://127.0.0.1:${config.port}`,
     lifecycle: {
       idleMs: config.idleMs,

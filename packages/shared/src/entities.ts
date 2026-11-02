@@ -6,7 +6,7 @@
  * columns where noted in the service's migration 001.
  */
 import type { SecondOpinionMode } from "./prompts.js";
-import type { HunkScoreLevel } from "./scores.js";
+import type { HideLevel, HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
 export interface Repo {
@@ -39,7 +39,7 @@ export interface Repo {
  * every other review is a change review. There is no stored `kind`
  * field and no fallback read.
  */
-export type ReviewKind = "change" | "document";
+export type ReviewKind = "change" | "document" | "web";
 
 /** Issue #222: where a document review's context repo is read from. */
 export type ContextRepoSource = "worktree" | "origin-main" | "local";
@@ -338,6 +338,7 @@ export interface PendingCard {
 
 export type BlockType =
   | "paragraph"
+  | "heading"
   | "list"
   | "table"
   | "code"
@@ -361,6 +362,20 @@ export interface ParagraphBlock {
   citations: Citation[];
 }
 
+/**
+ * Sub-heading inside a card (`###` and deeper in the reply Markdown,
+ * issue #327). `##` stays the card boundary and `### Follow-ups` stays
+ * its own block, so every other `###`+ heading lands here, rendered the
+ * same at any depth. Inline Markdown is rendered like a paragraph's.
+ */
+export interface HeadingBlock {
+  type: "heading";
+  id: string;
+  /** Rendered inline HTML (emphasis, code spans, `[[…]]` links). */
+  html: string;
+  citations: Citation[];
+}
+
 export interface ListItem {
   /** HTML/Markdown inline content of the item. */
   html: string;
@@ -372,6 +387,12 @@ export interface ListBlock {
   type: "list";
   id: string;
   ordered: boolean;
+  /**
+   * Issue #314: ordered lists keep their start number (rendered as
+   * `<ol start>`). Absent (or 1) means the list starts at 1, the HTML
+   * default — snapshots written before #314 render exactly as before.
+   */
+  start?: number;
   items: ListItem[];
   /** Block-level citations in addition to per-item ones. */
   citations: Citation[];
@@ -466,6 +487,7 @@ export interface AsideBlock {
 
 export type Block =
   | ParagraphBlock
+  | HeadingBlock
   | ListBlock
   | TableBlock
   | CodeBlock
@@ -936,12 +958,15 @@ export interface ReviewViewPrefs {
   showExistingComments: boolean;
   /** The comments menu's "Already on GitHub" section is collapsed. */
   existingCommentsCollapsed: boolean;
+  /** Issue #325: the diff toolbar's hide level, remembered per review. */
+  hideLevel: HideLevel;
 }
 
 /** Default view prefs for a new review (issue #296): existing GitHub comments start hidden. */
 export const DEFAULT_REVIEW_VIEW_PREFS: ReviewViewPrefs = {
   showExistingComments: false,
   existingCommentsCollapsed: false,
+  hideLevel: "uninteresting",
 };
 
 export type JobKind =

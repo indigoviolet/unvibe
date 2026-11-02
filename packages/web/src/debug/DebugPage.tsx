@@ -14,7 +14,7 @@
  * so the document itself stays pure Markdown.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import type { Contribution, SharedContextResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
@@ -38,6 +38,15 @@ const DEBUG_TAB_IDS: readonly string[] = DEBUG_TABS.map((t) => t.id);
 export function DebugPageRoute(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
   return <DebugPage reviewId={id ?? "demo"} />;
+}
+
+/**
+ * Static demo (#334): the per-review debug page (jobs, expanded prompts,
+ * shared context with fixture internals) is hidden — back to the review.
+ */
+export function DemoDebugRedirect(): React.JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/review/${encodeURIComponent(id ?? "demo")}`} replace />;
 }
 
 export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element {

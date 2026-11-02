@@ -35,12 +35,14 @@ export function isPrereleaseIdentifier(id) {
 }
 
 /**
- * Assemble `<base>-preview.<slug>.<shortsha>`. Returns the version string;
- * use `isValidPreviewVersion` to check it (short shas are hex and can, in
- * principle, be all digits with a leading zero).
+ * Assemble `<base>-preview.<slug>.<shortsha>`. A short sha that is all
+ * digits with a leading zero is not a valid semver identifier, so it gets
+ * a `g` prefix (`0659205` -> `g0659205`), like `branchSlug` does for
+ * numeric branch names.
  */
 export function previewVersion(base, slug, shortsha) {
-  return `${base}-preview.${slug}.${shortsha}`;
+  const sha = /^0\d+$/.test(shortsha) ? `g${shortsha}` : shortsha;
+  return `${base}-preview.${slug}.${sha}`;
 }
 
 /** `true` when `version` has the exact `<X.Y.Z>-preview.<slug>.<sha>` shape. */
@@ -184,6 +186,21 @@ export function buildUnvibeField({
     baseCommit,
     dataFormat,
   };
+}
+
+/**
+ * Args for `scripts/release.mjs` from a publish (#330): the publisher's
+ * optional human notes file rides along so the build ships
+ * `release-notes.json` with those entries merged in.
+ */
+export function buildReleaseArgs({ version, branch, sourceBranch, sourceCommit, baseBranch, baseCommit, notesFile }) {
+  const out = ["--version", version, "--branch", branch];
+  if (sourceBranch) out.push("--source-branch", sourceBranch);
+  if (sourceCommit) out.push("--source-commit", sourceCommit);
+  if (baseBranch) out.push("--base-branch", baseBranch);
+  if (baseCommit) out.push("--base-commit", baseCommit);
+  if (notesFile) out.push("--notes-file", notesFile);
+  return out;
 }
 
 /**

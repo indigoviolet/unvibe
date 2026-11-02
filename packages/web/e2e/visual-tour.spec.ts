@@ -39,7 +39,7 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
-import { createScratchReview as createJourneyReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
@@ -870,6 +870,11 @@ test.describe("visual tour passes", () => {
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
+    // #327: the Decisions card's ### sub-headings render as real
+    // sub-headings (h3.subhead), not as serif body paragraphs.
+    for (const label of ["Invariants", "Known uncertainties", "Interfaces"]) {
+      await expect(page.locator("#C-decisions h3.subhead").filter({ hasText: label })).toBeVisible();
+    }
     await stepChecks(page, "guide-decisions");
     await shot(page, "guide-decisions", suffix, "Decisions and questions");
     await page.locator("#C-problem").scrollIntoViewIfNeeded();
@@ -891,6 +896,9 @@ test.describe("visual tour passes", () => {
     const seedCard: Locator = page.locator(`#page section.ithread[data-thread="${seedId}"]`);
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    // #336: reply toolbars reveal on hover — hover the reply so the shot
+    // shows the revealed toolbar, then assert it.
+    await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-pinned");
     await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
@@ -905,29 +913,32 @@ test.describe("visual tour passes", () => {
       .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
       .toBeGreaterThanOrEqual(2);
     await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
-    await stepChecks(page, "guide-nested");
-    await shot(page, "guide-nested", suffix, "explain");
     // #273 frames: the in-thread link, collapse-all, and expand-one.
     const rlink = seedCard.locator('button.rlink[data-replylink]').first();
     await expect(rlink).toBeVisible({ timeout: 30_000 });
+    // #315: replies are avatar-only now (no kind chip), so the shots key
+    // on the in-thread link's text instead of "explain".
+    const linkText = (await rlink.innerText()).trim();
+    await stepChecks(page, "guide-nested");
+    await shot(page, "guide-nested", suffix, linkText);
     await rlink.click();
     await page.waitForTimeout(800);
     await stepChecks(page, "thread-replylink");
-    await shot(page, "thread-replylink", suffix, "explain");
-    await page.locator('[data-testid="collapse-threads"]').click();
+    await shot(page, "thread-replylink", suffix, linkText);
+    await page.getByRole("button", { name: "Collapse threads" }).click();
     await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "threads-collapsed");
     await shot(page, "threads-collapsed", suffix, "reply");
     await page.locator(`button.spike-row[data-row="${seedId}"]`).click();
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "thread-expanded");
-    await shot(page, "thread-expanded", suffix, "explain");
+    await shot(page, "thread-expanded", suffix, linkText);
     await closeCard(page, seedCard);
     expect(seedId).toBeTruthy();
     // Collapse-all is global (store): switch it back off so later scenes
     // start from expanded threads.
-    await page.locator('[data-testid="collapse-threads"]').click();
-    await expect(page.locator('[data-testid="collapse-threads"]')).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
+    await page.getByRole("button", { name: "Expand threads" }).click();
+    await expect(page.getByRole("button", { name: "Collapse threads" })).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
 
     // PR description tab (#263): paragraphs, a bullet list, a numbered
     // list past 9 items and inline code, in the shared Card. No
@@ -971,7 +982,9 @@ test.describe("visual tour passes", () => {
       .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
       .toBeGreaterThanOrEqual(1);
     await stepChecks(page, "diff-nested");
-    await shot(page, "diff-nested", suffix, "explain");
+    // #315: replies are avatar-only now (no kind chip), so the shot keys
+    // on the selected word (now the in-thread link) instead of "explain".
+    await shot(page, "diff-nested", suffix, diffWord);
     await closeCard(page, diffCard);
     // Our thread closed; seeded suggestion threads may remain open.
     await expect(page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`)).toHaveCount(0, { timeout: 15_000 });
@@ -1170,7 +1183,8 @@ test.describe("visual tour passes", () => {
     await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
     // The added changelog file hides under Hide-uninteresting: reveal it
     // (later steps assert no hidden counts, so this is safe here).
-    await page.getByRole("button", { name: "Hide uninteresting" }).click();
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="uninteresting"]').click();
     await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
     await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
     await stepChecks(page, "diff-gutter-added");
@@ -1270,6 +1284,9 @@ test.describe("visual tour passes", () => {
 
     // Settings → every tab (#225): fields must fit the card at
     // every width. One scene per tab so the failure names the tab.
+    // Scratch repos seeded for the extension tab are removed afterwards
+    // (the per-run temp guard fails on leftovers).
+    const extDirs: string[] = [];
     for (const tab of [
       { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
       { id: "repositories", name: "Repos", marker: "Add by path" },
@@ -1277,7 +1294,22 @@ test.describe("visual tour passes", () => {
       { id: "environment", name: "Environment", marker: "Re-check" },
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
+      { id: "extension", name: "Extension", marker: "Show extension folder" },
     ] as const) {
+      if (tab.id === "extension") {
+        // #322: seed 4 repos so the frame shows Active-repo checkboxes
+        // with the 3 most recent ticked (default).
+        const existing = (await apiJson(svc!.origin, svc!.token, "GET", "/api/repos")) as { repos: { id: string; localPath: string }[] };
+        if (existing.repos.filter((r) => r.id !== "demo" && r.localPath).length < 4) {
+          for (let i = 1; i <= 4; i++) {
+            const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-tour-ext${i}-`));
+            extDirs.push(dir);
+            await makeScratchRepo(dir);
+            await journeyGit(dir, "remote", "add", "origin", `https://github.com/acme/tour${i}.git`);
+            await apiJson(svc!.origin, svc!.token, "POST", "/api/repos", { path: dir });
+          }
+        }
+      }
       await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
       await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
       if (tab.id === "version") {
@@ -1317,7 +1349,9 @@ test.describe("visual tour passes", () => {
         const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
         const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
         expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
-        const vActionBox = await vRows.locator("button").first().boundingBox();
+        // #330: every row ends in a Notes button after its Switch/Update
+        // action, so the row's right edge is the Notes button.
+        const vActionBox = await vRows.first().locator("button").last().boundingBox();
         expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
         // Compact rows (#233): each row is at most the button height + 16px.
         const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
@@ -1325,9 +1359,61 @@ test.describe("visual tour passes", () => {
           expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
         }
       }
+      if (tab.id === "limits") {
+        // #328 standard settings row: help under the label on the
+        // left, control alone on the right top-aligned with the
+        // label, one number width, unit beside the field, hairlines
+        // between rows. Runs at 1440 and 960 in every pass.
+        const rows = await page.locator('section[aria-label="Limits"] .ui-field').evaluateAll((els) =>
+          els.map((el) => {
+            const rect = (n: Element | null): { x: number; y: number; w: number; right: number; bottom: number } | null => {
+              if (!n) return null;
+              const b = n.getBoundingClientRect();
+              return { x: b.x, y: b.y, w: b.width, right: b.right, bottom: b.bottom };
+            };
+            return {
+              field: rect(el),
+              label: rect(el.querySelector(".ui-field-label")),
+              help: rect(el.querySelector(".ui-help")),
+              control: rect(el.querySelector(".ui-field-control")),
+              input: rect(el.querySelector('input[type="number"]')),
+              unit: rect(el.querySelector(".ui-unit")),
+              unitText: el.querySelector(".ui-unit")?.textContent ?? "",
+              borderTop: getComputedStyle(el).borderTopWidth,
+            };
+          }),
+        );
+        expect(rows.length, "limits: one checkbox row + six number rows").toBe(7);
+        for (const [i, row] of rows.entries()) {
+          expect(row.label, `limits row ${i}: label`).not.toBeNull();
+          expect(row.help, `limits row ${i}: help`).not.toBeNull();
+          expect(row.control, `limits row ${i}: control`).not.toBeNull();
+          expect(Math.abs(row.help!.x - row.label!.x), `limits row ${i}: help under label (same left edge)`).toBeLessThanOrEqual(2);
+          expect(row.help!.y, `limits row ${i}: help below label`).toBeGreaterThanOrEqual(row.label!.bottom - 2);
+          expect(row.help!.right, `limits row ${i}: help stays in the left column`).toBeLessThanOrEqual(row.control!.x + 2);
+          expect(Math.abs(row.control!.y - row.label!.y), `limits row ${i}: control top-aligned with label`).toBeLessThanOrEqual(4);
+          expect(Math.abs(row.control!.right - row.field!.right), `limits row ${i}: control pinned to the right edge`).toBeLessThanOrEqual(2);
+          expect(row.help!.w, `limits row ${i}: help takes the remaining width`).toBeGreaterThan(row.control!.w);
+          if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
+        }
+        const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
+        expect(widths.length, "limits: six number inputs").toBe(6);
+        expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
+        const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
+        expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
+        const inputRights = rows.flatMap((r) => (r.input ? [r.input.right] : []));
+        expect(Math.max(...inputRights) - Math.min(...inputRights), "limits: number inputs share the same right edge").toBeLessThanOrEqual(1);
+        for (const row of rows) {
+          if (!row.unit || !row.unitText) continue;
+          expect(row.input, "limits: unit row has an input").not.toBeNull();
+          expect(row.unit.x, "limits: unit beside the field").toBeGreaterThanOrEqual(row.input!.right);
+          expect(Math.abs(row.unit.y - row.input!.y), "limits: unit aligned with the field").toBeLessThanOrEqual(12);
+        }
+      }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
     }
+    for (const d of extDirs) rmSync(d, { recursive: true, force: true });
 
     // Start page (#225): the "Open a PR" row and the Reviews list
     // share one width. (The PR list with its empty sub-groups needs
@@ -1711,6 +1797,81 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
       await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
     });
   }
+});
+
+// Hide-level selector (#325): one frame, 1440 light, the selector open
+// with its options and score swatches.
+test.describe("visual tour hide-level selector (#325)", () => {
+  let data325 = "";
+  let svc325: RunningService | null = null;
+  let review325 = "";
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    data325 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-325-data-"));
+    review325 = createSeededDemoReview(data325, "tour-325-seed");
+    // Deterministic hunk scores (what the hunk pass would store), so
+    // the menu frame shows real per-category counts.
+    const scores: Record<string, string> = {
+      "src/urllib3/connection.py:0": "substantive",
+      "src/urllib3/connection.py:1": "substantive",
+      "test/test_connection.py:0": "mechanical",
+      "test/test_connection.py:1": "mechanical",
+      "test/test_connection.py:2": "routine",
+      "test/with_dummyserver/test_socketlevel.py:0": "mechanical",
+      "test/with_dummyserver/test_socketlevel.py:1": "substantive",
+      "changelog/1362.bugfix.rst:0": "routine",
+    };
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data325, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review325) as { snapshot: string };
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; hunks: { contentHash: string }[] }[];
+        hunkStates: { contentHash: string; score?: string }[];
+      };
+      const byHash = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+      for (const f of snap.files) {
+        f.hunks.forEach((h, i) => {
+          const entry = byHash.get(h.contentHash) ?? { contentHash: h.contentHash };
+          entry.score = scores[`${f.path}:${i}`];
+          byHash.set(h.contentHash, entry);
+        });
+      }
+      snap.hunkStates = [...byHash.values()];
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review325);
+    } finally {
+      db.close();
+    }
+    svc325 = await startService(data325, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc325?.stop().catch(() => {});
+    svc325 = null;
+    rmSync(data325, { recursive: true, force: true });
+  });
+  test("hide-level selector open (1440-light)", async ({ page }) => {
+    if (!svc325) throw new Error("hide-level service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc325.origin}/review/${review325}?token=${svc325.token}`);
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    // Move the threshold to Routine (clicking the shown Routine row):
+    // guide-cited hunks hide like any other now (#325), so the button
+    // counts the truly hidden hunks and the menu shows Routine greyed.
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="routine"]').click();
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await expect(page.getByRole("menu", { name: "Hunk categories" })).toBeVisible();
+    await expect(page.getByRole("menuitemcheckbox", { name: /Needs attention/ })).toBeVisible();
+    await expect(page.locator('[data-hidecat="routine"]')).toHaveAttribute("data-hidden", "true");
+    await expect(page.getByRole("button", { name: /Hide level:/ })).toContainText("Hiding 5");
+    // The open menu is legitimately topmost over the pinned headers,
+    // so this frame runs the layout check only, not the pinned checks.
+    await checkLayout(page, "hide-level-open");
+    await shot(page, "hide-level-open", "1440-light", "Needs attention");
+  });
 });
 
 
@@ -2225,6 +2386,29 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await expect(page.locator('.pane-loading .dots')).toHaveCount(0);
   });
 });
+test("visual tour documents web group (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-web322-"));
+  try {
+    await makeScratchRepo(dir);
+    await journeyGit(dir, "remote", "add", "origin", "https://github.com/acme/weblib.git");
+    await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: dir });
+    const asked = (await apiJson(svc.origin, svc.token, "POST", "/api/extension/panel/ask", {
+      url: "https://github.com/acme/weblib/issues/5", title: "Widget fails to load", selection: "", context: "widget page",
+      question: "Where is validateToken?",
+    })) as unknown as { reviewId?: string };
+    expect(asked.reviewId).toBeTruthy();
+    await page.goto(`${svc.origin}/documents?token=${svc.token}`);
+    await expect(page.getByTestId("web-thread-row")).toContainText("Widget fails to load", { timeout: 15_000 });
+    await expect(page.getByTestId("web-thread-row")).toContainText("github.com");
+    await checkLayout(page, "documents-web-1440-light");
+    await shot(page, "documents-web", "1440-light", "Widget fails to load");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 // Issue #222: the start page's New document review form and a document
 // review (rendered blocks, an Explain answer, an Ask answer, a comment,
 // and a `code:` citation opening the second context repo's file) in the
@@ -2315,6 +2499,8 @@ test("visual tour document review (#222)", async ({ page }) => {
     const exp = page.locator("#C-document [data-thread]").first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover.
+    await exp.locator("[data-reply]").first().hover();
     await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-explain");
     await shot(page, "document-explain", "1440-light", "folds obsolete headers");
@@ -2330,6 +2516,8 @@ test("visual tour document review (#222)", async ({ page }) => {
     const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover.
+    await askCard.locator("[data-reply]").first().hover();
     await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-ask");
     await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
@@ -2480,7 +2668,10 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.scrollIntoViewIfNeeded().catch(() => {});
     await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
-    // Once the answer arrives, the toolbar and the reply box appear.
+    // Once the answer arrives, the toolbar and the reply box appear
+    // (#336: the toolbar reveals on hover — hover the reply first).
+    await expect(card.locator("[data-reply]").first()).toBeVisible({ timeout: 120_000 });
+    await card.locator("[data-reply]").first().hover();
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "guide-writing-done");
@@ -3160,7 +3351,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 });
 
 /**
- * #311: the data-format reset notice, light and dark at 1440px. Its own
+ * #311: the data-format reset notice, light and dark at 1440px and
+ * 800px. Its own
  * service on a seeded old-format data dir (a DB with no format stamp);
  * the notice is the whole page, so one frame per scheme is the scene.
  */
@@ -3235,13 +3427,15 @@ test.describe("data reset notice tour (#311)", () => {
   });
 
   for (const combo of [
-    { name: "1440-light", dark: false },
-    { name: "1440-dark", dark: true },
+    { name: "1440-light", dark: false, width: 1440 },
+    { name: "1440-dark", dark: true, width: 1440 },
+    { name: "800-light", dark: false, width: 800 },
+    { name: "800-dark", dark: true, width: 800 },
   ] as const) {
     test(`data reset notice (${combo.name})`, async ({ page }) => {
       if (!noticeSvc) throw new Error("notice service not running");
       test.setTimeout(120_000);
-      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.setViewportSize({ width: combo.width, height: 900 });
       if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
       await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });
@@ -3250,4 +3444,69 @@ test.describe("data reset notice tour (#311)", () => {
       await shot(page, "data-reset-notice", combo.name, "This version can't read your existing reviews");
     });
   }
+});
+
+test.describe("release notes tour (#330)", () => {
+  let notesDataDir = "";
+  let notesSvc: RunningService | null = null;
+  const NOTES_VERSION = "0.0.1-preview.feat-x.abc1234";
+
+  test.beforeAll(async () => {
+    notesDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notes-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(notesDataDir, "unvibe.db"));
+    db.exec("PRAGMA user_version = 1");
+    db.close();
+    mkdirSync(path.join(notesDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", kind: "release", version: "0.0.1", commit: "b535a30ccccccc", sourceBranch: null, builtAt: "2026-10-28T00:00:00.000Z", dataFormat: 1 },
+        { ref: "preview/feat-x", kind: "preview", version: NOTES_VERSION, commit: "abc1234def5678", sourceBranch: "feat/x", builtAt: "2026-10-31T00:00:00.000Z", dataFormat: 1 },
+      ]),
+    );
+    writeFileSync(path.join(notesDataDir, "update", "current-ref"), "preview/feat-x\n");
+    writeFileSync(
+      path.join(notesDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "release", to: "preview/feat-x", finishedAt: "2026-10-31T00:00:00.000Z", fromVersion: "0.0.1", toVersion: NOTES_VERSION }) + "\n",
+    );
+    const item = {
+      number: 330,
+      title: "Release notes inside every build",
+      summary: "Release notes inside every build",
+      url: "https://github.com/indigoviolet/unvibe/issues/330",
+      whatChanged: "Every build now ships its release notes.",
+      whatToTry: "Open Settings, then Version, and read the notes.",
+      caveats: "Full gates not yet run.",
+    };
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-release-notes.json"),
+      JSON.stringify({
+        "preview/feat-x": { channel: "preview/feat-x", version: NOTES_VERSION, previousVersion: "0.0.1", commit: "abc1234def5678", previousCommit: "b535a30ccccccc", dataFormat: 1, previousDataFormat: 1, dataResetNeeded: false, generatedAt: "2026-10-31T00:00:00.000Z", items: [item] },
+        release: { channel: "release", version: "0.0.1", previousVersion: null, commit: "b535a30ccccccc", previousCommit: null, dataFormat: 1, previousDataFormat: null, dataResetNeeded: false, generatedAt: "2026-10-28T00:00:00.000Z", items: [{ ...item, summary: "Earlier release notes" }] },
+      }),
+    );
+    notesSvc = await startService(notesDataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+
+  test.afterAll(async () => {
+    await notesSvc?.stop().catch(() => {});
+    notesSvc = null;
+    rmSync(notesDataDir, { recursive: true, force: true });
+  });
+
+  test("version notes (1440-light)", async ({ page }) => {
+    if (!notesSvc) throw new Error("notes service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${notesSvc.origin}/settings?token=${notesSvc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Version" }).click();
+    await expect(page.getByTestId("current-release-notes")).toHaveCount(0);
+    await page.locator('[data-testid="channel-notes-toggle"][data-ref="release"]').click();
+    await expect(page.locator('[data-testid="channel-release-notes"][data-ref="release"]')).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "version-notes");
+    await shot(page, "version-notes", "1440-light", "Earlier release notes");
+  });
 });

@@ -173,7 +173,7 @@ async function setupSharedCtx(
     annotations: opts.annotations ?? [],
     hunkStates: [],
     fileStates: [],
-    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+    viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
     jobs: [],
     contributions: [],
     logTail: [],
@@ -901,7 +901,7 @@ describe("isolation (PRD §12)", () => {
       annotations: [],
       hunkStates: [],
       fileStates: [],
-      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false },
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
       jobs: [],
       contributions: [
         {

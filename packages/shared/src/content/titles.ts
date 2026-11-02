@@ -55,6 +55,8 @@ export function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
       return collapse(decodeEntities(stripTags(block.text.standard)));
+    case "heading":
+      return collapse(decodeEntities(stripTags(block.html)));
     case "list":
       return collapse(block.items.map((it) => decodeEntities(stripTags(it.html))).join(" "));
     case "table":

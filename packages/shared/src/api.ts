@@ -33,7 +33,8 @@ import type {
   Thread,
   Version,
 } from "./entities.js";
-import type { DiffFilter, HunkScoreLevel, Plotline, ReviewCommit } from "./scores.js";
+import type { DiffFilter, HideLevel, Plotline, ReviewCommit } from "./scores.js";
+import type { PanelThread, WebContent } from "./webdoc.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -385,6 +386,37 @@ export interface RepoChangesResponse {
   cursor: string | null;
 }
 
+/**
+ * #298: one review's fresh status from the batched per-repo check
+ * (`POST /api/repos/:id/review-statuses`). Served only when the start
+ * page loads or its Refresh is pressed — never polled. `stale` means
+ * the PR/branch head differs from the review's current version head
+ * ("new commits"); it only sets the tag, nothing is re-ingested.
+ */
+export interface ReviewStatusUpdate {
+  reviewId: string;
+  /** Present on PR-backed reviews. */
+  prNumber?: number;
+  /** #224: normalised PR state from gh. Absent when gh did not say. */
+  prState?: PrState;
+  /** #224: normalised review decision from gh. Absent when none. */
+  reviewDecision?: PrReviewDecision;
+  /** Current head SHA reported by gh (PR) or local git (branch), when known. */
+  headSha?: string;
+  /** Head moved since the review was fetched ("new commits"). */
+  stale: boolean;
+}
+
+/** #321: `GET /api/repos/:id/stacks` — stack info per open PR number (load/Refresh only). */
+export interface RepoStacksResponse {
+  stacks: Record<number, import("./stacks.js").PrStackInfo>;
+}
+
+/** #298: `POST /api/repos/:id/review-statuses` — one status per review of the repo. */
+export interface RepoReviewStatusesResponse {
+  statuses: ReviewStatusUpdate[];
+}
+
 // --- reviews -------------------------------------------------------------
 
 /**
@@ -548,6 +580,14 @@ interface ReviewSnapshotBase {
    */
   versionStatus?: import("./versions.js").VersionStatus;
   /**
+   * #298: head SHA seen by the start page's batched status check when
+   * it differs from `version.headSha` ("new commits" on the Reviews
+   * list). Only a tag: no version is created and nothing is ingested
+   * until the review is opened/refreshed, which clears it by building
+   * the real new version. Absent when the head is steady.
+   */
+  pendingHeadSha?: string;
+  /**
    * M5: reader-pinned excerpts stored in the snapshot so refresh can remap
    * them by content (`needsRepining` when not found again).
    */
@@ -570,12 +610,21 @@ interface ReviewSnapshotBase {
 export interface ChangeReviewSnapshot extends ReviewSnapshotBase {
   document?: undefined;
   contextRepos?: undefined;
+  web?: undefined;
 }
 
 /** Issue #222: a document review — the pasted document and its context repos. */
 export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
   document: DocumentContent;
   contextRepos: ContextRepoRef[];
+  web?: undefined;
+}
+
+/** Issue #322: a web review — one panel thread per captured page. */
+export interface WebReviewSnapshot extends ReviewSnapshotBase {
+  document?: undefined;
+  contextRepos?: undefined;
+  web: WebContent;
 }
 
 /**
@@ -583,7 +632,7 @@ export interface DocumentReviewSnapshot extends ReviewSnapshotBase {
  * derived, never stored: a snapshot carrying the pasted document is a
  * document review; every other snapshot is a change review.
  */
-export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot;
+export type ReviewSnapshot = ChangeReviewSnapshot | DocumentReviewSnapshot | WebReviewSnapshot;
 
 /** Issue #222: true when the snapshot is a document review's. */
 export function isDocumentReview(
@@ -592,8 +641,16 @@ export function isDocumentReview(
   return snap.document !== undefined;
 }
 
-/** Issue #222: the derived review kind of a snapshot. */
-export function reviewKindOf(snap: Pick<ReviewSnapshot, "document">): ReviewKind {
+/** Issue #322: true when the snapshot is a web (panel) review's. */
+export function isWebReview(
+  snap: Pick<ReviewSnapshot, "web">,
+): snap is WebReviewSnapshot {
+  return snap.web !== undefined;
+}
+
+/** The derived review kind of a snapshot. */
+export function reviewKindOf(snap: Pick<ReviewSnapshot, "document" | "web">): ReviewKind {
+  if (isWebReview(snap)) return "web";
   return isDocumentReview(snap) ? "document" : "change";
 }
 
@@ -621,6 +678,10 @@ export interface ReviewSummary {
   repoName: string;
   /** PR title or branch name. */
   title: string;
+  /** Issue #322: web reviews only — the page's site (host). */
+  webHost?: string;
+  /** Issue #322: web reviews only — questions asked in the page thread. */
+  webQuestions?: number;
   branch: string;
   prNumber?: number;
   createdAt: number;
@@ -1006,6 +1067,8 @@ export interface UpdateFileRequest {
 export interface UpdateViewRequest {
   showExistingComments?: boolean;
   existingCommentsCollapsed?: boolean;
+  /** Issue #325: the diff toolbar's hide level, remembered per review. */
+  hideLevel?: HideLevel;
 }
 
 export interface SummarizeHunkResponse {
@@ -1022,13 +1085,13 @@ export interface SummarizeHunkResponse {
 
 /**
  * Issue #169: `PATCH /api/reviews/:id/diff-filter` — the diff's
- * score/plotline filter, remembered with the review. Each field is a
- * plotline id (or "other") / score level; explicit null clears it.
- * Unknown plotline ids and levels are refused (400).
+ * plotline filter, remembered with the review. The field is a
+ * plotline id (or "other"); explicit null clears it. Unknown
+ * plotline ids are refused (400). Score filtering lives in the
+ * hide level (issue #325), not here.
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
-  score?: HunkScoreLevel | null;
 }
 
 /**
@@ -1333,6 +1396,10 @@ export interface Settings {
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
+  /** Issue #322: repos the extension panel may read. Null = never chosen (service defaults to 3 most recent); [] = none. */
+  extensionActiveRepoIds: string[] | null;
+  /** Issue #322: model for panel turns. Default muse-spark. */
+  extensionModel: ModelPick;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -1774,6 +1841,43 @@ export interface UpdateStatusResponse {
   outcome: SwitchOutcome | null;
 }
 
+// --- release notes (issue #330) ------------------------------------------
+
+/**
+ * One issue folded into a build. `summary` is the generated one-liner
+ * (issue title's first line, else the cleaned merge subject). The
+ * human-written fields come from the publisher's notes file; they render
+ * as plain text only, never HTML.
+ */
+export interface ReleaseNotesItem {
+  number: number;
+  title: string;
+  summary: string;
+  url: string;
+  whatChanged?: string;
+  whatToTry?: string;
+  caveats?: string;
+}
+
+/** `release-notes.json` shipped inside every build (previews + releases). */
+export interface ReleaseNotes {
+  channel: string;
+  version: string;
+  previousVersion: string | null;
+  commit: string | null;
+  previousCommit: string | null;
+  dataFormat: number | null;
+  previousDataFormat: number | null;
+  dataResetNeeded: boolean;
+  generatedAt: string;
+  items: ReleaseNotesItem[];
+}
+
+/** `GET /api/update/notes?ref=<channel>` — a channel's newest notes, fetched on view open only. */
+export interface UpdateNotesResponse {
+  notes: ReleaseNotes | null;
+}
+
 // --- WebSocket events ----------------------------------------------------
 /**
  * WS `/api/events?review=:id` event union: job progress, streamed text,
@@ -1811,3 +1915,45 @@ export type ReviewEvent =
 
 /** Re-exported entity slices used by route stubs. */
 export type { Thread, Card, Page, Reply, ReplyKind };
+
+// --- extension panel (#322 part 2) ---------------------------------------
+
+/** One repo in Settings → Extension / panel active-repo lists. */
+export interface ExtensionRepoInfo {
+  id: string;
+  owner: string;
+  name: string;
+  active: boolean;
+}
+
+/** `GET /api/extension/panel/active-repos` response. */
+export interface PanelActiveReposResponse {
+  repos: ExtensionRepoInfo[];
+}
+
+/** `POST /api/extension/panel/ask` request (capture only on Ask). */
+export interface PanelAskRequest {
+  url: string;
+  title?: string;
+  selection?: string;
+  context?: string;
+  question: string;
+}
+
+/** `POST /api/extension/panel/ask` response. */
+export interface PanelAskResponse {
+  thread: PanelThread;
+  reviewId: string;
+  reposUsed: string[];
+  tokensEstimate: number;
+}
+
+/** `GET /api/extension/status` — install help in Settings → Extension. */
+export interface ExtensionStatusResponse {
+  /** Absolute path of the shipped extension folder (installed package). */
+  extensionPath: string;
+  /** Epoch ms of the last background-worker call, or null. In memory only. */
+  lastWorkerCallAt: number | null;
+  /** Connected = worker called within the recent window. */
+  connected: boolean;
+}

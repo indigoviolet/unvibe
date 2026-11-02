@@ -102,9 +102,11 @@ test("hide uninteresting collapses runs to one row per run", async ({ page }) =>
   await scrollDiffToBottom(page);
   await expect(page.locator("button.hid")).toHaveCount(2);
   await expect(page.getByText(/Hunks 1–2 of 3 hidden · imports/)).toBeVisible();
-  await page.getByRole("button", { name: "Hide uninteresting" }).click();
+  await page.getByRole("button", { name: /Hide level:/ }).click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(page.locator("button.hid")).toHaveCount(0);
-  await page.getByRole("button", { name: "Hide uninteresting" }).click();
+  await page.getByRole("button", { name: /Hide level:/ }).click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(page.locator("button.hid")).toHaveCount(2);
 });
 

@@ -217,6 +217,163 @@ describe("parseBlocks golden", () => {
   });
 });
 
+describe("parseBlocks lists (issue #314)", () => {
+  function listOf(md: string) {
+    const blocks = parseBlocks(md);
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0];
+    expect(list.type).toBe("list");
+    if (list.type !== "list") throw new Error("not a list");
+    return list;
+  }
+
+  it("keeps a loose numbered list in one block (the #314 bug)", () => {
+    const list = listOf("1. a\n\n2. b\n\n3. c\n\n4. d\n");
+    expect(list.ordered).toBe(true);
+    expect(list.start).toBeUndefined();
+    expect(list.items.map((it) => it.html)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("keeps tight ordered and unordered lists in one block", () => {
+    const ordered = listOf("1. a\n2. b\n");
+    expect(ordered.ordered).toBe(true);
+    expect(ordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+    const unordered = listOf("- a\n- b\n");
+    expect(unordered.ordered).toBe(false);
+    expect(unordered.start).toBeUndefined();
+    expect(unordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+    const looseUnordered = listOf("- a\n\n- b\n");
+    expect(looseUnordered.ordered).toBe(false);
+    expect(looseUnordered.items.map((it) => it.html)).toEqual(["a", "b"]);
+  });
+
+  it("keeps an indented continuation paragraph inside its item", () => {
+    const list = listOf("1. a\n   continued here\n\n2. b\n");
+    expect(list.items.map((it) => it.html)).toEqual(["a continued here", "b"]);
+  });
+
+  it("nests inner lists as HTML inside the outer item", () => {
+    const list = listOf("- outer\n  - inner1\n  - inner2\n- outer2\n");
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].html).toBe("outer<ul><li>inner1</li><li>inner2</li></ul>");
+    expect(list.items[1].html).toBe("outer2");
+  });
+
+  it("parses a paragraph after a list as its own block", () => {
+    const blocks = parseBlocks("- a\n- b\n\nAfter the list.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["list", "paragraph"]);
+    expect(blocks[0].type).toBe("list");
+    if (blocks[0].type !== "list") return;
+    expect(blocks[0].items.map((it) => it.html)).toEqual(["a", "b"]);
+    expect(blocks[1].type).toBe("paragraph");
+    if (blocks[1].type !== "paragraph") return;
+    expect(blocks[1].text.standard).toBe("After the list.");
+  });
+
+  it("keeps an ordered list's start number", () => {
+    const list = listOf("3. a\n4. b\n");
+    expect(list.ordered).toBe(true);
+    expect(list.start).toBe(3);
+    const back = listOf(renderMarkdown([list]));
+    expect(back.start).toBe(3);
+    expect(back.items.map((it) => it.html)).toEqual(["a", "b"]);
+  });
+
+  it("keeps a fenced code block inside its list item", () => {
+    const list = listOf("- outer\n\n  ```python\n  x = 1\n  ```\n\n- outer2\n");
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].html).toContain("outer");
+    expect(list.items[0].html).toContain('<pre><code class="language-python">x = 1</code></pre>');
+    expect(list.items[1].html).toBe("outer2");
+  });
+
+  it("keeps per-item citations and the block union on a loose list", () => {
+    const list = listOf("- First [[diff:conn:91-110]]\n\n- Second\n");
+    expect(list.items[0].citations).toEqual([{ target: "diff:conn:91-110" }]);
+    expect(list.items[1].citations).toEqual([]);
+    expect(list.citations).toEqual([{ target: "diff:conn:91-110" }]);
+  });
+
+  it("keeps a loose list's ID stable when it grows by an item", () => {
+    const before = parseBlocks("1. a\n\n2. b\n");
+    const after = parseBlocks("1. a\n\n2. b\n\n3. c\n");
+    expect(before).toHaveLength(1);
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(before[0].id);
+    expect(after[0].type).toBe("list");
+    if (after[0].type !== "list") return;
+    expect(after[0].items.map((it) => it.html)).toEqual(["a", "b", "c"]);
+  });
+
+  it("parses a list next to a ::: container without merging", () => {
+    const blocks = parseBlocks("- a\n- b\n\n::: example\nAn example.\n:::\n");
+    expect(blocks.map((b) => b.type)).toEqual(["list", "aside"]);
+    const aside = blocks[1];
+    if (aside.type !== "aside") throw new Error("not an aside");
+    expect(aside.kind).toBe("Example");
+  });
+
+  it("round-trips a loose list with a start number through renderMarkdown", () => {
+    const blocks = parseBlocks("3. a [[diff:conn:1-2]]\n\n4. b\n");
+    const back = parseBlocks(renderMarkdown(blocks));
+    expect(back).toHaveLength(1);
+    expect(back[0].type).toBe("list");
+    if (back[0].type !== "list" || blocks[0].type !== "list") return;
+    expect(back[0].start).toBe(3);
+    expect(back[0].items.map((it) => it.html)).toEqual(blocks[0].items.map((it) => it.html));
+    expect(back[0].citations).toEqual(blocks[0].citations);
+  });
+});
+
+describe("parseBlocks sub-headings (issue #327)", () => {
+  it("parses ### and deeper headings as heading blocks, not paragraphs", () => {
+    const blocks = parseBlocks("Intro.\n\n### Decisions\n\nBody.\n\n#### Invariants\n\nMore.\n\n##### Known uncertainties\n\nDeep.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "heading", "paragraph", "heading", "paragraph", "heading", "paragraph"]);
+    const heading = blocks[1];
+    expect(heading.type).toBe("heading");
+    if (heading.type !== "heading") return;
+    expect(heading.html).toBe("Decisions");
+    expect(heading.citations).toEqual([]);
+    expect(blocks.map((b) => b.id)).toEqual(["b1", "b2", "b3", "b4", "b5", "b6", "b7"]);
+  });
+
+  it("renders inline Markdown and citations inside a heading", () => {
+    const blocks = parseBlocks("### Interfaces with **reach** [[diff:conn:80-82]]\n");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("heading");
+    if (blocks[0].type !== "heading") return;
+    expect(blocks[0].html).toBe("Interfaces with <strong>reach</strong>");
+    expect(blocks[0].citations).toEqual([{ target: "diff:conn:80-82" }]);
+    const { citations } = collectTargets(blocks);
+    expect(citations).toEqual(["diff:conn:80-82"]);
+  });
+
+  it("round-trips a heading through renderMarkdown as ###", () => {
+    const blocks = parseBlocks("## Card\n\n### Decisions\n\nBody [[diff:conn:1-2]].\n");
+    // parseBlocks skips the ## boundary; parseCards owns it.
+    const cardBlocks = parseCards("## Card\n\n### Decisions\n\nBody [[diff:conn:1-2]].\n")[0].blocks;
+    expect(cardBlocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    const md = renderMarkdown(cardBlocks);
+    expect(md).toContain("### Decisions");
+    const back = parseBlocks(md);
+    expect(back.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+    expect(back[0]).toEqual(cardBlocks[0]);
+    expect(blocks.length).toBeGreaterThan(0);
+  });
+
+  it("keeps ### Follow-ups as a follow-up block, not a heading", () => {
+    const blocks = parseBlocks("### Follow-ups\n\n- Why? | ask: why\n");
+    expect(blocks.map((b) => b.type)).toEqual(["follow-up"]);
+  });
+
+  it("keeps ## as a card boundary and # as a paragraph", () => {
+    const cards = parseCards("# Top\n\n## Card\n\n### Sub\n\nBody.\n");
+    expect(cards.map((c) => c.title)).toEqual([null, "Card"]);
+    expect(cards[0].blocks.map((b) => b.type)).toEqual(["paragraph"]);
+    expect(cards[1].blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+  });
+});
+
 describe("renderInline (Markdown inside a block)", () => {
   it("renders bold, italic, strikethrough and code spans", () => {
     expect(renderInline("**Recording.** record_cmd picks").html).toBe(
@@ -260,6 +417,22 @@ describe("renderInline (Markdown inside a block)", () => {
     const r = renderInline("a [[code:src/__init__.py:1-3]] b");
     expect(r.html).toBe("a  b");
     expect(r.citations).toEqual([{ target: "code:src/__init__.py:1-3" }]);
+  });
+
+  it("recognises citations whose paths contain brackets (issue #332)", () => {
+    const p = "src/app/(group)/items/[id]/page.tsx";
+    for (const s of [
+      `see [[code:${p}:433-492]] done`,
+      `[see [[code:${p}:433-492]]]`,
+      `([[code:${p}:433-492]])`,
+    ]) {
+      const r = renderInline(s);
+      expect(r.citations).toEqual([{ target: `code:${p}:433-492` }]);
+      expect(r.html).not.toContain("[[code:");
+    }
+    const labelled = renderInline(`see [[code:${p}:433-492|the page]] done`);
+    expect(labelled.citations).toEqual([{ target: `code:${p}:433-492` }]);
+    expect(labelled.html).toBe("see the page done");
   });
 
   it("handles a token next to bold text", () => {

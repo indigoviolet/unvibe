@@ -127,7 +127,7 @@ afterEach(() => {
 });
 
 describe("two tabs", () => {
-  const prefs = { showExistingComments: true, existingCommentsCollapsed: false } as ReviewSnapshot["viewPrefs"];
+  const prefs = { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" } as ReviewSnapshot["viewPrefs"];
   const annotations = [
     thread("t-plain", "Plain review thought"),
     thread("t-outbox", "Outbox thought", { post: true }),
@@ -207,7 +207,7 @@ describe("two tabs", () => {
 
 describe("On GitHub section", () => {
   it("hidden: heading carries the count; clicking shows the list and the setting", async () => {
-    renderMenu(snapshot({ showExistingComments: false, existingCommentsCollapsed: false }));
+    renderMenu(snapshot({ showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" }));
     expect(screen.getByText("On GitHub")).toBeVisible();
     expect(screen.getByText("hidden")).toBeVisible();
     expect(screen.queryByText("A made-up existing comment.")).not.toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("On GitHub section", () => {
   });
 
   it("shown: the heading folds the section alone, remembered in the view settings", async () => {
-    renderMenu(snapshot({ showExistingComments: true, existingCommentsCollapsed: false }));
+    renderMenu(snapshot({ showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" }));
     expect(screen.getByText("A made-up existing comment.")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: /On GitHub/ }));
@@ -227,6 +227,7 @@ describe("On GitHub section", () => {
     expect(useReview.getState().snapshot?.viewPrefs).toEqual({
       showExistingComments: true,
       existingCommentsCollapsed: true,
+      hideLevel: "uninteresting",
     });
 
     fireEvent.click(screen.getByRole("button", { name: /On GitHub/ }));
@@ -235,7 +236,7 @@ describe("On GitHub section", () => {
 
   it("a document review shows no GitHub side", () => {
     renderMenu(
-      snapshot({ showExistingComments: true, existingCommentsCollapsed: false }, [thread("t-doc", "Doc thought")], {
+      snapshot({ showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" }, [thread("t-doc", "Doc thought")], {
         document: { title: "Design note", blocks: [] },
       }),
     );

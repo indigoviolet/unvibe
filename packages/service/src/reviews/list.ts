@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle, isDocumentReview, prStateFromGh } from "@unvibe/shared";
+import { isDefaultGuideTitle, isDocumentReview, isWebReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -150,14 +150,18 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const pendingComments = (snapshot?.annotations ?? []).filter(
       (a) => (a as { post?: boolean }).post && !(a as { postedAt?: number }).postedAt && a.replies.some((r) => r.kind === "comment"),
     ).length;
-    const stale = snapshot?.versionStatus?.stale ?? false;
+    // #298: the start page's batched status check only sets the tag
+    // (`pendingHeadSha`); a real refresh's `versionStatus` also counts.
+    const stale =
+      (snapshot?.versionStatus?.stale ?? false) ||
+      (snapshot?.pendingHeadSha !== undefined && snapshot.pendingHeadSha !== snapshot.version.headSha);
     // #224: PR badges from the gh data stored on the description at
     // ingest/refresh time (no gh call here, per this module's contract).
     const prState = row.pr_number !== null ? prStateFromGh(snapshot?.description?.state, snapshot?.description?.isDraft) : undefined;
     const reviewDecision = row.pr_number !== null ? snapshot?.description?.reviewDecision : undefined;
     // Issue #222: document reviews have no guide pipeline; the document is ready.
     const guide =
-      snapshot !== null && isDocumentReview(snapshot)
+      snapshot !== null && (isDocumentReview(snapshot) || isWebReview(snapshot))
         ? { status: "ready" as const, detail: undefined as string | undefined }
         : guideStatusFor(snapshot, liveJobs, deps.pipelineDisabled ?? false);
     const title = titleFor(data.title ?? "", snapshot, row.branch);
@@ -165,11 +169,17 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     const ingestStatus = snapshot?.ingest?.status ?? "ready";
     out.push({
       id: row.id,
-      ...(snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
+      ...(snapshot !== null && isWebReview(snapshot) ? { kind: "web" as const } : snapshot !== null && isDocumentReview(snapshot) ? { kind: "document" as const } : {}),
       repoId: row.repo_id,
       repoOwner: row.owner ?? "local",
       repoName: row.name ?? row.repo_id,
       title,
+      ...(snapshot !== null && isWebReview(snapshot)
+        ? {
+            webHost: (() => { try { return new URL(snapshot.web.url).host; } catch { return snapshot.web.url; } })(),
+            webQuestions: snapshot.web.messages.filter((m) => m.role === "user").length,
+          }
+        : {}),
       branch: row.branch,
       ...(row.pr_number !== null ? { prNumber: row.pr_number } : {}),
       createdAt: row.created_at,

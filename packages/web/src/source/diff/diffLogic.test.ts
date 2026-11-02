@@ -1,11 +1,10 @@
 /** Unit tests for the pure diff-pane logic (PRD §4.13). */
 import { describe, expect, it } from "vitest";
-import type { Hunk, HunkLine, Page, ReviewFile } from "@unvibe/shared";
+import type { Hunk, HunkLine, ReviewFile } from "@unvibe/shared";
 import { hashHunkLines } from "@unvibe/shared";
 import { MOCK_FILES } from "../../mock/diff.js";
 import {
   buildFileTree,
-  citedHunkHashes,
   filterFiles,
   groupHunks,
   hunkOverlaps,
@@ -132,18 +131,25 @@ describe("filterFiles", () => {
 
 describe("shouldHideHunk", () => {
   const hidden = hunk({ hiddenReason: "imports", added: 1, removed: 1 });
-  it("requires Hide-uninteresting and a hidden reason", () => {
-    expect(shouldHideHunk(hidden, { hideUninteresting: false, unhidden: false, cited: false })).toBe(false);
-    expect(shouldHideHunk(hunk(), { hideUninteresting: true, unhidden: false, cited: false })).toBe(false);
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: false, cited: false })).toBe(true);
+  it("requires the uninteresting level and a hidden reason", () => {
+    expect(shouldHideHunk(hidden, { level: "all", unhidden: false })).toBe(false);
+    expect(shouldHideHunk(hunk(), { level: "uninteresting", unhidden: false })).toBe(false);
+    expect(shouldHideHunk(hidden, { level: "uninteresting", unhidden: false })).toBe(true);
   });
-  it("never hides one-line changes", () => {
+  it("hides by score at the higher levels (#325)", () => {
+    expect(shouldHideHunk(hunk(), { level: "routine", score: "mechanical", unhidden: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "substantive", score: "routine", unhidden: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", score: "substantive", unhidden: false })).toBe(true);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", score: "needs-attention", unhidden: false })).toBe(false);
+    expect(shouldHideHunk(hunk(), { level: "needs-attention", unhidden: false })).toBe(false);
+  });
+  it("never hides one-line uninteresting changes", () => {
     const oneLine = hunk({ hiddenReason: "imports", added: 1, removed: 0 });
-    expect(shouldHideHunk(oneLine, { hideUninteresting: true, unhidden: false, cited: false })).toBe(false);
+    expect(shouldHideHunk(oneLine, { level: "uninteresting", unhidden: false })).toBe(false);
   });
-  it("never hides revealed or guide-cited hunks", () => {
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: true, cited: false })).toBe(false);
-    expect(shouldHideHunk(hidden, { hideUninteresting: true, unhidden: false, cited: true })).toBe(false);
+  it("never hides revealed hunks, but guide-cited hunks hide like any other (#325)", () => {
+    expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: true })).toBe(false);
+    expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: false })).toBe(true);
   });
 });
 
@@ -169,44 +175,6 @@ describe("hunkOverlaps", () => {
     expect(hunkOverlaps(h, 70, 80)).toBe(true);
     expect(hunkOverlaps(h, 91, 95)).toBe(false);
     expect(hunkOverlaps(h, 70, 79)).toBe(false);
-  });
-});
-
-describe("citedHunkHashes", () => {
-  it("resolves diff: ranges to overlapping hunks and h: ids directly", () => {
-    const conn = MOCK_FILES.find((f) => f.fileKey === "src-urllib3-connection.py")!;
-    const target = conn.hunks[0];
-    const pages: Page[] = [
-      {
-        id: "p1",
-        kind: "root",
-        title: "t",
-        cards: [
-          {
-            id: "c1",
-            pageId: "p1",
-            title: null,
-            level: "standard",
-            collapsed: false,
-            revision: 1,
-            undoStack: [],
-            blocks: [
-              {
-                type: "paragraph",
-                id: "b1",
-                text: { standard: "x" },
-                citations: [
-                  { target: `diff:src-urllib3-connection.py:${target.newStart}-${target.newEnd}` },
-                  { target: "card:other" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const hashes = citedHunkHashes(MOCK_FILES, pages, []);
-    expect(hashes.has(target.contentHash)).toBe(true);
   });
 });
 

@@ -42,6 +42,47 @@ describe("tokenizeLinks", () => {
     const toks = tokenizeLinks("[[page:a]][[page:b]]");
     expect(toks).toHaveLength(2);
   });
+
+  it("finds tokens whose paths contain brackets (issue #332)", () => {
+    const cases: [string, string][] = [
+      [
+        "[[code:src/app/(group)/items/[id]/page.tsx:433-492]]",
+        "code:src/app/(group)/items/[id]/page.tsx:433-492",
+      ],
+      ["[[code:dir/[...slug]/route.ts:1-5]]", "code:dir/[...slug]/route.ts:1-5"],
+      ["[[code:pkg/@scope/x.ts:10-20]]", "code:pkg/@scope/x.ts:10-20"],
+      ["[[code:a+b/c~d.ts:3]]", "code:a+b/c~d.ts:3"],
+      ["[[code:src/app/(group)/a{[b]}c.ts:1-2]]", "code:src/app/(group)/a{[b]}c.ts:1-2"],
+      ["[[diff:conn(1)/x[2].py:4-6]]", "diff:conn(1)/x[2].py:4-6"],
+    ];
+    for (const [raw, idText] of cases) {
+      const toks = tokenizeLinks(`see ${raw} done`);
+      expect(toks.map((t) => t.idText)).toEqual([idText]);
+      expect(toks[0].raw).toBe(raw);
+      expect(toks[0].start).toBe(4);
+      expect(toks[0].end).toBe(4 + raw.length);
+    }
+  });
+
+  it("finds bracket-path tokens with labels and inside markdown brackets (#332)", () => {
+    const id = "code:src/app/(group)/items/[id]/page.tsx:433-492";
+    const [labelled] = tokenizeLinks(`[[${id}|the page]]`);
+    expect(labelled.idText).toBe(id);
+    expect(labelled.label).toBe("the page");
+    for (const s of [`see [the page [[${id}]]] done`, `([[${id}]])`, `[a [[${id}]] b]`]) {
+      expect(tokenizeLinks(s).map((t) => t.idText)).toEqual([id]);
+    }
+  });
+
+  it("leaves bracketed non-ids literal (issue #332)", () => {
+    expect(tokenizeLinks("[[1,2],[3,4]]")).toEqual([]);
+    expect(tokenizeLinks("[[foo [bar]]")).toEqual([]);
+    expect(tokenizeLinks("[[page:a|b]c]]")).toEqual([]);
+  });
+
+  it("rescans nested opens instead of swallowing the inner token", () => {
+    expect(tokenizeLinks("[[page:a [[page:b]]").map((t) => t.idText)).toEqual(["page:b"]);
+  });
 });
 
 describe("replaceLinkTokens", () => {

@@ -58,3 +58,27 @@ export function waitForSelectionClear(
     window.setTimeout(tick, POLL_MS);
   });
 }
+
+/**
+ * Apply-time guard for highlight upgrades (issue #319): re-check for a
+ * live diff selection right before the caller applies its token swap,
+ * and keep deferring while one exists — a selection created while tokens
+ * were computing, or while an earlier wait was resolving, defers the
+ * swap again. Bounded by the same overall `waitMs` as
+ * `waitForSelectionClear`: past it the upgrade lands anyway. Resolves
+ * only once a check in the caller's own continuation finds no live diff
+ * selection, is cancelled, or the bound expires.
+ */
+export async function deferWhileDiffSelectionActive(
+  scope?: SelectionScope,
+  isCancelled?: () => boolean,
+  waitMs: number = SELECTION_WAIT_MS,
+): Promise<void> {
+  const started = Date.now();
+  while (isDiffSelectionActive(scope)) {
+    if (isCancelled?.() === true) return;
+    const remaining = waitMs - (Date.now() - started);
+    if (remaining <= 0) return;
+    await waitForSelectionClear(scope, isCancelled, remaining);
+  }
+}

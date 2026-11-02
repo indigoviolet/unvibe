@@ -13,12 +13,14 @@
  * mounted behind `hidden`, so unsaved form edits survive a tab switch.
  */
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import type { Settings } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
+import { DEMO_INSTALL_URL, STATIC_DEMO } from "../demo.js";
 import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
+import { DebugSection } from "./DebugSection.js";
 import { AccessSection } from "./AccessSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
@@ -27,6 +29,7 @@ import { PromptsSection } from "./PromptsSection.js";
 import { VersionSection } from "./VersionSection.js";
 import { AppearanceSection } from "./AppearanceSection.js";
 import { RepositoriesSection } from "./RepositoriesSection.js";
+import { ExtensionSection } from "./ExtensionSection.js";
 import { Toast } from "../floating/Toast.js";
 import "./settings.css";
 
@@ -34,15 +37,31 @@ const SETTING_TABS = [
   { id: "appearance", label: "Appearance" },
   { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
+  { id: "extension", label: "Extension" },
   { id: "access", label: "Access" },
   { id: "environment", label: "Environment" },
   { id: "prompts", label: "Prompts" },
   { id: "limits", label: "Limits" },
   { id: "version", label: "Version" },
+  { id: "debug", label: "Debug" },
   { id: "data", label: "Data" },
 ] as const;
 
-const SETTING_TAB_IDS: readonly string[] = SETTING_TABS.map((t) => t.id);
+/**
+ * Static demo (#334): the Debug section (stats-export plumbing aimed at a
+ * local machine) and the Version section (nothing to switch on a static
+ * website) are hidden — nav entries, panels and all.
+ */
+const DEMO_HIDDEN_TABS: readonly string[] = ["debug", "version"];
+
+const VISIBLE_SETTING_TABS = STATIC_DEMO
+  ? SETTING_TABS.filter((t) => !DEMO_HIDDEN_TABS.includes(t.id))
+  : SETTING_TABS;
+
+const SETTING_TAB_IDS: readonly string[] = VISIBLE_SETTING_TABS.map((t) => t.id);
+
+/** First visible section: where an explicit `?tab=debug` lands in the demo. */
+const FIRST_SETTING_TAB = VISIBLE_SETTING_TABS[0].id;
 
 export function SettingsPage(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -88,12 +107,73 @@ export function SettingsPage(): React.JSX.Element {
     return () => {};
   }, [location.search, location.hash, setTab, tab]);
 
+  // Hidden in the demo: an explicit tab there redirects to the first
+  // section instead of falling back silently. After every hook, so the
+  // early return never skips one.
+  const rawTab = new URLSearchParams(location.search).get("tab");
+  if (STATIC_DEMO && rawTab !== null && DEMO_HIDDEN_TABS.includes(rawTab)) {
+    const next = new URLSearchParams(location.search);
+    next.set("tab", FIRST_SETTING_TAB);
+    return <Navigate replace to={{ pathname: location.pathname, search: `?${next.toString()}` }} />;
+  }
+
+  const renderPanels = (loaded: Settings): React.JSX.Element => (
+    <>
+      <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
+        <AppearanceSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="repositories" active={tab === "repositories"}>
+        <RepositoriesSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
+        <ModelsSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="extension" active={tab === "extension"}>
+        <ExtensionSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
+        <AccessSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="environment" active={tab === "environment"}>
+        <EnvironmentSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="prompts" active={tab === "prompts"}>
+        <PromptsSection />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="limits" active={tab === "limits"}>
+        <LimitsSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      {STATIC_DEMO ? null : (
+        <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
+          <VersionSection settings={loaded} onSaved={setSettings} />
+        </TabPanel>
+      )}
+      {STATIC_DEMO ? null : (
+        <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
+          <DebugSection />
+        </TabPanel>
+      )}
+      <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
+        <DataSection />
+      </TabPanel>
+    </>
+  );
+
   return (
     <div className="app">
       <Toast />
       <ScreenTopBar crumbs={[{ label: "Settings" }]} showBadge hideSettings />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc settings-doc">
+          {STATIC_DEMO ? (
+            <p className="hint" role="note">
+              Settings are read-only in the static demo.{" "}
+              <a className="cx pg" href={DEMO_INSTALL_URL} target="_blank" rel="noreferrer">
+                Install Unvibe
+              </a>{" "}
+              to change them.
+            </p>
+          ) : null}
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load settings: {error}
@@ -106,40 +186,27 @@ export function SettingsPage(): React.JSX.Element {
             <div className="settings-layout">
               <Tabs
                 label="Settings sections"
-                tabs={SETTING_TABS}
+                tabs={VISIBLE_SETTING_TABS}
                 active={tab}
                 onSelect={setTab}
                 idPrefix="settings"
               />
               <div className="settings-panel">
-                <h2 className="settings-title">{SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
-              <TabPanel idPrefix="settings" id="appearance" active={tab === "appearance"}>
-                <AppearanceSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="repositories" active={tab === "repositories"}>
-                <RepositoriesSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
-                <ModelsSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="access" active={tab === "access"}>
-                <AccessSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="environment" active={tab === "environment"}>
-                <EnvironmentSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="prompts" active={tab === "prompts"}>
-                <PromptsSection />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="limits" active={tab === "limits"}>
-                <LimitsSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="version" active={tab === "version"}>
-                <VersionSection settings={settings} onSaved={setSettings} />
-              </TabPanel>
-              <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
-                <DataSection />
-              </TabPanel>
+                <h2 className="settings-title">{VISIBLE_SETTING_TABS.find((t) => t.id === tab)?.label ?? tab}</h2>
+                {STATIC_DEMO ? (
+                  // One shared mechanism for the read-only demo: every
+                  // mutating control in every section is a native
+                  // button/input/select (custom Select triggers render a
+                  // button), so one disabled fieldset makes the whole page
+                  // visibly read-only — including Appearance, whose theme
+                  // saves through the API and is therefore not client-only.
+                  // The section tabs stay live above this fieldset.
+                  <fieldset disabled className="settings-readonly">
+                    {renderPanels(settings)}
+                  </fieldset>
+                ) : (
+                  renderPanels(settings)
+                )}
               </div>
             </div>
           ) : null}

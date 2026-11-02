@@ -116,6 +116,15 @@ describe("parseHunkReply", () => {
   });
 });
 
+describe("parseHunkReply fallback strips bracket-path citations (issue #332)", () => {
+  it("strips the token to its label in the markdown fallback summary", () => {
+    const r = parse(
+      "Fixed here [[code:src/app/(group)/items/[id]/page.tsx:1-2|the page]] for context",
+    );
+    expect(r.summary).toBe("Fixed here the page for context");
+  });
+});
+
 describe("looksLikeJson", () => {
   it.each([
     [`{"hunk": {"summary": "cut`, true],

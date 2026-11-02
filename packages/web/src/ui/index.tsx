@@ -13,7 +13,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
   return <BaseButton ref={ref} data-variant={variant} data-size={size} {...p} className={className ? `ui-btn ${className}` : "ui-btn"} />;
 });
 export function Field({ label, htmlFor, help, status, children }: { label: string; htmlFor?: string; help?: ReactNode; status?: ReactNode; children: ReactNode }): React.JSX.Element {
-  return <div className="ui-field"><label htmlFor={htmlFor}>{label}</label><div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>{children}{help ? <span className="ui-help">{help}</span> : null}{status}</div></div>;
+  return (
+    <div className="ui-field">
+      <div className="ui-field-text">
+        <label className="ui-field-label" htmlFor={htmlFor}>{label}</label>
+        {help ? <span className="ui-help">{help}</span> : null}
+      </div>
+      <div className="ui-field-control">
+        {children}
+        {status}
+      </div>
+    </div>
+  );
 }
 export type CardVariant = "plain" | "raised" | "inset" | "interactive";
 export type CardProps = {

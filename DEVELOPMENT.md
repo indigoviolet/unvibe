@@ -161,6 +161,16 @@ How `packages/service/src/agent/factory.ts` picks the runner:
 - `replay`: recorded sessions over `fixtures/urllib3-5020/`. No tokens, no network. Use it for the demo and for any test that exercises agent behaviour. Recordings match by prompt markers, not by repo, so replay on a non-fixture repo still writes fixture content there; only use it on the fixture or in agent-behaviour specs.
 - `none`: pipeline disabled. Reviews open as diff + metadata with no guide. Use it in real-service specs that do not test agent behaviour, so no background pipeline mutates the review mid-test.
 
+## Chrome extension (#322)
+
+`extension/` is an MV3 extension loaded unpacked (no store packaging yet): `chrome://extensions` → Developer mode → **Load unpacked** → pick `extension/`. The manifest `key` pins the extension id (`fmmhgmdbecooajgmpkmcclidchaekiko`, `PINNED_EXTENSION_ID` in `packages/shared/src/extension.ts`), so the service can allowlist exactly `chrome-extension://<id>` — for the extension endpoints only (`GET /api/extension/pr-status`, `POST /api/extension/open`, panel; CORS + the origin gate; the install token is still required). Set `UNVIBE_EXTENSION_ID` on the service to allowlist a different build; an invalid value allows none. The button never uses `/open`: the worker POSTs the PR URL to `/api/extension/open` itself and opens the answered `/review/<id>` with no confirmation step. `/open?pr=<url>` is the browser deep link for plain links from anywhere. `GET /open` never mutates — a top-level navigation carries the `SameSite=Lax` token cookie, so an existing review redirects straight to it and anything else redirects to the in-app confirm page (`/open/confirm`, a web-app route; the Origin/Referer check is relaxed for that one read so a cross-site link still lands on the page). The confirm button POSTs to `/open` behind the usual loopback Host/Origin gate plus the token, like the app's other mutations; only that POST clones an unknown repo and creates or reuses the review, then 303-redirects to it. No auto-submit. A POST from a foreign origin is refused by the gate.
+
+Access model: the content script (GitHub PR pages only) holds no token and makes no requests; only the background worker calls the service, reading the `__unvibe_token` cookie via `chrome.cookies` and sending it as Bearer to loopback origins. The token never goes to github.com. The worker probes the service on ports 4517–4521 (`unvibe.localhost`, then `127.0.0.1`).
+
+Tests: `packages/web/e2e/extension-322.spec.ts` (persistent Chromium with the unpacked extension, `github.com` routed to a local fixture, real service + stub `gh`; frame at `packages/web/test-results/extension-button.png`), plus unit tests for the origin allowlist and deep-link parser (`packages/shared/test/extension.test.ts`, `packages/service/test/extension-322.test.ts`, `host.test.ts`).
+
+Part 2 (side panel): the manifest also declares a side panel (`extension/panel/`) and a capture content script on github.com pages; capture happens only when the panel asks. Panel endpoints (`/api/extension/panel/*`) share the pinned-origin + token gate. One thread per page lives on a `web` review (never in Reviews; listed under Documents in its own Web pages group with page title, site, question count and last activity); Settings → Extension holds the active-repo checkboxes (default: 3 most recent), the panel model picker (default muse-spark) and install help — `extension/` ships inside the installed package (`extension/**` in the tarball, asserted by `check-global-install`), Show extension folder opens it via `open`/`xdg-open` through the command runner, and the connected line reads the last worker call held in memory. The live repo-picking check is `mise run test:live:panel-322 -- --cap 0.25 [--model <id>]` (never run by check). Tests: `packages/shared/test/webdoc.test.ts`, `packages/service/test/panel-322.test.ts`, journeys `packages/web/e2e/journeys/j322-extension.spec.ts` and `packages/web/e2e/extension-panel-322.spec.ts` (frame at `packages/web/visual-tour/extension-panel-322.png`).
+
 ## Tests
 
 There are two suites (issue #119). The fast suite is `mise run check`
@@ -223,6 +233,7 @@ Rules:
 | `UNVIBE_DATA_DIR` | `~/.local/share/unvibe` | SQLite DB (`unvibe.db`), `token`, lock, `worktrees/<review-id>/`. |
 | `UNVIBE_IDLE_MS` | `600000` | Idle exit after this long with no window/jobs; `<=0` disables. The start-at-login unit bakes in `0` (issue #108: a login-started service never idle-exits). |
 | `UNVIBE_AGENT` | live agents | `replay` / `none` (see above). |
+| `UNVIBE_EXTENSION_ID` | pinned id in `extension/manifest.json` | The one Chrome extension id allowlisted for `/api/extension/pr-status` (#322). Invalid values allow no extension. |
 | `UNVIBE_ACP_DEBUG` | — | `1` logs permission decisions, `2` full payloads (stderr). |
 | `UNVIBE_CLAUDE_BIN` / `UNVIBE_CODEX_BIN` | login-shell PATH | Override the agent executable (else `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`). |
 | `UNVIBE_REPO_ROOTS` | `~/src`, `~/dev`, … | `path.delimiter`-separated roots for checkout detection. |
@@ -257,6 +268,16 @@ tag `v<version>`. Candidates ship as preview builds instead — publish the
 branch (`mise run preview:publish -- <branch> --push`) and install it with
 `unvibe update preview/<slug>`; nothing but finals ever touches the
 `release` ref users install from.
+
+Release notes (#330): every build ships `release-notes.json` (channel,
+version, previous version, folded-in issues with a generated one-liner
+plus link, and the data-reset flag). `release:tag --notes-file <file>`
+copies the publisher's notes file to `release-notes-input.json` in the
+bump commit, so the workflow's `mise run release` merges it into the
+build; `scripts/release-notes.mjs` then renders the GitHub Release body
+from that same file (keeping the #311 data-reset section), so the two
+never drift. Write an entry on every publish — see the notes-file format
+under Preview builds below. Previews never create GitHub prereleases.
 
 Tag → branch → install command:
 
@@ -346,7 +367,35 @@ mise run preview:publish -- --push        # also push preview/<slug> (opt-in)
 mise run preview:publish -- --as-is      # build the branch as it stands (old behaviour)
 mise run preview:publish -- --all        # every local branch ahead of main, plus main itself
 mise run preview:publish -- --prune      # list stale preview/* refs (dry run; --push deletes)
+mise run preview:publish -- feat/other --notes-file notes.json  # merge publisher notes into the build (#330)
 ```
+
+Publisher notes file (#330): JSON with one entry per issue — write one
+on every publish (the same text as the issue comment). Either a map or
+an `{ "items": [...] }` / bare array of `{ number, ... }`:
+
+```json
+{
+  "330": {
+    "whatChanged": "Every build now ships its release notes.",
+    "whatToTry": "Open Settings → Version and read the notes.",
+    "caveats": "Full gates not yet run."
+  }
+}
+```
+
+All three fields are optional plain text. The file merges into the
+build's `release-notes.json`: an entry's `whatChanged` first line
+becomes that issue's one-liner and all its fields render in the app and
+the GitHub Release body; issues without an entry fall back to the
+generated one-liner (issue title's first line, else the cleaned merge
+subject). `release:tag --notes-file <file>` takes the same file. The
+generator is `scripts/generate-release-notes.mjs` (pure helpers in
+`scripts/release-notes-gen-lib.mjs`); the previous build is always the
+newest `v*` release tag reachable from HEAD, on every channel, so
+preview notes are cumulative since the last release (`previousVersion`
+is that tag's version; building that release itself excludes its tag).
+Null and full history only when there is no such tag at all.
 
 What it does (`scripts/preview-publish.mjs`, pure helpers in
 `scripts/preview-lib.mjs`): by default it builds current local `main`

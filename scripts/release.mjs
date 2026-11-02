@@ -90,13 +90,14 @@ function flagValue(name) {
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--source-branch <name>] [--print-notices]
+  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--source-branch <name>] [--notes-file <file>] [--print-notices]
   --version         override the release version (default: package.json; in CI, the tag via GITHUB_REF_NAME)
   --branch          local branch to point at the release tree (default: release)
   --source-branch   source branch the tree was built from (preview builds; recorded in package.json, null otherwise)
   --source-commit   source-branch commit the tree was built from (merged previews; null otherwise)
   --base-branch     base the source branch was merged onto, usually main (merged previews; null otherwise)
   --base-commit     base-side commit the tree was built from (merged previews; null otherwise)
+  --notes-file      publisher notes JSON merged into release-notes.json (#330; default: release-notes-input.json when present)
   env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, UNVIBE_RELEASE_SOURCE_BRANCH, UNVIBE_RELEASE_SOURCE_COMMIT, UNVIBE_RELEASE_BASE_BRANCH, UNVIBE_RELEASE_BASE_COMMIT, GITHUB_REF_NAME (tag like v0.0.1)`);
   process.exit(0);
 }
@@ -209,6 +210,7 @@ copy("packages/service/dist/update-helper.js", "packages/service/dist/update-hel
 // loads from beside its bundle — shipped verbatim, no install step.
 copy("packages/service/dist/grammars", "packages/service/dist/grammars");
 copy("packages/web/dist", "packages/web/dist");
+copy("extension", "extension");
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
 copy("README.md", "README.md");
@@ -217,6 +219,50 @@ copy("LICENSE", "LICENSE");
 // 3. Notices for everything bundled (service bundle + both adapter bundles).
 const notices = buildNotices();
 writeFileSync(path.join(RELEASE, "THIRD-PARTY-NOTICES.md"), notices);
+
+// 3b. Release notes shipped inside the build (#330). Best effort: a
+// generator failure still ships a minimal file so the app can say which
+// build it is; the publish never fails on notes alone.
+{
+  const notesOut = path.join(RELEASE, "release-notes.json");
+  const explicitNotes = flagValue("--notes-file");
+  const defaultNotes = path.join(ROOT, "release-notes-input.json");
+  const notesFile = explicitNotes ? path.resolve(explicitNotes) : existsSync(defaultNotes) ? defaultNotes : null;
+  const genArgs = [
+    path.join(ROOT, "scripts", "generate-release-notes.mjs"),
+    "--channel", releaseBranch,
+    "--version", version,
+    "--output", notesOut,
+    "--head", commitFull,
+  ];
+  if (notesFile) genArgs.push("--notes-file", notesFile);
+  const gen = spawnSync(process.execPath, genArgs, { cwd: ROOT, encoding: "utf8", timeout: 300_000 });
+  if (gen.status !== 0 || !existsSync(notesOut)) {
+    console.error(`release: warning: release-notes generation failed; shipping minimal notes\n${gen.stdout ?? ""}\n${gen.stderr ?? ""}`);
+    const df = parseDataFormat(readFileSync(path.join(ROOT, "packages/shared/src/data-format.ts"), "utf8"));
+    writeFileSync(
+      notesOut,
+      JSON.stringify(
+        {
+          channel: releaseBranch,
+          version,
+          previousVersion: null,
+          commit: commitFull,
+          previousCommit: null,
+          dataFormat: df,
+          previousDataFormat: null,
+          dataResetNeeded: false,
+          generatedAt: builtAt,
+          items: [],
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  } else {
+    console.log(`release: release notes -> release-notes.json${notesFile ? ` (publisher notes: ${notesFile})` : ""}`);
+  }
+}
 
 // 4. Generated package.json: bin + pinned runtime deps only.
 const deps = {};

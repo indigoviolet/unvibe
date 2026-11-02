@@ -28,6 +28,13 @@ export {
 } from "./state.js";
 export { fakeBuildInfo, resolveBuildInfo, type BuildInfoInputs } from "./build-info.js";
 export {
+  decodeRefReleaseNotes,
+  fakeReleaseNotesPath,
+  fetchRefReleaseNotes,
+  parseReleaseNotes,
+  readFakeReleaseNotes,
+} from "./release-notes.js";
+export {
   describeHealth,
   healthMatchesTarget,
   runSwitchFlow,

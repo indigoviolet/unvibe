@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Unvibe",
+  "version": "0.2.0",
+  "description": "Review GitHub pull requests in your local Unvibe service, and ask about any page from the side panel.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiZv0VqTzrNtT8VI9CZnQd9db7/nNv7v0c1Xl7U/7sVNDLKb1MLsdp3JrWSCVrJD4JOC9D4IhjcRh5tNARFEQuk8zFXRUYwfvkcqrlNXPNUgQRBoQkDJ3jo7DaXGmC2aqquRNTTpoIEIVKTRgWOg47XRm8CqjghRJ9KerZxrlGt4grf7lt/5yvYw3omF6a1VGCrm3ULjDSqj+uVGBUFScUEvcQltVw+7eHEVWCGq9fdjxC7n/dhDisB+BQ+Sr2HUc9nbCp2+b8AYb5W+10lFd1hpdZR2DrAn/Oats/6g5Tf7YI6NIx7WyfIsxyCuHPGZ6ILEjShpydonMNGjkmmmCsQIDAQAB",
+  "permissions": ["cookies", "sidePanel", "activeTab", "tabs"],
+  "host_permissions": [
+    "http://unvibe.localhost/*",
+    "http://127.0.0.1/*",
+    "https://github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
+  },
+  "action": {
+    "default_title": "Unvibe side panel"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*/pull/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["panel-content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

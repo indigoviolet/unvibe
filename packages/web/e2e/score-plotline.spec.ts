@@ -29,25 +29,26 @@ test("Files list has no score dots or legend (#184)", async ({ page }) => {
   await page.getByRole("button", { name: "Show file list" }).click();
   await expect(page.locator(".flist .score-dot")).toHaveCount(0);
   await expect(page.locator(".legend")).toHaveCount(0);
-  // The level lives on the hunk dot's tooltip instead.
-  const dot = page.locator('.dhunk-h [data-scorepick="substantive"]').first();
-  await expect(dot).toHaveAttribute("data-tip", "Show substantive hunks or higher");
+  // The level lives on the hunk dot's tooltip instead, and the dot is
+  // an indicator, not a filter button (#325).
+  const dot = page.locator('.dhunk-h .score-ind[data-score="substantive"]').first();
+  await expect(dot).toHaveAttribute("data-tip", "Substantive");
+  await expect(page.locator("[data-scorepick]")).toHaveCount(0);
 });
 
-test("clicking a score dot filters to that level or higher; the chip shows and its × clears", async ({ page }) => {
-  await page.locator('.dhunk-h [data-scorepick="substantive"]').first().click();
+test("the hide-level selector hides below its level and All restores (#325)", async ({ page }) => {
+  await page.getByRole("button", { name: /Hide level:/ }).click();
+  await page.locator('[data-hidecat="routine"]').click();
   // Substantive hunks live in the conn file and one socket-level test hunk.
   await expect(page.locator(connFile)).toBeVisible();
   await expect(page.locator(`[id="F-${TSOCK}"]`)).toBeVisible();
-  await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
-  // The pinned bar shows what is filtered and how much it hides.
-  const chip = page.locator('[data-filterchip="score"]');
-  await expect(chip).toContainText("Score: substantive or higher");
-  await expect(chip).toContainText(/· \d+ hidden/);
-  // × clears it.
-  await chip.getByRole("button", { name: "Clear score filter" }).click();
-  await expect(page.locator(connFile)).toBeVisible();
-  await expect(page.locator('[data-filterchip="score"]')).toHaveCount(0);
+  await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: /Hide level:/ })).toHaveAttribute("data-tip", /^Hiding \d+ of 8 hunks:/);
+  await expect(page.locator("[data-scorepick]")).toHaveCount(0);
+  // All restores every hunk.
+  await page.getByRole("button", { name: /Hide level:/ }).click();
+  await page.locator('[data-hidecat="uninteresting"]').click();
+  await expect(page.locator("button.hid")).toHaveCount(0);
   // The filter menu no longer carries score/plotline radio groups.
   await page.getByRole("button", { name: "Show file list" }).click();
   await page.getByRole("button", { name: "File filters" }).click();
@@ -68,7 +69,9 @@ test("guide root lists plotlines with hunk counts", async ({ page }) => {
   await expect(box.locator(".plname", { hasText: "Unfold folded values" })).toBeVisible();
   await expect(box.locator(".plname", { hasText: "Prove the unfolding works" })).toBeVisible();
   await expect(box.getByText("Other")).toBeVisible();
-  await expect(box.getByText(/hunks?/).first()).toBeVisible();
+  // #324: hunk shares read as N/total chips, not "N hunks".
+  await expect(box.getByText("2/8").first()).toBeVisible();
+  await expect(box.getByText("4/8").first()).toBeVisible();
   // Landing order and builds-on, with no explanation line.
   await expect(box.locator(".plnote")).toHaveCount(0);
   await expect(box.locator(".plbuilds")).toContainText("Builds on Unfold folded values");

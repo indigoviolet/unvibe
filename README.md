@@ -96,6 +96,14 @@ Settings picks the model for each role; `pi` appears as a third provider when a 
 
 When new commits arrive, a banner offers Update, which carries your comments and read state over to the new version. A branch with no PR works the same except Submit, which stays disabled.
 
+## Browser extension (optional)
+
+The Chrome extension in `extension/` adds a **Review in Unvibe** button (or **Open review**, when one exists) to GitHub PR pages. Clicking it opens your local Unvibe: an existing review opens directly, and for a new one Unvibe first asks you to confirm in the app — only that confirmation clones the repo (when it is new to Unvibe) and starts the review. A link or redirect to the deep link alone never clones or starts anything; the opening action is a confirmed POST inside the app.
+
+To load it unpacked: open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the `extension/` folder. The service must be running (`unvibe open`); if it isn't, the button says **Start Unvibe**.
+
+What it can access: only the background worker talks to the local service, using the token cookie the web app set there. The token is never sent to GitHub or any other site, and the extension reads nothing from PR pages beyond the PR's owner, name and number.
+
 ## Try the demo
 
 No logins, no token spend:

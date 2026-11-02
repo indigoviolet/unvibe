@@ -3,7 +3,7 @@
  * swap text nodes for spans, so they wait while a diff selection is live.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isDiffSelectionActive, waitForSelectionClear } from "./selectionGuard.js";
+import { deferWhileDiffSelectionActive, isDiffSelectionActive, waitForSelectionClear } from "./selectionGuard.js";
 
 afterEach(() => {
   window.getSelection()?.removeAllRanges();
@@ -101,6 +101,81 @@ describe("waitForSelectionClear", () => {
     select(node, 0, 5);
     let cancelled = false;
     const done = waitForSelectionClear(
+      undefined,
+      () => cancelled,
+      5000,
+    );
+    cancelled = true;
+    await vi.advanceTimersByTimeAsync(120);
+    await done;
+  });
+});
+
+describe("deferWhileDiffSelectionActive", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("resolves immediately when no diff selection is live at apply time", async () => {
+    mountDiffCell("hello world");
+    await deferWhileDiffSelectionActive(undefined, undefined, 5000);
+  });
+
+  it("defers while a diff selection is live, then resolves once it clears", async () => {
+    const node = mountDiffCell("hello world");
+    select(node, 0, 5);
+    let resolved = false;
+    const done = deferWhileDiffSelectionActive(undefined, undefined, 5000).then(() => {
+      resolved = true;
+    });
+    await vi.advanceTimersByTimeAsync(240);
+    expect(resolved).toBe(false);
+    window.getSelection()?.removeAllRanges();
+    await vi.advanceTimersByTimeAsync(240);
+    expect(resolved).toBe(true);
+    await done;
+  });
+
+  it("keeps deferring when a new selection appears as the previous one clears", async () => {
+    const node = mountDiffCell("hello world");
+    select(node, 0, 5);
+    let resolved = false;
+    const done = deferWhileDiffSelectionActive(undefined, undefined, 5000).then(() => {
+      resolved = true;
+    });
+    // The first selection clears, but another is made before the poll
+    // tick observes the gap: the apply-time re-check must defer again.
+    window.getSelection()?.removeAllRanges();
+    select(node, 0, 5);
+    await vi.advanceTimersByTimeAsync(480);
+    expect(resolved).toBe(false);
+    window.getSelection()?.removeAllRanges();
+    await vi.advanceTimersByTimeAsync(240);
+    expect(resolved).toBe(true);
+    await done;
+  });
+
+  it("is bounded: resolves on timeout when the selection stays, leaving it untouched", async () => {
+    const node = mountDiffCell("hello world");
+    select(node, 0, 5);
+    let resolved = false;
+    const done = deferWhileDiffSelectionActive(undefined, undefined, 150).then(() => {
+      resolved = true;
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(resolved).toBe(true);
+    await done;
+    expect(window.getSelection()?.isCollapsed).toBe(false);
+  });
+
+  it("resolves when cancelled while a selection is live", async () => {
+    const node = mountDiffCell("hello world");
+    select(node, 0, 5);
+    let cancelled = false;
+    const done = deferWhileDiffSelectionActive(
       undefined,
       () => cancelled,
       5000,

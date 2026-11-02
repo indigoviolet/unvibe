@@ -10,6 +10,21 @@ import { selectText } from "../select-text.js";
 import type { Locator } from "@playwright/test";
 import { apiJson, createDemoReview, createSeededDemoReview, stampDataFormat } from "./journey-helpers.js";
 
+/**
+ * Click a reply-toolbar button (#336: the toolbar reveals on hover or
+ * keyboard focus, and is visibility:hidden otherwise — invisible to both
+ * the accessibility tree and focus(). Hover first so the button resolves
+ * and takes focus, then focus so the reveal survives the click's
+ * scroll-into-view, then click with full actionability checks on).
+ * Card toolbars (.chead .ctl) need none of this — they are opacity-only.
+ */
+async function clickReplyControl(reply: Locator, label: string): Promise<void> {
+  const btn = reply.locator(`.ctl button[aria-label="${label}"]`);
+  await reply.hover();
+  await btn.evaluate((el) => (el as HTMLElement).focus());
+  await btn.click();
+}
+
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 test.describe("J2 explain ask follow-up nested", () => {
@@ -89,7 +104,7 @@ test.describe("J2 explain ask follow-up nested", () => {
 
     // Depth change rewrites the parent answer (visible change, not empty).
     const beforeDepth = await exp.locator(".exp-b").first().innerText();
-    await exp.getByRole("button", { name: "Deeper" }).first().click();
+    await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
     await expect.poll(async () => exp.locator(".exp-b").first().innerText(), { timeout: 60_000 }).not.toBe(beforeDepth);
 
     // Ask on guide text, then a follow-up in the same card.
@@ -378,7 +393,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     for (let i = 0; i < 2; i++) {
       const expPips = exp.locator(".pips i.on");
       const expPipsBefore = await expPips.count();
-      await exp.getByRole("button", { name: "Deeper" }).click();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
       await expect
         .poll(
           async () => ((await principleLocator(exp).count()) > 0 ? -1 : await expPips.count()),
@@ -386,21 +401,21 @@ test.describe("J2 explain ask follow-up nested", () => {
         )
         .not.toBe(expPipsBefore);
       if ((await principleLocator(exp).count()) > 0) {
-        await exp.getByRole("button", { name: "Undo" }).click();
+        await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
         await expect(principleLocator(exp)).toHaveCount(0, { timeout: 30_000 });
         break;
       }
     }
     await expect(principleLocator(exp)).toHaveCount(0, { timeout: 10_000 });
 
-    await exp.getByRole("button", { name: "Deeper" }).click();
+    await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
     await expect(principleLocator(exp)).toHaveCount(1, { timeout: 60_000 });
 
-    await exp.getByRole("button", { name: "Deeper" }).click();
+    await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
     await expect(principleLocator(exp)).toHaveCount(1, { timeout: 10_000 });
     await expect(page.locator("#toast")).toContainText(/deepest|nothing more/i, { timeout: 10_000 });
 
-    await exp.getByRole("button", { name: "Undo" }).click();
+    await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
     await expect(principleLocator(exp)).toHaveCount(0, { timeout: 10_000 });
   });
 
@@ -745,12 +760,12 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       // (instant): the body text is rewritten each step.
       const expBody = exp.locator(".exp-b");
       const explained = await expBody.innerText();
-      await exp.getByRole("button", { name: "Deeper" }).click();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
       await expect.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(explained);
       await expect(exp.locator(".working")).toHaveCount(0, { timeout: 60_000 });
       await expect(expBody).not.toBeEmpty({ timeout: 10_000 });
       const deepened = await expBody.innerText();
-      await exp.getByRole("button", { name: "Simpler" }).click();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Simpler");
       await expect.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(deepened);
       await expect(expBody).not.toBeEmpty();
 
@@ -760,10 +775,10 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       const asides = exp.locator(".gen-aside");
       await expect(asides.first()).toBeVisible({ timeout: 30_000 });
       const asidesBefore = await asides.count();
-      await exp.getByRole("button", { name: "Use examples" }).click();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Use examples");
       await expect(asides).toHaveCount(asidesBefore, { timeout: 10_000 });
       // Undo reverts the Simpler step: the deeper text returns.
-      await exp.getByRole("button", { name: "Undo" }).click();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
       await expect.poll(async () => expBody.innerText(), { timeout: 30_000 }).toBe(deepened);
 
       // Close → dotted link → hover preview → click re-expands.

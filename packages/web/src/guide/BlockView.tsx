@@ -1,7 +1,8 @@
 /**
  * Block rendering (web-guide owner; PRD §4.4 display side + §4.5 + §4.9).
  *
- * Paragraph, list (per-item citations; no block-level union row — issue
+ * Paragraph, heading (### sub-headings, issue #327), list (per-item
+ * citations; no block-level union row — issue
  * #165), table, code, diagram (D2, service-rendered), aside
  * (Example / Diagram / Underlying principle), finding-link (orange
  * agent-finding card), follow-up chips, comment-link (suggested review
@@ -85,6 +86,12 @@ function AsideInner({
           <RichText html={inner.text.standard} className="rt" top={top} onOpenPage={onOpenPage} />
         </p>
       );
+    case "heading":
+      return (
+        <h3 className="subhead sel" data-top={top}>
+          <RichText html={inner.html} className="rt" top={top} onOpenPage={onOpenPage} />
+        </h3>
+      );
     case "code":
       // Opaque by design (issue #101): the code text is an HTML string, so
       // anchor marks may wrap it freely — the same rule as every other
@@ -93,16 +100,21 @@ function AsideInner({
       return <HighlightedCode language={inner.language} code={inner.code} top={top} />;
     case "diagram":
       return <DiagramView reviewId={reviewId} block={inner} onOpenPage={onOpenPage} />;
-    case "list":
-      return (
-        <ul className="lst">
-          {inner.items.map((item, i) => (
-            <li key={i}>
-              <span className="sel" data-top={top} dangerouslySetInnerHTML={{ __html: item.html }} />
-            </li>
-          ))}
-        </ul>
+    case "list": {
+      const listItems = inner.items.map((item, i) => (
+        <li key={i}>
+          <span className="sel" data-top={top} dangerouslySetInnerHTML={{ __html: item.html }} />
+        </li>
+      ));
+      // Issue #314: asides keep the list kind and start number too.
+      return inner.ordered ? (
+        <ol className="lst" {...(inner.start !== undefined && inner.start !== 1 ? { start: inner.start } : {})}>
+          {listItems}
+        </ol>
+      ) : (
+        <ul className="lst">{listItems}</ul>
       );
+    }
     default:
       return null;
   }
@@ -143,6 +155,22 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
   const reviewId = snapshot?.review.id ?? "";
 
   switch (block.type) {
+    case "heading": {
+      return (
+        <div className="blk" id={id}>
+          <h3 className="subhead sel" data-top={block.id}>
+            <RichText html={block.html} className="rt" top={block.id} onOpenPage={onOpenPage} />
+            <BlockMarkers
+              citations={resolved}
+              threads={threads}
+              footnotes={footnotes}
+              blockId={block.id}
+              onOpenPage={onOpenPage}
+            />
+          </h3>
+        </div>
+      );
+    }
     case "paragraph": {
       const html = depthText(block.text, level);
       return (
@@ -182,7 +210,12 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
           </li>
         );
       });
-      const list = block.ordered ? <ol className="lst">{items}</ol> : <ul className="lst">{items}</ul>;
+      // Issue #314: ordered lists keep their start number.
+      const list = block.ordered ? (
+        <ol className="lst" {...(block.start !== undefined && block.start !== 1 ? { start: block.start } : {})}>{items}</ol>
+      ) : (
+        <ul className="lst">{items}</ul>
+      );
       // Issue #165: no block-level citation union row under a list.
       // Issue #305: list-level sources no item shows land inline at the
       // end of the last item instead (see `uncoveredListCitations`).

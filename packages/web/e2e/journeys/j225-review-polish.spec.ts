@@ -49,9 +49,9 @@ test.describe("J225 review polish", () => {
     const unfoldSvg = await unfold.locator("svg").innerHTML();
     expect(foldSvg).not.toBe(unfoldSvg);
 
-    await expect(page.getByRole("button", { name: "Hide uninteresting" })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: /Hide level:/ })).toHaveAttribute(
       "data-tip",
-      "Hide uninteresting",
+      /^Hiding \d+ of \d+ hunks/,
     );
     // #241: Refresh lives in the review top bar now (next to the status
     // icon), tooltip exactly "Refresh" — and no longer in the diff toolbar.
@@ -60,16 +60,18 @@ test.describe("J225 review polish", () => {
     await expect(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
 
     // Review filter: funnel icon, action-only tooltip, active dot.
+    // (#296: new reviews hide existing GitHub comments by default, so the
+    // filter starts active — pressed with its dot — not idle.)
     const reviewFilter = page.getByRole("button", { name: "Review filters" });
     await expect(reviewFilter).toHaveAttribute("data-tip", "Reviewed and GitHub comment filters");
-    await expect(reviewFilter).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewFilter.locator("[data-filter-active]")).toHaveCount(0);
+    await expect(reviewFilter).toHaveAttribute("aria-pressed", "true");
+    await expect(reviewFilter.locator("[data-filter-active]")).toHaveCount(1);
     await reviewFilter.click();
     const menu = page.getByRole("menu", { name: "Review filters" });
     await expect(menu).toBeVisible();
-    await menu.getByRole("menuitemcheckbox", { name: /Reviewed/ }).click();
-    await expect(reviewFilter).toHaveAttribute("aria-pressed", "true");
-    await expect(reviewFilter.locator("[data-filter-active]")).toHaveCount(1);
+    await menu.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+    await expect(reviewFilter).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewFilter.locator("[data-filter-active]")).toHaveCount(0);
     await expect(reviewFilter).toHaveAttribute("data-tip", "Reviewed and GitHub comment filters");
     await page.keyboard.press("Escape");
 

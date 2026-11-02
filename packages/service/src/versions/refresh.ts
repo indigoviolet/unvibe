@@ -305,9 +305,11 @@ export async function refreshReview(
       snapshot.description.isDraft !== (head.isDraft ?? false) ||
       snapshot.description.reviewDecision !== displayedDecision);
   if (!head.headSha || head.headSha === snapshot.version.headSha) {
-    if (prChanged) {
+    // #298: a steady head also clears the start page's pending tag.
+    if (prChanged || snapshot.pendingHeadSha !== undefined) {
       await deps.reviews.mutate(reviewId, (draft) => {
-        if (!draft.description) return;
+        delete draft.pendingHeadSha;
+        if (!prChanged || !draft.description) return;
         draft.description.state = head.prState;
         draft.description.isDraft = head.isDraft ?? false;
         if (displayedDecision !== undefined) draft.description.reviewDecision = displayedDecision;
@@ -522,6 +524,8 @@ export async function refreshReview(
     draft.review.versions = [...draft.review.versions, { ...version }];
     draft.review.currentVersion = version.n;
     draft.versionStatus = { ...versionStatus };
+    // #298: the real new version supersedes the start page's tag.
+    delete draft.pendingHeadSha;
 
     // Hunk state (PRD §8 table).
     const oldHashToNew = new Map<string, string>();
