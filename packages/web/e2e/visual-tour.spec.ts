@@ -2758,9 +2758,10 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       await shotCard.scrollIntoViewIfNeeded().catch(() => {});
       mkdirSync(SHOTS, { recursive: true });
       await shot(page, "ask-failed", `1440-${theme}`, "Couldn't get an answer");
-      // Retry lands the clean answer.
+      // Retry lands the clean answer (#336: landed is blocks with no
+      // working marker — the toolbar itself stays hidden until hovered).
       await failed.getByRole("button", { name: "Retry" }).click();
-      await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      await expect(failed.locator(".working")).toHaveCount(0, { timeout: 120_000 });
       const retried = shotCard.locator(".exp-b").last();
       await expect(retried).not.toBeEmpty({ timeout: 60_000 });
       await expect(retried).not.toContainText('{"contribute"');
@@ -2835,8 +2836,10 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       await card.scrollIntoViewIfNeeded().catch(() => {});
       mkdirSync(SHOTS, { recursive: true });
       await shot(page, "ask-pending", `1440-${theme}`, "And then?");
-      // Let the answer land so the next theme starts settled.
-      await expect(turn.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      // Let the answer land so the next theme starts settled (#336:
+      // landed is blocks with no working marker, not .ctl visibility).
+      await expect(turn.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+      await expect(turn.locator(".working")).toHaveCount(0, { timeout: 30_000 });
       if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
     }
   } finally {
@@ -2902,7 +2905,8 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       mkdirSync(SHOTS, { recursive: true });
       await checkLayout(page, "ask-thread-streaming");
       await shot(page, "ask-thread-streaming", `1440-${theme}`, followUp);
-      await expect(followA.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+      // #336: landed is blocks with no working marker, not .ctl visibility.
+      await expect(followA.locator(".working")).toHaveCount(0, { timeout: 120_000 });
       await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
       await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
       await card.scrollIntoViewIfNeeded().catch(() => {});

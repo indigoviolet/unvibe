@@ -87,9 +87,10 @@ test.describe("J270 ask follow-up failure and retry", () => {
     // Retry refills the same turn with a clean answer: no raw trailing
     // block, no cut-off start, no internal ids anywhere.
     await failed.getByRole("button", { name: "Retry" }).click();
-    // The retried (latest) answer gets its toolbar back; earlier answers
-    // keep theirs hidden until hover.
-    await expect(failed.locator(".ctl")).toBeVisible({ timeout: 120_000 });
+    // The retried answer lands as blocks with no working marker (#336:
+    // the toolbar itself stays hidden until hovered).
+    await expect(failed.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+    await expect(failed.locator(".working")).toHaveCount(0, { timeout: 30_000 });
     await expect(after.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     const retried = after.locator(".exp-b").nth(1);
     await expect(retried).not.toBeEmpty({ timeout: 60_000 });
