@@ -99,13 +99,14 @@ test.describe("J321 stacked PRs", () => {
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     const badges = page.getByTestId("stack-badge");
     await expect(badges).toHaveCount(3, { timeout: 30_000 });
-    await expect(badges.nth(0)).toContainText("1/3");
+    // Row order follows recency, not stack order, and the stub stamps all
+    // three PRs within the same millisecond — so the first row is not
+    // always PR 11. Compare the set, never nth(0).
+    const texts = (await badges.allTextContents()).map((t) => t.trim()).sort();
+    expect(texts).toEqual(["1/3 ~", "2/3 ~", "3/3 ~"]);
     // All three share one colour.
     const colors = await badges.evaluateAll((els) => els.map((e) => getComputedStyle(e as HTMLElement).backgroundColor));
     expect(new Set(colors).size).toBe(1);
-    const texts = await badges.allTextContents();
-    expect(texts.join(" ")).toContain("2/3");
-    expect(texts.join(" ")).toContain("3/3");
     await page.screenshot({ path: path.join(SHOTS, "stack-list-1440-light.png") });
 
     // Popover from the middle badge: order top-first down to the base branch.
