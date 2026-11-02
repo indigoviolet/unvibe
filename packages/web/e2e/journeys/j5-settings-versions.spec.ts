@@ -109,7 +109,9 @@ test.describe("J5 settings and versions", () => {
     const labelAbove = dividerY - (channelsLabelBox!.y + channelsLabelBox!.height);
     const buttonAbove = dividerY - (refreshBox!.y + refreshBox!.height);
     expect(Math.abs(labelAbove - buttonAbove)).toBeLessThanOrEqual(2);
-    const actionBox = await rows.locator("button").first().boundingBox();
+    // #330: every row ends in a Notes button after its Switch/Update action,
+    // so the row's right edge is the Notes button, not the first button.
+    const actionBox = await rows.first().locator("button").last().boundingBox();
     expect(Math.abs(refreshBox!.x + refreshBox!.width - (actionBox!.x + actionBox!.width))).toBeLessThanOrEqual(2);
     const channels = await apiJson(svc, "GET", "/api/update/channels");
     expect(channels.status).toBe(200);

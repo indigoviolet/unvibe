@@ -48,12 +48,15 @@ async function tokenFor(origin) {
 }
 
 /** Find the running service: first healthy origin, preferring one with a token cookie. */
-async function findService() {
+async function findService(exclude) {
   const origins = cachedOrigin
     ? [cachedOrigin, ...candidateOrigins().filter((o) => o !== cachedOrigin)]
     : candidateOrigins();
   let firstHealthy = null;
   for (const origin of origins) {
+    // v0.0.14 gate: an origin that just rejected the token is a different
+    // same-host service, not ours — skip it this round (see withAuthedService).
+    if (exclude && exclude.has(origin)) continue;
     try {
       const res = await fetchWithTimeout(`${origin}/api/health`);
       if (!res.ok) continue;
@@ -73,16 +76,37 @@ async function findService() {
   return firstHealthy;
 }
 
+/**
+ * v0.0.14 gate: the token cookie is host-scoped (cookies ignore ports),
+ * so with several same-host services up every candidate origin "has a
+ * token" and discovery can pick one that rejects it. Each authenticated
+ * caller below therefore drops a rejecting origin and rediscovers once
+ * instead of failing.
+ */
+
 async function prStatus(prUrl) {
-  const svc = await findService();
-  if (!svc) return { state: "down" };
-  if (!svc.token) return { state: "unauthenticated", origin: svc.origin };
-  try {
-    const res = await fetchWithTimeout(
-      `${svc.origin}${PR_STATUS_PATH}?pr=${encodeURIComponent(prUrl)}`,
-      { headers: { authorization: `Bearer ${svc.token}` } },
-      5000,
-    );
+  const tried = new Set();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const svc = await findService(tried);
+    if (!svc) return { state: "down" };
+    if (!svc.token) return { state: "unauthenticated", origin: svc.origin };
+    let res = null;
+    try {
+      res = await fetchWithTimeout(
+        `${svc.origin}${PR_STATUS_PATH}?pr=${encodeURIComponent(prUrl)}`,
+        { headers: { authorization: `Bearer ${svc.token}` } },
+        5000,
+      );
+    } catch {
+      return { state: "down" };
+    }
+    // v0.0.14 gate: a token rejection can be a different same-host
+    // service answering first — drop it and rediscover once.
+    if ((res.status === 401 || res.status === 403) && attempt === 0) {
+      tried.add(svc.origin);
+      if (cachedOrigin === svc.origin) cachedOrigin = null;
+      continue;
+    }
     if (res.status === 401 || res.status === 403) {
       return { state: "unauthenticated", origin: svc.origin };
     }
@@ -95,9 +119,8 @@ async function prStatus(prUrl) {
       reviewId: body.reviewId ?? null,
       status: body.status ?? null,
     };
-  } catch {
-    return { state: "down" };
   }
+  return { state: "down" };
 }
 
 /**
@@ -109,28 +132,39 @@ async function prStatus(prUrl) {
  * a blank tab; nothing is opened then.
  */
 async function openReview(prUrl) {
-  const svc = await findService();
-  if (!svc) return { ok: false, error: "down" };
-  if (!svc.token) return { ok: false, error: "unauthenticated", origin: svc.origin };
-  try {
-    const res = await fetchWithTimeout(
-      `${svc.origin}${OPEN_PATH}`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
-        body: JSON.stringify({ pr: prUrl }),
-      },
-      60000,
-    );
+  const tried = new Set();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const svc = await findService(tried);
+    if (!svc) return { ok: false, error: "down" };
+    if (!svc.token) return { ok: false, error: "unauthenticated", origin: svc.origin };
+    let res = null;
+    try {
+      res = await fetchWithTimeout(
+        `${svc.origin}${OPEN_PATH}`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ pr: prUrl }),
+        },
+        60000,
+      );
+    } catch {
+      return { ok: false, error: "down" };
+    }
+    // Same wrong-service retry as prStatus above.
+    if ((res.status === 401 || res.status === 403) && attempt === 0) {
+      tried.add(svc.origin);
+      if (cachedOrigin === svc.origin) cachedOrigin = null;
+      continue;
+    }
     const body = await res.json().catch(() => null);
     if (!res.ok || !body || typeof body.reviewId !== "string" || !body.reviewId) {
       return { ok: false, error: (body && body.error) || `http ${res.status}`, origin: svc.origin };
     }
     await chrome.tabs.create({ url: `${svc.origin}/review/${body.reviewId}` });
     return { ok: true, origin: svc.origin };
-  } catch {
-    return { ok: false, error: "down" };
   }
+  return { ok: false, error: "down" };
 }
 
 // ---- #322 part 2: side panel (worker is still the only service caller) ----
@@ -138,19 +172,30 @@ const PANEL_PREFIX = "/api/extension/panel";
 try { void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }); } catch { /* older Chrome */ }
 
 async function panelCall(method, path, body) {
-  const svc = await findService();
-  if (!svc) return { error: "down" };
-  if (!svc.token) return { error: "unauthenticated", origin: svc.origin };
-  try {
-    const res = await fetchWithTimeout(`${svc.origin}${PANEL_PREFIX}${path}`, {
-      method,
-      headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    }, 30000);
+  const tried = new Set();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const svc = await findService(tried);
+    if (!svc) return { error: "down" };
+    if (!svc.token) return { error: "unauthenticated", origin: svc.origin };
+    let res = null;
+    try {
+      res = await fetchWithTimeout(`${svc.origin}${PANEL_PREFIX}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      }, 30000);
+    } catch { return { error: "down" }; }
+    // Same wrong-service retry as prStatus above.
+    if ((res.status === 401 || res.status === 403) && attempt === 0) {
+      tried.add(svc.origin);
+      if (cachedOrigin === svc.origin) cachedOrigin = null;
+      continue;
+    }
     const json = await res.json().catch(() => null);
     if (!res.ok) return { error: (json && json.error) || `http ${res.status}`, origin: svc.origin };
     return { ...(json || {}), origin: svc.origin };
-  } catch { return { error: "down" }; }
+  }
+  return { error: "down" };
 }
 
 async function activeTab() {

@@ -69,7 +69,9 @@ test("guide root lists plotlines with hunk counts", async ({ page }) => {
   await expect(box.locator(".plname", { hasText: "Unfold folded values" })).toBeVisible();
   await expect(box.locator(".plname", { hasText: "Prove the unfolding works" })).toBeVisible();
   await expect(box.getByText("Other")).toBeVisible();
-  await expect(box.getByText(/hunks?/).first()).toBeVisible();
+  // #324: hunk shares read as N/total chips, not "N hunks".
+  await expect(box.getByText("2/8").first()).toBeVisible();
+  await expect(box.getByText("4/8").first()).toBeVisible();
   // Landing order and builds-on, with no explanation line.
   await expect(box.locator(".plnote")).toHaveCount(0);
   await expect(box.locator(".plbuilds")).toContainText("Builds on Unfold folded values");
