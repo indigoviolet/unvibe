@@ -1,0 +1,67 @@
+{
+  "315": {
+    "whatChanged": "Threads show only the avatar: no kind chip or role label on any thread kind. The reply count ignores the opening comment, so a lone comment shows no count.",
+    "whatToTry": "Add a comment and look at its header and the collapsed row.",
+    "caveats": "Explain replies no longer show their question line."
+  },
+  "321": {
+    "whatChanged": "The stack badge (1/3) now sits inside the repo#PR button in the review top bar; clicking it opens the stack popover.",
+    "whatToTry": "Open a review of a stacked PR and click the badge."
+  },
+  "322": {
+    "whatChanged": "Chrome extension: a Review in Unvibe button on GitHub PRs, and a side panel that answers questions about any page by reading your active repos (repo-qualified citations). Settings → Extension has install help, active-repo checkboxes (default the 3 most recent) and the panel model (default muse-spark). Web-page threads are listed under Documents → Web pages; Reviews shows only PRs and branches.",
+    "whatToTry": "Settings → Extension: Show extension folder, then load it unpacked on chrome://extensions. Open any page, open the side panel, select text and Ask.",
+    "caveats": "Citation click-through to the app comes after v1. The panel page is plainly styled."
+  },
+  "324": {
+    "whatChanged": "Plotlines show each plotline's share of all hunks (2/8) and a thin stacked bar under the title.",
+    "whatToTry": "Open the demo guide's Plotlines card."
+  },
+  "325": {
+    "whatChanged": "The diff Hide menu is an ordered category list (Uninteresting · Mechanical · Routine · Substantive · Needs attention) with swatches, counts and eye icons; clicking a row hides it and everything less important. It hides exactly what you ask: guide-cited hunks are no longer exempt, and clicking a citation to a hidden hunk reveals it. Hunk headers show only the score dot. The button shows an open eye when nothing is hidden.",
+    "whatToTry": "Open a review diff, hide up to Routine, then click a guide citation that points into a hidden hunk.",
+    "caveats": "Needs attention can never be hidden. The hunk prompt no longer forbids marking cited hunks uninteresting, so newly built guides may hide more."
+  },
+  "326": {
+    "whatChanged": "Collapse threads moved from the guide title row to an icon in the review top bar.",
+    "whatToTry": "Open a review with threads and use the icon after Debug in the top bar."
+  },
+  "327": {
+    "whatChanged": "### headings in guide cards now render as sub-headings (Decisions, Invariants, Known uncertainties, Interfaces).",
+    "whatToTry": "Open the demo's Decisions card.",
+    "caveats": "Only guides written by this build get sub-headings."
+  },
+  "328": {
+    "whatChanged": "Settings rows put the label and help on the left and the control alone on the right; Limits number inputs line up with units beside them.",
+    "whatToTry": "Open Settings → Limits, Models and Appearance."
+  },
+  "330": {
+    "whatChanged": "Every build ships its release notes, cumulative since the last release. Settings → Version shows each channel's notes (what updating would bring) behind its Notes button.",
+    "whatToTry": "Open Settings → Version and press Notes on a channel."
+  },
+  "331": {
+    "whatChanged": "A reply's text starts on the avatar's line and wraps back to the normal padding; a reply that opens with a list, code, diagram or table starts below the avatar.",
+    "whatToTry": "Open a thread with replies in the guide or the diff."
+  },
+  "332": {
+    "whatChanged": "Citations whose path contains ( ) [ ] (e.g. Next.js route groups and dynamic segments) or a scoped @ folder now render as chips instead of raw [[code:…]] text.",
+    "whatToTry": "Open a review of a repo with such paths and check the guide citations hover and open the file."
+  },
+  "333": {
+    "whatChanged": "The extension's Review in Unvibe button now shows on every PR tab, including the Conversation page beside Merge status and Code, in Unvibe indigo with the u mark.",
+    "whatToTry": "Reload the extension on chrome://extensions, open a PR's Conversation tab and switch tabs.",
+    "caveats": "Tested against fixture pages, not live GitHub."
+  },
+  "334": {
+    "whatChanged": "An in-browser demo of the recorded urllib3 review is live at unvibe.xyz/demo, linked from the landing page as Try the demo. It replays the same recordings with the same matcher as the service (now shared), keeps comments in the browser with a Reset demo, and disables Submit and settings.",
+    "whatToTry": "Open https://unvibe.xyz/demo."
+  },
+  "335": {
+    "whatChanged": "The extension's Review in Unvibe button now starts the review itself and opens it directly, with no confirm page; failures show on the button. Plain /open?pr= links still ask first, on a confirm page styled inside the app.",
+    "whatToTry": "Reload the extension on chrome://extensions and click Review in Unvibe on a PR."
+  },
+  "336": {
+    "whatChanged": "Reply hover controls no longer draw over the text (a compact toolbar floats beside the first line only); a citation chip can never render empty; each avatar is centred on its own first line (serif AI replies and sans human replies), in light, dark and Studio fonts. The toolbar is clickable over the reply text.",
+    "whatToTry": "Hover an agent reply in a thread, and look at the end of a reply with citations."
+  }
+}
