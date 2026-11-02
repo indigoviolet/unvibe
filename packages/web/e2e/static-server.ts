@@ -4,7 +4,9 @@
  * Serves a build directory (the `demo:build` output) over loopback with
  * correct content types. Extensionless non-file paths fall back to
  * `index.html` (harmless under hash routing, and it keeps deep links
- * working); unknown extensions 404.
+ * working); unknown extensions 404. With `mount` (e.g. `/demo`, as on
+ * Pages) the build is served only under that path and anything outside
+ * it 404s, so an absolute asset path in the build shows up as a failure.
  */
 import { createServer, type Server } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -29,10 +31,18 @@ export interface StaticServer {
   stop: () => Promise<void>;
 }
 
-export async function startStaticServer(dir: string): Promise<StaticServer> {
+export async function startStaticServer(dir: string, mount = ""): Promise<StaticServer> {
   const server: Server = createServer((req, res) => {
     try {
-      const pathname = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+      let pathname = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+      if (mount) {
+        if (pathname !== mount && !pathname.startsWith(`${mount}/`)) {
+          res.writeHead(404, { "content-type": "text/plain" });
+          res.end("outside mount");
+          return;
+        }
+        pathname = pathname.slice(mount.length) || "/";
+      }
       const safe = path.normalize(pathname).replace(/^(\.\.[/\\])+/, "");
       let file = path.join(dir, safe);
       if (pathname.endsWith("/") || !path.extname(safe)) {
@@ -57,7 +67,7 @@ export async function startStaticServer(dir: string): Promise<StaticServer> {
   const address = server.address();
   if (typeof address !== "object" || !address) throw new Error("static server did not bind");
   return {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin: `http://127.0.0.1:${address.port}${mount}`,
     stop: () => new Promise((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }

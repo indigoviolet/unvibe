@@ -158,7 +158,7 @@ export function PaneLoading({ label, variant }: { label: string; variant?: "guid
     return (
       <p className="pane-loading" data-variant="guide" role="status">
         <span className="guide-scene" aria-hidden="true">
-          <img className="guide-ball" src="/disco-ball.svg" alt="" />
+          <img className="guide-ball" src={`${import.meta.env.BASE_URL}disco-ball.svg`} alt="" />
         </span>
         <span>{label}</span>
       </p>

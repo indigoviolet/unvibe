@@ -125,7 +125,7 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
       <ScreenTopBar showBadge disabled />
       {/* Start-page disco-ball art (#281): static, pointer-transparent. */}
       <div className="start-watermark" aria-hidden="true">
-        <img src="/disco-ball.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}disco-ball.svg`} alt="" />
       </div>
       <main className="col" style={{ padding: 24 }}>
         {/* 720px: the heading's single-line measure, so the wrapped
