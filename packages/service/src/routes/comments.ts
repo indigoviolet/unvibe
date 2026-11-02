@@ -17,7 +17,7 @@
  * `src/comments/threads.ts`.
  */
 import type { FastifyInstance } from "fastify";
-import type { ActionAnchor, CreateCommentRequest, UpdateCommentRequest } from "@unvibe/shared";
+import type { ActionAnchor, CreateCommentRequest, Thread, UpdateCommentRequest } from "@unvibe/shared";
 import {
   createSuggestedComment,
   createThread,
@@ -184,55 +184,18 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     if (!reviews.getSnapshot(id)) return reply.code(404).send({ error: `unknown review ${id}` });
     try {
       await reviews.mutate(id, (draftState) => {
-        const found = (
-          draftState.annotations as Array<{ id: string; type: string; post: boolean; open: boolean; pinned: boolean; draft?: string; reply?: string }>
-        ).find((a) => a.id === commentId);
+        const found = (draftState.annotations as Array<Thread>).find((a) => a.id === commentId);
         if (!found) throw new Error(`unknown comment ${commentId}`);
-        // Issue #136: `open` and the reply-box draft (`reply`) apply to
-        // conversation cards too (dotted-link click re-expands a closed
-        // card in place). Post/draft stay comment-only: only comments post.
-        if (open !== undefined && (found.type === "comment" || (found.type === "thread" || found.type === "link") || found.type === "link")) {
-          found.open = open;
-        } else if (open !== undefined) {
-          throw new Error(`annotation ${commentId} is not a comment`);
+        // Issue #273/#339: one thread kind — post/draft (Outbox), open,
+        // reply/followupDraft boxes, and pin apply to every thread,
+        // whatever kind of reply started it. Submit and the Outbox only
+        // ever carry kind === "comment" replies (never agent text).
+        if (found.type !== "thread" && found.type !== "link") {
+          throw new Error(`unknown comment ${commentId}`);
         }
-        if ((found.type === "thread" || found.type === "link")) {
-          // Issue #273: one thread kind — post/draft (Outbox), open,
-          // reply/followupDraft boxes, and pin all apply to threads.
-          if (pinned !== undefined) found.pinned = pinned;
-          if (post !== undefined) {
-            (found as Record<string, unknown>).post = post;
-          }
-          if (draft === null) {
-            delete (found as Record<string, unknown>).draft;
-          } else if (draft !== undefined) {
-            (found as Record<string, unknown>).draft = draft;
-          }
-          if (replyBox === null) {
-            delete (found as Record<string, unknown>).reply;
-          } else if (replyBox !== undefined) {
-            (found as Record<string, unknown>).reply = replyBox;
-          }
-          if (followupDraft === null) {
-            delete (found as Record<string, unknown>).followupDraft;
-          } else if (followupDraft !== undefined) {
-            (found as Record<string, unknown>).followupDraft = followupDraft;
-          }
-          return;
-        }
-        if (found.type !== "comment") {
-          if (post !== undefined || draft !== undefined || draft === null || replyBox !== undefined || replyBox === null || pinned !== undefined) {
-            throw new Error(`annotation ${commentId} is not a comment`);
-          }
-          return;
-        }
-        if (pinned !== undefined) {
-          throw new Error(`annotation ${commentId} is not a conversation`);
-        }
-        if (post !== undefined) {
-          found.post = post;
-          if (post) found.open = true;
-        }
+        if (open !== undefined) found.open = open;
+        if (pinned !== undefined) found.pinned = pinned;
+        if (post !== undefined) found.post = post;
         if (draft === null) {
           delete found.draft;
         } else if (draft !== undefined) {
@@ -242,6 +205,11 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
           delete found.reply;
         } else if (replyBox !== undefined) {
           found.reply = replyBox;
+        }
+        if (followupDraft === null) {
+          delete found.followupDraft;
+        } else if (followupDraft !== undefined) {
+          found.followupDraft = followupDraft;
         }
       });
     } catch (err) {
