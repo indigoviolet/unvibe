@@ -29,7 +29,8 @@ test.skip(!existsSync(DEMO_DIST), "needs `mise run demo:build` first");
 let demo: StaticServer | null = null;
 
 test.beforeAll(async () => {
-  demo = await startStaticServer(DEMO_DIST);
+  // Mounted at /demo like Pages, so an absolute asset path fails here too.
+  demo = await startStaticServer(DEMO_DIST, "/demo");
 });
 
 test.afterAll(async () => {
@@ -42,9 +43,9 @@ function origin(): string {
   return demo.origin;
 }
 
-/** Fail on any request that is not same-origin with the static build. */
+/** Fail on any request outside the static build's own path (`/demo/`). */
 async function sameOriginOnly(page: Page): Promise<string[]> {
-  const base = new URL(origin()).origin;
+  const base = origin();
   const violations: string[] = [];
   page.on("request", (req) => {
     const url = req.url();

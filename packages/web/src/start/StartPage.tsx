@@ -1398,7 +1398,7 @@ export function StartPage(): React.JSX.Element {
           watermark. Static and pointer-transparent; the top bar and the
           content below sit above it. */}
       <div className="start-watermark" aria-hidden="true">
-        <img src="/disco-ball.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}disco-ball.svg`} alt="" />
       </div>
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
