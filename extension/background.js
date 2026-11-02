@@ -54,8 +54,8 @@ async function findService(exclude) {
     : candidateOrigins();
   let firstHealthy = null;
   for (const origin of origins) {
-    // v0.0.14 gate: an origin that just rejected the token is a different
-    // same-host service, not ours — skip it this round (see withAuthedService).
+    // An origin that just rejected the token is a different same-host
+    // service, not ours — skip it this round (see withService).
     if (exclude && exclude.has(origin)) continue;
     try {
       const res = await fetchWithTimeout(`${origin}/api/health`);
@@ -77,48 +77,80 @@ async function findService(exclude) {
 }
 
 /**
+ * Resolve one authenticated service call.
+ *
  * v0.0.14 gate: the token cookie is host-scoped (cookies ignore ports),
  * so with several same-host services up every candidate origin "has a
- * token" and discovery can pick one that rejects it. Each authenticated
- * caller below therefore drops a rejecting origin and rediscovers once
- * instead of failing.
+ * token" and discovery can pick one that rejects it (401/403). A
+ * rejection therefore drops that origin and tries one other
+ * token-carrying origin instead of failing.
+ *
+ * CI follow-up: a lone service is never discarded — when no alternative
+ * exists its rejection is reported honestly (never "down"), a blank
+ * discovery falls back to the last-known origin once (slow health checks
+ * under load must not read as "down"), and a missing token re-reads the
+ * last-known origin once (cookie race) before reporting unauthenticated.
+ * Once a rejection has been seen, later rounds never downgrade it to
+ * "down" or "unauthenticated".
+ *
+ * fn(svc) performs the fetch and returns { status, json }; it lets
+ * network errors throw (read as "down", with one rediscovery past it).
  */
-
-async function prStatus(prUrl) {
+async function withService(fn) {
   const tried = new Set();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const svc = await findService(tried);
-    if (!svc) return { state: "down" };
-    if (!svc.token) return { state: "unauthenticated", origin: svc.origin };
-    let res = null;
-    try {
-      res = await fetchWithTimeout(
-        `${svc.origin}${PR_STATUS_PATH}?pr=${encodeURIComponent(prUrl)}`,
-        { headers: { authorization: `Bearer ${svc.token}` } },
-        5000,
-      );
-    } catch {
-      return { state: "down" };
+  let rejected = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let svc = await findService(tried);
+    if (!svc && !rejected && cachedOrigin && !tried.has(cachedOrigin)) {
+      const token = await tokenFor(cachedOrigin);
+      if (token) svc = { origin: cachedOrigin, token };
     }
-    // v0.0.14 gate: a token rejection can be a different same-host
-    // service answering first — drop it and rediscover once.
-    if ((res.status === 401 || res.status === 403) && attempt === 0) {
-      tried.add(svc.origin);
-      if (cachedOrigin === svc.origin) cachedOrigin = null;
+    if (!svc) return rejected ?? { outcome: "down" };
+    let target = svc;
+    if (!target.token && !rejected && cachedOrigin && !tried.has(cachedOrigin)) {
+      const token = await tokenFor(cachedOrigin);
+      if (token) target = { origin: cachedOrigin, token };
+    }
+    if (!target.token) return rejected ?? { outcome: "unauthenticated", origin: target.origin };
+    tried.add(target.origin);
+    let r;
+    try {
+      r = await fn(target);
+    } catch {
       continue;
     }
-    if (res.status === 401 || res.status === 403) {
-      return { state: "unauthenticated", origin: svc.origin };
+    if (r.status === 401 || r.status === 403) {
+      rejected = { outcome: "rejected", origin: target.origin, status: r.status, json: r.json };
+      if (cachedOrigin === target.origin) cachedOrigin = null;
+      continue;
     }
-    if (!res.ok) return { state: "error", origin: svc.origin };
-    const body = await res.json().catch(() => null);
-    if (!body) return { state: "error", origin: svc.origin };
+    return { outcome: "answer", svc: target, status: r.status, json: r.json };
+  }
+  return rejected ?? { outcome: "down" };
+}
+
+async function prStatus(prUrl) {
+  const out = await withService(async (svc) => {
+    const res = await fetchWithTimeout(
+      `${svc.origin}${PR_STATUS_PATH}?pr=${encodeURIComponent(prUrl)}`,
+      { headers: { authorization: `Bearer ${svc.token}` } },
+      5000,
+    );
+    return { status: res.status, json: await res.json().catch(() => null) };
+  });
+  if (out.outcome === "answer") {
+    if (out.status < 200 || out.status >= 300 || !out.json) return { state: "error", origin: out.svc.origin };
+    const body = out.json;
     return {
       state: body.exists ? "exists" : "missing",
-      origin: svc.origin,
+      origin: out.svc.origin,
       reviewId: body.reviewId ?? null,
       status: body.status ?? null,
     };
+  }
+  // A rejection here reads as unauthenticated (the button's sign-in state).
+  if (out.outcome === "unauthenticated" || out.outcome === "rejected") {
+    return { state: "unauthenticated", origin: out.outcome === "unauthenticated" ? out.origin : out.svc.origin };
   }
   return { state: "down" };
 }
@@ -132,38 +164,33 @@ async function prStatus(prUrl) {
  * a blank tab; nothing is opened then.
  */
 async function openReview(prUrl) {
-  const tried = new Set();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const svc = await findService(tried);
-    if (!svc) return { ok: false, error: "down" };
-    if (!svc.token) return { ok: false, error: "unauthenticated", origin: svc.origin };
-    let res = null;
-    try {
-      res = await fetchWithTimeout(
-        `${svc.origin}${OPEN_PATH}`,
-        {
-          method: "POST",
-          headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
-          body: JSON.stringify({ pr: prUrl }),
-        },
-        60000,
-      );
-    } catch {
-      return { ok: false, error: "down" };
+  const out = await withService(async (svc) => {
+    const res = await fetchWithTimeout(
+      `${svc.origin}${OPEN_PATH}`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ pr: prUrl }),
+      },
+      60000,
+    );
+    return { status: res.status, json: await res.json().catch(() => null) };
+  });
+  if (out.outcome === "answer") {
+    const body = out.json;
+    const ok = out.status >= 200 && out.status < 300;
+    if (!ok || !body || typeof body.reviewId !== "string" || !body.reviewId) {
+      return { ok: false, error: (body && body.error) || `http ${out.status}`, origin: out.svc.origin };
     }
-    // Same wrong-service retry as prStatus above.
-    if ((res.status === 401 || res.status === 403) && attempt === 0) {
-      tried.add(svc.origin);
-      if (cachedOrigin === svc.origin) cachedOrigin = null;
-      continue;
-    }
-    const body = await res.json().catch(() => null);
-    if (!res.ok || !body || typeof body.reviewId !== "string" || !body.reviewId) {
-      return { ok: false, error: (body && body.error) || `http ${res.status}`, origin: svc.origin };
-    }
-    await chrome.tabs.create({ url: `${svc.origin}/review/${body.reviewId}` });
-    return { ok: true, origin: svc.origin };
+    await chrome.tabs.create({ url: `${out.svc.origin}/review/${body.reviewId}` });
+    return { ok: true, origin: out.svc.origin };
   }
+  // A lone service's rejection is reported honestly (never "down").
+  if (out.outcome === "rejected") {
+    const body = out.json;
+    return { ok: false, error: (body && body.error) || `http ${out.status}`, origin: out.origin };
+  }
+  if (out.outcome === "unauthenticated") return { ok: false, error: "unauthenticated", origin: out.origin };
   return { ok: false, error: "down" };
 }
 
@@ -172,29 +199,24 @@ const PANEL_PREFIX = "/api/extension/panel";
 try { void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }); } catch { /* older Chrome */ }
 
 async function panelCall(method, path, body) {
-  const tried = new Set();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const svc = await findService(tried);
-    if (!svc) return { error: "down" };
-    if (!svc.token) return { error: "unauthenticated", origin: svc.origin };
-    let res = null;
-    try {
-      res = await fetchWithTimeout(`${svc.origin}${PANEL_PREFIX}${path}`, {
-        method,
-        headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      }, 30000);
-    } catch { return { error: "down" }; }
-    // Same wrong-service retry as prStatus above.
-    if ((res.status === 401 || res.status === 403) && attempt === 0) {
-      tried.add(svc.origin);
-      if (cachedOrigin === svc.origin) cachedOrigin = null;
-      continue;
-    }
-    const json = await res.json().catch(() => null);
-    if (!res.ok) return { error: (json && json.error) || `http ${res.status}`, origin: svc.origin };
-    return { ...(json || {}), origin: svc.origin };
+  const out = await withService(async (svc) => {
+    const res = await fetchWithTimeout(`${svc.origin}${PANEL_PREFIX}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${svc.token}`, "content-type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }, 30000);
+    return { status: res.status, json: await res.json().catch(() => null) };
+  });
+  if (out.outcome === "answer") {
+    const ok = out.status >= 200 && out.status < 300;
+    if (!ok) return { error: (out.json && out.json.error) || `http ${out.status}`, origin: out.svc.origin };
+    return { ...(out.json || {}), origin: out.svc.origin };
   }
+  // A lone service's rejection is reported honestly (never "down").
+  if (out.outcome === "rejected") {
+    return { error: (out.json && out.json.error) || `http ${out.status}`, origin: out.origin };
+  }
+  if (out.outcome === "unauthenticated") return { error: "unauthenticated", origin: out.origin };
   return { error: "down" };
 }
 
