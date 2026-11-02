@@ -1873,6 +1873,17 @@ export interface ReleaseNotes {
   items: ReleaseNotesItem[];
 }
 
+/**
+ * The `whatChanged` text worth showing beside the one-liner, or null
+ * when it merely repeats the summary (its first line became the
+ * summary). Shown only when it adds more than the first line. Pure.
+ */
+export function whatChangedToShow(item: Pick<ReleaseNotesItem, "summary" | "whatChanged">): string | null {
+  const wc = item.whatChanged?.trim() ?? "";
+  if (!wc) return null;
+  return wc !== item.summary.trim() ? wc : null;
+}
+
 /** `GET /api/update/notes?ref=<channel>` — a channel's newest notes, fetched on view open only. */
 export interface UpdateNotesResponse {
   notes: ReleaseNotes | null;

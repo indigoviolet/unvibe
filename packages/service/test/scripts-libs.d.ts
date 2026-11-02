@@ -82,6 +82,7 @@ declare module "*release-notes-gen-lib.mjs" {
   export function issueUrl(repo: string, number: number): string;
   export function generateReleaseNotes(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   export function renderReleaseBody(notes: Record<string, unknown>, opts?: { branch?: string }): string;
+  export function whatChangedAddsMore(item: { summary?: string; whatChanged?: string }): boolean;
 }
 
 declare module "*global-install-lib.mjs" {
