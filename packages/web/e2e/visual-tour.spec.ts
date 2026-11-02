@@ -896,6 +896,9 @@ test.describe("visual tour passes", () => {
     const seedCard: Locator = page.locator(`#page section.ithread[data-thread="${seedId}"]`);
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    // #336: reply toolbars reveal on hover — hover the reply so the shot
+    // shows the revealed toolbar, then assert it.
+    await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-pinned");
     await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
@@ -910,15 +913,18 @@ test.describe("visual tour passes", () => {
       .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
       .toBeGreaterThanOrEqual(2);
     await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
-    await stepChecks(page, "guide-nested");
-    await shot(page, "guide-nested", suffix, "explain");
     // #273 frames: the in-thread link, collapse-all, and expand-one.
     const rlink = seedCard.locator('button.rlink[data-replylink]').first();
     await expect(rlink).toBeVisible({ timeout: 30_000 });
+    // #315: replies are avatar-only now (no kind chip), so the shots key
+    // on the in-thread link's text instead of "explain".
+    const linkText = (await rlink.innerText()).trim();
+    await stepChecks(page, "guide-nested");
+    await shot(page, "guide-nested", suffix, linkText);
     await rlink.click();
     await page.waitForTimeout(800);
     await stepChecks(page, "thread-replylink");
-    await shot(page, "thread-replylink", suffix, "explain");
+    await shot(page, "thread-replylink", suffix, linkText);
     await page.getByRole("button", { name: "Collapse threads" }).click();
     await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "threads-collapsed");
@@ -926,7 +932,7 @@ test.describe("visual tour passes", () => {
     await page.locator(`button.spike-row[data-row="${seedId}"]`).click();
     await expect(seedCard).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "thread-expanded");
-    await shot(page, "thread-expanded", suffix, "explain");
+    await shot(page, "thread-expanded", suffix, linkText);
     await closeCard(page, seedCard);
     expect(seedId).toBeTruthy();
     // Collapse-all is global (store): switch it back off so later scenes
@@ -976,7 +982,9 @@ test.describe("visual tour passes", () => {
       .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
       .toBeGreaterThanOrEqual(1);
     await stepChecks(page, "diff-nested");
-    await shot(page, "diff-nested", suffix, "explain");
+    // #315: replies are avatar-only now (no kind chip), so the shot keys
+    // on the selected word (now the in-thread link) instead of "explain".
+    await shot(page, "diff-nested", suffix, diffWord);
     await closeCard(page, diffCard);
     // Our thread closed; seeded suggestion threads may remain open.
     await expect(page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`)).toHaveCount(0, { timeout: 15_000 });
@@ -1276,6 +1284,9 @@ test.describe("visual tour passes", () => {
 
     // Settings → every tab (#225): fields must fit the card at
     // every width. One scene per tab so the failure names the tab.
+    // Scratch repos seeded for the extension tab are removed afterwards
+    // (the per-run temp guard fails on leftovers).
+    const extDirs: string[] = [];
     for (const tab of [
       { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
       { id: "repositories", name: "Repos", marker: "Add by path" },
@@ -1292,6 +1303,7 @@ test.describe("visual tour passes", () => {
         if (existing.repos.filter((r) => r.id !== "demo" && r.localPath).length < 4) {
           for (let i = 1; i <= 4; i++) {
             const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-tour-ext${i}-`));
+            extDirs.push(dir);
             await makeScratchRepo(dir);
             await journeyGit(dir, "remote", "add", "origin", `https://github.com/acme/tour${i}.git`);
             await apiJson(svc!.origin, svc!.token, "POST", "/api/repos", { path: dir });
@@ -1337,7 +1349,9 @@ test.describe("visual tour passes", () => {
         const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
         const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
         expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
-        const vActionBox = await vRows.locator("button").first().boundingBox();
+        // #330: every row ends in a Notes button after its Switch/Update
+        // action, so the row's right edge is the Notes button.
+        const vActionBox = await vRows.first().locator("button").last().boundingBox();
         expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
         // Compact rows (#233): each row is at most the button height + 16px.
         const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
@@ -1399,6 +1413,7 @@ test.describe("visual tour passes", () => {
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
     }
+    for (const d of extDirs) rmSync(d, { recursive: true, force: true });
 
     // Start page (#225): the "Open a PR" row and the Reviews list
     // share one width. (The PR list with its empty sub-groups needs
@@ -2484,6 +2499,8 @@ test("visual tour document review (#222)", async ({ page }) => {
     const exp = page.locator("#C-document [data-thread]").first();
     await expect(exp).toBeVisible({ timeout: 15_000 });
     await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover.
+    await exp.locator("[data-reply]").first().hover();
     await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-explain");
     await shot(page, "document-explain", "1440-light", "folds obsolete headers");
@@ -2499,6 +2516,8 @@ test("visual tour document review (#222)", async ({ page }) => {
     const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover.
+    await askCard.locator("[data-reply]").first().hover();
     await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-ask");
     await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
@@ -2649,7 +2668,10 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.scrollIntoViewIfNeeded().catch(() => {});
     await checkLayout(page, "guide-writing");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
-    // Once the answer arrives, the toolbar and the reply box appear.
+    // Once the answer arrives, the toolbar and the reply box appear
+    // (#336: the toolbar reveals on hover — hover the reply first).
+    await expect(card.locator("[data-reply]").first()).toBeVisible({ timeout: 120_000 });
+    await card.locator("[data-reply]").first().hover();
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "guide-writing-done");
