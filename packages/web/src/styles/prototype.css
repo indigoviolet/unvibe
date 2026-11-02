@@ -978,6 +978,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
   opacity: 0;
   visibility: hidden;
   transition: opacity .15s, visibility .15s;
+  /* v0.0.14 gate: answer blocks render inside `.blk`, which is
+     position:relative — a positioned box paints and hit-tests above a
+     non-positioned float, so the revealed toolbar's own box kept sending
+     its clicks to the paragraph underneath. Relative + z-index keeps the
+     geometry (the float still reserves its space) while the toolbar wins
+     hit-testing inside its own box. */
+  position: relative;
+  z-index: 1;
 }
 /* Issue #336 follow-up: the reply toolbar fits its first line — base
    icon buttons and the depth pill are 26px tall with borders, no bottom
