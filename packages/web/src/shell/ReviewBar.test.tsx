@@ -427,8 +427,11 @@ describe("ReviewBar", () => {
     it("confirms, then navigates to the new loading review", async () => {
       await renderBarWithLocation("r-old");
       fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
-      await screen.findByText(/Anything already on GitHub stays there\./);
-      fireEvent.click(screen.getByRole("button", { name: "Re-do" }));
+      // #346: the shared inline confirm; the what-is-lost copy lives in
+      // the pill's accessible name.
+      await screen.findByText("Confirm re-do guide");
+      expect(screen.getByRole("group", { name: /Anything already on GitHub stays there/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do guide" }));
       await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
       expect(screen.getByTestId("loc").textContent).toMatch(/^\/review\/mock-loading-/);
     });
@@ -437,11 +440,9 @@ describe("ReviewBar", () => {
       await renderBarWithLocation("r-old");
       const redo = vi.spyOn(api, "redoReview");
       fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
-      await screen.findByText(/open this change again as a new review\?/);
+      await screen.findByText("Confirm re-do guide");
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      await waitFor(() =>
-        expect(screen.queryByText(/open this change again as a new review\?/)).toBeNull(),
-      );
+      await waitFor(() => expect(screen.queryByText("Confirm re-do guide")).toBeNull());
       expect(redo).not.toHaveBeenCalled();
       expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
     });
@@ -450,11 +451,9 @@ describe("ReviewBar", () => {
       await renderBarWithLocation("r-old");
       const redo = vi.spyOn(api, "redoReview");
       fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
-      await screen.findByText(/open this change again as a new review\?/);
+      await screen.findByText("Confirm re-do guide");
       fireEvent.keyDown(document, { key: "Escape" });
-      await waitFor(() =>
-        expect(screen.queryByText(/open this change again as a new review\?/)).toBeNull(),
-      );
+      await waitFor(() => expect(screen.queryByText("Confirm re-do guide")).toBeNull());
       expect(redo).not.toHaveBeenCalled();
       expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
     });
@@ -463,8 +462,8 @@ describe("ReviewBar", () => {
       await renderBarWithLocation("r-old");
       vi.spyOn(api, "redoReview").mockRejectedValue(new Error("POST /api/reviews/r-old/redo: 409 busy"));
       fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
-      await screen.findByText(/open this change again as a new review\?/);
-      fireEvent.click(screen.getByRole("button", { name: "Re-do" }));
+      await screen.findByText("Confirm re-do guide");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do guide" }));
       await screen.findByText(/Couldn't re-do the guide/);
       expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
     });
