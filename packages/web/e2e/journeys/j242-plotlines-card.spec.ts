@@ -25,9 +25,18 @@ test.describe("J242 plotlines card", () => {
     reviewId = await createDemoReview(svc);
     // #343 read-only test needs an older version and the demo has only
     // one: stamp the stored snapshot as having a newer current version,
-    // then restart before any browser activity (no D2 render in flight
-    // to orphan — the render cleans its temp dir in `finally`, so a
-    // mid-render stop fails the per-run temp guard).
+    // then restart. Let the replay pipeline settle first: stopping with
+    // a D2 render in flight orphans its `unvibe-d2-*` temp dir (the
+    // render cleans up in `finally`), which fails the per-run temp
+    // guard (#24) — same pattern as visual-tour-255.
+    const quietDeadline = Date.now() + 90_000;
+    for (;;) {
+      const jobsRes = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
+      const jobs = (jobsRes.json as { jobs: { state: string }[] }).jobs ?? [];
+      if (jobs.length > 0 && jobs.every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled")) break;
+      if (Date.now() > quietDeadline) throw new Error("replay jobs never settled before the restart");
+      await new Promise((r) => setTimeout(r, 500));
+    }
     await svc.stop();
     {
       const { DatabaseSync } = await import("node:sqlite");
