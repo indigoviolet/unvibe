@@ -1,19 +1,20 @@
-`_OBSOLETE_FOLD_RE = (?:(?<![ \t])[ \t]+)?\r\n[ \t]+` [[diff:conn:82]]
+## The `_OBSOLETE_FOLD_RE` lookbehind
 
-- `(?:…)?`: optional whitespace before the line break, the `OWS` in `OWS CRLF RWS`.
-- `(?<![ \t])`: that optional whitespace may only start where the previous character isn't a space or tab, i.e. at the start of a run. [[diff:conn:80-81]]
-- `\r\n`: the line break itself.
-- `[ \t]+`: at least one space or tab starting the continuation line, the `RWS`.
+The pattern is `(?:(?<![ \t])[ \t]+)?\r\n[ \t]+`. It reads as an optional run of leading whitespace (OWS), then the CRLF, then required trailing whitespace (RWS). Each match is replaced with one space [[diff:src-urllib3-connection.py:80-88]]. The `(?<![ \t])` lookbehind means the optional OWS group can only begin at the first character of a space/tab run. A comment in the diff says this avoids quadratic backtracking [[diff:src-urllib3-connection.py:80-82]].
 
-Without the lookbehind, a long run of spaces that isn't followed by CRLF makes the engine try every start position and rescan the run each time, which is quadratic. With it, positions inside a run fail at once, so the scan is linear. [[diff:conn:80-81]]
+**Why the lookbehind is needed.** `re.sub` tries a match at every position. Take a value with n spaces and no CRLF after them, such as `"a" + " " * n + "b"`, which could only reach the regex if some other part of the value held a `\r\n`. Without the lookbehind, `[ \t]+` would start at each of the n positions. Each attempt would greedily consume to the end of the run, fail to find `\r\n`, and give back one character at a time. That is O(n²) in total. With the lookbehind, only the first position of the run runs the greedy match, which costs O(n) including its backtracking. Every later position inside the run fails the lookbehind straight away, and the engine moves on. The cost is linear in the run length. The fast path, which skips the regex when the value has no `\r\n`, already protects ordinary values. The lookbehind covers hostile values that do contain a fold somewhere [[diff:src-urllib3-connection.py:85-88]]. The linear-time claim follows from this reasoning. The tests do not time it, so no test would catch a regression.
+
+**Why this gives one space per fold.** The match consumes the OWS before the CRLF, the CRLF, and all the RWS after it. The single replacement space stands in for all of that. This is what RFC 9112 asks for, since each `obs-fold` becomes one space. The lookbehind does not lose any whitespace. Matching goes left to right, so the leading run is always matched from its first character. `"before \t\r\n\t  after"` becomes `"before after"` [[diff:test-test_connection.py:218]].
+
+Adjacent folds show the consequence. In `"one\r\n \r\n\tthree"`, the first match takes `\r\n ` including its RWS. The next match starts at the following `\r`, with no OWS left to absorb. It takes `\r\n\t`. The result is `"one  three"`, with two spaces, one per fold [[diff:test-test_connection.py:220]]. A regex that treated the whole region as a single whitespace run would give one space. That would be the wrong reading of "replace each obs-fold". The repeated-fold socket case asserts the same behaviour on the wire: `one \t\r\n\t  two\t \r\n \tthree` becomes `one two three` [[diff:test-with_dummyserver-test_socketlevel.py:112-114]] [[diff:test-with_dummyserver-test_socketlevel.py:132]].
+
+**What the pattern does not touch.** A bare `\r\n` not followed by a space or tab is not a fold, because the RWS part requires at least one character. The pattern leaves it alone, and `_normalize_header_value` returns it unchanged. Ordinary whitespace inside a value, such as `"one\t two"`, is also preserved, since the pattern only fires around a CRLF [[diff:test-with_dummyserver-test_socketlevel.py:133]].
 
 ### Follow-ups
-
-- Why isn't this tested? | ask: test
+- Can a value like `"a\r\nb"` (a CRLF not followed by a space or tab) still reach `HTTPHeaderDict`? | ask: Can a header value containing a CRLF that is not followed by a space or tab survive `_normalize_header_value`, and could that still produce raw CRLF in `HTTPHeaderDict`?
+- Is there a test that would fail if the lookbehind were removed? | ask: Which test, if any, would fail if the `(?<![ \t])` lookbehind were deleted from `_OBSOLETE_FOLD_RE`, and how could a timing test be written?
+- How does `_normalize_header_values` treat a value that was already normalized? | ask: In `_normalize_header_values`, what happens when no value changes, and is the delete-and-re-add path skipped entirely?
 
 ```json
-{
-  "title": "The pattern: why the lookbehind matters",
-  "cardId": "g-regex"
-}
+{"title": "The _OBSOLETE_FOLD_RE lookbehind"}
 ```

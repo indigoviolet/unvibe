@@ -1,11 +1,5 @@
-Adds `_OBSOLETE_FOLD_RE` and two helpers. `_normalize_header_value` turns each fold into one space, with a fast path for values without CRLF. `_normalize_header_values` applies it to every header and, if anything changed, rewrites the original `HTTPMessage` in place, keeping order and duplicates. [[diff:conn:80-88]]
+Adds helpers that collapse obsolete HTTP header line folds (CRLF plus whitespace) into one space and sync the result back to the message.
 
 ```json
-{
-  "hunk": {
-    "summary": "Adds `_OBSOLETE_FOLD_RE` and two helpers. `_normalize_header_value` turns each fold into one space, with a fast path for values without CRLF. `_normalize_header_values` applies it to every header and, if anything changed, rewrites the original `HTTPMessage` in place, keeping order and duplicates.",
-    "hiddenReason": null,
-    "score": "substantive"
-  }
-}
+{"hunk": {"summary": "Adds helpers that collapse obsolete HTTP header line folds (CRLF + whitespace) into one space and sync back to the message.", "hiddenReason": null, "score": "substantive"}}
 ```

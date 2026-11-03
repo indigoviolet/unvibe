@@ -1,0 +1,20 @@
+## Mutating HTTPMessage in place
+
+`_normalize_header_values` does two jobs. It returns the normalized `(name, value)` list, which `getresponse` hands to `HTTPHeaderDict`. If any value changed, it also rewrites the original `HTTPMessage` so the message holds the same values. [[diff:src-urllib3-connection.py:91-110]] [[diff:src-urllib3-connection.py:650-651]] The second job is the in-place mutation. The description gives the reason: keeping `HTTPHeaderDict` and the message synchronized stops cookie consumers such as Requests from re-emitting raw CRLF. [[desc:d-p2]] Before the change, the `HTTPHeaderDict` was built from `httplib_response.msg.items()` and the message was left untouched. [[diff:src-urllib3-connection.py:650-651]]
+
+The alternative is to normalize only the `HTTPHeaderDict` and leave the message alone. That would be smaller and would not touch an object urllib3 does not own. But `HTTPResponse` keeps the original response as `_original_response`, and the socket test asserts that `_original_response.headers is _original_response.msg`. [[diff:test-with_dummyserver-test_socketlevel.py:139-146]] Consumers that read cookies through that message would still see the folded value. Fixing only the `HTTPHeaderDict` would leave the original message's `Set-Cookie` with the raw CRLF, which is the failure the PR targets. The description says Requests is the consumer in question. I did not check Requests' source, so that rests on the description. [[desc:d-p2]]
+
+The rewrite is delete-and-re-add. It first runs `del message[name]` for every name in `header_items`. `header_items` is the list returned by `message.items()`, so mutating the message does not disturb the loop. A name that appears twice is simply deleted twice. Then it runs `message[name] = value` in the original order. [[diff:src-urllib3-connection.py:102-108]] This works because `HTTPMessage.__setitem__` appends rather than replaces. So duplicates and order survive, with no access to private internals. This is my reading of the stdlib behaviour, and the unit test confirms it: `Set-Cookie` entries stay in their original positions and `get_all` returns both. [[diff:test-test_connection.py:226-246]] The author's reason for this approach is inferred, since the description does not state it. A direct edit of the message's private header list would be cheaper, but it would depend on stdlib internals.
+
+The costs are these. First, once any header changes, every header is deleted and re-added, not only the changed ones, because rewriting just the changed ones would move them to the end and break ordering. Second, urllib3 now mutates a stdlib object after parsing, which downstream code could notice. The test limits the blast radius: the payload, `policy` and `defects` keep their identity, and the message object itself is the same one. [[diff:test-test_connection.py:247-249]] The rewrite also only runs when some value contained `\r\n`, so ordinary responses are untouched. [[diff:src-urllib3-connection.py:86-87]] [[diff:src-urllib3-connection.py:102]]
+
+One thing the tests do not pin down is header-name case. The names come from `message.items()` and are re-added as given, so the case is probably preserved. But every test header already has a fixed spelling, and none checks a mixed-case name against the stored one.
+
+### Follow-ups
+- Is header-name case preserved after delete and re-add? | ask: Does `_normalize_header_values` preserve the exact header-name case of a folded header when it deletes and re-adds it on the `HTTPMessage`? What test would prove it?
+- Could only the changed headers be rewritten? | ask: Could `_normalize_header_values` rewrite only the headers whose values changed instead of deleting and re-adding all of them? What would break about ordering?
+- What does Requests actually read? | ask: Which attribute does Requests read cookies from on a urllib3 response, and does it go through `_original_response.msg`?
+
+```json
+{"title": "Mutating HTTPMessage in place"}
+```

@@ -1,11 +1,7 @@
-`getresponse()` now builds `HTTPHeaderDict` from the normalized header list instead of the raw `HTTPMessage` items. This is the only call site. [[diff:conn:650-651]]
+```text
+Normalizes response header values via a new helper before building HTTPHeaderDict, instead of using raw msg.items().
+```
 
 ```json
-{
-  "hunk": {
-    "summary": "`getresponse()` now builds `HTTPHeaderDict` from the normalized header list instead of the raw `HTTPMessage` items. This is the only call site.",
-    "hiddenReason": null,
-    "score": "substantive"
-  }
-}
+{"hunk": {"summary": "Normalizes response header values via a new helper before building HTTPHeaderDict, instead of using raw msg.items().", "hiddenReason": null, "score": "substantive"}}
 ```

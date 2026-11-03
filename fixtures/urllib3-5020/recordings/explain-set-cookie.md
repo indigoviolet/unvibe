@@ -1,23 +1,23 @@
-`Set-Cookie` is the one header that can't be combined into a comma-separated list, because cookie attributes such as `Expires=Wed, 21 Oct 2026 …` contain commas themselves. urllib3's `HTTPHeaderDict` still keeps each `Set-Cookie` line separately (`getlist`), and the PR has to preserve that, along with the order of duplicate headers, when it rewrites the message. [[diff:tsock:124-127]]
+A folded `Set-Cookie` is a single `Set-Cookie` header that the server wrote across two or more lines. The continuation line starts with a space or tab, so the receiver reads it as part of the previous header and not as a new one. This is the `obs-fold` case. The socket test sends one:
 
-::: simple
-Each cookie has to stay as its own header line, because cookies contain commas. The fix keeps every cookie separate and in order.
-:::
-
-::: deep
-Set-Cookie breaks the general rule that repeated fields are equivalent to one comma-joined field (RFC 9110 section 5.3 calls this out explicitly). Any header normalization therefore has to work on the list of (name, value) pairs, never on a joined map, which is why the helper takes `message.items()` and writes them back in order.
-:::
-
-::: example
 ```
-r.headers["set-cookie"]         # 'foo=1, bar=1'   (joined: lossy)
-r.headers.getlist("set-cookie") # ['foo=1', 'bar=1'] (kept apart)
+Set-Cookie: ___utmvbtouVBFmB=gZg\r\n
+    XbNOjalT: Lte; path=/; Max-Age=900\r\n
 ```
-:::
+
+[[diff:test-with_dummyserver-test_socketlevel.py:101-102]]
+
+`http.client` parses this as one cookie and leaves the `\r\n` and the four spaces inside the value. The value urllib3 receives is `___utmvbtouVBFmB=gZg\r\n    XbNOjalT: Lte; path=/; Max-Age=900`. The continuation text `XbNOjalT: Lte` looks like a header of its own, but it is only the second half of the cookie value. After the fix, the test expects `___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900`. [[diff:test-with_dummyserver-test_socketlevel.py:124-127]]
+
+This case matters because cookies are one of the places where a raw line break in a value does harm. A cookie jar reads the `Set-Cookie` value from the original `HTTPMessage`. If it keeps the `\r\n` and writes it into the next request, it produces a malformed header line. That is why `_normalize_header_values` rewrites the `HTTPMessage` as well as building `HTTPHeaderDict`. [[diff:src-urllib3-connection.py:102-108]] [[desc:d-p2]]
+
+The test sends this folded cookie next to an ordinary `Set-Cookie: ordinary=1; Path=/`. It checks that `getlist("set-cookie")` returns both, in order. So unfolding one cookie must not merge it with, or reorder, the cookies around it. [[diff:test-with_dummyserver-test_socketlevel.py:103]] [[diff:test-with_dummyserver-test_socketlevel.py:124-127]]
+
+### Follow-ups
+
+- Does a folded `Set-Cookie` still parse as one cookie after unfolding? | ask: After `_normalize_header_value` unfolds the `Set-Cookie` in the socket test, is the cookie value `___utmvbtouVBFmB=gZg XbNOjalT: Lte` still a single cookie, and what does a cookie jar do with the space in it?
+- Why does the cookie case need the `HTTPMessage` rewritten too? | ask: Which consumer reads `Set-Cookie` from `_original_response.msg` rather than `HTTPHeaderDict`, and what would it do with the raw CRLF?
 
 ```json
-{
-  "title": "Why Set-Cookie lines stay separate",
-  "anchor": {"quote": "Set-Cookie", "host": "card:problem#b1"}
-}
+{"anchor": {"quote": "a folded `Set-Cookie`", "block": "card:problem"}}
 ```

@@ -1,26 +1,19 @@
-HTTP/1.1 originally let a server continue a header value on the next line, as long as that line started with a space or tab. That's line folding. RFC 9112 now calls it `obs-fold` (obsolete folding): servers must not send it, and a client that receives it must replace each fold with one or more spaces before using the value. Python's `http.client` doesn't do that; it keeps the CRLF and the leading whitespace inside the value. [[desc:d-p1]] [[diff:conn:80-82]]
+A fold is a CRLF (`\r\n`) that is directly followed by at least one space or tab. The CRLF alone doesn't make it a fold. The whitespace after it is what tells the parser that the next line continues the previous header instead of starting a new one. RFC 9112 calls this `obs-fold`, which is optional whitespace, then CRLF, then required whitespace (OWS CRLF RWS).
 
-::: simple
-Some servers split one long header across two lines, starting the second line with spaces. The modern rule is: treat that split as a single space. Python keeps the line break instead, so urllib3 has to clean it up.
-:::
+That is exactly what `_OBSOLETE_FOLD_RE` matches. The required part is `\r\n[ \t]+`, and the leading `(?:(?<![ \t])[ \t]+)?` is the optional whitespace before the CRLF. Each match is replaced with a single space. [[diff:src-urllib3-connection.py:80-82]] [[diff:src-urllib3-connection.py:88]]
 
-::: deep
-A fold is a property of the encoding, not of the value: the same value can be sent folded or not. A parser that keeps the fold leaks its input format into the semantic value, so every consumer must either re-implement unfolding or carry a raw line break further. RFC 9112 section 5.2 resolves it at the recipient, before interpretation or forwarding.
-:::
+The "followed by whitespace" part has two consequences:
 
-::: example
-```
-Set-Cookie: a=1; path=/ <CR><LF>
-    Max-Age=900<CR><LF>
+- **A CRLF with no whitespace after it is not a fold.** The pattern requires at least one space or tab, so `_normalize_header_value` leaves such a value alone. [[diff:src-urllib3-connection.py:82]]
+- **The whitespace is consumed along with the CRLF.** The continuation line's leading whitespace, such as the four spaces in the socket test's `Set-Cookie`, disappears into the one replacement space. The result is `___utmvbtouVBFmB=gZg XbNOjalT: ...`. [[diff:test-with_dummyserver-test_socketlevel.py:101-102]] [[diff:test-with_dummyserver-test_socketlevel.py:124-127]]
 
-# http.client keeps:   'a=1; path=/ \r\n    Max-Age=900'
-# urllib3 now returns: 'a=1; path=/ Max-Age=900'
-```
-:::
+The detector only recognises `\r\n`. The fast path returns early unless `"\r\n"` is in the value. [[diff:src-urllib3-connection.py:86-87]] The critic finding about bare-LF folds is about this gap, and I haven't run the parser to confirm it.
+
+### Follow-ups
+
+- What happens to a value with `\r\n` that isn't followed by a space or tab? | ask: What does `_normalize_header_value` do with a value containing `\r\n` that is not followed by a space or tab, and can that still reach `HTTPHeaderDict`?
+- Would a bare `\n` continuation line be unfolded? | ask: Does `_OBSOLETE_FOLD_RE` handle a continuation line that starts after a bare `\n` instead of `\r\n`, and what would http.client leave in the value?
 
 ```json
-{
-  "title": "Obsolete line folding",
-  "anchor": {"quote": "continue a header value on the next line", "host": "card:problem#b1"}
-}
+{"anchor": {"quote": "a line break followed by whitespace", "blockId": "card:problem"}}
 ```

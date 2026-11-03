@@ -1,11 +1,5 @@
-Imports `HTTPMessage` for the new unit test. [[diff:tconn:5]]
+Imports `HTTPMessage` alongside `ResponseNotReady` from `http.client` in the connection tests.
 
 ```json
-{
-  "hunk": {
-    "summary": "Imports `HTTPMessage` for the new unit test.",
-    "hiddenReason": "imports",
-    "score": "mechanical"
-  }
-}
+{"hunk": {"summary": "Imports HTTPMessage alongside ResponseNotReady from http.client in the connection tests.", "hiddenReason": "import-only change", "score": "mechanical"}}
 ```

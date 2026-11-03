@@ -1,11 +1,5 @@
-Imports the two new helpers for testing. [[diff:tconn:14-21]]
+Imports two new header-normalization helpers, `_normalize_header_value` and `_normalize_header_values`, into the connection tests.
 
 ```json
-{
-  "hunk": {
-    "summary": "Imports the two new helpers for testing.",
-    "hiddenReason": "imports",
-    "score": "mechanical"
-  }
-}
+{"hunk": {"summary": "Imports two new header-normalization helpers, `_normalize_header_value` and `_normalize_header_values`, into the connection tests.", "hiddenReason": "import-only change", "score": "mechanical"}}
 ```
