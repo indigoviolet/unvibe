@@ -406,6 +406,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .col.overlay { position: fixed; top: 50px; bottom: 0; right: 0; width: min(680px, 100vw); z-index: 25; box-shadow: var(--shadow-overlay); }
 @media (max-width: 600px) { .top .pill { display: none; } }
 .hint { font-size: var(--text-hint); color: var(--muted); }
+/* Screen-reader-only text that stays in the accessibility tree (used for
+   confirm copy that has no room in a toolbar row). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* Thread agent failure (M4 ask/reply): warning-tinted box with a Retry button. */
 .perr { margin: 6px 0; padding: 10px 12px; border-radius: var(--radius-8); background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .postchk { font-size: 11.5px; border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; white-space: nowrap; height: 22px; }

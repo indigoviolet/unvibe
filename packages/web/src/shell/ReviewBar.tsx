@@ -19,7 +19,10 @@
  *   single-version reviews, the current version annotated in the
  *   dropdown, an older shown version flagged with a warning border),
  *   and Debug as an icon button (hidden until the review finishes
- *   opening, issue #92), then Collapse/Expand threads as an icon button
+ *   opening, issue #92), Re-do guide as an icon button (#345, moved
+ *   from the Debug page; hidden for the demo and for failed/empty
+ *   opens, disabled while the review is still opening), then
+ *   Collapse/Expand threads as an icon button
  *   (#326, moved from the guide header; hidden when there are no
  *   threads). #235: no PR title here (it lives as the guide
  *   heading), no open-externally button (the GitHub link opens the PR),
@@ -52,6 +55,7 @@ import type { PrStackInfo } from "@unvibe/shared";
 import { useNavigate } from "react-router";
 import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
+import { RedoGuideButton } from "./RedoGuideButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 import { STATIC_DEMO, resetStaticDemo } from "../demo.js";
@@ -223,6 +227,10 @@ export function ReviewBar({
             <Icon name="bug" />
           </Link>
         ) : null}
+        {/* #345: re-do lives next to the other review actions (after
+            Debug, before Collapse threads); hidden for the demo and for
+            failed/empty opens, disabled while the review is opening. */}
+        <RedoGuideButton reviewId={reviewId} />
         {(snapshot?.annotations?.length ?? 0) > 0 ? (
           <button
             className="ib bd"

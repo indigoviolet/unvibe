@@ -158,7 +158,7 @@ test.describe("J14 diagrams, debug, redo", () => {
     }
   });
 
-  test("re-do from the debug page lands on a fresh review", async ({ page }) => {
+  test("re-do from the top bar lands on a fresh review", async ({ page }) => {
     test.setTimeout(240_000);
     const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j14-repo-"));
     const redoData = mkdtempSync(path.join(os.tmpdir(), "unvibe-j14-redo-"));
@@ -167,15 +167,21 @@ test.describe("J14 diagrams, debug, redo", () => {
       await makeScratchRepo(repoDir);
       redoSvc = await startService(redoData, { agent: "none" });
       const id = await createScratchReview(redoSvc, repoDir);
-      await page.goto(`${redoSvc.origin}/review/${id}/debug?token=${redoSvc.token}`);
-      await expect(page.getByRole("tab", { name: "Jobs" })).toBeVisible({ timeout: 30_000 });
-      // #237: the caption lives on the button's tooltip, with no inline caption.
+      await page.goto(`${redoSvc.origin}/review/${id}?token=${redoSvc.token}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      // #345: the toolbar icon button carries its label as the tooltip,
+      // with no visible text.
       const redo = page.getByRole("button", { name: "Re-do guide" });
-      await expect(redo).toHaveAttribute("title", "Start the guide over from the same change.");
-      await expect(page.getByText("Start the guide over from the same change.")).toHaveCount(0);
+      await expect(redo).toBeVisible({ timeout: 30_000 });
+      await expect(redo).toHaveAttribute("title", "Re-do guide");
+      await expect(redo).toHaveText("");
       await redo.click();
-      await expect(page.getByText(/Anything already on GitHub stays there/)).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Re-do guide" }).last().click();
+      await expect(page.getByRole("button", { name: "Re-do" })).toHaveAttribute(
+        "title",
+        /Anything already on GitHub stays there/,
+        { timeout: 15_000 },
+      );
+      await page.getByRole("button", { name: "Re-do" }).click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);
       await expect(page.locator("#right")).toBeVisible({ timeout: 60_000 });
     } finally {
