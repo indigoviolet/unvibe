@@ -108,11 +108,9 @@ export function isRevealedElement(el: HTMLElement): boolean {
 /**
  * Element whose plain text the selection's offsets are recorded against
  * (issue #166): the same element placement later searches, so the text
- * models match. Null where no selection host applies (second-opinion
- * reasoning, gutter-only hits).
+ * models match. Null where no selection host applies (gutter-only hits).
  */
 export function selectionScopeElement(el: HTMLElement): Element | null {
-  if (el.closest("[data-so]")) return null;
   // Issue #214: offsets record within the comment text itself.
   const commentScope = el.closest("[data-comment]");
   if (commentScope) return commentScope as Element;
@@ -193,10 +191,6 @@ export function codeRangeForSelection(sel: Selection): { path: string; commit: s
 }
 
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
-  // Second-opinion reasoning is attached content, not a host (#116): its
-  // blocks live on the result, not on any card or answer, so the
-  // service has no block to anchor to. No toolbar there.
-  if (el.closest("[data-so]")) return null;
   // #81: a selection in a file tab anchors to the cited file at its
   // commit. The line comes from the row the selection starts in; the
   // caller widens it to the touched range.

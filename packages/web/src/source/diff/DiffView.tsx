@@ -1245,7 +1245,7 @@ function FilterMenuButton({
   }, [open ]);
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, CommentsMenu).
+  // (CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {

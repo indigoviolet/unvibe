@@ -1,10 +1,10 @@
 /**
- * Models section (PRD §4.14): one picker per role (main, small, second
- * opinion). Provider first, then the models that provider's adapter offers
+ * Models section (PRD §4.14): one picker per role (main, small).
+ * Provider first, then the models that provider's adapter offers
  * (`GET /api/models`). An adapter that is not installed or not logged in
- * answers 404 — shown as a clear message, never an empty list. Warns when
- * the second opinion uses the same model as main (PRD §4.10 wants a
- * different one).
+ * answers 404 — shown as a clear message, never an empty list.
+ * (Issue #349: persona models are picked per persona in Settings →
+ * Personas, not here.)
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -17,12 +17,11 @@ export function modelLabel(m: ModelInfo): string {
   return m.name ? `${m.name} (${m.id})` : m.id;
 }
 
-type Role = "main" | "small" | "secondOpinion";
+type Role = "main" | "small";
 
 const ROLES: { role: Role; label: string; blurb: string }[] = [
   { role: "main", label: "Main", blurb: "Writes the guide, explanations and answers." },
   { role: "small", label: "Small", blurb: "Hunk summaries, titles and other small jobs." },
-  { role: "secondOpinion", label: "Second opinion", blurb: "A different model from main, for an independent take." },
 ];
 
 const FALLBACK_PROVIDERS = ["claude", "codex"];
@@ -88,13 +87,6 @@ export function ModelsSection({
           providers={providers}
         />
       ))}
-      {settings.secondOpinion.provider === settings.main.provider &&
-      settings.secondOpinion.model === settings.main.model ? (
-        <p className="warnline" role="status">
-          Second opinion uses the same model as main ({settings.main.provider}/{settings.main.model})
-          — pick a different one so the second opinion is independent.
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -181,7 +173,6 @@ function ModelPicker({
   const modelIds = models?.map((m) => m.id) ?? null;
   const offeredMissing =
     !browsing && modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
-  const unset = role === "secondOpinion" && pick.model === "";
 
   // The saved effort may no longer be offered (values renamed): flag it
   // plainly; picking a value below fixes it.
@@ -240,12 +231,6 @@ function ModelPicker({
         <b style={{ minWidth: 110 }}>{label}</b>
         <span className="hint">{blurb}</span>
       </div>
-      {unset ? (
-        <p className="hint" role="status" data-testid={`model-${role}-unset`} style={{ margin: "6px 0" }}>
-          Not set — second opinions need a different model from main. Pick one below, or leave this
-          unset; everything else works without one.
-        </p>
-      ) : null}
       {offeredMissing ? (
         <p className="err" role="alert" data-testid={`model-${role}-missing`} style={{ margin: "6px 0" }}>
           Saved model “{pick.model}” is no longer offered by {pick.provider} — pick one of the

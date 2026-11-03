@@ -105,7 +105,6 @@ function targetForAction(action: ReviewAction): { targetId: string; kind: InFlig
     case "examples":
     case "diagram":
     case "generate":
-    case "second_opinion":
       return { targetId: action.cardId, kind: action.kind };
     case "followup":
       return { targetId: followupKey(action.cardId, action.blockId, action.index), kind: "followup" };

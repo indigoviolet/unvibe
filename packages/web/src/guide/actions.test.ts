@@ -41,29 +41,14 @@ describe("performAction in-flight funnel", () => {
     expect(pageCard("central").level).not.toBe(before);
   });
 
-  test("second opinion hands over to the job and clears when it settles", async () => {
-    // Fake timers for the mock's 400 ms settle timer (issue #119).
-    vi.useFakeTimers();
-    try {
-      const p = performAction(REVIEW_ID, { kind: "second_opinion", cardId: "central", mode: "blind" });
-      expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "second_opinion" });
-      const res = await p;
-      expect(res.jobId).toBeTruthy();
-      // Handed over: the entry follows the running snapshot job.
-      expect(useReview.getState().inflight["central"]?.jobId).toBe(res.jobId);
-      expect(
-        useReview.getState().snapshot?.jobs.find((j) => j.id === res.jobId)?.state,
-      ).toBe("running");
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(useReview.getState().inflight["central"]).toBeUndefined();
-      expect(
-        useReview.getState().snapshot?.jobs.find((j) => j.id === res.jobId)?.state,
-      ).toBe("done");
-      // The verdict landed on the card.
-      expect(pageCard("central").secondOpinions?.length).toBeGreaterThan(0);
-    } finally {
-      vi.useRealTimers();
-    }
+  test("examples shows immediately and clears on the instant answer", async () => {
+    const p = performAction(REVIEW_ID, { kind: "examples", cardId: "central" });
+    // Set synchronously, before the request returns.
+    expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "examples" });
+    const res = await p;
+    expect(res.accepted).toBe(true);
+    // The mock answers with no job: cleared, nothing stuck.
+    expect(useReview.getState().inflight["central"]).toBeUndefined();
   });
 
   test("follow-up retargets to the answer card and clears on fill", async () => {

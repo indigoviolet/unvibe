@@ -41,7 +41,6 @@ export type InFlightKind =
   | "ask"
   | "reply"
   | "retry"
-  | "second_opinion"
   | "concept"
   | "update";
 
