@@ -22,6 +22,7 @@ import { SourcePane } from "../source/SourcePane.js";
 import { WIDEN_EVENT } from "../source/diff/DiffView.js";
 import { SHOW_GUIDE_EVENT } from "./panes.js";
 import { TopBar } from "./TopBar.js";
+import { DemoBanner } from "./DemoBanner.js";
 
 const DOCK_WIDTH = 900;
 const PANE_WIDTH_KEY = "unvibe.paneWidth";
@@ -165,6 +166,7 @@ export function AppShell({ reviewId }: { reviewId: string }) {
         onToggleGuide={toggleGuide}
         onToggleSource={toggleSource}
       />
+      <DemoBanner reviewId={reviewId} />
       <div
         className="cols"
         style={{ gridTemplateColumns: docked ? `minmax(0, 1fr) 6px ${paneWidth}px` : "minmax(0, 1fr)" }}

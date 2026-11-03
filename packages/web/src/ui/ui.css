@@ -55,6 +55,12 @@
    background — including a sunk (inset-card) one, where the borderless
    neutral pill disappears. No semantic colour: for counts and names. */
 .ui-badge[data-tone="outline"]{background:var(--surface);border:var(--border-width) solid var(--line);color:var(--text-secondary)}
+/* Issue #341: slim demo banner above the guide (in-app replay demo and
+   static demo alike). Inked text on the sunk surface, app font — no
+   accent colour, no animation. */
+.demo-banner{display:flex;align-items:center;gap:var(--space-3);padding:6px var(--space-4);background:var(--sunk);border-bottom:var(--border-width) solid var(--line);font-size:var(--text-sm);color:var(--text-primary)}
+.demo-banner-text{flex:1 1 auto;min-width:0}
+.demo-banner .ui-btn{flex:none}
 /* #224: the one shared diff stat: plain coloured +N −M, no pill. */
 .ui-diffstat{display:inline-flex;gap:4px;align-items:baseline;font:11px var(--mono);white-space:nowrap;flex:none}
 .ui-diffstat .a{color:var(--add-ink)}

@@ -1028,6 +1028,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prose code:hover { background: var(--sunk); }
 /* #274 code x-height match instead of .86em. */
 .prose code { font-size: 1em; font-size-adjust: ex-height var(--xh); }
+/* Issue #341: long inline code (call sites in recorded answers) must wrap
+   in narrow panes instead of overflowing the card. `anywhere` (not
+   `break-word`) so flex/grid min-content sizing accounts for the break.
+   Thread replies render bare <p> (no .prose), so scope the rule there too. */
+.prose code,
+.exp-b code {
+  overflow-wrap: anywhere;
+}
 /* #274 same treatment for code in card lists and tables: it is the same
    speckling, and the .86em there leaves multiplied strays (12.04, 14.62). */
 .lst code, .md code { background: transparent; padding: 0; color: var(--accent); border-radius: var(--radius-3); }
