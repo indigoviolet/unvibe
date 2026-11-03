@@ -460,9 +460,13 @@ async function phasePilot(token, reviewId, questionsPath, fullPath) {
     return all.length > 0 ? all.reduce((a, b) => a + b, 0) / all.length : 0;
   };
   const full = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+  // Depth entries run simpler/deeper/deeper/deeper per card: the second
+  // deeper is an instant switchback to standard (free, no agent call), so
+  // roughly one in four depth entries is unpriced.
+  const depthEntries = (full.depth ?? []).length;
   const counts = {
     concept: (full.concept ?? []).length,
-    depth: (full.depth ?? []).length,
+    depth: depthEntries - Math.floor(depthEntries / 4),
     examples: (full.examples ?? []).length,
     diagram: (full.diagram ?? []).length,
     explain: (full.explain ?? []).length,

@@ -1,0 +1,21 @@
+{
+  "concept": ["HTTPHeaderDict"],
+  "depth": [
+    { "cardId": "g-regex", "direction": "simpler" },
+    { "cardId": "g-regex", "direction": "deeper" },
+    { "cardId": "g-regex", "direction": "deeper" },
+    { "cardId": "g-regex", "direction": "deeper" },
+    { "cardId": "evidence-barelf", "direction": "simpler" },
+    { "cardId": "evidence-barelf", "direction": "deeper" },
+    { "cardId": "evidence-barelf", "direction": "deeper" },
+    { "cardId": "evidence-barelf", "direction": "deeper" }
+  ],
+  "examples": ["g-regex"],
+  "diagram": ["central"],
+  "explain": [
+    { "key": "lookbehind", "quote": "attacker-controlled input", "anchor": { "where": "block", "blockId": "g-regex#b2" } }
+  ],
+  "ask": [
+    { "key": "quadratic", "quote": "the engine would try every start inside the run", "message": "What input would turn quadratic without the lookbehind, and is it attacker-controlled?", "anchor": { "where": "block", "blockId": "g-regex#b2" } }
+  ]
+}
