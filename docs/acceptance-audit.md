@@ -3424,6 +3424,29 @@ hunk coverage) is reported for a separate issue, not fixed here.
   mount returns "ready" (`text,usage,done`; input 90 net, 10 cached
   read, 5 output). The live re-run still needs the owner's go.
 
+## Addendum: #348 (pi runner: reader turns go silent after tool calls; branch `fix/348-pi-tool-stall`)
+
+- **#348:** a live reader-like turn (12 concurrent review-tool calls)
+  completed in ~10s for ~$0.0008 and did not reproduce the silence, so
+  the fix is defensive at every layer of the hang chain (any stuck MCP
+  call, unclosed SSE stream, or silent provider previously waited out
+  the 10-minute `waitForCount` before failing).
+- Extension (`pi/extension.ts`): every MCP bridge call shares one
+  deadline (`UNVIBE_PI_TOOL_TIMEOUT_MS`, default 60s — loopback calls
+  measure ~15-30ms), covering both the fetch and the SSE body read; a
+  bridge `execute` never rejects anymore but returns an `isError` tool
+  result, like the read-only `read`/`ls` replacements. Env-gated
+  per-call log (`UNVIBE_PI_TOOL_LOG`: tool, start, end, size, error).
+- Runner (`pi/pi-runner.ts`): the per-turn wait is now a silence
+  watchdog (`noEventTimeoutMs`, default 120s — worst observed
+  inter-event gap ~2.3s, any event resets it) that fails the turn with
+  `pi stopped sending events for Ns [after tool "name"] (last event:
+  type)` instead of the silent 10-minute wait.
+- Tests: `pi-extension.test.ts` (real generated source against a stub
+  MCP mount: normal, JSON-RPC error, hanging call, log line);
+  `pi-runner.test.ts` gains the silence shapes (`startHang` fake-pi
+  step) plus the unaffected normal path. Full gates not yet run.
+
 ## Addendum: #297 (branch `feat/297-pr-list-more`)
 
 - **#297 (start-page PR paging + author search; §4.2):** the start
