@@ -8,7 +8,7 @@
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
 
-const BLOCK = "#C-g-inplace #B-b-mock-d2-multiline";
+const BLOCK = "#C-g-alt #B-b-mock-d2-multiline";
 const DIALOG = '[role="dialog"][aria-label="Expanded diagram"]';
 
 async function gotoReview(page: Page): Promise<void> {

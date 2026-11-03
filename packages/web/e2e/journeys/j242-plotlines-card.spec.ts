@@ -72,9 +72,9 @@ test.describe("J242 plotlines card", () => {
 
     const box = page.locator(".plotlines");
     await expect(box).toBeVisible({ timeout: 15_000 });
-    // Two plotlines where one builds on the other, plus Other.
-    await expect(box.locator(".plname", { hasText: "Unfold folded values" })).toBeVisible();
-    await expect(box.locator(".plname", { hasText: "Prove the unfolding works" })).toBeVisible();
+    // One plotline covering every hunk (issue #341 re-record), so no
+    // Other row and no builds-on.
+    await expect(box.locator(".plname", { hasText: "Unfold obsolete folded response headers" })).toBeVisible();
     // #242: no numbering; every row carries its hunk count as a chip
     // in the same trailing slot.
     await expect(box.locator(".plorder")).toHaveCount(0);
@@ -85,10 +85,10 @@ test.describe("J242 plotlines card", () => {
     expect(shares.length).toBeGreaterThan(0);
     expect(shares.reduce((n, [num]) => n + (num ?? 0), 0)).toBe(shares[0]?.[1]);
     await expect(box.locator(".plshare-seg")).toHaveCount(shares.length);
-    // Builds on names the earlier plotline in a chip.
-    const chip = box.locator('[data-buildson="unfold"]');
-    await expect(chip).toContainText("Unfold folded values");
-    await expect(box.locator(".plbuilds")).toContainText("Builds on");
+    // No builds-on: the single plotline builds on nothing.
+    await expect(box.locator(".plbuilds")).toHaveCount(0);
+    const chip = box.locator('[data-plotpick="obs-fold-unfolding"]');
+    await expect(chip).toBeVisible();
 
     // Titles show in full: nothing is ellipsized, long titles wrap.
     const truncated = await box.locator(".plname").evaluateAll((els) =>
@@ -101,7 +101,7 @@ test.describe("J242 plotlines card", () => {
     // The builds-on chip goes to the earlier plotline: the diff
     // filters to it and its first hunk scrolls into view.
     await chip.click();
-    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold folded values", {
+    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold obsolete folded response headers", {
       timeout: 15_000,
     });
     const inView = await page.evaluate(() => {
@@ -126,9 +126,7 @@ test.describe("J242 plotlines card", () => {
 
     const box = page.locator(".plotlines");
     await expect(box).toBeVisible({ timeout: 15_000 });
-    const unfold = box.locator('[data-plotreviewed="unfold"]');
-    const unfoldTests = box.locator('[data-plotreviewed="unfold-tests"]');
-    const other = box.locator('[data-plotreviewed="other"]');
+    const unfold = box.locator('[data-plotreviewed="obs-fold-unfolding"]');
 
     // The previous test leaves the diff filtered to a plotline; clear
     // it so the file headers below render every hunk.
@@ -147,63 +145,42 @@ test.describe("J242 plotlines card", () => {
       (await snapshot()).hunkStates.filter((h) => (h.plotline ?? "other") === plot);
 
     // Initial state: the live demo starts fully unreviewed (the
-    // fixture's mid-use reviewed hunk is mock-mode only), so all three
-    // rows start unchecked.
+    // fixture's mid-use reviewed hunk is mock-mode only), so the single
+    // row starts unchecked.
     await expect(unfold).toHaveAttribute("aria-label", "Mark plotline reviewed");
     await expect(unfold).not.toBeChecked();
     expect(await unfold.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(false);
-    await expect(unfoldTests).toHaveAttribute("aria-label", "Mark plotline reviewed");
-    await expect(unfoldTests).not.toBeChecked();
-    await expect(other).toHaveAttribute("aria-label", "Mark plotline reviewed");
-    await expect(other).not.toBeChecked();
     await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "0 of 8 hunks reviewed");
 
-    // Checking "Unfold folded values" reviews and folds both its hunks.
+    // Checking the plotline reviews and folds all eight hunks.
     await unfold.click();
     await expect(unfold).toBeChecked({ timeout: 15_000 });
     await expect(unfold).toHaveAttribute("aria-label", "Mark plotline unreviewed");
     await expect
-      .poll(async () => (await statesOf("unfold")).filter((h) => h.reviewed && h.folded).length, {
+      .poll(async () => (await statesOf("obs-fold-unfolding")).filter((h) => h.reviewed && h.folded).length, {
         timeout: 30_000,
       })
-      .toBe(2);
+      .toBe(8);
     // The diff's counts move with it: the file header and the progress bar.
     await expect(page.locator('[id="F-src-urllib3-connection.py"] .revc')).toContainText("2/2", {
       timeout: 30_000,
     });
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "2 of 8 hunks reviewed");
-
-    // Checking "Prove the unfolding works" covers its hidden import
-    // hunks too — every one of the four ends up reviewed and folded.
-    await unfoldTests.click();
-    await expect(unfoldTests).toBeChecked({ timeout: 15_000 });
-    await expect
-      .poll(async () => (await statesOf("unfold-tests")).filter((h) => h.reviewed && h.folded).length, {
-        timeout: 30_000,
-      })
-      .toBe(4);
-    const snap = await snapshot();
-    const testHashes = new Set((await statesOf("unfold-tests")).map((h) => h.contentHash));
-    const hiddenCovered = snap.files
-      .flatMap((f) => f.hunks)
-      .filter((h) => testHashes.has(h.contentHash) && h.hiddenReason !== undefined).length;
-    expect(hiddenCovered).toBeGreaterThan(0);
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "6 of 8 hunks reviewed");
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "8 of 8 hunks reviewed");
 
     // Unmarking one hunk by hand drops the row back to partial.
-    const oneHash = (await statesOf("unfold-tests"))[0]!.contentHash;
+    const oneHash = (await statesOf("obs-fold-unfolding"))[0]!.contentHash;
     await apiJson(s, "PATCH", `/api/reviews/${reviewId}/hunks/${oneHash}`, { reviewed: false, folded: false });
-    await expect(unfoldTests).not.toBeChecked({ timeout: 15_000 });
+    await expect(unfold).not.toBeChecked({ timeout: 15_000 });
     // The partial flag is set in a post-paint effect, so poll for it.
     await expect
-      .poll(async () => unfoldTests.evaluate((el) => (el as HTMLInputElement).indeterminate), {
+      .poll(async () => unfold.evaluate((el) => (el as HTMLInputElement).indeterminate), {
         timeout: 15_000,
       })
       .toBe(true);
-    await expect(unfoldTests).toHaveAttribute("aria-label", "Mark plotline reviewed");
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "5 of 8 hunks reviewed");
+    await expect(unfold).toHaveAttribute("aria-label", "Mark plotline reviewed");
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "7 of 8 hunks reviewed");
 
-    // Mixed states for the frames: one checked, one partial, one unchecked.
+    // Partial state for the frames: the single row indeterminate.
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     await box.scrollIntoViewIfNeeded();
@@ -213,35 +190,23 @@ test.describe("J242 plotlines card", () => {
     await box.screenshot({ path: path.join(shots, "j343-plotlines-mixed-1440-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
 
+    // Clicking the partial row completes the marking instead, like the
+    // diff's per-file box.
+    await unfold.click();
+    await expect(unfold).toBeChecked({ timeout: 15_000 });
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "8 of 8 hunks reviewed");
+
     // Unchecking the fully-checked row reverts both reviewed and
-    // folded on every hunk. (Clicking the partial row would complete
-    // the marking instead, like the diff's per-file box.)
+    // folded on every hunk.
     await unfold.click();
     await expect(unfold).not.toBeChecked({ timeout: 15_000 });
     await expect
-      .poll(async () => (await statesOf("unfold")).filter((h) => !h.reviewed && !h.folded).length, {
+      .poll(async () => (await statesOf("obs-fold-unfolding")).filter((h) => !h.reviewed && !h.folded).length, {
         timeout: 30_000,
       })
-      .toBe(2);
+      .toBe(8);
     await expect(unfold).toHaveAttribute("aria-label", "Mark plotline reviewed");
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "3 of 8 hunks reviewed");
-
-    // "Other" marks the hunks no plotline claimed.
-    await other.click();
-    await expect(other).toBeChecked({ timeout: 15_000 });
-    await expect
-      .poll(async () => (await statesOf("other")).filter((h) => h.reviewed && h.folded).length, {
-        timeout: 30_000,
-      })
-      .toBe(2);
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "5 of 8 hunks reviewed");
-    await other.click();
-    await expect
-      .poll(async () => (await statesOf("other")).filter((h) => !h.reviewed && !h.folded).length, {
-        timeout: 30_000,
-      })
-      .toBe(2);
-    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "3 of 8 hunks reviewed");
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-label", "0 of 8 hunks reviewed");
 
     await checkLayout(page, "j242-plotlines-reviewed");
   });
@@ -258,7 +223,7 @@ test.describe("J242 plotlines card", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     const box = page.locator(".plotlines");
     await expect(box).toBeVisible({ timeout: 15_000 });
-    for (const id of ["unfold", "unfold-tests", "other"]) {
+    for (const id of ["obs-fold-unfolding"]) {
       const control = box.locator(`[data-plotreviewed="${id}"]`);
       await expect(control).toBeDisabled();
       await expect(control).toHaveAttribute("aria-label", "Viewing an older version · read-only");

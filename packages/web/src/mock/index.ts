@@ -765,7 +765,7 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
     .find((p) => p.id === "root")
-    ?.cards.find((c) => c.id === "g-inplace");
+    ?.cards.find((c) => c.id === "g-alt");
   if (!card || card.blocks.some((b) => b.id === "b-mock-d2-edge")) return;
   const real = demoRealDiagramBlock();
   card.blocks = [

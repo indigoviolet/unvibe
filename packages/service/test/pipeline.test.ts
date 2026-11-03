@@ -131,14 +131,14 @@ describe("pipeline demo e2e (replay)", () => {
       }
       // threads.ts assigns `ann_` ids (not the fixture seed ids); match
       // the bare-LF draft by its suggested text instead (Sonnet re-record
-      // wording, #341: "a raw newline in both representations").
+      // wording, #341: "a socket test with bare-LF folds").
       const replyText = (r: { blocks?: { type: string }[] }): string =>
         ((r.blocks ?? []) as { type: string; text?: { standard?: string } }[])
           .filter((b) => b.type === "paragraph")
           .map((b) => b.text?.standard ?? "")
           .join(" ");
       const tlf = snap.annotations.find((a) =>
-        a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("raw newline")),
+        a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("bare-LF folds")),
       );
       expect(tlf).toBeDefined();
       expect(tlf?.anchor.host).toMatchObject({ kind: "diff-line" });
@@ -167,7 +167,7 @@ describe("pipeline demo e2e (replay)", () => {
         void s;
       }
       expect(hiddenOf(snap, "test-test_connection.py", 0)).toBe("import-only change");
-      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("changelog entry (docs churn)");
+      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("docs/changelog entry only");
       expect(hiddenOf(snap, "src-urllib3-connection.py", 0)).toBeUndefined();
 
       // Zero unverified citations across all cards.

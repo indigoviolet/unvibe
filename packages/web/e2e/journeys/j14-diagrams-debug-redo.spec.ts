@@ -129,8 +129,8 @@ test.describe("J14 diagrams, debug, redo", () => {
       for (const [a, r] of Object.entries(meta.keyAliases)) json = json.split(`diff:${a}:`).join(`diff:${r}:`);
       const seeded = JSON.parse(json) as typeof snapshot;
       seeded.review.id = "j14-d2-seed";
-      const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
-      if (!card) throw new Error("fixture has no g-inplace card");
+      const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-alt");
+      if (!card) throw new Error("fixture has no g-alt card");
       const { canonicalizeD2Source, diagramHash, D2_MIN_VERSION } = await import("@unvibe/shared");
       const source = ['probe: "probe source" {link: "diff:src-urllib3-connection.py:80-82"}', 'probe2: "probe target"', 'probe -> probe2: "probe edge"'].join("\n");
       card.blocks.push({
@@ -200,7 +200,7 @@ test.describe("J14 diagrams, debug, redo", () => {
 const D2_FIXTURE_DIR = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
 const D2_SEED_REVIEW_ID = "d2-seed";
 // Issue #341: the re-recorded on-demand diagram (diagram-central).
-const D2_SEED_HASH = "f63b03c9095b236f";
+const D2_SEED_HASH = "8d6ea4e980ea839e";
 
 interface D2ApiResult {
   status: number;
@@ -261,7 +261,7 @@ const D2_LIFTED_SOURCE = [
 
 const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
 // Issue #341: the re-recorded fixture pre-renders two on-demand diagrams.
-const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "7ff08c2de47c6091"]);
+const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "22365f71688744f3"]);
 
 function seedD2Review(dataDir: string): void {
   const snapshot = JSON.parse(readFileSync(path.join(D2_FIXTURE_DIR, "snapshot.json"), "utf8")) as {
@@ -281,8 +281,8 @@ function seedD2Review(dataDir: string): void {
   // Issue #341: the re-recorded fixture embeds no diagram, so the seed
   // carries the recorded on-demand diagram (diagram-central) itself —
   // same source, same hash, same pre-rendered SVGs the endpoint serves.
-  const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
-  if (!card) throw new Error("fixture has no root g-inplace card");
+  const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-alt");
+  if (!card) throw new Error("fixture has no root g-alt card");
   const centralText = readFileSync(path.join(D2_FIXTURE_DIR, "recordings", "diagram-central.md"), "utf8");
   const centralDg = parseReply(centralText).blocks.find((b) => b.type === "diagram") as unknown as DiagramBlock | undefined;
   if (!centralDg) throw new Error("diagram-central recording has no diagram block");
@@ -548,25 +548,25 @@ for (const mode of [
       test.setTimeout(120_000);
       await openReview(page, D2_SEED_REVIEW_ID);
       // Issue #341: the seed carries the recorded diagram-central block.
-      const host = "#C-g-inplace #B-b-seed-central .dg-svg > svg";
+      const host = "#C-g-alt #B-b-seed-central .dg-svg > svg";
       await expect(page.locator(host)).toBeVisible({ timeout: 30_000 });
-      const lightHtml = await page.locator("#C-g-inplace #B-b-seed-central .dg-svg").innerHTML();
+      const lightHtml = await page.locator("#C-g-alt #B-b-seed-central .dg-svg").innerHTML();
       expect(lightHtml).toContain("#FFFFFF");
       await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
       await expect
-        .poll(async () => page.locator("#C-g-inplace #B-b-seed-central .dg-svg").innerHTML(), { timeout: 15_000 })
+        .poll(async () => page.locator("#C-g-alt #B-b-seed-central .dg-svg").innerHTML(), { timeout: 15_000 })
         .toContain("1E1E2E");
       await page.evaluate(() => document.documentElement.removeAttribute("data-theme"));
 
-      const anchor = page.locator("#C-g-inplace #B-b-seed-central .dg-svg a[data-refs]").first();
+      const anchor = page.locator("#C-g-alt #B-b-seed-central .dg-svg a[data-refs]").first();
       await d2HoverFresh(page, anchor);
       await expect(page.locator("#pop")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
+      await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:647");
       const before = page.url();
       await anchor.click();
       expect(page.url()).toBe(before);
       await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff");
-      await expect(page.locator('[id="L-src-urllib3-connection.py-650"].hl')).toBeVisible({
+      await expect(page.locator('[id="L-src-urllib3-connection.py-647"].hl')).toBeVisible({
         timeout: 10_000,
       });
     });

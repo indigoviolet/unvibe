@@ -7,7 +7,7 @@
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 
-const BLOCK = "#C-g-inplace #B-b-demo-diagram-central";
+const BLOCK = "#C-g-alt #B-b-demo-diagram-central";
 const DIALOG = '[role="dialog"][aria-label="Expanded diagram"]';
 
 async function gotoReview(page: Page): Promise<void> {
@@ -259,7 +259,7 @@ for (const viewport of [
     }) => {
       await page.setViewportSize(viewport);
       await gotoReview(page);
-      await page.locator(`#C-g-inplace ${target.block} .dg-expand`).click();
+      await page.locator(`#C-g-alt ${target.block} .dg-expand`).click();
       await expect(page.locator(DIALOG)).toBeVisible();
       await expect(page.locator(`${DIALOG} .dg-ov-doc .dg-svg > svg`)).toBeVisible({
         timeout: 15000,

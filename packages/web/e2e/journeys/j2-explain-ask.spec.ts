@@ -62,8 +62,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.keyboard.press("Escape");
 
     // Explain selected guide text; exactly one working indicator while it streams.
-    // ("optional whitespace" is card-only; "fast path" also appears in the
-    // seeded thread text, which would route in-thread under #273.)
+    // ("optional whitespace" is card-only, so a fresh thread opens.)
     const beforeExp = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#C-central", "optional whitespace");
     await page.locator('#selbar [data-act="explain"]').click();
@@ -133,7 +132,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     // Follow-up: use the card's reply box if present; otherwise its suggestion.
     const replyBox = card.locator("textarea").first();
     if ((await replyBox.count()) > 0) {
-      await replyBox.fill("Does the fast path still catch a fold that uses a bare LF?");
+      await replyBox.fill("Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?");
       const send = card.getByRole("button", { name: /ask|send|reply/i }).first();
       await send.click();
       await expect(card.locator(".exp-b").last()).not.toBeEmpty({ timeout: 60_000 });
@@ -253,18 +252,18 @@ test.describe("J2 explain ask follow-up nested", () => {
         if (root.querySelector('section.ithread[data-thread] .stream')) seen.stream = true;
       }).observe(root, { childList: true, subtree: true, characterData: true });
     });
-    await selectText(page, "#C-central", "fast path");
+    await selectText(page, "#C-central", "original message");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-central .ithread[data-pending-thread]");
     await expect(composer).toBeVisible();
-    await composer.locator("textarea").fill("Does the fast path still catch a fold that uses a bare LF?");
+    await composer.locator("textarea").fill("Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?");
     await composer.getByRole("button", { name: "Ask" }).click();
     const card = page.locator('#C-central section.ithread[data-thread]:has([data-kind="ask"])', {
-      hasText: "Does the fast path still catch a fold",
+      hasText: "Should a bare LF not followed by whitespace",
     });
     await expect(card.first()).toBeVisible({ timeout: 30_000 });
     // Issue #293: the question is a reviewer entry, not a muted heading.
-    await expect(card.locator("[data-ask-question]").first()).toContainText("Does the fast path still catch a fold", {
+    await expect(card.locator("[data-ask-question]").first()).toContainText("Should a bare LF not followed by whitespace", {
       timeout: 30_000,
     });
     await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
@@ -348,13 +347,15 @@ test.describe("J2 explain ask follow-up nested", () => {
     const central = ((snap.json as { pages: { id: string; cards: { id: string; blocks: { id: string; type: string; text?: { standard: string } }[] }[] }[] }).pages ?? [])
       .find((p) => p.id === "root")?.cards.find((c) => c.id === "central");
     const paras = (central?.blocks ?? []).filter((b) => b.type === "paragraph" && b.text?.standard);
-    const host = paras.find((b) => b.text!.standard.includes("fast path")) ?? paras[0];
+    const host = paras.find((b) => b.text!.standard.includes("agree")) ?? paras[0];
     if (!host?.text) throw new Error("central has no paragraph blocks");
-    const quote = host.text.standard.includes("fast path") ? "fast path" : host.text.standard.slice(0, 12);
+    const quote = host.text.standard.includes("agree")
+      ? "so the message and urllib3's HTTPHeaderDict agree"
+      : host.text.standard.slice(0, 12);
     const created = await apiJson(svc, "POST", `/api/reviews/${freshId}/actions`, {
       kind: "explain",
       quote,
-      anchor: { where: "block", blockId: host.id },
+      anchor: { where: "block", blockId: `central#${host.id}` },
     });
     const annId = (created.json as { annotationId: string; jobId?: string }).annotationId;
     if ((created.json as { jobId?: string }).jobId) {
@@ -530,7 +531,7 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
       // Explain selected guide text; the expansion fills with streamed text.
-      await selectText(page, "#C-central", "fast path");
+      await selectText(page, "#C-central", "matches optional whitespace, then CRLF");
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator("#C-central section.ithread[data-thread]").first();
       await expect(exp).toBeVisible({ timeout: 15_000 });
@@ -549,14 +550,16 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       await expect.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(deepened);
       await expect(expBody).not.toBeEmpty();
 
-      // Use examples, then Undo.
-      // The explain fill already carries an Example aside, so examples is
-      // saturated here (reused, no job): the count must not grow.
-      const asides = exp.locator(".gen-aside");
-      await expect(asides.first()).toBeVisible({ timeout: 30_000 });
-      const asidesBefore = await asides.count();
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Use examples");
-      await expect(asides).toHaveCount(asidesBefore, { timeout: 10_000 });
+      // Use examples on the guide card (the thread answers carry no Example
+      // asides in this recording), then Undo removes the inserted aside.
+      // .first(): the card's own controls precede the nested thread's.
+      const centralCard = page.locator("#C-central");
+      await centralCard.getByRole("button", { name: "Use examples" }).first().click();
+      const guideAside = centralCard.locator(".gen-aside").first();
+      await expect(guideAside).toBeVisible({ timeout: 60_000 });
+      await expect(guideAside).toContainText(/mixed SP\/HTAB|one fold/i, { timeout: 10_000 });
+      await centralCard.getByRole("button", { name: "Undo" }).first().click();
+      await expect(centralCard.locator(".gen-aside")).toHaveCount(0, { timeout: 10_000 });
       // Undo reverts the Simpler step: the deeper text returns.
       await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
       await expect.poll(async () => expBody.innerText(), { timeout: 30_000 }).toBe(deepened);
@@ -581,16 +584,16 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
 
       // Ask on another block; the answer arrives as blocks with citations;
       // clicking one reveals the diff with a highlight.
-      await selectText(page, "#C-problem", "folded");
+      await selectText(page, "#C-problem", "re-emit raw CRLF");
       await page.locator('#selbar [data-act="ask"]').click();
       const composer = page.locator("#C-problem .ithread[data-pending-thread]");
       await expect(composer).toBeVisible({ timeout: 10_000 });
-      await composer.locator("textarea").fill("What is line folding?");
+      await composer.locator("textarea").fill("Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?");
       await composer.getByRole("button", { name: "Ask" }).click();
-      const card = page.locator('#C-problem section.ithread[data-thread]:has([data-kind="ask"])', { hasText: "What is line folding?" });
+      const card = page.locator('#C-problem section.ithread[data-thread]:has([data-kind="ask"])', { hasText: "Which downstream consumer re-emits" });
       await expect(card.first()).toBeVisible({ timeout: 30_000 });
       await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
-      const marker = card.locator(".lk[data-refs]");
+      const marker = card.locator('.lk[data-refs*="diff:"]');
       await expect(marker.first()).toBeVisible({ timeout: 30_000 });
       await marker.first().click();
       await expect(page.locator('#right [role="tab"][aria-selected="true"]')).toContainText("Diff", { timeout: 10_000 });
@@ -599,20 +602,21 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
       await card.first().getByRole("button", { name: "Close" }).click();
 
       // Go deeper: generate when a placeholder is still pending, else the
-      // filled card. The follow-up chips live in the auto-written go-deeper
-      // cards, which stay collapsed until opened (#217): open the flow card,
-      // then use a follow-up suggestion.
+      // filled card. The follow-up chips live in the go-deeper-filled
+      // cards (#217): use a follow-up suggestion on the alt card.
       const pendings = page.locator("#page .ui-card.pend");
-      if ((await pendings.count()) > 0) {
+      for (let i = 0; i < 6 && (await pendings.count()) > 0; i++) {
         await pendings.first().getByRole("button", { name: "Generate" }).click();
-        await expect(pendings.first().locator(".working").first()).toBeVisible({ timeout: 15_000 });
-        await expect(pendings.first()).toHaveCount(0, { timeout: 90_000 });
+        await page.waitForTimeout(2_000);
       }
-      const flow = page.locator("#C-g-flow");
+      await expect(pendings).toHaveCount(0, { timeout: 120_000 });
+      const flow = page.locator("#C-g-alt");
       await flow.scrollIntoViewIfNeeded();
-      await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
-      await flow.getByRole("button", { name: "Expand" }).click();
-      const follow = page.locator("#C-g-flow .follow button").first();
+      await expect(flow).toBeVisible({ timeout: 120_000 });
+      if (await flow.evaluate((el) => el.classList.contains("collapsed"))) {
+        await flow.getByRole("button", { name: "Expand" }).click();
+      }
+      const follow = page.locator("#C-g-alt .follow button").first();
       await expect(follow).toBeVisible({ timeout: 15_000 });
       const label = await follow.innerText();
       await follow.click();

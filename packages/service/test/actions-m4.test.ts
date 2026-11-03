@@ -394,18 +394,18 @@ describe("M4 actions on the demo review (replay)", () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
-      // Issue #341: the re-recorded reader's pending cards replaced g-flow
-      // with g-inplace (3 follow-ups, not 2).
+      // Issue #341: the re-recorded guide's g-alt card carries
+      // 3 follow-ups (not 2).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
-        const flow = s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
+        const flow = s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-alt");
         return !!flow && !flow.pending;
       });
 
-      const before = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-inplace")!;
+      const before = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-alt")!;
       const follow = before.blocks.find((b) => b.type === "follow-up")!;
       expect(follow.items.length).toBe(3);
-      const res = await postAction(app, id, { kind: "followup", cardId: "g-inplace", blockId: follow.id, index: 0 });
+      const res = await postAction(app, id, { kind: "followup", cardId: "g-alt", blockId: follow.id, index: 0 });
       expect(res.status).toBe(200);
       const annotationId = res.json.annotationId as string;
       await waitForJob(ctx, res.json.jobId as string);
@@ -413,7 +413,7 @@ describe("M4 actions on the demo review (replay)", () => {
       const answer = snap.annotations.find((a) => a.id === annotationId)!;
       expect(answer.type).toBe("thread");
       expect(answer.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
-      const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-inplace")!.blocks.find(
+      const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-alt")!.blocks.find(
         (b) => b.type === "follow-up",
       )!;
       expect(consumed.items.length).toBe(2);

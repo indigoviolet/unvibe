@@ -38,12 +38,12 @@ async function collect(
 
 describe("ReplayAgentRunner", () => {
   it("matches explain prompts by quoted text like the prototype KB regexes", async () => {
-    const events = await collect(runner(), "Explain this: quote: a line break followed by whitespace");
+    const events = await collect(runner(), "Explain this: quote: re.sub tries a match at every offset");
     const text = events
       .filter((e) => e.type === "text")
       .map((e) => (e.type === "text" ? e.delta : ""))
       .join("");
-    expect(text).toContain("RFC 9112 calls this `obs-fold`");
+    expect(text).toContain("a left-to-right scan");
   });
 
   it("matches ask prompts by question text like the prototype ASK regexes", async () => {
@@ -52,7 +52,7 @@ describe("ReplayAgentRunner", () => {
       .filter((e) => e.type === "text")
       .map((e) => (e.type === "text" ? e.delta : ""))
       .join("");
-    expect(text).toContain("Yes, the double space is intended");
+    expect(text).toContain("Each match becomes one space");
   });
 
   it("honours explicit replay-kind/replay-key markers", async () => {

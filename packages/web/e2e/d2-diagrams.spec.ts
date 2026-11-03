@@ -9,8 +9,8 @@
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 
-// Fixture's real diagram block (card g-inplace, seeded from the diagram-central recording (hash f63b03c9095b236f)).
-const FLOW = "#C-g-inplace #B-b-demo-diagram-central";
+// Fixture's real diagram block (card g-alt, seeded from the diagram-central recording (hash 8d6ea4e980ea839e)).
+const FLOW = "#C-g-alt #B-b-demo-diagram-central";
 const EDGE = "#B-b-mock-d2-edge";
 const UNAVAILABLE = "#B-b-mock-d2-unavailable";
 const FAILED = "#B-b-mock-d2-error";

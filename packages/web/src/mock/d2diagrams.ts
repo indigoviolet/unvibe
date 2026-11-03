@@ -11,10 +11,10 @@ import { DiagramStatusError } from "../api/diagram.js";
 // `?raw` keeps the SVGs out of TS's NodeNext import-attribute rules.
 // Issue #341: hashes are the re-recorded on-demand diagrams
 // (diagram-central, diagram-buildup).
-import centralLight from "../../../../fixtures/urllib3-5020/diagrams/f63b03c9095b236f.light.svg?raw";
-import centralDark from "../../../../fixtures/urllib3-5020/diagrams/f63b03c9095b236f.dark.svg?raw";
-import buildupLight from "../../../../fixtures/urllib3-5020/diagrams/7ff08c2de47c6091.light.svg?raw";
-import buildupDark from "../../../../fixtures/urllib3-5020/diagrams/7ff08c2de47c6091.dark.svg?raw";
+import centralLight from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.light.svg?raw";
+import centralDark from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.dark.svg?raw";
+import buildupLight from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.light.svg?raw";
+import buildupDark from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.dark.svg?raw";
 
 /** Stand-in for cases the fixtures cannot cover (see module docs). */
 function standIn(theme: DiagramTheme): string {
@@ -39,8 +39,8 @@ function standIn(theme: DiagramTheme): string {
 
 /** hash → per-theme SVG text, mirroring the fixture file layout. */
 const BY_HASH: Record<string, { light: string; dark: string }> = {
-  f63b03c9095b236f: { light: centralLight, dark: centralDark },
-  "7ff08c2de47c6091": { light: buildupLight, dark: buildupDark },
+  "8d6ea4e980ea839e": { light: centralLight, dark: centralDark },
+  "22365f71688744f3": { light: buildupLight, dark: buildupDark },
   "mock-d2-added": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-unverified": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-multiline": { light: multiline("light"), dark: multiline("dark") },

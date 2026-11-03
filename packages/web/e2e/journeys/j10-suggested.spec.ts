@@ -40,8 +40,8 @@ test.describe("J10 suggested comments and questions", () => {
 
     // Suggested question: a follow-up chip in an auto-written go-deeper
     // card, which stays collapsed until opened (#217). Clicking asks it.
-    // (Issue #341: g-inplace is the re-recorded reader's first go-deeper card.)
-    const flow = page.locator("#C-g-inplace");
+    // (Issue #341: g-alt is the re-recorded guide's first go-deeper card.)
+    const flow = page.locator("#C-g-alt");
     await flow.scrollIntoViewIfNeeded();
     await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
     await flow.getByRole("button", { name: "Expand" }).click();
