@@ -1545,7 +1545,7 @@ describe("real d2 binary", () => {
     const { renderD2Theme, checkD2Source, D2_THEME_LIGHT, D2_THEME_DARK } = await import("../src/diagrams/render.js");
     const { runner } = real;
     const bin = { path: real.path };
-    const sources = ["diagram-fold.md", "diagram-path.md"].map((f) =>
+    const sources = ["diagram-central.md", "diagram-buildup.md"].map((f) =>
       fs.readFileSync(path.join(fixturesDir, "recordings", f), "utf8"),
     );
     const { parseReply } = await import("@unvibe/shared");

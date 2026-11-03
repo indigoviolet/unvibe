@@ -18,10 +18,12 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    // 49 base recordings (one combined critic recording, #215; no
-    // concept-stubs recording, #216) + 3 second-opinion recordings
-    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10)
-    // + 1 list-first ask recording (#331).
+    // Re-recorded on Claude Sonnet (#341): 1 reader + 1 critic + 3 concepts
+    // + 8 hunks + 4 go-deeper + 6 depth (problem/central/buildup simple+deep
+    // + expansion) + 2 examples + 2 diagrams + 10 explains + 13 asks
+    // (12 + thread-sync) + 3 kept second-opinion recordings (pre-341,
+    // model unrecorded) + 2 second-opinion aliases mapping the new finding
+    // ids onto the kept blind recordings (same issues, re-titled findings).
     expect(counts).toHaveLength(55);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
@@ -31,7 +33,7 @@ describe("snapshot build", () => {
     ]);
     // #216: no concept pages are seeded; they are written on open.
     expect(snapshot.pages.map((p) => p.id).sort()).toEqual(
-      ["root", "f-lf", "f-perf"].sort(),
+      ["root", "f-critic", "f-critic-2"].sort(),
     );
     const root = snapshot.pages.find((p) => p.id === "root")!;
     expect(root.cards.map((c) => c.id)).toEqual([
@@ -39,12 +41,12 @@ describe("snapshot build", () => {
       "central",
       "buildup",
       "decisions",
-      "g-flow",
-      "g-design",
+      "g-inplace",
       "g-regex",
-      "g-check",
+      "g-tests",
+      "g-downstream",
     ]);
-    const finding = snapshot.pages.find((p) => p.id === "f-lf")!;
+    const finding = snapshot.pages.find((p) => p.id === "f-critic")!;
     expect(finding.confidence).toBe("medium");
     expect(snapshot.annotations.map((a) => a.id).sort()).toEqual(
       ["t-diff", "t-seed", "t-sgperf", "t-sglf", "x-seed"].sort(),
@@ -66,22 +68,10 @@ describe("snapshot build", () => {
         tsock: "test-with_dummyserver-test_socketlevel.py",
         log: "changelog-1362.bugfix.rst",
       },
-      descTexts: {
-        "d-p1": "x",
-        "d-p2": "x",
-        "d-p3": "x",
-        "d-p4": "x",
-        "d-p5": "x",
-      },
-      concepts: [
-        "obs-fold",
-        "http-headers",
-        "header-injection",
-        "regex-performance",
-        "ows-rws",
-        "set-cookie",
-        "requests-cookies",
-      ],
+      descTexts: Object.fromEntries(
+        [...(snapshot.description?.html ?? "").matchAll(/id="(d-p\d+)"/g)].map((m) => [m[1], "x"]),
+      ),
+      concepts: ["obs-fold", "_normalize_header_values", "HTTPHeaderDict"],
     });
     for (const page of snapshot.pages) {
       for (const card of page.cards) {
@@ -114,7 +104,7 @@ describe("snapshot build", () => {
       expect(body.templates).toHaveLength(17);
       expect(body.expanded).toHaveLength(17);
       const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
-      expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
+      expect(blind.expanded).toContain("Bare-LF folds bypass unfolding");
       const reader = body.expanded.find((e) => e.name === "reader")!;
       expect(reader.expanded).toContain("src-urllib3-connection.py");
     } finally {

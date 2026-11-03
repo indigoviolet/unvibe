@@ -298,7 +298,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("depth round-trips instantly when the level is cached (no second agent call)", { timeout: 60000 }, async () => {
+  it("depth fills via agent, then round-trips instantly from cache (no second agent call)", { timeout: 60000 }, async () => {
     const agents = replay();
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -309,13 +309,19 @@ describe("M4 actions on the demo review (replay)", () => {
       });
       const promptsBefore = agents.prompts.length;
 
+      // Issue #341: the re-recorded reader carries standard text only, so
+      // the first leg fills via the agent (depth recording central:simple).
       const down = await postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" });
       expect(down.status).toBe(200);
-      expect(down.json.jobId).toBeUndefined();
+      expect(down.json.jobId).toBeDefined();
+      await waitForJob(ctx, down.json.jobId as string);
+      const promptsAfterFill = agents.prompts.length;
+      expect(promptsAfterFill).toBeGreaterThan(promptsBefore);
       expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe(
         "simple",
       );
 
+      // The way back is cached: instant, no agent call (PRD §4.4).
       const up = await postAction(app, id, { kind: "depth", cardId: "central", direction: "deeper" });
       expect(up.status).toBe(200);
       expect(up.json.jobId).toBeUndefined();
@@ -324,7 +330,7 @@ describe("M4 actions on the demo review (replay)", () => {
       expect(central.revision).toBeGreaterThanOrEqual(3);
       expect(central.undoStack.length).toBe(2);
       // Switching back cost no agent call.
-      expect(agents.prompts.length).toBe(promptsBefore);
+      expect(agents.prompts.length).toBe(promptsAfterFill);
     } finally {
       await app.close();
     }
@@ -388,16 +394,18 @@ describe("M4 actions on the demo review (replay)", () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
+      // Issue #341: the re-recorded reader's pending cards replaced g-flow
+      // with g-inplace (3 follow-ups, not 2).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
-        const flow = s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-flow");
+        const flow = s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
         return !!flow && !flow.pending;
       });
 
-      const before = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!;
+      const before = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-inplace")!;
       const follow = before.blocks.find((b) => b.type === "follow-up")!;
-      expect(follow.items.length).toBe(2);
-      const res = await postAction(app, id, { kind: "followup", cardId: "g-flow", blockId: follow.id, index: 0 });
+      expect(follow.items.length).toBe(3);
+      const res = await postAction(app, id, { kind: "followup", cardId: "g-inplace", blockId: follow.id, index: 0 });
       expect(res.status).toBe(200);
       const annotationId = res.json.annotationId as string;
       await waitForJob(ctx, res.json.jobId as string);
@@ -405,18 +413,19 @@ describe("M4 actions on the demo review (replay)", () => {
       const answer = snap.annotations.find((a) => a.id === annotationId)!;
       expect(answer.type).toBe("thread");
       expect(answer.replies?.[0]?.blocks.length ?? 0).toBeGreaterThan(0);
-      const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-flow")!.blocks.find(
+      const consumed = snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-inplace")!.blocks.find(
         (b) => b.type === "follow-up",
       )!;
-      expect(consumed.items.length).toBe(1);
+      expect(consumed.items.length).toBe(2);
 
-      // Concept page on first open: stub, then filled.
-      const concept = await postAction(app, id, { kind: "concept", slug: "unfolding" });
+      // Concept page on first open: stub, then filled (issue #341:
+      // re-recorded concept slugs; obs-fold replaces unfolding).
+      const concept = await postAction(app, id, { kind: "concept", slug: "obs-fold" });
       expect(concept.status).toBe(200);
-      expect(concept.json.pageId).toBe("c-unfolding");
+      expect(concept.json.pageId).toBe("c-obs-fold");
       if (concept.json.jobId) await waitForJob(ctx, concept.json.jobId as string);
       await waitFor(() => {
-        const p = ctx.reviews.getSnapshot(id)!.pages.find((x) => x.id === "c-unfolding");
+        const p = ctx.reviews.getSnapshot(id)!.pages.find((x) => x.id === "c-obs-fold");
         return !!p && p.cards.length > 0 && p.cards[0].blocks.length > 0;
       });
     } finally {
@@ -519,14 +528,15 @@ describe("M4 actions on the demo review (replay)", () => {
       const newCard = myEntries().find((e) => e.kind === "new-card")!;
       expect(newCard.scope).toEqual({ scope: "global" });
 
-      // Depth rewrite via agent → `depth-rewrite`, card scope. g-design
-      // only carries standard text, so the agent path runs.
-      const depth = await postAction(app, id, { kind: "depth", cardId: "g-design", direction: "simpler" });
+      // Depth rewrite via agent → `depth-rewrite`, card scope. g-regex
+      // only carries standard text, so the agent path runs (issue #341:
+      // the re-recorded reader's pending cards replaced g-design).
+      const depth = await postAction(app, id, { kind: "depth", cardId: "g-regex", direction: "simpler" });
       expect(depth.status).toBe(200);
       if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
       await waitFor(() => myEntries().some((e) => e.kind === "depth-rewrite"));
       const rewrite = myEntries().find((e) => e.kind === "depth-rewrite")!;
-      expect(rewrite.scope).toEqual({ scope: "card", cardId: "g-design" });
+      expect(rewrite.scope).toEqual({ scope: "card", cardId: "g-regex" });
 
       // Examples → `example`, card scope.
       const examples = await postAction(app, id, { kind: "examples", cardId: "central" });
@@ -959,11 +969,9 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const noteId = note.json.annotationId as string;
 
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
-      // Cached depth switch needs no agent.
-      const depth = await postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(depth.status).toBe(200);
-      expect(depth.json.jobId).toBeUndefined();
-      expect((await postAction(app, id, { kind: "undo", cardId: "central" })).status).toBe(200);
+      // Issue #341: depth now needs an agent (reader carries standard text
+      // only), so the non-agent chain toggles collapse instead.
+      expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: false })).status).toBe(200);
       expect((await postAction(app, id, { kind: "close", annotationId: noteId })).status).toBe(200);
       const note2 = await postAction(app, id, {
         kind: "note",
@@ -1052,13 +1060,14 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect(expansion.error).toContain("no agent configured");
 
       // Card rewrites needing generation fail fast with the message in
-      // the response; the card is unchanged.
-      const depth = await postAction(app, id, { kind: "depth", cardId: "g-design", direction: "simpler" });
+      // the response; the card is unchanged (issue #341: g-design left
+      // with the old reader's pending cards; g-regex is standard-only).
+      const depth = await postAction(app, id, { kind: "depth", cardId: "g-regex", direction: "simpler" });
       expect(depth.status).toBe(500);
       expect(String(depth.json.error)).toContain("no agent configured");
       expect(depth.json.code).toBe("no-agent");
       expect(
-        ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-design")!.level,
+        ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-regex")!.level,
       ).toBe("standard");
 
       const examples = await postAction(app, id, { kind: "examples", cardId: "central" });

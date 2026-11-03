@@ -115,7 +115,7 @@ describe("pipeline demo e2e (replay)", () => {
       expect(snap.pages.find((p) => p.id === "root")!.cards.map((c) => c.id)).toEqual(
         expected.pages.find((p) => p.id === "root")!.cards.map((c) => c.id),
       );
-      for (const fid of ["f-lf", "f-perf"]) {
+      for (const fid of ["f-critic", "f-critic-2"]) {
         const got = snap.pages.find((p) => p.id === fid)!;
         const want = expected.pages.find((p) => p.id === fid)!;
         expect(got.title).toBe(want.title);
@@ -130,21 +130,22 @@ describe("pipeline demo e2e (replay)", () => {
         expect(a.type).toBe("thread");
       }
       // threads.ts assigns `ann_` ids (not the fixture seed ids); match
-      // the bare-LF draft by its suggested text instead.
+      // the bare-LF draft by its suggested text instead (Sonnet re-record
+      // wording, #341: "a raw newline in both representations").
       const replyText = (r: { blocks?: { type: string }[] }): string =>
         ((r.blocks ?? []) as { type: string; text?: { standard?: string } }[])
           .filter((b) => b.type === "paragraph")
           .map((b) => b.text?.standard ?? "")
           .join(" ");
       const tlf = snap.annotations.find((a) =>
-        a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("bare LF")),
+        a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("raw newline")),
       );
       expect(tlf).toBeDefined();
       expect(tlf?.anchor.host).toMatchObject({ kind: "diff-line" });
       // Every finding page links its suggested comment (PRD §4.9): the
       // Assessment card ends with a comment-link block whose thread is a
       // suggested, unposted draft with a canonical diff target.
-      for (const fid of ["f-lf", "f-perf"]) {
+      for (const fid of ["f-critic", "f-critic-2"]) {
         const page = snap.pages.find((p) => p.id === fid)!;
         const last = page.cards[page.cards.length - 1];
         const link = last.blocks.find((b) => b.type === "comment-link");
@@ -165,14 +166,14 @@ describe("pipeline demo e2e (replay)", () => {
       for (const s of [snap, expected]) {
         void s;
       }
-      expect(hiddenOf(snap, "test-test_connection.py", 0)).toBe("imports");
-      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("docs / config");
+      expect(hiddenOf(snap, "test-test_connection.py", 0)).toBe("import-only change");
+      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("changelog entry (docs churn)");
       expect(hiddenOf(snap, "src-urllib3-connection.py", 0)).toBeUndefined();
 
       // Zero unverified citations across all cards.
       const lookup = createSnapshotLookup(snap, {
         aliases: { conn: "src-urllib3-connection.py", tconn: "test-test_connection.py", tsock: "test-with_dummyserver-test_socketlevel.py", log: "changelog-1362.bugfix.rst" },
-        descTexts: { "d-p1": "x", "d-p2": "x", "d-p3": "x", "d-p4": "x", "d-p5": "x" },
+        descTexts: { "d-p1": "x", "d-p2": "x", "d-p3": "x", "d-p4": "x", "d-p5": "x", "d-p6": "x", "d-p7": "x", "d-p8": "x", "d-p9": "x", "d-p10": "x", "d-p11": "x" },
         concepts: ["obs-fold", "http-headers", "header-injection", "regex-performance", "ows-rws", "set-cookie", "requests-cookies"],
       });
       for (const page of snap.pages) {
@@ -188,7 +189,7 @@ describe("pipeline demo e2e (replay)", () => {
       expect(patches.length).toBeGreaterThan(2);
       const opsText = JSON.stringify(patches.map((p) => p.ops));
       const firstProblem = opsText.indexOf("problem");
-      const firstFinding = opsText.indexOf("f-lf");
+      const firstFinding = opsText.indexOf("f-critic");
       expect(firstProblem).toBeGreaterThanOrEqual(0);
       expect(firstFinding).toBeGreaterThanOrEqual(0);
       expect(firstProblem).toBeLessThan(firstFinding);
