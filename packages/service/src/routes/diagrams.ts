@@ -24,10 +24,9 @@ import { lookupForSnapshot } from "../pipeline/lookup.js";
 import { validateTarget } from "../validate/index.js";
 
 // Diagram lookup lives in `@unvibe/shared` (`content/blocks.ts`): one
-// walker over every live `Block[]` list (page cards, card second
-// opinions, expansion bodies, expansion second opinions, asides at any
-// depth), so a new container cannot be missed silently. This route only
-// calls `findDiagramByHash` / `findDiagramBySource`.
+// walker over every live `Block[]` list (page cards, expansion bodies,
+// asides at any depth), so a new container cannot be missed silently.
+// This route only calls `findDiagramByHash` / `findDiagramBySource`.
 
 export async function registerDiagrams(
   app: FastifyInstance,

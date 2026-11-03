@@ -5,7 +5,7 @@
  * so parallel review-state work in `store/migrate.ts` never conflicts.
  * Every field has a default; `get()` always returns a complete `Settings`.
  */
-import { isUiThemeId, UI_THEME_IDS } from "@unvibe/shared";
+import { defaultPersonas, isUiThemeId, UI_THEME_IDS, validatePersona } from "@unvibe/shared";
 import type { ModelPick, Settings } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/db.js";
 
@@ -21,7 +21,10 @@ export const DEFAULT_SETTINGS: Settings = {
   // level stands unless the owner picks one (issue #172).
   main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
+  // Issue #349: persona definitions, seeded with the built-in Second
+  // opinion. After seeding each entry is ordinary data (add, edit,
+  // delete through Settings → Personas).
+  personas: defaultPersonas(),
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
@@ -71,18 +74,29 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   if (extModel !== undefined && (!isModelPick(extModel) || !extModel.provider || !extModel.model)) {
     errors.push("extensionModel must be { provider, model } with non-empty strings");
   }
-  for (const role of ["main", "small", "secondOpinion"] as const) {
+  for (const role of ["main", "small"] as const) {
     const v = patch[role];
     if (v === undefined) continue;
-    // An empty second-opinion model is the unset marker (no Codex yet);
-    // main/small must always name a model.
-    const allowEmptyModel = role === "secondOpinion";
-    if (!isModelPick(v) || !v.provider || (!allowEmptyModel && !v.model)) {
-      errors.push(
-        role === "secondOpinion"
-          ? `${role} must be { provider, model } (model may be empty when unset)`
-          : `${role} must be { provider, model } with non-empty strings`,
-      );
+    if (!isModelPick(v) || !v.provider || !v.model) {
+      errors.push(`${role} must be { provider, model } with non-empty strings`);
+    }
+  }
+  // Issue #349: personas arrive as a whole list (add, edit, delete all
+  // PUT the full array). Every entry is validated; ids must be unique.
+  const personas = patch["personas"];
+  if (personas !== undefined) {
+    if (!Array.isArray(personas)) {
+      errors.push("personas must be an array of persona definitions");
+    } else {
+      const seen = new Set<string>();
+      personas.forEach((p, i) => {
+        for (const e of validatePersona(p)) errors.push(`personas[${i}]: ${e}`);
+        const id = (p as { id?: unknown } | null)?.id;
+        if (typeof id === "string" && id !== "") {
+          if (seen.has(id)) errors.push(`personas[${i}]: duplicate persona id "${id}"`);
+          seen.add(id);
+        }
+      });
     }
   }
   const int = (name: string, min: number, max: number): void => {

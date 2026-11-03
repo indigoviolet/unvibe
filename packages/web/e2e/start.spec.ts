@@ -316,8 +316,6 @@ test("failing readiness shows compact callouts linking to Settings", async ({ pa
           },
           { id: "agent:main", label: "Main model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
           { id: "agent:small", label: "Small model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
-          { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: "ready", fix: "", settingsAnchor: "#models" },
-          { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "ok", fix: "", settingsAnchor: "#models" },
         ],
         generatedAt: Date.now(),
         cached: false,

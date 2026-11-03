@@ -6,7 +6,7 @@
  * `persona` reserved in the type only), marked by an avatar and an
  * accessible name (no kind badges — #315). Threads render
  * inline under the card (or description block, or diff line) they started
- * from. Controls (depth, principle, second opinion) are per reply.
+ * from. Controls (depth, principle) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
  * and highlights it. "Collapse threads" in the review top bar collapses
  * every thread to one-line rows; expanding a row restores that thread.
@@ -25,7 +25,6 @@ import { BlockView } from "../guide/BlockView.js";
 import { DepthControl } from "../guide/DepthControl.js";
 import { linkCardBlocks } from "../guide/glossary.js";
 import { busyForCard, inflightLabel } from "../guide/inflight.js";
-import { SecondOpinionBlock, SecondOpinionControl } from "../guide/secondOpinion/index.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
 import { isReadOnlyVersionNow } from "./readOnly.js";
@@ -215,7 +214,6 @@ function AgentReplyView({
       else toast(`Couldn't retry: ${friendlyError(err)}`);
     });
   };
-  const secondOpinions = reply.secondOpinions ?? [];
   const controlsBusy = direct !== null;
   const busyKind = direct?.kind;
   const depthBusy = busyKind === "depth";
@@ -337,13 +335,6 @@ function AgentReplyView({
                 disabled={!undoEnabled || controlsBusy}
                 onClick={() => run({ kind: "undo", cardId: reply.id })}
               />
-              <SecondOpinionControl
-                reviewId={reviewId}
-                card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
-                page={undefined}
-                disabled={!contentReady}
-                busy={busyKind === "second_opinion"}
-              />
             </div>
           )}
       {showWorking && !errorText ? <Working text={workingLabel} /> : null}
@@ -375,17 +366,6 @@ function AgentReplyView({
           ))}
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
-        {secondOpinions.map((so) => (
-          <SecondOpinionBlock
-            key={so.id}
-            reviewId={reviewId}
-            card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
-            result={so}
-            lookupPage={lookupPage as never}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        ))}
     </div>
   );
 }

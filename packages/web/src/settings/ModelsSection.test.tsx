@@ -23,8 +23,8 @@ const MODELS: Record<string, string[]> = {
 const SETTINGS = {
   main: { provider: "claude", model: "opus", effort: "" },
   small: { provider: "claude", model: "haiku", effort: "" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
-} as Settings;
+  personas: [],
+} as unknown as Settings;
 
 type ModelsResult = Awaited<ReturnType<typeof api.models>>;
 
@@ -291,47 +291,26 @@ describe("ModelsSection provider switch", () => {
     expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
   });
 
-  it("second opinion keeps its Not set state while browsing and can be set from another provider", async () => {
+  it("small keeps its state while browsing and can be set from another provider", async () => {
     mockReadiness();
     mockModels();
     mockThinking();
-    const unset = {
-      ...SETTINGS,
-      secondOpinion: { provider: "codex", model: "", effort: "" },
-    } as Settings;
-    const next = {
-      ...unset,
-      secondOpinion: { provider: "claude", model: "opus", effort: "" },
-    } as Settings;
-    const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(next);
+    const saveSettings = vi.spyOn(api, "saveSettings").mockResolvedValue(SETTINGS);
     const onSaved = vi.fn();
-    render(<ModelsSection settings={unset} onSaved={onSaved} />);
+    render(<ModelsSection settings={SETTINGS} onSaved={onSaved} />);
 
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Not set"));
-    // Unset copy names the enforced rule (finding 19): a different model
-    // from main, not a second provider.
-    expect(screen.getByTestId("model-secondOpinion-unset")).toHaveTextContent(
-      "need a different model from main",
-    );
-
-    await choose(provSelect("secondOpinion"), "claude");
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Pick a claude model…"));
-    expect(screen.getByTestId("model-secondOpinion-unset")).toBeInTheDocument();
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    // Browsing another provider loads its list without saving.
+    await choose(provSelect("small"), "codex");
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("Pick a codex model…"));
     expect(saveSettings).not.toHaveBeenCalled();
 
-    // Back without choosing: still Not set.
-    await choose(provSelect("secondOpinion"), "codex");
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Not set"));
-    expect(screen.getByTestId("model-secondOpinion-unset")).toBeInTheDocument();
-
     // Choosing from the browsed provider saves that provider with the model.
-    await choose(provSelect("secondOpinion"), "claude");
-    await waitFor(() => expect(modelSelect("secondOpinion")).toHaveTextContent("Pick a claude model…"));
-    await choose(modelSelect("secondOpinion"), "opus");
+    await choose(modelSelect("small"), "gpt-6-luna");
     await waitFor(() =>
-      expect(saveSettings).toHaveBeenCalledWith({ secondOpinion: { provider: "claude", model: "opus", effort: "" } }),
+      expect(saveSettings).toHaveBeenCalledWith({ small: { provider: "codex", model: "gpt-6-luna", effort: "" } }),
     );
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(next));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(SETTINGS));
   });
 
   it("offers pi as a provider only when the service lists it (#279)", async () => {

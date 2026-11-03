@@ -12,16 +12,15 @@ describe("prompt contract (additive, PRD §13)", () => {
       "critic",
       "hunk_pass",
       "concept_page",
-      "explain",
       "ask",
+      "ask_turn",
       "depth",
       "examples",
       "diagram",
       "go_deeper",
       "update_pass",
       "consolidate",
-      "second_opinion_blind",
-      "second_opinion_check",
+      "persona_card",
     ] as const) {
       expect(PROMPT_TEMPLATE_NAMES).toContain(name);
     }

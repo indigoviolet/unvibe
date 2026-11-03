@@ -9,7 +9,7 @@ import { formatContributionLines } from "../src/sharedctx/contributions.js";
 import { buildBasePack } from "../src/context/index.js";
 import { FakeCommandRunner } from "../src/exec/index.js";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
-import { fixtureSnapshot, HEAD_SHA } from "./fixtures.js";
+import { fixtureSnapshot } from "./fixtures.js";
 import { setupReview } from "./m6-helpers.js";
 
 const REPO_PROMPTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "prompts");
@@ -92,14 +92,13 @@ describe("GET /api/prompts", () => {
       expect(critic.cachedTokens).toBeGreaterThan(0);
       // Reader runs fresh: nothing cached.
       expect(byName.get("reader")!.cachedTokens).toBe(0);
-      // Second-opinion blind sees the cited pin but not the guide or other findings.
-      const blind = byName.get("second_opinion_blind")!;
-      expect(blind.expanded).toContain("def _normalize_header_value");
-      expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
-      expect(blind.expanded).not.toContain("The linear-time claim has no test");
-      expect(blind.expanded).not.toContain("Legacy servers folded long headers");
-      expect(blind.expanded).not.toContain("Requests reads the original message");
-      expect(blind.expanded).toContain(`code:src/urllib3/connection.py:91-110@${HEAD_SHA}`);
+      // The persona card carries the guide's version of the first card
+      // (that is the task) but no findings or contributions.
+      const card = byName.get("persona_card")!;
+      expect(card.expanded).toContain("Folds that end in a bare LF are not unfolded");
+      expect(card.expanded).not.toContain("The linear-time claim has no test");
+      expect(card.expanded).not.toContain("Legacy servers folded long headers");
+      expect(card.expanded).not.toContain("Requests reads the original message");
     } finally {
       await app.close();
     }

@@ -3801,3 +3801,55 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `start-remove-confirm`, `start-remove-confirmed` and
   `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
   (inspected). Full gates not yet run.
+
+## Addendum: #349 step 1 — Personas model, Settings UI, prompt composition (branch `feat/349-personas-step1`)
+
+- **Persona model:** `Persona` in `packages/shared/src/personas.ts`
+  (id, name, provider + model, required lens, optional card
+  instruction, enabled, auto colour). Colour comes from the fixed
+  `PERSONA_COLORS` sequence in creation order (`nextPersonaColor`
+  hands out the first unused one); never user-picked, no icons —
+  the AI avatar is recoloured wherever the persona speaks (step 2).
+  Definitions live in `Settings.personas`, seeded with the built-in
+  Second opinion (codex/gpt-6.1-sol; lens + card instruction carry
+  today's "check" behaviour verbatim in the new vocabulary). After
+  seeding it is ordinary data: editable and deletable like any
+  other persona.
+- **Settings → Personas:** new section + tab (`PersonasSection.tsx`,
+  after Models) following the #328 `Field` row layout (label left,
+  control right, help + status under the label): name, provider +
+  model (per-provider list, adapter errors inline), lens, optional
+  card instruction, enabled. Add/edit PUT the whole list; delete
+  goes through the shared #346 `InlineConfirm` (`placement="stack"`,
+  in the row like the repo remove). The model pickers stay
+  main/small only; persona models are validated like roles on save
+  (never persist a model no adapter offers).
+- **Prompt composition (owner decision 2026-11-03):** L0 base
+  instructions (shared, unchanged) + persona lens (system prompt,
+  every task) + shared task template. New `prompts/persona_card.md`
+  (tier `persona`): "here is the guide's version of this card;
+  write your version"; the persona's card instruction overrides the
+  default, empty means the default. `buildPersonaCardPrompt` in
+  `packages/service/src/prompts/personas.ts` composes system + turn.
+- **Second-opinion special-casing removed:** the `secondOpinion`
+  model role (store/defaults/effective/routes/readiness), the
+  blind/check prompts + `SecondOpinionMode`, `SecondOpinionResult`
+  + verdict, the `secondopinion/` base session, the card/finding
+  controls and result blocks, the MCP `second-opinion` role (all
+  sessions share one tool surface now), the `agents-distinct`
+  readiness check, the `second_opinion` action + `second-opinion`
+  job kind, `test:live:second-opinion` + script, and the 3
+  fixture recordings + manifest entries.
+- **Data format 1 → 2:** `Settings` gains `personas`, loses the
+  `secondOpinion` role; stored guide content loses
+  `secondOpinions`. Stamped on fresh data; e2e seeds stamp via the
+  shared constant.
+- Evidence: `packages/shared/test/personas.test.ts` (validation +
+  colours), `packages/service/test/personas-349.test.ts`
+  (composition for built-in + custom, settings CRUD routes), new
+  real-service journey `e2e/journeys/j349-personas.spec.ts`
+  (built-in present, add/edit/delete with the Escape path, API
+  cross-checks; no persona run — step 2), reworked J2 (finding +
+  card flows gone), tour frames `personas-1440-light`,
+  `personas-1440-dark`, `personas-delete-confirm` (inspected).
+  Full gates not yet run.

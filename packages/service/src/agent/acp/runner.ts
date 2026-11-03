@@ -842,8 +842,7 @@ export class AcpAgentRunner implements AgentRunner {
 
   /**
    * Models plus the adapter's current (default) model id, from the same
-   * session/new probe. Settings uses the default to pick the
-   * second-opinion model (PRD §12: a different provider's default).
+   * session/new probe.
    */
   async listModelsWithDefault(provider: string): Promise<{ models: ModelInfo[]; defaultId: string | null }> {
     const p = normalizeProvider(provider);

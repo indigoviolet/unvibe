@@ -1,8 +1,8 @@
 /**
  * Thread-polish tour (issues #301, #302, #303, #304, #305): thread rest and
- * focus states, Ask thread with follow-up, comment thread, the new Second
- * opinion and Summarize icons, thread-link vs glossary marks at rest, both
- * previews open, and a cited list — light and dark at 1440, plus 960 light.
+ * focus states, Ask thread with follow-up, comment thread, the Summarize
+ * icon, thread-link vs glossary marks at rest, both previews open, and a
+ * cited list — light and dark at 1440, plus 960 light.
  * Screenshots land in `visual-tour/` for the owner to look at.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -152,7 +152,7 @@ for (const combo of [
     await expect(thread.locator(".spike-reply > .av.ai").first()).toBeVisible();
     await shot(page, "polish-thread-rest", suffix);
 
-    // Hover-revealed reply toolbar with the new Second opinion icon.
+    // Hover-revealed reply toolbar.
     await thread.locator('[data-reply][data-kind="explain"] .exp-b').first().hover();
     await expect(thread.locator(".spike-reply > .ctl").first()).toBeVisible({ timeout: 10_000 });
     await shot(page, "polish-reply-toolbar", suffix);

@@ -11,7 +11,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, Card, McpServerConfig, ParagraphBlock, ReviewSnapshot, SecondOpinionResult, Session } from "@unvibe/shared";
+import type { AgentEvent, Card, McpServerConfig, ParagraphBlock, ReviewSnapshot, Session } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
@@ -1128,19 +1128,6 @@ describe("M4 interaction pure logic", () => {
       text: { standard, ...extra },
       citations: [],
     });
-    const opinion: SecondOpinionResult = {
-      id: "so-central-check-test-test",
-      cardId: "central",
-      mode: "check",
-      provider: "test",
-      model: "test",
-      effort: "",
-      verdict: "agrees",
-      reasoning: "Looks right.",
-      blocks: [],
-      version: 1,
-      createdAt: 0,
-    };
     const corr = para("b-corr-ct_1", "Accepted suggestion (from ct_1): use spaces.");
     const card: Card = {
       id: "central",
@@ -1151,13 +1138,11 @@ describe("M4 interaction pure logic", () => {
       revision: 2,
       blocks: [para("b1", "Body one.", { simple: "Simple one." }), corr],
       undoStack: [],
-      secondOpinions: [opinion],
     };
     const target: CardTarget = { kind: "page-card", pageId: "root", card };
 
     // Agent depth rewrite with a correction paragraph present: the merge
-    // fills per-level text positionally and never drops blocks; the
-    // second-opinion array lives beside blocks and is untouched.
+    // fills per-level text positionally and never drops blocks.
     const reply = [para("b1", "Ignored standard.", { simple: "Fresh simple one." })];
     pushUndo(target, [...card.blocks], "standard");
     const merged = mergeDepthText(card.blocks, reply, "simple");
@@ -1170,14 +1155,11 @@ describe("M4 interaction pure logic", () => {
     if (firstBlock?.type !== "paragraph" || secondBlock?.type !== "paragraph") throw new Error("expected paragraphs");
     expect(firstBlock.text.simple).toBe("Fresh simple one.");
     expect(secondBlock.text.standard).toContain("Accepted suggestion");
-    expect(card.secondOpinions).toHaveLength(1);
-    expect(card.secondOpinions?.[0]?.verdict).toBe("agrees");
 
-    // Undo restores the pre-rewrite blocks; opinions and corrections ride
-    // along (annotations live outside cards regardless).
+    // Undo restores the pre-rewrite blocks; corrections ride along
+    // (annotations live outside cards regardless).
     expect(applyUndo(target)).toBe(true);
     expect(card.level).toBe("standard");
     expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
-    expect(card.secondOpinions).toHaveLength(1);
   });
 });

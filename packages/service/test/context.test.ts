@@ -7,7 +7,6 @@ import {
   buildExistingCommentsSection,
   buildL1Source,
   buildL4Conversation,
-  buildSecondOpinionContext,
   decideRebuild,
   defaultThresholds,
   filterChangeList,
@@ -289,36 +288,13 @@ describe("rebuild decisions (PRD §9.4)", () => {
   });
 });
 
-describe("second-opinion isolation (PRD §12)", () => {
-  it("includes only cited code: guide, findings, contributions and uncited pins cannot leak", () => {
-    const guideProbe = "GUIDE-PROBE- Central change prose must not leak";
-    const findingProbe = "FINDING-PROBE linear-time claim has no test";
-    const contributionProbe = "CONTRIBUTION-PROBE Requests reads the original message";
-    const uncitedProbe = "UNCITED-PIN-PROBE secret helper body";
-    const ctx = buildSecondOpinionContext({
-      instructions: "L0 instructions",
-      sourceText: "L1 source",
-      codeExcerpts: [
-        { id: "code:a.py:1-2@s", text: "CITED-CODE-PROBE normalized = True" },
-        { id: "code:b.py:9-9@s", text: uncitedProbe },
-      ],
-      citedIds: ["code:a.py:1-2@s", "code:missing.py:1-1@s", "code:a.py:1-2@s"],
-    });
-    expect(ctx.includedIds).toEqual(["code:a.py:1-2@s"]);
-    expect(ctx.missingIds).toEqual(["code:missing.py:1-1@s"]);
-    expect(ctx.text).toContain("CITED-CODE-PROBE");
-    for (const probe of [guideProbe, findingProbe, contributionProbe, uncitedProbe]) {
-      expect(ctx.text, probe).not.toContain(probe);
-    }
-    // Deterministic: excerpts render in citedIds order.
-    expect(ctx.text).toBe(buildSecondOpinionContext({
-      instructions: "L0 instructions",
-      sourceText: "L1 source",
-      codeExcerpts: [
-        { id: "code:b.py:9-9@s", text: uncitedProbe },
-        { id: "code:a.py:1-2@s", text: "CITED-CODE-PROBE normalized = True" },
-      ],
-      citedIds: ["code:a.py:1-2@s", "code:missing.py:1-1@s", "code:a.py:1-2@s"],
-    }).text);
+describe("persona card expansion (issue #349)", () => {
+  it("renders the persona_card template deterministically", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const tpl = lib.get("persona_card");
+    expect(tpl).toBeDefined();
+    const values = { card: "### T [[card:c1]]\n\nBody.", card_instruction: "Check the claims." };
+    expect(renderTemplate(tpl!, values)).toBe(renderTemplate(tpl!, values));
+    expect(renderTemplate(tpl!, values)).toContain("Check the claims.");
   });
 });

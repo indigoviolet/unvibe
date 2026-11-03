@@ -1342,10 +1342,8 @@ export class Pipeline {
    * (#130, #145): pre-check + render, plus exactly one repair turn on the
    * fill's own session when needed. A failed repair keeps the
    * error-status blocks; the prose is unaffected. One place decides "this
-   * block is a diagram that needs finalizing", used by every job kind:
-   * pipeline fills call this directly; second opinions call it through
-   * their deps' pipeline. Never touches the shared log (no ingestTurn),
-   * so second-opinion isolation holds.
+   * block is a diagram that needs finalizing", used by every job kind.
+   * Never touches the shared log (no ingestTurn).
    */
   async finalizeInlineBlocks(
     reviewId: string,

@@ -4,8 +4,8 @@
  * The base is L0 (system instructions) plus one user message containing
  * L1 + L1b + L2, to which the agent answers "ready". Keyed by
  * (version, guide revision, model). Each conversation is `fork(base)` plus
- * one L4 message; small-model jobs and second opinions never fork the base
- * and build their own smaller contexts (see `secondOpinion.ts`).
+ * one L4 message; small-model jobs never fork the base and build their
+ * own smaller contexts.
  */
 import { buildHunkSummaries, buildL1bPinned, buildL1Source, buildL2Guide } from "./layers.js";
 import {
