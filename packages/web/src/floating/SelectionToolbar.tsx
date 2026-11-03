@@ -72,6 +72,13 @@ export interface NewThreadRequest {
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
   /**
+   * Issue #349 step 2: the selection sits on a persona's version of a
+   * card — Explain/Ask run as that persona. `personaCardId` is the guide
+   * card the version belongs to.
+   */
+  personaId?: string;
+  personaCardId?: string;
+  /**
    * Issue #166: the selection's character offsets within its host's text,
    * recorded at the moment of selection. Attached only when the request
    * anchor is the selection's own host (never for a remapped comment
@@ -370,6 +377,14 @@ interface Pending {
    * Absent outside the diff (prose has no lines to open).
    */
   diffRange?: DiffRange;
+  /**
+   * Issue #349 step 2: the selection sits on a persona's version of a
+   * card — Explain/Ask run as that persona (`personaCardId` is the guide
+   * card the version belongs to). Absent on guide text and in threads
+   * (a thread already knows its persona).
+   */
+  personaId?: string;
+  personaCardId?: string;
 }
 
 /**
@@ -667,6 +682,11 @@ export function SelectionToolbar() {
         // scroll grace in onScroll reads this, so a scroll landing before
         // React commits `pending` still counts as in-grace.
         shownAt.current = Date.now();
+        // Issue #349 step 2: a selection on a persona's version carries the
+        // persona (the variant container marks `data-persona` + `data-card`).
+        const personaEl = (anchorEl as HTMLElement).closest?.("[data-persona]") as HTMLElement | null;
+        const selPersonaId = personaEl?.dataset.persona ?? "";
+        const selPersonaCardId = personaEl?.dataset.card ?? "";
         setPending({
           quote,
           anchor:
@@ -677,6 +697,9 @@ export function SelectionToolbar() {
                 : host.anchor,
           ...(inThreadId ? { threadId: inThreadId, ...(inReplyId ? { sourceReplyId: inReplyId } : {}) } : {}),
           ...(offsets ? { offsets } : {}),
+          ...(selPersonaId && selPersonaCardId && !inThreadId
+            ? { personaId: selPersonaId, personaCardId: selPersonaCardId }
+            : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),
           ...(inGhThread && host.anchor.where === "diff-line" ? { commentAnchor: host.anchor } : {}),
@@ -817,6 +840,9 @@ export function SelectionToolbar() {
         ...(current.threadId ? { threadId: current.threadId } : { anchor: current.anchor }),
         ...(current.sourceReplyId ? { sourceReplyId: current.sourceReplyId } : {}),
         ...(current.offsets && !current.threadId ? { offsets: current.offsets } : {}),
+        // Issue #349 step 2: a selection on a persona's version is
+        // explained by that persona (threads already know theirs).
+        ...(!current.threadId && current.personaId ? { personaId: current.personaId } : {}),
       } as import("@unvibe/shared").ReviewAction,
       { toast: false },
     )
@@ -880,6 +906,11 @@ export function SelectionToolbar() {
       quote: current.quote,
       kind,
       ...(current.offsets ? { offsets: current.offsets } : {}),
+      // Issue #349 step 2: Ask on a persona's version is answered by
+      // that persona (comments never carry a persona).
+      ...(kind === "ask" && current.personaId && current.personaCardId
+        ? { personaId: current.personaId, personaCardId: current.personaCardId }
+        : {}),
     });
   };
 

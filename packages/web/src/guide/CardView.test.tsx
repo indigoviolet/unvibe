@@ -13,6 +13,7 @@ import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
+import { resetPersonasCache } from "../settings/usePersonas.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 
@@ -486,5 +487,85 @@ describe("CardView titles (issue #49)", () => {
     expect(chip).not.toBeNull();
     expect(chip?.getAttribute("data-fallback")).toBe("ann_closed");
     expect(chip?.getAttribute("title")).toMatch(/Stereo/);
+  });
+});
+
+/**
+ * Persona versions (issue #349 step 2) against the mock API
+ * (`VITE_MOCK=1`): the mock settings seed the built-in Second opinion,
+ * and the mock `persona` action stores a variant. Tabs appear once both
+ * are in; the persona tab shows its own text under its own colour.
+ */
+describe("CardView persona versions", () => {
+  test("two tabs; the persona tab shows its text under the persona colour", async () => {
+    resetPersonasCache();
+    const guide = card({
+      id: "c1",
+      title: "Card",
+      blocks: [
+        {
+          type: "paragraph",
+          id: "b1",
+          text: { standard: "Guide version text." },
+          citations: [],
+        },
+      ],
+      variants: {
+        "second-opinion": {
+          personaId: "second-opinion",
+          blocks: [
+            {
+              type: "paragraph",
+              id: "b1",
+              text: { standard: "Persona version text." },
+              citations: [],
+            },
+          ],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+          working: null,
+          error: null,
+        },
+      },
+    });
+    seedSnapshot([guide]);
+    render(
+      <MemoryRouter>
+        <CardView
+          reviewId={REVIEW_ID}
+          card={guide}
+          lookupPage={() => undefined}
+          onOpenPage={() => {}}
+          onFollowUp={() => {}}
+        />
+        <Toast />
+      </MemoryRouter>,
+    );
+    // Tabs appear once the personas load (mock settings seed the
+    // built-in Second opinion).
+    const tabs = await screen.findByTestId("versions-c1");
+    expect(tabs).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Guide" })).toBeInTheDocument();
+    const personaTab = screen.getByRole("tab", { name: /Second opinion/ });
+    expect(personaTab).toBeInTheDocument();
+    expect(screen.queryByText("Persona version text.")).toBeNull();
+    fireEvent.click(personaTab);
+    expect(await screen.findByText("Persona version text.")).toBeInTheDocument();
+    expect(screen.queryByText("Guide version text.")).toBeNull();
+    const section = document.getElementById("C-c1");
+    expect(section?.getAttribute("style")).toContain("#0E7C86");
+    expect(section?.getAttribute("data-persona")).toBe("second-opinion");
+  });
+
+  test("mock persona action stores a variant on the mock card", async () => {
+    const res = await api.action("demo", { kind: "persona", cardId: "central", personaId: "second-opinion" });
+    expect(res.accepted).toBe(true);
+    const snap = await api.review("demo");
+    const central = snap.pages.flatMap((p) => p.cards).find((c) => c.id === "central");
+    const variant = central?.variants?.["second-opinion"];
+    expect(variant).toBeTruthy();
+    expect(variant?.blocks.length).toBeGreaterThan(0);
+    expect(variant?.revision).toBeGreaterThanOrEqual(1);
   });
 });
