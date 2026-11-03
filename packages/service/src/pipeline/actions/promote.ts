@@ -16,8 +16,7 @@
  * (the job is re-targeted at the page card) and the error-with-Retry
  * state (resolved through the mapping) until then. Turns are dropped —
  * and the session closed — once every moved turn has settled
- * successfully. Second opinions move to the page with the content, so
- * nothing a reader made is lost.
+ * successfully.
  */
 import { randomBytes } from "node:crypto";
 import type { Thread, Block, Card } from "@unvibe/shared";
@@ -69,9 +68,6 @@ export async function promoteAction(
       revision: turn.revision,
       blocks: JSON.parse(JSON.stringify(turn.blocks)) as Block[],
       undoStack: JSON.parse(JSON.stringify(turn.undoStack)) as Card["undoStack"],
-      // Second opinions are reader-made results, not revisable content:
-      // they move to the page with the answer (issue #152).
-      ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) as Card["secondOpinions"] } : {}),
     }));
     draft.pages.push({ id: pageId, kind: "opened-expansion", title, parent, cards });
     // The anchor becomes a link to the new page (prototype `link` block).

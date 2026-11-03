@@ -1,5 +1,5 @@
-Imports two new header-normalization helpers, `_normalize_header_value` and `_normalize_header_values`, into the connection tests.
+Adds test imports for the new `_normalize_header_value` and `_normalize_header_values` helpers from the connection module.
 
 ```json
-{"hunk": {"summary": "Imports two new header-normalization helpers, `_normalize_header_value` and `_normalize_header_values`, into the connection tests.", "hiddenReason": "import-only change", "score": "mechanical"}}
+{"hunk": {"summary": "Adds test imports for the new `_normalize_header_value` and `_normalize_header_values` helpers from the connection module.", "hiddenReason": "import-only change", "score": "mechanical"}}
 ```

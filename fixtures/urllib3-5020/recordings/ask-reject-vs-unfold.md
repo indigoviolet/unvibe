@@ -1,25 +1,28 @@
-Not clearly. Rejecting would be stricter, but for a client it is the less compatible option, and RFC 9112 points to unfolding.
+Rejecting would be safer only against a threat that doesn't apply to a client reading a response, and it would stop the client from reading responses that real servers send. Unfolding is also what the spec requires of this role.
 
-**What the RFC allows.** The description says a receiver must replace each `obs-fold` with spaces before interpreting the value. [[desc:d-p1]] From memory, I haven't re-read the RFC. RFC 9112 lets a proxy or gateway either reject the message with a 400 or unfold it. For a user agent reading a response, it only offers unfolding. urllib3 is the client side here, so rejecting would depart from the spec, not tighten it.
+**What the spec allows.** From my knowledge of RFC 9112 (not in the base, and not checked here): a server or proxy may either reject or unfold an `obs-fold`. A user agent that receives one in a response must replace it with one or more spaces before interpreting the value. urllib3 is the user agent here, so rejection is not the option the RFC gives it. This is also why the change follows the unfolding rule. [[desc:d-p1]]
 
-**What rejecting would buy.** It would remove a lenient-parsing case. Two components that disagree on how to read a fold are a classic source of request-smuggling and header-injection bugs. Refusing the response means no ambiguous value ever reaches a consumer, and it needs no in-place rewrite of the `HTTPMessage`.
+**Where rejection is safer.** The classic argument is request smuggling. A server or proxy that guesses differently from its neighbour about where a field ends can be exploited. That is why rejection is allowed on that side. This change only reads responses. The harm it targets is a consumer re-emitting a raw CRLF from a stored value. Unfolding removes that harm, and rejecting would too. Rejecting adds no protection that unfolding lacks for this invariant. The invariant is that after parsing, no copy a consumer can reach carries a fold. [[diff:src-urllib3-connection.py:80-88]]
 
-**What it would cost.**
-- The motivating case is a real server sending a folded `Set-Cookie`. The socket test reproduces it. [[diff:test-with_dummyserver-test_socketlevel.py:101-102]] Rejecting would turn that previously working response into an error. That is a breaking change for every urllib3 user who talks to such a server.
-- It would need a new failure path in `getresponse` and a new exception type. The current change adds neither. It only swaps a call at the point where `HTTPHeaderDict` is built. [[diff:src-urllib3-connection.py:650-651]]
-- By the time `getresponse` runs, `http.client` has already read the whole header block. Rejecting would throw away a complete response over a formatting quirk, and the connection would likely have to be closed.
+**What rejection would cost.**
+- The trigger in this change is a real-looking folded `Set-Cookie`, which the socket test reproduces byte for byte. A rejecting client could not read any response from such a server, not even the body. Unfolding keeps the response usable. [[diff:test-with_dummyserver-test_socketlevel.py:99-103]]
+- The rewrite is cheap and local. `getresponse` normalizes the message and builds `HTTPHeaderDict` from the result. Rejection would need a new error path and a decision about which exception to raise, and I did not look at how urllib3 handles other header defects. [[diff:src-urllib3-connection.py:647-651]]
+- The unfolding is lossless for any consumer that treats a value as one logical line. A rejected response gives the caller nothing.
 
-**Why unfolding is safe enough here.** The danger this PR targets is a raw CRLF reaching a downstream consumer. After unfolding, `HTTPHeaderDict` and the original `HTTPMessage` both hold single-line values, so that hazard is gone. [[diff:src-urllib3-connection.py:85-88]] [[diff:src-urllib3-connection.py:102-108]] The remaining costs are small. The value is slightly rewritten, as in `___utmvbtouVBFmB=gZg XbNOjalT: ...`. [[diff:test-with_dummyserver-test_socketlevel.py:124-127]] And urllib3 mutates a stdlib object it doesn't own.
+**Where rejection could still be a reasonable option.** A strict mode that raises on any `obs-fold` could be useful in a security-sensitive client. It would have to be opt-in, because on by default it would break the use case the PR targets. The change doesn't offer that. It also doesn't say whether the author considered it. The description doesn't discuss rejection, so I can't give a stated reason for not choosing it. [[desc:d-p1]]
 
-**Rejection doesn't fix the open gap.** Rejecting would need the same detector as the current code, which only recognises `\r\n`. [[diff:src-urllib3-connection.py:86-87]] A bare-LF fold would slip past either approach, which is the point of the bare-LF finding.
-
-**A middle path that is real.** A strict mode could reject folds when a caller asks for it, with unfolding as the default. Nothing in this repo or the description suggests the author considered it, so I can't say why it wasn't chosen. The choice to unfold looks inferred from the RFC and the #1362 report, not stated.
+**What this change does not cover.** It handles only `\r\n` folds. A fold spelled with a bare `\n` still passes through untouched, as the bare-LF finding describes. Rejecting any value with a stray line break would close that gap too. That is a different policy from the one this change implements, and widening the pattern is the cheaper way to close it. [[diff:src-urllib3-connection.py:86-88]]
 
 ### Follow-ups
 
-- Does RFC 9112 forbid a user agent from rejecting a folded response? | ask: What exactly does RFC 9112 section 5.2 say a user agent must or may do when it receives an obs-fold in a response, versus a proxy?
-- What would an opt-in strict mode look like? | ask: How would a strict option that raises on obs-fold fit into `getresponse` and `_normalize_header_values`, and which exception would it use?
+- Does urllib3 already have an error for header defects that a strict mode could reuse? | ask: Which existing urllib3 exception or `defects` check handles malformed response headers, and could it be used to reject an `obs-fold` instead of unfolding it?
+- Would an opt-in strict mode be a small change? | ask: What would an opt-in setting that raises on `obs-fold` need in `_normalize_header_values` and `getresponse`, and which tests would it need?
 
 ```json
-{"anchor": {"quote": "An alternative is to normalize only the `HTTPHeaderDict`", "hostBlock": "card:decisions"}, "contribute": {"open_questions": ["Did the #1362 discussion consider rejecting obs-fold responses (or an opt-in strict mode) instead of unfolding? Not stated in the description."]}}
+{
+  "anchor": {"quote": "A fix that cleaned only HTTPHeaderDict would leave the raw CRLF in msg", "blockId": "card:g-alt"},
+  "contribute": {
+    "open_questions": ["Does urllib3 have an existing path that raises on HTTPMessage defects, and would an obs-fold rejection mode fit it?"]
+  }
+}
 ```

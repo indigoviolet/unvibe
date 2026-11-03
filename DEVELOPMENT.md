@@ -56,7 +56,6 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:live` | Live adapter tests over real CLIs (stays on claude/codex) | `claude`/`codex` logins; small token spend |
 | `test:live:pipeline` | Full pipeline on real agents (default pi + muse-spark; `--provider`/`--model`/`--cap`) | Logins; token spend, capped |
 | `test:live:plotlines` | Hunk scores + plotlines on the demo and public PRs (default pi + muse-spark; read-only, never posts) | Logins; token spend, capped |
-| `test:live:second-opinion` | Second-opinion check with real agents (stays cross-provider) | Logins; small spend |
 | `test:live:hunk-cap` | Hunk-pass concurrency measurement (#210): caps sweep over one PR review (default pi + muse-spark) | Logins; small spend, capped |
 | `test:live:installed` | Live sessions from the installed copy (pi, claude, codex; `--provider`/`--cap`) | Logins; tiny spend, capped |
 | `test:live:submit` | Submit path against a scratch repo, pipeline agent turns on pi by default (draft PR only) | Login; opt-in, writes a draft PR; token spend, capped |

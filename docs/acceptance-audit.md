@@ -1175,7 +1175,8 @@ needed (that deviation is closed, not added).
   collapsible with a sticky summary (Base open, the rest closed;
   Expand/Collapse all on Prompts + Shared context; open state survives tab
   switches, job updates and contribution deletes).
-- Re-do guide on the Debug page (issue #115): `POST /api/reviews/:id/redo`
+- Re-do guide in the review top bar (issue #115, moved from the Debug
+  page under #345): `POST /api/reviews/:id/redo`
   deletes + re-creates through the existing paths (shared create helper)
   and answers 202 with the new review's loading snapshot; the page
   navigates to it. New id (same as delete + create); running jobs
@@ -1184,7 +1185,7 @@ needed (that deviation is closed, not added).
   Confirmation states what delete + create discards. Open decisions for
   the owner: keep the new id vs keep the old one, and keep vs discard
   user comments/notes (default = delete semantics). Evidence:
-  `service/test/reviews-redo.test.ts`, `RedoGuideSection.test.tsx`,
+  `service/test/reviews-redo.test.ts`, `ReviewBar.test.tsx`,
   `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
@@ -3423,6 +3424,29 @@ hunk coverage) is reported for a separate issue, not fixed here.
   mount returns "ready" (`text,usage,done`; input 90 net, 10 cached
   read, 5 output). The live re-run still needs the owner's go.
 
+## Addendum: #348 (pi runner: reader turns go silent after tool calls; branch `fix/348-pi-tool-stall`)
+
+- **#348:** a live reader-like turn (12 concurrent review-tool calls)
+  completed in ~10s for ~$0.0008 and did not reproduce the silence, so
+  the fix is defensive at every layer of the hang chain (any stuck MCP
+  call, unclosed SSE stream, or silent provider previously waited out
+  the 10-minute `waitForCount` before failing).
+- Extension (`pi/extension.ts`): every MCP bridge call shares one
+  deadline (`UNVIBE_PI_TOOL_TIMEOUT_MS`, default 60s — loopback calls
+  measure ~15-30ms), covering both the fetch and the SSE body read; a
+  bridge `execute` never rejects anymore but returns an `isError` tool
+  result, like the read-only `read`/`ls` replacements. Env-gated
+  per-call log (`UNVIBE_PI_TOOL_LOG`: tool, start, end, size, error).
+- Runner (`pi/pi-runner.ts`): the per-turn wait is now a silence
+  watchdog (`noEventTimeoutMs`, default 120s — worst observed
+  inter-event gap ~2.3s, any event resets it) that fails the turn with
+  `pi stopped sending events for Ns [after tool "name"] (last event:
+  type)` instead of the silent 10-minute wait.
+- Tests: `pi-extension.test.ts` (real generated source against a stub
+  MCP mount: normal, JSON-RPC error, hanging call, log line);
+  `pi-runner.test.ts` gains the silence shapes (`startHang` fake-pi
+  step) plus the unaffected normal path. Full gates not yet run.
+
 ## Addendum: #297 (branch `feat/297-pr-list-more`)
 
 - **#297 (start-page PR paging + author search; §4.2):** the start
@@ -3739,4 +3763,93 @@ hunk coverage) is reported for a separate issue, not fixed here.
   confirm; plain link shows the styled confirm and creates on Start;
   unknown origin refused on both worker endpoints) with frame
   `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
+  Full gates not yet run.
+
+## Addendum: #346 (branch `feat/346-inline-confirm`)
+
+- **One shared inline confirm:** `InlineConfirm` in
+  `packages/web/src/ui/index.tsx` (styles in `ui.css`) owns the
+  idle → confirming → running → confirmed / error machine. The
+  action button expands in place into a dark pill ("Confirm
+  <action>" + ✓ + ✕, right-anchored overlay so neighbours never
+  shift), focus moves to ✓, then a green-✓ "Confirmed" flash before
+  the result takes over. Escape, ✕, outside click or ~4.5 s without
+  interaction cancels (focus returns when it was inside); a rejected
+  action stays inline with `role="alert"` until the user retries or
+  cancels. The group carries "Confirm <action>: confirm or cancel"
+  on a polite live region; `danger` keeps a warn-coloured edge;
+  idle is overridable (`idleRender`) for the toolbar icon button.
+  Converted: Reviews/Documents remove (was the `confirm-pop`
+  popover, now removed with its CSS), Settings → Data reset, the
+  data-format Reset, repo remove (sticky refusal now the pill
+  error), and the top-bar Re-do guide (#345's interim Re-do/Cancel
+  swap, via `idleRender`; what-is-lost copy in the accessible
+  name). Not converted, with reasons: Version switch/update
+  confirm + blocked-jobs panel and full-access enable (more than a
+  yes/no — format warning/export/refusal list, long warning
+  acknowledgement); thread/comment delete, Reset demo and draft
+  discard (no popout today; adding confirms is out of scope). No
+  `window.confirm` anywhere.
+- Evidence: `src/ui/InlineConfirm.test.tsx` (10 tests incl.
+  StrictMode double-mount, timeout reset, sticky error), updated
+  `ReviewBar.test.tsx` + `GuideLoading.test.tsx`, new real-service
+  journey `e2e/journeys/j346-inline-confirm.spec.ts` (review +
+  document remove through the pill, Escape/outside cancel, API
+  cross-checks), reworked J14 (re-do through the pill) and J225a
+  (pill-in-row geometry), mock `start.spec.ts` / `settings.spec.ts`
+  / `debug-redo.spec.ts`, tour frames `start-remove-idle`,
+  `start-remove-confirm`, `start-remove-confirmed` and
+  `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
+  (inspected). Full gates not yet run.
+
+## Addendum: #349 step 1 — Personas model, Settings UI, prompt composition (branch `feat/349-personas-step1`)
+
+- **Persona model:** `Persona` in `packages/shared/src/personas.ts`
+  (id, name, provider + model, required lens, optional card
+  instruction, enabled, auto colour). Colour comes from the fixed
+  `PERSONA_COLORS` sequence in creation order (`nextPersonaColor`
+  hands out the first unused one); never user-picked, no icons —
+  the AI avatar is recoloured wherever the persona speaks (step 2).
+  Definitions live in `Settings.personas`, seeded with the built-in
+  Second opinion (codex/gpt-6.1-sol; lens + card instruction carry
+  today's "check" behaviour verbatim in the new vocabulary). After
+  seeding it is ordinary data: editable and deletable like any
+  other persona.
+- **Settings → Personas:** new section + tab (`PersonasSection.tsx`,
+  after Models) following the #328 `Field` row layout (label left,
+  control right, help + status under the label): name, provider +
+  model (per-provider list, adapter errors inline), lens, optional
+  card instruction, enabled. Add/edit PUT the whole list; delete
+  goes through the shared #346 `InlineConfirm` (`placement="stack"`,
+  in the row like the repo remove). The model pickers stay
+  main/small only; persona models are validated like roles on save
+  (never persist a model no adapter offers).
+- **Prompt composition (owner decision 2026-11-03):** L0 base
+  instructions (shared, unchanged) + persona lens (system prompt,
+  every task) + shared task template. New `prompts/persona_card.md`
+  (tier `persona`): "here is the guide's version of this card;
+  write your version"; the persona's card instruction overrides the
+  default, empty means the default. `buildPersonaCardPrompt` in
+  `packages/service/src/prompts/personas.ts` composes system + turn.
+- **Second-opinion special-casing removed:** the `secondOpinion`
+  model role (store/defaults/effective/routes/readiness), the
+  blind/check prompts + `SecondOpinionMode`, `SecondOpinionResult`
+  + verdict, the `secondopinion/` base session, the card/finding
+  controls and result blocks, the MCP `second-opinion` role (all
+  sessions share one tool surface now), the `agents-distinct`
+  readiness check, the `second_opinion` action + `second-opinion`
+  job kind, `test:live:second-opinion` + script, and the 3
+  fixture recordings + manifest entries.
+- **Data format 1 → 2:** `Settings` gains `personas`, loses the
+  `secondOpinion` role; stored guide content loses
+  `secondOpinions`. Stamped on fresh data; e2e seeds stamp via the
+  shared constant.
+- Evidence: `packages/shared/test/personas.test.ts` (validation +
+  colours), `packages/service/test/personas-349.test.ts`
+  (composition for built-in + custom, settings CRUD routes), new
+  real-service journey `e2e/journeys/j349-personas.spec.ts`
+  (built-in present, add/edit/delete with the Escape path, API
+  cross-checks; no persona run — step 2), reworked J2 (finding +
+  card flows gone), tour frames `personas-1440-light`,
+  `personas-1440-dark`, `personas-delete-confirm` (inspected).
   Full gates not yet run.

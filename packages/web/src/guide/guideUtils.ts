@@ -146,6 +146,19 @@ export function expansionOpenedPages(
   return allPages.filter((p) => p.parent === page.id && p.kind === "opened-expansion");
 }
 
+/**
+ * Issue #343: the plotlines-card checkbox state for one plotline —
+ * checked when every hunk is reviewed, partial when some are,
+ * unchecked otherwise (none reviewed, or no hunks at all).
+ */
+export type PlotlineReviewedState = "checked" | "partial" | "unchecked";
+
+export function plotlineReviewedState(reviewed: number, total: number): PlotlineReviewedState {
+  if (total > 0 && reviewed >= total) return "checked";
+  if (reviewed > 0) return "partial";
+  return "unchecked";
+}
+
 export interface ContentsEntry {
   kind: "card" | "page";
   id: string;

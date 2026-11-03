@@ -238,9 +238,9 @@ async function phaseAuto(token) {
     const r = await api("PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
   };
-  await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small", "secondOpinion"]);
+  await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"]);
   const eff = (await api("GET", "/api/settings", undefined, token)).json;
-  console.log(`effective settings: main=${eff.main.provider}/${eff.main.model} small=${eff.small.provider}/${eff.small.model} second=${eff.secondOpinion.provider}/${eff.secondOpinion.model}`);
+  console.log(`effective settings: main=${eff.main.provider}/${eff.main.model} small=${eff.small.provider}/${eff.small.model}`);
 
   const created = await api("POST", "/api/reviews", { repoId: REPO }, token);
   if (created.code !== 201) throw new Error(`demo create -> ${created.code}: ${created.raw.slice(0, 300)}`);
@@ -428,12 +428,8 @@ async function phaseOndemand(token, reviewId, questionsPath) {
     const res = await fire(`depth:expansion:${t.direction}`, { kind: "depth", cardId: threadId, direction: t.direction });
     await settle(`depth:expansion:${t.direction}`, res);
   }
-  for (const s of q.secondOpinion ?? []) {
-    const res = await fire(`second-opinion:${s.cardId}:${s.mode}`, { kind: "second_opinion", cardId: s.cardId, mode: s.mode });
-    if (res) await settle(`second-opinion:${s.cardId}:${s.mode}`, res);
-    // A refusal here is expected when second opinion === main (by design);
-    // recorded in fired[] by fire(); no spend either way.
-  }
+  // Issue #349 removed the second_opinion action (now a built-in persona):
+  // no second-opinion firing; the demo records no second opinions.
   return fired;
 }
 

@@ -1,15 +1,11 @@
 ## The problem
 
-Some servers split one header over two lines. This is called `obs-fold`. It is an old HTTP habit. A folded header looks like `Set-Cookie: a=b\r\n    c=d`. The `\r\n` is a line break, and the second line starts with spaces.
+Some HTTP servers still split one header value across several lines. This old style is called `obs-fold`. The next line starts with a space or tab. Python's `http.client` keeps the line break (`\r\n`) inside the stored value. urllib3 then copied that value unchanged into `HTTPHeaderDict`. A folded `Set-Cookie` header therefore reached other code with a `\r\n` inside it. [[desc:d-p1]] [[diff:src-urllib3-connection.py:647-651]]
 
-Python's `http.client` does not clean this up. It leaves the line break inside the header value. So urllib3 receives a value with a raw `\r\n` in it, and so does any code that uses urllib3. RFC 9112 says a receiver must replace each fold with spaces before it uses the value. [[desc:d-p1]]
+Before this change, `getresponse` built the headers with `HTTPHeaderDict(httplib_response.msg.items())`. It did no cleanup. Python's original header object, `HTTPMessage`, also stayed on the response as `_original_response.msg`. Cookie libraries such as Requests read that object directly. They could send the raw `\r\n` again on later requests. [[desc:d-p2]] [[diff:src-urllib3-connection.py:647-651]]
 
-Before this change, `getresponse` built `HTTPHeaderDict` directly from `httplib_response.msg.items()`. So the raw line break ended up in two places: the `HTTPHeaderDict`, and the original `HTTPMessage`. [[diff:src-urllib3-connection.py:647-651]]
-
-Some tools, such as Requests, read cookies from the original message. They could copy the raw line break into the next request they send. [[desc:d-p2]]
-
-This change is about the folded `Set-Cookie` case from #1362. Header names with whitespace before the colon, and header-name validation, are a different problem. They are not covered here. [[desc:d-p4]]
+The bug report is #1362. A different problem is not part of this change: spaces before the colon and header-name checks. [[desc:d-p4]]
 
 ```json
-{"depth": {"level": "simple", "cardId": "problem"}}
+{"depth": {"level": "simple", "cardId": "card:problem"}}
 ```

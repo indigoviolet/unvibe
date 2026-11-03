@@ -1,14 +1,12 @@
-/** J2 (#188): Explain, Ask, follow-up, nested card, second opinion — replay. */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+/** J2 (#188): Explain, Ask, follow-up, nested card — replay. */
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import type { Locator } from "@playwright/test";
-import { apiJson, createDemoReview, createSeededDemoReview, stampDataFormat } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createSeededDemoReview } from "./journey-helpers.js";
 
 /**
  * Click a reply-toolbar button (#336: the toolbar reveals on hover or
@@ -51,7 +49,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("explain, ask with follow-up, nested explain, depth, second opinion", async ({ page }) => {
+  test("explain, ask with follow-up, nested explain, depth", async ({ page }) => {
     test.setTimeout(300_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -171,19 +169,6 @@ test.describe("J2 explain ask follow-up nested", () => {
     await page.reload();
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(`#C-problem mark.anc.exl[data-jump="${cardId}"]:not(.fnote)`)).toHaveCount(0);
-
-    // Second opinion on the bare-LF finding (its replay recording is keyed to it).
-    await page.goto(`${svc.origin}/review/${reviewId}/page/f-critic?token=${svc.token}`);
-    await expect(page.locator("#page")).toBeVisible({ timeout: 30_000 });
-    const soBtn = page.locator('button[aria-label^="Second opinion ("]').first();
-    if ((await soBtn.count()) > 0 && (await soBtn.isEnabled())) {
-      await soBtn.click();
-      await expect(page.locator("[data-so]").first()).toBeVisible({ timeout: 60_000 });
-    } else {
-      // No distinct second-opinion model is configured in replay settings:
-      // the control must say so visibly, never silently do nothing.
-      await expect(page.locator('[data-so-ctl] .so-warn, button[aria-label="Second opinion needs a different model"]').first()).toBeVisible({ timeout: 15_000 });
-    }
   });
 
   test("diff pane: explain opens pinned; close, mark, reopen, delete (#204)", async ({ page }) => {
@@ -462,211 +447,6 @@ test.describe("J2 explain ask follow-up nested", () => {
   });
 });
 
-// Merged from second-opinion-service.spec.ts (#256): a blind second
-// opinion on the bare-LF finding completes, cites code, and its prompt
-// snapshot contains no guide text; the UI renders the verdict chip.
-const SO_FIXTURE_DIR = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
-const SO_REVIEW_ID = "so-seed";
-
-async function seedSecondOpinion(dataDir: string): Promise<void> {
-  const snapshot = JSON.parse(readFileSync(path.join(SO_FIXTURE_DIR, "snapshot.json"), "utf8")) as {
-    rev: number;
-    review: { id: string };
-  };
-  const meta = JSON.parse(readFileSync(path.join(SO_FIXTURE_DIR, "meta.json"), "utf8")) as {
-    keyAliases: Record<string, string>;
-  };
-  let json = JSON.stringify(snapshot);
-  for (const [alias, real] of Object.entries(meta.keyAliases)) {
-    json = json.split(`diff:${alias}:`).join(`diff:${real}:`);
-  }
-  const seeded = JSON.parse(json) as typeof snapshot;
-  seeded.review.id = SO_REVIEW_ID;
-  const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
-  try {
-    db.exec(
-      `CREATE TABLE IF NOT EXISTS review_snapshots (
-        review_id TEXT PRIMARY KEY,
-        rev INTEGER NOT NULL,
-        snapshot JSON NOT NULL,
-        updated_at INTEGER NOT NULL
-      );`,
-    );
-    db.prepare(
-      "INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?) " +
-        "ON CONFLICT(review_id) DO UPDATE SET rev = excluded.rev, snapshot = excluded.snapshot",
-    ).run(SO_REVIEW_ID, seeded.rev, JSON.stringify(seeded), Date.now());
-    db.exec(
-      `CREATE TABLE IF NOT EXISTS repos (
-        id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL,
-        local_path TEXT NOT NULL, last_opened INTEGER NOT NULL DEFAULT 0
-      );
-      CREATE TABLE IF NOT EXISTS reviews (
-        id TEXT PRIMARY KEY, repo_id TEXT NOT NULL REFERENCES repos(id),
-        branch TEXT NOT NULL, pr_number INTEGER, current_version INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL, data JSON NOT NULL DEFAULT '{}'
-      );`,
-    );
-    db.prepare(
-      "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) " +
-        "ON CONFLICT(id) DO NOTHING",
-    ).run("seed-repo", "seed", "repo", "/tmp", Date.now());
-    db.prepare(
-      "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) " +
-        "ON CONFLICT(id) DO NOTHING",
-    ).run(SO_REVIEW_ID, "seed-repo", "main", 5020, 1, Date.now(), JSON.stringify({}));
-    stampDataFormat(db);
-  } finally {
-    db.close();
-  }
-}
-
-test.describe("J2 blind second opinion on a finding (seeded)", () => {
-  let dataDir = "";
-  let svc: RunningService | null = null;
-
-  test.beforeAll(async () => {
-    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j2-so-data-"));
-    await seedSecondOpinion(dataDir);
-    svc = await startService(dataDir, { agent: "replay" });
-  });
-
-  test.afterAll(async () => {
-    await svc?.stop().catch(() => {});
-    svc = null;
-    rmSync(dataDir, { recursive: true, force: true });
-  });
-
-  test("blind second opinion completes, cites code, prompt has no guide text, chip renders", async ({ page }) => {
-    test.setTimeout(300_000);
-    if (!svc) throw new Error("service not running");
-
-    const acted = await apiJson(svc, "POST", `/api/reviews/${SO_REVIEW_ID}/actions`, {
-      kind: "second_opinion",
-      cardId: "f-critic-0",
-      mode: "blind",
-    });
-    expect(acted.status).toBe(200);
-    const jobId = (acted.json as { jobId?: string }).jobId;
-    expect(jobId).toBeTruthy();
-
-    let state: string | null = null;
-    for (let i = 0; i < 100; i++) {
-      const res = await apiJson(svc, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
-      expect(res.status).toBe(200);
-      const jobs = (res.json as { jobs: { id: string; state: string; error?: string }[] }).jobs;
-      const job = jobs.find((j) => j.id === jobId) ?? null;
-      if (job && (job.state === "done" || job.state === "error" || job.state === "cancelled")) {
-        state = job.state;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    expect(state).toBe("done");
-
-    // #207: the old /api/jobs/:id/prompt endpoint is gone; GET
-    // /api/jobs/:id keeps the full job, prompt snapshot included.
-    const promptRes = await apiJson(svc, "GET", `/api/jobs/${jobId}`);
-    expect(promptRes.status).toBe(200);
-    const prompt = (promptRes.json as { job: { promptSnapshot: string } }).job.promptSnapshot;
-    expect(prompt).toContain("Second opinion");
-    expect(prompt).not.toContain("are not unfolded");
-    expect(prompt).not.toContain("The central change");
-
-    const snapRes = await apiJson(svc, "GET", `/api/reviews/${SO_REVIEW_ID}`);
-    expect(snapRes.status).toBe(200);
-    const snap = snapRes.json as {
-      pages: { id: string; cards: { id: string; secondOpinions?: { verdict: string; blocks: unknown[]; missed?: string }[] }[] }[];
-    };
-    const finding = snap.pages.find((p) => p.id === "f-critic");
-    expect(finding).toBeDefined();
-    const opinions = finding!.cards.flatMap((c) => c.secondOpinions ?? []);
-    expect(opinions).toHaveLength(1);
-    expect(opinions[0].verdict).toBe("partly");
-    expect(opinions[0].blocks.length).toBeGreaterThan(0);
-    expect(opinions[0].missed).toBeTruthy();
-
-    await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}/page/f-critic?token=${svc.token}`);
-    await expect(page.locator("#page .eyebrow")).toContainText("Agent finding", { timeout: 30_000 });
-    await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 30_000 });
-
-    // Moved from second-opinion.spec.ts (#258): the finding control
-    // defaults to blind; the mode menu closes on Escape.
-    const findingCtl = page.locator('[data-so-ctl="f-critic-0"]');
-    await expect(findingCtl).toBeVisible({ timeout: 15_000 });
-    await expect(findingCtl.getByRole("button", { name: "Second opinion (blind)" })).toBeVisible();
-    await findingCtl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
-    await expect(findingCtl.getByRole("menu", { name: "Second-opinion mode" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(findingCtl.getByRole("menu", { name: "Second-opinion mode" })).toHaveCount(0);
-
-    // Re-run keeps one per mode; remove clears it.
-    const chip = page.locator('[data-so][data-verdict="partly"]');
-    const jobsBefore = await apiJson(svc, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
-    const soBefore = ((jobsBefore.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
-      (j) => j.kind === "second-opinion" && j.state === "done",
-    ).length;
-    expect(soBefore).toBeGreaterThanOrEqual(1);
-    await chip.getByRole("button", { name: /Re-run second opinion/ }).click();
-    // PRD §12 reuse (unlike the mock, which always re-runs): the identical
-    // request reuses the stored result — no new run, still exactly one chip.
-    await page.waitForTimeout(3000);
-    const jobsAfter = await apiJson(svc, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
-    expect(
-      ((jobsAfter.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
-        (j) => j.kind === "second-opinion" && j.state === "done",
-      ).length,
-    ).toBe(soBefore);
-    await expect(page.locator('[data-so][data-verdict="partly"]')).toHaveCount(1);
-    await chip.getByRole("button", { name: "Remove second opinion" }).click();
-    await expect(page.locator('[data-so]')).toHaveCount(0);
-
-    // The mode menu runs blind on the finding (again via the UI this time).
-    await findingCtl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
-    await findingCtl.getByRole("menu", { name: "Second-opinion mode" }).getByRole("menuitemradio", { name: /Blind/ }).click();
-    await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 60_000 });
-  });
-
-  // Moved from second-opinion.spec.ts (#258): check on the guide card
-  // disagrees with citations, then re-run keeps one and remove clears it.
-  test("check second opinion on the guide card disagrees, re-runs, removes", async ({ page }) => {
-    test.setTimeout(300_000);
-    if (!svc) throw new Error("service not running");
-    await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}?token=${svc.token}`);
-    await expect(page.locator("#page .doc h1.title")).toContainText(
-      "Unfold obsolete folded response headers",
-      { timeout: 30_000 },
-    );
-    const ctl = page.locator('#C-central [data-so-ctl="central"]');
-    await expect(ctl).toBeVisible({ timeout: 30_000 });
-    // One icon button (check is the guide-card default) plus a mode caret.
-    await expect(ctl.getByRole("button", { name: "Second opinion (check this claim)" })).toBeVisible();
-    await expect(ctl.getByRole("button", { name: "Choose a second-opinion mode" })).toBeVisible();
-    await ctl.getByRole("button", { name: "Second opinion (check this claim)" }).click();
-    const block = page.locator('#C-central [data-so][data-verdict="disagrees"]');
-    await expect(block).toBeVisible({ timeout: 60_000 });
-    await expect(block).toContainText("Disagrees");
-    await expect(block).toContainText("Missed:");
-    await expect(block.locator(".lk[data-refs]").first()).toBeVisible();
-    // Re-run keeps one per mode; remove clears it.
-    const checkDone = async (): Promise<number> => {
-      const r = await apiJson(svc!, "GET", `/api/jobs?review=${SO_REVIEW_ID}`);
-      return ((r.json as { jobs: { kind: string; state: string }[] }).jobs ?? []).filter(
-        (j) => j.kind === "second-opinion" && j.state === "done",
-      ).length;
-    };
-    const checkCount = await checkDone();
-    await block.getByRole("button", { name: /Re-run second opinion/ }).click();
-    // PRD §12 reuse (unlike the mock, which always re-runs): the identical
-    // request reuses the stored result — no new run, still exactly one chip.
-    await page.waitForTimeout(3000);
-    expect(await checkDone()).toBe(checkCount);
-    expect(await page.locator('#C-central [data-so][data-verdict="disagrees"]').count()).toBe(1);
-    await block.getByRole("button", { name: "Remove second opinion" }).click();
-    await expect(page.locator('#C-central [data-so]')).toHaveCount(0);
-  });
-});
-
 // Merged from expansion-nesting-service.spec.ts and
 // interaction-journey-service.spec.ts (#256). Both flows select guide
 // text, so each runs on its own fresh replay review: earlier cards on a
@@ -828,11 +608,11 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
         await expect(pendings.first().locator(".working").first()).toBeVisible({ timeout: 15_000 });
         await expect(pendings.first()).toHaveCount(0, { timeout: 90_000 });
       }
-      const flow = page.locator("#C-g-inplace");
+      const flow = page.locator("#C-g-flow");
       await flow.scrollIntoViewIfNeeded();
       await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
       await flow.getByRole("button", { name: "Expand" }).click();
-      const follow = page.locator("#C-g-inplace .follow button").first();
+      const follow = page.locator("#C-g-flow .follow button").first();
       await expect(follow).toBeVisible({ timeout: 15_000 });
       const label = await follow.innerText();
       await follow.click();

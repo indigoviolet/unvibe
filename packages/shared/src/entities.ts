@@ -5,7 +5,6 @@
  * per-review folders); web renders them. Nested shapes are stored as JSON
  * columns where noted in the service's migration 001.
  */
-import type { SecondOpinionMode } from "./prompts.js";
 import type { HideLevel, HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
@@ -229,10 +228,10 @@ export interface Page {
 export type DepthLevel = "simple" | "standard" | "deep";
 
 /**
- * Issue #273: what depth, examples, diagram, undo and second opinion act
- * on — a page card's body or one reply of a thread. Every unit carries
- * its own `ans_…`/card id so none of those contracts change shape when
- * the unit is a reply.
+ * Issue #273: what depth, examples, diagram and undo act on — a page
+ * card's body or one reply of a thread. Every unit carries its own
+ * `ans_…`/card id so none of those contracts change shape when the unit
+ * is a reply. (Issue #349 step 2 adds per-persona card variants here.)
  */
 export interface ContentBody {
   /** Page-card id, or `ans_<12 hex>` for a thread reply. */
@@ -243,13 +242,6 @@ export interface ContentBody {
   revision: number;
   /** Undo stack of block snapshots (depth/examples/diagram changes). */
   undoStack: CardSnapshot[];
-  /**
-   * Second-opinion results attached to this unit, not part of its
-   * revisable content. Depth changes and undo operate on `blocks` /
-   * `level` / `undoStack` only, so these survive both. Keep one per
-   * mode+model; re-running replaces the matching entry.
-   */
-  secondOpinions?: SecondOpinionResult[];
 }
 
 /** One card on a page. IDs stay stable across revisions (PRD §7.2). */
@@ -274,55 +266,6 @@ export interface Card extends ContentBody {
   stale?: boolean;
   staleChangedHunks?: number;
   staleHunks?: string[];
-}
-
-/**
- * M6 second opinion (PRD §4.10, §12).
- *
- * Additive-only: new entity carried on `ContentBody.secondOpinions`
- * (a page card or one conversation answer). The
- * reasoning body is stored as validated `Block[]` so citation markers
- * behave like all others (hover preview, click reveals). `missed` is the
- * trailing-JSON "anything the card missed" string. `SecondOpinionMode`
- * lives in `prompts.ts` (re-exported through the barrel); this module
- * imports it for the result shape without re-defining it.
- */
-export type SecondOpinionVerdict = "agrees" | "partly" | "disagrees";
-
-export interface SecondOpinionResult {
-  /** Stable id: `so-<cardId>-<mode>-<provider>-<model>` (slugified). */
-  id: string;
-  cardId: string;
-  mode: SecondOpinionMode;
-  /** Second-opinion model that produced this result (label in the UI). */
-  provider: string;
-  model: string;
-  /**
-   * Thinking level the run used (issue #172), "" for the adapter default.
-   * Part of the reuse identity: a changed effort re-runs.
-   */
-  effort: string;
-  verdict: SecondOpinionVerdict;
-  /** Reasoning text from the trailing JSON (plain text fallback). */
-  reasoning: string;
-  /** Validated reasoning blocks (citation markers render like all others). */
-  blocks: Block[];
-  /** Anything the card missed (trailing-JSON `missed`). */
-  missed?: string;
-  /** Review version the run executed against (dedupe + staleness). */
-  version: number;
-  createdAt: number;
-  /** Job that produced this result (for usage / prompt-snapshot links). */
-  jobId?: string;
-}
-
-/** Dedupe identity for a second-opinion request (PRD §12). */
-export interface SecondOpinionDedupe {
-  cardId: string;
-  mode: SecondOpinionMode;
-  provider: string;
-  model: string;
-  version: number;
 }
 
 /** A single undo entry: block list + depth level. No redo (PRD §4.4). */
@@ -979,7 +922,6 @@ export type JobKind =
   | "examples"
   | "diagram"
   | "go-deeper"
-  | "second-opinion"
   | "update-pass"
   | "summarize"
   | "plotline-assign"

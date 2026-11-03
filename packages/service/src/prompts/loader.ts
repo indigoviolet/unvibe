@@ -16,7 +16,7 @@
  * Front matter rules (validated here):
  * - `role` (string, required): the message role this template renders for
  *   (`system` for L0 instructions, `user` for everything else).
- * - `tier` (required): one of `main`, `small`, `second-opinion`.
+ * - `tier` (required): one of `main`, `small`, `persona`.
  * - `variables` (required, may be empty): the declared variable names.
  *   Dotted names (`anchor.quote`) address nested values.
  * - Unknown front-matter keys are rejected (catches typos).
@@ -33,9 +33,9 @@
  */
 
 /** Model tiers from the PRD §13 table (which sessions may use a template). */
-export type TemplateTier = "main" | "small" | "second-opinion";
+export type TemplateTier = "main" | "small" | "persona";
 
-export const TEMPLATE_TIERS: readonly TemplateTier[] = ["main", "small", "second-opinion"];
+export const TEMPLATE_TIERS: readonly TemplateTier[] = ["main", "small", "persona"];
 
 /** A parsed template file, ready to render. */
 export interface ParsedTemplate {

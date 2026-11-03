@@ -4,7 +4,7 @@
     "model": "sonnet",
     "label": "Sonnet 5.5"
   },
-  "promptHash": "sha256:a3a9f06cafb67b40e25b16322e73310962396eb58be58492b70f4637cba4609b",
+  "promptHash": "sha256:61bf5cffac2c1918ccd469eb04f83727c677dc773e5f8db1221988e6c8325bf6",
   "recordings": [
     {
       "kind": "reader",
@@ -18,6 +18,11 @@
       "kind": "concept-page",
       "key": "obs-fold",
       "file": "concept-obs-fold.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "_normalize_header_value",
+      "file": "concept-normalize-header-value.md"
     },
     {
       "kind": "concept-page",
@@ -71,18 +76,18 @@
     },
     {
       "kind": "go-deeper",
-      "key": "downstream",
-      "file": "go-deeper-downstream.md"
-    },
-    {
-      "kind": "go-deeper",
       "key": "tests",
       "file": "go-deeper-tests.md"
     },
     {
       "kind": "go-deeper",
-      "key": "inplace",
-      "file": "go-deeper-inplace.md"
+      "key": "alt",
+      "file": "go-deeper-alt.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "reach",
+      "file": "go-deeper-reach.md"
     },
     {
       "kind": "go-deeper",
@@ -111,8 +116,103 @@
     },
     {
       "kind": "depth",
+      "key": "buildup:simple",
+      "file": "depth-buildup-simple.md"
+    },
+    {
+      "kind": "depth",
       "key": "buildup:deep",
       "file": "depth-buildup-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "decisions:simple",
+      "file": "depth-decisions-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "decisions:deep",
+      "file": "depth-decisions-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-alt:simple",
+      "file": "depth-g-alt-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-alt:deep",
+      "file": "depth-g-alt-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-regex:simple",
+      "file": "depth-g-regex-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-regex:deep",
+      "file": "depth-g-regex-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-tests:simple",
+      "file": "depth-g-tests-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-tests:deep",
+      "file": "depth-g-tests-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-reach:simple",
+      "file": "depth-g-reach-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-reach:deep",
+      "file": "depth-g-reach-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-adjacent-folds:simple",
+      "file": "depth-evidence-adjacent-folds-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-adjacent-folds:deep",
+      "file": "depth-evidence-adjacent-folds-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-adjacent-folds:simple",
+      "file": "depth-assessment-adjacent-folds-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-adjacent-folds:deep",
+      "file": "depth-assessment-adjacent-folds-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-bare-lf:simple",
+      "file": "depth-evidence-bare-lf-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-bare-lf:deep",
+      "file": "depth-evidence-bare-lf-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-bare-lf:simple",
+      "file": "depth-assessment-bare-lf-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-bare-lf:deep",
+      "file": "depth-assessment-bare-lf-deep.md"
     },
     {
       "kind": "depth",
@@ -130,6 +230,16 @@
       "file": "examples-central.md"
     },
     {
+      "kind": "examples",
+      "key": "g-regex",
+      "file": "examples-g-regex.md"
+    },
+    {
+      "kind": "examples",
+      "key": "g-tests",
+      "file": "examples-g-tests.md"
+    },
+    {
       "kind": "diagram",
       "key": "central",
       "file": "diagram-central.md"
@@ -141,171 +251,123 @@
     },
     {
       "kind": "explain",
-      "key": "obs-fold",
-      "pattern": "a line break followed by whitespace",
-      "file": "explain-obs-fold.md"
+      "key": "obsfold",
+      "pattern": "keeps those raw CRLFs inside the HTTPMessage val",
+      "file": "explain-obsfold.md"
     },
     {
       "kind": "explain",
-      "key": "set-cookie",
-      "pattern": "a folded `Set-Cookie`",
-      "file": "explain-set-cookie.md"
+      "key": "stayed",
+      "pattern": "The original HTTPMessage stayed on the response",
+      "file": "explain-stayed.md"
     },
     {
       "kind": "explain",
-      "key": "http-headers",
-      "pattern": "Cookie consumers such as Requests read the messa",
-      "file": "explain-http-headers.md"
+      "key": "ows",
+      "pattern": "matches optional whitespace, then CRLF, then req",
+      "file": "explain-ows.md"
     },
     {
       "kind": "explain",
-      "key": "regex",
-      "pattern": "replaces each match with a single space",
-      "file": "explain-regex.md"
+      "key": "agree",
+      "pattern": "so the message and urllib3's HTTPHeaderDict agre",
+      "file": "explain-agree.md"
     },
     {
       "kind": "explain",
-      "key": "message-rewrite",
-      "pattern": "deletes and re-adds all headers on the same mess",
-      "file": "explain-message-rewrite.md"
+      "key": "fresh",
+      "pattern": "build a fresh HTTPMessage and swap it",
+      "file": "explain-fresh.md"
     },
     {
       "kind": "explain",
-      "key": "plotline",
-      "pattern": "it builds up in three pieces",
-      "file": "explain-plotline.md"
+      "key": "offsets",
+      "pattern": "re\\.sub tries a match at every offset",
+      "file": "explain-offsets.md"
     },
     {
       "kind": "explain",
-      "key": "changelog",
-      "pattern": "A changelog fragment records the fix",
-      "file": "explain-changelog.md"
+      "key": "thin",
+      "pattern": "thin on inputs that are not a well-formed obs-fo",
+      "file": "explain-thin.md"
     },
     {
       "kind": "explain",
-      "key": "requests",
-      "pattern": "stated reason is cookie consumers",
-      "file": "explain-requests.md"
-    },
-    {
-      "kind": "explain",
-      "key": "order",
-      "pattern": "appending in order",
-      "file": "explain-order.md"
-    },
-    {
-      "kind": "explain",
-      "key": "bare-lf",
-      "pattern": "not followed by whitespace is untouched",
-      "file": "explain-bare-lf.md"
-    },
-    {
-      "kind": "ask",
-      "key": "unfold-scope",
-      "pattern": "whitespace-before-colon scope in #1362 i|Why is the whitespace-before-colon case ",
-      "file": "ask-unfold-scope.md"
+      "key": "twooutputs",
+      "pattern": "If only HTTPHeaderDict were cleaned, r\\.headers w",
+      "file": "explain-twooutputs.md"
     },
     {
       "kind": "ask",
       "key": "bare-lf",
-      "pattern": "A value with a bare|Should a bare LF not followed by whitesp",
+      "pattern": "that case is also untested|Should a bare LF not followed by whitesp",
       "file": "ask-bare-lf.md"
     },
     {
       "kind": "ask",
-      "key": "cost",
-      "pattern": "delete-and-re-add pass over all headers|What does the delete-and-re-add cost on ",
-      "file": "ask-cost.md"
-    },
-    {
-      "kind": "ask",
       "key": "identity",
-      "pattern": "the same message object|Is the rewritten message the same object",
+      "pattern": "it deletes and re-adds the headers on th|Is the rewritten message the same object",
       "file": "ask-identity.md"
     },
     {
       "kind": "ask",
-      "key": "regex",
-      "pattern": "avoids quadratic backtracking|What input would turn quadratic without ",
-      "file": "ask-regex.md"
+      "key": "quadratic",
+      "pattern": "would greedily consume the rest of the r|What input would turn quadratic without ",
+      "file": "ask-quadratic.md"
     },
     {
       "kind": "ask",
-      "key": "tests",
-      "pattern": "Unit tests cover the single-value functi|Which cases do the unit tests pin, and w",
-      "file": "ask-tests.md"
-    },
-    {
-      "kind": "ask",
-      "key": "order",
-      "pattern": "interleaved duplicates|Only one unit test checks duplicates — i",
-      "file": "ask-order.md"
-    },
-    {
-      "kind": "ask",
-      "key": "cookie",
-      "pattern": "re-emit the raw CRLF|Which downstream consumer re-emits the r",
-      "file": "ask-cookie.md"
-    },
-    {
-      "kind": "ask",
-      "key": "two-spaces",
-      "pattern": "one  three|Is the double space here intended\\?",
-      "file": "ask-two-spaces.md"
-    },
-    {
-      "kind": "ask",
-      "key": "reject-vs-unfold",
-      "pattern": "An alternative is to normalize only the |Would rejecting folded headers be safer ",
-      "file": "ask-reject-vs-unfold.md"
-    },
-    {
-      "kind": "ask",
-      "key": "duplicates",
-      "pattern": "Only one unit test, with interleaved dup|Why does the rewrite depend on HTTPMessa",
-      "file": "ask-duplicates.md"
+      "key": "test-gaps",
+      "pattern": "Nothing asserts that _normalize_header_v|Which fold shapes have no test, and whic",
+      "file": "ask-test-gaps.md"
     },
     {
       "kind": "ask",
       "key": "socket",
-      "pattern": "A socket-level test covers real folded r|What does the socket-level test prove th",
+      "pattern": "A socket-level test covers the whole pat|What does the socket-level test prove th",
       "file": "ask-socket.md"
     },
     {
       "kind": "ask",
-      "key": "thread-sync",
-      "pattern": "keeps the message and the `HTTPHeaderDict` identical|Why must the message and the dict stay identical",
-      "file": "ask-thread-sync.md"
+      "key": "reject-vs-unfold",
+      "pattern": "A fix that cleaned only HTTPHeaderDict w|Would rejecting folded headers be safer ",
+      "file": "ask-reject-vs-unfold.md"
     },
     {
-      "kind": "second-opinion",
-      "key": "f-lf:blind",
-      "file": "second-opinion-f-lf-blind.md",
-      "recordedWith": "pre-341-fixture (model unrecorded)"
+      "kind": "ask",
+      "key": "two-spaces",
+      "pattern": "which collapse to two spaces|Is the double space here intended\\?",
+      "file": "ask-two-spaces.md"
     },
     {
-      "kind": "second-opinion",
-      "key": "f-perf:blind",
-      "file": "second-opinion-f-perf-blind.md",
-      "recordedWith": "pre-341-fixture (model unrecorded)"
+      "kind": "ask",
+      "key": "scope",
+      "pattern": "are a separate issue and are not part of|Why is the whitespace-before-colon case ",
+      "file": "ask-scope.md"
     },
     {
-      "kind": "second-opinion",
-      "key": "central:check",
-      "file": "second-opinion-central-check.md",
-      "recordedWith": "pre-341-fixture (model unrecorded)"
+      "kind": "ask",
+      "key": "cookie",
+      "pattern": "they could re-emit raw CRLF on later req|Which downstream consumer re-emits the r",
+      "file": "ask-cookie.md"
     },
     {
-      "kind": "second-opinion",
-      "key": "f-critic:blind",
-      "file": "second-opinion-f-lf-blind.md",
-      "recordedWith": "pre-341-fixture (model unrecorded)"
+      "kind": "ask",
+      "key": "order",
+      "pattern": "so duplicate names keep their order|Why does the rewrite depend on HTTPMessa",
+      "file": "ask-order.md"
     },
     {
-      "kind": "second-opinion",
-      "key": "f-critic-2:blind",
-      "file": "second-opinion-f-perf-blind.md",
-      "recordedWith": "pre-341-fixture (model unrecorded)"
+      "kind": "ask",
+      "key": "thread-barelf",
+      "pattern": "that case is also untested|Should a bare LF not followed by whitesp",
+      "file": "ask-thread-barelf.md"
+    },
+    {
+      "kind": "ask",
+      "key": "thread-cookie",
+      "pattern": "they could re-emit raw CRLF on later req|Which consumer re-emits the raw CRLF\\?",
+      "file": "ask-thread-cookie.md"
     }
   ]
 }

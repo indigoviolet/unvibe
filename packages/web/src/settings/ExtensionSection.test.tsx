@@ -11,7 +11,7 @@ const settings: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
+  personas: [],
   sessionsPerProvider: 4, inlineBudgetTokens: 40000, rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000, logBatchTokens: 2000, cacheLifetimeMs: 300000,
   idleExitMinutes: 10, versionPickerEnabled: false, fullAccess: false,

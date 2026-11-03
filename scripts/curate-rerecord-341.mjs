@@ -31,6 +31,13 @@ for (const e of index) (byKind[e.kind] ??= []).push(e);
 const fail = (m) => { console.error(`curate: refusing: ${m}`); process.exit(2); };
 
 const firedStatus = (entry) => (report.fired ?? []).find((f) => f.entry === entry)?.status ?? "(missing)";
+// Occurrence-aware status: quads repeat the same depth entry id
+// (simpler/deeper/deeper/deeper) with different statuses; consume the
+// fired list in order so the switchback's "reused" doesn't shadow the
+// priced fills that follow it.
+const firedQueue = {};
+for (const f of report.fired ?? []) (firedQueue[f.entry] ??= []).push(f.status);
+const firedStatusNext = (entry) => (firedQueue[entry] ?? []).shift() ?? "(missing)";
 
 // Keyed kinds: marker key → capture file (exact, order-free).
 const keyed = (kind, key) => {
@@ -38,10 +45,22 @@ const keyed = (kind, key) => {
   if (hits.length !== 1) fail(`${kind} key ${key === null ? "(kind-only)" : key}: ${hits.length} captures`);
   return hits[0];
 };
+// Last-of-pair: depth quads fire deep-text then principle fills under one
+// marker key; the principle (second) reply is the superset — it produced
+// the final live deep text and carries the principle aside, and the replay
+// merge applies the same file on both paths.
+const keyedLast = (kind, key) => {
+  const hits = (byKind[kind] ?? []).filter((e) => e.key === key);
+  if (hits.length === 0) fail(`${kind} key ${key}: no captures`);
+  return hits[hits.length - 1];
+};
 
 const out = {}; // fixture filename → capture source path
 const take = (kind, key, dest) => {
   out[dest] = path.join(captureDir, keyed(kind, key).file);
+};
+const takeLast = (kind, key, dest) => {
+  out[dest] = path.join(captureDir, keyedLast(kind, key).file);
 };
 
 // Kind-only kinds: fire order, skipping reused/deduplicated.
@@ -77,10 +96,22 @@ const slugFile = (s) => s.toLowerCase().replace(/^_+|-+$/g, "").replace(/[_\s]+/
 for (const slug of questions.concept ?? []) take("concept-page", slug.toLowerCase(), `concept-${slugFile(slug)}.md`);
 
 // --- depth / examples (card ids) ---
+// Quads fire simpler/deeper/deeper/deeper per card: the second deeper is a
+// free instant switchback (no capture); deep-text then principle fills
+// share one marker key, and the principle (last) reply is the superset.
 for (const d of questions.depth ?? []) {
-  if (["reused", "deduplicated"].includes(firedStatus(`depth:${d.cardId}:${d.direction}`))) continue; // stored text; covered by extraManifest
-  take("depth", depthKey(d), depthFile(d));
+  if (["reused", "deduplicated"].includes(firedStatusNext(`depth:${d.cardId}:${d.direction}`))) continue; // stored text; covered by extraManifest
+  if (d.direction === "simpler") take("depth", depthKey(d), depthFile(d));
+  else takeLast("depth", depthKey(d), depthFile(d));
 }
+// Thread depths share one expansion:<level> recording by design (stable
+// ids would collide across threads); the first fired stands in.
+const keyedFirst = (kind, key) => {
+  const hits = (byKind[kind] ?? []).filter((e) => e.key === key);
+  if (hits.length === 0) fail(`${kind} key ${key}: no captures`);
+  return hits[0];
+};
+out["depth-expansion-deep.md"] = path.join(captureDir, keyedFirst("depth", "expansion:deep").file);
 for (const cardId of questions.examples ?? []) take("examples", cardId, `examples-${cardId}.md`);
 
 // --- diagram (kind-only, fire order = questions.diagram order) ---
@@ -89,8 +120,14 @@ ordered("diagram", (questions.diagram ?? []).map((cardId) => ({ entry: `diagram:
 // --- explain / ask (kind-only, patterns decide at runtime) ---
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const explainPat = (e) => [e.quote, ...(e.message ? [e.message] : [])].map((s) => esc(s.slice(0, 48))).join("|");
+// Thread asks fire after the plain asks (phaseOndemand order); they map by
+// the same fire order.
+const askEntries = [
+  ...(questions.ask ?? []).map((a) => ({ entry: `ask:${a.key}`, ...a })),
+  ...(questions.threadDepths ?? []).map((t) => ({ entry: `ask:${t.ask.key}`, ...t.ask })),
+];
 ordered("explain", (questions.explain ?? []).map((e) => ({ entry: `explain:${e.key}`, ...e })), (en) => `explain-${en.key}.md`);
-ordered("ask", (questions.ask ?? []).map((a) => ({ entry: `ask:${a.key}`, ...a })), (en) => `ask-${en.key}.md`);
+ordered("ask", askEntries, (en) => `ask-${en.key}.md`);
 
 const manifest = { recordings: [] };
 const push = (entry) => manifest.recordings.push(entry);
@@ -104,7 +141,13 @@ for (const f of ["conn-0", "conn-1", "tconn-0", "tconn-1", "tconn-2", "tsock-0",
   push({ kind: "hunk", key: `${short}:${n}`, file: `hunk-${f}.md` });
 }
 for (const k of godeeperKeys) push({ kind: "go-deeper", key: k, file: `go-deeper-${k}.md` });
-for (const d of questions.depth ?? []) push({ kind: "depth", key: depthKey(d), file: depthFile(d) });
+// One entry per unique depth key: quads repeat the same key/file.
+for (const d of questions.depth ?? []) {
+  const key = depthKey(d);
+  if (manifest.recordings.some((e) => e.kind === "depth" && e.key === key)) continue;
+  push({ kind: "depth", key, file: depthFile(d) });
+}
+push({ kind: "depth", key: "expansion:deep", file: "depth-expansion-deep.md" });
 for (const x of extraFor("depth")) {
   if (!manifest.recordings.some((e) => e.kind === "depth" && e.key === x.key)) push({ kind: "depth", key: x.key, file: x.file });
 }
@@ -115,9 +158,10 @@ for (const e of questions.explain ?? []) {
     push({ kind: "explain", key: e.key, pattern: explainPat(e), file: `explain-${e.key}.md` });
   }
 }
-for (const a of questions.ask ?? []) {
-  if (!["reused", "deduplicated"].includes(firedStatus(`ask:${a.key}`))) {
-    push({ kind: "ask", key: a.key, pattern: [a.quote, a.message].map((s) => esc(String(s).slice(0, 40))).join("|"), file: `ask-${a.key}.md` });
+const askPat = (a) => [a.quote, a.message].map((s) => esc(String(s).slice(0, 40))).join("|");
+for (const a of askEntries) {
+  if (!["reused", "deduplicated"].includes(firedStatus(a.entry))) {
+    push({ kind: "ask", key: a.key, pattern: askPat(a), file: `ask-${a.key}.md` });
   }
 }
 for (const x of extraFor("ask")) {
@@ -125,26 +169,13 @@ for (const x of extraFor("ask")) {
     push({ kind: "ask", key: x.key, pattern: x.pattern, file: x.file });
   }
 }
-// New finding ids reuse the kept blind recordings (same issues, re-titled
-// findings; same-model second opinions are refused by design).
-for (const x of extraFor("second-opinion")) {
-  if (!manifest.recordings.some((e) => e.kind === "second-opinion" && e.key === x.key)) {
-    push({ kind: "second-opinion", key: x.key, file: x.file, recordedWith: x.recordedWith ?? "pre-341-fixture (model unrecorded)" });
-  }
-}
 // Verify every extra file is already placed in recordings/ (copied by hand
 // from the follow-up capture before --write; never guessed).
 for (const x of extra) {
   if (!fs.existsSync(path.join(REC, x.file))) fail(`extraManifest ${x.kind}:${x.key ?? ""} missing recordings/${x.file} (copy it first)`);
 }
-// Second-opinion recordings are kept from the previous fixture (same-model
-// second opinions are refused by design); per-entry provenance says so.
-const oldManifest = JSON.parse(fs.readFileSync(path.join(FIX, "manifest.json"), "utf8"));
-for (const e of oldManifest.recordings ?? []) {
-  if (e.kind === "second-opinion") {
-    manifest.recordings.push({ ...e, recordedWith: "pre-341-fixture (model unrecorded)" });
-  }
-}
+// Issue #349 removed the second_opinion action: no second-opinion entries
+// are carried over or added.
 
 console.log(`curate: ${Object.keys(out).length} recordings, ${manifest.recordings.length} manifest entries`);
 console.log(`curate: DRY RUN (no writes). Pass --write to copy files and rewrite manifest.json.`);

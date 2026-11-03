@@ -238,10 +238,12 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
  * - `routine`: also hides `mechanical` hunks.
  * - `substantive`: shows only `substantive` and `needs-attention`.
  * - `needs-attention`: shows only `needs-attention`.
- * Individually unhidden hunks stay visible at every level, and a
- * hunk with no score yet is never hidden by its score. Guide-cited
- * hunks hide like any other (owner decision, #325); clicking their
- * citation reveals them through the diff's per-hunk unhide.
+ * A transient per-hunk expand (clicking a hidden row or its citation,
+ * issue #342) shows that hunk until the next level change or reload;
+ * choosing a level always re-applies it from scratch. A hunk with no
+ * score yet is never hidden by its score. Guide-cited hunks hide like
+ * any other (owner decision, #325); clicking their citation reveals
+ * them through the transient expand.
  */
 export const HIDE_LEVELS = ["all", "uninteresting", "routine", "substantive", "needs-attention"] as const;
 export type HideLevel = (typeof HIDE_LEVELS)[number];
@@ -344,8 +346,9 @@ export function shouldHideAtLevel(
   level: HideLevel,
   opts: { unhidden?: boolean } = {},
 ): boolean {
-  // Only the user's own reveal exempts a hunk; guide citations do
-  // not (owner decision, #325) — clicking a citation reveals instead.
+  // Only a transient UI expand exempts a hunk (issue #342: cleared on
+  // level change, never persisted); guide citations do not exempt it
+  // (owner decision, #325) — clicking a citation expands instead.
   if (opts.unhidden) return false;
   return hideCategoryForLevel(hunk, level) !== null;
 }

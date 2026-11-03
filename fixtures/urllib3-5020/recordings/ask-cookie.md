@@ -1,25 +1,41 @@
-Requests is the consumer the description names. It says Requests reads cookies from the original `HTTPMessage` (`httplib_response.msg`) rather than from `HTTPHeaderDict`. Nothing in this repo confirms that. Requests isn't here, and I haven't read its source. [[desc:d-p2]]
+## Answer
 
-**The path the description implies.** Requests fills its cookie jar from the folded `Set-Cookie` value on the message. If the value still holds `\r\n`, the jar keeps it. On the next request the jar builds a `Cookie` header from that value, so the raw line break lands in the serialised request. The description lists an end-to-end check of cookie extraction and serialisation, which I haven't run. [[desc:d-p5]]
+The consumer is Requests' cookie handling. This comes from the PR description, and I haven't read Requests' source here. The description says Requests reads `_original_response.msg` directly. It lists "end-to-end Requests cookie extraction and subsequent request serialization" among the checks it ran. [[desc:d-p2]] [[desc:d-p5]]
 
-**Why the old code allowed it.** `getresponse` built `HTTPHeaderDict` from `httplib_response.msg.items()` and left the message as it was. Both objects therefore held the folded value. [[diff:src-urllib3-connection.py:647-651]]
+The fix stops it by making sure the `HTTPMessage` Requests reads no longer holds a fold. `_normalize_header_values` unfolds each value, then deletes and re-adds the headers on that same `HTTPMessage`. `getresponse` builds `HTTPHeaderDict` from the list it returns. [[diff:src-urllib3-connection.py:94-110]] [[diff:src-urllib3-connection.py:650-651]]
 
-**How the fix stops it.**
-- `getresponse` now calls `_normalize_header_values(httplib_response.msg)` and builds `HTTPHeaderDict` from the returned items. [[diff:src-urllib3-connection.py:650-651]]
-- Each value that contains `\r\n` is run through `_OBSOLETE_FOLD_RE`. Each `obs-fold` becomes one space. [[diff:src-urllib3-connection.py:85-88]]
-- If any value changed, the function deletes every header on the same `HTTPMessage` and re-adds the normalized ones in order. [[diff:src-urllib3-connection.py:102-108]]
+## How the CRLF would be re-emitted
 
-After that, anything that reads the message sees the same clean value as `HTTPHeaderDict`. The socket test checks this. It asserts that `_original_response.headers is _original_response.msg`, that `msg.get_all("set-cookie")` returns the unfolded cookies, and that no header value contains `\r` or `\n`. [[diff:test-with_dummyserver-test_socketlevel.py:135-146]]
+I'm reconstructing this from memory of Requests and `http.cookiejar`, and I haven't checked it here.
 
-**What this serves.** The invariant is that no consumer sees a raw CRLF in a header value, whichever of the two objects it reads. Normalizing only `HTTPHeaderDict` would leave the message dirty. That is why the stdlib object is rewritten in place. The cost is that urllib3 now mutates an object it doesn't own.
+1. Requests passes the response's original `HTTPMessage` to `http.cookiejar`.
+2. The cookie jar reads `get_all("Set-Cookie")` and stores the cookie value as given.
+3. On a later request, the jar serializes that stored value into a `Cookie` header.
+4. If the value still contained `\r\n`, that header would be written with a raw line break in it.
 
-**Limit.** The test shows the message is clean after `getresponse`. It does not show that Requests reads the message. That premise rests on the description alone. The fix also only recognises `\r\n` folds, as the bare-LF finding notes. [[diff:src-urllib3-connection.py:86-87]]
+Before the change, `getresponse` copied `msg.items()` and never touched `msg`. Any cookie value that came from a folded `Set-Cookie` therefore kept its `\r\n` all the way to step 4. [[diff:src-urllib3-connection.py:650-654]]
+
+## Why cleaning only `HTTPHeaderDict` would not stop it
+
+If only `HTTPHeaderDict` were cleaned, `r.headers` would look correct. The `HTTPMessage` that the cookie path reads would still hold the fold.
+
+The write-back in `_normalize_header_values` is the step that reaches the consumer. It runs on the same object, so `_original_response.msg` is clean when Requests reads it. [[diff:src-urllib3-connection.py:102-108]]
+
+This serves the invariant that no copy of the headers a consumer can reach carries a fold. urllib3 can't see which copy a consumer will read, so both must be clean.
+
+## What the tests show
+
+The socket test asserts the same unfolded `set-cookie` list on both copies. It checks `r.headers.getlist("set-cookie")` and `_original_response.msg.get_all("set-cookie")`. [[diff:test-with_dummyserver-test_socketlevel.py:124-127]] [[diff:test-with_dummyserver-test_socketlevel.py:142-145]]
+
+No test runs a real cookie consumer. The assertions check that the data Requests would read is clean. They don't check that Requests actually reads it or stops emitting CRLF. The Requests claim rests on the author's manual run.
+
+Only a `\r\n` fold is covered. A bare-LF fold would pass through untouched, so that path could still reach a cookie jar. That is the bare-LF finding. [[diff:src-urllib3-connection.py:86-88]]
 
 ### Follow-ups
 
-- Which attribute does Requests read cookies from? | ask: Which attribute of a urllib3 response does Requests read `Set-Cookie` from when it fills its cookie jar, and does it go through `_original_response.msg`?
-- Would normalizing only `HTTPHeaderDict` be enough if Requests used it? | ask: If Requests read cookies only from `HTTPHeaderDict`, would the delete-and-re-add on `HTTPMessage` in `_normalize_header_values` still be needed?
+- Which Requests code path reads `_original_response.msg`? | ask: Which function in Requests passes `_original_response.msg` to `http.cookiejar`, and where does the cookie value become a `Cookie` header on the next request?
+- Does `http.cookiejar` itself reject or keep a cookie value that contains `\r\n`? | ask: If a `Set-Cookie` value contained a raw `\r\n`, would `http.cookiejar` store it, drop it, or alter it before the next request?
 
 ```json
-{"anchor": {"quote": "re-emit the raw CRLF", "host": "card:problem#b2"}, "contribute": {"open_questions": ["Which code path in Requests turns a Set-Cookie value from the original HTTPMessage into the next request's Cookie header, and does it keep an embedded CRLF? Only the PR description says so; Requests is not in the repo."]}}
+{"anchor": {"quote": "they could re-emit raw CRLF on later requests", "hostBlockId": "card:problem"}, "contribute": {"open_questions": ["Does Requests pass _original_response.msg to http.cookiejar's extract_cookies, and does the stored cookie value keep a raw CRLF into the next Cookie header?"]}}
 ```

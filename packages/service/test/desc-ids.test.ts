@@ -24,7 +24,6 @@ import { renderMarkdownBlocks } from "../src/ingest/description.js";
 import { McpRegistry, type IssuedSession } from "../src/mcp/index.js";
 import { StoreReviewReader } from "../src/mcp/reviewReader.js";
 import { lookupForSnapshot } from "../src/pipeline/lookup.js";
-import { buildExcerptMap } from "../src/secondopinion/excerpts.js";
 import { createApp } from "../src/server.js";
 import type { ReviewStore } from "../src/state/store.js";
 
@@ -110,7 +109,7 @@ async function serveRegistry(snapshot: ReviewSnapshot): Promise<{ base: string; 
 async function callTool(
   base: string,
   registry: McpRegistry,
-  role: "session" | "second-opinion",
+  role: "session",
   name: string,
   args: Record<string, string>,
 ): Promise<string> {
@@ -162,11 +161,6 @@ describe("issue #96: desc: IDs from the review tools", () => {
       // The citation validator resolves the ID back to the paragraph text.
       const lookup = lookupForSnapshot(snapshot);
       expect(lookup.descParagraph(id), `validator descParagraph(${id})`).toContain(needle);
-      // Second-opinion excerpts carry the same ID with the same text.
-      const excerpts = await buildExcerptMap({ snapshot });
-      const excerpt = excerpts.find((e) => e.id === `desc:${id}`);
-      expect(excerpt, `excerpt desc:${id}`).toBeDefined();
-      expect(excerpt!.text).toContain(needle);
     }
   });
 
@@ -185,11 +179,11 @@ describe("issue #96: desc: IDs from the review tools", () => {
     }
   });
 
-  it("second-opinion restriction behaves for desc: in resolve exactly as in search", async () => {
+  it("every session sees desc: and card candidates alike in both tools", async () => {
     const rendered = renderMarkdownBlocks(BODY);
     const snapshot = snapshotFor(rendered.html);
-    // A guide card containing the same query word: visible to session, hidden
-    // from second-opinion in both tools.
+    // A guide card containing the same query word: visible to every
+    // session in both tools (issue #349 removed the restricted role).
     snapshot.pages = [
       {
         id: "root",
@@ -218,14 +212,16 @@ describe("issue #96: desc: IDs from the review tools", () => {
     expect(sessSearch).toContain(`desc:${id}`);
     expect(sessResolve).toContain(`desc:${id}`);
 
-    const soSearch = await callTool(base, registry, "second-opinion", "search_review", { query: needle });
-    const soResolve = await callTool(base, registry, "second-opinion", "resolve", { description: needle });
-    // Description is allowed for the role in both tools …
-    expect(soSearch).toContain(`desc:${id}`);
-    expect(soResolve).toContain(`desc:${id}`);
-    // … while cards stay hidden in both tools.
-    expect(soSearch).not.toContain("card:");
-    expect(soResolve).not.toContain("card:");
+    const otherSearch = await callTool(base, registry, "session", "search_review", { query: needle });
+    const otherResolve = await callTool(base, registry, "session", "resolve", { description: needle });
+    // Description is returned in both tools …
+    expect(otherSearch).toContain(`desc:${id}`);
+    expect(otherResolve).toContain(`desc:${id}`);
+    // … and cards are visible to every session too (no restricted role anymore).
+    const cardSearch = await callTool(base, registry, "session", "search_review", { query: "Central" });
+    expect(cardSearch).toContain("card:c-central");
+    const cardResolve = await callTool(base, registry, "session", "resolve", { description: "Central change" });
+    expect(cardResolve).toContain("card:c-central");
   });
 
   it("an edited description (pendingHtml) still gives consistent IDs", async () => {

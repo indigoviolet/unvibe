@@ -1,12 +1,11 @@
 /**
  * Actions dispatcher (M4/M6): one file per action kind.
  *
- * `generate` (Go deeper) and every interaction kind route here, plus
- * `second_opinion` via the isolated `secondopinion/` module (own base,
- * blind/check modes). Each action goes through `ReviewStore.mutate` so
- * the UI gets patches; each agent call runs at user-requested priority
- * with (anchor, kind, depth, base version) dedupe and citation validation
- * via the `runInFork` seam.
+ * `generate` (Go deeper) and every interaction kind route here. Each
+ * action goes through `ReviewStore.mutate` so the UI gets patches; each
+ * agent call runs at user-requested priority with (anchor, kind, depth,
+ * base version) dedupe and citation validation via the `runInFork` seam.
+ * (Issue #349 step 2 adds persona card runs here.)
  */
 import type { FastifyReply } from "fastify";
 import type { ActionResponse, ReviewAction } from "@unvibe/shared";
@@ -28,7 +27,6 @@ import { examplesAction } from "./examples.js";
 import { followupAction } from "./followup.js";
 import { noteAction } from "./note.js";
 import { promoteAction } from "./promote.js";
-import { removeSecondOpinionAction, secondOpinionAction } from "./second_opinion.js";
 import { undoAction } from "./undo.js";
 import type { ActionContext } from "./common.js";
 import { errorCodeFor, errorCodeOf, sendError } from "../../errors.js";
@@ -106,7 +104,6 @@ export async function dispatchAction(
         action.kind === "examples" ||
         action.kind === "diagram" ||
         action.kind === "generate" ||
-        action.kind === "second_opinion" ||
         action.kind === "concept")
     ) {
       return bad(reply, "that doesn't apply to a document — Explain, Ask and Comment work on its text instead");
@@ -271,25 +268,8 @@ export async function dispatchAction(
       case "delete": {
         need(ctx);
         if (typeof action.targetId !== "string") return bad(reply, "targetId is required");
-        // Second-opinion removal travels over the generic `delete` action:
-        // targetId `second-opinion:<cardId>:<mode>` or a stored `so-…`
-        // opinion id. All other targets are annotation ids (M4).
-        const target = action.targetId;
-        const soMatch = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
-        if (soMatch) {
-          try {
-            if (soMatch[1].startsWith("so-")) {
-              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, "", undefined, soMatch[1]);
-            } else {
-              const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, cardId, mode as "blind" | "check");
-            }
-            return { accepted: true } satisfies ActionResponse;
-          } catch (err) {
-            return sendCaught(reply, err);
-          }
-        }
-        const res = await deleteAction(ctx, target);
+        // All delete targets are annotation ids (M4).
+        const res = await deleteAction(ctx, action.targetId);
         return { accepted: true, annotationId: res.targetId } satisfies ActionResponse;
       }
       case "followup": {
@@ -314,22 +294,6 @@ export async function dispatchAction(
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
         return out;
-      }
-      case "second_opinion": {
-        need(ctx);
-        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        if (action.mode !== "blind" && action.mode !== "check") {
-          return bad(reply, "mode must be blind or check");
-        }
-        try {
-          const res = await secondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, action.cardId, action.mode);
-          const out: ActionResponse = { accepted: true };
-          if (res.jobId) out.jobId = res.jobId;
-          if (res.reused) out.reused = true;
-          return out satisfies ActionResponse;
-        } catch (err) {
-          return sendCaught(reply, err);
-        }
       }
       default:
         return reply.code(501).send({ error: `unknown action: ${(action as { kind: string }).kind}` });

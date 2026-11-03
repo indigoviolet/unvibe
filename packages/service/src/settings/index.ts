@@ -16,7 +16,6 @@ export {
 } from "./defaults.js";
 export {
   resolveEffectiveSettings,
-  unsetSecondOpinion,
   type EffectiveSettingsDeps,
   type SettingsRole,
   type SettingsSource,

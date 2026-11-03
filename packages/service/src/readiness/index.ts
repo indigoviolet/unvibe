@@ -4,8 +4,8 @@
  * Probes, each with its own timeout so one slow tool never blocks the
  * report: `git` found; `gh` installed on the login-shell PATH,
  * authenticated, and able to reach the API (`gh api user`, cheap); for
- * each configured agent role: CLI found + ACP initialise/list-models
- * (no prompt, no tokens); second opinion distinct from main.
+ * each configured agent role (main, small): CLI found + ACP
+ * initialise/list-models (no prompt, no tokens).
  *
  * Results are cached briefly (30s); `?force=1` bypasses the cache. The
  * page renders first and fills callouts in — this module never blocks
@@ -20,7 +20,6 @@ import type { ModelCatalog, SettingsSource } from "../settings/index.js";
 import {
   agentCheck,
   d2Check,
-  distinctCheck,
   ghCheck,
   gitCheck,
   gitHubFetchCheck,
@@ -75,7 +74,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   // Same effective settings as GET /api/settings: saved picks win, unsaved
   // roles take live defaults. Never throws (falls back to stored).
   const settings: Settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
-  const key = JSON.stringify([settings.main, settings.small, settings.secondOpinion]);
+  const key = JSON.stringify([settings.main, settings.small]);
   const now = Date.now();
   if (!opts.force && cache && now - cache.at < READINESS_CACHE_MS && cache.key === key) {
     return { ...cache.response, cached: true };
@@ -114,11 +113,10 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
         }),
   ]);
 
-  const roles: AgentRole[] = ["main", "small", "secondOpinion"];
+  const roles: AgentRole[] = ["main", "small"];
   const picks: Record<AgentRole, { provider: string; model: string }> = {
     main: settings.main,
     small: settings.small,
-    secondOpinion: settings.secondOpinion,
   };
   const agentChecks = await Promise.all(
     roles.map((role) =>
@@ -190,7 +188,6 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
           settingsAnchor: "#models",
         },
       ),
-      distinctCheck(settings),
       d2,
     ],
     generatedAt: Date.now(),
@@ -200,4 +197,4 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   return response;
 }
 
-export { agentCheck, distinctCheck, ghCheck, gitCheck, gitHubFetchCheck, piCheck, probeGh, probeGitHubFetch } from "./checks.js";
+export { agentCheck, ghCheck, gitCheck, gitHubFetchCheck, piCheck, probeGh, probeGitHubFetch } from "./checks.js";

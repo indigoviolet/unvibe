@@ -14,6 +14,7 @@ export * from "./versions.js";
 export * from "./diff.js";
 export * from "./scores.js";
 export * from "./outbox.js";
+export * from "./personas.js";
 export * from "./glossary.js";
 export * from "./data-format.js";
 export * from "./stacks.js";

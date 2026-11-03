@@ -2,8 +2,7 @@
  * Card rendering (M4 interaction; PRD §4.4 display side + §8 stale state).
  *
  * Collapse chevron first (title row when collapsed); control row (depth
- * stepper with three dots, Use examples, Add diagram, Undo, Second opinion
- * with blind/check switch) wired to
+ * stepper with three dots, Use examples, Add diagram, Undo) wired to
  * `POST /api/reviews/:id/actions`; stale cards
  * show the cited-hunks count with an Update button; "Go deeper"
  * placeholder cards with Generate showing a plain working state. Every
@@ -33,7 +32,6 @@ import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
 import { busyForCard, updateKey } from "./inflight.js";
-import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
@@ -236,7 +234,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const depthBusy = busyKind === "depth";
   const examplesBusy = busyKind === "examples";
   const diagramBusy = busyKind === "diagram";
-  const secondOpinionBusy = busyKind === "second_opinion";
   // Issue #49: same display title as the collapsed header and Contents.
   const title = displayCardTitle(card.title, card.blocks);
 
@@ -291,13 +288,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             disabled={card.undoStack.length === 0 || controlsBusy}
             onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
           />
-          <SecondOpinionControl
-            reviewId={reviewId}
-            card={card}
-            page={lookupPage(card.pageId)}
-            disabled={controlsBusy}
-            busy={secondOpinionBusy}
-          />
         </div>
       </CardHeader>
       {card.stale ? (
@@ -339,17 +329,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       ) : null}
       {blocks}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
-      {(card.secondOpinions ?? []).map((so) => (
-        <SecondOpinionBlock
-          key={so.id}
-          reviewId={reviewId}
-          card={card}
-          result={so}
-          lookupPage={lookupPage}
-          onOpenPage={onOpenPage}
-          onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
-        />
-      ))}
     </UiCard>
   );
 }

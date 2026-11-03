@@ -1,29 +1,26 @@
-The socket-level test proves that the real `http.client` parser hands `getresponse` folded values, and that the whole path from socket to `r.headers` and `_original_response.msg` ends up clean. The unit tests only prove the two helper functions behave correctly on strings and on a hand-built `HTTPMessage`.
+The socket test proves the wiring and the real parser input. The unit tests prove neither, because they call the helpers directly with strings and messages the test builds itself.
 
-**What only the socket test shows**
+- **`getresponse` actually calls the normalizer.** The unit tests import `_normalize_header_value` and `_normalize_header_values` and never go through `getresponse`. If the two lines that call `_normalize_header_values` and build `HTTPHeaderDict` from `header_items` were reverted, every unit test would still pass. Only the socket test would fail. [[diff:src-urllib3-connection.py:650-651]] [[diff:test-test_connection.py:226-249]]
+- **The input is real wire bytes.** The unit test hand-writes `"a=1 \r\n two"` and puts it in an `HTTPMessage`. The socket test sends the folded `Set-Cookie` over a real connection (a continuation line starting with four spaces and no blank before the CRLF), so the value is whatever `http.client` really stores. The fixture also has all four SP/HTAB pairings and a mixed repeated fold, so it covers what the unit parametrization covers, now arriving through the parser. [[diff:test-with_dummyserver-test_socketlevel.py:99-118]]
+- **The two copies agree on a real response.** It asserts the same unfolded `set-cookie` list through `r.headers.getlist(...)` and through `_original_response.msg.get_all(...)`. It also asserts that no value in `r.headers` contains `\r` or `\n`. The unit test checks the message alone, and only for the helper's own return value. This is the invariant that no copy a consumer can reach carries a fold. [[diff:test-with_dummyserver-test_socketlevel.py:124-146]]
+- **One object sits under both names.** `_original_response.headers is _original_response.msg` is checked on a real response. The unit test checks `defects` and `policy` identity on a standalone message, which doesn't show that the rewrite reaches both names. [[diff:test-with_dummyserver-test_socketlevel.py:139-141]]
+- **Ordinary headers survive the full path.** `Ordinary: one\t two` and `Content-Length: 0` come through unchanged next to the folded ones. [[diff:test-with_dummyserver-test_socketlevel.py:133-134]]
 
-- **The parser's output is what the helpers assume.** The unit tests build `"a=1 \r\n two"` by hand. The socket test sends raw bytes, so `http.client` itself produces the value. If the parser stripped or normalized the continuation line, the helpers would never see a fold, and only this test would notice. It sends a four-space continuation line on a `Set-Cookie`. [[diff:test-with_dummyserver-test_socketlevel.py:99-103]]
-- **`getresponse` is actually wired to the helper.** The unit tests import `_normalize_header_value` and `_normalize_header_values` directly. Neither calls `getresponse`. If the call at the `HTTPHeaderDict` construction site were removed, every unit test would still pass. The socket test would fail. [[diff:src-urllib3-connection.py:650-651]] [[diff:test-with_dummyserver-test_socketlevel.py:124-134]]
-- **`HTTPHeaderDict` and the original message agree.** After a real response, it asserts that `r.headers` has no `\r` or `\n`. It also asserts that `_original_response.headers is _original_response.msg`, and that `msg.get_all("set-cookie")` and `msg["fold-mixed-repeated"]` return unfolded values. That is the "no consumer sees a raw CRLF" invariant, checked on both views. The unit test checks only the message and the returned list. [[diff:test-with_dummyserver-test_socketlevel.py:135-146]]
-- **The SP/HTAB matrix.** The four pairings of SP and HTAB around the CRLF, the repeated mixed fold, and an ordinary `one\t two` all go through the real parser. The unit tests cover only some of these shapes. [[diff:test-with_dummyserver-test_socketlevel.py:104-115]] [[diff:test-test_connection.py:214-222]]
+**One limit on what it proves.** The test can't show that `http.client` was the thing leaving the `\r\n` in. I didn't run the parser. If a stdlib version unfolded values itself, this test would still pass, because the normalizer would then have nothing to do. It is consistent with the premise, but it doesn't isolate it.
 
-**What the unit tests prove that the socket test does not**
+**What it still doesn't cover:**
+- Any bare-LF fold, because it only sends `\r\n`.
+- A real cookie consumer such as Requests.
+- Adjacent folds, because its mixed case has text between the folds.
+- The linear-time claim.
 
-- **Adjacent folds.** `"one\r\n \r\n\tthree"` gives `"one  three"`, with two spaces. The socket test has no such case. [[diff:test-test_connection.py:220]]
-- **Message preservation.** Duplicate `Set-Cookie` entries interleaved with other headers keep their order, and the payload, `policy` and `defects` keep their identity. The socket test only compares against the cookie order from the same parse. [[diff:test-test_connection.py:226-249]]
-
-**What neither proves**
-
-- Bare-LF folds. [[diff:src-urllib3-connection.py:86-87]]
-- Long whitespace runs, which the lookbehind exists for. [[diff:src-urllib3-connection.py:80-82]]
-- Mixed-case header names through delete and re-add.
-- That Requests really reads the message. That premise rests on the description alone. [[desc:d-p2]]
+[[diff:test-with_dummyserver-test_socketlevel.py:112-114]]
 
 ### Follow-ups
 
-- Would the socket test fail if `getresponse` stopped calling `_normalize_header_values`? | ask: If the `_normalize_header_values` call in `getresponse` were removed, which tests would fail and which would still pass?
-- What socket-level case would cover a bare-LF fold? | ask: Draft a socket-level response with a bare-LF fold and say what `http.client` would leave in the `HTTPMessage` value.
+- Which single revert would only the socket test catch? | ask: If `getresponse` built `HTTPHeaderDict` from `httplib_response.msg.items()` again but `_normalize_header_values` was still called first, which unit and socket assertions would fail?
+- Is there a way to prove `http.client` leaves the CRLF in? | ask: How could a test show that `http.client` itself keeps `\r\n` in a folded value, so the socket test fails if the stdlib starts unfolding?
 
 ```json
-{"anchor": {"quote": "A socket-level test covers real folded responses", "hostId": "card:buildup"}, "contribute": {"open_questions": ["Does http.client's parser itself preserve the raw CRLF and continuation whitespace in HTTPMessage values for folded headers, which is the premise the socket test depends on?"]}}
+{"anchor": {"quote": "A socket-level test covers the whole path", "hostBlock": "card:buildup"}, "contribute": {"open_questions": ["Does the socket-level test pass on a stdlib that already unfolds values, i.e. does it isolate the normalizer's contribution at all?"]}}
 ```

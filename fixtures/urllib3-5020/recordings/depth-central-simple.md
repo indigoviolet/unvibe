@@ -1,9 +1,6 @@
-## The central idea
+Old servers sometimes split one header value over two lines. This is called an `obs-fold`. The change joins those lines back together right after the response is parsed, before any other code reads the headers. A regex called `_OBSOLETE_FOLD_RE` finds each split: optional spaces or tabs, then a line break (CRLF), then at least one space or tab. The function `_normalize_header_value` swaps each split for a single space. [[diff:src-urllib3-connection.py:80-88]]
 
-`getresponse` now cleans up the response headers before it builds `HTTPHeaderDict`. It does this with a new helper, `_normalize_header_values`. [[diff:src-urllib3-connection.py:650-651]]
-
-- `_normalize_header_value` fixes one header value. A folded header is one split over two lines, with a line break (`\r\n`) and some spaces or tabs in the middle. The helper replaces each such break and its surrounding spaces with a single space. It uses the `_OBSOLETE_FOLD_RE` pattern to find them. If the value has no `\r\n`, it returns at once and does nothing. [[diff:src-urllib3-connection.py:80-88]]
-- `_normalize_header_values` fixes every header in the response. It returns the cleaned list of `(name, value)` pairs. If any value changed, it also deletes all headers from the original `HTTPMessage` and adds the cleaned ones back in the same order. After that, the message and the `HTTPHeaderDict` hold the same values. [[diff:src-urllib3-connection.py:91-110]]
+The function `_normalize_header_values` does this for every header on Python's own header object, the `HTTPMessage`. If a value changed, it deletes the headers from that object and adds them back in the same order. That way the `HTTPMessage` and urllib3's `HTTPHeaderDict` hold the same clean values. The function returns the cleaned headers, and `getresponse` builds the `HTTPHeaderDict` from them. [[diff:src-urllib3-connection.py:91-110]] [[diff:src-urllib3-connection.py:647-651]]
 
 ```json
 {"depth": {"level": "simple", "cardId": "central"}}

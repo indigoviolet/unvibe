@@ -340,10 +340,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   // Issue #325: the hide level is remembered per review in viewPrefs
   // (required in the stored shape; the default here only covers the
-  // not-yet-loaded snapshot).
+  // not-yet-loaded snapshot). Issue #342: choosing a level fully
+  // re-applies it — transient per-hunk expands are discarded, so the
+  // next render is governed by the level alone.
   const hideLevel: HideLevel = snapshot ? snapshot.viewPrefs.hideLevel : DEFAULT_HIDE_LEVEL;
   const setHideLevel = useCallback(
     (level: HideLevel) => {
+      setUnhidden({});
       api.updateView(reviewId, { hideLevel: level }).catch(() => {
         toast("Couldn't save the hide level");
       });
@@ -529,8 +532,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         for (const h of file.hunks) if (hunkOverlaps(h, target.start as number, end)) next[h.contentHash] = true;
         return next;
       });
-      // Unfold the overlapping hunks so the lines are visible (persisted,
-      // like clicking "show" — the prototype has no persistence to keep).
+      // Unfold the overlapping hunks so the lines are visible (persisted
+      // fold state, like clicking "show" — the hidden-row expand itself
+      // stays transient, issue #342).
       for (const h of file.hunks) {
         if (hunkOverlaps(h, target.start, end) && st.get(h.contentHash)?.folded) {
           api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {});
@@ -1241,7 +1245,7 @@ function FilterMenuButton({
   }, [open ]);
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, CommentsMenu).
+  // (CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {

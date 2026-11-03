@@ -292,11 +292,12 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // Finding → suggested-comment links (PRD §4.9): the seed threads below
   // exist with fixed ids, so the finding pages link them directly.
-  // Issue #341: page ids mirror the live pipeline (f-critic, f-critic-2);
-  // both current findings point at conn:82.
+  // Issue #341: page ids mirror the live pipeline (f-critic, f-critic-2).
+  // The critic lists adjacent-folds first (finding 0 → t-sgperf) and
+  // bare-LF second (finding 1 → t-sglf).
   const findingComment: Record<string, { thread: string; diff: string }> = {
-    "f-critic": { thread: "t-sglf", diff: `diff:${keyAliases["conn"]}:86` },
-    "f-critic-2": { thread: "t-sgperf", diff: `diff:${keyAliases["tconn"]}:220` },
+    "f-critic": { thread: "t-sgperf", diff: `diff:${keyAliases["tconn"]}:220` },
+    "f-critic-2": { thread: "t-sglf", diff: `diff:${keyAliases["conn"]}:86` },
   };
   for (const page of pages) {
     if (page.kind !== "finding") continue;
@@ -321,11 +322,11 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // Issue #136: the seed conversation carries its turns (`Thread.turns`)
   // so it renders like any explain result — each answer is a unit in its
   // own right (level, revision, undo stack). Content comes from the
-  // recorded `explain-obs-fold` reply, canonicalized like the live
+  // recorded `explain-obsfold` reply, canonicalized like the live
   // pipeline stores it.
   const connKey = meta.keyAliases["conn"];
   const tconnKey = meta.keyAliases["tconn"];
-  const explainSeed = parseReply(textOf("explain-obs-fold.md"));
+  const explainSeed = parseReply(textOf("explain-obsfold.md"));
   const mkCommentReply = (who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply => {
     const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return {
@@ -342,7 +343,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   };
   // Issue #341: seeds mirror the re-recorded run. The two suggested
   // threads carry the critic's own suggested comments (plus the demo
-  // marker); x-seed replays the recorded explain-obs-fold answer. Seed
+  // marker); x-seed replays the recorded explain-obsfold answer. Seed
   // text is parsed from the critic recording (like x-seed), so the seeds
   // can never drift from what the critic actually suggested.
   const demoMarker = "\n\n(Example comment for the demo)";
@@ -362,8 +363,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       anchor: {
         host: { kind: "block", blockId: "problem#b1" },
         quotedText: "obs-fold",
-        prefix: "header lines (",
-        suffix: ") inside the",
+        prefix: "header lines ( ",
+        suffix: " ), where a",
         position: 0,
         version: 1,
       },
@@ -388,9 +389,9 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       type: "thread",
       anchor: {
         host: { kind: "block", blockId: "central#b2" },
-        quotedText: "same message object",
-        prefix: "all headers on the ",
-        suffix: ".",
+        quotedText: "the original message",
+        prefix: "headers on ",
+        suffix: ", so the",
         position: 0,
         version: 1,
       },
@@ -417,7 +418,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      replies: [mkCommentReply("agent", suggestedText(0), true)],
+      replies: [mkCommentReply("agent", suggestedText(1), true)],
       post: false,
     },
     {
@@ -433,7 +434,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      replies: [mkCommentReply("agent", suggestedText(1), true)],
+      replies: [mkCommentReply("agent", suggestedText(0), true)],
       post: false,
     },
     {

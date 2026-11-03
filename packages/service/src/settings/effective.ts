@@ -4,18 +4,18 @@
  *
  * A saved pick always wins; a role the user never saved takes the live
  * default picked from what each adapter offers (`selectDefaultModels`).
- * `GET /api/settings`, readiness, the pipeline runner, the second-opinion
- * runner and shared context all resolve through here, so they agree.
+ * `GET /api/settings`, readiness and the pipeline runner all resolve
+ * through here, so they agree.
  *
  * Never throws and never writes: unknown offerings (adapter down, timed
- * out, no live catalog) keep the stored values for main/small, and for
- * second opinion whenever nothing is known about main's provider either.
- * When only main's provider answers, second opinion unsets instead of
- * keeping a stored pick that points at a provider that is not there.
+ * out, no live catalog) keep the stored values for main/small.
  * Readiness reports stored picks plainly. A computed default is never
  * persisted — a saved pick is something the user chose.
+ *
+ * (Issue #349 removed the second-opinion role: personas each name their
+ * own model, managed through Settings → Personas.)
  */
-import type { ModelPick, Settings } from "@unvibe/shared";
+import type { Settings } from "@unvibe/shared";
 import { selectDefaultModels } from "./defaults.js";
 import type { ModelCatalog } from "./models.js";
 
@@ -25,14 +25,9 @@ export interface SettingsSource {
   savedKeys?(): string[];
 }
 
-export type SettingsRole = "main" | "small" | "secondOpinion";
+export type SettingsRole = "main" | "small";
 
-const ROLES: SettingsRole[] = ["main", "small", "secondOpinion"];
-
-/** Unset second-opinion marker: no second-opinion model available yet. */
-export function unsetSecondOpinion(): ModelPick {
-  return { provider: "codex", model: "", effort: "" };
-}
+const ROLES: SettingsRole[] = ["main", "small"];
 
 export interface EffectiveSettingsDeps {
   settings: SettingsSource;
@@ -73,33 +68,6 @@ export async function resolveEffectiveSettings(deps: EffectiveSettingsDeps): Pro
       // readiness can report it plainly.
       if (!saved.includes("main") && picked.main) next.main = picked.main;
       if (!saved.includes("small") && picked.small) next.small = picked.small;
-    }
-    if (!saved.includes("secondOpinion")) {
-      // Second opinion comes from the provider the final effective main is
-      // NOT using (a saved main on Codex still takes its second opinion
-      // from Claude). Listings are read relative to that main: M is main's
-      // own listing, O the other's. The decision table (issue #88):
-      // - (a) both known: live pick from O, unset when nothing matches;
-      // - (b) M known, O null (not installed / not logged in): unset — a
-      //   stored pick would point at a provider that is not there;
-      // - (c) M known, O known but empty: unset (no match);
-      // - (d) M null, O known: stored stands (nothing is known about
-      //   main either, so the live computation is not trusted);
-      // - (e) both null: stored stands.
-      const mainProvider = next.main.provider;
-      const mainListing = mainProvider === "codex" ? codex : claude;
-      const otherListing = mainProvider === "codex" ? claude : codex;
-      if (mainListing !== null && mainListing !== undefined) {
-        if (otherListing !== null && otherListing !== undefined) {
-          const picked = selectDefaultModels(
-            { claude: claudeIds, codex: codexIds },
-            { provider: mainProvider },
-          );
-          next.secondOpinion = picked.secondOpinion ?? unsetSecondOpinion();
-        } else {
-          next.secondOpinion = unsetSecondOpinion();
-        }
-      }
     }
   } catch {
     // Adapter probe hiccup: stored values stand.

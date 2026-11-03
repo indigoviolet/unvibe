@@ -1,17 +1,28 @@
-Leaving it alone is correct. A bare LF that isn't followed by a space or tab isn't an `obs-fold`, and the code can't treat it as one without inventing a rule RFC 9112 doesn't give.
+Leaving a bare LF that isn't followed by whitespace unchanged is correct for what this change claims to do. A different bare-LF case is a real gap, though.
 
-- **What the code does.** `_normalize_header_value` returns early unless `"\r\n"` is in the value. `_OBSOLETE_FOLD_RE` also requires `\r\n[ \t]+`. A lone `\n` therefore goes untouched either way. [[diff:src-urllib3-connection.py:86-88]] [[diff:src-urllib3-connection.py:80-82]]
-- **Why that is right for this case.** An `obs-fold` is `OWS CRLF RWS`, and the required whitespace after the line break is what makes it a continuation. Without it, the line break is a line terminator, not a fold. Replacing it with a space would change what the header means.
-- **Probably unreachable.** From memory, I haven't run it. `http.client` reads header lines with `readline`, which splits at `\n`. A bare LF with no whitespace after it should therefore start a new header line, or a malformed one, and not stay inside a value. If so, no value reaches `_normalize_header_value` with such an LF in it.
-- **The case that does matter.** It is a bare LF followed by whitespace, such as `Set-Cookie: a=1\n b=2`. As I recall, `http.client`'s parser keeps the continuation line's own ending, so `\n b=2` would stay in the value. The fast path would skip it, because it checks only for `\r\n`. That is the bare-LF finding. If you widen anything, widen the pattern to `\r?\n[ \t]+` and the fast-path check to match. Don't add a rule for an LF with no whitespace after it.
+**Why leaving it is right.** `_OBSOLETE_FOLD_RE` defines an `obs-fold` as optional whitespace, CRLF, then required whitespace, and the required trailing `[ \t]+` is what separates a fold from a line end ([[diff:src-urllib3-connection.py:80-82]]). A line break with nothing after it is a field-line terminator, not a continuation. If the rule rewrote it, it would merge two lines into one value. That would be a new sanitizing policy, not the RFC 9112 unfolding step. The author didn't claim that policy. The changelog and description both scope the fix to folds ([[diff:changelog-1362.bugfix.rst:1-3]], [[desc:d-p1]]). This is also why the bare `\r\n` case should be pinned by a test that expects no change.
 
-The invariant "no raw line break in a header value" is enforced only for CRLF folds. No test sends a bare LF in either form. [[diff:test-test_connection.py:214-222]]
+**Two cases to keep apart.**
+
+- **Bare LF not followed by SP/HTAB.** Leave it unchanged. It isn't a fold, so there is nothing to unfold. Whether `http.client` can hand such a value to the normalizer is unknown. Its parser splits field lines at `\n`, so a lone `\n` in a stored value may be unreachable. I haven't checked the stdlib source or run it.
+- **Bare LF followed by SP/HTAB, which is a bare-LF fold.** This is the case the finding on bare-LF folds is about. Both gates key on the literal `\r\n`: the early return in `_normalize_header_value` and the pattern itself ([[diff:src-urllib3-connection.py:86-88]]). If `http.client` keeps a bare-LF fold's `\n ` inside the value, it passes through untouched. Whether it does is the unverified premise behind that finding.
+
+**What widening would look like.** The real alternative is to recognize a bare-LF fold, not to rewrite every `\n`. That means changing the pattern to `\r?\n[ \t]+` and changing the guard to match. Widening only one of the two changes nothing, because the other still declines the value. The trailing `[ \t]+` must stay mandatory. Otherwise a lone `\n` would start merging lines, and that is the risk you are asking about.
+
+**The cost of widening.** The RFC lets a recipient accept a bare LF as a line terminator, so this would be a policy choice about leniency. It would need its own tests, including a bare-LF fold and a lone `\n` that must stay intact. No current test covers either ([[diff:test-test_connection.py:217-220]]).
+
+If you wanted to strip every raw `\n` and `\r` from values regardless of what follows, that would be a different guarantee with its own risks. It would change what the response means for malformed input, and nothing in this change argues for it. That choice is mine to flag, not the author's stated reason.
 
 ### Follow-ups
 
-- Does `http.client` keep a bare `\n` continuation inside the value? | ask: For a response header folded with a bare `\n` followed by a space, what does `http.client` leave in the `HTTPMessage` value, and would `_normalize_header_value` change it?
-- What would a minimal fix and test look like? | ask: What change to `_OBSOLETE_FOLD_RE` and the fast-path check would handle bare-LF folds, and which test cases should be added to `test_normalize_header_value`?
+- Does `http.client` ever store a lone `\n` inside a header value? | ask: When `http.client` parses a header line ending in a bare `\n` followed by a non-whitespace line, is the `\n` ever kept inside a stored value?
+- What would a widened pattern need to pass? | ask: If `_OBSOLETE_FOLD_RE` became `\r?\n[ \t]+`, which unit and socket cases should be added so a lone `\n` stays unchanged and a bare-LF fold becomes one space?
 
 ```json
-{"anchor": {"quote": "A value with a bare", "hostId": "card:decisions"}, "contribute": {"open_questions": ["Does http.client's header reader ever leave a bare LF (with or without following whitespace) inside an HTTPMessage value, or does readline always split it into a new line?"]}}
+{
+  "anchor": {"quote": "that case is also untested", "block": "card:g-regex"},
+  "contribute": {
+    "open_questions": ["Does http.client ever keep a lone \\n (not followed by SP/HTAB) inside a stored header value, or does its line splitting make that input unreachable?"]
+  }
+}
 ```

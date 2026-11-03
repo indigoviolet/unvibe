@@ -3,17 +3,15 @@
  *
  * Diagram blocks can be stored anywhere the data model holds blocks, not
  * only in page cards: conversation answers live in
- * `annotations[].turns[].blocks`, and second-opinion reasoning carries
- * its own `blocks`. The diagrams route searches through this module so a
- * new container cannot be missed silently — add its list here.
+ * `annotations[].turns[].blocks`. The diagrams route searches through
+ * this module so a new container cannot be missed silently — add its
+ * list here. (Issue #349 step 2 adds per-persona card variant lists here.)
  *
  * Live containers (rendered by the web, addressable by hash):
  * - `pages[].cards[].blocks` (root / concept / finding / opened-expansion
  *   pages; go-deeper fills land here as ordinary cards)
- * - `pages[].cards[].secondOpinions[].blocks`
  * - `annotations[].replies[].blocks` (issue #273: every reply, so a
  *   diagram in a follow-up answer renders like any other)
- * - `annotations[].replies[].secondOpinions[].blocks`
  * - `aside.inner`, recursively, inside any of the above
  *
  * Deliberately excluded:
@@ -34,25 +32,19 @@ export interface BlockSnapshot {
 
 /**
  * Every live `Block[]` list in the snapshot, in a fixed order (card
- * blocks, card second opinions, turn blocks, turn second opinions).
- * Recursion into asides happens in {@link walkBlocks}, not here.
+ * blocks, then turn blocks). Recursion into asides happens in
+ * {@link walkBlocks}, not here.
  */
 export function liveBlockLists(snapshot: BlockSnapshot): Block[][] {
   const lists: Block[][] = [];
   for (const page of snapshot.pages ?? []) {
     for (const card of page.cards ?? []) {
       if (card.blocks) lists.push(card.blocks);
-      for (const so of card.secondOpinions ?? []) {
-        if (so.blocks) lists.push(so.blocks);
-      }
     }
   }
   for (const ann of snapshot.annotations ?? []) {
     for (const reply of ann.replies ?? []) {
       if (reply.blocks) lists.push(reply.blocks);
-      for (const so of reply.secondOpinions ?? []) {
-        if (so.blocks) lists.push(so.blocks);
-      }
     }
   }
   return lists;

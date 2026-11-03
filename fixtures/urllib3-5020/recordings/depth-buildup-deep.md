@@ -1,24 +1,43 @@
 ## How it's built up
 
-The change is a single plotline, `obs-fold-unfolding`. Its pieces are layered so that each one carries exactly one guarantee, and the order of the layers is forced by the invariant they protect. That invariant is that no consumer ever sees a header value containing a raw CRLF.
+There is one plotline. It has three pieces:
+::: simple
+The change has one plotline, and it has three pieces:
+:::
+::: deep
+There is one plotline. The three pieces follow the path one header takes. A pure function handles one string. A function handles the whole message. The call site connects both to `getresponse`. Each piece depends only on the one before it, so each can be tested, and reasoned about, without the pieces after it.
+:::
 
-1. **Per-value semantics.** The regex and `_normalize_header_value` define what unfolding means for one string. This layer has to be a pure function of the value. It is the only place the RFC 9112 rule (replace each `OWS CRLF RWS` with one space) is written down, so both views of the headers get the same answer. The `"\r\n" not in value` early return sits here too. It is safe because a fold cannot exist without a CRLF, and it keeps the regex off the common case. [[diff:src-urllib3-connection.py:80-88]]
+1. The regex and the single-value helper `_normalize_header_value`. They return early when a value has no CRLF. [[diff:src-urllib3-connection.py:80-88]]
+2. The message-level helper `_normalize_header_values`. It rewrites the message only if something changed, and it returns the items. [[diff:src-urllib3-connection.py:91-110]]
+3. The call in `getresponse`, which feeds the cleaned items to `HTTPHeaderDict`. [[diff:src-urllib3-connection.py:647-651]]
 
-2. **Per-message application.** `_normalize_header_values` applies the value rule to every header and writes the result back into the same `HTTPMessage`. It has to touch the message, and not only return a list. The headers exist in two places: the `HTTPHeaderDict` that urllib3 builds, and `httplib_response.msg`, which consumers can still reach through the original response. Fixing only one copy would leave the other violating the invariant. The in-place rewrite is delete-and-re-add, so order and duplicates survive. Rewriting only the changed headers would append them at the end, and the message would no longer match the wire order. [[diff:src-urllib3-connection.py:91-110]]
+::: deep
+**Layer 1 holds the rule.** A fold is optional whitespace, then CRLF, then required whitespace, and it becomes one space. `_normalize_header_value` is a pure `str -> str` function that knows nothing about `HTTPMessage`, so the rule can be tested on bare strings. The early return is sound because the pattern needs a literal `\r\n` to match. A value without one cannot change, so skipping the regex gives the same result and saves the scan on nearly all headers. The lookbehind is also decided here. It fixes what one fold means: whitespace left by an earlier fold is not absorbed by the next, so adjacent folds yield one space each. It also bounds the cost on a long whitespace run. [[diff:src-urllib3-connection.py:80-88]]
 
-3. **Call-site placement.** `getresponse` calls the message-level function and builds `HTTPHeaderDict` from the returned items. The ordering matters. The call has to run before `HTTPHeaderDict` is constructed, and before the `HTTPResponse` is handed to anyone. If it ran later, there would be a window in which a reader could see a raw CRLF in one of the two views. Building the dict from the normalized items, not from `msg.items()` again, makes the two views agree by construction and not by coincidence. [[diff:src-urllib3-connection.py:650-651]]
+**Layer 2 holds the synchronization.** A rule on strings does not make the message clean. The message has to be changed too, and the change must keep the object, its order and its duplicates. This layer is the only one that touches `HTTPMessage`. It returns the same list it wrote back, so layer 3 builds from the data that was just written, not from a second read that could drift. The `headers_changed` guard keeps responses without folds from ever being mutated. [[diff:src-urllib3-connection.py:91-110]]
 
-The tests mirror the layers. Each one checks the layer it is cheapest to check at:
+**Layer 3 holds the integration.** The call site is two lines: normalize the message, then build `HTTPHeaderDict` from the result. It is the only place where the order matters. The message must be cleaned before the dict is built, or the dict would be a snapshot of folded data. [[diff:src-urllib3-connection.py:647-651]]
+:::
 
-- **Unit tests.** They pin the value rule, including adjacent folds, which yield two spaces, one per fold. They also pin what the message-level rewrite must not disturb: order, duplicate fields, payload, and the identity of `policy` and `defects`. These properties cannot be seen from a header dict alone, so they need a hand-built `HTTPMessage`. [[diff:test-test_connection.py:214-249]]
-- **Socket-level test.** It sends raw bytes, so the real `http.client` parser produces the folded values. It covers folded and duplicate cookies, every SP/HTAB combination around the CRLF, and repeated folds. It asserts on both `r.headers` and the original message, which checks the two-view invariant end to end. A unit test that built its own `HTTPMessage` could not show that the parser really delivers the folds in this shape. [[diff:test-with_dummyserver-test_socketlevel.py:92-146]]
+The tests follow the same layers. Unit tests cover the single value and the message: order, duplicates, payload, policy and defects. A socket-level test covers the whole path, and a changelog fragment is added. [[diff:test-test_connection.py:214-249]] [[diff:test-with_dummyserver-test_socketlevel.py:92-146]] [[diff:changelog-1362.bugfix.rst:1-3]]
+::: simple
+The tests follow the same three layers. Unit tests check one value and then a whole message. For the message they check order, duplicate headers, the body text (payload), policy and defects. A socket-level test runs the whole path with a real network connection. The change also adds a changelog note.
+:::
+::: deep
+Each test layer pins the guarantee of the code layer it matches. The `_normalize_header_value` cases pin the rule on bare strings: mixed SP/HTAB runs, multiple folds, and an adjacent fold that gives two spaces. [[diff:test-test_connection.py:214-224]]
 
-A changelog fragment records the user-visible fix. [[diff:changelog-1362.bugfix.rst:1-3]]
+The message test pins the synchronization contract. Header order, duplicate `Set-Cookie` entries, payload, and the identity of `defects` and `policy` must all survive the delete-and-re-add. Identity of `defects` and `policy` is what shows the same object was rewritten, not replaced. [[diff:test-test_connection.py:226-249]]
 
-What would break without this layering: with only layer 1 and a dict-only call site, `HTTPHeaderDict` would be clean while `msg` stayed dirty. With layer 2 but a call placed after the response is built, the two views would be briefly inconsistent. With a rewrite that did not preserve order or duplicates, cookie handling would change even for responses that had no fold.
+The socket test pins the integration. It checks that real parsed bytes end up clean in both `HTTPHeaderDict` and `_original_response.msg`, and that the two agree. Neither unit layer can show this, because each builds its own input. The socket test is also the only one that runs the parser's real output through the call site. [[diff:test-with_dummyserver-test_socketlevel.py:92-146]]
+
+The changelog fragment records the user-visible effect: no raw CRLF in values such as `Set-Cookie`. [[diff:changelog-1362.bugfix.rst:1-3]]
+
+Two guarantees have no test in any layer: the linear-time claim for long whitespace runs, and the unchanged-message path when no value is folded.
+:::
 
 ::: principle
-When the same data is exposed through two objects, fix it at the single point where both are derived, and derive one from the other. Then the two views cannot disagree.
+Split a fix by the data it touches. Put the rule on the smallest value that can carry it. Put the synchronization on the container that holds those values. Put the integration where the container is created. Then each guarantee has one owner and one test, and a regression shows up in the layer that owns it.
 :::
 
 ```json

@@ -20,7 +20,7 @@ function settingsWith(fullAccess: boolean): Settings {
   return {
     main: { provider: "claude", model: "mock-main", effort: "" },
     small: { provider: "claude", model: "mock-small", effort: "" },
-    secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
+    personas: [],
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,

@@ -1,63 +1,61 @@
 ## HTTPHeaderDict
 
-`HTTPHeaderDict` is urllib3's mapping for response headers. It is case-insensitive and keeps duplicate fields, so `getlist("set-cookie")` returns each `Set-Cookie` line separately. In this change it is still built in `getresponse`, but from a different source. It used to be built straight from `httplib_response.msg.items()`. It is now built from the list that `_normalize_header_values` returns. [[diff:src-urllib3-connection.py:647-651]] [[desc:d-p2]]
+`HTTPHeaderDict` is urllib3's response header mapping. It is a case-insensitive mapping that can hold several values for one name, such as two `Set-Cookie` fields. `getresponse` builds it from the header items of the `http.client` response message. The PR does not change the class. It changes what goes into it. [[diff:src-urllib3-connection.py:647-651]]
 
-`HTTPHeaderDict` is only one of two views of the headers. The other is the stdlib `HTTPMessage` (`httplib_response.msg`), which the response keeps as `_original_response`. Before the change both views held the raw `\r\n` from any `obs-fold`. [[desc:d-p1]]
+The mapping is one of two copies of the headers on a response. The other is the original `http.client.HTTPMessage`, which stays on the response as `_original_response.msg`. Before this change, `getresponse` copied `httplib_response.msg.items()` into `HTTPHeaderDict` unchanged. A value with an `obs-fold` therefore kept its raw `\r\n` in both copies. [[diff:src-urllib3-connection.py:647-651]] [[desc:d-p1]]
 
 ### Why it matters here
 
-Fixing `HTTPHeaderDict` alone would be incomplete. The description says cookie consumers such as Requests read the original message, so they could still re-emit the raw CRLF. For that reason `_normalize_header_values` does two jobs. It returns the normalized `(name, value)` items that feed `HTTPHeaderDict`. If any value changed, it also rewrites the `HTTPMessage` in place. This keeps the two views identical. [[diff:src-urllib3-connection.py:91-110]] [[desc:d-p2]]
+The fix has to leave the two copies in agreement. The description says that keeping `HTTPHeaderDict` and the original `HTTPMessage` synchronized is what stops cookie consumers such as Requests from re-emitting raw CRLF. [[desc:d-p2]]
 
-The alternative was to normalize only `HTTPHeaderDict` and leave the stdlib object untouched. That is smaller and avoids mutating an object urllib3 does not own. It would not help consumers that read through `_original_response`. The cost of the chosen design is that urllib3 now mutates a stdlib object. The author's reasons are taken from the description. I did not check Requests' source. [[diff:src-urllib3-connection.py:102-108]]
+The change achieves this by making `_normalize_header_values` the single source for both copies. It unfolds each value, writes the changed values back into the message, and returns the cleaned items. `getresponse` then builds `HTTPHeaderDict` from those returned items rather than reading `msg` a second time. [[diff:src-urllib3-connection.py:91-110]] [[diff:src-urllib3-connection.py:650-651]]
 
-Order and duplicates matter for `HTTPHeaderDict` too. The items come from `message.items()` in order. Only changed values are replaced in the list, so the `HTTPHeaderDict` sees the same header order and the same duplicate `Set-Cookie` entries as before, with unfolded values. [[diff:src-urllib3-connection.py:94-100]]
+One alternative was to clean only the `HTTPHeaderDict` copy. That would make `r.headers` look correct while `_original_response.msg` kept the CRLF, so the bug would remain for consumers that read the message. The description gives this as the reason for syncing both. [[desc:d-p2]]
+
+Another alternative was to unfold inside `HTTPHeaderDict` itself. That would put `http.client`-specific cleanup into a general container. I infer this was not chosen, because the PR does not touch the class and keeps the helpers private to `connection.py`. The author does not state the reason.
+
+The class also keeps duplicates. The returned items are a list of `(name, value)` pairs, so two `Set-Cookie` entries stay two entries and keep their order. [[diff:test-test_connection.py:238-246]]
 
 ### Example
 
-The socket-level test sends a folded cookie followed by an ordinary one:
+The socket test sends a folded `Set-Cookie` and checks both copies:
 
-```
-Set-Cookie: ___utmvbtouVBFmB=gZg\r\n
-    XbNOjalT: Lte; path=/; Max-Age=900\r\n
-Set-Cookie: ordinary=1; Path=/\r\n
-```
+- Wire: `Set-Cookie: ___utmvbtouVBFmB=gZg\r\n    XbNOjalT: Lte; path=/; Max-Age=900`, then `Set-Cookie: ordinary=1; Path=/`.
+- `HTTPHeaderDict`: `r.headers.getlist("set-cookie")` gives `["___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900", "ordinary=1; Path=/"]`.
+- Message: `r._original_response.msg.get_all("set-cookie")` gives the same list.
+- Every value in `r.headers` is free of `\r` and `\n`.
 
-`r.headers.getlist("set-cookie")` returns:
-
-- `"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900"`
-- `"ordinary=1; Path=/"`
-
-The test then checks that `r._original_response.msg.get_all("set-cookie")` returns the same two values. The test also asserts that no value in `r.headers.values()` contains `\r` or `\n`. [[diff:test-with_dummyserver-test_socketlevel.py:99-103]] [[diff:test-with_dummyserver-test_socketlevel.py:124-146]]
+[[diff:test-with_dummyserver-test_socketlevel.py:99-103]] [[diff:test-with_dummyserver-test_socketlevel.py:124-137]] [[diff:test-with_dummyserver-test_socketlevel.py:142-145]]
 
 ```d2
 direction: right
 
-parsed: "HTTPMessage\n(raw CRLF)"
+msg: "HTTPMessage\n(folded values)"
 norm: "_normalize_header_values" {
   link: "diff:src-urllib3-connection.py:91-110"
 }
-items: "(name, value) items"
+back: "msg rewritten\nin place" {
+  link: "diff:src-urllib3-connection.py:102-108"
+}
+items: "cleaned items" {
+  link: "diff:src-urllib3-connection.py:110"
+}
 hd: "HTTPHeaderDict" {
   link: "diff:src-urllib3-connection.py:650-651"
 }
-synced: "HTTPMessage\n(synced)"
-synced.class: [ok]
-
-parsed -> norm
-norm -> items: "returns"
-items -> hd: "built from"
-norm -> synced: "rewrites in place" {
-  link: "diff:src-urllib3-connection.py:102-108"
-}
+msg -> norm
+norm -> back
+norm -> items
+items -> hd
 ```
 
-Caption: Both views end up with the same unfolded values.
+Caption: Both the message and `HTTPHeaderDict` are fed from one pass over the values.
 
 ### Follow-ups
 
-- Does `HTTPHeaderDict` get any other normalization? | ask: Does `HTTPHeaderDict` do anything with CRLF in values on its own, or does this change rely entirely on `_normalize_header_values` to remove it?
-- Could `HTTPHeaderDict` and the `HTTPMessage` diverge after `getresponse`? | ask: After `getresponse` returns, can the `HTTPHeaderDict` and `_original_response.msg` drift apart, for example if a caller mutates one of them?
-- What would a consumer see if only `HTTPHeaderDict` were normalized? | ask: If `_normalize_header_values` returned the items but skipped the in-place rewrite of the `HTTPMessage`, which assertions in the socket-level test would fail?
+- Does `HTTPHeaderDict` merge duplicate `Set-Cookie` fields, and does that change what the tests see? | ask: How does HTTPHeaderDict store duplicate Set-Cookie entries built from the list of tuples that _normalize_header_values returns, and why does getlist still give two items?
+- Could the returned items and `msg` ever disagree? | ask: Can the items returned by _normalize_header_values differ from the rewritten HTTPMessage, for example when two headers differ only in name casing?
+- Why build `HTTPHeaderDict` from the return value rather than from `msg`? | ask: What would change if getresponse built HTTPHeaderDict from httplib_response.msg.items() after _normalize_header_values ran?
 
 ```json
 {"title": "HTTPHeaderDict"}

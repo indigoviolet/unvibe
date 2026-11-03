@@ -64,7 +64,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -870,14 +870,16 @@ const DEMO_MODEL_CATALOG: Record<string, import("@unvibe/shared").ModelInfo[]> =
 const DEMO_ROLE_PICKS = {
   main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
 } as const;
+
+/** Built-in Second opinion persona with the mock model (issue #349). */
+const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
+  personas: [MOCK_BUILT_IN_PERSONA],
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -898,7 +900,7 @@ function getMockSettings(): Settings {
     // Real service defaults, and stored overrides from mock-mode runs are
     // ignored so a stale localStorage can't leak mock ids into the demo.
     // Saves refuse anyway (read-only banner).
-    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS };
+    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }] };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
 }
@@ -1014,7 +1016,6 @@ function seedJobs(): Job[] {
       "mock-main": DEMO_ROLE_PICKS.main.model,
       "mock-small": DEMO_ROLE_PICKS.small.model,
       "mock-opus": "claude-opus-5-5",
-      "mock-second": DEMO_ROLE_PICKS.secondOpinion.model,
       "mock-mini": "gpt-5.6-terra",
     };
     return jobs.map((j) => ({
@@ -1172,10 +1173,7 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
-  mockSoSeq = 0;
   mockDiffFilter = undefined;
-  for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
-  pendingSecondOpinions = [];
   try {
     localStorage.removeItem(UPDATE_KEY);
   } catch {
@@ -1272,8 +1270,6 @@ function readMockReadiness(): ReadinessResponse {
       { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
       { id: "agent:main", label: "Main model", status: "ok", summary: STATIC_DEMO ? "claude/claude-opus-5-5 ready" : "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
       { id: "agent:small", label: "Small model", status: "ok", summary: STATIC_DEMO ? "claude/claude-haiku-5-5 ready" : "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: STATIC_DEMO ? "codex/gpt-6.1-sol ready" : "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
-      { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
     ],
     generatedAt: Date.now(),
     cached: false,
@@ -1533,7 +1529,6 @@ function mirrorMockPromotedTurn(tid: string, replyId: string): void {
     card.level = turn.level;
     card.revision = turn.revision;
     card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
-    if (turn.secondOpinions) card.secondOpinions = JSON.parse(JSON.stringify(turn.secondOpinions));
     emitPages();
     return;
   }
@@ -1619,41 +1614,6 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
   } as unknown as import("@unvibe/shared").Thread);
   emitAnnotations();
   return { id, replyId, blockId };
-}
-
-/**
- * Pending mock second-opinion fills (issue #76): like the service, every
- * run gets its own job id, so a re-run shows its own working state instead
- * of attaching to the previous run's done job. Deleting the opinion drops
- * its fill (a late timer must not resurrect the block) and settles the job
- * cancelled so no working state sticks around.
- */
-let mockSoSeq = 0;
-
-interface PendingSecondOpinion {
-  cardId: string;
-  mode: string;
-  jobId: string;
-  resultId: string;
-  timer: number;
-}
-
-let pendingSecondOpinions: PendingSecondOpinion[] = [];
-
-/** Drop pending mock second-opinion fills matching `predicate` (issue #76). */
-function cancelPendingSecondOpinions(predicate: (p: PendingSecondOpinion) => boolean): void {
-  const dropped = pendingSecondOpinions.filter(predicate);
-  if (dropped.length === 0) return;
-  pendingSecondOpinions = pendingSecondOpinions.filter((p) => !predicate(p));
-  for (const p of dropped) window.clearTimeout(p.timer);
-  let changed = false;
-  mockJobs = mockJobs.map((j) => {
-    if (j.state !== "running" && j.state !== "queued" && j.state !== "backing-off") return j;
-    if (!dropped.some((p) => p.jobId === j.id)) return j;
-    changed = true;
-    return { ...j, state: "cancelled" as const };
-  });
-  if (changed) emitJobs();
 }
 
 /** Emit contributions (accept/dismiss flips status without a refetch). */
@@ -1889,7 +1849,7 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
       ? DEMO_MODEL_CATALOG
       : {
           claude: [{ id: "mock-main", name: "Mock Main", description: "Mock main model for tests" }],
-          codex: [{ id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" }],
+          codex: [{ id: "mock-second", name: "Mock Second", description: "Mock Codex model for tests" }],
         },
   };
 }
@@ -2897,134 +2857,8 @@ export const mockApi = {
         })();
       }, 700);
     };
-    // Second opinion (mock): canned verdicts through the patch path so
-    // mock-mode e2e exercises the result block, disagreement styling and
-    // the mode switch without a service. Blind → partly, check →
-    // disagrees (prominent warn styling).
-    if (a.kind === "second_opinion") {
-      const jobId = `mock-so-${a.cardId}-${a.mode}-${++mockSoSeq}`;
-      const verdict = a.mode === "blind" ? "partly" : "disagrees";
-      const missed =
-        a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
-      const soModel = STATIC_DEMO ? DEMO_ROLE_PICKS.secondOpinion.model : "mock-second";
-      const resultId = `so-${a.cardId}-${a.mode}-${soModel}`;
-      const result = {
-        id: resultId,
-        cardId: a.cardId,
-        mode: a.mode,
-        provider: "codex",
-        model: soModel,
-        verdict,
-        reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
-        blocks: [
-          {
-            type: "paragraph",
-            id: "b-so-1",
-            text: {
-              standard:
-                verdict === "partly"
-                  ? `Partly — the gap is real but narrow. The helper handles the fold.`
-                  : `Disagrees — only CRLF-folded values are rewritten.`,
-            },
-            citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
-          },
-        ],
-        missed,
-        version: 1,
-        createdAt: Date.now(),
-        jobId,
-      };
-      trackMockJob(jobId, "second-opinion", { cardId: a.cardId, provider: "codex", model: soModel });
-      const timer = window.setTimeout(() => {
-        pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
-        settleMockJob(jobId);
-        // Answers store the result on the turn (survives depth/undo);
-        // page cards store on the card.
-        let storedOnAnswer = false;
-        for (const ann of annotations) {
-          const turn = (ann.replies ?? []).find((t) => t.id === a.cardId);
-          if (!turn) continue;
-          const rest = (turn.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
-          turn.secondOpinions = [...rest, { ...result, cardId: turn.id } as never];
-          storedOnAnswer = true;
-        }
-        if (storedOnAnswer) {
-          emitAnnotations();
-          return;
-        }
-        const snap = useReview.getState().snapshot;
-        if (!snap) return;
-        const pages = snap.pages.map((p) => ({
-          ...p,
-          cards: p.cards.map((c) => {
-            if (c.id !== a.cardId) return c;
-            const rest = (c.secondOpinions ?? []).filter((s) => s.mode !== a.mode);
-            return {
-              ...c,
-              secondOpinions: [...rest, { ...result, cardId: c.id } as never],
-            };
-          }),
-        }));
-        mockPages = JSON.parse(JSON.stringify(pages));
-        emitPages();
-      }, 400);
-      pendingSecondOpinions.push({ cardId: a.cardId, mode: a.mode, jobId, resultId, timer });
-      return { accepted: true, jobId };
-    }
     if (a.kind === "delete") {
       const target = (a as { targetId?: string }).targetId ?? "";
-      const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
-      if (m) {
-        // Drop the pending fill first (issue #76): a late timer must not
-        // resurrect the removed block.
-        if (m[1].startsWith("so-")) {
-          cancelPendingSecondOpinions((p) => p.resultId === m[1]);
-        } else {
-          const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-          cancelPendingSecondOpinions((p) => p.cardId === cardId && p.mode === mode);
-        }
-        // Answer results first (stored on the turn).
-        let removedExp = false;
-        for (const ann of annotations) {
-          for (const turn of ann.replies ?? []) {
-            const before = turn.secondOpinions ?? [];
-            let after = before;
-            if (m[1].startsWith("so-")) {
-              after = before.filter((s) => (s as { id: string }).id !== m[1]);
-            } else {
-              const mm = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-              if (turn.id !== mm[1]) continue;
-              after = before.filter((s) => (s as { mode: string }).mode !== mm[2]);
-            }
-            if (after.length !== before.length) {
-              turn.secondOpinions = after as never;
-              removedExp = true;
-            }
-          }
-        }
-        if (removedExp) {
-          emitAnnotations();
-          return { accepted: true };
-        }
-        const snap = useReview.getState().snapshot;
-        if (!snap) return { accepted: false };
-        const pages = snap.pages.map((p) => ({
-          ...p,
-          cards: p.cards.map((c) => {
-            const before = c.secondOpinions ?? [];
-            if (m[1].startsWith("so-")) {
-              const after = before.filter((s) => s.id !== m[1]);
-              return after.length === before.length ? c : { ...c, secondOpinions: after };
-            }
-            const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-            if (c.id !== cardId) return c;
-            return { ...c, secondOpinions: before.filter((s) => s.mode !== mode) };
-          }),
-        }));
-        mockPages = JSON.parse(JSON.stringify(pages));
-        emitPages();
-        return { accepted: true };
-      }
       // Thread deletion (expansions + threads via the actions route).
       const annIdx = annotations.findIndex((x) => x.id === target);
       if (annIdx >= 0) {
@@ -3563,7 +3397,6 @@ export const mockApi = {
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
             undoStack: JSON.parse(JSON.stringify(turn.undoStack)),
-            ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) } : {}),
           };
         }),
       });
@@ -3967,7 +3800,7 @@ export const mockApi = {
             { id: "mock-opus", name: "Mock Opus", description: "Mock opus-class model for tests" },
           ],
           codex: [
-            { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
+            { id: "mock-second", name: "Mock Second", description: "Mock Codex model for tests" },
             { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
           ],
           pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],

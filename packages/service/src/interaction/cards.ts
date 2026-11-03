@@ -3,7 +3,7 @@
  *
  * A "card" for interaction purposes is either a `Page` card or one reply of a thread (`Thread.replies`, each with its own
  * `ans_…` id). Every helper below resolves both, so depth / examples /
- * diagram / undo / second opinion work on answers exactly like on cards
+ * diagram / undo work on answers exactly like on cards
  * (PRD §4.4). All mutations run inside `ReviewStore.mutate` in the action
  * modules; this file only builds the draft edits.
  */
@@ -88,9 +88,6 @@ export function mirrorPromotedAnswer(
       card.level = turn.level;
       card.revision = turn.revision;
       card.undoStack = JSON.parse(JSON.stringify(turn.undoStack)) as Card["undoStack"];
-      card.secondOpinions = turn.secondOpinions
-        ? (JSON.parse(JSON.stringify(turn.secondOpinions)) as Card["secondOpinions"])
-        : undefined;
       return;
     }
   }

@@ -1,5 +1,5 @@
-Adds a socket-level test checking that obsolete line folding in response headers, including folded Set-Cookie, is unfolded into single values.
+Adds a socket-level test that obsolete line folding in response headers, including Set-Cookie, is unfolded into single-space values.
 
 ```json
-{"hunk": {"summary": "Adds a socket-level test checking that obsolete line folding in response headers, including folded Set-Cookie, is unfolded.", "hiddenReason": null, "score": "substantive"}}
+{"hunk": {"summary": "Adds a socket-level test that obsolete line folding in response headers, including Set-Cookie, is unfolded into single-space values.", "hiddenReason": null, "score": "substantive"}}
 ```

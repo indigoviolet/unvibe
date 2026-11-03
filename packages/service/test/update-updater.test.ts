@@ -249,7 +249,7 @@ describe("build identity", () => {
       baseCommit: null,
       commit: "y",
       builtAt: "2026-10-12T00:00:00.000Z",
-      dataFormat: 1,
+      dataFormat: 2,
     });
   });
 });

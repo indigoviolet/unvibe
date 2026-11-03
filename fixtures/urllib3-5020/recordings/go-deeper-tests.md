@@ -1,30 +1,20 @@
-## How the tests cover edge cases
+## What the tests cover and miss
 
-The tests cover the whitespace around `obs-fold` fairly thoroughly. They cover header-name cases not at all, and the changelog and description say that is deliberate. [[desc:d-p4]]
+The tests exercise the whitespace combinations around the CRLF thoroughly, and they check that the message is preserved. They are thin on inputs that are not a well-formed `obs-fold`.
 
-**Whitespace combinations.** The socket-level test sends four headers, one for each pairing of trailing whitespace before the CRLF (SP or HTAB) with leading whitespace after it (SP or HTAB). Each must come back as `before after`. [[diff:test-with_dummyserver-test_socketlevel.py:104-111]] A fifth header, `Fold-Mixed-Repeated`, mixes runs of both kinds across two folds and must come back as `one two three`. [[diff:test-with_dummyserver-test_socketlevel.py:112-114]] The `Set-Cookie` fold has four leading spaces on its continuation line, so a run longer than one character is covered too. [[diff:test-with_dummyserver-test_socketlevel.py:101-102]] The test is written at the socket level because it sends raw bytes. This means the real `http.client` parser produces the folded values, rather than the test hand-building an `HTTPMessage`.
+**Covered.** `_normalize_header_value` is parametrized over four cases. The first is an ordinary value with an inner tab that passes through unchanged. The second is mixed SP/HTAB runs around the CRLF. The third is multiple folds in one value. The fourth is adjacent folds, which collapse to two spaces (`"one  three"`) and not zero. [[diff:test-test_connection.py:214-224]] The unit test for `_normalize_header_values` checks that a mixed list keeps its order and duplicate `Set-Cookie` entries. It also checks that the payload is kept and that `defects` and `policy` are the same objects as before. [[diff:test-test_connection.py:226-249]] The socket test covers the full path through `getresponse`. It sends a folded `Set-Cookie`, every SP/HTAB pairing around the CRLF, a mixed and repeated fold, and an ordinary header whose inner `\t` must survive. It asserts that `HTTPHeaderDict` and `_original_response.msg` agree, and that no value contains `\r` or `\n`. [[diff:test-with_dummyserver-test_socketlevel.py:92-146]]
 
-**Unit cases for `_normalize_header_value`.** The four parametrized cases pin down what the regex consumes. [[diff:test-test_connection.py:214-224]]
-- `ordinary\tvalue` has no CRLF, so it stays unchanged. This exercises the fast path. [[diff:src-urllib3-connection.py:86-87]]
-- `before \t\r\n\t  after` shows that whitespace on both sides of the CRLF collapses to a single space.
-- `one\r\n two\t\r\n\tthree` is two folds in one value, giving one space each.
-- `one\r\n \r\n\tthree` becomes `one  three`, with two spaces. The first fold's trailing whitespace is consumed with its own CRLF, and the second fold starts at the next CRLF. So adjacent folds each produce one space, and nothing merges or disappears. This is the case that tests "one space per fold, not zero".
+**Missed: a bare CRLF.** `_OBSOLETE_FOLD_RE` requires at least one SP/HTAB after the CRLF. [[diff:src-urllib3-connection.py:80-82]] A value that contains `\r\n` but no following whitespace goes through the slow path and comes out unchanged. No test pins that behavior, so the fast-path guard and the "leave it alone" outcome are both untested. A lone `\n` or `\r` is also never exercised. In practice `http.client` splits on line ends, so this input may not be reachable from the socket. The unit helpers accept any string, though, so a direct test would be cheap.
 
-The socket test also checks that `Ordinary: one\t two` keeps its internal tab and space. That shows the regex only touches whitespace that is attached to a CRLF. [[diff:test-with_dummyserver-test_socketlevel.py:115]] [[diff:test-with_dummyserver-test_socketlevel.py:133]]
+**Missed: the "unchanged message" path and the linear-time claim.** Every test that touches the message has at least one folded value. Nothing asserts that `_normalize_header_values` leaves the message alone when no value changes. That `headers_changed` guard exists so the delete-and-re-add loop is skipped in the common case. [[diff:src-urllib3-connection.py:102-108]] The regex comment claims the lookbehind prevents quadratic backtracking. No test feeds a long whitespace run to guard against that regression, so a later simplification of the pattern would not fail any test. [[diff:src-urllib3-connection.py:80-82]]
 
-**Message-level cases.** `test_normalize_header_values_preserves_message` covers duplicate `Set-Cookie` entries interleaved with other headers. It checks that the returned items and `message.items()` match the expected order, and that the payload, `defects` and `policy` keep their identity. [[diff:test-test_connection.py:226-249]] This guards the delete-and-re-add rewrite. [[diff:src-urllib3-connection.py:102-108]] The socket test also checks `HTTPHeaderDict` and `_original_response.msg` agree. [[diff:test-with_dummyserver-test_socketlevel.py:139-146]]
-
-**What is not covered.**
-- Header-name cases: whitespace before the colon, and names with odd characters. This is intentionally out of scope.
-- Header names with mixed case through delete and re-add. The unit test uses `Set-Cookie` and `X-First` in their usual casing, so case preservation is not demonstrated.
-- A bare `\n` fold, or a fold with no whitespace after the CRLF. The regex needs `\r\n` followed by at least one SP or HTAB, and no test shows other line endings being left alone.
-- A very long whitespace run. The `(?<![ \t])` lookbehind exists to avoid quadratic backtracking, but no test would catch a regression to it. [[diff:src-urllib3-connection.py:80-82]]
+**Missed: header-name edge cases.** The helpers rewrite the message with `del message[name]` and `message[name] = value`, with names taken from `message.items()`. [[diff:src-urllib3-connection.py:105-108]] All test names are plain tokens, differing only in case. Nothing covers names that differ only by case but appear as separate fields, or a name with unusual characters. Whitespace before the colon is explicitly out of scope. [[desc:d-p4]] Case-insensitive deletion, though, means that deleting one name removes every casing of it. Whether the re-added headers keep each original casing is not tested.
 
 ### Follow-ups
-- Does a mixed-case header name survive the delete-and-re-add loop? | ask: In `_normalize_header_values`, does `del message[name]` followed by `message[name] = value` preserve the original header-name case, and is there a test for it?
-- Could a timing test cover the quadratic-backtracking case? | ask: How would I write a test that fails if `_OBSOLETE_FOLD_RE` loses its `(?<![ \t])` lookbehind on a long whitespace run?
-- What happens to a lone `\r\n` with no following whitespace? | ask: What does `_normalize_header_value` do with a value containing `\r\n` that is not followed by a space or tab?
+- Does `del message[name]` followed by re-adding keep each header's original name casing when two fields differ only in case? | ask: If a response has "Set-Cookie" and "set-cookie" as separate fields, what does _normalize_header_values produce for the message and for HTTPHeaderDict?
+- Can `http.client` ever hand `_normalize_header_value` a value with a CRLF that is not followed by whitespace? | ask: Can a bare CRLF or lone CR/LF without following whitespace reach _normalize_header_value from a real socket response?
+- What test would catch a regression in the lookbehind? | ask: What test would fail if the lookbehind in _OBSOLETE_FOLD_RE were removed, and how long would the whitespace run need to be?
 
 ```json
-{"title": "How the tests cover edge cases"}
+{"title": "What the tests cover and miss"}
 ```

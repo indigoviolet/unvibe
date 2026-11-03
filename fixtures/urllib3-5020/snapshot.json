@@ -28,17 +28,22 @@
   "glossary": [
     {
       "name": "obs-fold",
-      "definition": "Obsolete HTTP header line folding (OWS CRLF RWS) that RFC 9112 requires receivers to replace with spaces.",
+      "definition": "Obsolete HTTP header line folding: CRLF followed by SP/HTAB inside a field value.",
       "citation": "diff:src-urllib3-connection.py:80-82"
     },
     {
+      "name": "_normalize_header_value",
+      "definition": "Replaces each obs-fold in one value with a single space; skips values without CRLF.",
+      "citation": "diff:src-urllib3-connection.py:85-88"
+    },
+    {
       "name": "_normalize_header_values",
-      "definition": "Unfolds every header in an HTTPMessage, syncs the message, and returns the (name, value) items.",
+      "definition": "Unfolds all values of an HTTPMessage, syncs the message, returns the items.",
       "citation": "diff:src-urllib3-connection.py:91-110"
     },
     {
       "name": "HTTPHeaderDict",
-      "definition": "urllib3's response header mapping, now built from normalized items.",
+      "definition": "urllib3's response header mapping, built in getresponse.",
       "citation": "diff:src-urllib3-connection.py:650-651"
     }
   ],
@@ -1130,11 +1135,14 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "Python's <code>http.client</code> leaves obsolete folded response header lines (<code>obs-fold</code>) inside the <code>HTTPMessage</code> values. A header sent as <code>Set-Cookie: a=b\\r\\n    c=d</code> therefore reaches urllib3, and anything downstream, with a raw <code>\\r\\n</code> in the value. RFC 9112 says a receiver must replace each such fold with spaces before interpreting the value. "
+                "standard": "HTTP/1.1 servers may still send obsolete folded header lines (<code>obs-fold</code>), where a value continues on the next line after CRLF plus whitespace. Python's <code>http.client</code> keeps those raw CRLFs inside the <code>HTTPMessage</code> values. urllib3 then copied them unchanged into <code>HTTPHeaderDict</code>, so a header such as a folded <code>Set-Cookie</code> reached consumers with embedded <code>\\r\\n</code> in it.  "
               },
               "citations": [
                 {
                   "target": "desc:d-p1"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 }
               ]
             },
@@ -1142,14 +1150,14 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "Before this change, <code>getresponse</code> built <code>HTTPHeaderDict</code> straight from <code>httplib_response.msg.items()</code>, so the raw CRLF went into both the <code>HTTPHeaderDict</code> and the original message.  Consumers such as Requests read cookies from the original message, so they could re-emit the raw CRLF when they serialised the next request. "
+                "standard": "Before the change, <code>getresponse</code> built the headers with <code>HTTPHeaderDict(httplib_response.msg.items())</code>, with no cleanup. The original <code>HTTPMessage</code> stayed on the response as <code>_original_response.msg</code>. Cookie consumers such as Requests read that message directly, and they could re-emit raw CRLF on later requests.  "
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:647-651"
+                  "target": "desc:d-p2"
                 },
                 {
-                  "target": "desc:d-p2"
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 }
               ]
             },
@@ -1157,7 +1165,7 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "This is the folded <code>Set-Cookie</code> case from #1362. The whitespace-before-colon and header-name validation scope is not part of this problem. "
+                "standard": "The reported case is #1362. Whitespace before the colon and header-name validation are a separate issue and are not part of this change. "
               },
               "citations": [
                 {
@@ -1180,42 +1188,26 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "<code>getresponse</code> now passes the parsed message through <code>_normalize_header_values</code> before building <code>HTTPHeaderDict</code>. "
+                "standard": "The change unfolds every <code>obs-fold</code> right after parsing, before anything reads the headers. <code>_OBSOLETE_FOLD_RE</code> matches optional whitespace, then CRLF, then required whitespace, and <code>_normalize_header_value</code> replaces each match with one space. "
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:650-651"
+                  "target": "diff:src-urllib3-connection.py:80-88"
                 }
               ]
             },
             {
-              "type": "list",
+              "type": "paragraph",
               "id": "b2",
-              "ordered": false,
-              "items": [
-                {
-                  "html": "<code>_normalize_header_value</code> replaces each <code>OWS CRLF RWS</code> run with one space, using the <code>_OBSOLETE_FOLD_RE</code> regex. It returns early when the value has no <code>\\r\\n</code>. ",
-                  "citations": [
-                    {
-                      "target": "diff:src-urllib3-connection.py:80-88"
-                    }
-                  ]
-                },
-                {
-                  "html": "<code>_normalize_header_values</code> returns the normalized <code>(name, value)</code> list. If any value changed, it also deletes every header from the original <code>HTTPMessage</code> and re-adds the normalized ones in order. This keeps the message and the <code>HTTPHeaderDict</code> identical. ",
-                  "citations": [
-                    {
-                      "target": "diff:src-urllib3-connection.py:91-110"
-                    }
-                  ]
-                }
-              ],
+              "text": {
+                "standard": "<code>_normalize_header_values</code> applies this to the <code>HTTPMessage</code> items. If any value changed, it deletes and re-adds the headers on the original message, so the message and urllib3's <code>HTTPHeaderDict</code> agree. It returns the cleaned items, and <code>getresponse</code> builds <code>HTTPHeaderDict</code> from them.  "
+              },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:80-88"
+                  "target": "diff:src-urllib3-connection.py:91-110"
                 },
                 {
-                  "target": "diff:src-urllib3-connection.py:91-110"
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 }
               ]
             }
@@ -1234,7 +1226,7 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The change is a single plotline, <code>obs-fold-unfolding</code>, and it builds up in three pieces."
+                "standard": "There is one plotline. It has three pieces:"
               },
               "citations": []
             },
@@ -1244,7 +1236,7 @@
               "ordered": true,
               "items": [
                 {
-                  "html": "The regex and <code>_normalize_header_value</code> define what unfolding means for one value. ",
+                  "html": "The regex and the single-value helper <code>_normalize_header_value</code>. They return early when a value has no CRLF. ",
                   "citations": [
                     {
                       "target": "diff:src-urllib3-connection.py:80-88"
@@ -1252,7 +1244,7 @@
                   ]
                 },
                 {
-                  "html": "<code>_normalize_header_values</code> applies that to a whole message and writes the result back to the message. ",
+                  "html": "The message-level helper <code>_normalize_header_values</code>. It rewrites the message only if something changed, and it returns the items. ",
                   "citations": [
                     {
                       "target": "diff:src-urllib3-connection.py:91-110"
@@ -1260,10 +1252,10 @@
                   ]
                 },
                 {
-                  "html": "<code>getresponse</code> calls it, so <code>HTTPHeaderDict</code> is built from the normalized items. ",
+                  "html": "The call in <code>getresponse</code>, which feeds the cleaned items to <code>HTTPHeaderDict</code>. ",
                   "citations": [
                     {
-                      "target": "diff:src-urllib3-connection.py:650-651"
+                      "target": "diff:src-urllib3-connection.py:647-651"
                     }
                   ]
                 }
@@ -1276,7 +1268,7 @@
                   "target": "diff:src-urllib3-connection.py:91-110"
                 },
                 {
-                  "target": "diff:src-urllib3-connection.py:650-651"
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 }
               ]
             },
@@ -1284,48 +1276,15 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "Two sets of tests cover it:"
+                "standard": "The tests follow the same layers. Unit tests cover the single value and the message: order, duplicates, payload, policy and defects. A socket-level test covers the whole path, and a changelog fragment is added.   "
               },
-              "citations": []
-            },
-            {
-              "type": "list",
-              "id": "b4",
-              "ordered": false,
-              "items": [
-                {
-                  "html": "The unit tests cover single values, including adjacent folds, and check that the message keeps its order, duplicates, payload, policy and defects. ",
-                  "citations": [
-                    {
-                      "target": "diff:test-test_connection.py:214-249"
-                    }
-                  ]
-                },
-                {
-                  "html": "The socket-level test sends folded and duplicate cookies, every SP/HTAB combination around the CRLF, and repeated folds. It asserts on both <code>r.headers</code> and the original message. ",
-                  "citations": [
-                    {
-                      "target": "diff:test-with_dummyserver-test_socketlevel.py:92-146"
-                    }
-                  ]
-                }
-              ],
               "citations": [
                 {
                   "target": "diff:test-test_connection.py:214-249"
                 },
                 {
                   "target": "diff:test-with_dummyserver-test_socketlevel.py:92-146"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
-              "id": "b5",
-              "text": {
-                "standard": "A changelog fragment records the fix. "
-              },
-              "citations": [
+                },
                 {
                   "target": "diff:changelog-1362.bugfix.rst:1-3"
                 }
@@ -1356,7 +1315,7 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "<strong>Mutate the original <code>HTTPMessage</code> in place.</strong> The alternative is to normalize only urllib3's <code>HTTPHeaderDict</code>. The stated reason is that cookie consumers such as Requests read the original message.  The cost is that urllib3 now rewrites a stdlib object it does not own. It keeps the object's identity, so existing references stay valid. ",
+                  "html": "<strong>Normalize in <code>getresponse</code>, and mutate the original message.</strong> The alternative is to clean only the <code>HTTPHeaderDict</code> copy. That would leave the CRLF in <code>msg</code>, which Requests reads for cookies. The description gives this as the reason. The cost is that urllib3 now rewrites an <code>http.client</code> object it does not own.  ",
                   "citations": [
                     {
                       "target": "desc:d-p2"
@@ -1367,7 +1326,7 @@
                   ]
                 },
                 {
-                  "html": "<strong>Rewrite by delete-and-re-add.</strong> <code>del message[name]</code> removes every entry of that name, and the second loop re-adds all entries in the original order. This preserves order and duplicates without touching private <code>HTTPMessage</code> internals. The author's reason is inferred. ",
+                  "html": "<strong>Rewrite by delete and re-add.</strong> <code>HTTPMessage</code> has no in-place item replacement. Delete-and-re-add keeps the object's identity, and the order is preserved because every name is removed and then re-added in the original sequence. The reason is inferred. ",
                   "citations": [
                     {
                       "target": "diff:src-urllib3-connection.py:105-108"
@@ -1375,21 +1334,18 @@
                   ]
                 },
                 {
-                  "html": "<strong>One space per fold.</strong> The regex consumes the surrounding whitespace together with the CRLF, so adjacent folds give <code>&quot;one  three&quot;</code> and not one merged space.  The <code>(?&lt;![ \\t])</code> lookbehind starts the optional leading-whitespace match only at the start of a whitespace run. This is to avoid quadratic backtracking. ",
+                  "html": "<strong>Fast path and regex shape.</strong> The code skips values without <code>\\r\\n</code>. A lookbehind keeps matching of the leading whitespace linear in long runs; the comment says it avoids quadratic backtracking. ",
                   "citations": [
                     {
-                      "target": "diff:test-test_connection.py:218-220"
-                    },
-                    {
-                      "target": "diff:src-urllib3-connection.py:80-82"
+                      "target": "diff:src-urllib3-connection.py:80-88"
                     }
                   ]
                 },
                 {
-                  "html": "<strong>Fast path.</strong> Values without <code>\\r\\n</code> skip the regex, and the message is only rewritten if something changed. ",
+                  "html": "<strong>Collapse to a single space.</strong> The change follows RFC 9112, and each fold becomes one space. Adjacent folds collapse to one space too, with no zero-space case. ",
                   "citations": [
                     {
-                      "target": "diff:src-urllib3-connection.py:86-87"
+                      "target": "diff:test-test_connection.py:218-220"
                     }
                   ]
                 }
@@ -1405,13 +1361,10 @@
                   "target": "diff:src-urllib3-connection.py:105-108"
                 },
                 {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                },
+                {
                   "target": "diff:test-test_connection.py:218-220"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:80-82"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:86-87"
                 }
               ]
             },
@@ -1429,15 +1382,15 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "After <code>getresponse</code>, <code>HTTPHeaderDict</code> and <code>httplib_response.msg</code> hold the same values. The socket test asserts this for <code>Set-Cookie</code>. ",
+                  "html": "After <code>getresponse</code>, no header value in <code>HTTPHeaderDict</code> or in <code>msg</code> contains a fold CRLF. Only the socket test checks that the message and the dict agree. ",
                   "citations": [
                     {
-                      "target": "diff:test-with_dummyserver-test_socketlevel.py:124-146"
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:135-146"
                     }
                   ]
                 },
                 {
-                  "html": "Header names, order and duplicates are preserved. The unit test checks this. ",
+                  "html": "Header names, order, duplicates, payload, policy and defects are preserved. The unit test checks this. ",
                   "citations": [
                     {
                       "target": "diff:test-test_connection.py:226-249"
@@ -1447,7 +1400,7 @@
               ],
               "citations": [
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:124-146"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:135-146"
                 },
                 {
                   "target": "diff:test-test_connection.py:226-249"
@@ -1468,15 +1421,27 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "The code and tests do not show whether header-name case is preserved through <code>del</code> and re-add. <code>message[name]</code> stores the name as given, so the case is probably kept. Running a mixed-case header through the unit test would settle it.",
+                  "html": "Values containing a bare <code>\\r\\n</code> that is not followed by whitespace are left unchanged. Nothing tests that case. Reading the code is enough to confirm it.",
                   "citations": []
                 },
                 {
-                  "html": "The delete-and-re-add path does not run again for a value that was already normalized, but no test shows this.",
+                  "html": "<code>del message[name]</code> removes all headers with that name. The loop does this once per occurrence, which is harmless because deleting an absent name is a no-op. Re-adding follows <code>header_items</code> order, so duplicates stay in order. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:105-108"
+                    }
+                  ]
+                },
+                {
+                  "html": "Header names are re-set from the <code>message.items()</code> output. A name containing a CRLF would not be affected, but no test exercises this.",
                   "citations": []
                 }
               ],
-              "citations": []
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                }
+              ]
             },
             {
               "type": "paragraph",
@@ -1492,17 +1457,21 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "No public API changes. The visible effect is that <code>response.headers</code> and <code>response._original_response.msg</code> no longer contain CRLF. Requests cookie extraction is the downstream consumer. ",
+                  "html": "The new helpers are private to <code>connection.py</code>, so the public surface is unchanged.",
+                  "citations": []
+                },
+                {
+                  "html": "The visible effect is on <code>HTTPResponse.headers</code> and on <code>_original_response.msg</code>, which Requests and others read. ",
                   "citations": [
                     {
-                      "target": "desc:d-p2"
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                     }
                   ]
                 }
               ],
               "citations": [
                 {
-                  "target": "desc:d-p2"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ]
             }
@@ -1510,9 +1479,9 @@
           "undoStack": []
         },
         {
-          "id": "g-inplace",
+          "id": "g-alt",
           "pageId": "root",
-          "title": "Mutating HTTPMessage in place",
+          "title": "Mutating msg vs. only the dict",
           "level": "standard",
           "collapsed": false,
           "revision": 1,
@@ -1521,17 +1490,20 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "<code>_normalize_header_values</code> does two jobs. It returns the normalized <code>(name, value)</code> list, which <code>getresponse</code> hands to <code>HTTPHeaderDict</code>. If any value changed, it also rewrites the original <code>HTTPMessage</code> so the message holds the same values.   The second job is the in-place mutation. The description gives the reason: keeping <code>HTTPHeaderDict</code> and the message synchronized stops cookie consumers such as Requests from re-emitting raw CRLF.  Before the change, the <code>HTTPHeaderDict</code> was built from <code>httplib_response.msg.items()</code> and the message was left untouched. "
+                "standard": "The fix has to reach two copies of the headers. <code>getresponse</code> used to build <code>HTTPHeaderDict</code> from <code>httplib_response.msg.items()</code>. The <code>HTTPMessage</code> itself stayed on the response as <code>_original_response.msg</code> . The description says cookie consumers such as Requests read that message, not urllib3's dict. A fix that cleaned only <code>HTTPHeaderDict</code> would leave the raw CRLF in <code>msg</code>, and Requests could re-emit it . So <code>_normalize_header_values</code> also writes the cleaned values back into the message . The socket test checks both copies. It asserts the dict's <code>set-cookie</code> list, then asserts the same list through <code>_original_response.msg.get_all(&quot;set-cookie&quot;)</code> ."
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:91-110"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:650-651"
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 },
                 {
                   "target": "desc:d-p2"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:124-146"
                 }
               ]
             },
@@ -1539,14 +1511,17 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "The alternative is to normalize only the <code>HTTPHeaderDict</code> and leave the message alone. That would be smaller and would not touch an object urllib3 does not own. But <code>HTTPResponse</code> keeps the original response as <code>_original_response</code>, and the socket test asserts that <code>_original_response.headers is _original_response.msg</code>.  Consumers that read cookies through that message would still see the folded value. Fixing only the <code>HTTPHeaderDict</code> would leave the original message's <code>Set-Cookie</code> with the raw CRLF, which is the failure the PR targets. The description says Requests is the consumer in question. I did not check Requests' source, so that rests on the description. "
+                "standard": "The write-back is a delete and re-add of every header, on the same <code>HTTPMessage</code> object. The alternative is to build a fresh <code>HTTPMessage</code> and swap it onto the response. That would change object identity. The socket test asserts <code>_original_response.headers is _original_response.msg</code> . The unit test asserts that <code>defects</code> and <code>policy</code> are the same objects before and after . Anything holding a reference to the old message, or relying on its parser state, would keep seeing the folded values after a swap. The code comment says the point is &quot;preserving its identity and header ordering&quot; . That the author chose delete and re-add over a swap for this reason is my inference."
               },
               "citations": [
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:141"
                 },
                 {
-                  "target": "desc:d-p2"
+                  "target": "diff:test-test_connection.py:248-249"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:103-104"
                 }
               ]
             },
@@ -1554,58 +1529,46 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "The rewrite is delete-and-re-add. It first runs <code>del message[name]</code> for every name in <code>header_items</code>. <code>header_items</code> is the list returned by <code>message.items()</code>, so mutating the message does not disturb the loop. A name that appears twice is simply deleted twice. Then it runs <code>message[name] = value</code> in the original order.  This works because <code>HTTPMessage.__setitem__</code> appends rather than replaces. So duplicates and order survive, with no access to private internals. This is my reading of the stdlib behaviour, and the unit test confirms it: <code>Set-Cookie</code> entries stay in their original positions and <code>get_all</code> returns both.  The author's reason for this approach is inferred, since the description does not state it. A direct edit of the message's private header list would be cheaper, but it would depend on stdlib internals."
+                "standard": "A third option is to fix the parse itself, by patching <code>http.client.parse_headers</code> or subclassing the response class. This would unfold the values before any copy exists. It would also mean patching a stdlib module-level function, which affects every user of <code>http.client</code> in the process. No code in this change tries it, and I have no stated reason for rejecting it, so that is my inference too. Normalizing after <code>begin()</code> inside <code>getresponse</code> keeps the change local to urllib3's own connection class."
               },
-              "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:102-108"
-                },
-                {
-                  "target": "diff:test-test_connection.py:226-246"
-                }
-              ]
+              "citations": []
             },
             {
               "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "The costs are these. First, once any header changes, every header is deleted and re-added, not only the changed ones, because rewriting just the changed ones would move them to the end and break ordering. Second, urllib3 now mutates a stdlib object after parsing, which downstream code could notice. The test limits the blast radius: the payload, <code>policy</code> and <code>defects</code> keep their identity, and the message object itself is the same one.  The rewrite also only runs when some value contained <code>\\r\\n</code>, so ordinary responses are untouched.  "
+                "standard": "The costs are these. urllib3 now rewrites an object it does not own, and it depends on <code>HTTPMessage</code> semantics. <code>del message[name]</code> drops every occurrence of a name, and <code>message[name] = value</code> appends. The loop works because it deletes everything first and then re-adds in <code>header_items</code> order, so duplicate names keep their order . Because the rewrite runs only when <code>headers_changed</code> is true, responses without folds never touch the message . The function also returns the cleaned items, so <code>HTTPHeaderDict</code> is built from the same data that was written back, not from a second read of <code>msg</code>  ."
               },
               "citations": [
                 {
-                  "target": "diff:test-test_connection.py:247-249"
+                  "target": "diff:src-urllib3-connection.py:105-108"
                 },
                 {
-                  "target": "diff:src-urllib3-connection.py:86-87"
+                  "target": "diff:src-urllib3-connection.py:94-102"
                 },
                 {
-                  "target": "diff:src-urllib3-connection.py:102"
+                  "target": "diff:src-urllib3-connection.py:110"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 }
               ]
             },
             {
-              "type": "paragraph",
-              "id": "b5",
-              "text": {
-                "standard": "One thing the tests do not pin down is header-name case. The names come from <code>message.items()</code> and are re-added as given, so the case is probably preserved. But every test header already has a fixed spelling, and none checks a mixed-case name against the stored one."
-              },
-              "citations": []
-            },
-            {
               "type": "follow-up",
-              "id": "b6",
+              "id": "b5",
               "items": [
                 {
-                  "label": "Is header-name case preserved after delete and re-add?",
-                  "ask": "Does `_normalize_header_values` preserve the exact header-name case of a folded header when it deletes and re-adds it on the `HTTPMessage`? What test would prove it?"
+                  "label": "Does anything else read `_original_response.msg` or `.headers` besides Requests cookie extraction?",
+                  "ask": "Which consumers read `_original_response.msg` or `.headers`, and would any of them see different behavior from the delete-and-re-add rewrite?"
                 },
                 {
-                  "label": "Could only the changed headers be rewritten?",
-                  "ask": "Could `_normalize_header_values` rewrite only the headers whose values changed instead of deleting and re-adding all of them? What would break about ordering?"
+                  "label": "What would break if `_normalize_header_values` replaced the message instead of mutating it?",
+                  "ask": "If `_normalize_header_values` returned a new `HTTPMessage` and `getresponse` swapped it onto the response, which tests and which consumers would break?"
                 },
                 {
-                  "label": "What does Requests actually read?",
-                  "ask": "Which attribute does Requests read cookies from on a urllib3 response, and does it go through `_original_response.msg`?"
+                  "label": "Is the order of duplicate headers really preserved when a fold sits in the middle?",
+                  "ask": "Walk through `_normalize_header_values` for a message with Set-Cookie, X-Second, Set-Cookie where only the first Set-Cookie is folded, and show the resulting order."
                 }
               ],
               "citations": []
@@ -1625,14 +1588,14 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The pattern is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>. It reads as an optional run of leading whitespace (OWS), then the CRLF, then required trailing whitespace (RWS). Each match is replaced with one space . The <code>(?&lt;![ \\t])</code> lookbehind means the optional OWS group can only begin at the first character of a space/tab run. A comment in the diff says this avoids quadratic backtracking ."
+                "standard": "<code>_OBSOLETE_FOLD_RE</code> is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>. It has an optional leading OWS group, then the required CRLF, then required RWS.  The leading group exists so that whitespace before the CRLF is swallowed into the replacement. Otherwise <code>&quot;before \\t\\r\\n\\t  after&quot;</code> would become <code>&quot;before \\t after&quot;</code>, not <code>&quot;before after&quot;</code>. "
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:80-88"
+                  "target": "diff:src-urllib3-connection.py:80-82"
                 },
                 {
-                  "target": "diff:src-urllib3-connection.py:80-82"
+                  "target": "diff:test-test_connection.py:218"
                 }
               ]
             },
@@ -1640,7 +1603,19 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "<strong>Why the lookbehind is needed.</strong> <code>re.sub</code> tries a match at every position. Take a value with n spaces and no CRLF after them, such as <code>&quot;a&quot; + &quot; &quot; * n + &quot;b&quot;</code>, which could only reach the regex if some other part of the value held a <code>\\r\\n</code>. Without the lookbehind, <code>[ \\t]+</code> would start at each of the n positions. Each attempt would greedily consume to the end of the run, fail to find <code>\\r\\n</code>, and give back one character at a time. That is O(n²) in total. With the lookbehind, only the first position of the run runs the greedy match, which costs O(n) including its backtracking. Every later position inside the run fails the lookbehind straight away, and the engine moves on. The cost is linear in the run length. The fast path, which skips the regex when the value has no <code>\\r\\n</code>, already protects ordinary values. The lookbehind covers hostile values that do contain a fold somewhere . The linear-time claim follows from this reasoning. The tests do not time it, so no test would catch a regression."
+                "standard": "Without the lookbehind, <code>(?:[ \\t]+)?\\r\\n</code> would be quadratic on a value like <code>&quot;a&quot; + &quot; &quot; * n + &quot;b&quot;</code> that also contains a CRLF elsewhere. <code>re.sub</code> tries a match at every offset. At each of the n offsets inside the run, <code>[ \\t]+</code> would greedily consume the rest of the run and then give back one character at a time looking for <code>\\r\\n</code>. That is O(n) work per start and O(n²) overall. <code>(?&lt;![ \\t])</code> lets the group begin only at the first character of a run. At every later offset the lookbehind fails at once, the optional group is skipped, and <code>\\r\\n</code> fails on the next character. The run is scanned and backtracked once, so the cost is O(n). The code comment states this, and the reasoning checks out on paper. "
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
+                "standard": "The alternative would be to not require the OWS in the regex and strip trailing whitespace separately. For example, you could split on <code>\\r\\n</code> and then <code>rstrip</code>/<code>lstrip</code> each piece. That would be linear without regex tricks. The author's choice, whose reasons are inferred, keeps the whole rule in one <code>sub</code> call. The cost is a subtle pattern. <code>_normalize_header_value</code> also skips values that contain no <code>\\r\\n</code>, so ordinary headers never reach the regex. "
               },
               "citations": [
                 {
@@ -1650,31 +1625,19 @@
             },
             {
               "type": "paragraph",
-              "id": "b3",
-              "text": {
-                "standard": "<strong>Why this gives one space per fold.</strong> The match consumes the OWS before the CRLF, the CRLF, and all the RWS after it. The single replacement space stands in for all of that. This is what RFC 9112 asks for, since each <code>obs-fold</code> becomes one space. The lookbehind does not lose any whitespace. Matching goes left to right, so the leading run is always matched from its first character. <code>&quot;before \\t\\r\\n\\t  after&quot;</code> becomes <code>&quot;before after&quot;</code> ."
-              },
-              "citations": [
-                {
-                  "target": "diff:test-test_connection.py:218"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "Adjacent folds show the consequence. In <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code>, the first match takes <code>\\r\\n </code> including its RWS. The next match starts at the following <code>\\r</code>, with no OWS left to absorb. It takes <code>\\r\\n\\t</code>. The result is <code>&quot;one  three&quot;</code>, with two spaces, one per fold . A regex that treated the whole region as a single whitespace run would give one space. That would be the wrong reading of &quot;replace each obs-fold&quot;. The repeated-fold socket case asserts the same behaviour on the wire: <code>one \\t\\r\\n\\t  two\\t \\r\\n \\tthree</code> becomes <code>one two three</code>  ."
+                "standard": "The lookbehind inspects the original string, not the output of earlier matches. Take <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code>. The first match is <code>&quot;\\r\\n &quot;</code>, and its greedy <code>[ \\t]+</code> consumes the space. At the second <code>\\r\\n</code>, the preceding character is that already-consumed space, so the lookbehind blocks the OWS group and the second fold matches as plain <code>\\r\\n\\t</code>. The result is two spaces, one per fold, and the unit test pins <code>&quot;one  three&quot;</code>.  So &quot;adjacent folds collapse to one space, not zero&quot; in the decisions card is imprecise. Each fold yields exactly one space, so a whitespace-only continuation line gives two. The other cases behave as expected. Mixed SP/HTAB runs on either side collapse into one space, and repeated folds in one value each become one space.  "
               },
               "citations": [
                 {
                   "target": "diff:test-test_connection.py:220"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
+                  "target": "diff:test-test_connection.py:218-219"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:132"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
                 }
               ]
             },
@@ -1682,11 +1645,11 @@
               "type": "paragraph",
               "id": "b5",
               "text": {
-                "standard": "<strong>What the pattern does not touch.</strong> A bare <code>\\r\\n</code> not followed by a space or tab is not a fold, because the RWS part requires at least one character. The pattern leaves it alone, and <code>_normalize_header_value</code> returns it unchanged. Ordinary whitespace inside a value, such as <code>&quot;one\\t two&quot;</code>, is also preserved, since the pattern only fires around a CRLF ."
+                "standard": "No test exercises the linear-time claim. The cases are all short, so a regression to a quadratic pattern would still pass. A bare <code>\\r\\n</code> not followed by SP/HTAB never matches, because the trailing <code>[ \\t]+</code> is required, and that case is also untested. "
               },
               "citations": [
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:133"
+                  "target": "diff:src-urllib3-connection.py:82"
                 }
               ]
             },
@@ -1695,16 +1658,16 @@
               "id": "b6",
               "items": [
                 {
-                  "label": "Can a value like `\"a\\r\\nb\"` (a CRLF not followed by a space or tab) still reach `HTTPHeaderDict`?",
-                  "ask": "Can a header value containing a CRLF that is not followed by a space or tab survive `_normalize_header_value`, and could that still produce raw CRLF in `HTTPHeaderDict`?"
+                  "label": "Is there an input that is still superlinear with this pattern?",
+                  "ask": "Can you construct a header value, such as many CRLF-space pairs or long whitespace runs without CRLF, where `_OBSOLETE_FOLD_RE` backtracks more than linearly?"
                 },
                 {
-                  "label": "Is there a test that would fail if the lookbehind were removed?",
-                  "ask": "Which test, if any, would fail if the `(?<![ \\t])` lookbehind were deleted from `_OBSOLETE_FOLD_RE`, and how could a timing test be written?"
+                  "label": "What would a performance regression test for this look like?",
+                  "ask": "How would you write a test that fails if `_OBSOLETE_FOLD_RE` loses its lookbehind, without making the test timing-flaky?"
                 },
                 {
-                  "label": "How does `_normalize_header_values` treat a value that was already normalized?",
-                  "ask": "In `_normalize_header_values`, what happens when no value changes, and is the delete-and-re-add path skipped entirely?"
+                  "label": "Why not split and strip instead of a regex?",
+                  "ask": "Would splitting on `\\r\\n` and stripping each piece give the same results as `_OBSOLETE_FOLD_RE` for all the cases in `test_normalize_header_value`?"
                 }
               ],
               "citations": []
@@ -1715,7 +1678,7 @@
         {
           "id": "g-tests",
           "pageId": "root",
-          "title": "How the tests cover edge cases",
+          "title": "What the tests cover and miss",
           "level": "standard",
           "collapsed": false,
           "revision": 1,
@@ -1724,29 +1687,25 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The tests cover the whitespace around <code>obs-fold</code> fairly thoroughly. They cover header-name cases not at all, and the changelog and description say that is deliberate. "
+                "standard": "The tests exercise the whitespace combinations around the CRLF thoroughly, and they check that the message is preserved. They are thin on inputs that are not a well-formed <code>obs-fold</code>."
               },
-              "citations": [
-                {
-                  "target": "desc:d-p4"
-                }
-              ]
+              "citations": []
             },
             {
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "<strong>Whitespace combinations.</strong> The socket-level test sends four headers, one for each pairing of trailing whitespace before the CRLF (SP or HTAB) with leading whitespace after it (SP or HTAB). Each must come back as <code>before after</code>.  A fifth header, <code>Fold-Mixed-Repeated</code>, mixes runs of both kinds across two folds and must come back as <code>one two three</code>.  The <code>Set-Cookie</code> fold has four leading spaces on its continuation line, so a run longer than one character is covered too.  The test is written at the socket level because it sends raw bytes. This means the real <code>http.client</code> parser produces the folded values, rather than the test hand-building an <code>HTTPMessage</code>."
+                "standard": "<strong>Covered.</strong> <code>_normalize_header_value</code> is parametrized over four cases. The first is an ordinary value with an inner tab that passes through unchanged. The second is mixed SP/HTAB runs around the CRLF. The third is multiple folds in one value. The fourth is adjacent folds, which collapse to two spaces (<code>&quot;one  three&quot;</code>) and not zero.  The unit test for <code>_normalize_header_values</code> checks that a mixed list keeps its order and duplicate <code>Set-Cookie</code> entries. It also checks that the payload is kept and that <code>defects</code> and <code>policy</code> are the same objects as before.  The socket test covers the full path through <code>getresponse</code>. It sends a folded <code>Set-Cookie</code>, every SP/HTAB pairing around the CRLF, a mixed and repeated fold, and an ordinary header whose inner <code>\\t</code> must survive. It asserts that <code>HTTPHeaderDict</code> and <code>_original_response.msg</code> agree, and that no value contains <code>\\r</code> or <code>\\n</code>. "
               },
               "citations": [
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:104-111"
+                  "target": "diff:test-test_connection.py:214-224"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
+                  "target": "diff:test-test_connection.py:226-249"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:101-102"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:92-146"
                 }
               ]
             },
@@ -1754,113 +1713,8 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "<strong>Unit cases for <code>_normalize_header_value</code>.</strong> The four parametrized cases pin down what the regex consumes. "
+                "standard": "<strong>Missed: a bare CRLF.</strong> <code>_OBSOLETE_FOLD_RE</code> requires at least one SP/HTAB after the CRLF.  A value that contains <code>\\r\\n</code> but no following whitespace goes through the slow path and comes out unchanged. No test pins that behavior, so the fast-path guard and the &quot;leave it alone&quot; outcome are both untested. A lone <code>\\n</code> or <code>\\r</code> is also never exercised. In practice <code>http.client</code> splits on line ends, so this input may not be reachable from the socket. The unit helpers accept any string, though, so a direct test would be cheap."
               },
-              "citations": [
-                {
-                  "target": "diff:test-test_connection.py:214-224"
-                }
-              ]
-            },
-            {
-              "type": "list",
-              "id": "b4",
-              "ordered": false,
-              "items": [
-                {
-                  "html": "<code>ordinary\\tvalue</code> has no CRLF, so it stays unchanged. This exercises the fast path. ",
-                  "citations": [
-                    {
-                      "target": "diff:src-urllib3-connection.py:86-87"
-                    }
-                  ]
-                },
-                {
-                  "html": "<code>before \\t\\r\\n\\t  after</code> shows that whitespace on both sides of the CRLF collapses to a single space.",
-                  "citations": []
-                },
-                {
-                  "html": "<code>one\\r\\n two\\t\\r\\n\\tthree</code> is two folds in one value, giving one space each.",
-                  "citations": []
-                },
-                {
-                  "html": "<code>one\\r\\n \\r\\n\\tthree</code> becomes <code>one  three</code>, with two spaces. The first fold's trailing whitespace is consumed with its own CRLF, and the second fold starts at the next CRLF. So adjacent folds each produce one space, and nothing merges or disappears. This is the case that tests &quot;one space per fold, not zero&quot;.",
-                  "citations": []
-                }
-              ],
-              "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:86-87"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
-              "id": "b5",
-              "text": {
-                "standard": "The socket test also checks that <code>Ordinary: one\\t two</code> keeps its internal tab and space. That shows the regex only touches whitespace that is attached to a CRLF.  "
-              },
-              "citations": [
-                {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:115"
-                },
-                {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:133"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
-              "id": "b6",
-              "text": {
-                "standard": "<strong>Message-level cases.</strong> <code>test_normalize_header_values_preserves_message</code> covers duplicate <code>Set-Cookie</code> entries interleaved with other headers. It checks that the returned items and <code>message.items()</code> match the expected order, and that the payload, <code>defects</code> and <code>policy</code> keep their identity.  This guards the delete-and-re-add rewrite.  The socket test also checks <code>HTTPHeaderDict</code> and <code>_original_response.msg</code> agree. "
-              },
-              "citations": [
-                {
-                  "target": "diff:test-test_connection.py:226-249"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:102-108"
-                },
-                {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
-              "id": "b7",
-              "text": {
-                "standard": "<strong>What is not covered.</strong>"
-              },
-              "citations": []
-            },
-            {
-              "type": "list",
-              "id": "b8",
-              "ordered": false,
-              "items": [
-                {
-                  "html": "Header-name cases: whitespace before the colon, and names with odd characters. This is intentionally out of scope.",
-                  "citations": []
-                },
-                {
-                  "html": "Header names with mixed case through delete and re-add. The unit test uses <code>Set-Cookie</code> and <code>X-First</code> in their usual casing, so case preservation is not demonstrated.",
-                  "citations": []
-                },
-                {
-                  "html": "A bare <code>\\n</code> fold, or a fold with no whitespace after the CRLF. The regex needs <code>\\r\\n</code> followed by at least one SP or HTAB, and no test shows other line endings being left alone.",
-                  "citations": []
-                },
-                {
-                  "html": "A very long whitespace run. The <code>(?&lt;![ \\t])</code> lookbehind exists to avoid quadratic backtracking, but no test would catch a regression to it. ",
-                  "citations": [
-                    {
-                      "target": "diff:src-urllib3-connection.py:80-82"
-                    }
-                  ]
-                }
-              ],
               "citations": [
                 {
                   "target": "diff:src-urllib3-connection.py:80-82"
@@ -1868,20 +1722,50 @@
               ]
             },
             {
+              "type": "paragraph",
+              "id": "b4",
+              "text": {
+                "standard": "<strong>Missed: the &quot;unchanged message&quot; path and the linear-time claim.</strong> Every test that touches the message has at least one folded value. Nothing asserts that <code>_normalize_header_values</code> leaves the message alone when no value changes. That <code>headers_changed</code> guard exists so the delete-and-re-add loop is skipped in the common case.  The regex comment claims the lookbehind prevents quadratic backtracking. No test feeds a long whitespace run to guard against that regression, so a later simplification of the pattern would not fail any test. "
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": {
+                "standard": "<strong>Missed: header-name edge cases.</strong> The helpers rewrite the message with <code>del message[name]</code> and <code>message[name] = value</code>, with names taken from <code>message.items()</code>.  All test names are plain tokens, differing only in case. Nothing covers names that differ only by case but appear as separate fields, or a name with unusual characters. Whitespace before the colon is explicitly out of scope.  Case-insensitive deletion, though, means that deleting one name removes every casing of it. Whether the re-added headers keep each original casing is not tested."
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                },
+                {
+                  "target": "desc:d-p4"
+                }
+              ]
+            },
+            {
               "type": "follow-up",
-              "id": "b9",
+              "id": "b6",
               "items": [
                 {
-                  "label": "Does a mixed-case header name survive the delete-and-re-add loop?",
-                  "ask": "In `_normalize_header_values`, does `del message[name]` followed by `message[name] = value` preserve the original header-name case, and is there a test for it?"
+                  "label": "Does `del message[name]` followed by re-adding keep each header's original name casing when two fields differ only in case?",
+                  "ask": "If a response has \"Set-Cookie\" and \"set-cookie\" as separate fields, what does _normalize_header_values produce for the message and for HTTPHeaderDict?"
                 },
                 {
-                  "label": "Could a timing test cover the quadratic-backtracking case?",
-                  "ask": "How would I write a test that fails if `_OBSOLETE_FOLD_RE` loses its `(?<![ \\t])` lookbehind on a long whitespace run?"
+                  "label": "Can `http.client` ever hand `_normalize_header_value` a value with a CRLF that is not followed by whitespace?",
+                  "ask": "Can a bare CRLF or lone CR/LF without following whitespace reach _normalize_header_value from a real socket response?"
                 },
                 {
-                  "label": "What happens to a lone `\\r\\n` with no following whitespace?",
-                  "ask": "What does `_normalize_header_value` do with a value containing `\\r\\n` that is not followed by a space or tab?"
+                  "label": "What test would catch a regression in the lookbehind?",
+                  "ask": "What test would fail if the lookbehind in _OBSOLETE_FOLD_RE were removed, and how long would the whitespace run need to be?"
                 }
               ],
               "citations": []
@@ -1890,9 +1774,9 @@
           "undoStack": []
         },
         {
-          "id": "g-downstream",
+          "id": "g-reach",
           "pageId": "root",
-          "title": "Effects on Requests and other consumers",
+          "title": "Who reads _original_response.msg",
           "level": "standard",
           "collapsed": false,
           "revision": 1,
@@ -1901,12 +1785,9 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "Two objects come out of <code>getresponse</code> with header data: the <code>HTTPHeaderDict</code> on the urllib3 response, and the stdlib <code>HTTPMessage</code> (<code>httplib_response.msg</code>). Before the change both held the raw <code>\\r\\n</code>, because <code>HTTPHeaderDict</code> was built straight from <code>msg.items()</code>.  Fixing only the <code>HTTPHeaderDict</code> would leave the second copy dirty. The description says cookie consumers such as Requests read the original message, so they would still see the CRLF and could re-emit it when serialising the next request. "
+                "standard": "Only the test code in this checkout touches <code>_original_response</code>. The urllib3 source isn't here, so the consumers below come from the PR description, not from code I could read. The description says cookie consumers such as Requests read the original <code>HTTPMessage</code> instead of <code>HTTPHeaderDict</code>. It names the failure as them &quot;re-emitting raw CRLF&quot;. "
               },
               "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:647-651"
-                },
                 {
                   "target": "desc:d-p2"
                 }
@@ -1916,14 +1797,14 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "The change handles this by having <code>_normalize_header_values</code> write the normalized values back into the same <code>HTTPMessage</code> object. It deletes every header and re-adds them in order, and it does this only when some value changed.  The message keeps its identity, so any reference a consumer already holds sees the unfolded values. The socket-level test checks this from the consumer side. It asserts that <code>r._original_response.msg.get_all(&quot;set-cookie&quot;)</code> returns the unfolded cookies and that <code>msg[&quot;fold-mixed-repeated&quot;]</code> is <code>&quot;one two three&quot;</code>. It also asserts that <code>headers is msg</code>, so the response's <code>headers</code> attribute and its <code>msg</code> are the same object. "
+                "standard": "That is why the change has two outputs. <code>getresponse</code> builds <code>HTTPHeaderDict</code> from the items that <code>_normalize_header_values</code> returns.  The same function also deletes and re-adds every header on <code>httplib_response.msg</code>.  If only <code>HTTPHeaderDict</code> were cleaned, <code>r.headers</code> would look correct. A reader going through <code>_original_response.msg</code> would still get a <code>Set-Cookie</code> with an <code>obs-fold</code> CRLF in it, and the bug would remain for that reader. The inferred cost is that urllib3 now treats <code>msg</code> as a second public output. Its contents are part of the contract, not an internal detail."
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:102-108"
+                  "target": "diff:src-urllib3-connection.py:650-651"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
+                  "target": "diff:src-urllib3-connection.py:102-110"
                 }
               ]
             },
@@ -1931,11 +1812,11 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "The alternative was to leave the stdlib object alone and have consumers read <code>HTTPHeaderDict</code> only. That does not help Requests-style code that goes through <code>_original_response</code>. The reason for the in-place write is therefore the author's stated one: keeping the two views identical.  The cost is that urllib3 now mutates an object that belongs to the standard library. If the rewrite were skipped, the folded <code>Set-Cookie</code> from #1362 would reach a cookie jar with its CRLF intact."
+                "standard": "The socket test pins this contract from both sides. It asserts that <code>_original_response.headers is _original_response.msg</code>, and that <code>msg.get_all(&quot;set-cookie&quot;)</code> and <code>msg[&quot;fold-mixed-repeated&quot;]</code> hold the unfolded values.  The <code>is</code> check matters because <code>http.client.HTTPResponse</code> exposes the same <code>HTTPMessage</code> as both <code>.headers</code> and <code>.msg</code>. Mutating the message in place fixes both names. Building a replacement <code>HTTPMessage</code> would not, unless the response were also repointed."
               },
               "citations": [
                 {
-                  "target": "desc:d-p2"
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
                 }
               ]
             },
@@ -1943,29 +1824,44 @@
               "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "The repository does not contain Requests. How Requests reads cookies, and how it serialises the next request, comes from the PR description, which lists end-to-end checks of both.  I did not verify those checks myself. The in-repo evidence is the two-view equality asserted in the socket test, not a Requests run."
+                "standard": "This also explains why <code>_normalize_header_values</code> keeps the message's identity instead of building a new one. Any consumer that already holds a reference sees the change. The unit test checks that <code>defects</code> and <code>policy</code> are the same objects and that the payload survives.  That matters for parsers that read <code>msg.defects</code>, or that check the policy when they re-serialize."
+              },
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:226-249"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": {
+                "standard": "What is not covered: no test uses a real cookie consumer. The Requests cookie-extraction claim is only in the description's verification notes.  Ordering matters for cookie jars, because they usually read <code>get_all(&quot;Set-Cookie&quot;)</code> in order. The unit test checks that duplicates stay ordered after the rewrite. "
               },
               "citations": [
                 {
                   "target": "desc:d-p5"
+                },
+                {
+                  "target": "diff:test-test_connection.py:246"
                 }
               ]
             },
             {
               "type": "follow-up",
-              "id": "b5",
+              "id": "b6",
               "items": [
                 {
-                  "label": "Why mutate the `HTTPMessage` instead of giving consumers only `HTTPHeaderDict`?",
-                  "ask": "Is there a way to unfold obs-fold for `_original_response.msg` consumers without deleting and re-adding every header on the stdlib HTTPMessage?"
+                  "label": "Does anything in urllib3 itself, not Requests, read `msg` after `getresponse` returns?",
+                  "ask": "Which code paths in urllib3 read `_original_response.msg` or `.headers` after `getresponse`, and would they see the normalized values?"
                 },
                 {
-                  "label": "What breaks if a consumer holds a reference to `msg` before `getresponse` returns?",
-                  "ask": "Can anything read httplib_response.msg between parsing and `_normalize_header_values` running, and would it see the raw CRLF?"
+                  "label": "What happens to a consumer that grabbed `msg` before the rewrite?",
+                  "ask": "Since `_normalize_header_values` deletes and re-adds headers in place, can any caller observe a half-rewritten `HTTPMessage`?"
                 },
                 {
-                  "label": "Does the delete-and-re-add rewrite preserve header-name case?",
-                  "ask": "Does `_normalize_header_values` preserve the original header-name case, and which test would show it?"
+                  "label": "Could `HTTPHeaderDict` be the only source of truth?",
+                  "ask": "What would it take for Requests to stop reading `_original_response.msg`, making the in-place mutation unnecessary?"
                 }
               ],
               "citations": []
@@ -1978,13 +1874,13 @@
     {
       "id": "f-critic",
       "kind": "finding",
-      "title": "Bare-LF folds bypass unfolding",
+      "title": "Adjacent folds yield two spaces, contradicting the description",
       "parent": "root",
-      "confidence": "medium",
-      "summary": "Only CRLF folds are detected, so a bare-LF fold would probably leave a raw newline in both HTTPHeaderDict and the HTTPMessage.",
+      "confidence": "high",
+      "summary": "The lookbehind in _OBSOLETE_FOLD_RE keeps a space left by an earlier fold from being absorbed, so 'one\\r\\n \\r\\n\\tthree' becomes 'one  three'. The description says adjacent folds collapse to one space.",
       "cards": [
         {
-          "id": "f-critic-0",
+          "id": "evidence-adjacent-folds",
           "pageId": "f-critic",
           "title": "Evidence",
           "level": "standard",
@@ -1995,12 +1891,9 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The fast path and the regex only recognise CRLF folds. <code>_normalize_header_value</code> returns early unless <code>&quot;\\r\\n&quot;</code> is in the value. <code>_OBSOLETE_FOLD_RE</code> also requires <code>\\r\\n</code>.  "
+                "standard": "The description says adjacent folds collapse to one space. The unit test expects two. The regex is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>, and the lookbehind only lets the optional leading whitespace match at the start of a whitespace run. "
               },
               "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:85-88"
-                },
                 {
                   "target": "diff:src-urllib3-connection.py:80-82"
                 }
@@ -2010,7 +1903,7 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "<code>http.client</code> parses headers with the email parser under the <code>compat32</code> policy. As I recall, that policy keeps whatever line ending a continuation line had. It only strips a trailing <code>\\r\\n</code> from the whole value. I did not run it, so a server that folds with a bare <code>\\n</code> (<code>Set-Cookie: a=1\\n b=2</code>) would probably leave <code>&quot;a=1\\n b=2&quot;</code> in the value. The fast path would skip it."
+                "standard": "For <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code>, the first match is <code>\\r\\n </code> and becomes one space. The second fold then starts right after that match, where the preceding character is the space the first match just consumed. Because of the lookbehind, the second match cannot absorb that space. It matches only <code>\\r\\n\\t</code> and becomes a second space."
               },
               "citations": []
             },
@@ -2018,17 +1911,11 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "The tests only send CRLF folds. The final assertion checks that no <code>\\r</code> or <code>\\n</code> remains, but only for those inputs.   The unit parametrization has no bare-LF case. "
+                "standard": "The test pins the result as <code>&quot;one  three&quot;</code>, with two spaces. "
               },
               "citations": [
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:99-118"
-                },
-                {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:135-137"
-                },
-                {
-                  "target": "diff:test-test_connection.py:214-222"
+                  "target": "diff:test-test_connection.py:220"
                 }
               ]
             },
@@ -2036,11 +1923,26 @@
               "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "The description and changelog say folded lines no longer leave raw line breaks in values. "
+                "standard": "The description and the guide state a different behavior, &quot;adjacent folds collapse to one space, not zero&quot;. That is not what the code does.  "
               },
               "citations": [
                 {
-                  "target": "desc:d-p1"
+                  "target": "desc:d-p6"
+                },
+                {
+                  "target": "desc:d-p3"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": {
+                "standard": "The socket test has no adjacent-fold case. Its mixed case, <code>one \\t\\r\\n\\t  two\\t \\r\\n \\tthree</code>, has non-whitespace between the folds. "
+              },
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
                 }
               ]
             }
@@ -2048,7 +1950,7 @@
           "undoStack": []
         },
         {
-          "id": "f-critic-1",
+          "id": "assessment-adjacent-folds",
           "pageId": "f-critic",
           "title": "Assessment",
           "level": "standard",
@@ -2059,7 +1961,7 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The invariant &quot;no raw line break in header values&quot; holds only for CRLF folds. A bare-LF fold would still put a raw <code>\\n</code> into both <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code>, which is the same cookie re-emission hazard the PR targets. A hostile server controls the bytes, so this is reachable. Confidence is medium because I have not run the parser."
+                "standard": "This is a description/code mismatch, not a functional bug. RFC 9112 allows replacing each obs-fold with one or more SP, so two spaces is acceptable."
               },
               "citations": []
             },
@@ -2067,7 +1969,7 @@
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "To close it, either:"
+                "standard": "It still matters for two reasons:"
               },
               "citations": []
             },
@@ -2077,11 +1979,11 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "widen the pattern to <code>\\r?\\n</code>, or",
+                  "html": "The checklist item &quot;adjacent folds collapse to one space&quot; would fail if someone ran it.",
                   "citations": []
                 },
                 {
-                  "html": "state that only CRLF folds are handled.",
+                  "html": "The result depends on an asymmetry: whitespace before a fold is absorbed, but whitespace after a previous fold is not. A reader will not expect that.",
                   "citations": []
                 }
               ],
@@ -2091,102 +1993,7 @@
               "type": "paragraph",
               "id": "b4",
               "text": {
-                "standard": "Add a socket-level case that sends a bare-LF fold either way."
-              },
-              "citations": []
-            },
-            {
-              "type": "comment-link",
-              "id": "b-comment",
-              "diffRef": "diff:src-urllib3-connection.py:86",
-              "threadId": "t-sglf",
-              "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:86"
-                }
-              ]
-            }
-          ],
-          "undoStack": []
-        }
-      ]
-    },
-    {
-      "id": "f-critic-2",
-      "kind": "finding",
-      "title": "Adjacent-fold wording and untested linear-time claim",
-      "parent": "root",
-      "confidence": "high",
-      "summary": "The description says adjacent folds give one space but the test expects two; the no-quadratic-backtracking claim has no long-input test.",
-      "cards": [
-        {
-          "id": "f-critic-2-0",
-          "pageId": "f-critic-2",
-          "title": "Evidence",
-          "level": "standard",
-          "collapsed": false,
-          "revision": 1,
-          "blocks": [
-            {
-              "type": "paragraph",
-              "id": "b1",
-              "text": {
-                "standard": "The description says adjacent folds collapse to one space, not zero.  The unit test expects the opposite: <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code> gives <code>&quot;one  three&quot;</code>, with two spaces.  The regex consumes one fold at a time, so each fold becomes its own space.  "
-              },
-              "citations": [
-                {
-                  "target": "desc:d-p6"
-                },
-                {
-                  "target": "diff:test-test_connection.py:220"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:82"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:88"
-                }
-              ]
-            },
-            {
-              "type": "paragraph",
-              "id": "b2",
-              "text": {
-                "standard": "The comment on the regex claims it avoids quadratic backtracking for long values.  No test sends a long whitespace run or a long folded value. The only inputs are short strings. "
-              },
-              "citations": [
-                {
-                  "target": "diff:src-urllib3-connection.py:80-81"
-                },
-                {
-                  "target": "diff:test-test_connection.py:214-222"
-                }
-              ]
-            }
-          ],
-          "undoStack": []
-        },
-        {
-          "id": "f-critic-2-1",
-          "pageId": "f-critic-2",
-          "title": "Assessment",
-          "level": "standard",
-          "collapsed": false,
-          "revision": 1,
-          "blocks": [
-            {
-              "type": "paragraph",
-              "id": "b1",
-              "text": {
-                "standard": "The code is consistent with the RFC, which allows one or more SP per fold. The description is wrong about adjacent folds, and the test pins the two-space result. That is a documentation mismatch, not a bug."
-              },
-              "citations": []
-            },
-            {
-              "type": "paragraph",
-              "id": "b2",
-              "text": {
-                "standard": "The linear-time claim looks right from reading the lookbehind, but it is untested. This is a test gap, not a bug. To close it, correct the description wording. Optionally add a test with a long whitespace run, such as 100k spaces followed by <code>\\r\\n x</code>, or one with no fold, and assert it finishes quickly."
+                "standard": "To close it, either fix the description and test name to say &quot;one space per fold&quot;, or change the regex so adjacent folds collapse to one space. A short comment on the test case would also help."
               },
               "citations": []
             },
@@ -2198,6 +2005,128 @@
               "citations": [
                 {
                   "target": "diff:test-test_connection.py:220"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        }
+      ]
+    },
+    {
+      "id": "f-critic-2",
+      "kind": "finding",
+      "title": "Bare-LF folds are not unfolded, so raw newlines can still reach Set-Cookie",
+      "parent": "root",
+      "confidence": "medium",
+      "summary": "The fast path and regex only handle \\r\\n. http.client accepts \\n-terminated lines, so a bare-LF fold would keep a raw \\n in the value. Untested; the changelog and description claim only CRLF removal.",
+      "cards": [
+        {
+          "id": "evidence-bare-lf",
+          "pageId": "f-critic-2",
+          "title": "Evidence",
+          "level": "standard",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "The fast path and the regex both key on <code>&quot;\\r\\n&quot;</code>.  A fold that ends in a bare <code>\\n</code> is not matched."
+              },
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:86-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": {
+                "standard": "I read this from <code>http.client</code>'s parser behaviour and did not run it here. <code>http.client</code> splits header lines on <code>\\n</code>, so a line terminated only by <code>\\n</code> is still read as a line. The email parser then joins a continuation line into the value with whatever terminator that line had. For a bare-LF server, the value would contain <code>\\n </code> and urllib3 would leave it untouched."
+              },
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
+                "standard": "The changelog says the fix prevents &quot;raw CRLF sequences&quot;, and the description says <code>HTTPMessage</code> &quot;no longer carries a raw CRLF after unfolding&quot;. Both claims are scoped to CRLF, so the bare-LF case is outside them.  "
+              },
+              "citations": [
+                {
+                  "target": "diff:changelog-1362.bugfix.rst:1-3"
+                },
+                {
+                  "target": "desc:d-p6"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": {
+                "standard": "The socket test sends only <code>\\r\\n</code> terminators. Its final assertion, that no value contains <code>\\r</code> or <code>\\n</code>, is therefore only established for CRLF input. "
+              },
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:99-137"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": {
+                "standard": "Nothing tests a lone <code>\\n</code>, a lone <code>\\r</code>, or a <code>\\r\\n</code> not followed by whitespace."
+              },
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "assessment-bare-lf",
+          "pageId": "f-critic-2",
+          "title": "Assessment",
+          "level": "standard",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": {
+                "standard": "I did not run the parser here, so the bare-LF behaviour is unverified. Confidence is medium."
+              },
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": {
+                "standard": "If it holds, the fix covers only one of two line-ending forms that <code>http.client</code> accepts. Some real servers send bare-LF folds. Those would still put a raw newline into <code>Set-Cookie</code> values, which is the exact symptom this PR targets."
+              },
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": {
+                "standard": "To close it, run <code>http.client</code> on a bare-LF folded response and see what the value contains. If it holds a raw <code>\\n</code>, either widen the pattern to <code>\\r?\\n</code> (and the fast-path check) or state in the changelog that only CRLF folds are handled. Add one socket test for the chosen behaviour."
+              },
+              "citations": []
+            },
+            {
+              "type": "comment-link",
+              "id": "b-comment",
+              "diffRef": "diff:src-urllib3-connection.py:86",
+              "threadId": "t-sglf",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:86"
                 }
               ]
             }
@@ -2217,8 +2146,8 @@
           "blockId": "problem#b1"
         },
         "quotedText": "obs-fold",
-        "prefix": "header lines (",
-        "suffix": ") inside the",
+        "prefix": "header lines ( ",
+        "suffix": " ), where a",
         "position": 0,
         "version": 1
       },
@@ -2236,22 +2165,26 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "A fold is a CRLF (<code>\\r\\n</code>) that is directly followed by at least one space or tab. The CRLF alone doesn't make it a fold. The whitespace after it is what tells the parser that the next line continues the previous header instead of starting a new one. RFC 9112 calls this <code>obs-fold</code>, which is optional whitespace, then CRLF, then required whitespace (OWS CRLF RWS)."
+                "standard": "<code>http.client</code> doesn't unfold continuation lines when it parses a response. It stores each header value as the raw text of the field, and for a folded field that text still contains the line break and the indent. For the socket test's <code>Set-Cookie</code>, the stored value is <code>&quot;___utmvbtouVBFmB=gZg\\r\\n    XbNOjalT: Lte; path=/; Max-Age=900&quot;</code>. The value is one string, but it spans two lines.  "
               },
-              "citations": []
+              "citations": [
+                {
+                  "target": "desc:d-p1"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:101-102"
+                }
+              ]
             },
             {
               "type": "paragraph",
               "id": "b2",
               "text": {
-                "standard": "That is exactly what <code>_OBSOLETE_FOLD_RE</code> matches. The required part is <code>\\r\\n[ \\t]+</code>, and the leading <code>(?:(?&lt;![ \\t])[ \\t]+)?</code> is the optional whitespace before the CRLF. Each match is replaced with a single space.  "
+                "standard": "<strong>Why this is a problem.</strong> The parser is faithful to the bytes the server sent. But a header value that contains <code>\\r\\n</code> breaks a basic assumption of HTTP/1.x, because <code>\\r\\n</code> is also the delimiter between field lines. Any consumer that writes the value back out can have that <code>\\r\\n</code> read as a real line break. RFC 9112 closes this gap by requiring the recipient to replace each <code>obs-fold</code> with a single space before using the value. Nothing in the old path did that. Before the change, <code>getresponse</code> copied <code>httplib_response.msg.items()</code> straight into <code>HTTPHeaderDict</code>. "
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:80-82"
-                },
-                {
-                  "target": "diff:src-urllib3-connection.py:88"
+                  "target": "diff:src-urllib3-connection.py:647-651"
                 }
               ]
             },
@@ -2259,7 +2192,7 @@
               "type": "paragraph",
               "id": "b3",
               "text": {
-                "standard": "The &quot;followed by whitespace&quot; part has two consequences:"
+                "standard": "<strong>Where the change shows this behavior.</strong>"
               },
               "citations": []
             },
@@ -2269,34 +2202,28 @@
               "ordered": false,
               "items": [
                 {
-                  "html": "<strong>A CRLF with no whitespace after it is not a fold.</strong> The pattern requires at least one space or tab, so <code>_normalize_header_value</code> leaves such a value alone. ",
+                  "html": "<code>_normalize_header_value</code> begins with <code>if &quot;\\r\\n&quot; not in value: return value</code>. That fast path only makes sense if parsed values can still contain <code>\\r\\n</code>. ",
                   "citations": [
                     {
-                      "target": "diff:src-urllib3-connection.py:82"
+                      "target": "diff:src-urllib3-connection.py:85-88"
                     }
                   ]
                 },
                 {
-                  "html": "<strong>The whitespace is consumed along with the CRLF.</strong> The continuation line's leading whitespace, such as the four spaces in the socket test's <code>Set-Cookie</code>, disappears into the one replacement space. The result is <code>___utmvbtouVBFmB=gZg XbNOjalT: ...</code>.  ",
+                  "html": "The unit test builds an <code>HTTPMessage</code> with <code>&quot;a=1 \\r\\n two&quot;</code> as a stored value and expects the cleanup to rewrite it. ",
                   "citations": [
                     {
-                      "target": "diff:test-with_dummyserver-test_socketlevel.py:101-102"
-                    },
-                    {
-                      "target": "diff:test-with_dummyserver-test_socketlevel.py:124-127"
+                      "target": "diff:test-test_connection.py:229"
                     }
                   ]
                 }
               ],
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:82"
+                  "target": "diff:src-urllib3-connection.py:85-88"
                 },
                 {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:101-102"
-                },
-                {
-                  "target": "diff:test-with_dummyserver-test_socketlevel.py:124-127"
+                  "target": "diff:test-test_connection.py:229"
                 }
               ]
             },
@@ -2304,25 +2231,33 @@
               "type": "paragraph",
               "id": "b5",
               "text": {
-                "standard": "The detector only recognises <code>\\r\\n</code>. The fast path returns early unless <code>&quot;\\r\\n&quot;</code> is in the value.  The critic finding about bare-LF folds is about this gap, and I haven't run the parser to confirm it."
+                "standard": "<strong>What I haven't verified.</strong> This checkout has no stdlib source, and I didn't run the parser. The mechanism (the email parser behind <code>http.client</code> joining continuation lines without removing the line ending) comes from my knowledge of the stdlib and from the description. The tests above are consistent with it, but they don't prove it."
+              },
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b6",
+              "text": {
+                "standard": "The stored <code>HTTPMessage</code> is also what <code>_original_response.msg</code> exposes, so the raw <code>\\r\\n</code> sits in the object that cookie consumers read, not only in urllib3's copy. That is why the fix rewrites the message and doesn't just clean <code>HTTPHeaderDict</code>. "
               },
               "citations": [
                 {
-                  "target": "diff:src-urllib3-connection.py:86-87"
+                  "target": "diff:src-urllib3-connection.py:102-108"
                 }
               ]
             },
             {
               "type": "follow-up",
-              "id": "b6",
+              "id": "b7",
               "items": [
                 {
-                  "label": "What happens to a value with `\\r\\n` that isn't followed by a space or tab?",
-                  "ask": "What does `_normalize_header_value` do with a value containing `\\r\\n` that is not followed by a space or tab, and can that still reach `HTTPHeaderDict`?"
+                  "label": "Does `http.client` keep the line ending when a folded line ends in a bare `\\n`?",
+                  "ask": "When `http.client` parses a folded header whose lines end in bare `\\n`, does the stored value contain `\\n` and would `_normalize_header_value` leave it untouched?"
                 },
                 {
-                  "label": "Would a bare `\\n` continuation line be unfolded?",
-                  "ask": "Does `_OBSOLETE_FOLD_RE` handle a continuation line that starts after a bare `\\n` instead of `\\r\\n`, and what would http.client leave in the value?"
+                  "label": "Where does the stdlib join continuation lines?",
+                  "ask": "Which part of `http.client`'s header parsing joins continuation lines into one value, and why does it keep the line ending?"
                 }
               ],
               "citations": []
@@ -2342,9 +2277,9 @@
           "kind": "block",
           "blockId": "central#b2"
         },
-        "quotedText": "same message object",
-        "prefix": "all headers on the ",
-        "suffix": ".",
+        "quotedText": "the original message",
+        "prefix": "headers on ",
+        "suffix": ", so the",
         "position": 0,
         "version": 1
       },
@@ -2352,7 +2287,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_you_7rqv98",
+          "id": "ans_you_zg09on",
           "kind": "comment",
           "who": "you",
           "question": null,
@@ -2392,7 +2327,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_agent_jpp7xp",
+          "id": "ans_agent_d22j8v",
           "kind": "comment",
           "who": "agent",
           "question": null,
@@ -2401,7 +2336,7 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The fast path and `_OBSOLETE_FOLD_RE` require `\\r\\n`. As far as I can tell, compat32 keeps a bare `\\n` fold inside the value, so a server sending `Set-Cookie: a=1\\n b=2` would still leave a raw newline in both representations. Should this be `\\r?\\n`, or is CRLF-only intended? Please add a socket-level case either way.\n\n(Example comment for the demo)"
+                "standard": "http.client accepts lines ending in a bare \\n, so a folded header from such a server would leave '\\n ' in the value and skip both this fast path and the regex. Should the pattern use \\r?\\n? Please add a socket test with bare-LF folds, or state that only CRLF folds are handled.\n\n(Example comment for the demo)"
               },
               "citations": []
             }
@@ -2433,7 +2368,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_agent_rz1wja",
+          "id": "ans_agent_rcpm9a",
           "kind": "comment",
           "who": "agent",
           "question": null,
@@ -2442,7 +2377,7 @@
               "type": "paragraph",
               "id": "b1",
               "text": {
-                "standard": "The PR description says adjacent folds collapse to one space, but this case expects two (`\"one  three\"`). Please fix the description. Also, the regex comment claims linear time, so a long-whitespace-run test would back that up.\n\n(Example comment for the demo)"
+                "standard": "The test at this line expects two spaces for adjacent folds, but the PR description says adjacent folds collapse to one space. Please align the description or the regex, and explain the lookbehind asymmetry (whitespace before a fold is absorbed, whitespace after a previous fold is not).\n\n(Example comment for the demo)"
               },
               "citations": []
             }
@@ -2474,7 +2409,7 @@
       "pinned": false,
       "replies": [
         {
-          "id": "ans_you_8pn3ya",
+          "id": "ans_you_cw8jxz",
           "kind": "comment",
           "who": "you",
           "question": null,

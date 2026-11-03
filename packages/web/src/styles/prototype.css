@@ -412,6 +412,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .col.overlay { position: fixed; top: 50px; bottom: 0; right: 0; width: min(680px, 100vw); z-index: 25; box-shadow: var(--shadow-overlay); }
 @media (max-width: 600px) { .top .pill { display: none; } }
 .hint { font-size: var(--text-hint); color: var(--muted); }
+/* Screen-reader-only text that stays in the accessibility tree (used for
+   confirm copy that has no room in a toolbar row). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* Thread agent failure (M4 ask/reply): warning-tinted box with a Retry button. */
 .perr { margin: 6px 0; padding: 10px 12px; border-radius: var(--radius-8); background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .postchk { font-size: 11.5px; border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; white-space: nowrap; height: 22px; }
@@ -471,12 +474,6 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    their button, clamped into the viewport), never clipped by the
    toolbar's sideways scroller. */
 .fmenu.portal { z-index: 30; width: 240px; }
-/* Remove-confirm popover (#225): a small dialog anchored to the row's
-   Remove button (positioned from it like the other popovers, clamped
-   into the viewport). A portal overlay, so the row never reflows. */
-.confirm-pop { position: fixed; z-index: 30; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-width: min(280px, calc(100vw - 16px)); }
-.confirm-pop .q { font-size: var(--text-sm); color: var(--text-primary); }
-.confirm-pop .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 /* File tree (#227): never a horizontal scrollbar — rows fit the panel,
    names and directory chains truncate, and the change indicators sit in
@@ -778,17 +775,17 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 /* Idle hunk summaries (issue #161) are text only: the paragraph activates
    into its card on click, so it takes a pointer. */
 .fcard > p[data-hunksum] { margin: 0; cursor: pointer; }
-/* Hidden-hunk row (issue #283): the label and the summary flow as one
-   inline paragraph at full width — inline after the label when it fits,
-   continuing on full-width lines below when it doesn't — never a fixed
-   right column. Same 3px/6px padding and 26x24 chevron box as the hunk
-   headers (`.hh`/`.ib`) above, so a single-line row is the same 31px and
-   the `>` glyph centres on the same x as the header chevrons. */
-.hid { display: block; border: 0; border-top: var(--border-width) solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 3px 6px; text-align: left; }
-.hid:hover { color: var(--ink); }
+/* Hidden-hunk row (issues #283, #342): a collapsed muted band — dashed
+   borders + sunk background + chevron — distinct from the hunk headers
+   (`.hh`/`.ib`) above. Same 3px/6px padding and 26x24 chevron box, so
+   the `>` glyph centres on the same x as the header chevrons. The
+   summary clamps to two lines, never a fixed right column. */
+.hid { display: block; border: 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); background: var(--sunk); color: var(--muted); font: 11.5px var(--sans); padding: 3px 6px; text-align: left; opacity: .85; }
+.hid:hover { color: var(--ink); opacity: 1; }
 .hid .hic { display: inline-grid; place-items: center; width: 26px; height: 24px; vertical-align: middle; margin-right: 6px; }
-.hid .hidl { margin-right: 6px; }
-.hid .hidb { font-style: italic; }
+.hid .score-ind { margin-right: 6px; vertical-align: middle; }
+.hid .hidl { margin-right: 6px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.hid .hidb { font-style: italic; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .hid .hidb code { font-style: normal; font-size: 10.5px; }
 .x[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 /* Reviewed checkboxes (issue #162): native boxes, accent-tinted. */
@@ -870,10 +867,12 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 /* #274 repo picker as the page title: 24px head font, left-aligned. */
 .repo-title-select { width: auto; height: auto; padding: 4px 8px 4px 0; font: 600 24px/1.2 var(--serif); background: transparent; border-color: transparent; }
 .repo-title-select:hover { border-color: var(--line); }
-/* #274 quiet row actions: Remove shows on row hover or keyboard focus. */
-.ci .rm { opacity: 0; height: 32px; border-color: transparent; transition: opacity .15s; }
-.ci:hover .rm, .ci:focus-within .rm { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .ci .rm { transition: none; } }
+/* #274 quiet row actions: Remove shows on row hover or keyboard focus
+   (#346: the shared inline confirm's idle slot keeps the same reveal;
+   session rows only — repo rows keep their always-visible Remove). */
+.ci[data-testid^="session-"] .uic-idlehold { opacity: 0; transition: opacity .15s; }
+.ci[data-testid^="session-"]:hover .uic-idlehold, .ci[data-testid^="session-"]:focus-within .uic-idlehold { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ci[data-testid^="session-"] .uic-idlehold { transition: none; } }
 /* #274 branch rows: the name once (the title), the date right-aligned. */
 .cj-branch { flex-direction: row; align-items: baseline; gap: 12px; }
 .cj-branch .cj-open { flex: 1; min-width: 0; order: 1; }

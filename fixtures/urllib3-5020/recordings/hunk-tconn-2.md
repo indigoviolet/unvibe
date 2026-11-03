@@ -1,5 +1,5 @@
-Adds tests for header-value normalization: folded whitespace collapsing, and that message order, duplicates, payload, defects and policy are preserved.
+Adds tests for header-value normalization, folding CRLF/whitespace runs and preserving the HTTPMessage's order, duplicates, payload, defects and policy.
 
 ```json
-{"hunk": {"summary": "Adds tests for header-value normalization: folded whitespace collapsing, and that message order, duplicates, payload, defects and policy are preserved.", "hiddenReason": null, "score": "routine"}}
+{"hunk": {"summary": "Adds tests for header-value normalization, folding CRLF/whitespace runs and preserving the HTTPMessage's order, duplicates, payload, defects and policy.", "hiddenReason": null, "score": "routine"}}
 ```

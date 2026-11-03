@@ -152,9 +152,9 @@ export function renderMarkdownBlocks(src: string): RenderedDescription {
  * `renderMarkdownBlocks` assigns one `d-p<n>` per block (headings get no
  * ID, a whole list is one ID) and persists them as `id="..."` attributes
  * in the stored HTML. Everything that maps `desc:` IDs back to text —
- * MCP `search`/`resolve`, the citation validator, second-opinion excerpts,
- * comment anchors — reads the IDs back from the stored HTML here instead
- * of counting again, so the IDs always agree with ingest.
+ * MCP `search`/`resolve`, the citation validator, comment anchors — reads
+ * the IDs back from the stored HTML here instead of counting again, so
+ * the IDs always agree with ingest.
  */
 function decodeDescEntities(s: string): string {
   return s

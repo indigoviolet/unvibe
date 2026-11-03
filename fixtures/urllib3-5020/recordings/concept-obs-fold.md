@@ -1,64 +1,49 @@
-`obs-fold` is the obsolete HTTP/1.1 header line folding syntax. A server splits one header value over several lines by putting optional whitespace and a CRLF before at least one space or tab on the next line. RFC 9112 writes this as OWS CRLF RWS. It tells receivers to replace each such sequence with one space before interpreting the value. [[desc:d-p1]]
+An `obs-fold` is the obsolete HTTP/1.x way to continue a header field value on the next line: a CRLF followed by at least one SP or HTAB inside the value. RFC 9112 tells a recipient to replace each one with SP before it interprets the value. The description states it this way: each "OWS CRLF RWS sequence" becomes a single space. [[desc:d-p1]]
 
-In this change, `_OBSOLETE_FOLD_RE` is the code form of that grammar. The pattern is `(?:(?<![ \t])[ \t]+)?\r\n[ \t]+`: an optional run of spaces or tabs, then `\r\n`, then one or more spaces or tabs. `_normalize_header_value` replaces each match with a single space. Values with no `\r\n` skip the regex. [[diff:src-urllib3-connection.py:80-88]]
+In this change the concept shows up in three places:
+
+- **The pattern.** `_OBSOLETE_FOLD_RE` is `(?:(?<![ \t])[ \t]+)?\r\n[ \t]+`. The optional leading group is the OWS before the CRLF. The required CRLF and trailing whitespace are the RWS that marks a continuation. [[diff:src-urllib3-connection.py:80-82]]
+- **The single-value rule.** `_normalize_header_value` returns the value unchanged if it has no `\r\n`. Otherwise it replaces every match with one space. [[diff:src-urllib3-connection.py:85-88]]
+- **The message-level rule.** `_normalize_header_values` applies that rule to every `HTTPMessage` item. [[diff:src-urllib3-connection.py:91-110]]
 
 ## Why it matters here
 
-Python's `http.client` leaves the fold in the `HTTPMessage` values, so `Set-Cookie: a=b\r\n    c=d` reaches urllib3 with the raw CRLF inside the value. Before the change, `getresponse` built `HTTPHeaderDict` straight from `httplib_response.msg.items()`. Both views therefore carried the CRLF. Downstream cookie consumers such as Requests could re-emit it when they serialised the next request. [[diff:src-urllib3-connection.py:647-651]] [[desc:d-p2]]
+Python's `http.client` does not unfold. It keeps the raw CRLF inside the `HTTPMessage` values. Before the change, `getresponse` copied those values straight into `HTTPHeaderDict`. A folded `Set-Cookie` therefore reached consumers with `\r\n` embedded in it. [[desc:d-p1]] [[diff:src-urllib3-connection.py:647-651]]
 
-Two choices follow from the concept:
+The `obs-fold` has to be removed from two places. One is `HTTPHeaderDict`. The other is the original `HTTPMessage`, because the description says cookie consumers such as Requests read the message and could re-emit the raw CRLF. [[desc:d-p2]]
 
-- **Where to unfold.** `_normalize_header_values` unfolds every value and returns the `(name, value)` items. `getresponse` builds `HTTPHeaderDict` from them. If any value changed, it also deletes and re-adds every header on the original `HTTPMessage`, so the message and `HTTPHeaderDict` stay identical. The alternative is to unfold only the `HTTPHeaderDict`. That is smaller, but a consumer reading the original message would still see the fold. The stated reason is the cookie-consumer case. The delete-and-re-add mechanism is the author's choice, and its reason is inferred. [[diff:src-urllib3-connection.py:91-110]] [[desc:d-p2]]
-- **One space per fold.** The match consumes the whitespace before the CRLF, the CRLF, and the whitespace after it, so each fold becomes exactly one space. Two adjacent folds therefore give two spaces, not one merged space. The `(?<![ \t])` lookbehind makes the optional leading whitespace start only at the beginning of a run. The code comment says this avoids quadratic backtracking on long values. [[diff:src-urllib3-connection.py:80-82]] [[diff:test-test_connection.py:218-220]]
+The alternative would be to clean only the `HTTPHeaderDict` copy. That would leave the fold in the message, which is the part Requests reads. The change instead writes the cleaned values back into the same `HTTPMessage` object. [[diff:src-urllib3-connection.py:102-108]]
 
-The scope is limited to `obs-fold` in response header values. Whitespace before the colon and header-name validation are explicitly out of scope. [[desc:d-p4]]
+Two details of the unfolding rule are easy to get wrong:
 
-A review caveat: the pattern and the fast path recognise only `\r\n`. A fold written with a bare `\n` would not be matched, and the tests only send CRLF folds. [[diff:src-urllib3-connection.py:85-88]] [[diff:test-with_dummyserver-test_socketlevel.py:99-118]]
+- **Whitespace around the CRLF is absorbed.** `"before \t\r\n\t  after"` becomes `"before after"`, not `"before \t after"`. [[diff:test-test_connection.py:218]]
+- **Each fold becomes exactly one space.** `"one\r\n \r\n\tthree"` becomes `"one  three"` with two spaces. The lookbehind stops the second match from absorbing the space the first fold produced. This differs from the description's "adjacent folds collapse to one space". [[diff:test-test_connection.py:220]] [[desc:d-p6]]
+
+A bare `\r\n` that is not followed by SP or HTAB is not an `obs-fold` under this pattern, so it is left alone. The tests never exercise that case. [[diff:src-urllib3-connection.py:82]]
 
 ## Example
 
-The socket-level test sends this fold-heavy header over a real socket:
+This is the socket test's folded `Set-Cookie`. The server sends the cookie over two lines:
 
 ```
-Fold-Mixed-Repeated: one \t\r\n
-\t  two\t \r\n
- \tthree\r\n
+Set-Cookie: ___utmvbtouVBFmB=gZg\r\n
+    XbNOjalT: Lte; path=/; Max-Age=900\r\n
 ```
 
-The parser leaves both folds in the value. After `getresponse`, both `r.headers["fold-mixed-repeated"]` and `r._original_response.msg["fold-mixed-repeated"]` are `"one two three"`. Each fold became one space, regardless of the mix of spaces and tabs around it. [[diff:test-with_dummyserver-test_socketlevel.py:112-114]] [[diff:test-with_dummyserver-test_socketlevel.py:132]] [[diff:test-with_dummyserver-test_socketlevel.py:146]]
+[[diff:test-with_dummyserver-test_socketlevel.py:101-102]]
 
-The unit test makes the one-space-per-fold rule explicit. `"one\r\n \r\n\tthree"` becomes `"one  three"`, with two spaces. [[diff:test-test_connection.py:220]]
+| | Value |
+|---|---|
+| Before (`http.client` message) | `___utmvbtouVBFmB=gZg\r\n    XbNOjalT: Lte; path=/; Max-Age=900` |
+| After (`HTTPHeaderDict` and `msg`) | `___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900` |
 
-```d2
-direction: right
-
-wire: "Folded header\non the wire"
-parsed: "HTTPMessage value\nstill has CRLF"
-norm: "_normalize_header_values\nunfold each obs-fold" {
-  link: "diff:src-urllib3-connection.py:91-110"
-}
-hhd: "HTTPHeaderDict\nno CRLF" {
-  link: "diff:src-urllib3-connection.py:650-651"
-}
-msg: "HTTPMessage\nrewritten, no CRLF" {
-  link: "diff:src-urllib3-connection.py:102-108"
-}
-
-wire -> parsed: "http.client"
-parsed -> norm
-norm -> hhd
-norm -> msg
-hhd.class: [ok]
-msg.class: [ok]
-```
-
-Caption: Both header views are built from the same unfolded values.
+The CRLF and the four spaces after it are one match, so they become a single space. The test then checks both `r.headers.getlist("set-cookie")` and `_original_response.msg.get_all("set-cookie")` against the unfolded value. [[diff:test-with_dummyserver-test_socketlevel.py:124-146]]
 
 ### Follow-ups
 
-- Does a bare-LF fold escape unfolding? | ask: If a server folds a header with a bare `\n` instead of `\r\n`, does `_normalize_header_value` leave it unchanged, and what would the value look like in `HTTPHeaderDict`?
-- Why does each `obs-fold` become exactly one space? | ask: Why does `_OBSOLETE_FOLD_RE` consume the whitespace on both sides of the CRLF instead of replacing only the CRLF, and what would `"one\r\n \r\n\tthree"` give under that alternative?
-- Where does unfolding sit relative to `HTTPHeaderDict` construction? | ask: In `getresponse`, why is `_normalize_header_values` called before building `HTTPHeaderDict`, and could anything read the raw message in between?
+- Does an `obs-fold` with only a lone `\n` get unfolded? | ask: If a server ends a folded header line with a bare LF instead of CRLF, what value does `http.client` produce, and does `_normalize_header_value` change it?
+- Why does RFC 9112 say to replace an `obs-fold` with SP rather than reject the message? | ask: What does RFC 9112 allow a recipient to do with an `obs-fold`, and why did this change choose replacement with a single space for each fold?
+- Is a long run of whitespace around an `obs-fold` handled in linear time? | ask: Walk through how the lookbehind in `_OBSOLETE_FOLD_RE` keeps matching linear for a value with a long whitespace run and one CRLF.
 
 ```json
 {"title": "obs-fold"}
