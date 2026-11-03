@@ -438,6 +438,20 @@ function demoFindBlock(blockId: string): import("@unvibe/shared").Block | null {
     }
     return null;
   };
+  // Qualified ids name their card (`central#b1`): look there first. Block
+  // ids restart at b1 in every card, so a global short-id scan would
+  // return the wrong card's block (issue #341: the static demo answered
+  // with the problem card's recording for central selections).
+  if (hash >= 0) {
+    const cardId = blockId.slice(0, hash);
+    for (const p of mockPages) {
+      const card = p.cards.find((c) => c.id === cardId);
+      if (card) {
+        const hit = scan(card.blocks as never[]);
+        if (hit) return hit;
+      }
+    }
+  }
   for (const p of mockPages) {
     for (const c of p.cards) {
       const hit = scan(c.blocks as never[]);

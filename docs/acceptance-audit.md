@@ -496,6 +496,14 @@ needed (that deviation is closed, not added).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
+- Demo fixture content (issue #341 re-record on Claude Sonnet 5.5):
+  the re-recorded reader carries no card/concept cross-link tokens and
+  no ask answer starts with a list, so those mechanisms have no demo
+  instance — J263's card-link half and J273's list-first scene were
+  removed (the #331 fallback stays covered by the prose/list branch in
+  J273's reply-chrome test), and J1's concept test fires the `concept`
+  action directly (concept pages are titled with their slug). Glossary
+  links, citations, and footnote chips are unaffected.
 
 ### §4.6 Selecting text — all met
 
