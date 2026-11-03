@@ -58,6 +58,8 @@ const live = (() => {
 if (!rawArgs.includes("--provider")) live.provider = "claude";
 if (!rawArgs.includes("--model")) live.model = "sonnet";
 const PORT = Number(opt("--port", "4597"));
+const NO_BOOT = rawArgs.includes("--no-boot");
+const KEEP_UP = rawArgs.includes("--keep-up");
 const REVIEW = opt("--review", null);
 const REPO = opt("--repo", "demo");
 const QUESTIONS = opt("--questions", null);
@@ -75,7 +77,13 @@ if (PHASE === "full" && !QUESTIONS) {
   console.error("full needs --questions <file> (auto + ondemand in one service boot, so the live guide survives)");
   process.exit(2);
 }
-if (!DATA) DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-record-demo-"));
+if (!DATA) {
+  if (NO_BOOT) {
+    console.error("--no-boot needs --data-dir <dir> (reads the running service's token)");
+    process.exit(2);
+  }
+  DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-record-demo-"));
+}
 const CAPTURE = path.join(DATA, "capture");
 fs.mkdirSync(CAPTURE, { recursive: true });
 const PI_CMD = resolvePiCmd();
@@ -328,7 +336,7 @@ async function phaseOndemand(token, reviewId, questionsPath) {
   // know is retried once against the live guide — the block whose text
   // contains the quote wins. Rejections spend nothing.
   const healAnchor = async (payload) => {
-    const snap = (await api("GET", `/api/reviews/${reviewId}`, token)).json;
+    const snap = (await api("GET", `/api/reviews/${reviewId}`, undefined, token)).json;
     const norm = (s) => String(s ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
     const want = norm(payload.quote);
     for (const p of snap?.pages ?? []) {
@@ -517,7 +525,15 @@ const main = async () => {
     process.exit(2);
   }
 
-  const { child, token } = await bootService();
+  let child = null;
+  let token;
+  if (NO_BOOT) {
+    if (!DATA) throw new Error("--no-boot needs --data-dir <dir>");
+    token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
+    console.log(`attached to running service on :${PORT}, data dir ${DATA}`);
+  } else {
+    ({ child, token } = await bootService());
+  }
   let reviewId = REVIEW;
   let report = { task: "record-demo", phase: PHASE, provider: live.provider, model: live.model, capUsd: live.capUsd, steps, failures: [] };
   try {
@@ -547,7 +563,7 @@ const main = async () => {
     } else if (PHASE === "blocks") {
       // No-spend structural dump: card/block ids + finding ids + glossary,
       // for authoring the ondemand questions file against the live guide.
-      const snap = (await api("GET", `/api/reviews/${reviewId}`, token)).json;
+      const snap = (await api("GET", `/api/reviews/${reviewId}`, undefined, token)).json;
       if (!snap || !snap.pages) throw new Error(`no snapshot for review ${reviewId}`);
       const firstText = (b) => {
         const t = b.text?.standard ?? b.items?.map((it) => it.text?.standard ?? "").join(" ") ?? "";
@@ -585,7 +601,8 @@ const main = async () => {
     } catch { /* report what we have */ }
     console.error(`FAILED: ${report.failures.join("; ")}`);
   } finally {
-    await stopService(child);
+    if (child && !KEEP_UP) await stopService(child);
+    if (child && KEEP_UP) console.log(`service kept up: pid ${child.pid} on :${PORT}, data dir ${DATA}, review ${reviewId ?? "(none)"} — kill it by PID when done`);
   }
   const file = writeLiveReport({ dir: path.join(ROOT, "test-results"), ...report });
   console.log(`steps:\n${steps.map((s) => `- ${s.id}: ${formatUsd(s.usd)}`).join("\n")}`);
