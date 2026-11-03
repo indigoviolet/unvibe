@@ -791,8 +791,8 @@ needed (that deviation is closed, not added).
   (walk shows finding-linked content; `pipeline/apply.ts`
   criticApply). (The read-dim is gone with the read state, #136.)
 - Finding page label + rust-border Evidence/Assessment cards — met
-  (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
-  ran).
+  (`reply-format.md`, demo snapshot has `f-critic`/`f-critic-2` with 2 cards each —
+  ran; #341 re-record).
 - Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
@@ -1491,8 +1491,8 @@ needed (that deviation is closed, not added).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×1, #215: one job carrying 1-3 findings with
    evidence/assessment/confidence + suggested comments; concept pages
-   written on demand only, #216) — met (demo `f-lf`/`f-perf` from the one
-   combined critic recording — ran).
+   written on demand only, #216) — met (demo `f-critic`/`f-critic-2` from the one
+   combined critic recording — ran; #341 re-record).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
    (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no

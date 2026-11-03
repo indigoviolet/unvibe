@@ -11,6 +11,7 @@ import {
   canonicalizeD2Source,
   diagramHash,
   D2_MIN_VERSION,
+  parseReply,
   type DiagramBlock,
 } from "@unvibe/shared";
 import { createDemoReview, createScratchReview, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
@@ -37,14 +38,12 @@ test.describe("J14 diagrams, debug, redo", () => {
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-    // The go-deeper flow card carries the fixture diagram (pipeline fills it);
-    // auto-written cards stay collapsed until opened (#217), so open it first.
-    const flow = page.locator("#C-g-flow");
-    await flow.scrollIntoViewIfNeeded();
-    await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
-    await flow.getByRole("button", { name: "Expand" }).click();
-    const svg = page.locator(".dg-svg svg").first();
-    const fallback = page.locator(".dg-fallback").first();
+    // Issue #341: no page embeds a diagram anymore — fire the on-demand
+    // diagram action for central (replay serves the diagram-central
+    // recording), then the SVG (or the no-d2 fallback) appears there.
+    await page.locator("#C-central").getByRole("button", { name: "Add diagram" }).click();
+    const svg = page.locator("#C-central .dg-svg svg").first();
+    const fallback = page.locator("#C-central .dg-fallback").first();
     await expect(svg.or(fallback)).toBeVisible({ timeout: 90_000 });
     if ((await svg.count()) > 0) {
       await expect(svg).toBeVisible();
@@ -130,8 +129,8 @@ test.describe("J14 diagrams, debug, redo", () => {
       for (const [a, r] of Object.entries(meta.keyAliases)) json = json.split(`diff:${a}:`).join(`diff:${r}:`);
       const seeded = JSON.parse(json) as typeof snapshot;
       seeded.review.id = "j14-d2-seed";
-      const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-flow");
-      if (!card) throw new Error("fixture has no g-flow card");
+      const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
+      if (!card) throw new Error("fixture has no g-inplace card");
       const { canonicalizeD2Source, diagramHash, D2_MIN_VERSION } = await import("@unvibe/shared");
       const source = ['probe: "probe source" {link: "diff:src-urllib3-connection.py:80-82"}', 'probe2: "probe target"', 'probe -> probe2: "probe edge"'].join("\n");
       card.blocks.push({
@@ -194,7 +193,8 @@ test.describe("J14 diagrams, debug, redo", () => {
 // d2-diagrams.spec.ts covers SVG-link activation.)
 const D2_FIXTURE_DIR = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
 const D2_SEED_REVIEW_ID = "d2-seed";
-const D2_SEED_HASH = "f23beae236cc0685";
+// Issue #341: the re-recorded on-demand diagram (diagram-central).
+const D2_SEED_HASH = "f63b03c9095b236f";
 
 interface D2ApiResult {
   status: number;
@@ -254,11 +254,8 @@ const D2_LIFTED_SOURCE = [
 ].join("\n");
 
 const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
-const D2_SEEDED_HASHES = new Set([
-  D2_SEED_HASH,
-  "5897a4452ede567b",
-  "d604f9a8e9fb637c",
-]);
+// Issue #341: the re-recorded fixture pre-renders two on-demand diagrams.
+const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "7ff08c2de47c6091"]);
 
 function seedD2Review(dataDir: string): void {
   const snapshot = JSON.parse(readFileSync(path.join(D2_FIXTURE_DIR, "snapshot.json"), "utf8")) as {
@@ -275,8 +272,22 @@ function seedD2Review(dataDir: string): void {
   }
   const seeded = JSON.parse(json) as typeof snapshot;
   seeded.review.id = D2_SEED_REVIEW_ID;
-  const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-flow");
-  if (!card) throw new Error("fixture has no root g-flow card");
+  // Issue #341: the re-recorded fixture embeds no diagram, so the seed
+  // carries the recorded on-demand diagram (diagram-central) itself —
+  // same source, same hash, same pre-rendered SVGs the endpoint serves.
+  const card = seeded.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "g-inplace");
+  if (!card) throw new Error("fixture has no root g-inplace card");
+  const centralText = readFileSync(path.join(D2_FIXTURE_DIR, "recordings", "diagram-central.md"), "utf8");
+  const centralDg = parseReply(centralText).blocks.find((b) => b.type === "diagram") as unknown as DiagramBlock | undefined;
+  if (!centralDg) throw new Error("diagram-central recording has no diagram block");
+  card.blocks.unshift({
+    type: "diagram",
+    id: "b-seed-central",
+    source: centralDg.source,
+    caption: centralDg.caption,
+    citations: centralDg.citations,
+    render: { hash: diagramHash(canonicalizeD2Source(centralDg.source), D2_MIN_VERSION), status: "ok" },
+  } as DiagramBlock);
   card.blocks.push({
     type: "diagram",
     id: "b-seed-extra",
@@ -530,17 +541,18 @@ for (const mode of [
     }) => {
       test.setTimeout(120_000);
       await openReview(page, D2_SEED_REVIEW_ID);
-      const host = "#C-g-flow #B-b1 .dg-svg > svg";
+      // Issue #341: the seed carries the recorded diagram-central block.
+      const host = "#C-g-inplace #B-b-seed-central .dg-svg > svg";
       await expect(page.locator(host)).toBeVisible({ timeout: 30_000 });
-      const lightHtml = await page.locator("#C-g-flow #B-b1 .dg-svg").innerHTML();
+      const lightHtml = await page.locator("#C-g-inplace #B-b-seed-central .dg-svg").innerHTML();
       expect(lightHtml).toContain("#FFFFFF");
       await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
       await expect
-        .poll(async () => page.locator("#C-g-flow #B-b1 .dg-svg").innerHTML(), { timeout: 15_000 })
+        .poll(async () => page.locator("#C-g-inplace #B-b-seed-central .dg-svg").innerHTML(), { timeout: 15_000 })
         .toContain("1E1E2E");
       await page.evaluate(() => document.documentElement.removeAttribute("data-theme"));
 
-      const anchor = page.locator("#C-g-flow #B-b1 .dg-svg a[data-refs]").first();
+      const anchor = page.locator("#C-g-inplace #B-b-seed-central .dg-svg a[data-refs]").first();
       await d2HoverFresh(page, anchor);
       await expect(page.locator("#pop")).toBeVisible({ timeout: 5000 });
       await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
@@ -582,11 +594,17 @@ for (const mode of [
       }
     });
 
-    test("fresh demo review serves its pipeline-emitted diagram from seed", async () => {
+    test("fresh demo review serves its on-demand diagram from seed", async () => {
       test.setTimeout(240_000);
       const s = service();
-      // The reader-path block carries the parse-time seed hash, so poll for
-      // the block itself (not render ok): the endpoint serves the seed.
+      // Issue #341: diagrams are on-demand fills now — fire the action for
+      // central (replay serves the diagram-central recording), then the
+      // endpoint serves the pre-rendered seed for its hash.
+      const acted = await d2Api(s.origin, s.token, "POST", `/api/reviews/${demoReviewId}/actions`, {
+        kind: "diagram",
+        cardId: "central",
+      });
+      expect(acted.status).toBe(200);
       let hash = "";
       const deadline = Date.now() + 150_000;
       for (;;) {
@@ -600,7 +618,7 @@ for (const mode of [
           hash = found.render.hash;
           break;
         }
-        if (Date.now() > deadline) throw new Error("demo pipeline emitted no diagram block in time");
+        if (Date.now() > deadline) throw new Error("diagram action produced no diagram block in time");
         await new Promise((r) => setTimeout(r, 2000));
       }
       expect(hash).toBe(D2_SEED_HASH);
@@ -612,13 +630,9 @@ for (const mode of [
     test("fresh demo review renders its diagram in the guide", async ({ page }) => {
       test.setTimeout(240_000);
       await openReview(page, demoReviewId);
-      // The diagram lives in the auto-written go-deeper card, which stays
-      // collapsed until opened (#217); open it, then the SVG renders.
-      const flow = page.locator("#C-g-flow");
-      await flow.scrollIntoViewIfNeeded();
-      await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
-      await flow.getByRole("button", { name: "Expand" }).click();
-      await expect(page.locator("#C-g-flow .dg-svg > svg")).toBeVisible({ timeout: 120_000 });
+      // The on-demand diagram was added to the central card above, which
+      // is expanded by default; the SVG renders once the fill lands.
+      await expect(page.locator("#C-central .dg-svg > svg")).toBeVisible({ timeout: 120_000 });
     });
   });
 }

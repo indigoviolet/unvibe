@@ -173,7 +173,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(page.locator(`#C-problem mark.anc.exl[data-jump="${cardId}"]:not(.fnote)`)).toHaveCount(0);
 
     // Second opinion on the bare-LF finding (its replay recording is keyed to it).
-    await page.goto(`${svc.origin}/review/${reviewId}/page/f-lf?token=${svc.token}`);
+    await page.goto(`${svc.origin}/review/${reviewId}/page/f-critic?token=${svc.token}`);
     await expect(page.locator("#page")).toBeVisible({ timeout: 30_000 });
     const soBtn = page.locator('button[aria-label^="Second opinion ("]').first();
     if ((await soBtn.count()) > 0 && (await soBtn.isEnabled())) {
@@ -543,7 +543,7 @@ test.describe("J2 blind second opinion on a finding (seeded)", () => {
 
     const acted = await apiJson(svc, "POST", `/api/reviews/${SO_REVIEW_ID}/actions`, {
       kind: "second_opinion",
-      cardId: "flf-ev",
+      cardId: "f-critic-0",
       mode: "blind",
     });
     expect(acted.status).toBe(200);
@@ -578,7 +578,7 @@ test.describe("J2 blind second opinion on a finding (seeded)", () => {
     const snap = snapRes.json as {
       pages: { id: string; cards: { id: string; secondOpinions?: { verdict: string; blocks: unknown[]; missed?: string }[] }[] }[];
     };
-    const finding = snap.pages.find((p) => p.id === "f-lf");
+    const finding = snap.pages.find((p) => p.id === "f-critic");
     expect(finding).toBeDefined();
     const opinions = finding!.cards.flatMap((c) => c.secondOpinions ?? []);
     expect(opinions).toHaveLength(1);
@@ -586,13 +586,13 @@ test.describe("J2 blind second opinion on a finding (seeded)", () => {
     expect(opinions[0].blocks.length).toBeGreaterThan(0);
     expect(opinions[0].missed).toBeTruthy();
 
-    await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}/page/f-lf?token=${svc.token}`);
+    await page.goto(`${svc.origin}/review/${SO_REVIEW_ID}/page/f-critic?token=${svc.token}`);
     await expect(page.locator("#page .eyebrow")).toContainText("Agent finding", { timeout: 30_000 });
     await expect(page.locator('[data-so][data-verdict="partly"]')).toBeVisible({ timeout: 30_000 });
 
     // Moved from second-opinion.spec.ts (#258): the finding control
     // defaults to blind; the mode menu closes on Escape.
-    const findingCtl = page.locator('[data-so-ctl="flf-ev"]');
+    const findingCtl = page.locator('[data-so-ctl="f-critic-0"]');
     await expect(findingCtl).toBeVisible({ timeout: 15_000 });
     await expect(findingCtl.getByRole("button", { name: "Second opinion (blind)" })).toBeVisible();
     await findingCtl.getByRole("button", { name: "Choose a second-opinion mode" }).click();
@@ -828,11 +828,11 @@ test.describe("J2 nested and full reader journey (fresh reviews)", () => {
         await expect(pendings.first().locator(".working").first()).toBeVisible({ timeout: 15_000 });
         await expect(pendings.first()).toHaveCount(0, { timeout: 90_000 });
       }
-      const flow = page.locator("#C-g-flow");
+      const flow = page.locator("#C-g-inplace");
       await flow.scrollIntoViewIfNeeded();
       await expect(flow).toHaveClass(/collapsed/, { timeout: 120_000 });
       await flow.getByRole("button", { name: "Expand" }).click();
-      const follow = page.locator("#C-g-flow .follow button").first();
+      const follow = page.locator("#C-g-inplace .follow button").first();
       await expect(follow).toBeVisible({ timeout: 15_000 });
       const label = await follow.innerText();
       await follow.click();

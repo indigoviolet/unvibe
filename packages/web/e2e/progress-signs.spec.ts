@@ -24,7 +24,7 @@ async function gotoDemo(page: Page): Promise<void> {
 /** Computed `animation-name` + `animation-duration` of the first working dot. */
 async function dotsAnimation(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const el = document.querySelector("#C-g-flow .dots i");
+    const el = document.querySelector("#C-g-inplace .dots i");
     if (!el) return "missing";
     const cs = getComputedStyle(el);
     return `${cs.animationName} ${cs.animationDuration}`;
@@ -116,10 +116,10 @@ test("the count fits the 800px layout without overflow", async ({ page }) => {
 test("working dots pulse while the agent works", async ({ page }) => {
   await gotoDemo(page);
   // The follow-up chip shows dots on click, before the mock fill lands.
-  await page.locator("#C-g-flow .follow button").first().click();
+  await page.locator("#C-g-inplace .follow button").first().click();
   await expect.poll(() => dotsAnimation(page), { timeout: 8000 }).toBe("dot-pulse 1s");
   // The work still completes normally afterwards.
-  await expect(page.locator('#C-g-flow section.ithread[data-thread]:has([data-reply][data-kind="ask"])').first()).toContainText("Mock explanation", {
+  await expect(page.locator('#C-g-inplace section.ithread[data-thread]:has([data-reply][data-kind="ask"])').first()).toContainText("Mock explanation", {
     timeout: 8000,
   });
 });
@@ -161,14 +161,14 @@ test.describe("reduced motion", () => {
       const w = window as unknown as { __dotSamples: string[] };
       w.__dotSamples = [];
       const id = window.setInterval(() => {
-        const el = document.querySelector("#C-g-flow .dots i");
+        const el = document.querySelector("#C-g-inplace .dots i");
         if (!el) return;
         const cs = getComputedStyle(el);
         w.__dotSamples.push(`${cs.animationName} ${cs.animationDuration} ${cs.transform}`);
       }, 40);
       window.setTimeout(() => window.clearInterval(id), 8000);
     });
-    await page.locator("#C-g-flow .follow button").first().click();
+    await page.locator("#C-g-inplace .follow button").first().click();
     const samples = (): Promise<string[]> =>
       page.evaluate(() => (window as unknown as { __dotSamples: string[] }).__dotSamples);
     await expect.poll(async () => (await samples()).length, { timeout: 8000 }).toBeGreaterThan(0);

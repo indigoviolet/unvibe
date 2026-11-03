@@ -75,11 +75,11 @@ test("explain from a selection shows a working expansion immediately, then fills
 test("follow-up click disables the chip and shows the answer working state", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
-  const follow = page.locator("#C-g-flow .follow button").first();
+  const follow = page.locator("#C-g-inplace .follow button").first();
   await follow.click();
   // The answer thread arrives with a plain working state (mock fill:
   // ~700 ms), and at no point renders streamed text.
-  const exp = page.locator("#C-g-flow section.ithread[data-thread]").first();
+  const exp = page.locator("#C-g-inplace section.ithread[data-thread]").first();
   await expect(exp).toBeVisible({ timeout: 5000 });
   await expect(exp.locator(".working").first()).toHaveText("Writing answer", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });

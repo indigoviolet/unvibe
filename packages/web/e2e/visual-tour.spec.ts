@@ -870,10 +870,11 @@ test.describe("visual tour passes", () => {
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
-    // #327: the Decisions card's ### sub-headings render as real
-    // sub-headings (h3.subhead), not as serif body paragraphs.
-    for (const label of ["Invariants", "Known uncertainties", "Interfaces"]) {
-      await expect(page.locator("#C-decisions h3.subhead").filter({ hasText: label })).toBeVisible();
+    // Issue #341: the re-recorded Decisions card uses **Bold** section
+    // labels (no ### sub-headings left in the fixture, so #327's h3 path
+    // has no fixture instance) — assert the labels render.
+    for (const label of ["Decisions", "Invariants", "Known uncertainties", "Interfaces with reach"]) {
+      await expect(page.locator("#C-decisions strong").filter({ hasText: label })).toBeVisible();
     }
     await stepChecks(page, "guide-decisions");
     await shot(page, "guide-decisions", suffix, "Decisions and questions");
@@ -883,7 +884,10 @@ test.describe("visual tour passes", () => {
     const beforeIds = (
       (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
     ).annotations.map((a) => a.id);
-    await selectText(page, "#C-problem", "used to let a server continue");
+    // Issue #341: explain the build-up plotline sentence (matches the
+    // recorded plotline explain).
+    await page.locator("#C-buildup").scrollIntoViewIfNeeded();
+    await selectText(page, "#C-buildup", "it builds up in three pieces");
     await page.locator('#selbar [data-act="explain"]').click();
     let seedId: string | null = null;
     await expect
@@ -901,7 +905,7 @@ test.describe("visual tour passes", () => {
     await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
+    await shot(page, "guide-pinned", suffix, "three pieces");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
@@ -1010,7 +1014,9 @@ test.describe("visual tour passes", () => {
     const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(longCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: this selection matches the recorded plotline explain
+    // (guide context rides the prompt), not the old message-rewrite text.
+    await expect(longCard).toContainText('The "three pieces" are three layers');
     // Frame the whole card in the pane (its footer included), as the
     // reader would scrolling to it, then scroll inside the card.
     await longCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -1020,7 +1026,7 @@ test.describe("visual tour passes", () => {
     await shot(page, "diff-long-mid", suffix);
     await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await stepChecks(page, "diff-long-bottom");
-    await shot(page, "diff-long-bottom", suffix, "In short: read first");
+    await shot(page, "diff-long-bottom", suffix, "Which layer would a bare-LF fold fail in?");
     await closeCard(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
@@ -1075,7 +1081,9 @@ test.describe("visual tour passes", () => {
     const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(fileCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: the call-site selection matches the recorded obs-fold
+    // explain (the helper selection above matches the plotline one).
+    await expect(fileCard).toContainText("directly followed by at least one space or tab");
     await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
@@ -2654,10 +2662,13 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: the re-recorded central card has no "fast path" text;
+    // explain "three pieces" on the build-up card (matches the recorded
+    // plotline explain).
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-buildup", "three pieces");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-thread]").first();
+    const card = page.locator("#C-buildup [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -2712,9 +2723,12 @@ test("visual tour ask retry (#270)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // One fresh Ask card per theme, so the two kill/restart cycles never
     // share turn state.
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit the raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "parsed message", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") {
         await page.emulateMedia({ colorScheme: "dark" });
@@ -2803,9 +2817,12 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit the raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "parsed message", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
@@ -2875,9 +2892,12 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit the raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "parsed message", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
