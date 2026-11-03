@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Settings } from "@unvibe/shared";
-import { FULL_ACCESS_WARNING } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { AccessSection } from "./AccessSection.js";
 
@@ -50,10 +49,14 @@ describe("AccessSection", () => {
     expect(screen.getByTestId("access-state")).toHaveTextContent("Read-only.");
     expect(screen.queryByTestId("access-warning")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Turn on full access…" }));
-    expect(screen.getByTestId("access-warning")).toHaveTextContent(FULL_ACCESS_WARNING);
+    // #346: the shared inline confirm ("Confirm full access" ✓ ✕) with
+    // one short line for what it means; the full warning is the tooltip.
+    fireEvent.click(screen.getByRole("button", { name: "Turn on full access" }));
+    const warning = screen.getByTestId("access-warning");
+    expect(warning).toHaveTextContent("Confirm full access");
+    expect(warning).toHaveTextContent("can run shell commands, git and gh as you");
 
-    fireEvent.click(screen.getByRole("button", { name: "I understand, turn on full access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm full access" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(saved).toMatchObject({ fullAccess: true });
     expect(saved.fullAccessAcknowledgedAt).toEqual(expect.any(Number));
@@ -77,8 +80,8 @@ describe("AccessSection", () => {
   it("save failures render inline", async () => {
     vi.spyOn(api, "saveSettings").mockRejectedValue(new Error("PUT /api/settings: 400 no"));
     render(<AccessSection settings={settingsWith(false)} onSaved={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Turn on full access…" }));
-    fireEvent.click(screen.getByRole("button", { name: "I understand, turn on full access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Turn on full access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm full access" }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeVisible());
   });
 });
