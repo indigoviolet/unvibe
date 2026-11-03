@@ -232,15 +232,15 @@ test("reviews for checkouts no longer listed stay openable and removable", async
   // Open works.
   await row.locator("button.cj-open").click();
   await expect(page).toHaveURL(/\/review\/r-gone/);
-  // Remove works.
+  // Remove works: the button expands in place into the inline
+  // confirm (#346), then flashes confirmed before the row goes.
   await page.goto("/");
   await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
   await group.getByRole("button", { name: /Remove/ }).click();
-  // The confirm is a small popover, not inline in the row (#225).
-  const pop = page.locator(".confirm-pop");
-  await expect(pop).toContainText("Remove this review?");
+  await expect(row.getByText("Confirm remove review")).toBeVisible();
   await expect(group.locator('[data-testid="session-r-gone"]')).toBeVisible();
-  await pop.getByRole("button", { name: "Remove", exact: true }).click();
+  await row.getByRole("button", { name: "Confirm remove review" }).click();
+  await expect(row.getByText("Confirmed")).toBeVisible();
   await expect(group.locator('[data-testid="session-r-gone"]')).toHaveCount(0);
   // The other rows are untouched.
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
@@ -250,17 +250,17 @@ test("remove asks to confirm and deletes local data only", async ({ page }) => {
   await gotoStart(page);
   const old = page.locator('[data-testid="session-r-old"]');
   await old.getByRole("button", { name: /Remove/ }).click();
-  // The confirm is a small popover, not inline in the row (#225):
-  // Escape cancels it without touching the row.
-  const pop = page.locator(".confirm-pop");
-  await expect(pop).toContainText("Remove this review?");
+  // The confirm expands in place (#346): Escape cancels it without
+  // touching the row.
+  await expect(old.getByText("Confirm remove review")).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(pop).toHaveCount(0);
+  await expect(old.getByText("Confirm remove review")).toHaveCount(0);
   await expect(page.locator('[data-testid="session-r-old"]')).toBeVisible();
-  // Confirming removes the row.
+  // Confirming flashes confirmed, then removes the row.
   await old.getByRole("button", { name: /Remove/ }).click();
-  await expect(pop).toContainText("Remove this review?");
-  await pop.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(old.getByText("Confirm remove review")).toBeVisible();
+  await old.getByRole("button", { name: "Confirm remove review" }).click();
+  await expect(old.getByText("Confirmed")).toBeVisible();
   await expect(page.locator('[data-testid="session-r-old"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="session-demo"]')).toBeVisible();
 });

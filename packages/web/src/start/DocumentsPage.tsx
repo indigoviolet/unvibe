@@ -7,9 +7,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import type { Repo, ReviewSummary } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { api } from "../api/client.js";
 import { Button } from "../ui/index.js";
-import { Toast, toast } from "../floating/Toast.js";
+import { Toast } from "../floating/Toast.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DocumentForm, SessionRow, timeAgo } from "./StartPage.js";
 
@@ -47,17 +47,23 @@ export function DocumentsPage(): React.JSX.Element {
     };
   }, []);
 
+  // #346: shared inline confirm — the work runs on ✓, the row
+  // disappears after the "✓ Confirmed" flash; a rejection stays
+  // inline in the pill (retry or cancel), so no toast here.
   const removeSession = useCallback(async (id: string) => {
     setDeleting(id);
     try {
       await api.deleteReview(id);
-      setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
-      setConfirmDelete(null);
     } catch (err) {
-      toast(`Couldn't remove the review: ${friendlyError(err)}`);
-    } finally {
       setDeleting(null);
+      throw err;
     }
+  }, []);
+
+  const sessionRemoved = useCallback((id: string) => {
+    setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
+    setConfirmDelete(null);
+    setDeleting(null);
   }, []);
 
   const docs = (sessions ?? []).filter((s) => s.kind === "document");
@@ -99,6 +105,7 @@ export function DocumentsPage(): React.JSX.Element {
                   confirmDelete={confirmDelete}
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
+                  sessionRemoved={sessionRemoved}
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
