@@ -145,6 +145,34 @@ describe("normalizePlotlines", () => {
     expect(got.plotlines[0].name).toBe("Retry logic");
     expect(got.plotlines[0].description).toBe("Line one. Line two.");
   });
+
+  it("repairs a slug-echo name (name is the kebab-case id) into a display name", () => {
+    const got = normalizePlotlines(
+      [
+        {
+          id: "obs-fold-unfolding",
+          name: "obs-fold-unfolding",
+          description: "Unfolds obs-fold response header values.",
+          hunks: ["h:conn:aaa"],
+        },
+      ],
+      KNOWN,
+    );
+    expect(got.plotlines).toHaveLength(1);
+    expect(got.plotlines[0]).toMatchObject({ id: "obs-fold-unfolding", name: "Obs fold unfolding" });
+    expect(got.assignment).toEqual({ "h:conn:aaa": "obs-fold-unfolding" });
+  });
+
+  it("repairs a slug-like name when the id is derived from it", () => {
+    const got = normalizePlotlines([{ name: "retry-logic", hunks: [] }], KNOWN);
+    expect(got.plotlines).toHaveLength(1);
+    expect(got.plotlines[0]).toMatchObject({ id: "retry-logic", name: "Retry logic" });
+  });
+
+  it("leaves a proper display name that happens to slugify near the id alone", () => {
+    const got = normalizePlotlines([{ id: "retry", name: "Retry failed uploads", hunks: [] }], KNOWN);
+    expect(got.plotlines[0]).toMatchObject({ id: "retry", name: "Retry failed uploads" });
+  });
 });
 
 describe("hunkMatchesFilter", () => {
