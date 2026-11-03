@@ -93,7 +93,10 @@ test.describe("J1 open and read the guide", () => {
       if ((await closer.count()) > 0) await closer.first().click().catch(() => {});
     }
     await page.locator("#C-central .lk[data-refs]").first().click();
-    await expect(page.locator('[id="L-src-urllib3-connection.py-91"].hl')).toBeVisible({ timeout: 15_000 });
+    // Issue #341: the re-recorded central card cites connection.py:80-88
+    // first (was the message-rewrite lines at 91-110), so the reveal lands
+    // on line 80.
+    await expect(page.locator('[id="L-src-urllib3-connection.py-80"].hl')).toBeVisible({ timeout: 15_000 });
 
     // Reload: same guide page.
     await page.reload();
@@ -292,11 +295,20 @@ test.describe("J1 seeded guide over the real API", () => {
     // overlays the controls below it — close it first, as a reader would.
     const closer = page.locator("#C-problem [data-expansion]").getByRole("button", { name: "Close" });
     if ((await closer.count()) > 0) await closer.first().click();
-    // #216: no concept page exists yet; opening the link writes it
-    // (replayed concept_page job), and the title lands when it's written.
-    await page.locator('#page a.cx[data-link="concept:obs-fold"]').first().click();
+    // #216: no concept page exists yet; opening it writes it (replayed
+    // concept_page job), and the title lands when it's written. Issue
+    // #341: the re-recorded reader wrote no [[concept:]] link tokens, so
+    // no a.cx link renders — fire the same `concept` action the link would
+    // fire, then open its stub page directly.
+    const concept = await apiJson(svc, "POST", `/api/reviews/${GUIDE_REVIEW_ID}/actions`, {
+      kind: "concept",
+      slug: "obs-fold",
+    });
+    expect(concept.status).toBe(200);
+    await page.goto(`${svc.origin}/review/${GUIDE_REVIEW_ID}/page/c-obs-fold?token=${svc.token}`);
     await expect(page).toHaveURL(/\/review\/guide-seed\/page\/c-obs-fold/);
-    await expect(page.locator("#page h1.title")).toContainText("Obsolete line folding", { timeout: 60_000 });
+    // Issue #341: the re-recorded concept page is titled with its slug.
+    await expect(page.locator("#page h1.title")).toContainText("obs-fold", { timeout: 60_000 });
     // Description tab serves the fixture HTML with stable paragraph ids.
     await page.locator('#right [role="tab"]').getByText("PR description").click();
     await expect(page.locator("#right #d-p1")).toBeVisible();
@@ -304,7 +316,8 @@ test.describe("J1 seeded guide over the real API", () => {
     await page.locator("#page nav.crumbs button").first().click();
     await expect(page.locator("#C-central")).toBeVisible();
     await page.locator("#C-central .lk[data-refs]").first().click();
-    await expect(page.locator('[id="L-src-urllib3-connection.py-91"].hl')).toBeVisible({ timeout: 10_000 });
+    // Issue #341: first central citation is connection.py:80-88 now.
+    await expect(page.locator('[id="L-src-urllib3-connection.py-80"].hl')).toBeVisible({ timeout: 10_000 });
   });
 
   test("card collapse action applies over the real API", async ({ page }) => {

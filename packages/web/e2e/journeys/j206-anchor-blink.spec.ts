@@ -48,7 +48,9 @@ test.describe("J206 anchor blink", () => {
     // and its highlight must then stay put.
     const mk2 = await apiJson(svc!, "POST", `/api/reviews/${reviewId}/actions`, {
       kind: "explain",
-      quote: "helper",
+      // Issue #341: "helper" is gone with the re-record; anchor on a
+      // word the re-recorded central#b1 still carries.
+      quote: "unfolds",
       anchor: { where: "block", blockId: "central#b1" },
     });
     const placedId = (mk2.json as { annotationId: string }).annotationId;
@@ -122,19 +124,24 @@ test.describe("J206 anchor blink", () => {
   // §4.7): closed explanation → depth change loses the phrase → footnote
   // chip on the citations line (highlight gone) → click chip re-opens
   // the explanation → switch back → highlight returns, chip hidden.
-  // Quote "fast path" lives in central#b4 at standard but not at deep, so
-  // a standard→deep step (instant, stored levels) orphans the anchor.
+  // Quote "HTTPHeaderDict agree" lives in central#b2 at standard but not
+  // at deep (#341), so a standard→deep step (instant, stored levels)
+  // orphans the anchor.
   test("closed explanation → deep → chip → open → back → highlight", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
 
-    // Create a closed expansion on central#b4 with the standard-only phrase.
+    // Create a closed expansion on g-alt#b1 with a standard-only phrase.
+    // Issue #341: the re-recorded deep expansions restate their card, so
+    // no central standard phrase orphans at deep (and raw-HTML staleness
+    // can't span markup). g-alt's deep omits this b1 span, so a
+    // standard→deep step orphans it.
     const created = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
       kind: "explain",
-      quote: "fast path",
-      anchor: { where: "block", blockId: "central#b4" },
+      quote: "The fix has to reach two copies of",
+      anchor: { where: "block", blockId: "g-alt#b1" },
     });
     const annId = (created.json as { annotationId: string; jobId?: string }).annotationId;
     if ((created.json as { jobId?: string }).jobId) {
@@ -155,20 +162,20 @@ test.describe("J206 anchor blink", () => {
       annotationId: annId,
     });
     await page.reload();
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
 
     // At standard the dotted highlight lands and the footnote stays hidden.
-    const mark = page.locator(`#C-central mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first();
+    const mark = page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first();
     await expect(mark).toBeVisible({ timeout: 15_000 });
-    const chip = page.locator(`#C-central .lo mark.fnote.exl[data-jump="${annId}"]`);
+    const chip = page.locator(`#C-g-alt .lo mark.fnote.exl[data-jump="${annId}"]`);
     await expect(chip).toBeHidden({ timeout: 10_000 });
 
     // Step to deep (stored levels: instant, no agent). The phrase is gone,
     // so the highlight drops and the chip appears on the citations line.
     // The toolbar reveals on card hover (#274).
-    await page.locator("#C-central").hover();
-    await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Deeper" }).click();
-    await expect(page.locator(`#C-central mark.anc.exl[data-jump="${annId}"]:not(.fnote)`)).toHaveCount(0, {
+    await page.locator("#C-g-alt").hover();
+    await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Deeper" }).click();
+    await expect(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`)).toHaveCount(0, {
       timeout: 15_000,
     });
     await expect(chip).toBeVisible({ timeout: 15_000 });
@@ -179,21 +186,21 @@ test.describe("J206 anchor blink", () => {
       return !!lo && !!lo.querySelector("button.lk[data-refs]");
     });
     expect(sameRow).toBe(true);
-    await expect(page.locator("#C-central .linkstub")).toHaveCount(0);
+    await expect(page.locator("#C-g-alt .linkstub")).toHaveCount(0);
 
     // Clicking the chip re-opens the explanation in place.
     await chip.click();
-    const expCard = page.locator(`#C-central [data-thread="${annId}"]`).first();
+    const expCard = page.locator(`#C-g-alt [data-thread="${annId}"]`).first();
     await expect(expCard).toBeVisible({ timeout: 15_000 });
 
     // Close it again so the return trip asserts the closed highlight path.
     await expCard.getByRole("button", { name: "Close" }).click();
-    await expect(page.locator(`#C-central [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator(`#C-g-alt [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
 
     // Switching back restores the highlight and hides the chip.
-    await page.locator("#C-central").hover();
-    await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Simpler" }).click();
-    await expect(page.locator(`#C-central mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first()).toBeVisible({
+    await page.locator("#C-g-alt").hover();
+    await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Simpler" }).click();
+    await expect(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first()).toBeVisible({
       timeout: 15_000,
     });
     await expect(chip).toBeHidden({ timeout: 10_000 });
