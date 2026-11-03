@@ -1,20 +1,20 @@
 /*global console process setTimeout clearTimeout Buffer */
-// Live re-record for issue #341, run as:
-//   mise run test:live:rerecord-341 -- --cap 5 [--port 4597] [--phase auto]
-//   mise run test:live:rerecord-341 -- --cap 5 --phase ondemand --review <id> --data-dir <dir> --questions scripts/rerecord-341-questions.json
+// Reusable demo recorder: fires EVERY on-demand action against a live
+// review and captures each one, run as:
+//   mise run test:live:record-demo -- --cap 5 [--port 4597] [--phase auto]
+//   mise run test:live:record-demo -- --cap 5 --phase ondemand --review <id> --data-dir <dir> --questions scripts/<fixture>-questions.json
 //
-// Default model is claude + sonnet (Sonnet 5.5) for every role (owner
-// decision on #341); --provider/--model keep the shared overrides.
-// pi runs price from pi's catalogue; other providers price from documented
-// list rates (LIST_RATES below) and refuse without them.
+// --provider/--model pick the agent for every role (defaults: claude +
+// sonnet); pi runs price from pi's catalogue, other providers price from
+// documented list rates (LIST_RATES below) and refuse without them.
 // Spend is tracked from the first token (failed jobs included) and the run
 // stops over --cap. The spend + per-step report lands in test-results/.
 //
 // Safety: GITHUB_TOKEN/GH_TOKEN are unset and a fake `gh` that refuses
 // writes is first on PATH. The demo ingest makes no gh calls at all.
-// UNVIBE_CAPTURE_DIR wraps the real runner (`CaptureAgentRunner`, issue
-// #341) so every marker-carrying prompt/reply pair is saved once — the
-// pilot runs with capture on, so nothing is ever spent twice.
+// UNVIBE_CAPTURE_DIR wraps the real runner (`CaptureAgentRunner`) so every
+// marker-carrying prompt/reply pair is saved once — capture runs from the
+// very first step, so nothing is ever spent twice.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -41,8 +41,8 @@ const opt = (name, def) => {
   const i = rawArgs.indexOf(name);
   return i >= 0 ? rawArgs[i + 1] : def;
 };
-if (!["auto", "ondemand", "blocks", "full"].includes(PHASE)) {
-  console.error(`unknown --phase ${PHASE} (want auto|ondemand|blocks|full)`);
+if (!["auto", "ondemand", "blocks", "full", "pilot"].includes(PHASE)) {
+  console.error(`unknown --phase ${PHASE} (want auto|ondemand|blocks|full|pilot)`);
   process.exit(2);
 }
 const live = (() => {
@@ -59,17 +59,23 @@ if (!rawArgs.includes("--provider")) live.provider = "claude";
 if (!rawArgs.includes("--model")) live.model = "sonnet";
 const PORT = Number(opt("--port", "4597"));
 const REVIEW = opt("--review", null);
+const REPO = opt("--repo", "demo");
 const QUESTIONS = opt("--questions", null);
+const FULL_QUESTIONS = opt("--full-questions", null);
 let DATA = opt("--data-dir", null);
-if (PHASE === "ondemand" && (!REVIEW || !QUESTIONS || !DATA)) {
-  console.error("ondemand needs --review <id> --data-dir <dir> --questions <file>");
+if ((PHASE === "ondemand" || PHASE === "pilot") && (!REVIEW || !QUESTIONS || !DATA)) {
+  console.error(`${PHASE} needs --review <id> --data-dir <dir> --questions <file>`);
+  process.exit(2);
+}
+if (PHASE === "pilot" && !FULL_QUESTIONS) {
+  console.error("pilot needs --full-questions <file> (per-kind means project over its counts)");
   process.exit(2);
 }
 if (PHASE === "full" && !QUESTIONS) {
   console.error("full needs --questions <file> (auto + ondemand in one service boot, so the live guide survives)");
   process.exit(2);
 }
-if (!DATA) DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-rerecord-341-"));
+if (!DATA) DATA = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-record-demo-"));
 const CAPTURE = path.join(DATA, "capture");
 fs.mkdirSync(CAPTURE, { recursive: true });
 const PI_CMD = resolvePiCmd();
@@ -92,7 +98,7 @@ fs.writeFileSync(path.join(fakeBin, "gh"),
   "#!/bin/sh\n" +
   "case \" $* \" in\n" +
   "  *create*|*merge*|*close*|*reopen*|*delete*|*upload*|*comment*|*edit*|*lock*|*rerun*|*cancel*|*fork*|*transfer*|*publish*|*sync*|*-X*POST*|*-X*PUT*|*-X*PATCH*|*-X*DELETE*|--method*POST*|--method*PUT*|--method*PATCH*|--method*DELETE*)\n" +
-  "    echo 'fake gh: writes refused (issue #341 live re-record)' >&2; exit 1;;\n" +
+  "    echo 'fake gh: writes refused (live demo recording)' >&2; exit 1;;\n" +
   "esac\n" +
   (realGhPath ? `exec "${realGhPath}" "$@"\n` : "echo 'fake gh: no real gh for read-only delegation' >&2; exit 1\n"),
   { mode: 0o755 });
@@ -228,7 +234,7 @@ async function phaseAuto(token) {
   const eff = (await api("GET", "/api/settings", undefined, token)).json;
   console.log(`effective settings: main=${eff.main.provider}/${eff.main.model} small=${eff.small.provider}/${eff.small.model} second=${eff.secondOpinion.provider}/${eff.secondOpinion.model}`);
 
-  const created = await api("POST", "/api/reviews", { repoId: "demo" }, token);
+  const created = await api("POST", "/api/reviews", { repoId: REPO }, token);
   if (created.code !== 201) throw new Error(`demo create -> ${created.code}: ${created.raw.slice(0, 300)}`);
   const id = created.json.review.id;
   console.log(`demo review ${id}; pilot = reader job with capture on`);
@@ -424,11 +430,62 @@ async function phaseOndemand(token, reviewId, questionsPath) {
 }
 
 /**
- * List USD/MTok rates for non-pi runs. Claude Sonnet 5.5 (owner decision
- * on #341): $2 in / $10 out / $0.10 cache-read / $2.50 cache-write (5-min)
- * per M — Anthropic's pricing page via multiple checks Oct–Nov 2026
- * (cache read was $0.20 before Oct 7). No catalogue exists for claude;
- * these documented list rates price the cap guard and the report.
+ * Pilot: run the ondemand set in QUESTIONS (one card's full set plus one
+ * of each other kind) against the live review, measure per-kind means,
+ * and project the FULL_QUESTIONS set over its counts. Throws when the
+ * projection exceeds the cap, before further spend. Kinds absent from
+ * the pilot fall back to the overall measured mean.
+ */
+async function phasePilot(token, reviewId, questionsPath, fullPath) {
+  const fired = await phaseOndemand(token, reviewId, questionsPath);
+  const byKind = {};
+  for (const s of steps) {
+    const kind = String(s.id).split(":")[0];
+    if (kind === "reader" || kind === "auto" || kind === "auto-so-far") continue;
+    if (typeof s.usd !== "number") continue;
+    (byKind[kind] ??= []).push(s.usd);
+  }
+  const mean = (kind) => {
+    const xs = byKind[kind] ?? [];
+    if (xs.length > 0) return xs.reduce((a, b) => a + b, 0) / xs.length;
+    const all = Object.values(byKind).flat();
+    return all.length > 0 ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+  };
+  const full = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+  const counts = {
+    concept: (full.concept ?? []).length,
+    depth: (full.depth ?? []).length,
+    examples: (full.examples ?? []).length,
+    diagram: (full.diagram ?? []).length,
+    explain: (full.explain ?? []).length,
+    ask: (full.ask ?? []).length,
+    threadDepths: (full.threadDepths ?? []).length,
+  };
+  const spent = costOf(tracker.totals, tracker.rates);
+  const projected =
+    spent +
+    counts.concept * mean("concept") +
+    (counts.depth + counts.threadDepths) * mean("depth") +
+    counts.examples * mean("examples") +
+    counts.diagram * mean("diagram") +
+    counts.explain * mean("explain") +
+    (counts.ask + counts.threadDepths) * mean("ask");
+  console.log(
+    `pilot per-kind means: ${Object.entries(byKind).map(([k, xs]) => `${k}=${formatUsd(xs.reduce((a, b) => a + b, 0) / xs.length)}x${xs.length}`).join(" ")}`,
+  );
+  console.log(`pilot counts: ${JSON.stringify(counts)} spent=${formatUsd(spent)} projected=${formatUsd(projected)} vs cap ${formatUsd(live.capUsd)}`);
+  if (projected > live.capUsd) {
+    throw new Error(`pilot: projected ${formatUsd(projected)} exceeds cap ${formatUsd(live.capUsd)}; stopping before further spend.`);
+  }
+  return { fired, projected };
+}
+
+/**
+ * List USD/MTok rates for non-pi runs. Claude Sonnet 5.5: $2 in / $10
+ * out / $0.10 cache-read / $2.50 cache-write (5-min) per M — Anthropic's
+ * pricing page via multiple checks Oct–Nov 2026 (cache read was $0.20
+ * before Oct 7). No catalogue exists for claude; these documented list
+ * rates price the cap guard and the report.
  */
 const LIST_RATES = {
   "claude/sonnet": { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
@@ -462,7 +519,7 @@ const main = async () => {
 
   const { child, token } = await bootService();
   let reviewId = REVIEW;
-  let report = { task: "rerecord-341", phase: PHASE, provider: live.provider, model: live.model, capUsd: live.capUsd, steps, failures: [] };
+  let report = { task: "record-demo", phase: PHASE, provider: live.provider, model: live.model, capUsd: live.capUsd, steps, failures: [] };
   try {
     if (PHASE === "auto") {
       const out = await phaseAuto(token);
@@ -480,6 +537,13 @@ const main = async () => {
       report.captureDir = CAPTURE;
       const fired = await phaseOndemand(token, reviewId, QUESTIONS);
       report.fired = fired;
+    } else if (PHASE === "pilot") {
+      const out = await phasePilot(token, reviewId, QUESTIONS, FULL_QUESTIONS);
+      report.reviewId = reviewId;
+      report.dataDir = DATA;
+      report.captureDir = CAPTURE;
+      report.fired = out.fired;
+      report.projectedUsd = Math.round(out.projected * 10000) / 10000;
     } else if (PHASE === "blocks") {
       // No-spend structural dump: card/block ids + finding ids + glossary,
       // for authoring the ondemand questions file against the live guide.

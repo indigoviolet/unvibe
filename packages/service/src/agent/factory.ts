@@ -134,7 +134,7 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
     ? new CompositeAgentRunner(acp, new PiAgentRunner({ env }))
     : acp;
   // Issue #341: live re-record capture. `UNVIBE_CAPTURE_DIR` (set only by
-  // `scripts/live-rerecord-341.mjs`, never in normal runs or tests) wraps
+  // `scripts/live-record-demo.mjs`, never in normal runs or tests) wraps
   // the real runner so every marker-carrying prompt/reply pair is saved.
   // The wrapper duck-types as a replay runner so the pipeline adds the
   // markers, then strips them before delegating.

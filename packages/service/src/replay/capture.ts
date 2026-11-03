@@ -10,7 +10,7 @@
  *
  * Active only when constructed explicitly: `createAgentRunner` wraps the
  * real runner in this when `UNVIBE_CAPTURE_DIR` names a directory (set by
- * `scripts/live-rerecord-341.mjs`, never in normal runs or tests).
+ * `scripts/live-record-demo.mjs`, never in normal runs or tests).
  * `isReplayRunner` duck-types on the `resolve` method below, which exists
  * only so the pipeline adds markers — it is never called.
  */
