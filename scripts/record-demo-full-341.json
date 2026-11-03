@@ -401,11 +401,5 @@
       },
       "direction": "deeper"
     }
-  ],
-  "secondOpinion": [
-    {
-      "cardId": "central",
-      "mode": "check"
-    }
   ]
 }
