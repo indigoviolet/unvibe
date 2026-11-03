@@ -355,8 +355,9 @@ function inlineConfirmMessage(err: unknown): string {
  *   through `formatError`.
  * - The expanded group carries an `aria-label` ("Confirm <action>:
  *   confirm or cancel" by default) on a polite live region, and both
- *   segments are buttons with names. `danger` keeps a warn-coloured
- *   edge on the pill for destructive actions.
+ *   segments are buttons with names. `danger` keeps a warn ring
+ *   around the pill plus a warn-filled ✓ segment for destructive
+ *   actions (the danger button's warn/surface pairing).
  */
 export function InlineConfirm({
   action,
@@ -388,7 +389,7 @@ export function InlineConfirm({
   runningLabel?: string;
   /** Shown after success; defaults to "Confirmed" (with a green ✓). */
   confirmedLabel?: string;
-  /** Destructive actions keep a warn-coloured edge on the pill. */
+  /** Destructive actions get a warn ring plus a warn-filled ✓ segment. */
   danger?: boolean;
   /** Disables the idle button (e.g. another row is busy). */
   disabled?: boolean;
@@ -425,8 +426,9 @@ export function InlineConfirm({
   /**
    * Where the pill anchors. `"overlay"` (default) covers the button's
    * slot in place — right for list rows. `"below"` drops below the
-   * slot like a menu — right for the dense top bar, where an overlay
-   * would cover the review identity. `"stack"` lays the question
+   * slot like a menu and keeps the idle control visible in a pressed
+   * state — right for toolbar icon buttons, which must not vanish or
+   * be covered by their own confirm. `"stack"` lays the question
    * above and the pill in flow below — right for settings cards,
    * where the row can grow and nothing may be covered.
    */
@@ -565,12 +567,16 @@ export function InlineConfirm({
   const openNow = phase !== "idle";
   const busy = runningLabel ?? `${action}…`;
   const openIdle = (): void => setGate(true);
+  // Overlay replaces the button in place, so the idle control hides
+  // (but stays mounted to hold the slot open). Below keeps it visible
+  // in a pressed state with the pill anchored under it — a toolbar
+  // icon button must not vanish or be covered by its own confirm.
   return (
     <span ref={wrapRef} className="uic" data-phase={phase} data-size={size} data-danger={danger || undefined} data-placement={placement} data-testid={testId}>
       <span className="uic-slot">
-        <span className="uic-idlehold" style={openNow ? { visibility: "hidden" } : undefined}>
+        <span className="uic-idlehold" style={openNow && placement === "overlay" ? { visibility: "hidden" } : undefined}>
           {idleRender ? (
-            idleRender({ ref: idleRef, expanded: openNow, disabled: disabled || openNow, onOpen: openIdle })
+            idleRender({ ref: idleRef, expanded: openNow, disabled: disabled || (openNow && placement !== "below"), onOpen: openIdle })
           ) : (
             <Button
               ref={idleRef}
@@ -580,7 +586,7 @@ export function InlineConfirm({
               aria-label={idleAriaLabel ?? action}
               aria-expanded={openNow}
               title={title}
-              disabled={disabled || openNow}
+              disabled={disabled || (openNow && placement !== "below")}
               onClick={openIdle}
             >
               {action}

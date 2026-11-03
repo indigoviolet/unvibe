@@ -162,6 +162,22 @@ describe("InlineConfirm", () => {
     expect(document.querySelector(".uic[data-placement='below'] .uic-pill")).not.toBeNull();
   });
 
+  test("below keeps the idle trigger visible and enabled while open", () => {
+    render(<InlineConfirm action="Re-do guide" confirmAction="re-do guide" onConfirm={async () => {}} placement="below" />);
+    fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+    const idle = screen.getByRole("button", { name: "Re-do guide" });
+    expect(idle).toBeVisible();
+    expect(idle).toBeEnabled();
+    expect(idle).toHaveAttribute("aria-expanded", "true");
+    expect(document.querySelector(".uic-idlehold")).not.toHaveStyle({ visibility: "hidden" });
+  });
+
+  test("overlay hides the idle button in place while open", () => {
+    render(<InlineConfirm action="Remove" confirmAction="remove review" onConfirm={async () => {}} placement="overlay" />);
+    fireEvent.click(idleButton());
+    expect(document.querySelector(".uic-idlehold")).toHaveStyle({ visibility: "hidden" });
+  });
+
   test("stack placement lays the question above the in-flow pill", () => {
     render(<InlineConfirm action="Reset data" confirmAction="reset data" onConfirm={async () => {}} placement="stack" detail="Remove all reviews?" />);
     fireEvent.click(screen.getByRole("button", { name: "Reset data" }));
