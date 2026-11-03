@@ -22,6 +22,10 @@
 .ui-field .ui-status{font-size:var(--text-xs)}
 .ui-field-control .ui-input[type="number"]{width:128px;flex:none}
 .ui-field-control .ui-select{width:360px;max-width:100%}
+/* Stacked fields (long free text): label + help on top, full-width control below. */
+.ui-field[data-layout="stacked"]{grid-template-columns:minmax(0,1fr)}
+.ui-field[data-layout="stacked"] .ui-field-control{justify-self:stretch}
+.ui-field[data-layout="stacked"] textarea.ui-input{width:100%;max-width:100%;height:auto;resize:vertical}
 .ui-numunit{display:inline-flex;align-items:center;gap:var(--space-2);min-width:0}
 .ui-unit{font-size:var(--text-sm);color:var(--text-secondary);white-space:nowrap;flex:none;width:52px;text-align:left}
 @media (max-width:700px){.ui-field{grid-template-columns:minmax(0,1fr)}.ui-field-control{margin-top:var(--space-1);justify-self:stretch}.ui-field-control .ui-select{width:100%}}

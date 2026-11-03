@@ -143,6 +143,7 @@ export function PersonasSection({
                   confirmAction={`delete the “${p.name}” persona`}
                   runningLabel="Deleting…"
                   variant="quiet"
+                  size="sm"
                   danger
                   placement="stack"
                   disabled={removing !== null}
@@ -310,6 +311,7 @@ function PersonaForm({
           maxLength={80}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Performance sceptic"
+          style={{ width: 360, maxWidth: "100%" }}
         />
       </Field>
       <Field label="Provider" htmlFor={`${testIdPrefix}-provider`}>
@@ -348,12 +350,13 @@ function PersonaForm({
         label="Lens"
         htmlFor={`${testIdPrefix}-lens`}
         help="Who the persona is and what it looks for — applied to every task it performs."
+        layout="stacked"
       >
         <textarea
           id={`${testIdPrefix}-lens`}
           data-testid={`${testIdPrefix}-lens`}
           className="ui-input"
-          style={{ height: "auto", minHeight: 88, padding: "8px 12px", width: "100%", maxWidth: "100%" }}
+          style={{ padding: "8px 12px" }}
           rows={4}
           value={lens}
           onChange={(e) => setLens(e.target.value)}
@@ -364,13 +367,14 @@ function PersonaForm({
         label="Card instruction (optional)"
         htmlFor={`${testIdPrefix}-card-instruction`}
         help="Overrides the card task's default for this persona. Empty means “write your version”."
+        layout="stacked"
       >
         <textarea
           id={`${testIdPrefix}-card-instruction`}
           data-testid={`${testIdPrefix}-card-instruction`}
           className="ui-input"
-          style={{ height: "auto", minHeight: 56, padding: "8px 12px", width: "100%", maxWidth: "100%" }}
-          rows={2}
+          style={{ padding: "8px 12px" }}
+          rows={3}
           value={cardInstruction}
           onChange={(e) => setCardInstruction(e.target.value)}
           placeholder="e.g. Respond to the card: check its claims…"
@@ -401,7 +405,7 @@ function PersonaForm({
         >
           {saving ? "Saving…" : submitLabel}
         </Button>
-        <Button type="button" variant="quiet" size="sm" disabled={saving} onClick={onCancel}>
+        <Button type="button" variant="secondary" size="sm" disabled={saving} onClick={onCancel}>
           Cancel
         </Button>
       </div>

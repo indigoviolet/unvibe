@@ -106,8 +106,30 @@ test.describe("J349 personas settings", () => {
     const row = page.getByTestId("persona-second-opinion");
     await row.getByTestId("persona-second-opinion-edit").click();
     await expect(page.getByTestId("persona-second-opinion-lens")).toBeVisible();
+    // Park the mouse away from the row so Close isn't caught in hover.
+    await page.mouse.move(720, 20);
     await page.screenshot({ path: path.join(SHOTS, "personas-edit-form.png") });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS, "personas-edit-form-dark.png") });
+    await page.emulateMedia({ colorScheme: "light" });
     await row.getByTestId("persona-second-opinion-edit").click();
+  });
+
+  test("add form frame", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    await page.getByTestId("persona-add").click();
+    await expect(page.getByTestId("persona-new-lens")).toBeVisible();
+    await page.screenshot({ path: path.join(SHOTS, "personas-add-form.png") });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS, "personas-add-form-dark.png") });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId("persona-new-lens")).toHaveCount(0);
   });
 
   test("add, edit and delete a custom persona", async ({ page }) => {

@@ -12,9 +12,9 @@ import "./ui.css";
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" | "danger"; size?: "sm" | "md" | "lg" }>(function Button({ variant = "secondary", size = "md", className, ...p }, ref): React.JSX.Element {
   return <BaseButton ref={ref} data-variant={variant} data-size={size} {...p} className={className ? `ui-btn ${className}` : "ui-btn"} />;
 });
-export function Field({ label, htmlFor, help, status, children }: { label: string; htmlFor?: string; help?: ReactNode; status?: ReactNode; children: ReactNode }): React.JSX.Element {
+export function Field({ label, htmlFor, help, status, children, layout = "row" }: { label: string; htmlFor?: string; help?: ReactNode; status?: ReactNode; children: ReactNode; layout?: "row" | "stacked" }): React.JSX.Element {
   return (
-    <div className="ui-field">
+    <div className="ui-field" data-layout={layout === "stacked" ? layout : undefined}>
       <div className="ui-field-text">
         <label className="ui-field-label" htmlFor={htmlFor}>{label}</label>
         {help ? <span className="ui-help">{help}</span> : null}
