@@ -4,12 +4,10 @@
  * - `GET /api/settings` — full settings. Roles never explicitly saved take
  *   live defaults computed from what each adapter offers (`listModels` via
  *   `selectDefaultModels`); with no live adapter the static defaults stand.
- *   A second opinion with no Codex available comes back unset
- *   (`{ provider: "codex", model: "" }`); the UI explains a different
- *   model from main is needed.
  * - `PUT /api/settings` — partial update; 400 with `{ errors }` when
  *   invalid (including a model id or effort value the adapter does not
- *   offer), otherwise the full updated settings.
+ *   offer, or a persona model no adapter offers), otherwise the full
+ *   updated settings.
  * - `GET /api/models?provider=:id` — models the provider offers (live, or
  *   the static fallback offline).
  * - `GET /api/providers` — providers the pickers offer (issue #279):
@@ -21,22 +19,20 @@
  * Without wired stores the endpoints stay 501 stubs (scaffold behaviour).
  */
 import type { FastifyInstance } from "fastify";
-import type { Settings, ThinkingResponse } from "@unvibe/shared";
-import { resolveEffectiveSettings, unsetSecondOpinion, validateSettings } from "../settings/index.js";
+import type { Persona, Settings, ThinkingResponse } from "@unvibe/shared";
+import { resolveEffectiveSettings, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
 
-export { unsetSecondOpinion };
+type Role = "main" | "small";
 
-type Role = "main" | "small" | "secondOpinion";
-
-const ROLES: Role[] = ["main", "small", "secondOpinion"];
+const ROLES: Role[] = ["main", "small"];
 
 /**
  * Effective settings: stored values, with live adapter defaults filled in
  * for roles the user never saved. Never throws (falls back to stored).
  * Single source lives in `settings/effective.ts`; every model consumer
- * (readiness, pipeline, second-opinion, shared context) resolves through
- * it so they agree with `GET /api/settings`.
+ * (readiness, pipeline, shared context) resolves through it so they
+ * agree with `GET /api/settings`.
  */
 export async function effectiveSettings(deps: RouteDeps): Promise<Settings> {
   if (!deps.settings) throw new Error("settings are unavailable");
@@ -63,17 +59,27 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     const thinking = deps.models?.thinking;
     if (typeof offered === "function" || typeof thinking === "function") {
       const problems: string[] = [];
-      for (const role of ROLES) {
-        const pick = patch[role];
-        if (!pick || pick.model === "") continue;
+      // Issue #349: every persona's model is validated like a role's —
+      // never persist a model id no adapter offers.
+      const personas = Array.isArray(patch.personas) ? (patch.personas as Persona[]) : [];
+      const picks: { label: string; provider: string; model: string }[] = [
+        ...ROLES.map((role) => ({ label: role, provider: patch[role]?.provider ?? "", model: patch[role]?.model ?? "" })),
+        ...personas.map((p, i) => ({
+          label: `personas[${i}] ("${p.name ?? p.id ?? "?"}")`,
+          provider: p.provider ?? "",
+          model: p.model ?? "",
+        })),
+      ];
+      for (const { label, provider, model } of picks) {
+        if (!provider || model === "") continue;
         if (typeof offered === "function") {
           try {
-            const live = await offered.call(deps.models, pick.provider);
+            const live = await offered.call(deps.models, provider);
             if (live) {
               const ids = live.models.map((m) => (typeof m === "string" ? m : m.id));
-              if (!ids.includes(pick.model)) {
+              if (!ids.includes(model)) {
                 problems.push(
-                  `${role} model "${pick.model}" is not offered by ${pick.provider} (offers: ${ids.join(", ") || "none"}) — pick one of the offered models`,
+                  `${label} model "${model}" is not offered by ${provider} (offers: ${ids.join(", ") || "none"}) — pick one of the offered models`,
                 );
               }
             }
@@ -81,10 +87,15 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
             // Probe hiccup: stored value stands; readiness flags it later.
           }
         }
-        // Never persist an effort value the adapter does not offer.
-        // Default ("") always passes: it leaves the adapter's own
-        // setting alone. Validation above already rejected a missing or
-        // non-string effort, so it is always present here.
+      }
+      // Never persist an effort value the adapter does not offer.
+      // Default ("") always passes: it leaves the adapter's own
+      // setting alone. Validation above already rejected a missing or
+      // non-string effort, so it is always present here. (Roles only:
+      // personas name provider + model, no effort in v1.)
+      for (const role of ROLES) {
+        const pick = patch[role];
+        if (!pick || pick.model === "") continue;
         const effort = pick.effort;
         if (effort !== "" && typeof thinking === "function") {
           try {

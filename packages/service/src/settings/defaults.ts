@@ -14,10 +14,9 @@
  *                    gpt-6-sol > claude-sonnet-5-5 > gpt-5.6-terra
  * - small:           claude-haiku-5-5 > gpt-6-luna > claude-haiku-4-5 >
  *                    gpt-5.6-luna
- * - second opinion, main on Claude: gpt-6.1-sol > gpt-6-sol > gpt-5.6-sol >
- *                    gpt-5.6-terra
- * - second opinion, main on Codex:  claude-opus-5-5 > claude-opus-5 >
- *                    claude-sonnet-5-5
+ *
+ * (Issue #349 removed the second-opinion role: personas each name their
+ * own model, picked in Settings → Personas.)
  *
  * Matching is on family plus highest version, not on literal strings: each
  * matcher takes the newest offered model in its family at or above its
@@ -155,20 +154,6 @@ const SMALL_PREF: Matcher[] = [
   { provider: "codex", family: "luna", minVersion: [5, 6] },
 ];
 
-/** Second opinion comes from the provider main is NOT using. */
-const SECOND_OPINION_IF_MAIN_CLAUDE: Matcher[] = [
-  { provider: "codex", family: "sol", minVersion: [6, 1] },
-  { provider: "codex", family: "sol", minVersion: [6] },
-  { provider: "codex", family: "sol", minVersion: [5, 6] },
-  { provider: "codex", family: "terra", minVersion: [5, 6] },
-];
-
-const SECOND_OPINION_IF_MAIN_CODEX: Matcher[] = [
-  { provider: "claude", family: "opus", minVersion: [5, 5] },
-  { provider: "claude", family: "opus", minVersion: [5] },
-  { provider: "claude", family: "sonnet", minVersion: [5, 5] },
-];
-
 export interface AdapterModelLists {
   claude: string[];
   codex: string[];
@@ -179,8 +164,6 @@ export interface DefaultModels {
   main: ModelPick | null;
   /** Null when no allowed family is offered (effective layer keeps stored). */
   small: ModelPick | null;
-  /** Null when the other provider offers nothing usable: stays unset. */
-  secondOpinion: ModelPick | null;
 }
 
 function pickFrom(pref: Matcher[], lists: { claude: string[]; codex: string[] }): ModelPick | null {
@@ -216,35 +199,14 @@ function pickFrom(pref: Matcher[], lists: { claude: string[]; codex: string[] })
 /**
  * Pick role defaults from live adapter lists. Null roles mean no allowed
  * family was offered (or the provider offers nothing): the caller keeps
- * the stored pick for main/small and leaves second opinion unset.
- *
- * Second opinion is picked from the provider main is NOT using. That is
- * the picked main by default; pass `mainOverride` when the effective main
- * is a saved pick the live rule would not choose (a saved main on Codex
- * still takes its second opinion from Claude).
+ * the stored pick for main/small.
  */
-export function selectDefaultModels(
-  offered: AdapterModelLists,
-  mainOverride?: { provider: string },
-): DefaultModels {
+export function selectDefaultModels(offered: AdapterModelLists): DefaultModels {
   const lists = {
     claude: [...new Set(offered.claude.filter(Boolean))],
     codex: [...new Set(offered.codex.filter(Boolean))],
   };
   const main = pickFrom(MAIN_PREF, lists);
   const small = pickFrom(SMALL_PREF, lists);
-  const mainProvider = mainOverride?.provider ?? main?.provider;
-  let secondOpinion: ModelPick | null = null;
-  if (mainProvider) {
-    secondOpinion = pickFrom(
-      mainProvider === "codex" ? SECOND_OPINION_IF_MAIN_CODEX : SECOND_OPINION_IF_MAIN_CLAUDE,
-      lists,
-    );
-  } else {
-    // Main unfillable (nothing usable offered): second opinion still tries
-    // Codex, the historical default provider for the role. With Codex
-    // absent too it stays unset.
-    secondOpinion = pickFrom(SECOND_OPINION_IF_MAIN_CLAUDE, lists);
-  }
-  return { main, small, secondOpinion };
+  return { main, small };
 }
