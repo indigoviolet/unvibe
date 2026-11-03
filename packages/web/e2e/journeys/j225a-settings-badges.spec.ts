@@ -261,10 +261,11 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(staleRow.getByRole("img", { name: "Open" })).toHaveCount(0);
     await expect(staleRow).toContainText("new commits");
 
-    // The row's title and meta keep their size and position with the
-    // popover open; the popover covers neither. Boxes are compared
-    // relative to the row so async callouts above the list can't flake
-    // the assert; the overlap check uses the same-moment boxes.
+    // The row's title and meta keep their size and position when the
+    // button expands in place (#346): the pill overlays within the row.
+    // Boxes are compared relative to the row so async callouts above
+    // the list can't flake the assert; the pill box is read at the same
+    // moment.
     const rowTitle = staleRow.locator(".cx2");
     const rowMeta = staleRow.locator(".cj > .hint");
     const rowBoxBefore = await staleRow.boundingBox();
@@ -274,14 +275,12 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(titleBefore).not.toBeNull();
     expect(metaBefore).not.toBeNull();
     await staleRow.getByRole("button", { name: "Remove this review" }).click();
-    const pop = page.locator(".confirm-pop");
-    await expect(pop).toContainText("Remove this review?");
-    const confirmBtn = pop.getByRole("button", { name: "Remove", exact: true });
-    const cancelBtn = pop.getByRole("button", { name: "Cancel" });
+    const pill = staleRow.locator(".uic-pill");
+    await expect(pill).toContainText("Confirm remove review");
+    const confirmBtn = pill.getByRole("button", { name: "Confirm remove review" });
+    const cancelBtn = pill.getByRole("button", { name: "Cancel" });
     await expect(confirmBtn).toBeVisible();
     await expect(cancelBtn).toBeVisible();
-    await expect(confirmBtn).toHaveAttribute("data-size", "sm");
-    await expect(cancelBtn).toHaveAttribute("data-size", "sm");
     const rowBoxAfter = await staleRow.boundingBox();
     const titleAfter = await rowTitle.boundingBox();
     const metaAfter = await rowMeta.boundingBox();
@@ -295,29 +294,31 @@ test.describe("J225a settings, start page and PR badges", () => {
     expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
     expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
     expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
-    const popBox = await pop.boundingBox();
-    const overlaps = (
-      a: { x: number; y: number; width: number; height: number },
-      b: { x: number; y: number; width: number; height: number },
-    ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-    expect(overlaps(popBox!, titleBefore!)).toBe(false);
-    expect(overlaps(popBox!, metaBefore!)).toBe(false);
+    // The pill overlays within the row: fully inside the row's box.
+    const pillBox = await pill.boundingBox();
+    expect(pillBox).not.toBeNull();
+    expect(pillBox!.x).toBeGreaterThanOrEqual(rowBoxAfter!.x - 1);
+    expect(pillBox!.x + pillBox!.width).toBeLessThanOrEqual(rowBoxAfter!.x + rowBoxAfter!.width + 1);
+    expect(pillBox!.y).toBeGreaterThanOrEqual(rowBoxAfter!.y - 1);
+    expect(pillBox!.y + pillBox!.height).toBeLessThanOrEqual(rowBoxAfter!.y + rowBoxAfter!.height + 1);
     await checkLayout(page, "j225a-remove-confirm");
 
     // Escape cancels without touching the row…
     await page.keyboard.press("Escape");
-    await expect(pop).toHaveCount(0);
+    await expect(pill).toHaveCount(0);
     await expect(staleRow).toBeVisible();
     // …and so does an outside click.
     await staleRow.getByRole("button", { name: "Remove this review" }).click();
-    await expect(pop).toBeVisible();
+    await expect(pill).toBeVisible();
     await page.getByRole("heading", { name: "Reviews" }).click();
-    await expect(pop).toHaveCount(0);
+    await expect(pill).toHaveCount(0);
     await expect(staleRow).toBeVisible();
-    // Confirming removes the review; the branch review stays.
+    // Confirming flashes confirmed, then removes the review; the branch
+    // review stays.
     await staleRow.getByRole("button", { name: "Remove this review" }).click();
-    await expect(pop).toContainText("Remove this review?");
-    await pop.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(pill).toContainText("Confirm remove review");
+    await pill.getByRole("button", { name: "Confirm remove review" }).click();
+    await expect(staleRow.getByText("Confirmed")).toBeVisible();
     await expect(staleRow).toHaveCount(0);
     await expect(page.locator('[data-testid^="session-"]')).toHaveCount(1);
     const after = await apiJson(svc, "GET", "/api/reviews");
