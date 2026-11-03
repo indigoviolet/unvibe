@@ -450,7 +450,8 @@ test.describe("J5 repo add and remove", () => {
       await row.getByRole("button", { name: `Remove local/${base}` }).click();
       await expect(row).toContainText("Remove this repo from the list? ");
       await expect(row).toContainText("is not touched.");
-      await row.getByRole("button", { name: "Remove", exact: true }).click();
+      // #346: the shared inline confirm ("Confirm remove …" ✓ ✕).
+      await row.getByRole("button", { name: `Confirm remove local/${base}` }).click();
       await expect(row).toHaveCount(0);
       const listed = await apiJson(svc, "GET", "/api/repos");
       expect(((listed.json as { repos: { localPath: string }[] }).repos ?? []).some((r) => r.localPath === extraDir)).toBe(false);
@@ -502,5 +503,70 @@ test.describe("J5 doctor page on the real service", () => {
     const main = page.locator('[data-testid="model-main"]');
     await main.locator("#model-main").click();
     await expect(openPopup(page).getByRole("option", { name: "Sonnet" })).toBeVisible();
+  });
+});
+
+// #346 follow-up: a format-changing target shows ONE short warn line under
+// its row with the real from/to formats, and no Export drafts action when
+// there are no unposted drafts. The with-drafts Export action lives in
+// update-picker.spec.ts (mock Outbox hooks).
+test.describe("J5 version data-format warn line", () => {
+  const NOW = Date.now();
+  const iso = (ms: number): string => new Date(ms).toISOString();
+  let dataDir = "";
+  let svc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5fmt-data-"));
+    svc = await startService(dataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("format-changing target warns in one line; no Export drafts without drafts", async ({ page }) => {
+    test.setTimeout(120_000);
+    if (!svc) throw new Error("no service");
+    mkdirSync(path.join(dataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(dataDir, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", version: "0.0.1", commit: "rel0000000000001", builtAt: iso(NOW), dataFormat: 1 },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.1-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 3600_000),
+          dataFormat: 2,
+        },
+      ]),
+    );
+    writeFileSync(path.join(dataDir, "update", "current-ref"), "release\n");
+    const refreshed = await apiJson(svc, "GET", "/api/update/channels?refresh=1");
+    expect(refreshed.status).toBe(200);
+
+    await page.goto(`${svc.origin}/settings?tab=version&token=${svc.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if (!(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    const warn = page.locator('[data-testid="update-data-reset-warning"][data-ref="preview/feat-x"]');
+    await expect(warn).toContainText("Needs a data reset (format 1 → 2)", { timeout: 15_000 });
+    // Fresh data dir: no unposted drafts, so no Export action on the line.
+    await expect(warn.getByRole("button")).toHaveCount(0);
+    // The release row (same format) gets no warn line.
+    await expect(page.locator('[data-testid="update-data-reset-warning"][data-ref="release"]')).toHaveCount(0);
+    // The switch itself still confirms through the row's inline confirm
+    // (opened and cancelled here — the switch is never committed).
+    const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+    await expect(feat.getByText("Confirm switch")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(feat.getByText("Confirm switch")).toHaveCount(0);
   });
 });
