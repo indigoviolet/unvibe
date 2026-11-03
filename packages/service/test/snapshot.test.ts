@@ -21,10 +21,11 @@ describe("snapshot build", () => {
     // 69 recordings, all captured live on Claude Sonnet (#341):
     // reader 1 + critic 1 + hunk 8 + go-deeper 4 + concept-page 4
     // + depth 25 (12 simple + 12 deep-principle + 1 shared expansion)
-    // + examples 4 + diagram 2 + explain 8 + ask 13.
+    // + examples 4 + diagram 2 + explain 8 + ask 12 (incl. 2 thread).
     // No second-opinion recordings (#349); the cost ask was dropped —
     // Sonnet cited stdlib files outside the review.
-    expect(counts).toHaveLength(69);
+    // + 1 persona recording (#349 step 2: central second-opinion).
+    expect(counts).toHaveLength(70);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

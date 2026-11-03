@@ -3730,3 +3730,96 @@ test.describe("release notes tour (#330)", () => {
     await shot(page, "version-notes", "1440-light", "Earlier release notes");
   });
 });
+
+/**
+ * Version Switch + Full access inline confirms (#346 follow-up): the
+ * Version row idle (releases only), with the one-line reset warn
+ * ("Needs a data reset (format 1 → 2)") once previews show, confirming
+ * ("Confirm switch" ✓ ✕) with the pill settled, and Full access
+ * confirming ("Confirm full access" + one short line). Own
+ * fake-updater service; nothing is ever switched or enabled.
+ */
+test.describe("visual tour version + access confirms (#346)", () => {
+  let vcData = "";
+  let vcSvc: RunningService | null = null;
+  const NOW = Date.now();
+  const iso = (ms: number): string => new Date(ms).toISOString();
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    vcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-vc-data-"));
+    // Start first so the service stamps its fresh DB; staging the fake
+    // channels before the start would read as unstamped data and trip
+    // the data-format notice (#311).
+    vcSvc = await startService(vcData, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+    mkdirSync(path.join(vcData, "update"), { recursive: true });
+    writeFileSync(
+      path.join(vcData, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", version: "0.0.1", commit: "rel0000000000001", builtAt: iso(NOW), dataFormat: 1 },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.1-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 3600_000),
+          dataFormat: 2,
+        },
+      ]),
+    );
+    writeFileSync(path.join(vcData, "update", "current-ref"), "release\n");
+  });
+
+  test.afterAll(async () => {
+    await vcSvc?.stop().catch(() => {});
+    vcSvc = null;
+    rmSync(vcData, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`version + access confirms (${combo.name})`, async ({ page }) => {
+      if (!vcSvc) throw new Error("version-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${vcSvc.origin}/settings?tab=version&token=${vcSvc.token}`);
+      await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('[data-testid="update-channel"]')).not.toHaveCount(0, { timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // Idle: releases only, no warn line yet.
+      await checkLayout(page, "version-row-idle");
+      await shot(page, "version-row-idle", suffix, "release");
+      // Previews on: the format-changing row gets its one short warn line.
+      const toggle = page.getByTestId("version-picker-toggle");
+      if (!(await toggle.isChecked())) {
+        await toggle.click();
+        await expect(toggle).toBeChecked({ timeout: 15_000 });
+      }
+      const warn = page.locator('[data-testid="update-data-reset-warning"][data-ref="preview/feat-x"]');
+      await expect(warn).toContainText("Needs a data reset (format 1 → 2)", { timeout: 15_000 });
+      await checkLayout(page, "version-row-reset-warn");
+      await shot(page, "version-row-reset-warn", suffix, "Needs a data reset");
+      // Confirming: the pill, settled (mid-fade reads see-through).
+      const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+      await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+      await expect(feat.getByText("Confirm switch")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "version-row-confirm");
+      await shot(page, "version-row-confirm", suffix, "Confirm switch");
+      await page.keyboard.press("Escape");
+      await expect(feat.getByText("Confirm switch")).toHaveCount(0);
+      // Full access: the inline confirm with its one short line.
+      await page.getByRole("tab", { name: "Access" }).click();
+      await expect(page.getByRole("tabpanel", { name: "Access" })).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Turn on full access" }).click();
+      await expect(page.getByText("Confirm full access")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "full-access-confirm");
+      await shot(page, "full-access-confirm", suffix, "Confirm full access");
+    });
+  }
+});

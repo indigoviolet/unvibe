@@ -295,9 +295,16 @@ interface BlockProps {
   reviewId: string;
   cardId: string;
   blockId: string;
+  /**
+   * Issue #349 step 2: the card version showing this block. Guide threads
+   * (no persona) render under the Guide tab; a persona's threads under
+   * its own tab (block ids are shared between versions, so the persona
+   * is the only thing telling them apart).
+   */
+  personaId?: string;
 }
 
-export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
+export function GuideBlockThreads({ reviewId, cardId, blockId, personaId }: BlockProps) {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const inflight = useReview((s) => s.inflight);
   const readOnly = useIsReadOnlyVersion();
@@ -310,6 +317,9 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
       // thread (ThreadView owns `threadId` requests) — never a second
       // composer on the underlying block.
       if (req.threadId) return;
+      // Issue #349 step 2: a composer belongs to one version — a persona
+      // Ask opens only under the persona tab that asked it.
+      if ((req.personaId ?? null) !== (personaId ?? null)) return;
       if (req.anchor.where === "comment") {
         // Issue #214: Ask on a comment shows its composer under the
         // comment's guide block (the card itself anchors to the comment).
@@ -328,16 +338,19 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
     return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
-  }, [cardId, blockId]);
+  }, [cardId, blockId, personaId]);
 
   const collapseAll = useReview((s) => s.collapseAll);
   // Collapse-all renders every thread on the block as a row — including
-  // closed ones, which otherwise show only as marks.
+  // closed ones, which otherwise show only as marks. Issue #349 step 2:
+  // each version shows only its own threads (block ids are shared between
+  // versions, so the persona is what tells them apart).
   const threads = (annotations ?? []).filter(
     (a): a is Thread =>
       (a.type === "thread" || a.type === "link") &&
       a.anchor.host.kind === "block" &&
       anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
+      (a.personaId ?? null) === (personaId ?? null) &&
       (a.open || collapseAll),
   );
 
@@ -353,7 +366,8 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
       a.type === "thread" &&
       a.open &&
       a.anchor.host.kind === "block" &&
-      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId),
+      anchorMatchesBlock(a.anchor.host.blockId, cardId, blockId) &&
+      (a.personaId ?? null) === (personaId ?? null),
   );
   const placeholder = incoming?.kind === "explain" && !arrived ? incoming : undefined;
 
@@ -375,6 +389,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId }: BlockProps) {
           offsets={pending.offsets}
           threadId={pending.threadId}
           sourceReplyId={pending.sourceReplyId}
+          personaId={pending.personaId}
           onDiscard={() => setPending(null)}
           onCreated={(id) => {
             setPending(null);

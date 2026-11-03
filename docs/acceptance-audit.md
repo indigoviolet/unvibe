@@ -3810,6 +3810,48 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
   (inspected). Full gates not yet run.
 
+## Addendum: #346 follow-up — Version Switch and Full access use the inline confirm (branch `fix/346-switch-fullaccess-confirm`)
+
+- **Version Switch/Update** is the shared `InlineConfirm`
+  (`placement="stack"`): idle "Switch"/"Update" expands to "Confirm
+  switch"/"Confirm update" ✓ ✕, then "Switching…"/"Updating…"
+  while the restart wait runs detached and the bottom status takes
+  over. The restart/backups note moved to the button tooltip and the
+  pill's accessible name. A format-changing target gets one short
+  warn line under its row ("Needs a data reset (format X → Y)",
+  real from/to formats) with an "Export N drafts" action only when
+  unposted drafts exist — the paragraph, the "No unposted drafts"
+  sentence and the "Then Confirm…" sentence are gone. Blocked-jobs
+  handling is unchanged (the refusal panel with "Switch anyway" +
+  Cancel replaces the pill), as are rollback and the bottom reason
+  text.
+- **Full access enable** is the shared `InlineConfirm`
+  (`placement="stack"`, `danger`): "Confirm full access" ✓ ✕ with
+  one short visible line ("The review helper can run shell
+  commands, git and gh as you, and reach the web."); the full
+  `FULL_ACCESS_WARNING` lives in the tooltip and the pill's
+  accessible description. Turning off stays a direct button (the
+  safe direction, error below).
+- Not converted, with reasons: thread/comment delete, Reset demo,
+  draft discard (still no popout — adding confirms stays out of
+  scope); job Cancel (time-sensitive); Submit review (own preview
+  dialog, posts through the Submit path); OpenConfirmPage Start
+  review (the page itself is the confirm); Personas edit-cancel,
+  PR clone-offer dismiss, BlockedPanel Switch anyway/Cancel (a
+  refusal panel, not a generic confirm); DataFormatNotice Go back,
+  Access turn-off (safe directions, data untouched / access
+  reduced). No `window.confirm` anywhere.
+- Evidence: reworked mock `e2e/update-picker.spec.ts` (inline
+  confirm incl. Escape cancel, blocked flow, rollback, warn line
+  with/without drafts), new J5 "version data-format warn line"
+  journey (real service, one short line + no Export without
+  drafts), reworked J11 full-access + repo/data-reset steps through
+  the pills, updated disabled `VersionSection`/`AccessSection`
+  unit tests, tour frames `version-row-idle`,
+  `version-row-reset-warn`, `version-row-confirm`,
+  `full-access-confirm` at 1440 light/dark (inspected). Full gates
+  not yet run.
+
 ## Addendum: #349 step 1 — Personas model, Settings UI, prompt composition (branch `feat/349-personas-step1`)
 
 - **Persona model:** `Persona` in `packages/shared/src/personas.ts`
@@ -3861,3 +3903,53 @@ hunk coverage) is reported for a separate issue, not fixed here.
   card flows gone), tour frames `personas-1440-light`,
   `personas-1440-dark`, `personas-delete-confirm` (inspected).
   Full gates not yet run.
+
+## Addendum: #349 step 2 — Personas run on cards (branch `feat/349-personas-step2`)
+
+- **Persona run:** the card toolbar gains a persona picker (the old
+  second-opinion bubbles icon; portal menu with colour dot + name).
+  Choosing one sends `persona` (cardId + personaId) through
+  `runInFork` with the persona: base L0 + lens in the system prompt
+  below it (never the instructions), `persona_card` task + the
+  persona's card instruction, on the persona's provider/model —
+  forking that provider's base session (or the shared fresh-session
+  fallback), never the main one. Button shows dots while running.
+- **Variants:** output is a normal card stored as `Card.variants`
+  keyed by persona (own blocks/level/revision/undo stack, its own
+  `sessionId`, run state): same citation validation as cards with
+  the one repair turn inside `runInFork`, plus inline-diagram
+  finalize + one repair. Usable content with unverified citations
+  stores with the normal red-text marks; a result with nothing
+  usable (or a thrown run) is a visible error on the variant
+  (banner + Retry re-runs the persona action), never a silent store.
+  Tabs appear only when a variant exists (Guide + one per persona,
+  orphan variants kept with fallback name/colour); the active tab is
+  UI state, the active persona colour borders the card (inset ring)
+  and recolours the agent avatar on its threads (name in the label).
+- **Conversations on a variant** (depth simpler/deeper, Explain, Ask,
+  replies incl. retry, follow-up, examples, diagram, undo) carry
+  `personaId`: they run under that persona (its model + lens, its
+  own session for the card — variant session continued for
+  rewrites, thread sessions for replies, persona-base forks for
+  first Ask/Explain turns), with the prompt carrying the variant's
+  text. Threads store `personaId` + `personaCardId`; each version
+  tab shows only its own threads/composers (block ids are shared).
+- **Data format stays 2:** `variants` (cards) and `personaId` /
+  `personaCardId` (threads) are new optional maps/fields; older
+  stored data reads as Guide-only with no conversion. Step 1's
+  removal-driven bump is unaffected.
+- Evidence: `packages/shared/test/persona-variants-349.test.ts`
+  (variant storage/selection/tab visibility), new
+  `packages/service/test/persona-variants-349.test.ts` (fake
+  runner: variant stored on persona provider/model with the lens in
+  the system prompt, single repair turn then store, lone
+  unverified citation stored with marks, Ask on the variant
+  answered by the same persona, depth on the variant rewrites the
+  variant not the guide), new real-service replay journey
+  `e2e/journeys/j349b-personas-variants.spec.ts` (dropdown, tabs,
+  persona-tab depth-stepper dots, persona-tab Ask with thread +
+  avatar assertions), `CardView.test.tsx` persona-tabs + mock
+  persona-action tests, new `persona-central-second-opinion.md`
+  fixture recording + manifest entry, tour frames
+  `persona-dropdown-1440-light`, `persona-version-1440-light` /
+  `-dark` (inspected). Full gates not yet run.

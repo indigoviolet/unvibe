@@ -368,6 +368,11 @@
       "key": "thread-cookie",
       "pattern": "they could re-emit raw CRLF on later req|Which consumer re-emits the raw CRLF\\?",
       "file": "ask-thread-cookie.md"
+    },
+    {
+      "kind": "persona",
+      "key": "central:second-opinion",
+      "file": "persona-central-second-opinion.md"
     }
   ]
 }

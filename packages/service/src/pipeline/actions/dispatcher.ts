@@ -18,6 +18,7 @@ import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
 import { askAction, explainAction, hunkCardAction, replyAction, retryAction } from "./conversation.js";
+import { personaAction } from "./persona.js";
 import { collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
@@ -131,12 +132,16 @@ export async function dispatchAction(
         need(ctx);
         if (typeof action.quote !== "string") return bad(reply, "quote is required");
         if (!action.threadId && !action.anchor) return bad(reply, "quote and anchor are required");
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
         const res = await explainAction(ctx, {
           quote: action.quote,
           ...(action.anchor ? { anchor: action.anchor } : {}),
           ...(action.threadId ? { threadId: action.threadId } : {}),
           ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+          ...(action.personaId ? { personaId: action.personaId } : {}),
         });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
@@ -150,6 +155,9 @@ export async function dispatchAction(
           return bad(reply, "quote and message are required");
         }
         if (!action.threadId && !action.anchor) return bad(reply, "quote, anchor and message are required");
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
         const res = await askAction(ctx, {
           quote: action.quote,
           ...(action.anchor ? { anchor: action.anchor } : {}),
@@ -157,6 +165,7 @@ export async function dispatchAction(
           ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           message: action.message,
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+          ...(action.personaId ? { personaId: action.personaId } : {}),
         });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
@@ -200,7 +209,12 @@ export async function dispatchAction(
         if (action.direction !== "simpler" && action.direction !== "deeper") {
           return bad(reply, "direction must be simpler or deeper");
         }
-        const res = await depthAction(ctx, action.cardId, action.direction);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await depthAction(ctx, action.cardId, action.direction, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -214,7 +228,12 @@ export async function dispatchAction(
       case "examples": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await examplesAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await examplesAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -224,7 +243,12 @@ export async function dispatchAction(
       case "diagram": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await diagramAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await diagramAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -234,7 +258,12 @@ export async function dispatchAction(
       case "undo": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await undoAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await undoAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
       }
       case "collapse": {
@@ -277,7 +306,12 @@ export async function dispatchAction(
         if (typeof action.cardId !== "string" || typeof action.blockId !== "string" || !Number.isSafeInteger(action.index)) {
           return bad(reply, "cardId, blockId and index are required");
         }
-        const res = await followupAction(ctx, action.cardId, action.blockId, action.index);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await followupAction(ctx, action.cardId, action.blockId, action.index, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
         if (res.replyId) out.replyId = res.replyId;
         if (res.jobId) out.jobId = res.jobId;
@@ -294,6 +328,21 @@ export async function dispatchAction(
         if (res.deduplicated) out.deduplicated = true;
         if (res.reused) out.reused = true;
         return out;
+      }
+      case "persona": {
+        need(ctx);
+        if (typeof action.cardId !== "string" || typeof action.personaId !== "string") {
+          return bad(reply, "cardId and personaId are required");
+        }
+        try {
+          const res = await personaAction(ctx, action.cardId, action.personaId);
+          const out: ActionResponse = { accepted: true, cardId: res.cardId };
+          if (res.jobId) out.jobId = res.jobId;
+          if (res.deduplicated) out.deduplicated = true;
+          return out;
+        } catch (err) {
+          return sendCaught(reply, err);
+        }
       }
       default:
         return reply.code(501).send({ error: `unknown action: ${(action as { kind: string }).kind}` });

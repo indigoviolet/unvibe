@@ -10,11 +10,28 @@ import { getSnapshotOrThrow, type ActionContext } from "./common.js";
 export async function undoAction(
   ctx: ActionContext,
   cardId: string,
+  opts?: { personaId?: string },
 ): Promise<{ cardId: string; undone: boolean }> {
   const { reviews, reviewId } = ctx;
   getSnapshotOrThrow(reviews, reviewId);
   let undone = false;
   await reviews.mutate(reviewId, (draft) => {
+    if (opts?.personaId) {
+      const target = (draft.pages ?? [])
+        .flatMap((p) => p.cards ?? [])
+        .find((c) => c.id === cardId);
+      const variant = target?.variants?.[opts.personaId];
+      if (!target || !variant) throw new Error(`unknown card ${cardId}`);
+      const prev = variant.undoStack.pop();
+      if (!prev) return;
+      undone = true;
+      variant.blocks = prev.blocks;
+      variant.level = prev.level;
+      variant.revision += 1;
+      markStaleAnchors(draft, cardId);
+      mirrorPromotedAnswer(draft, cardId);
+      return;
+    }
     const t = findCardTargetInDraft(draft, cardId);
     if (!t) throw new Error(`unknown card ${cardId}`);
     undone = applyUndo(t);

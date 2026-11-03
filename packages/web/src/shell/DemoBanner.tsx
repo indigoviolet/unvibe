@@ -33,7 +33,11 @@ export function DemoBanner({ reviewId }: { reviewId: string }): React.JSX.Elemen
     <div className="demo-banner" role="note" data-testid="demo-banner">
       <span className="demo-banner-text">
         Demo: a recorded Unvibe review of urllib3#5020. Answers are replayed, not live, and nothing is posted to
-        GitHub. <a href={DEMO_INSTALL_URL}>Install Unvibe</a> to review your own PRs.
+        GitHub.{" "}
+        <a className="cx pg" href={DEMO_INSTALL_URL}>
+          Install Unvibe
+        </a>{" "}
+        to review your own PRs.
       </span>
       {STATIC_DEMO ? (
         <button type="button" className="ui-btn" data-variant="quiet" data-size="sm" onClick={resetStaticDemo}>

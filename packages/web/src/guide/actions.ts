@@ -98,15 +98,33 @@ function notAvailable(res: ActionResponse): boolean {
   return false;
 }
 
+/**
+ * In-flight key for a persona's version of a card (issue #349 step 2).
+ * Every agent run on a variant — the persona run itself plus depth,
+ * examples, diagram and undo on it — shares this key, so the variant
+ * tab shows exactly one indicator.
+ */
+export function personaVariantKey(cardId: string, personaId: string): string {
+  return `persona:${cardId}:${personaId}`;
+}
+
 /** In-flight target for an action, or null when the kind is purely local. */
 function targetForAction(action: ReviewAction): { targetId: string; kind: InFlightKind } | null {
   switch (action.kind) {
+    case "persona":
+      return { targetId: personaVariantKey(action.cardId, action.personaId), kind: "persona" };
     case "depth":
     case "examples":
     case "diagram":
     case "generate":
+      if (action.kind !== "generate" && action.personaId) {
+        return { targetId: personaVariantKey(action.cardId, action.personaId), kind: action.kind };
+      }
       return { targetId: action.cardId, kind: action.kind };
     case "followup":
+      if (action.personaId) {
+        return { targetId: personaVariantKey(action.cardId, action.personaId), kind: "followup" };
+      }
       return { targetId: followupKey(action.cardId, action.blockId, action.index), kind: "followup" };
     case "explain":
       return action.threadId ? { targetId: action.threadId, kind: "explain" } : action.anchor ? { targetId: explainKey(action.anchor), kind: "explain" } : null;
@@ -141,12 +159,18 @@ function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
   }
 }
 
-/** Current level of a page card or conversation answer (depth toast baseline). */
-function currentLevel(cardId: string): DepthLevel | undefined {
+/**
+ * Current level of a page card, its persona variant (issue #349 step 2),
+ * or a conversation answer (depth toast baseline).
+ */
+function currentLevel(cardId: string, personaId?: string): DepthLevel | undefined {
   const snap = useReview.getState().snapshot;
   for (const p of snap?.pages ?? []) {
     const card = p.cards.find((c) => c.id === cardId);
-    if (card) return card.level;
+    if (card) {
+      if (personaId) return card.variants?.[personaId]?.level;
+      return card.level;
+    }
   }
   for (const a of snap?.annotations ?? []) {
     const turn = (a.replies ?? []).find((t) => t.id === cardId);
@@ -155,12 +179,18 @@ function currentLevel(cardId: string): DepthLevel | undefined {
   return undefined;
 }
 
-/** Current revision of a page card or conversation answer (insert toast baseline). */
-function currentRevision(cardId: string): number | undefined {
+/**
+ * Current revision of a page card, its persona variant (issue #349
+ * step 2), or a conversation answer (insert toast baseline).
+ */
+function currentRevision(cardId: string, personaId?: string): number | undefined {
   const snap = useReview.getState().snapshot;
   for (const p of snap?.pages ?? []) {
     const card = p.cards.find((c) => c.id === cardId);
-    if (card) return card.revision;
+    if (card) {
+      if (personaId) return card.variants?.[personaId]?.revision;
+      return card.revision;
+    }
   }
   for (const a of snap?.annotations ?? []) {
     const turn = (a.replies ?? []).find((t) => t.id === cardId);
@@ -230,7 +260,12 @@ const INSERT_MAX_MS = 10_000;
  * or the job settled with nothing queued and a quiet window passed, or
  * the cap elapsed. Never hangs; callers compare revisions afterwards.
  */
-function waitForInsertOutcome(cardId: string, beforeRevision: number, jobId: string): Promise<boolean> {
+function waitForInsertOutcome(
+  cardId: string,
+  beforeRevision: number,
+  jobId: string,
+  personaId?: string,
+): Promise<boolean> {
   const t0 = Date.now();
   let lastSnap = useReview.getState().snapshot;
   let lastChange = t0;
@@ -251,7 +286,7 @@ function waitForInsertOutcome(cardId: string, beforeRevision: number, jobId: str
         lastSnap = st.snapshot;
         lastChange = Date.now();
       }
-      if (currentRevision(cardId) !== beforeRevision) {
+      if (currentRevision(cardId, personaId) !== beforeRevision) {
         finish(true);
         return;
       }
@@ -295,16 +330,31 @@ export async function performAction(
   // Set synchronously: `performAction` is called (not awaited) in click
   // handlers, so everything before the first await runs at click time.
   const target = targetForAction(action);
+  // Issue #349 step 2: variant-scoped actions baseline the variant's own
+  // revision/level, not the guide card's.
+  const actionPersonaId =
+    (action.kind === "depth" ||
+      action.kind === "examples" ||
+      action.kind === "diagram" ||
+      action.kind === "undo" ||
+      action.kind === "followup" ||
+      action.kind === "persona") &&
+    "personaId" in action &&
+    typeof action.personaId === "string"
+      ? action.personaId
+      : undefined;
+  const actionCardId =
+    ("cardId" in action && typeof action.cardId === "string" ? action.cardId : undefined) ?? target?.targetId;
   const beforeRevision =
     target && (action.kind === "examples" || action.kind === "diagram")
-      ? currentRevision(target.targetId)
+      ? currentRevision(actionCardId ?? target.targetId, actionPersonaId)
       : undefined;
   // Depth toast baseline (issue #65): the level at click time. The
   // service answers a reused depth with the level after the action, so a
   // stored-level switch (changed) stays silent while already-at-the-limit
   // (unchanged) toasts.
   const beforeLevel =
-    target && action.kind === "depth" ? currentLevel(target.targetId) : undefined;
+    target && action.kind === "depth" ? currentLevel(actionCardId ?? target.targetId, actionPersonaId) : undefined;
   if (target) useReview.getState().beginInflight(target.targetId, target.kind);
   // Generation guard: a newer click may re-begin the same key while this
   // request is in flight; only this generation's response may settle it.
@@ -371,10 +421,10 @@ export async function performAction(
     const jobId = res.jobId;
     const cardId = target.targetId;
     void waitForInflightGone(cardId, INFLIGHT_TTL_MS).then(async () => {
-      const moved = await waitForInsertOutcome(cardId, beforeRevision, jobId);
+      const moved = await waitForInsertOutcome(cardId, beforeRevision, jobId, actionPersonaId);
       if (moved) return;
       const job = useReview.getState().snapshot?.jobs.find((j) => j.id === jobId);
-      if (job?.state === "done" && currentRevision(cardId) === beforeRevision) {
+      if (job?.state === "done" && currentRevision(cardId, actionPersonaId) === beforeRevision) {
         toast("Nothing more to add to this card");
       }
     });
@@ -391,8 +441,9 @@ export function performInsertAction(
   reviewId: string,
   cardId: string,
   kind: "examples" | "diagram",
+  personaId?: string,
 ): void {
-  void performAction(reviewId, { kind, cardId }).catch(() => {
+  void performAction(reviewId, personaId ? { kind, cardId, personaId } : { kind, cardId }).catch(() => {
     // performAction already toasted; the control stays so the user can retry.
   });
 }
@@ -409,8 +460,24 @@ export function performFollowUp(
   cardId: string,
   blockId: string,
   index: number,
+  personaId?: string,
 ): void {
   const snap = useReview.getState().snapshot;
+  // Issue #349 step 2: on a persona's version the chip lives in the
+  // variant's own blocks (block ids are shared with the guide, so the
+  // variant is searched, never the guide).
+  if (personaId) {
+    const pageCard = snap?.pages.flatMap((p) => p.cards).find((c) => c.id === cardId);
+    const variantBlock = (pageCard?.variants?.[personaId]?.blocks ?? []).find(
+      (b) => b.id === blockId,
+    ) as { id: string; type: string; items?: { label: string }[] } | undefined;
+    if (!variantBlock || variantBlock.type !== "follow-up") return;
+    if (!variantBlock.items?.[index]) return;
+    void performAction(reviewId, { kind: "followup", cardId, blockId, index, personaId }).catch(() => {
+      // performAction already toasted; the chip stays so the user can retry.
+    });
+    return;
+  }
   // Follow-ups may live on page cards or on conversation answers (cardId
   // is an answer id for the latter); fall back to a global block search
   // when the addressed card does not carry the block (anchor drift).
@@ -438,7 +505,10 @@ export function performFollowUp(
   if (!block || (block as { type: string }).type !== "follow-up") return;
   const items = (block as { items: { label: string }[] }).items;
   if (!items[index]) return;
-  void performAction(reviewId, { kind: "followup", cardId, blockId, index }).catch(() => {
+  void performAction(
+    reviewId,
+    personaId ? { kind: "followup", cardId, blockId, index, personaId } : { kind: "followup", cardId, blockId, index },
+  ).catch(() => {
     // performAction already toasted; the chip stays so the user can retry.
   });
 }

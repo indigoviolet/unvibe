@@ -6,13 +6,20 @@
  * content + trailing JSON. `runSmall` is the small-model equivalent (no
  * fork, no base). See `docs/pipeline.md` for the worked example.
  */
-import type { Job, JobKind, ParsedCard, ReplyData, TokenUsage } from "@unvibe/shared";
+import type { Job, JobKind, ParsedCard, Persona, ReplyData, TokenUsage } from "@unvibe/shared";
 import type { ValidationReport } from "../validate/index.js";
 
 export interface RunInForkOptions {
   reviewId: string;
   /** Job kind for bookkeeping (e.g. "go-deeper", "explain"). */
   kind: JobKind;
+  /**
+   * Issue #349 step 2: run as this persona (its provider/model and lens).
+   * The base session is forked for the persona's provider/model (or the
+   * fresh fallback the issue describes), and the lens travels in the
+   * system prompt below L0. Absent means the main guide role.
+   */
+  persona?: Persona;
   /** Prompt template name (e.g. "go_deeper", "critic"). */
   template: string;
   /** Template variables (rendered deterministically; may nest for `{{a.b}}`). */

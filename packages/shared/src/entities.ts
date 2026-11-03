@@ -244,12 +244,85 @@ export interface ContentBody {
   undoStack: CardSnapshot[];
 }
 
+/**
+ * Issue #349 step 2: one persona's version of a card. A normal card body
+ * (same blocks, citations, validation): stored as a variant of the guide
+ * card, keyed by persona id. The title stays the guide card's; the
+ * variant carries its own blocks/level/revision/undo stack plus its run
+ * state (`working`/`error`/`jobId`) and its own agent session for that
+ * card. Conversations on this version (depth, Explain, Ask, replies,
+ * examples) run under the same persona and continue on `sessionId`.
+ */
+export interface CardVariant {
+  /** Persona id this variant belongs to (key of `Card.variants`). */
+  personaId: string;
+  blocks: Block[];
+  level: DepthLevel;
+  /** Bumped on every accepted rewrite; references always mean latest. */
+  revision: number;
+  /** Undo stack of block snapshots (depth/examples/diagram changes). */
+  undoStack: CardSnapshot[];
+  /**
+   * This variant's own agent session (created by the persona card run),
+   * continued by every later turn on the variant. Absent until the run
+   * settles.
+   */
+  sessionId?: string;
+  /** Progress line while this variant's job runs (immediately visible working state). */
+  working?: string | null;
+  /** Retryable failure text (visible error state + retry path, PRD §4.8). */
+  error?: string | null;
+  /** Active job filling or rewriting this variant, when one is running. */
+  jobId?: string;
+}
+
+/** True when the value is a stored persona card variant. Pure. */
+export function isCardVariant(v: unknown): v is CardVariant {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o["personaId"] === "string" &&
+    Array.isArray(o["blocks"]) &&
+    (o["level"] === "simple" || o["level"] === "standard" || o["level"] === "deep") &&
+    typeof o["revision"] === "number" &&
+    Array.isArray(o["undoStack"])
+  );
+}
+
+/** Persona variants of a card, in persona-definition order. Pure. */
+export function cardVariantList(
+  card: Pick<Card, "variants">,
+  personas: { id: string }[],
+): { personaId: string; variant: CardVariant }[] {
+  const out: { personaId: string; variant: CardVariant }[] = [];
+  for (const p of personas) {
+    const v = card.variants?.[p.id];
+    if (v) out.push({ personaId: p.id, variant: v });
+  }
+  return out;
+}
+
+/**
+ * True when the card shows a version tab strip (more than one version).
+ * Counts every stored variant — including orphans whose persona was
+ * deleted since (the UI keeps their tab with a fallback name/colour,
+ * never drops them). Pure.
+ */
+export function cardHasVersions(card: Pick<Card, "variants">): boolean {
+  return Object.keys(card.variants ?? {}).length > 0;
+}
+
 /** One card on a page. IDs stay stable across revisions (PRD §7.2). */
 export interface Card extends ContentBody {
   pageId: string;
   /** Null when the reply carried no title; the UI shows the shared fallback (`content/titles.ts`, issue #49). */
   title: string | null;
   collapsed: boolean;
+  /**
+   * Issue #349 step 2: persona versions of this card, keyed by persona
+   * id. Absent/empty means the Guide version is the only one (no tabs).
+   */
+  variants?: Record<string, CardVariant>;
   /** Placeholder ("Go deeper") cards that still need generation. */
   pending?: PendingCard;
   /**
@@ -527,6 +600,16 @@ export interface Thread {
    * restart the session is rebuilt from the stored agent replies.
    */
   sessionId?: string;
+  /**
+   * Issue #349 step 2: when this thread was opened on a persona's
+   * version of a card, the persona that owns it (its model and lens
+   * answer every turn, continuing that persona's session for the card).
+   * `personaCardId` is the guide card the version belongs to. Absent on
+   * guide-version threads.
+   */
+  personaId?: string;
+  /** Guide card id the persona version belongs to (with `personaId`). */
+  personaCardId?: string;
   /**
    * M4: progress line while an agent job works on this thread
    * (explain fill, ask reply). Cleared when the job settles.
@@ -925,7 +1008,8 @@ export type JobKind =
   | "update-pass"
   | "summarize"
   | "plotline-assign"
-  | "consolidate";
+  | "consolidate"
+  | "persona";
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 

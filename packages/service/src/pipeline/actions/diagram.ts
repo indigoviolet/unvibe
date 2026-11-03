@@ -8,8 +8,8 @@
  * When the binary is unavailable, cite validation is kept, the block is
  * marked `unavailable`, and the endpoint renders later on demand.
  */
-import type { Block, Job } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import type { Block, Job, Persona } from "@unvibe/shared";
+import { isCardVariant, JOB_PRIORITY } from "@unvibe/shared";
 import {
   cardPromptText,
   findCardTarget,
@@ -33,13 +33,19 @@ import {
   type ActionContext,
 } from "./common.js";
 import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
+import { personaFor, personaVariantPromptText, variantFor } from "./persona.js";
 
 export async function diagramAction(
   ctx: ActionContext,
   cardId: string,
+  opts?: { personaId?: string },
 ): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
   const { pipeline, jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const persona = opts?.personaId ? personaFor(ctx, opts.personaId) : undefined;
+  if (opts?.personaId && persona) {
+    return diagramOnVariant(ctx, cardId, opts.personaId, persona);
+  }
   const target = findCardTarget(snapshot, cardId);
   if (!target) throw new Error(`unknown card ${cardId}`);
   const key = {
@@ -124,6 +130,135 @@ export async function diagramAction(
         const from = targetLevel(t);
         pushUndo(t, [...current], from);
         setTargetContent(t, out.blocks, from);
+        markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
+        added = out.added;
+      });
+      if (added > 0) {
+        try {
+          const live = getSnapshotOrThrow(reviews, reviewId);
+          await recordInteraction({
+            kind: "diagram-added",
+            reviewId,
+            cardId,
+            text: `Added diagram to "${cardTitle(live, cardId)}"`,
+          });
+        } catch {
+          // Logging never fails the action.
+        }
+      }
+      return null;
+    },
+    async (err: Error): Promise<string | null> => {
+      capture.settled();
+      return err instanceof Error ? err.message : String(err);
+    },
+  );
+
+  const job = await capture.wait();
+  if (job) {
+    handled.catch(() => {});
+    return { cardId, jobId: job.id };
+  }
+  const fillError = await handled;
+  if (fillError) throw new Error(fillError);
+  return { cardId };
+}
+
+/**
+ * Issue #349 step 2: Add diagram on a persona's version — the variant's
+ * own blocks, handled by that persona in its own session for the card.
+ */
+async function diagramOnVariant(
+  ctx: ActionContext,
+  cardId: string,
+  personaId: string,
+  persona: Persona,
+): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean }> {
+  const { pipeline, jobs, reviews, reviewId } = ctx;
+  const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const variant = variantFor(snapshot, cardId, personaId);
+  if (!variant) throw new Error(`persona ${personaId} has not run on card ${cardId} yet`);
+  const key = {
+    anchor: `persona:${cardId}:${personaId}`,
+    requestKind: "diagram",
+    baseVersion: baseVersionOf(snapshot),
+  };
+  const active = findActiveJob(jobs, reviewId, key);
+  if (active) return { cardId, jobId: active.id, deduplicated: true };
+  const blocks = variant.blocks as Block[];
+  if (blocks.some((b) => b.type === "diagram")) {
+    return { cardId, reused: true };
+  }
+
+  const variables = { card: personaVariantPromptText(snapshot, cardId, personaId), level: variant.level };
+  const capture = captureJobId();
+  const replay = isReplayRunner(pipeline.runner) ? { kind: "diagram" } : undefined;
+  const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
+
+  const done = pipeline.runInFork({
+    reviewId,
+    kind: "diagram",
+    template: "diagram",
+    variables,
+    priority: JOB_PRIORITY.userRequested,
+    dedupeKey: key,
+    cardId,
+    persona,
+    conversationKey: `persona:${cardId}:${personaId}`,
+    ...(variant.sessionId ? { continueSessionId: variant.sessionId } : {}),
+    ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
+    replay,
+    onJob: (job: Job) => capture.onJob(job),
+  });
+
+  const handled: Promise<string | null> = done.then(
+    async (res): Promise<string | null> => {
+      capture.settled();
+      const jobId = (await capture.wait())?.id;
+      const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
+      let fresh = res.cards.flatMap((c) => c.blocks) as Block[];
+      const finalized = await finalizeFresh(ctx, fresh);
+      if (finalized.needsRepair) {
+        try {
+          fresh = await repairDiagrams(
+            ctx,
+            {
+              card: personaVariantPromptText(getSnapshotOrThrow(reviews, reviewId), cardId, personaId),
+              level: variant.level,
+              dedupeAnchor: `persona:${cardId}:${personaId}`,
+              requestKind: "diagram-repair",
+              cardId,
+              conversationKey: `persona:${cardId}:${personaId}`,
+              persona,
+            },
+            fresh,
+            finalized.messages,
+          );
+          const second = await finalizeFresh(ctx, fresh);
+          if (second.needsRepair) {
+            throw new Error(`diagram repair failed: ${second.messages.join("; ").slice(0, 300)}`);
+          }
+          fresh = second.blocks;
+        } catch {
+          return null;
+        }
+      } else {
+        fresh = finalized.blocks;
+      }
+      let added = 0;
+      await reviews.mutate(reviewId, (draft) => {
+        const targetCard = (draft.pages ?? [])
+          .flatMap((p) => p.cards ?? [])
+          .find((c) => c.id === cardId);
+        const v = targetCard?.variants?.[personaId];
+        if (!targetCard || !v || !isCardVariant(v)) return;
+        const out = insertDiagrams(v.blocks as Block[], fresh);
+        if (out.added === 0) return;
+        v.undoStack.push({ blocks: [...v.blocks], level: v.level });
+        v.blocks = out.blocks;
+        v.revision += 1;
+        if (sessionId) v.sessionId = sessionId;
         markStaleAnchors(draft, cardId);
         mirrorPromotedAnswer(draft, cardId);
         added = out.added;
