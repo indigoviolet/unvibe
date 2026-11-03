@@ -45,7 +45,6 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   // `ask` first: the merged first-turn prompt carries both words (#136).
   { re: /\bask\b|question|thread/i, kind: "ask" },
   { re: /\bexplain\b/i, kind: "explain" },
-  { re: /second opinion/i, kind: "second-opinion" },
 ];
 
 export function guessReplayKind(prompt: string): string | null {
@@ -184,15 +183,6 @@ export function extractReplayKey(kind: string, prompt: string): string | null {
     case "critic":
       // #215: one critic recording carries all findings; no per-finding key.
       return null;
-    case "second-opinion": {
-      // Keys are `<card-or-finding-id>:<mode>` (e.g. `f-lf:blind`,
-      // `central:check`). Match the most specific one present.
-      const m = lower.match(/\b(f-lf|f-perf|central|problem|g-flow|g-design|g-regex|g-check|flf-ev|flf-as|fpf-ev|fpf-as)[-:](blind|check)\b/);
-      if (m) return `${m[1]}:${m[2]}`;
-      if (lower.includes("blind")) return "blind";
-      if (lower.includes("check this claim") || lower.includes("check")) return "check";
-      return null;
-    }
     default:
       return null;
   }

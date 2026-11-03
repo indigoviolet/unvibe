@@ -9,8 +9,10 @@
  *
  * Format history:
  * - 1: flat-threads shape (#273), shipped in v0.0.12.
+ * - 2: personas (#349 step 1): `Settings` gains `personas` and loses the
+ *   `secondOpinion` role; stored guide content loses `secondOpinions`.
  */
-export const DATA_FORMAT = 1;
+export const DATA_FORMAT = 2;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

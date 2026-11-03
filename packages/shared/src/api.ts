@@ -35,6 +35,7 @@ import type {
 } from "./entities.js";
 import type { DiffFilter, HideLevel, Plotline, ReviewCommit } from "./scores.js";
 import type { PanelThread, WebContent } from "./webdoc.js";
+import type { Persona } from "./personas.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -757,7 +758,7 @@ export interface ApiErrorBody {
 export type ReadinessStatus = "ok" | "warning" | "error";
 
 export interface ReadinessCheck {
-  /** e.g. "git" | "gh" | "agent:main" | "agent:small" | "agent:second-opinion" | "agents-distinct". */
+  /** e.g. "git" | "gh" | "agent:main" | "agent:small". */
   id: string;
   label: string;
   status: ReadinessStatus;
@@ -826,8 +827,8 @@ export type ReviewAction =
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
-   * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
-   * that unit's own blocks/level/undo stack, so a reply rewrites alone.
+   * `ans_…` id. Depth, examples, diagram and undo act on that unit's
+   * own blocks/level/undo stack, so a reply rewrites alone.
    */
   | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
   | { kind: "examples"; cardId: string }
@@ -836,7 +837,6 @@ export type ReviewAction =
   /** `cardId` is a page-card id or a thread id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
-  | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
@@ -1353,7 +1353,12 @@ export interface Settings {
   uiTheme: UiThemeId;
   main: ModelPick;
   small: ModelPick;
-  secondOpinion: ModelPick;
+  /**
+   * Persona definitions (issue #349): the built-in Second opinion plus
+   * any custom personas. Managed through Settings → Personas (add, edit,
+   * delete); the colour is auto-assigned at creation.
+   */
+  personas: Persona[];
   /** Max concurrent sessions per provider (default 16, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */

@@ -67,8 +67,6 @@ export interface ReplyData {
   plotlines?: { id?: string; name?: string; description?: string; buildsOn?: string; hunks?: string[] }[];
   /** Reader glossary (issue #252): the guide's shared term list. */
   glossary?: { name?: string; definition?: string; citation?: string }[];
-  /** Second-opinion verdict. */
-  secondOpinion?: { verdict?: string; reasoning?: string; missed?: string | string[]; model?: string };
   /** Quoted anchor for explain/ask replies (validated as a substring). */
   anchor?: { quote?: string; host?: string };
   /** "Go deeper" placeholder directions (reader replies). */

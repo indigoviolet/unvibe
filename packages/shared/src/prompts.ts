@@ -24,8 +24,7 @@ export const PROMPT_TEMPLATE_NAMES = [
   "go_deeper",
   "update_pass",
   "consolidate",
-  "second_opinion_blind",
-  "second_opinion_check",
+  "persona_card",
 ] as const;
 
 export type PromptTemplateName = (typeof PROMPT_TEMPLATE_NAMES)[number];
@@ -46,5 +45,7 @@ export interface PromptLayerSpan {
   cached: boolean;
 }
 
-/** Second-opinion modes (PRD §4.10): blind by default for findings. */
-export type SecondOpinionMode = "blind" | "check";
+/** Persona task templates (issue #349): the card task plus the shared Explain / Ask / depth / examples / diagram / concept tasks. */
+export const PERSONA_TASK_TEMPLATES = ["persona_card", "ask", "ask_turn", "depth", "examples", "diagram", "concept_page"] as const;
+
+export type PersonaTaskTemplate = (typeof PERSONA_TASK_TEMPLATES)[number];
