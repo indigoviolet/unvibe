@@ -279,6 +279,11 @@
       "key": "forwarding",
       "pattern": "forward|proxy",
       "file": "ask-forwarding.md"
+    },
+    {
+      "kind": "persona",
+      "key": "central:second-opinion",
+      "file": "persona-central-second-opinion.md"
     }
   ]
 }

@@ -10,7 +10,7 @@
  * - Undo is a separate `undo` action (the stack is pushed here).
  */
 import type { Block, DepthLevel, Job } from "@unvibe/shared";
-import { JOB_PRIORITY, freshBlockId } from "@unvibe/shared";
+import { isCardVariant, JOB_PRIORITY, freshBlockId } from "@unvibe/shared";
 import {
   cardPromptText,
   findCardTarget,
@@ -28,6 +28,7 @@ import {
   targetLevel,
   withFreshAsideId,
 } from "../../interaction/index.js";
+import { personaFor, personaVariantPromptText, variantFor } from "./persona.js";
 import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
@@ -42,9 +43,55 @@ export async function depthAction(
   ctx: ActionContext,
   cardId: string,
   direction: "simpler" | "deeper",
+  opts?: { personaId?: string },
 ): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean; reused?: boolean; level?: DepthLevel }> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  const persona = opts?.personaId ? personaFor(ctx, opts.personaId) : undefined;
+  const personaId = opts?.personaId;
+  // Issue #349 step 2: depth on a persona's version rewrites the
+  // variant's own blocks/level (handled by that persona, in its own
+  // session for the card). The guide version keeps today's path.
+  if (personaId && persona) {
+    const variant = variantFor(snapshot, cardId, personaId);
+    if (!variant) throw new Error(`persona ${personaId} has not run on card ${cardId} yet`);
+    const level = variant.level;
+    const blocks = variant.blocks as Block[];
+    const next = stepLevel(level, direction);
+    if (!next) {
+      if (direction === "deeper" && !hasPrinciple(blocks)) {
+        return depthViaAgent(ctx, cardId, "deep", true, { personaId, persona });
+      }
+      return { cardId, level, reused: true };
+    }
+    if (hasLevelText(blocks, next)) {
+      const from = level;
+      await reviews.mutate(reviewId, (draft) => {
+        const target = (draft.pages ?? [])
+          .flatMap((p) => p.cards ?? [])
+          .find((c) => c.id === cardId);
+        const v = target?.variants?.[personaId];
+        if (!target || !v || !isCardVariant(v)) throw new Error(`unknown card ${cardId}`);
+        v.undoStack.push({ blocks: [...v.blocks], level: from });
+        v.blocks = [...v.blocks];
+        v.level = next;
+        v.revision += 1;
+        markStaleAnchors(draft, cardId);
+        mirrorPromotedAnswer(draft, cardId);
+      });
+      await recordInteraction({ kind: "depth-state", reviewId, cardId, text: `Depth ${next}: "${cardTitle(getSnapshotOrThrow(reviews, reviewId), cardId)}"` });
+      return { cardId, level: next, reused: true };
+    }
+    const key = {
+      anchor: `persona:${cardId}:${personaId}`,
+      requestKind: "depth",
+      depth: next,
+      baseVersion: baseVersionOf(snapshot),
+    };
+    const active = findActiveJob(jobs, reviewId, key);
+    if (active) return { cardId, jobId: active.id, deduplicated: true };
+    return depthViaAgent(ctx, cardId, next, false, { personaId, persona });
+  }
   const target = findCardTarget(snapshot, cardId);
   if (!target) throw new Error(`unknown card ${cardId}`);
   const level = targetLevel(target);
@@ -101,17 +148,28 @@ async function depthViaAgent(
   cardId: string,
   target: "simple" | "standard" | "deep",
   addPrinciple = false,
+  personaOpts?: { personaId: string; persona: import("@unvibe/shared").Persona },
 ): Promise<{ cardId: string; jobId?: string; level?: DepthLevel }> {
   const { pipeline, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
-  const key = {
-    anchor: `card:${cardId}`,
-    requestKind: "depth",
-    depth: target,
-    baseVersion: baseVersionOf(snapshot),
-  };
+  const personaId = personaOpts?.personaId;
+  const variant = personaId ? variantFor(snapshot, cardId, personaId) : null;
+  if (personaId && !variant) throw new Error(`persona ${personaId} has not run on card ${cardId} yet`);
+  const key = personaId
+    ? {
+        anchor: `persona:${cardId}:${personaId}`,
+        requestKind: "depth",
+        depth: target,
+        baseVersion: baseVersionOf(snapshot),
+      }
+    : {
+        anchor: `card:${cardId}`,
+        requestKind: "depth",
+        depth: target,
+        baseVersion: baseVersionOf(snapshot),
+      };
   const variables = {
-    card: cardPromptText(snapshot, cardId),
+    card: personaId ? personaVariantPromptText(snapshot, cardId, personaId) : cardPromptText(snapshot, cardId),
     level: target,
   };
   const capture = captureJobId();
@@ -133,6 +191,8 @@ async function depthViaAgent(
     priority: JOB_PRIORITY.userRequested,
     dedupeKey: key,
     cardId,
+    ...(personaOpts ? { persona: personaOpts.persona, conversationKey: `persona:${cardId}:${personaOpts.personaId}` } : {}),
+    ...(personaOpts && variant?.sessionId ? { continueSessionId: variant.sessionId } : {}),
     ...(echoTitle ? { echoCandidates: [echoTitle] } : {}),
     replay,
     onJob: (job: Job) => capture.onJob(job),
@@ -142,25 +202,50 @@ async function depthViaAgent(
     async (res): Promise<string | null> => {
       capture.settled();
       const replyBlocks = res.cards.flatMap((c) => c.blocks) as Block[];
-      await reviews.mutate(reviewId, (draft) => {
-        const t = findCardTargetInDraft(draft, cardId);
-        if (!t) return;
-        const current = targetBlocks(t) as Block[];
-        const from = targetLevel(t);
-        pushUndo(t, [...current], from);
-        let merged = mergeDepthText(current, replyBlocks, target);
-        // + at the deepest level adds one Underlying-principle block (once,
-        // PRD §4.4). Normal depth steps never add it, even when the reply
-        // carries one (fixtures include it for the principle path).
-        if (addPrinciple && target === "deep" && !hasPrinciple(merged)) {
-          const principle = replyBlocks.find((b) => b.type === "aside" && b.kind === "Underlying principle");
-          // Fresh ID within this body (#116), like example/diagram inserts.
-          if (principle) merged = [...merged, withFreshAsideId(principle, freshBlockId(merged, `b-pr-${Date.now().toString(36)}`))];
-        }
-        setTargetContent(t, merged, target);
-        markStaleAnchors(draft, cardId);
-        mirrorPromotedAnswer(draft, cardId);
-      });
+      if (personaId) {
+        const jobId = (await capture.wait())?.id;
+        const sessionId = jobId ? ctx.jobs.get(jobId)?.sessionId : undefined;
+        await reviews.mutate(reviewId, (draft) => {
+          const targetCard = (draft.pages ?? [])
+            .flatMap((p) => p.cards ?? [])
+            .find((c) => c.id === cardId);
+          const v = targetCard?.variants?.[personaId];
+          if (!targetCard || !v || !isCardVariant(v)) return;
+          const from = v.level;
+          v.undoStack.push({ blocks: [...v.blocks], level: from });
+          let merged = mergeDepthText(v.blocks, replyBlocks, target);
+          if (addPrinciple && target === "deep" && !hasPrinciple(merged)) {
+            const principle = replyBlocks.find((b) => b.type === "aside" && b.kind === "Underlying principle");
+            if (principle) merged = [...merged, withFreshAsideId(principle, freshBlockId(merged, `b-pr-${Date.now().toString(36)}`))];
+          }
+          v.blocks = merged;
+          v.level = target;
+          v.revision += 1;
+          if (sessionId) v.sessionId = sessionId;
+          markStaleAnchors(draft, cardId);
+          mirrorPromotedAnswer(draft, cardId);
+        });
+      } else {
+        await reviews.mutate(reviewId, (draft) => {
+          const t = findCardTargetInDraft(draft, cardId);
+          if (!t) return;
+          const current = targetBlocks(t) as Block[];
+          const from = targetLevel(t);
+          pushUndo(t, [...current], from);
+          let merged = mergeDepthText(current, replyBlocks, target);
+          // + at the deepest level adds one Underlying-principle block (once,
+          // PRD §4.4). Normal depth steps never add it, even when the reply
+          // carries one (fixtures include it for the principle path).
+          if (addPrinciple && target === "deep" && !hasPrinciple(merged)) {
+            const principle = replyBlocks.find((b) => b.type === "aside" && b.kind === "Underlying principle");
+            // Fresh ID within this body (#116), like example/diagram inserts.
+            if (principle) merged = [...merged, withFreshAsideId(principle, freshBlockId(merged, `b-pr-${Date.now().toString(36)}`))];
+          }
+          setTargetContent(t, merged, target);
+          markStaleAnchors(draft, cardId);
+          mirrorPromotedAnswer(draft, cardId);
+        });
+      }
       // The rewritten text is card-local shared knowledge (PRD §9.3).
       // Awaited so tests observe the entry once the rewrite settles.
       try {
