@@ -10,15 +10,16 @@ import { DEMO_INSTALL_URL, STATIC_DEMO, resetStaticDemo } from "../demo.js";
 import { api } from "../api/client.js";
 
 export function DemoBanner({ reviewId }: { reviewId: string }): React.JSX.Element | null {
-  // The demo id lives on the summary (`demo`); the snapshot carries the
-  // fixture's repo path — prefer the summary, like the toolbar does.
+  // The snapshot review carries repoId "demo" in both modes (the mock
+  // summary list keeps its urllib3 row for the start-page fixtures, so
+  // the summary list cannot identify the demo there).
   const [isDemo, setIsDemo] = useState<boolean>(STATIC_DEMO);
   useEffect(() => {
     let cancelled = false;
     api
-      .reviews()
-      .then((rs) => {
-        if (!cancelled) setIsDemo(rs.reviews.some((r) => r.id === reviewId && r.repoId === "demo"));
+      .review(reviewId)
+      .then((snap) => {
+        if (!cancelled) setIsDemo(snap.review.repoId === "demo");
       })
       .catch(() => {
         if (!cancelled) setIsDemo(STATIC_DEMO);

@@ -382,9 +382,15 @@ code { font-family: var(--mono); font-size: .86em; }
 @keyframes jcount-spin { to { --jangle: 360deg; } }
 /* A review shows one bar (the review bar, issue #141), so the grid needs
    two rows like every other screen. */
-.app.with-reviewbar { grid-template-rows: auto minmax(0, 1fr); }
-/* The narrow-window overlay floats below the single review bar. */
+/* A review shows one bar (the review bar, issue #141) plus the demo
+   banner when present (issue #341) — three rows; the empty banner row
+   collapses to zero on non-demo reviews. */
+.app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
+.demo-banner { min-height: 0; }
+/* The narrow-window overlay floats below the review bar (and the demo
+   banner when one is showing). */
 .with-reviewbar .col.overlay { top: 41px; }
+.with-reviewbar:has(.demo-banner) .col.overlay { top: 76px; }
 /* Second-opinion mode menu: one icon button in the row, modes in a popover. */
 .so-ctl { display: inline-flex; align-items: center; gap: 0; position: relative; }
 .so-menu { position: absolute; left: 0; top: calc(100% + 4px); min-width: 220px; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-1); z-index: 30; display: flex; flex-direction: column; gap: 2px; }

@@ -61,6 +61,25 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   return JSON.parse(stdout);
 }
 
+/**
+ * Wait until no review job is live (running/queued/backing-off), so
+ * done-state frames don't show the jobs pill mid-stream. Streaming shots
+ * must NOT call this — their working state is the subject.
+ */
+async function waitForJobsIdle(origin: string, token: string, reviewId: string, timeout = 120_000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const snap = (await apiJson(origin, token, "GET", `/api/reviews/${reviewId}`)) as {
+          jobs?: { state: string }[];
+        };
+        return (snap.jobs ?? []).every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
 let dataDir = "";
 let tourBin = "";
 let tourLog = "";
@@ -904,6 +923,7 @@ test.describe("visual tour passes", () => {
     // shows the revealed toolbar, then assert it.
     await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
     await shot(page, "guide-pinned", suffix, "three pieces");
 
@@ -1025,6 +1045,7 @@ test.describe("visual tour passes", () => {
     await stepChecks(page, "diff-long-mid");
     await shot(page, "diff-long-mid", suffix);
     await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "diff-long-bottom");
     await shot(page, "diff-long-bottom", suffix, "Which layer would a bare-LF fold fail in?");
     await closeCard(page, longCard);
@@ -1087,6 +1108,7 @@ test.describe("visual tour passes", () => {
     await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "diff-long-file");
     await shot(page, "diff-long-file", suffix);
     // Two scroll offsets around the file boundary, mid hand-off.
@@ -2685,6 +2707,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.locator("[data-reply]").first().hover();
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    await waitForJobsIdle(slow.origin, slow.token, rid);
     await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
@@ -2930,6 +2953,7 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
       await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
       await card.scrollIntoViewIfNeeded().catch(() => {});
+      await waitForJobsIdle(svc.origin, svc.token, rid);
       await checkLayout(page, "ask-thread-done");
       await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
       if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
