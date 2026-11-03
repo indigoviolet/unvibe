@@ -4,7 +4,7 @@ import { Checkbox as BaseCheckbox } from "@base-ui/react/checkbox";
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from "react";
 import type { PrReviewDecision, PrState } from "@unvibe/shared";
 import { Icon, type IconName } from "../components/Icon.js";
 import "./ui.css";
@@ -317,6 +317,303 @@ export function Select({
   );
 }
 export function Input(p: InputHTMLAttributes<HTMLInputElement>): React.JSX.Element { return <input className="ui-input" {...p} />; }
+
+/** Every phase of the inline confirm's state machine (#346). */
+export type InlineConfirmPhase = "idle" | "confirming" | "running" | "confirmed" | "error";
+
+/** An open confirm with no interaction reverts to idle after this long. */
+const INLINE_CONFIRM_REVERT_MS = 4500;
+/** How long "✓ Confirmed" shows before the action's result takes over. */
+const INLINE_CONFIRM_DONE_MS = 900;
+
+function inlineConfirmMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "string" && err) return err;
+  return "Something went wrong.";
+}
+
+/**
+ * #346 inline confirm: a button that expands in place into
+ * "Confirm <action>" with a ✓ (confirm) and a ✕ (cancel) segment,
+ * then flashes "✓ Confirmed" once the action succeeds.
+ *
+ * - Idle renders a plain button (`action`). Clicking it opens the pill
+ *   in place (an overlay anchored to the button, so neighbouring
+ *   layout never shifts) and moves focus to ✓.
+ * - Enter or ✓ runs `onConfirm`; the pill shows `runningLabel`
+ *   disabled while it is in flight, then "✓ Confirmed" briefly before
+ *   closing and calling `onDone` (the parent's result — removing the
+ *   row, updating counts — takes over from there).
+ * - Escape, ✕, a click outside, or about 4–5 s without interaction
+ *   cancels back to idle (focus returns to the action button when it
+ *   was inside). A rejected action shows the error inline with
+ *   `role="alert"` and stays until the user retries or cancels — an
+ *   error must be read and acted on, never timed out.
+ * - `open`/`onOpenChange` make the idle↔confirming gate controlled so
+ *   a list keeps only one confirm open at a time; without them the
+ *   gate is local. `onConfirm` rejections stay inside the pill, shown
+ *   through `formatError`.
+ * - The expanded group carries an `aria-label` ("Confirm <action>:
+ *   confirm or cancel" by default) on a polite live region, and both
+ *   segments are buttons with names. `danger` keeps a warn-coloured
+ *   edge on the pill for destructive actions.
+ */
+export function InlineConfirm({
+  action,
+  confirmAction,
+  runningLabel,
+  confirmedLabel = "Confirmed",
+  danger,
+  disabled,
+  size = "sm",
+  variant = "secondary",
+  open,
+  onOpenChange,
+  onConfirm,
+  onDone,
+  formatError = inlineConfirmMessage,
+  detail,
+  announce,
+  testId,
+  title,
+  idleAriaLabel,
+  idleRender,
+}: {
+  /** Idle button label, e.g. "Remove". */
+  action: string;
+  /** Verb phrase for "Confirm <action>", e.g. "remove review". */
+  confirmAction: string;
+  /** Shown disabled while the action runs; defaults to "<action>…". */
+  runningLabel?: string;
+  /** Shown after success; defaults to "Confirmed" (with a green ✓). */
+  confirmedLabel?: string;
+  /** Destructive actions keep a warn-coloured edge on the pill. */
+  danger?: boolean;
+  /** Disables the idle button (e.g. another row is busy). */
+  disabled?: boolean;
+  size?: "sm" | "md" | "lg";
+  variant?: "primary" | "secondary" | "quiet" | "danger";
+  /** Controlled gate (a list passes one open id); local when absent. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** The confirmed work; reject to show the error inline. */
+  onConfirm: () => void | Promise<void>;
+  /** Called after the confirmed flash, when the result takes over. */
+  onDone?: () => void;
+  formatError?: (err: unknown) => string;
+  /** Question or hint shown in flow while open, e.g. what is lost. */
+  detail?: ReactNode;
+  /** Expanded-state announcement; defaults to "Confirm <action>: confirm or cancel". */
+  announce?: string;
+  testId?: string;
+  title?: string;
+  idleAriaLabel?: string;
+  /**
+   * Custom idle control (e.g. a toolbar icon button): receives the
+   * focus ref, the expanded flag, the disabled flag and the opener.
+   * It renders inside a slot that stays hidden-but-mounted while the
+   * pill is open, so the pill anchors to it and focus restores to it
+   * on cancel — the same contract as the default text button.
+   */
+  idleRender?: (controls: {
+    ref: Ref<HTMLButtonElement>;
+    expanded: boolean;
+    disabled: boolean;
+    onOpen: () => void;
+  }) => ReactNode;
+}): React.JSX.Element {
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const idleRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const alive = useRef(true);
+  const doneTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    // StrictMode mounts, unmounts and remounts in dev: the cleanup must
+    // not permanently disarm the async paths, so setup re-arms them.
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      window.clearTimeout(doneTimer.current);
+    };
+  }, []);
+
+  const [uncontrolled, setUncontrolled] = useState(false);
+  const gateOpen = open ?? uncontrolled;
+  const setGate = useCallback(
+    (v: boolean) => {
+      if (open === undefined) setUncontrolled(v);
+      onOpenChange?.(v);
+    },
+    [open, onOpenChange],
+  );
+  const [stage, setStage] = useState<"confirming" | "running" | "confirmed" | "error">("confirming");
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const phase: InlineConfirmPhase = gateOpen ? stage : "idle";
+
+  // A closed gate always resets the inner stage, so reopening starts clean.
+  useEffect(() => {
+    if (!gateOpen) {
+      setStage("confirming");
+      setErrorText(null);
+    }
+  }, [gateOpen]);
+
+  const [refocusIdle, setRefocusIdle] = useState(false);
+  useEffect(() => {
+    if (phase === "idle" && refocusIdle) {
+      setRefocusIdle(false);
+      idleRef.current?.focus();
+    }
+  }, [phase, refocusIdle]);
+
+  const cancel = useCallback(() => {
+    const ae = document.activeElement;
+    setRefocusIdle(ae instanceof Node && !!wrapRef.current?.contains(ae));
+    setStage("confirming");
+    setErrorText(null);
+    setGate(false);
+  }, [setGate]);
+  const cancelRef = useRef(cancel);
+  cancelRef.current = cancel;
+
+  const confirm = useCallback(() => {
+    if (disabled || stage === "running" || stage === "confirmed") return;
+    setStage("running");
+    setErrorText(null);
+    let result: void | Promise<void>;
+    try {
+      result = onConfirm();
+    } catch (err) {
+      if (!alive.current) return;
+      setErrorText(formatError(err));
+      setStage("error");
+      return;
+    }
+    void Promise.resolve(result)
+      .then(() => {
+        if (!alive.current) return;
+        setStage("confirmed");
+        window.clearTimeout(doneTimer.current);
+        doneTimer.current = window.setTimeout(() => {
+          if (!alive.current) return;
+          setGate(false);
+          onDone?.();
+        }, INLINE_CONFIRM_DONE_MS);
+      })
+      .catch((err: unknown) => {
+        if (!alive.current) return;
+        setErrorText(formatError(err));
+        setStage("error");
+      });
+  }, [disabled, stage, onConfirm, formatError, setGate, onDone]);
+
+  // Focus moves to ✓ when the pill opens.
+  const prevPhase = useRef<InlineConfirmPhase>(phase);
+  useEffect(() => {
+    if (phase === "confirming" && prevPhase.current === "idle") confirmRef.current?.focus();
+    prevPhase.current = phase;
+  }, [phase]);
+
+  // Escape, or a click outside the pill, cancels (not while running).
+  useEffect(() => {
+    if (phase !== "confirming" && phase !== "error") return;
+    const onPointer = (e: PointerEvent): void => {
+      const n = e.target as Node;
+      if (!wrapRef.current?.contains(n)) cancelRef.current();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") cancelRef.current();
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [phase]);
+
+  // No interaction for a while reverts an open (not errored) confirm.
+  useEffect(() => {
+    if (phase !== "confirming") return;
+    let timer = window.setTimeout(() => cancelRef.current(), INLINE_CONFIRM_REVERT_MS);
+    const poke = (): void => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => cancelRef.current(), INLINE_CONFIRM_REVERT_MS);
+    };
+    const el = wrapRef.current;
+    el?.addEventListener("pointerdown", poke);
+    el?.addEventListener("keydown", poke);
+    el?.addEventListener("focusin", poke);
+    return () => {
+      window.clearTimeout(timer);
+      el?.removeEventListener("pointerdown", poke);
+      el?.removeEventListener("keydown", poke);
+      el?.removeEventListener("focusin", poke);
+    };
+  }, [phase]);
+
+  const openNow = phase !== "idle";
+  const busy = runningLabel ?? `${action}…`;
+  const openIdle = (): void => setGate(true);
+  return (
+    <span ref={wrapRef} className="uic" data-phase={phase} data-size={size} data-danger={danger || undefined} data-testid={testId}>
+      <span className="uic-slot">
+        <span className="uic-idlehold" style={openNow ? { visibility: "hidden" } : undefined}>
+          {idleRender ? (
+            idleRender({ ref: idleRef, expanded: openNow, disabled: disabled || openNow, onOpen: openIdle })
+          ) : (
+            <Button
+              ref={idleRef}
+              variant={variant}
+              size={size}
+              type="button"
+              aria-label={idleAriaLabel ?? action}
+              aria-expanded={openNow}
+              title={title}
+              disabled={disabled || openNow}
+              onClick={openIdle}
+            >
+              {action}
+            </Button>
+          )}
+        </span>
+        {openNow ? (
+          <span className="uic-pill" role="group" aria-label={announce ?? `Confirm ${confirmAction}: confirm or cancel`} aria-live="polite">
+            {phase === "running" ? (
+              <span className="uic-busy">
+                <span>{busy}</span>
+                <ProcessingDots />
+              </span>
+            ) : phase === "confirmed" ? (
+              <span className="uic-done" role="status">
+                <span className="uic-tick" aria-hidden="true">
+                  ✓
+                </span>{" "}
+                {confirmedLabel}
+              </span>
+            ) : (
+              <>
+                <span className="uic-label">Confirm {confirmAction}</span>
+                <button ref={confirmRef} className="uic-yes" type="button" aria-label={`Confirm ${confirmAction}`} disabled={disabled} onClick={confirm}>
+                  <span aria-hidden="true">✓</span>
+                </button>
+                <button className="uic-no" type="button" aria-label="Cancel" disabled={disabled} onClick={() => cancelRef.current()}>
+                  <span aria-hidden="true">✕</span>
+                </button>
+              </>
+            )}
+          </span>
+        ) : null}
+      </span>
+      {openNow && detail ? <span className="uic-detail">{detail}</span> : null}
+      {phase === "error" && errorText ? (
+        <span className="uic-error" role="alert">
+          {errorText}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 export function UiTabs({ label, tabs, active, onSelect, idPrefix }: { label: string; tabs: readonly { id: string; label: string }[]; active: string; onSelect: (id: string) => void; idPrefix: string }): React.JSX.Element {
   return <BaseTabs.Root value={active} onValueChange={(v) => onSelect(String(v))}><BaseTabs.List className="ui-tabs" aria-label={label}>{tabs.map((t) => <BaseTabs.Tab key={t.id} value={t.id} id={`${idPrefix}-tab-${t.id}`} className="ui-tab">{t.label}</BaseTabs.Tab>)}</BaseTabs.List></BaseTabs.Root>;
 }
