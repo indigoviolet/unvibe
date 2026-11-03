@@ -40,7 +40,9 @@ describe("Outbox toggle on threads with comment replies (#339)", () => {
     expect(thread("t-seed").post).toBe(true);
     const outbox = await api.outbox(REVIEW_ID);
     expect(outbox.count).toBeGreaterThan(0);
-    expect(outbox.markdown).toContain("Does the fast path still catch a fold that uses a bare LF?");
+    // Issue #341: the re-recorded fixture's t-seed asks about the
+    // rewritten message object, not the bare-LF fast path.
+    expect(outbox.markdown).toContain("Is the rewritten message the same object downstream code already holds, or a copy?");
   });
 
   test("an Ask-started thread with a reviewer comment toggles, and only the comment posts", async () => {

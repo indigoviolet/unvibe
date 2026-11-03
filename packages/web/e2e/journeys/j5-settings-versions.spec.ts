@@ -386,7 +386,7 @@ test.describe("J5 prompts list and debug expansion", () => {
     // The real template list, by name — not a bare count, so the next
     // add/remove fails on the name. Contract: PROMPT_TEMPLATE_NAMES in
     // packages/shared/src/prompts.ts. #349 removed the two
-    // second-opinion templates and added persona_card (17 → 16);
+    // second-opinion templates and added persona_card (16 + 1 = 17);
     // concept_stub was removed with the stub job (#216).
     const expectedTemplates = [
       "instructions",

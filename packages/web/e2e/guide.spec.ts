@@ -209,13 +209,15 @@ test("on-demand concept page renders with no bookmark control (#216, #240)", asy
 });
 
 test("finding page carries its label and evidence", async ({ page }) => {
+  // Issue #341: no guide card links findings anymore, so open the bare-LF
+  // finding page directly.
   await gotoReview(page);
-  await page.locator("#C-central .findref").click();
-  await expect(page).toHaveURL(/page\/f-lf/);
+  await page.goto("/review/demo/page/f-critic");
+  await expect(page).toHaveURL(/page\/f-critic/);
   await expect(page.locator("#page .eyebrow")).toContainText("Agent finding · medium confidence");
   await expect(page.locator("#page .doc")).toHaveClass(/finding/);
-  await expect(page.locator("#page .doc")).toContainText("Folds that end in a bare LF");
-  await expect(page.locator("#page .doc")).toContainText("Follow up:");
+  await expect(page.locator("#page .doc")).toContainText("Bare-LF folds bypass unfolding");
+  await expect(page.locator("#page .doc")).toContainText("Evidence");
 });
 
 test("concept page renders the example aside", async ({ page }) => {

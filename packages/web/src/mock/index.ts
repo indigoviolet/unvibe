@@ -77,7 +77,7 @@ import {
   mockSeedD2Block,
   mockUnavailableD2Block,
 } from "./d2diagrams.js";
-import { demoAnswer, demoCardBlocks, demoHunkSummary, isDemoPersistedThread } from "./demo.js";
+import { demoAnswer, demoCardBlocks, demoHunkSummary, demoRealDiagramBlock, isDemoPersistedThread } from "./demo.js";
 import { DEMO_COMMENTS_KEY, DEMO_SUBMIT_DISABLED_REASON, STATIC_DEMO } from "../demo.js";
 
 export const MOCK_MODE: boolean =
@@ -129,7 +129,13 @@ function readJson<T>(key: string, fallback: T): T {
 function getRepos(): Repo[] {
   // Static demo (#334): only the fixture repo under review — the filler
   // `you/demo-lib` detected repo would read as fake on a public page.
-  if (STATIC_DEMO) return SEED_REPOS.filter((r) => !r.detected);
+  // Issue #341: the demo repo row carries the real owner/name (like the
+  // service's DEMO_REPO) so PR and line links point at GitHub.
+  if (STATIC_DEMO)
+    return [
+      ...SEED_REPOS.filter((r) => !r.detected),
+      { id: "demo", owner: "urllib3", name: "urllib3", localPath: "", lastOpened: NOW },
+    ];
   const added = readJson<Repo[]>(ADDED_KEY, []);
   // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
   // repos added during the test still listed.
@@ -432,6 +438,20 @@ function demoFindBlock(blockId: string): import("@unvibe/shared").Block | null {
     }
     return null;
   };
+  // Qualified ids name their card (`central#b1`): look there first. Block
+  // ids restart at b1 in every card, so a global short-id scan would
+  // return the wrong card's block (issue #341: the static demo answered
+  // with the problem card's recording for central selections).
+  if (hash >= 0) {
+    const cardId = blockId.slice(0, hash);
+    for (const p of mockPages) {
+      const card = p.cards.find((c) => c.id === cardId);
+      if (card) {
+        const hit = scan(card.blocks as never[]);
+        if (hit) return hit;
+      }
+    }
+  }
   for (const p of mockPages) {
     for (const c of p.cards) {
       const hit = scan(c.blocks as never[]);
@@ -843,19 +863,23 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
 ) as import("@unvibe/shared").Page[];
 
 /**
- * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
- * diagram block (rendered fixture SVGs served by `diagramSvg` below)
- * covers the ok path; the seeds add an unverified-anchor block, an
- * unavailable block (no binary), a failed-compile block (plain fallback
- * + retry, #130) and a multi-line-label block, so mock-mode tests
- * exercise those branches without touching the fixture.
+ * Seed mock D2 cases into the first go-deeper card (issue #341: the
+ * re-recorded reader's pending cards replaced g-flow with g-inplace, and
+ * no page embeds a diagram anymore). The fixture's own recorded
+ * on-demand diagram block (rendered fixture SVGs served by `diagramSvg`
+ * below) covers the ok path; the seeds add an unverified-anchor block,
+ * an unavailable block (no binary), a failed-compile block (plain
+ * fallback + retry, #130) and a multi-line-label block, so mock-mode
+ * tests exercise those branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
     .find((p) => p.id === "root")
-    ?.cards.find((c) => c.id === "g-flow");
+    ?.cards.find((c) => c.id === "g-alt");
   if (!card || card.blocks.some((b) => b.id === "b-mock-d2-edge")) return;
+  const real = demoRealDiagramBlock();
   card.blocks = [
+    ...(real ? [real as never] : []),
     ...card.blocks,
     mockSeedD2Block() as never,
     mockUnavailableD2Block() as never,

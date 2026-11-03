@@ -1,0 +1,411 @@
+{
+  "concept": [
+    "obs-fold",
+    "_normalize_header_value",
+    "_normalize_header_values",
+    "HTTPHeaderDict"
+  ],
+  "depth": [
+    {
+      "cardId": "problem",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "problem",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "problem",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "problem",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "central",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "central",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "central",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "central",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "buildup",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "buildup",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "buildup",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "buildup",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "decisions",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "decisions",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "decisions",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "decisions",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-alt",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "g-alt",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-alt",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-alt",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-regex",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "g-regex",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-regex",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-regex",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-tests",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "g-tests",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-tests",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-tests",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-reach",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "g-reach",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-reach",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "g-reach",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-adjacent-folds",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "evidence-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-adjacent-folds",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "assessment-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-adjacent-folds",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-bare-lf",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "evidence-bare-lf",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-bare-lf",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "evidence-bare-lf",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-bare-lf",
+      "direction": "simpler"
+    },
+    {
+      "cardId": "assessment-bare-lf",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-bare-lf",
+      "direction": "deeper"
+    },
+    {
+      "cardId": "assessment-bare-lf",
+      "direction": "deeper"
+    }
+  ],
+  "examples": [
+    "problem",
+    "central",
+    "g-regex",
+    "g-tests"
+  ],
+  "diagram": [
+    "central",
+    "buildup"
+  ],
+  "explain": [
+    {
+      "key": "obsfold",
+      "quote": "keeps those raw CRLFs inside the HTTPMessage values",
+      "anchor": {
+        "where": "block",
+        "blockId": "problem#b1"
+      }
+    },
+    {
+      "key": "stayed",
+      "quote": "The original HTTPMessage stayed on the response",
+      "anchor": {
+        "where": "block",
+        "blockId": "problem#b2"
+      }
+    },
+    {
+      "key": "ows",
+      "quote": "matches optional whitespace, then CRLF, then required whitespace",
+      "anchor": {
+        "where": "block",
+        "blockId": "central#b1"
+      }
+    },
+    {
+      "key": "agree",
+      "quote": "so the message and urllib3's HTTPHeaderDict agree",
+      "anchor": {
+        "where": "block",
+        "blockId": "central#b2"
+      }
+    },
+    {
+      "key": "fresh",
+      "quote": "build a fresh HTTPMessage and swap it",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-alt#b2"
+      }
+    },
+    {
+      "key": "offsets",
+      "quote": "re.sub tries a match at every offset",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-regex#b2"
+      }
+    },
+    {
+      "key": "thin",
+      "quote": "thin on inputs that are not a well-formed obs-fold",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-tests#b1"
+      }
+    },
+    {
+      "key": "twooutputs",
+      "quote": "If only HTTPHeaderDict were cleaned, r.headers would look correct",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-reach#b2"
+      }
+    }
+  ],
+  "ask": [
+    {
+      "key": "bare-lf",
+      "quote": "that case is also untested",
+      "message": "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-regex#b5"
+      }
+    },
+    {
+      "key": "identity",
+      "quote": "it deletes and re-adds the headers on the original message",
+      "message": "Is the rewritten message the same object downstream code already holds, or a copy?",
+      "anchor": {
+        "where": "block",
+        "blockId": "central#b2"
+      }
+    },
+    {
+      "key": "cost",
+      "quote": "urllib3 now rewrites an object it does not own",
+      "message": "What does the delete-and-re-add cost on a response with many headers, and is it linear?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-alt#b4"
+      }
+    },
+    {
+      "key": "quadratic",
+      "quote": "would greedily consume the rest of the run",
+      "message": "What input would turn quadratic without the lookbehind, and is it attacker-controlled?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-regex#b2"
+      }
+    },
+    {
+      "key": "test-gaps",
+      "quote": "Nothing asserts that _normalize_header_values leaves the message alone",
+      "message": "Which fold shapes have no test, and which gap matters most?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-tests#b4"
+      }
+    },
+    {
+      "key": "socket",
+      "quote": "A socket-level test covers the whole path",
+      "message": "What does the socket-level test prove that the unit tests do not?",
+      "anchor": {
+        "where": "block",
+        "blockId": "buildup#b3"
+      }
+    },
+    {
+      "key": "reject-vs-unfold",
+      "quote": "A fix that cleaned only HTTPHeaderDict would leave the raw CRLF in msg",
+      "message": "Would rejecting folded headers be safer than unfolding them?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-alt#b1"
+      }
+    },
+    {
+      "key": "two-spaces",
+      "quote": "which collapse to two spaces",
+      "message": "Is the double space here intended?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-tests#b2"
+      }
+    },
+    {
+      "key": "scope",
+      "quote": "are a separate issue and are not part of this change",
+      "message": "Why is the whitespace-before-colon case left out while folds are in scope?",
+      "anchor": {
+        "where": "block",
+        "blockId": "problem#b3"
+      }
+    },
+    {
+      "key": "cookie",
+      "quote": "they could re-emit raw CRLF on later requests",
+      "message": "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?",
+      "anchor": {
+        "where": "block",
+        "blockId": "problem#b2"
+      }
+    },
+    {
+      "key": "order",
+      "quote": "so duplicate names keep their order",
+      "message": "Why does the rewrite depend on HTTPMessage appending in order?",
+      "anchor": {
+        "where": "block",
+        "blockId": "g-alt#b4"
+      }
+    }
+  ],
+  "threadDepths": [
+    {
+      "ask": {
+        "key": "thread-barelf",
+        "quote": "that case is also untested",
+        "message": "Should a bare LF not followed by whitespace also be normalized?",
+        "anchor": {
+          "where": "block",
+          "blockId": "g-regex#b5"
+        }
+      },
+      "direction": "deeper"
+    },
+    {
+      "ask": {
+        "key": "thread-cookie",
+        "quote": "they could re-emit raw CRLF on later requests",
+        "message": "Which consumer re-emits the raw CRLF?",
+        "anchor": {
+          "where": "block",
+          "blockId": "problem#b2"
+        }
+      },
+      "direction": "deeper"
+    }
+  ],
+  "godeeperKeys": [
+    "tests",
+    "alt",
+    "reach",
+    "regex"
+  ]
+}

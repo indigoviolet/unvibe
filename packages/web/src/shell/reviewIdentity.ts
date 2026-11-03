@@ -9,8 +9,8 @@
  *
  * The snapshot and summaries carry no PR URL field, so the URL is the
  * canonical `github.com` pull URL built from the owner/name/number the
- * service already reports. Branch reviews and the demo (`repoId: "demo"`)
- * have no link.
+ * service already reports. Branch reviews have no link; the demo links
+ * the real urllib3/urllib3#5020 (issue #341).
  */
 import { useEffect, useState } from "react";
 import type { ReviewSummary } from "@unvibe/shared";
@@ -78,8 +78,11 @@ export function useReviewIdentity(reviewId: string): ReviewIdentity {
       : rootTitle && !isDefaultGuideTitle(rootTitle)
         ? rootTitle
         : branch || reviewId;
+  // Issue #341: the demo is the real urllib3/urllib3#5020, so its repo#PR
+  // button links out like any PR review. The offline fallback owner
+  // ("demo") never links — only a real owner/name does.
   const prUrl =
-    prNumber !== undefined && owner && name && repoId !== "demo"
+    prNumber !== undefined && owner && name && owner !== "demo"
       ? githubPrUrl(owner, name, prNumber)
       : null;
   // #230: badges read the live snapshot first (refresh updates it via the

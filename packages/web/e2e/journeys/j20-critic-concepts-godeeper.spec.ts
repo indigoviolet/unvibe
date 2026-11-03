@@ -73,37 +73,35 @@ test.describe("J20 critic, concepts and go-deeper", () => {
       expect(filledGd.every((c) => !!c.why)).toBe(true);
       const gdJobsBefore = (await jobs(svc, reviewId)).filter((j) => j.kind === "go-deeper").length;
 
-      // Findings show in the guide; open the bare-LF finding page.
+      // Findings show in the guide; open a go-deeper card (issue #341:
+      // the re-recorded reader's pending cards are g-alt/g-regex/
+      // g-tests/g-reach). It stays collapsed until opened (#217);
+      // opening shows the written content instantly and starts no job.
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
       await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      const gdCard = page.locator("#C-g-flow");
+      const gdCard = page.locator("#C-g-alt");
       await gdCard.scrollIntoViewIfNeeded();
       await expect(gdCard).toHaveClass(/collapsed/);
-      await expect(gdCard.locator(".why")).toContainText("Follows a folded header");
-      await expect(gdCard).not.toContainText("getresponse()");
+      await expect(gdCard.locator(".why")).toContainText("rewriting the http.client message");
+      await expect(gdCard).not.toContainText("delete and re-add");
       await gdCard.getByRole("button", { name: "Expand" }).click();
-      await expect(gdCard).toContainText("getresponse()", { timeout: 10_000 });
+      await expect(gdCard).toContainText("delete and re-add", { timeout: 10_000 });
       await page.screenshot({ path: "test-results/j20-godeeper-opened.png", fullPage: true });
       expect((await jobs(svc, reviewId)).filter((j) => j.kind === "go-deeper")).toHaveLength(gdJobsBefore);
-      // Findings show in the guide; open the bare-LF finding page. Its
-      // link lives in the "Review checklist" go-deeper card, which stays
-      // collapsed until opened (#217), so open that card first — its
-      // written content (including the finding links) shows instantly.
-      const gdCheck = page.locator("#C-g-check");
-      await gdCheck.scrollIntoViewIfNeeded();
-      await expect(gdCheck).toHaveClass(/collapsed/);
-      await gdCheck.getByRole("button", { name: "Expand" }).click();
-      const findingLink = gdCheck.locator('a.cx[data-link="page:f-lf"]');
-      await expect(findingLink).toBeVisible({ timeout: 30_000 });
-      await findingLink.click();
-      await expect(page.locator("#page .doc h1.title")).not.toHaveText("Guide", { timeout: 60_000 });
+      // The bare-LF finding page renders directly (issue #341: no guide
+      // card links findings anymore, so navigate to the page itself).
+      await page.goto(`${svc.origin}/review/${reviewId}/page/f-critic-2?token=${svc.token}`);
+      await expect(page.locator("#page .doc h1.title")).toContainText("Bare-LF", { timeout: 60_000 });
 
-      // #216: a concept link writes its page on open, then shows it.
-      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
-      const conceptLink = page.locator('a.cx[data-link^="concept:"]').first();
-      await expect(conceptLink).toBeVisible({ timeout: 30_000 });
-      await conceptLink.click();
+      // #216: opening a concept page writes it, then shows it (issue #341:
+      // the re-recorded guide carries no concept links, so fire the
+      // concept action for obs-fold via API, then open the page).
+      const acted = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
+        kind: "concept",
+        slug: "obs-fold",
+      });
+      if (acted.status !== 200) throw new Error(`concept action failed: ${acted.status}`);
+      await page.goto(`${svc.origin}/review/${reviewId}/page/c-obs-fold?token=${svc.token}`);
       await expect(page.locator("#page .doc h1.title")).not.toHaveText("Guide", { timeout: 60_000 });
       await poll(
         () => snapshot(svc!, reviewId),

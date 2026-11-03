@@ -61,6 +61,25 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   return JSON.parse(stdout);
 }
 
+/**
+ * Wait until no review job is live (running/queued/backing-off), so
+ * done-state frames don't show the jobs pill mid-stream. Streaming shots
+ * must NOT call this — their working state is the subject.
+ */
+async function waitForJobsIdle(origin: string, token: string, reviewId: string, timeout = 120_000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const snap = (await apiJson(origin, token, "GET", `/api/reviews/${reviewId}`)) as {
+          jobs?: { state: string }[];
+        };
+        return (snap.jobs ?? []).every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
 let dataDir = "";
 let tourBin = "";
 let tourLog = "";
@@ -870,10 +889,11 @@ test.describe("visual tour passes", () => {
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
-    // #327: the Decisions card's ### sub-headings render as real
-    // sub-headings (h3.subhead), not as serif body paragraphs.
-    for (const label of ["Invariants", "Known uncertainties", "Interfaces"]) {
-      await expect(page.locator("#C-decisions h3.subhead").filter({ hasText: label })).toBeVisible();
+    // Issue #341: the re-recorded Decisions card uses **Bold** section
+    // labels (no ### sub-headings left in the fixture, so #327's h3 path
+    // has no fixture instance) — assert the labels render.
+    for (const label of ["Decisions", "Invariants", "Known uncertainties", "Interfaces with reach"]) {
+      await expect(page.locator("#C-decisions strong").filter({ hasText: label })).toBeVisible();
     }
     await stepChecks(page, "guide-decisions");
     await shot(page, "guide-decisions", suffix, "Decisions and questions");
@@ -883,7 +903,12 @@ test.describe("visual tour passes", () => {
     const beforeIds = (
       (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
     ).annotations.map((a) => a.id);
-    await selectText(page, "#C-problem", "used to let a server continue");
+    // Issue #341: explain a guide sentence with a recorded explain. The
+    // re-recorded fixture records explains on the problem/central cards
+    // only, so select the recorded obs-fold quote on the problem card:
+    // replay matches the quote in the prompt and answers from it.
+    await page.locator("#C-problem").scrollIntoViewIfNeeded();
+    await selectText(page, "#C-problem", "keeps those raw CRLFs inside the HTTPMessage values");
     await page.locator('#selbar [data-act="explain"]').click();
     let seedId: string | null = null;
     await expect
@@ -900,8 +925,9 @@ test.describe("visual tour passes", () => {
     // shows the revealed toolbar, then assert it.
     await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
+    await shot(page, "guide-pinned", suffix, "three pieces");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
@@ -1010,7 +1036,10 @@ test.describe("visual tour passes", () => {
     const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(longCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: no explain pattern matches a diff-anchored prompt, so
+    // replay answers with the first explain entry (the recorded obs-fold
+    // explain); the old plotline text is gone with the re-record.
+    await expect(longCard).toContainText("Why this is a problem.");
     // Frame the whole card in the pane (its footer included), as the
     // reader would scrolling to it, then scroll inside the card.
     await longCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -1019,8 +1048,9 @@ test.describe("visual tour passes", () => {
     await stepChecks(page, "diff-long-mid");
     await shot(page, "diff-long-mid", suffix);
     await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "diff-long-bottom");
-    await shot(page, "diff-long-bottom", suffix, "In short: read first");
+    await shot(page, "diff-long-bottom", suffix, "Where the change shows this behavior.");
     await closeCard(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
@@ -1047,6 +1077,10 @@ test.describe("visual tour passes", () => {
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await splitCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    // Park the pointer off the card: scrolling moved card text under the
+    // stationary cursor, and a hovered glossary term's tooltip would paint
+    // over the card during the topmost check below.
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-split");
     await shot(page, "diff-long-split", suffix);
     await closeCard(page, splitCard);
@@ -1075,19 +1109,30 @@ test.describe("visual tour passes", () => {
     const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(fileCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: the call-site selection resolves like the helper one
+    // above (no explain pattern matches a diff-anchored prompt, so the
+    // recorded obs-fold explain answers).
+    await expect(fileCard).toContainText("Why this is a problem.");
     await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
+    // Park the pointer off the card before each check below: scrolling
+    // moves card text under the stationary cursor, and a hovered citation
+    // preview would paint over the card during a topmost check (as the
+    // split-view scene above already guards).
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file");
     await shot(page, "diff-long-file", suffix);
     // Two scroll offsets around the file boundary, mid hand-off.
     await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 24; });
     await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file-h1");
     await shot(page, "diff-long-file-h1", suffix);
     await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 48; });
     await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file-h2");
     await shot(page, "diff-long-file-h2", suffix);
     await closeCard(page, fileCard);
@@ -2654,10 +2699,14 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: explain "three pieces" on the build-up card. No explain
+    // pattern matches a build-up-anchored prompt, so replay answers with
+    // the first explain entry (the recorded obs-fold explain) — still a
+    // real recording while the writing state is captured.
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-buildup", "three pieces");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-thread]").first();
+    const card = page.locator("#C-buildup [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -2674,6 +2723,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.locator("[data-reply]").first().hover();
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    await waitForJobsIdle(slow.origin, slow.token, rid);
     await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
@@ -2712,9 +2762,12 @@ test("visual tour ask retry (#270)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // One fresh Ask card per theme, so the two kill/restart cycles never
     // share turn state.
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") {
         await page.emulateMedia({ colorScheme: "dark" });
@@ -2803,9 +2856,12 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
@@ -2875,9 +2931,12 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
@@ -2910,6 +2969,7 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
       await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
       await card.scrollIntoViewIfNeeded().catch(() => {});
+      await waitForJobsIdle(svc.origin, svc.token, rid);
       await checkLayout(page, "ask-thread-done");
       await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
       if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });

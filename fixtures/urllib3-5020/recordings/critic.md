@@ -1,70 +1,45 @@
 ## Evidence
 
-Code: the fast path returns early unless the value contains `"\r\n"`, and the pattern requires `\r\n`. [[diff:conn:86-88]] [[diff:conn:82]]
+The description says adjacent folds collapse to one space. The unit test expects two. The regex is `(?:(?<![ \t])[ \t]+)?\r\n[ \t]+`, and the lookbehind only lets the optional leading whitespace match at the start of a whitespace run. [[diff:src-urllib3-connection.py:80-82]]
 
-Parser: `http.client` accepts header lines ending in a bare LF. Checked locally: parsing `Set-Cookie: a=1\n b=2` returns the value `'a=1\n b=2'`, which these helpers leave unchanged.
+For `"one\r\n \r\n\tthree"`, the first match is `\r\n ` and becomes one space. The second fold then starts right after that match, where the preceding character is the space the first match just consumed. Because of the lookbehind, the second match cannot absorb that space. It matches only `\r\n\t` and becomes a second space.
 
-Tests: every fold in the socket test and the unit tests uses CRLF. [[diff:tsock:99-118]] [[diff:tconn:214-222]]
+The test pins the result as `"one  three"`, with two spaces. [[diff:test-test_connection.py:220]]
+
+The description and the guide state a different behavior, "adjacent folds collapse to one space, not zero". That is not what the code does. [[desc:d-p6]] [[desc:d-p3]]
+
+The socket test has no adjacent-fold case. Its mixed case, `one \t\r\n\t  two\t \r\n \tthree`, has non-whitespace between the folds. [[diff:test-with_dummyserver-test_socketlevel.py:112-114]]
 
 ## Assessment
 
-The invariant the PR states, no raw line breaks in header values, still fails for a folded value whose lines end in a bare LF. That's the same [[concept:header-injection|header injection]] risk through LF instead of CRLF. RFC 9112 lets recipients accept a bare LF as a line terminator, and `http.client` does. Broadening the pattern and fast path to `\r?\n`, plus one test, would close it. Confidence is medium: the maintainers may have left LF out deliberately, and it depends on `http.client`'s behaviour.
+This is a description/code mismatch, not a functional bug. RFC 9112 allows replacing each obs-fold with one or more SP, so two spaces is acceptable.
 
-::: simple
-A rarer kind of split header, using only LF, still keeps its line break. A small change to the pattern would cover it.
-:::
+It still matters for two reasons:
+- The checklist item "adjacent folds collapse to one space" would fail if someone ran it.
+- The result depends on an asymmetry: whitespace before a fold is absorbed, but whitespace after a previous fold is not. A reader will not expect that.
 
-::: deep
-A sanitizer is only as strong as its coverage of the parser it follows: whatever line terminators the parser accepts, the sanitizer must also recognize. Here the parser is more permissive (CRLF or LF) than the sanitizer (CRLF only), so there's a gap between "accepted" and "cleaned".
-:::
-
-### Follow-ups
-
-- Would rejecting folds be safer than unfolding? | ask: rfc
+To close it, either fix the description and test name to say "one space per fold", or change the regex so adjacent folds collapse to one space. A short comment on the test case would also help.
 
 ## Evidence
 
-Description: it says the normalization uses a linear-time pattern for long field values. [[desc:d-p2]]
+The fast path and the regex both key on `"\r\n"`. [[diff:src-urllib3-connection.py:86-88]] A fold that ends in a bare `\n` is not matched.
 
-Code: a comment explains that starting the whitespace match at the beginning of a run avoids quadratic backtracking. [[diff:conn:80-82]]
+I read this from `http.client`'s parser behaviour and did not run it here. `http.client` splits header lines on `\n`, so a line terminated only by `\n` is still read as a line. The email parser then joins a continuation line into the value with whatever terminator that line had. For a bare-LF server, the value would contain `\n ` and urllib3 would leave it untouched.
 
-Tests: no test uses a long value or a long run of spaces. [[diff:tconn:214-222]]
+The changelog says the fix prevents "raw CRLF sequences", and the description says `HTTPMessage` "no longer carries a raw CRLF after unfolding". Both claims are scoped to CRLF, so the bare-LF case is outside them. [[diff:changelog-1362.bugfix.rst:1-3]] [[desc:d-p6]]
+
+The socket test sends only `\r\n` terminators. Its final assertion, that no value contains `\r` or `\n`, is therefore only established for CRLF input. [[diff:test-with_dummyserver-test_socketlevel.py:99-137]]
+
+Nothing tests a lone `\n`, a lone `\r`, or a `\r\n` not followed by whitespace.
 
 ## Assessment
 
-The pattern is correct today, but the property that makes it safe (the lookbehind) is easy to "simplify" away later, and response headers are untrusted input. A test that normalizes a value with a very long run of spaces, kept within a generous time limit, would protect it. This is a test gap, not a bug.
+I did not run the parser here, so the bare-LF behaviour is unverified. Confidence is medium.
+
+If it holds, the fix covers only one of two line-ending forms that `http.client` accepts. Some real servers send bare-LF folds. Those would still put a raw newline into `Set-Cookie` values, which is the exact symptom this PR targets.
+
+To close it, run `http.client` on a bare-LF folded response and see what the value contains. If it holds a raw `\n`, either widen the pattern to `\r?\n` (and the fast-path check) or state in the changelog that only CRLF folds are handled. Add one socket test for the chosen behaviour.
 
 ```json
-{
-  "findings": [
-    {
-      "id": "f-lf",
-      "title": "Folds that end in a bare LF are not unfolded",
-      "confidence": "medium",
-      "summary": "http.client accepts header lines ending in LF alone, but the new code only looks for CRLF.",
-      "suggestedComment": {
-        "text": "http.client also accepts header lines that end in a bare LF, so a fold like `a=1\\n b=2` keeps its line break: both the `\"\\r\\n\" not in value` fast path and this pattern only look for CRLF. Would `\\r?\\n` here (and in the fast path), plus a test, make sense?",
-        "diff": "diff:conn:82"
-      },
-      "cardIds": [
-        "flf-ev",
-        "flf-as"
-      ]
-    },
-    {
-      "id": "f-perf",
-      "title": "The linear-time claim has no test",
-      "confidence": "high",
-      "summary": "The description and a comment rely on the pattern being linear-time, but nothing would catch a regression.",
-      "suggestedComment": {
-        "text": "Could we add a test that normalizes a value with a very long run of spaces, so a later simplification of this pattern can't bring back the quadratic case?",
-        "diff": "diff:conn:80"
-      },
-      "cardIds": [
-        "fpf-ev",
-        "fpf-as"
-      ]
-    }
-  ]
-}
+{"findings": [{"title": "Adjacent folds yield two spaces, contradicting the description", "confidence": "high", "summary": "The lookbehind in _OBSOLETE_FOLD_RE keeps a space left by an earlier fold from being absorbed, so 'one\\r\\n \\r\\n\\tthree' becomes 'one  three'. The description says adjacent folds collapse to one space.", "suggestedComment": {"text": "The test at this line expects two spaces for adjacent folds, but the PR description says adjacent folds collapse to one space. Please align the description or the regex, and explain the lookbehind asymmetry (whitespace before a fold is absorbed, whitespace after a previous fold is not).", "diff": "diff:test-test_connection.py:220"}, "cardIds": ["evidence-adjacent-folds", "assessment-adjacent-folds"]}, {"title": "Bare-LF folds are not unfolded, so raw newlines can still reach Set-Cookie", "confidence": "medium", "summary": "The fast path and regex only handle \\r\\n. http.client accepts \\n-terminated lines, so a bare-LF fold would keep a raw \\n in the value. Untested; the changelog and description claim only CRLF removal.", "suggestedComment": {"text": "http.client accepts lines ending in a bare \\n, so a folded header from such a server would leave '\\n ' in the value and skip both this fast path and the regex. Should the pattern use \\r?\\n? Please add a socket test with bare-LF folds, or state that only CRLF folds are handled.", "diff": "diff:src-urllib3-connection.py:86"}, "cardIds": ["evidence-bare-lf", "assessment-bare-lf"]}]}
 ```

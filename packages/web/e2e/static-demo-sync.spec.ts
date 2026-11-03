@@ -139,11 +139,9 @@ test("guide cards match between the static demo and the replay service", async (
       { timeout: 300_000 },
     )
     .toBe(true);
-  // The diagram settles to a rendered SVG or, without d2, the source
-  // fallback — either way the card is comparable after this.
-  await expect(page.locator("#C-g-flow .dg-svg svg, #C-g-flow .dg-fallback").first()).toBeVisible({
-    timeout: 180_000,
-  });
+  // Issue #341: no page embeds a diagram anymore (diagrams are on-demand
+  // fills), so there is nothing diagram-shaped to wait for on either side.
+  // Diagram rendering is covered by the d2 specs and the j14 journey.
   const fromService = await guideCardTexts(page);
 
   await page.goto(`${demo.origin}/#/review/demo`);
@@ -152,7 +150,6 @@ test("guide cards match between the static demo and the replay service", async (
   });
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await expandAll();
-  await expect(page.locator("#C-g-flow .dg-svg svg").first()).toBeVisible({ timeout: 60_000 });
   const fromStatic = await guideCardTexts(page);
 
   expect(Object.keys(fromStatic).sort()).toEqual(Object.keys(fromService).sort());

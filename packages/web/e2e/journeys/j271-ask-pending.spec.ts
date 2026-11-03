@@ -87,7 +87,8 @@ test.describe("J271 pending follow-up keeps its input", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
     // Its own Ask card (independent of the first test's card).
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: the re-recorded central card has no "fast path" text.
+    await selectText(page, "#C-central", "matches optional whitespace");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-central .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });

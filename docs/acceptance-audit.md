@@ -496,6 +496,14 @@ needed (that deviation is closed, not added).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
+- Demo fixture content (issue #341 re-record on Claude Sonnet 5.5):
+  the re-recorded reader carries no card/concept cross-link tokens and
+  no ask answer starts with a list, so those mechanisms have no demo
+  instance — J263's card-link half and J273's list-first scene were
+  removed (the #331 fallback stays covered by the prose/list branch in
+  J273's reply-chrome test), and J1's concept test fires the `concept`
+  action directly (concept pages are titled with their slug). Glossary
+  links, citations, and footnote chips are unaffected.
 
 ### §4.6 Selecting text — all met
 
@@ -791,8 +799,8 @@ needed (that deviation is closed, not added).
   (walk shows finding-linked content; `pipeline/apply.ts`
   criticApply). (The read-dim is gone with the read state, #136.)
 - Finding page label + rust-border Evidence/Assessment cards — met
-  (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
-  ran).
+  (`reply-format.md`, demo snapshot has `f-critic`/`f-critic-2` with 2 cards each —
+  ran; #341 re-record).
 - Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
@@ -1492,8 +1500,8 @@ needed (that deviation is closed, not added).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×1, #215: one job carrying 1-3 findings with
    evidence/assessment/confidence + suggested comments; concept pages
-   written on demand only, #216) — met (demo `f-lf`/`f-perf` from the one
-   combined critic recording — ran).
+   written on demand only, #216) — met (demo `f-critic`/`f-critic-2` from the one
+   combined critic recording — ran; #341 re-record).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
    (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no

@@ -9,12 +9,12 @@
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { DiagramStatusError } from "../api/diagram.js";
 // `?raw` keeps the SVGs out of TS's NodeNext import-attribute rules.
-import flowLight from "../../../../fixtures/urllib3-5020/diagrams/f23beae236cc0685.light.svg?raw";
-import flowDark from "../../../../fixtures/urllib3-5020/diagrams/f23beae236cc0685.dark.svg?raw";
-import pathLight from "../../../../fixtures/urllib3-5020/diagrams/5897a4452ede567b.light.svg?raw";
-import pathDark from "../../../../fixtures/urllib3-5020/diagrams/5897a4452ede567b.dark.svg?raw";
-import foldLight from "../../../../fixtures/urllib3-5020/diagrams/d604f9a8e9fb637c.light.svg?raw";
-import foldDark from "../../../../fixtures/urllib3-5020/diagrams/d604f9a8e9fb637c.dark.svg?raw";
+// Issue #341: hashes are the re-recorded on-demand diagrams
+// (diagram-central, diagram-buildup).
+import centralLight from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.light.svg?raw";
+import centralDark from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.dark.svg?raw";
+import buildupLight from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.light.svg?raw";
+import buildupDark from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.dark.svg?raw";
 
 /** Stand-in for cases the fixtures cannot cover (see module docs). */
 function standIn(theme: DiagramTheme): string {
@@ -39,9 +39,8 @@ function standIn(theme: DiagramTheme): string {
 
 /** hash → per-theme SVG text, mirroring the fixture file layout. */
 const BY_HASH: Record<string, { light: string; dark: string }> = {
-  f23beae236cc0685: { light: flowLight, dark: flowDark },
-  "5897a4452ede567b": { light: pathLight, dark: pathDark },
-  d604f9a8e9fb637c: { light: foldLight, dark: foldDark },
+  "8d6ea4e980ea839e": { light: centralLight, dark: centralDark },
+  "22365f71688744f3": { light: buildupLight, dark: buildupDark },
   "mock-d2-added": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-unverified": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-multiline": { light: multiline("light"), dark: multiline("dark") },

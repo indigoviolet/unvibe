@@ -1,11 +1,5 @@
-`getresponse()` now builds `HTTPHeaderDict` from the normalized header list instead of the raw `HTTPMessage` items. This is the only call site. [[diff:conn:650-651]]
+Response headers now pass through `_normalize_header_values` before building `HTTPHeaderDict`, instead of using the raw `msg.items()`.
 
 ```json
-{
-  "hunk": {
-    "summary": "`getresponse()` now builds `HTTPHeaderDict` from the normalized header list instead of the raw `HTTPMessage` items. This is the only call site.",
-    "hiddenReason": null,
-    "score": "substantive"
-  }
-}
+{"hunk": {"summary": "Response headers now pass through `_normalize_header_values` before building `HTTPHeaderDict`, instead of using raw `msg.items()`.", "hiddenReason": null, "score": "substantive"}}
 ```

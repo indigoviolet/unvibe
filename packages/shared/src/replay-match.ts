@@ -118,9 +118,9 @@ export function replayPlaceholderText(resolved: ResolvedRecording, prompt: strin
   const hint = prompt.trim().split("\n")[0]?.slice(0, 80) ?? "";
   return (
     `[replay placeholder: no ${resolved.kind} recording matched this prompt. ` +
-    `To see a canned reply, use an explain/ask prompt mentioning obs-fold, HTTPHeaderDict, ` +
-    `CRLF, regex, Set-Cookie, OWS, RFC 9112, Requests, bare LF, order, identity, cost, ` +
-    `tests, or forwarding — or a replay-kind:/replay-key: marker. First line was: "${hint}"]\n\n` +
+    `To see a canned reply, use an explain/ask prompt mentioning obs-fold, Set-Cookie, ` +
+    `HTTP headers, regex, message rewrite, plotline, changelog, Requests, order, bare LF, ` +
+    `duplicates, cost, tests, or unfolding scope — or a replay-kind:/replay-key: marker. First line was: "${hint}"]\n\n` +
     "```json\n{\"placeholder\": true}\n```\n"
   );
 }

@@ -55,8 +55,8 @@ describe("performAction in-flight funnel", () => {
     // Fake timers for the mock's 700 ms answer fill (issue #119).
     vi.useFakeTimers();
     try {
-      performFollowUp(REVIEW_ID, "g-flow", "b3", 0);
-      const chipKey = "followup:g-flow:b3:0";
+      performFollowUp(REVIEW_ID, "g-alt", "b5", 0);
+      const chipKey = "followup:g-alt:b5:0";
       expect(useReview.getState().inflight[chipKey]).toMatchObject({ kind: "followup" });
       // The response retargets the chip entry to the answer card…
       await vi.advanceTimersByTimeAsync(0);

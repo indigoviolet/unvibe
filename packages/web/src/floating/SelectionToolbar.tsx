@@ -560,21 +560,30 @@ export function SelectionToolbar() {
   pendingRef.current = pending;
   const shownAt = useRef(0);
   // Issue #134: the repo behind this review (owner/name for the GitHub
-  // link). Local checkouts (`owner: "local"`), the demo and unknown repos
-  // have no GitHub file view, so the action hides there.
+  // link). Local checkouts (`owner: "local"`) and unknown repos have no
+  // GitHub file view, so the action hides there. The demo resolves to the
+  // real urllib3/urllib3 repo (issue #341), so its line links work too.
+  // The summary carries the demo's repo id (`demo`); the snapshot carries
+  // the fixture's repo path — prefer the summary.
   const [githubRepo, setGithubRepo] = useState<{ owner: string; name: string } | null>(null);
   useEffect(() => {
-    const repoId = snapshot?.review.repoId;
-    if (!repoId || repoId === "demo") {
+    const snapshotId = snapshot?.review.id;
+    const fallbackId = snapshot?.review.repoId;
+    if (!snapshotId || !fallbackId) {
       setGithubRepo(null);
       return;
     }
     let cancelled = false;
     api
-      .repos()
-      .then((r) => {
+      .reviews()
+      .then(
+        (rs) => rs.reviews.find((r) => r.id === snapshotId)?.repoId ?? fallbackId,
+        () => fallbackId,
+      )
+      .then((repoId: string) => api.repos().then((r) => ({ repoId, repos: r.repos })))
+      .then(({ repoId, repos }) => {
         if (cancelled) return;
-        const found = r.repos.find((x) => x.id === repoId);
+        const found = repos.find((x) => x.id === repoId);
         setGithubRepo(found && found.owner !== "local" ? { owner: found.owner, name: found.name } : null);
       })
       .catch(() => {
@@ -583,7 +592,7 @@ export function SelectionToolbar() {
     return () => {
       cancelled = true;
     };
-  }, [snapshot?.review.repoId]);
+  }, [snapshot?.review.id, snapshot?.review.repoId]);
 
   useEffect(() => {
     const bar = (): HTMLElement | null => barRef.current;

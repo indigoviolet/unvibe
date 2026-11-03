@@ -358,6 +358,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
+/* Narrow screens (issue #341): the bar wraps instead of overflowing —
+   identity first, controls below. Desktop keeps the single row. */
+@media (max-width: 560px) {
+  .rbar { flex-wrap: wrap; }
+  .rbar .rid { flex: 1 1 100%; }
+}
 /* Live job count (issue #98): two numbers (running · queued) in the review
    bar's right corner, after Submit so appearing never shifts the title or
    the buttons. Nothing renders when no job is live, so it reserves no
@@ -382,9 +388,15 @@ code { font-family: var(--mono); font-size: .86em; }
 @keyframes jcount-spin { to { --jangle: 360deg; } }
 /* A review shows one bar (the review bar, issue #141), so the grid needs
    two rows like every other screen. */
-.app.with-reviewbar { grid-template-rows: auto minmax(0, 1fr); }
-/* The narrow-window overlay floats below the single review bar. */
+/* A review shows one bar (the review bar, issue #141) plus the demo
+   banner when present (issue #341) — three rows; the empty banner row
+   collapses to zero on non-demo reviews. */
+.app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
+.demo-banner { min-height: 0; }
+/* The narrow-window overlay floats below the review bar (and the demo
+   banner when one is showing). */
 .with-reviewbar .col.overlay { top: 41px; }
+.with-reviewbar:has(.demo-banner) .col.overlay { top: 76px; }
 /* Second-opinion mode menu: one icon button in the row, modes in a popover. */
 .so-ctl { display: inline-flex; align-items: center; gap: 0; position: relative; }
 .so-menu { position: absolute; left: 0; top: calc(100% + 4px); min-width: 220px; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-1); z-index: 30; display: flex; flex-direction: column; gap: 2px; }
@@ -1027,6 +1039,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prose code:hover { background: var(--sunk); }
 /* #274 code x-height match instead of .86em. */
 .prose code { font-size: 1em; font-size-adjust: ex-height var(--xh); }
+/* Issue #341: long inline code (call sites in recorded answers) must wrap
+   in narrow panes instead of overflowing the card. `anywhere` (not
+   `break-word`) so flex/grid min-content sizing accounts for the break.
+   Thread replies render bare <p> (no .prose), so scope the rule there too. */
+.prose code,
+.exp-b code {
+  overflow-wrap: anywhere;
+}
 /* #274 same treatment for code in card lists and tables: it is the same
    speckling, and the .86em there leaves multiplied strays (12.04, 14.62). */
 .lst code, .md code { background: transparent; padding: 0; color: var(--accent); border-radius: var(--radius-3); }
@@ -1138,6 +1158,9 @@ mark.anc.on { outline: 2px solid var(--note); }
 .cthr .n { font: 11px var(--mono); color: var(--note); }
 .cthr .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .ithread .mq { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Code-anchored quotes (diff lines, hunks) read upright in the code font
+   so escapes like \r\n stay legible; prose quotes keep the italic sans. */
+.ithread .mq.code { font-style: normal; font-family: var(--mono); }
 /* Read-only GitHub threads (issue #168): same thread chrome, neutral avatar. */
 .av.gh { background: var(--sunk); color: var(--muted); }
 .ghbody > *:first-child { margin-top: 2px; }

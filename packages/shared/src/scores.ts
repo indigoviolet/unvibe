@@ -149,6 +149,21 @@ function cleanLine(text: string, max: number): string {
 }
 
 /**
+ * Repair a display name that is just the kebab-case id echoed back
+ * (the model wrote `"id": "obs-fold-unfolding", "name":
+ * "obs-fold-unfolding"`). A display name is plain words, never a slug,
+ * so split the slug into words and capitalize the first. Idempotent:
+ * a proper name slugifies to something else and passes through, and a
+ * proper name that slugifies to the id (e.g. "Retry logic" from
+ * "retry-logic") humanizes back to itself.
+ */
+function humanizeSlug(slug: string): string {
+  const words = slug.split("-").filter((w) => w !== "");
+  if (words.length === 0) return "";
+  return words.map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
+/**
  * Validate one reader plotline payload against the review's hunk IDs.
  * `known` holds the review's canonical `h:<fileKey>:<hash>` ids. Empty
  * input (the reader named none) is valid: every hunk reads as "other".
@@ -176,6 +191,9 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
       continue;
     }
     const wantId = typeof rec["id"] === "string" && rec["id"].trim() !== "" ? slugify(rec["id"]) : slugify(name);
+    // The name must not be the kebab-case id echoed back: repair it
+    // into a display name rather than store (or drop) a slug.
+    const displayName = slugify(name) === wantId ? humanizeSlug(wantId) : name;
     let id = wantId;
     for (let n = 2; seenIds.has(id); n++) id = `${wantId}-${n}`;
     seenIds.add(id);
@@ -198,7 +216,7 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
       }
       assignment[canonical] = id;
     }
-    plotlines.push({ id, name, description, ...(buildsOnRaw !== undefined ? { buildsOn: buildsOnRaw } : {}) });
+    plotlines.push({ id, name: displayName, description, ...(buildsOnRaw !== undefined ? { buildsOn: buildsOnRaw } : {}) });
   }
   // `buildsOn` must name another plotline in the same list (landing
   // order means it should be an earlier one, but any known id is kept);

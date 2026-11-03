@@ -78,10 +78,14 @@ test.describe("J17 submit a mix", () => {
     let sugId = "";
     let sugText = "";
     let sugLine = 0;
+    // Issue #341: the first suggestion is no longer on the connection
+    // file (re-recorded seeds lead with the socket-level test), so track
+    // the suggestion's own file instead of assuming CONN.
+    let sugFile = CONN;
     const deadline = Date.now() + 90_000;
     for (;;) {
       const s = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-      const anns = (s.json as { annotations?: { id: string; anchor?: { host?: { kind: string; line?: number } }; replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[] }[] }).annotations ?? [];
+      const anns = (s.json as { annotations?: { id: string; anchor?: { host?: { kind: string; fileKey?: string; line?: number } }; replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[] }[] }).annotations ?? [];
       const hit = anns
         .filter((a) => a.anchor?.host?.kind === "diff-line")
         .flatMap((a) => (a.replies ?? []).map((r) => ({ a, r })))
@@ -89,6 +93,7 @@ test.describe("J17 submit a mix", () => {
       if (hit) {
         sugId = hit.a.id;
         if (hit.a.anchor?.host?.kind === "diff-line" && hit.a.anchor.host.line) sugLine = hit.a.anchor.host.line;
+        if (hit.a.anchor?.host?.kind === "diff-line" && hit.a.anchor.host.fileKey) sugFile = hit.a.anchor.host.fileKey;
         sugText = (hit.r.blocks ?? [])
           .map((b) => (b.type === "paragraph" ? (b.text?.standard ?? "") : ""))
           .join(" ")
@@ -105,8 +110,11 @@ test.describe("J17 submit a mix", () => {
     expect(sugLine).toBeGreaterThan(0);
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
-    // Suggested threads start closed: open through the line's mark.
-    await page.locator(`[id="L-${CONN}-${sugLine}"] td.n`).first().click();
+    // Suggested threads start closed: open through the line's mark. The
+    // re-recorded seeds anchor one suggestion mid-hunk (hidden rows), so
+    // unfold everything first (issue #341).
+    await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 10_000 }).catch(() => {});
+    await page.locator(`[id="L-${sugFile}-${sugLine}"] td.n`).first().click();
     const sugThread = page.locator(`.ithread[data-thread="${sugId}"]`).first();
     await expect(sugThread).toBeVisible({ timeout: 60_000 });
     await sugThread.getByRole("button", { name: "Add to Outbox" }).click();

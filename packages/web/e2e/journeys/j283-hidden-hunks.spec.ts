@@ -126,7 +126,9 @@ test.describe("J283 hidden-hunk rows", () => {
       // The label shows: non-empty, and the row is topmost at the label's
       // centre (not painted under the band backing, issue #283).
       const label = row.locator(".hidl");
-      await expect(label).toContainText(/Hunks? \d+.*hidden/, { timeout: 10_000 });
+      // Issue #342: the label is range-only ("Hunk 1", "Hunks 1–2") —
+      // no 'hidden' word (asserted in diffLogic.test.ts too).
+      await expect(label).toContainText(/^Hunks? \d/, { timeout: 10_000 });
       const labelBox = (await label.boundingBox())!;
       expect(labelBox.x, `${step}: row ${i} label outside the row`).toBeGreaterThanOrEqual(rowBox.x);
       expect(labelBox.x + labelBox.width, `${step}: row ${i} label outside the row`).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
@@ -134,7 +136,7 @@ test.describe("J283 hidden-hunk rows", () => {
         const hit = document.elementFromPoint(x, y);
         return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
       }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
-      expect(topmost, `${step}: row ${i} label covered by ${topmost}`).toMatch(/hidden\. Show these hunks/);
+      expect(topmost, `${step}: row ${i} label covered by ${topmost}`).toMatch(/collapsed\. Show these hunks/);
       // The summary uses the full width: its union box is either wider
       // than half the row or starts at the row's left content edge (its
       // own line) — never a fixed narrow right column.

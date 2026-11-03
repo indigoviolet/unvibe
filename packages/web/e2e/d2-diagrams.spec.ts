@@ -9,8 +9,8 @@
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 
-// Fixture's real diagram block (card g-flow, hash f23beae236cc0685).
-const FLOW = "#C-g-flow #B-b1";
+// Fixture's real diagram block (card g-alt, seeded from the diagram-central recording (hash 8d6ea4e980ea839e)).
+const FLOW = "#C-g-alt #B-b-demo-diagram-central";
 const EDGE = "#B-b-mock-d2-edge";
 const UNAVAILABLE = "#B-b-mock-d2-unavailable";
 const FAILED = "#B-b-mock-d2-error";
@@ -82,9 +82,11 @@ test("D2 diagram renders in light with caption and citation anchors", async ({ p
   await gotoReview(page);
   const svg = page.locator(`${FLOW} .dg-svg > svg`);
   await expect(svg).toBeVisible({ timeout: 15000 });
-  await expect(page.locator(FLOW)).toContainText("Where a response's headers go");
+  // Issue #341: the seeded real block is the recorded diagram-central
+  // (caption + 8 cited shapes/edges).
+  await expect(page.locator(FLOW)).toContainText("feeds both the original");
   const anchors = page.locator(`${FLOW} .dg-svg a[href][data-refs]`);
-  await expect(anchors).toHaveCount(2);
+  await expect(anchors).toHaveCount(8);
   await expect(anchors.first()).toHaveAttribute(
     "data-src",
     "diff:src-urllib3-connection.py:650-651",

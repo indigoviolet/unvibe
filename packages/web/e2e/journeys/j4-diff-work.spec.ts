@@ -49,13 +49,15 @@ test.describe("J4 diff work", () => {
       .toBe(8);
     await expect(page.locator(".dhunk-h .score-dot").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('.dhunk-h .score-dot[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(".dhunk-h .ptag", { hasText: "Unfold folded values" }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".dhunk-h .ptag", { hasText: "Unfold obsolete folded response headers" }).first()).toBeVisible({ timeout: 30_000 });
 
-    // Plotline filter: only the conn file serves that thread.
-    await page.locator('[data-plotpick="unfold"]').first().click();
-    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold folded values", { timeout: 15_000 });
+    // Plotline filter: the re-recorded reader has one plotline covering
+    // every hunk, so filtering by it keeps every file visible.
+    await page.locator('[data-plotpick="obs-fold-unfolding"]').first().click();
+    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold obsolete folded response headers", { timeout: 15_000 });
     await expect(connFile).toBeVisible();
-    await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
+    await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`[id="F-${TSOCK}"]`)).toBeVisible({ timeout: 15_000 });
     await page.locator('[data-filterchip="plotline"] button').click();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toBeVisible({ timeout: 15_000 });
 
@@ -116,8 +118,8 @@ test.describe("J4 diff work", () => {
     await expect(connFile).toBeVisible();
 
     // Plotline on top: the conn file stays, the test files stay hidden.
-    await page.locator('[data-plotpick="unfold"]').first().click();
-    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold folded values", { timeout: 15_000 });
+    await page.locator('[data-plotpick="obs-fold-unfolding"]').first().click();
+    await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline: Unfold obsolete folded response headers", { timeout: 15_000 });
     await expect(connFile).toBeVisible();
     await expect(page.locator(`[id="F-${TCONN}"]`)).toHaveCount(0);
     await expect(page.locator(`[id="F-${TSOCK}"]`)).toHaveCount(0);

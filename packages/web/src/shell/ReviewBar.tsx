@@ -58,8 +58,7 @@ import { jobCounts } from "./jobCounts.js";
 import { RedoGuideButton } from "./RedoGuideButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
-import { STATIC_DEMO, resetStaticDemo } from "../demo.js";
-import { Button } from "../ui/index.js";
+import { STATIC_DEMO } from "../demo.js";
 
 export function ReviewBar({
   reviewId,
@@ -259,17 +258,8 @@ export function ReviewBar({
         </button>
       </span>
       <span className="ra">
-        {STATIC_DEMO ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            type="button"
-            title="Clear your demo comments and reload the demo"
-            onClick={() => resetStaticDemo()}
-          >
-            Reset demo
-          </Button>
-        ) : null}
+        {/* Reset demo lives in the demo banner on the static demo (issue
+            #341), not here — one copy only. */}
         <CommentsMenu reviewId={reviewId} />
         <SubmitPanel reviewId={reviewId} primary />
         {showJobs ? (

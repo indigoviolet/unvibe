@@ -9,7 +9,7 @@
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";
 
-const BLOCK = "#C-g-flow #B-b1";
+const BLOCK = "#C-g-alt #B-b-demo-diagram-central";
 
 async function gotoReview(page: Page): Promise<void> {
   await page.goto("/review/demo");
@@ -67,7 +67,7 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   await svg.scrollIntoViewIfNeeded();
   // Park the diagram mid-viewport so a wheel has somewhere to scroll to.
   await page.evaluate(() => {
-    document.querySelector("#C-g-flow #B-b1")?.scrollIntoView({ block: "center" });
+    document.querySelector("#C-g-alt #B-b-demo-diagram-central")?.scrollIntoView({ block: "center" });
   });
   // Instant (no smooth scrolling in the app): one frame, not 400 ms.
   await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
@@ -90,7 +90,7 @@ test("Ctrl+wheel zooms but a plain wheel scrolls the page instead", async ({ pag
   // (re-aim: the scroll above moved the diagram; re-center it first so
   // the two-bar header cannot cover the aim point — main-rc).
   await page.evaluate(() => {
-    document.querySelector("#C-g-flow #B-b1")?.scrollIntoView({ block: "center" });
+    document.querySelector("#C-g-alt #B-b-demo-diagram-central")?.scrollIntoView({ block: "center" });
   });
   await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
   const box2 = await svg.boundingBox();
@@ -144,7 +144,7 @@ test("source closed: the block breaks out past the column without clipping", asy
   });
   await sourceOpen(page, false);
   const closed = await page.evaluate(() => {
-    const blk = document.querySelector("#C-g-flow #B-b1") as HTMLElement;
+    const blk = document.querySelector("#C-g-alt #B-b-demo-diagram-central") as HTMLElement;
     const dg = blk.querySelector(".dg") as HTMLElement;
     const svg = blk.querySelector(".dg-svg > svg") as SVGSVGElement;
     const cap = blk.querySelector(".dg-cap") as HTMLElement;

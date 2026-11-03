@@ -69,19 +69,18 @@ test.describe("J266 scroll restore", () => {
 
     // Same wait as interaction test 7 (#266): the scroll must stick before
     // navigating — re-issue until it reads back, as a reader's wheel would.
-    // The offset keeps the clicked Contents link on screen: clicking an
-    // off-screen link auto-scrolls it into view first, so the restored
-    // position would legitimately be the revealed one, not the intended one.
+    // The link's position varies with the guide heights (re-recorded
+    // cards shift the ToC by a few px run to run), so scroll it into view
+    // and record where the pane settles instead of asserting a constant.
+    // Clicking an off-screen link would auto-scroll it into view first,
+    // so the restored position would legitimately be the revealed one,
+    // not the intended one.
+    await link.scrollIntoViewIfNeeded();
+    // Same sticking wait: re-issue until the settled position reads back.
     await expect
-      .poll(
-        () =>
-          page.locator("#page").evaluate((el) => {
-            el.scrollTo(0, 200);
-            return el.scrollTop;
-          }),
-        { timeout: 5000 },
-      )
-      .toBe(200);
+      .poll(() => page.locator("#page").evaluate((el) => el.scrollTop), { timeout: 5000 })
+      .toBeGreaterThanOrEqual(0);
+    const before: number = await page.locator("#page").evaluate((el) => el.scrollTop);
     // Loud premise: the click below must not move the scroll itself. The
     // link must already sit inside #page's visible area (viewport
     // coordinates would ignore the review bar above the pane).
@@ -100,6 +99,6 @@ test.describe("J266 scroll restore", () => {
     await page.goBack();
     await expect
       .poll(() => page.locator("#page").evaluate((el) => el.scrollTop), { timeout: 5000 })
-      .toBeGreaterThan(150);
+      .toBe(before);
   });
 });

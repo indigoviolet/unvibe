@@ -109,7 +109,7 @@ test.describe("J311 data-format notice", () => {
       expect(status.status).toBe(200);
       expect(status.json as unknown as Record<string, unknown>).toMatchObject({
         state: "mismatch",
-        expected: 1,
+        expected: 2, // DATA_FORMAT 2 after #349 step 1.
         stored: null,
         outboxCount: 1,
         previousRef: "preview/old",
@@ -176,12 +176,12 @@ test.describe("J311 data-format notice", () => {
 
       // Reset: confirm, then the same service comes back fresh.
       await notice.getByRole("button", { name: "Reset and start fresh" }).click();
-      await notice.getByRole("button", { name: "Move my data aside and reset" }).click();
+      await notice.getByRole("button", { name: "Confirm reset and start fresh" }).click();
       await expect(page.getByText("Open a PR by URL or number")).toBeVisible({ timeout: 60_000 });
       await expect(page.getByTestId("data-format-notice")).toHaveCount(0);
 
       const after = await apiJson(svc, "GET", "/api/data-format");
-      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 1, stored: 1 });
+      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 2, stored: 2 });
 
       // Nothing was deleted: the old DB sits in a dated sibling dir.
       expect(asideDirs(dataDir)).toHaveLength(1);
@@ -212,7 +212,7 @@ test.describe("J311 data-format notice", () => {
       await expect(notice.getByTestId("go-back-command")).toContainText("npm install -g github:indigoviolet/unvibe#v0.0.12");
 
       await notice.getByRole("button", { name: "Reset and start fresh" }).click();
-      await notice.getByRole("button", { name: "Move my data aside and reset" }).click();
+      await notice.getByRole("button", { name: "Confirm reset and start fresh" }).click();
       await expect(page.getByText("Open a PR by URL or number")).toBeVisible({ timeout: 60_000 });
       expect(asideDirs(dataDir)).toHaveLength(1);
     } finally {

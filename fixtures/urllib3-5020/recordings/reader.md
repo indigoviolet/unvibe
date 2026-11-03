@@ -1,115 +1,48 @@
 ## The problem
 
-HTTP/1.1 used to let a server continue a header value on the next line by starting that line with a space or tab. That's [[concept:obs-fold|obsolete line folding]]. Python's `http.client` keeps the folded value as it arrived, with the raw CRLF inside it, and urllib3 copied those values straight into its [[concept:http-headers|HTTPHeaderDict]]. A header such as `Set-Cookie` could therefore contain a hidden line break. [[desc:d-p1]] [[diff:conn:650-651]]
+HTTP/1.1 servers may still send obsolete folded header lines (`obs-fold`), where a value continues on the next line after CRLF plus whitespace. Python's `http.client` keeps those raw CRLFs inside the `HTTPMessage` values. urllib3 then copied them unchanged into `HTTPHeaderDict`, so a header such as a folded `Set-Cookie` reached consumers with embedded `\r\n` in it. [[desc:d-p1]] [[diff:src-urllib3-connection.py:647-651]]
 
-::: simple
-Old servers sometimes split one header across two lines. Python keeps the line break inside the header's value, and urllib3 passed it along unchanged, so some header values contained hidden line breaks.
-:::
+Before the change, `getresponse` built the headers with `HTTPHeaderDict(httplib_response.msg.items())`, with no cleanup. The original `HTTPMessage` stayed on the response as `_original_response.msg`. Cookie consumers such as Requests read that message directly, and they could re-emit raw CRLF on later requests. [[desc:d-p2]] [[diff:src-urllib3-connection.py:647-651]]
 
-::: deep
-A parser leaking its input format. A fold is an encoding detail: one value written across lines. RFC 9112 requires a recipient to replace each fold with spaces before interpreting the value. Keeping the CRLF lets the wire format leak into the value itself, and every consumer then has to unfold it again, or carries the line break further.
-:::
-
-The line break isn't just untidy. Libraries that copy cookies from the response, such as Requests, read `http.client`'s own message object and can send the value back out with the raw CRLF in it. That can split one header into two on the next request: [[concept:header-injection|header injection]]. Issue #1362 tracked the original report. [[desc:d-p2]] [[desc:d-p1]]
-
-::: simple
-Worse, other libraries copy these values into the next request, and the hidden line break can turn one header into two.
-:::
-
-::: deep
-A safety property. A header value must never contain CR or LF once it leaves the parser, because anything that writes it out again treats the line break as the end of the header. Normalizing at the one point where urllib3 turns the parsed response into its own types fixes every consumer at once, as long as the original message is fixed too.
-:::
+The reported case is #1362. Whitespace before the colon and header-name validation are a separate issue and are not part of this change. [[desc:d-p4]]
 
 ## The central idea
 
-urllib3 now unfolds header values right after `http.client` parses the response, as restated in [[card:problem#b1|the problem]]. A new helper replaces each fold (optional whitespace, CRLF, then at least one space or tab) with a single space. It updates both urllib3's `HTTPHeaderDict` and the original `HTTPMessage`, so code reading either one sees the same clean values. [[diff:conn:91-110]] [[diff:conn:650-651]]
+The change unfolds every `obs-fold` right after parsing, before anything reads the headers. `_OBSOLETE_FOLD_RE` matches optional whitespace, then CRLF, then required whitespace, and `_normalize_header_value` replaces each match with one space. [[diff:src-urllib3-connection.py:80-88]]
 
-::: simple
-Right after a response arrives, urllib3 now turns every split header back into one line, in both copies of the headers.
-:::
-
-::: deep
-Normalize the source, then derive. The fix rewrites the `HTTPMessage` in place (same object, same order, same duplicates) and builds `HTTPHeaderDict` from the same normalized list. Both views are equal by construction, and nothing downstream has to know folding ever existed.
-:::
-
-| Raw value | After |
-|---|---|
-| `before \t\r\n\t  after` | `before after` |
-| `one\r\n two\t\r\n\tthree` | `one two three` |
-| `one\r\n \r\n\tthree` | `one  three` (two folds give two spaces) |
-| `ordinary\tvalue` | unchanged |
-
-Finding: [[page:f-lf]]
-
-The pattern starts its optional whitespace match only at the beginning of a run of spaces, which keeps it [[concept:regex-performance|linear-time]] on long values, and a fast path skips any value without CRLF, which is almost all of them. [[diff:conn:80-88]]
-
-::: simple
-No header value should contain a line break after parsing. The code also stays fast, even for very long or unusual values.
-:::
-
-::: deep
-Two properties are enforced together: a semantic one (no CR or LF in values) and a performance one (cost linear in input). The second matters because response headers are attacker-controlled input; a pattern that backtracks quadratically would turn a cleanup step into a [[concept:regex-performance|denial-of-service]] vector.
-:::
+`_normalize_header_values` applies this to the `HTTPMessage` items. If any value changed, it deletes and re-adds the headers on the original message, so the message and urllib3's `HTTPHeaderDict` agree. It returns the cleaned items, and `getresponse` builds `HTTPHeaderDict` from them. [[diff:src-urllib3-connection.py:91-110]] [[diff:src-urllib3-connection.py:647-651]]
 
 ## How it's built up
 
-The change builds in two steps. First the unfolding itself: a helper replaces each fold with a single space, and both header views are built from the normalized values, so no consumer can see a raw line break again. [[diff:conn:91-110]] [[diff:conn:650-651]] Then the proof: unit and socket-level tests pin the before/after values, so the reader can check the rule — a parsed header value never contains a line break — against real responses instead of taking it on trust. [[diff:conn:650-651]]
+There is one plotline. It has three pieces:
 
-::: simple
-First the code learns to unfold folded headers everywhere it reads them. Then tests prove the unfolding gives the right values.
-:::
+1. The regex and the single-value helper `_normalize_header_value`. They return early when a value has no CRLF. [[diff:src-urllib3-connection.py:80-88]]
+2. The message-level helper `_normalize_header_values`. It rewrites the message only if something changed, and it returns the items. [[diff:src-urllib3-connection.py:91-110]]
+3. The call in `getresponse`, which feeds the cleaned items to `HTTPHeaderDict`. [[diff:src-urllib3-connection.py:647-651]]
 
-::: deep
-Normalize once, at the boundary, then prove the invariant at that boundary. Each later consumer inherits the property instead of re-establishing it, which is why the tests belong with the helper rather than with any one caller.
-:::
+The tests follow the same layers. Unit tests cover the single value and the message: order, duplicates, payload, policy and defects. A socket-level test covers the whole path, and a changelog fragment is added. [[diff:test-test_connection.py:214-249]] [[diff:test-with_dummyserver-test_socketlevel.py:92-146]] [[diff:changelog-1362.bugfix.rst:1-3]]
 
 ## Decisions and questions
 
-Three choices carry the change:
+**Decisions**
+- **Normalize in `getresponse`, and mutate the original message.** The alternative is to clean only the `HTTPHeaderDict` copy. That would leave the CRLF in `msg`, which Requests reads for cookies. The description gives this as the reason. The cost is that urllib3 now rewrites an `http.client` object it does not own. [[desc:d-p2]] [[diff:src-urllib3-connection.py:102-108]]
+- **Rewrite by delete and re-add.** `HTTPMessage` has no in-place item replacement. Delete-and-re-add keeps the object's identity, and the order is preserved because every name is removed and then re-added in the original sequence. The reason is inferred. [[diff:src-urllib3-connection.py:105-108]]
+- **Fast path and regex shape.** The code skips values without `\r\n`. A lookbehind keeps matching of the leading whitespace linear in long runs; the comment says it avoids quadratic backtracking. [[diff:src-urllib3-connection.py:80-88]]
+- **Collapse to a single space.** The change follows RFC 9112, and each fold becomes one space. Adjacent folds collapse to one space too, with no zero-space case. [[diff:test-test_connection.py:218-220]]
 
-- First, normalize both views of the headers — urllib3's `HTTPHeaderDict` and the original `HTTPMessage` — instead of only the view urllib3 owns: code reading either one then sees the same clean values, at the cost of rewriting a message object urllib3 does not own (the reason is inferred from the two consumers the code serves; the description states the outcome, not the motive). [[diff:conn:650-651]] [[desc:d-p2]]
-- Second, replace each fold with a single space rather than rejecting folded responses: folding is obsolete but still sent, and RFC 9112 requires recipients to unfold it, so rejection would break servers the standard says to tolerate (see [[concept:obs-fold|obsolete line folding]]).
-- Third, guard the pattern so it stays [[concept:regex-performance|linear-time]] and skip values without CRLF entirely, instead of running one simple pattern over every header: headers are attacker-controlled, so the cleanup must never cost more than the parsing it follows. [[diff:conn:80-88]]
+**Invariants**
+- After `getresponse`, no header value in `HTTPHeaderDict` or in `msg` contains a fold CRLF. Only the socket test checks that the message and the dict agree. [[diff:test-with_dummyserver-test_socketlevel.py:135-146]]
+- Header names, order, duplicates, payload, policy and defects are preserved. The unit test checks this. [[diff:test-test_connection.py:226-249]]
 
-### Invariants
+**Known uncertainties**
+- Values containing a bare `\r\n` that is not followed by whitespace are left unchanged. Nothing tests that case. Reading the code is enough to confirm it.
+- `del message[name]` removes all headers with that name. The loop does this once per occurrence, which is harmless because deleting an absent name is a no-op. Re-adding follows `header_items` order, so duplicates stay in order. [[diff:src-urllib3-connection.py:105-108]]
+- Header names are re-set from the `message.items()` output. A name containing a CRLF would not be affected, but no test exercises this.
 
-The invariant the change establishes: a parsed header value must never contain a line break. It is established where the response is turned into urllib3's types, relied on by every consumer that re-emits a value, and enforced by the unit and socket-level tests. [[diff:conn:91-110]] [[diff:conn:650-651]]
-
-### Known uncertainties
-
-Known uncertainty: whether folded values that end in LF alone, without CRLF, occur in real responses cannot be settled from this code or description; traffic or server data showing such folds would settle it. [[diff:conn:80-88]]
-
-### Interfaces
-
-No new public interface is added. The existing header views keep their shape: urllib3's `HTTPHeaderDict` and the original `HTTPMessage` hold the same names, order and duplicates, with folded values unfolded in both. [[diff:conn:650-651]] [[desc:d-p2]]
-
-::: simple
-Fix both copies of the headers, unfold instead of refusing folded responses, and keep the check cheap enough to run on every response.
-:::
-
-::: deep
-Each choice trades a local simplicity for a global property: one normalization point (both views equal by construction), standards-mandated tolerance (unfold, never reject), and a cost bound on untrusted input (linear time, with a fast path for the common case).
-:::
+**Interfaces with reach**
+- The new helpers are private to `connection.py`, so the public surface is unchanged.
+- The visible effect is on `HTTPResponse.headers` and on `_original_response.msg`, which Requests and others read. [[diff:test-with_dummyserver-test_socketlevel.py:139-146]]
 
 ```json
-{
-  "pendingCards": [
-    {"id": "g-flow", "label": "Data flow: from the socket to HTTPHeaderDict", "why": "Follows a folded header from http.client through the new helpers to both header views, so you can judge where a folded value could still slip through."},
-    {"id": "g-design", "label": "Design: why the original HTTPMessage is rewritten too", "why": "Two copies of the headers, who reads which, and how identity and order are kept, so you can judge whether rewriting a message urllib3 does not own is the right call."},
-    {"id": "g-regex", "label": "The pattern: why the lookbehind matters", "why": "What each part of the regex matches, and the backtracking it avoids, so you can judge the linear-time claim for long values."},
-    {"id": "g-check", "label": "Review checklist", "why": "Concrete things to verify, each linked to the line that answers it, so you can judge what the tests do and do not cover."}
-  ],
-  "plotlines": [
-    {"id": "unfold", "name": "Unfold folded values", "description": "Adds the unfolding itself, so every later step can assume no parsed header value contains a line break.", "hunks": ["h:src-urllib3-connection.py:fa60105d7fcbe8fe", "h:src-urllib3-connection.py:b355d2096d4d7f39"]},
-    {"id": "unfold-tests", "name": "Prove the unfolding works", "description": "Adds unit and socket-level coverage, so the no-line-break rule can be checked against real responses.", "buildsOn": "unfold", "hunks": ["h:test-test_connection.py:6cfb09ec98cba6ba", "h:test-test_connection.py:92cf4ca541bdb0f2", "h:test-test_connection.py:b33779988cee5f8a", "h:test-with_dummyserver-test_socketlevel.py:949dda852e448b55"]}
-  ],
-  "cardIds": ["problem", "central", "buildup", "decisions"],
-  "glossary": [
-    {"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "diff:src-urllib3-connection.py:650-651"},
-    {"name": "_OBSOLETE_FOLD_RE", "definition": "Pattern replacing each obsolete fold with a single space.", "citation": "diff:src-urllib3-connection.py:80-82"},
-    {"name": "_normalize_header_values", "definition": "Helper unfolding all folded values while keeping message identity.", "citation": "diff:src-urllib3-connection.py:91-110"},
-    {"name": "obsolete line folding", "definition": "A header value split across lines with CRLF plus space or tab.", "citation": "diff:src-urllib3-connection.py:80-88"}
-  ],
-  "contribute": {"open_questions": ["Whether folded values that end in LF alone occur in real responses, and what traffic data would show it."]}
-}
+{"pendingCards":[{"id":"g-alt","label":"Mutating msg vs. only the dict","why":"Lets you judge whether rewriting the http.client message is the right place for the fix."},{"id":"g-regex","label":"The _OBSOLETE_FOLD_RE lookbehind","why":"Lets you judge the linear-time claim and the whitespace cases it handles."},{"id":"g-tests","label":"What the tests cover and miss","why":"Lets you see which edge cases (bare CRLF, header-name edge cases) are untested."},{"id":"g-reach","label":"Who reads _original_response.msg","why":"Shows which consumers depend on the message staying in sync with HTTPHeaderDict."}],"plotlines":[{"id":"obs-fold-unfolding","name":"Unfold obsolete folded response headers","description":"Replaces obs-fold in response headers with a single space, in both HTTPHeaderDict and the original HTTPMessage, so downstream consumers never see raw CRLF.","hunks":["h:src-urllib3-connection.py:fa60105d7fcbe8fe","h:src-urllib3-connection.py:b355d2096d4d7f39","h:test-test_connection.py:6cfb09ec98cba6ba","h:test-test_connection.py:92cf4ca541bdb0f2","h:test-test_connection.py:b33779988cee5f8a","h:test-with_dummyserver-test_socketlevel.py:29382503b8689e5f","h:test-with_dummyserver-test_socketlevel.py:949dda852e448b55","h:changelog-1362.bugfix.rst:d1c6f159e5ffb42d"]}],"glossary":[{"name":"obs-fold","definition":"Obsolete HTTP header line folding: CRLF followed by SP/HTAB inside a field value.","citation":"diff:src-urllib3-connection.py:80-82"},{"name":"_normalize_header_value","definition":"Replaces each obs-fold in one value with a single space; skips values without CRLF.","citation":"diff:src-urllib3-connection.py:85-88"},{"name":"_normalize_header_values","definition":"Unfolds all values of an HTTPMessage, syncs the message, returns the items.","citation":"diff:src-urllib3-connection.py:91-110"},{"name":"HTTPHeaderDict","definition":"urllib3's response header mapping, built in getresponse.","citation":"diff:src-urllib3-connection.py:650-651"}],"contribute":{"facts":[],"open_questions":["A bare \\r\\n not followed by SP/HTAB is left in the value; is that intended and tested?","Does mutating http.client's HTTPMessage affect other consumers beyond cookie handling?"]}}
 ```
