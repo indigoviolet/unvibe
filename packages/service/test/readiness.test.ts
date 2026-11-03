@@ -179,52 +179,24 @@ describe("readiness checks", () => {
     }
   });
 
-  it("second opinion distinct check warns when same as main", async () => {
-    const same = await getReadiness(
-      {
-        runner: real,
-        agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
-        settings: settingsStore({
-          main: { provider: "claude", model: "m", effort: "" },
-          secondOpinion: { provider: "claude", model: "m", effort: "" },
-        }),
-        loginPathValue: "/nonexistent",
-        timeoutMs: 1000,
-      },
-      { force: true },
-    );
-    expect(same.checks.find((c) => c.id === "agents-distinct")!.status).toBe("warning");
-
-    const diff = await getReadiness(
-      {
-        runner: real,
-        agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
-        settings: settingsStore({
-          main: { provider: "claude", model: "m", effort: "" },
-          secondOpinion: { provider: "codex", model: "m", effort: "" },
-        }),
-        loginPathValue: "/nonexistent",
-        timeoutMs: 1000,
-      },
-      { force: true },
-    );
-    expect(diff.checks.find((c) => c.id === "agents-distinct")!.status).toBe("ok");
-  });
-
-  it("unset second opinion names the enforced rule: a different model from main (finding 19)", async () => {
+  it("readiness covers exactly the main and small roles (issue #349)", async () => {
     const r = await getReadiness(
       {
         runner: real,
         agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
-        settings: settingsStore({ secondOpinion: { provider: "codex", model: "", effort: "" } }),
+        settings: settingsStore({
+          main: { provider: "claude", model: "m", effort: "" },
+        }),
         loginPathValue: "/nonexistent",
         timeoutMs: 1000,
       },
       { force: true },
     );
-    const check = r.checks.find((c) => c.id === "agent:secondOpinion")!;
-    expect(check.status).toBe("warning");
-    expect(check.summary).toContain("different model from main");
+    const ids = r.checks.map((c) => c.id);
+    expect(ids).toContain("agent:main");
+    expect(ids).toContain("agent:small");
+    expect(ids).not.toContain("agent:secondOpinion");
+    expect(ids).not.toContain("agents-distinct");
   });
 
   it("d2 warns (not ok) when UNVIBE_D2_BIN points at a missing file or cannot be probed", async () => {
@@ -310,17 +282,17 @@ describe("readiness checks", () => {
       expect(summary("agent:main")).toContain("gpt-6-sol");
       expect(summary("agent:main")).not.toContain("opus-5-5");
       expect(summary("agent:small")).toContain("gpt-5.6-luna");
-      expect(summary("agent:secondOpinion")).toContain("claude-sonnet-5-5");
-      expect(r.checks.find((c) => c.id === "agents-distinct")!.status).toBe("ok");
+      expect(r.checks.find((c) => c.id === "agent:secondOpinion")).toBeUndefined();
+      expect(r.checks.find((c) => c.id === "agents-distinct")).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("Claude-only machine: main/small ready with no 'not offered', second opinion not set (issue #88)", async () => {
+  it("Claude-only machine: main/small ready with no 'not offered' (issue #88)", async () => {
     // Scratch PATH with only a claude CLI; the Codex listing is unknown
     // (not installed), so with nothing saved the live main/small come from
-    // Claude and second opinion unsets instead of pointing at Codex.
+    // Claude.
     const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -364,10 +336,8 @@ describe("readiness checks", () => {
       expect(small.status).toBe("ok");
       expect(summary("agent:small")).toContain("claude-haiku-5-5");
       expect(summary("agent:small")).not.toContain("not offered");
-      // Not set — a warning, never a failed (error) check.
-      const second = r.checks.find((c) => c.id === "agent:secondOpinion")!;
-      expect(second.status).toBe("warning");
-      expect(summary("agent:secondOpinion")).toMatch(/not set/i);
+      // No second-opinion role remains (issue #349).
+      expect(r.checks.find((c) => c.id === "agent:secondOpinion")).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -419,7 +389,7 @@ describe("readiness checks", () => {
       const body = res.json() as ReadinessResponse;
       expect(Array.isArray(body.checks)).toBe(true);
       expect(body.checks.map((c) => c.id)).toEqual(
-        expect.arrayContaining(["git", "gh", "agent:main", "agent:small", "agent:secondOpinion", "agents-distinct"]),
+        expect.arrayContaining(["git", "gh", "agent:main", "agent:small", "pi", "d2"]),
       );
       for (const c of body.checks) {
         expect(["ok", "warning", "error"]).toContain(c.status);

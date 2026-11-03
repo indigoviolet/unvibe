@@ -19,10 +19,10 @@ describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
     // 49 base recordings (one combined critic recording, #215; no
-    // concept-stubs recording, #216) + 3 second-opinion recordings
-    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10)
+    // concept-stubs recording, #216; no second-opinion recordings, #349)
+    // + 1 expansion-depth recording (audit #10)
     // + 1 list-first ask recording (#331).
-    expect(counts).toHaveLength(55);
+    expect(counts).toHaveLength(52);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
@@ -111,10 +111,11 @@ describe("snapshot build", () => {
         templates: { name: string }[];
         expanded: { name: string; expanded: string }[];
       };
-      expect(body.templates).toHaveLength(17);
-      expect(body.expanded).toHaveLength(17);
-      const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
-      expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
+      expect(body.templates).toHaveLength(16);
+      expect(body.expanded).toHaveLength(16);
+      const card = body.expanded.find((e) => e.name === "persona_card")!;
+      expect(card.expanded).toContain("The problem");
+      expect(card.expanded).toContain("[[card:problem]]");
       const reader = body.expanded.find((e) => e.name === "reader")!;
       expect(reader.expanded).toContain("src-urllib3-connection.py");
     } finally {

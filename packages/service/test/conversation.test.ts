@@ -588,7 +588,7 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
     }
   });
 
-  it("promote after completion moves second opinions and drops the turns", { timeout: 90000 }, async () => {
+  it("promote after completion moves the answer content and drops the turns", { timeout: 90000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = new FakeAgentRunner([
       ...baseScripts(),
@@ -602,34 +602,15 @@ describe("promote mid-fill keeps the fill (issue #152)", () => {
         const a = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId);
         return (a?.replies?.find((t) => t.id === turnId)?.blocks.length ?? 0) > 0;
       });
-      // A reader-made second opinion on the answer.
-      await ctx.reviews.mutate(id, (draft) => {
-        const ann = (draft.annotations as unknown as ReviewSnapshot["annotations"]).find((a) => a.id === annotationId);
-        const turn = ann?.type === "thread" ? (ann.replies ?? []).find((t) => t.id === turnId) : undefined;
-        if (!turn) throw new Error("turn missing");
-        turn.secondOpinions = [
-          {
-            id: `so-${turnId}-check-mock`,
-            cardId: turnId,
-            mode: "check",
-            provider: "codex",
-            model: "mock-second",
-            verdict: "agrees",
-            reasoning: "Checked the helper.",
-            blocks: [],
-            effort: "",
-            version: 1,
-            createdAt: 0,
-          },
-        ];
-      });
+      const before = ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!;
+      const turnBlocks = before.type === "thread" ? (before.replies ?? []).find((t) => t.id === turnId)!.blocks : [];
 
       const promoted = await postAction(app, id, { kind: "promote", annotationId });
       expect(promoted.status).toBe(200);
       const pageId = promoted.json.pageId as string;
       const snap = ctx.reviews.getSnapshot(id)!;
       const page = snap.pages.find((p) => p.id === pageId)!;
-      expect(page.cards[0].secondOpinions?.map((s) => s.id)).toEqual([`so-${turnId}-check-mock`]);
+      expect(page.cards[0].blocks).toEqual(turnBlocks);
       const link = snap.annotations.find((a) => a.id === annotationId)!;
       expect(link.type).toBe("link");
       expect(link.replies).toEqual([]);

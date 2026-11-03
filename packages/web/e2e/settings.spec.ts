@@ -2,8 +2,8 @@
  * Settings page + versions banner behaviour tests against mock mode
  * (PRD §4.14, §8): repositories (list + add by path, add by URL with busy
  * and error states, managed marks, remove with confirm copy and the 409
- * refusal), model pickers with adapter errors and the same-model warning,
- * prompt template view, limits persistence, and the
+ * refusal), model pickers with adapter errors, prompt template view,
+ * limits persistence, and the
  * stale-review banner with range-diff + version switching. (Jobs, prompt
  * expansions and shared context live on the per-review debug page now:
  * `debug.spec.ts`.)
@@ -201,25 +201,22 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   await expect(row).toBeVisible();
 });
 
-test("model pickers list provider models and warn on same-model second opinion", async ({ page }) => {
+test("model pickers list provider models (per persona in Settings → Personas)", async ({ page }) => {
   await gotoSettings(page);
   await page.getByRole("tab", { name: "Models" }).click();
   const main = page.locator('[data-testid="model-main"]');
   await expect(main.locator("#model-main")).toContainText("mock-main");
 
-  // Second opinion on the same model as main warns (PRD §4.10). This runs
-  // before the unknown-provider override below replaces main, so the
-  // default main (claude/mock-main) is still there to match against.
-  const second = page.locator('[data-testid="model-secondOpinion"]');
-  await second.locator("#prov-secondOpinion").click();
-  await openPopup(page).getByRole("option", { name: "claude", exact: true }).click();
   // Switching provider only browses that provider's list (#87): nothing is
   // saved yet, so the model trigger waits on the placeholder pick.
-  const secondModel = second.locator("#model-secondOpinion");
-  await expect(secondModel).toContainText("Pick a claude model…");
-  await secondModel.click();
-  await openPopup(page).getByRole("option", { name: "mock-main" }).click();
-  await expect(page.getByText(/same model as main/)).toBeVisible();
+  const small = page.locator('[data-testid="model-small"]');
+  await small.locator("#prov-small").click();
+  await openPopup(page).getByRole("option", { name: "codex", exact: true }).click();
+  const smallModel = small.locator("#model-small");
+  await expect(smallModel).toContainText("Pick a codex model…");
+  await smallModel.click();
+  await openPopup(page).getByRole("option", { name: "Mock Second" }).click();
+  await expect(small.locator("#model-small")).toContainText("Mock Second");
 
   // Unknown provider (stored before the adapter went away): a clear
   // message, not an empty list.

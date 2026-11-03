@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { DATA_FORMAT } from "@unvibe/shared";
 import { writeLock } from "../src/cli/lock.js";
 import {
   runUpdateChannelFlow,
@@ -81,7 +82,7 @@ function contentsStdout(pkg: unknown): string {
 }
 
 function installed(channel: string | null, version = "0.0.1"): InstalledBuild {
-  return { version, dataFormat: 1, channel, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, packagePath: null };
+  return { version, dataFormat: 2, channel, sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, packagePath: null };
 }
 
 describe("channel names + install specs", () => {
@@ -374,7 +375,7 @@ describe("readInstalledBuild", () => {
     });
     expect(readInstalledBuild(scriptPath, "fallback")).toEqual({
       version: "0.0.1-preview.feat-x.abc1234",
-      dataFormat: 1,
+      dataFormat: 2,
       channel: "preview/feat-x",
       sourceBranch: "feat/x",
       sourceCommit: null,
@@ -404,7 +405,7 @@ describe("readInstalledBuild", () => {
     });
     expect(readInstalledBuild(scriptPath, "fallback")).toEqual({
       version: "0.0.1-preview.feat-x.abc1234",
-      dataFormat: 1,
+      dataFormat: 2,
       channel: "preview/feat-x",
       sourceBranch: "feat/x",
       sourceCommit: "aaa111122223333",
@@ -470,7 +471,7 @@ describe("readInstalledBuild", () => {
 
     expect(readInstalledBuild(undefined, "fallback")).toEqual({
       version: "fallback",
-      dataFormat: 1,
+      dataFormat: 2,
       channel: null,
       sourceBranch: null,
       sourceCommit: null,
@@ -728,7 +729,7 @@ describe("runUpdateChannelFlow", () => {
     };
     const refused = await runUpdateChannelFlow(deps, "preview/feat-x");
     expect(refused.code).toBe(1);
-    expect(refused.lines.some((l) => l.includes("data format (1 → 99)"))).toBe(true);
+    expect(refused.lines.some((l) => l.includes(`data format (${DATA_FORMAT} → 99)`))).toBe(true);
     expect(refused.lines.some((l) => l.includes("Outbox"))).toBe(true);
     expect(runner.calls.filter((c) => c.cmd === "npm")).toHaveLength(0);
 

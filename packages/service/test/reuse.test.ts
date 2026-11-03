@@ -17,8 +17,6 @@
  * - diagram: card with a diagram reuses; removed → new request.
  * - generate: filled placeholder reuses; pending → new job.
  * - concept: full page reuses.
- * - second-opinion: same card+mode+model+version reuses; deleted, model
- *   change, or new version → new request.
  * - hunk summarize: stored summary for same content hash reuses; deleted
  *   (PATCH null) or new hash → new request.
  * - followup/reply: one-shot by design (suggestion consumed / new message) —
@@ -49,7 +47,6 @@ const DIAGRAM_REPLY = "```d2\ndirection: right\na: \"A\" {link: \"diff:a-py:1-2\
 const GODEEPER_REPLY = `Body [[diff:a-py:1-2]]\n\n\`\`\`json\n{"title": "T"}\n\`\`\`\n`;
 const CONCEPT_REPLY = `First concept paragraph [[diff:a-py:1-2]].\n\nSecond concept paragraph [[diff:a-py:2-3]].\n\n\`\`\`json\n{"title": "Test concept"}\n\`\`\`\n`;
 const HUNK_REPLY = `Summary [[diff:a-py:1-2]]\n\n\`\`\`json\n{"hunk": {"summary": "S"}}\n\`\`\`\n`;
-const SECOND_REPLY = `Independent check. [[diff:a-py:1-2]]\n\n\`\`\`json\n{"secondOpinion": {"verdict": "agrees", "reasoning": "Checked.", "missed": "Nothing."}}\n\`\`\`\n`;
 
 function fakeAgents(): FakeAgentRunner {
   return new FakeAgentRunner([
@@ -64,7 +61,6 @@ function fakeAgents(): FakeAgentRunner {
     { match: "# Go deeper", events: textEvents(GODEEPER_REPLY) },
     { match: "# Concept page", events: textEvents(CONCEPT_REPLY) },
     { match: "Hunk pass", events: textEvents(HUNK_REPLY) },
-    { match: "Second opinion", events: textEvents(SECOND_REPLY) },
   ]);
 }
 
@@ -362,20 +358,10 @@ describe("PRD §12 cross-request reuse (#10)", () => {
     }
   });
 
-  it("second-opinion reuses same mode/model/version; hunk summarize reuses stored summary", async () => {
+  it("hunk summarize reuses stored summary", async () => {
     const agents = fakeAgents();
     const { app, ctx, reviewId } = await setupWithAgents(agents);
     try {
-      const so1 = await postAction(app, reviewId, { kind: "second_opinion", cardId: "central", mode: "check" });
-      expect(so1.status).toBe(200);
-      expect(so1.json.jobId).toBeTruthy();
-      await waitForJob(ctx, so1.json.jobId as string);
-      const n = agents.prompts.length;
-      const so2 = await postAction(app, reviewId, { kind: "second_opinion", cardId: "central", mode: "check" });
-      expect(so2.json.reused).toBe(true);
-      expect(so2.json.jobId).toBeUndefined();
-      expect(agents.prompts.length).toBe(n);
-
       // Hunk summarize via HTTP route.
       const h1 = await app.inject({
         method: "POST",
@@ -442,7 +428,7 @@ describe("PRD §12 cross-request reuse (#10)", () => {
     }
   });
 
-  it("new base version invalidates explain/ask/second-opinion", async () => {
+  it("new base version invalidates explain/ask", async () => {
     const agents = fakeAgents();
     const { app, ctx, reviewId } = await setupWithAgents(agents);
     try {
