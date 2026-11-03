@@ -468,12 +468,6 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    their button, clamped into the viewport), never clipped by the
    toolbar's sideways scroller. */
 .fmenu.portal { z-index: 30; width: 240px; }
-/* Remove-confirm popover (#225): a small dialog anchored to the row's
-   Remove button (positioned from it like the other popovers, clamped
-   into the viewport). A portal overlay, so the row never reflows. */
-.confirm-pop { position: fixed; z-index: 30; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-width: min(280px, calc(100vw - 16px)); }
-.confirm-pop .q { font-size: var(--text-sm); color: var(--text-primary); }
-.confirm-pop .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 /* File tree (#227): never a horizontal scrollbar — rows fit the panel,
    names and directory chains truncate, and the change indicators sit in
@@ -867,10 +861,12 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 /* #274 repo picker as the page title: 24px head font, left-aligned. */
 .repo-title-select { width: auto; height: auto; padding: 4px 8px 4px 0; font: 600 24px/1.2 var(--serif); background: transparent; border-color: transparent; }
 .repo-title-select:hover { border-color: var(--line); }
-/* #274 quiet row actions: Remove shows on row hover or keyboard focus. */
-.ci .rm { opacity: 0; height: 32px; border-color: transparent; transition: opacity .15s; }
-.ci:hover .rm, .ci:focus-within .rm { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .ci .rm { transition: none; } }
+/* #274 quiet row actions: Remove shows on row hover or keyboard focus
+   (#346: the shared inline confirm's idle slot keeps the same reveal;
+   session rows only — repo rows keep their always-visible Remove). */
+.ci[data-testid^="session-"] .uic-idlehold { opacity: 0; transition: opacity .15s; }
+.ci[data-testid^="session-"]:hover .uic-idlehold, .ci[data-testid^="session-"]:focus-within .uic-idlehold { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ci[data-testid^="session-"] .uic-idlehold { transition: none; } }
 /* #274 branch rows: the name once (the title), the date right-aligned. */
 .cj-branch { flex-direction: row; align-items: baseline; gap: 12px; }
 .cj-branch .cj-open { flex: 1; min-width: 0; order: 1; }

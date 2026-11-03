@@ -12,13 +12,13 @@ import { expect, test } from "./network-guard.js";
 
 const FRAMES = fileURLToPath(new URL("../test-results/", import.meta.url));
 
-/** The inline confirm is open: copy in the accessibility tree + tooltip. */
+/** The shared inline confirm (#346) is open: pill + both segments + the copy in its accessible name. */
 async function expectConfirmOpen(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Re-do" })).toHaveAttribute(
-    "title",
-    /Anything already on GitHub stays there\./,
-  );
-  await expect(page.locator("#reviewbar").getByText("Anything already on GitHub stays there.")).toHaveCount(1);
+  const pill = page.locator("#reviewbar .uic-pill");
+  await expect(pill).toContainText("Confirm re-do guide");
+  await expect(pill.getByRole("button", { name: "Confirm re-do guide" })).toBeVisible();
+  await expect(pill.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there\./);
 }
 
 test("demo review toolbar offers no re-do, and neither does the Debug page", async ({ page }) => {
@@ -67,6 +67,9 @@ test("top bar fits at 1440 and 960 (light), plus the open confirmation", async (
     // The confirming state swaps in place and must hold the same row.
     await page.getByRole("button", { name: "Re-do guide" }).click();
     await expectConfirmOpen(page);
+    // Let the pill's entry animation settle: capturing mid-fade reads
+    // as a see-through pill with doubled text.
+    await page.waitForTimeout(300);
     await page.screenshot({ path: `${FRAMES}redo-confirm-${width}.png` });
     const confirming = await page.evaluate(() => {
       const bar = document.getElementById("reviewbar")!;
@@ -88,12 +91,12 @@ test("cancel and Escape close the confirmation without leaving", async ({ page }
   await page.getByRole("button", { name: "Re-do guide" }).click();
   await expectConfirmOpen(page);
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator("#reviewbar").getByText("Anything already on GitHub stays there.")).toBeHidden();
+  await expect(page.locator("#reviewbar .uic-pill")).toHaveCount(0);
   await expect(page).toHaveURL("/review/r-old");
   await page.getByRole("button", { name: "Re-do guide" }).click();
   await expectConfirmOpen(page);
   await page.keyboard.press("Escape");
-  await expect(page.locator("#reviewbar").getByText("Anything already on GitHub stays there.")).toBeHidden();
+  await expect(page.locator("#reviewbar .uic-pill")).toHaveCount(0);
   await expect(page).toHaveURL("/review/r-old");
 });
 
@@ -104,7 +107,7 @@ test("re-do confirms and lands on the new loading review", async ({ page }) => {
   // Arm the hold after load: an init script would run again on the reload
   // below and re-arm it, racing the release (open-review.spec.ts).
   await page.evaluate(() => localStorage.setItem("unvibe.mock.createReviewHold", "1"));
-  await page.getByRole("button", { name: "Re-do", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm re-do guide" }).click();
   // The old id is gone; the new review opens in its loading state.
   await expect(page).toHaveURL(/\/review\/mock-loading-/, { timeout: 15000 });
   await expect(page.getByTestId("review-loading")).toBeVisible();

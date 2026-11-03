@@ -49,9 +49,7 @@
  *   the lists they concern (`newreview-agent-hint` by Reviews,
  *   `newreview-gh-hint` by the PR lists).
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { computePosition, flip, offset, shift } from "@floating-ui/dom";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import type {
   ContextRepoSource,
@@ -66,7 +64,7 @@ import { CHANGES_DEFAULT_LIMIT, parseGitHubRepoInput } from "@unvibe/shared";
 import { decodeChangesCursor, encodeChangesCursor, type ChangesCursor } from "@unvibe/shared";
 import { changePrUrl, githubPrUrl } from "@unvibe/shared";
 import { Combobox } from "@base-ui/react/combobox";
-import { Button, Card, DiffStat, PrBadges, ProcessingDots, Select } from "../ui/index.js";
+import { Button, Card, DiffStat, InlineConfirm, PrBadges, ProcessingDots, Select } from "../ui/index.js";
 import { api, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { ingestStepLabel } from "../guide/stageLabels.js";
@@ -1153,21 +1151,26 @@ export function StartPage(): React.JSX.Element {
     [openReview, selectedId],
   );
 
-  const removeSession = useCallback(
-    async (id: string) => {
-      setDeleting(id);
-      try {
-        await api.deleteReview(id);
-        setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
-        setConfirmDelete(null);
-      } catch (err) {
-        toast(`Couldn't remove the review: ${friendlyError(err)}`);
-      } finally {
-        setDeleting(null);
-      }
-    },
-    [],
-  );
+  // #346: removing a review is the shared inline confirm. The work
+  // (the DELETE) runs on ✓; the row disappears in `doneRemove` after
+  // the pill's "✓ Confirmed" flash. A rejection stays inline in the
+  // pill (retry or cancel), so no toast here. `sessionRemoved` below
+  // applies the result after the flash.
+  const removeSession = useCallback(async (id: string) => {
+    setDeleting(id);
+    try {
+      await api.deleteReview(id);
+    } catch (err) {
+      setDeleting(null);
+      throw err;
+    }
+  }, []);
+
+  const sessionRemoved = useCallback((id: string) => {
+    setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
+    setConfirmDelete(null);
+    setDeleting(null);
+  }, []);
 
   const recheck = useCallback(async () => {
     setChecking(true);
@@ -1485,6 +1488,7 @@ export function StartPage(): React.JSX.Element {
                   confirmDelete={confirmDelete}
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
+                  sessionRemoved={sessionRemoved}
                   onOpen={() => navigate(`/review/${s.id}`)}
                   stackInfo={s.prNumber !== undefined ? stacks[s.prNumber] : undefined}
                   onOpenStackPr={openStackPr}
@@ -1499,6 +1503,7 @@ export function StartPage(): React.JSX.Element {
                   confirmDelete={confirmDelete}
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
+                  sessionRemoved={sessionRemoved}
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
@@ -1548,6 +1553,7 @@ export function StartPage(): React.JSX.Element {
                       confirmDelete={confirmDelete}
                       setConfirmDelete={setConfirmDelete}
                       removeSession={removeSession}
+                      sessionRemoved={sessionRemoved}
                       onOpen={() => navigate(`/review/${s.id}`)}
                     />
                   ))}
@@ -1861,6 +1867,7 @@ export function SessionRow({
   confirmDelete,
   setConfirmDelete,
   removeSession,
+  sessionRemoved,
   onOpen,
   stackInfo,
   onOpenStackPr,
@@ -1870,7 +1877,10 @@ export function SessionRow({
   deleting: string | null;
   confirmDelete: string | null;
   setConfirmDelete: (id: string | null) => void;
+  /** The DELETE itself; rejects on failure (stays inline in the pill). */
   removeSession: (id: string) => Promise<void>;
+  /** Applies the result after the pill's "✓ Confirmed" flash. */
+  sessionRemoved: (id: string) => void;
   onOpen: () => void;
   stackInfo?: PrStackInfo;
   onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
@@ -1884,57 +1894,6 @@ export function SessionRow({
       : null;
   const canOpen = opening === null && deleting === null;
   const faded = s.prState === "merged" || s.prState === "closed";
-  // #225: the Remove confirmation is a small popover anchored to the
-  // Remove button (a portal overlay like the other popovers and menus,
-  // positioned from the button with Floating UI and clamped into the
-  // viewport), so the row never reflows, open or closed.
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const [popPos, setPopPos] = useState<{ x: number; y: number } | null>(null);
-  const confirmOpen = confirmDelete === s.id;
-  useLayoutEffect(() => {
-    if (!confirmOpen) return;
-    const place = (): void => {
-      const btn = btnRef.current;
-      const pop = popRef.current;
-      if (!btn || !pop) return;
-      void computePosition(btn, pop, {
-        placement: "bottom-end",
-        middleware: [offset(4), flip(), shift({ padding: 8 })],
-      }).then(({ x, y }) => {
-        setPopPos((prev) => (prev && prev.x === x && prev.y === y ? prev : { x, y }));
-      });
-    };
-    place();
-    window.addEventListener("resize", place);
-    document.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      document.removeEventListener("scroll", place, true);
-    };
-  }, [confirmOpen]);
-  useEffect(() => {
-    if (!confirmOpen) return;
-    const onPointer = (e: PointerEvent): void => {
-      const n = e.target as Node;
-      if (!btnRef.current?.contains(n) && !popRef.current?.contains(n)) setConfirmDelete(null);
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        setConfirmDelete(null);
-        btnRef.current?.focus();
-      }
-    };
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [confirmOpen, setConfirmDelete]);
-  useEffect(() => {
-    if (confirmOpen && popPos) popRef.current?.querySelector("button")?.focus();
-  }, [confirmOpen, popPos]);
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
@@ -2026,55 +1985,22 @@ export function SessionRow({
         {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
           <span className="prtag">new commits</span>
         ) : null}
-        {confirmOpen ? (
-          createPortal(
-            <div
-              ref={popRef}
-              className="confirm-pop"
-              role="dialog"
-              aria-label="Remove this review?"
-              style={popPos ? { left: popPos.x, top: popPos.y } : { visibility: "hidden" }}
-            >
-              <span className="q">Remove this review?</span>
-              <span className="row">
-                <Button
-                  variant="primary" size="sm"
-                  type="button"
-                  disabled={deleting === s.id}
-                  onClick={() => void removeSession(s.id)}
-                >
-                  {deleting === s.id ? "Removing…" : "Remove"}
-                </Button>
-                <Button
-                  variant="secondary" size="sm"
-                  type="button"
-                  disabled={deleting === s.id}
-                  onClick={() => {
-                    setConfirmDelete(null);
-                    btnRef.current?.focus();
-                  }}
-                >
-                  Cancel
-                </Button>
-              </span>
-            </div>,
-            document.body,
-          )
-        ) : null}
-        <Button
-          ref={btnRef}
-          variant="secondary" size="sm"
-          className="rm"
-          type="button"
-          aria-label="Remove this review"
-          aria-haspopup="dialog"
-          aria-expanded={confirmOpen}
+        {/* #346: the Remove button expands in place into the shared
+            inline confirm (no popover), so the row never reflows. */}
+        <InlineConfirm
+          action="Remove"
+          confirmAction="remove review"
+          runningLabel="Removing…"
+          danger
           disabled={deleting !== null}
-          onClick={() => setConfirmDelete(confirmOpen ? null : s.id)}
+          open={confirmDelete === s.id}
+          onOpenChange={(v) => setConfirmDelete(v ? s.id : null)}
+          onConfirm={() => removeSession(s.id)}
+          onDone={() => sessionRemoved(s.id)}
+          formatError={friendlyError}
+          idleAriaLabel="Remove this review"
           title="Remove this review"
-        >
-          Remove
-        </Button>
+        />
       </div>
     </div>
   );

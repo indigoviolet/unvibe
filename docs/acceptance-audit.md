@@ -3741,3 +3741,40 @@ hunk coverage) is reported for a separate issue, not fixed here.
   unknown origin refused on both worker endpoints) with frame
   `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
   Full gates not yet run.
+
+## Addendum: #346 (branch `feat/346-inline-confirm`)
+
+- **One shared inline confirm:** `InlineConfirm` in
+  `packages/web/src/ui/index.tsx` (styles in `ui.css`) owns the
+  idle → confirming → running → confirmed / error machine. The
+  action button expands in place into a dark pill ("Confirm
+  <action>" + ✓ + ✕, right-anchored overlay so neighbours never
+  shift), focus moves to ✓, then a green-✓ "Confirmed" flash before
+  the result takes over. Escape, ✕, outside click or ~4.5 s without
+  interaction cancels (focus returns when it was inside); a rejected
+  action stays inline with `role="alert"` until the user retries or
+  cancels. The group carries "Confirm <action>: confirm or cancel"
+  on a polite live region; `danger` keeps a warn-coloured edge;
+  idle is overridable (`idleRender`) for the toolbar icon button.
+  Converted: Reviews/Documents remove (was the `confirm-pop`
+  popover, now removed with its CSS), Settings → Data reset, the
+  data-format Reset, repo remove (sticky refusal now the pill
+  error), and the top-bar Re-do guide (#345's interim Re-do/Cancel
+  swap, via `idleRender`; what-is-lost copy in the accessible
+  name). Not converted, with reasons: Version switch/update
+  confirm + blocked-jobs panel and full-access enable (more than a
+  yes/no — format warning/export/refusal list, long warning
+  acknowledgement); thread/comment delete, Reset demo and draft
+  discard (no popout today; adding confirms is out of scope). No
+  `window.confirm` anywhere.
+- Evidence: `src/ui/InlineConfirm.test.tsx` (10 tests incl.
+  StrictMode double-mount, timeout reset, sticky error), updated
+  `ReviewBar.test.tsx` + `GuideLoading.test.tsx`, new real-service
+  journey `e2e/journeys/j346-inline-confirm.spec.ts` (review +
+  document remove through the pill, Escape/outside cancel, API
+  cross-checks), reworked J14 (re-do through the pill) and J225a
+  (pill-in-row geometry), mock `start.spec.ts` / `settings.spec.ts`
+  / `debug-redo.spec.ts`, tour frames `start-remove-idle`,
+  `start-remove-confirm`, `start-remove-confirmed` and
+  `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
+  (inspected). Full gates not yet run.

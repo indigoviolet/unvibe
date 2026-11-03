@@ -58,6 +58,7 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={onOpen}
         />
       </MemoryRouter>,
@@ -81,6 +82,7 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={() => {}}
         />
       </MemoryRouter>,
@@ -132,6 +134,7 @@ describe("EmptyOpen (#179 empty diff)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={() => {}}
         />
       </MemoryRouter>,

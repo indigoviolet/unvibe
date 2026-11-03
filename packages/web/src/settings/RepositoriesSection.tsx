@@ -25,7 +25,7 @@ import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { BrowseFolderButton } from "./BrowseFolderButton.js";
-import { Button, Card } from "../ui/index.js";
+import { Button, Card, InlineConfirm } from "../ui/index.js";
 
 export function RepositoriesSection(): React.JSX.Element {
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -39,9 +39,9 @@ export function RepositoriesSection(): React.JSX.Element {
   const [cloningName, setCloningName] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
-  // Inline errors that must outlive a toast: a refused/failed remove stays
-  // on its repo's row; a failed clone stays under the URL row.
-  const [removeError, setRemoveError] = useState<string | null>(null);
+  // Inline errors that must outlive a toast: a failed clone stays under
+  // the URL row; a refused/failed remove stays inline in its row's
+  // confirm pill (retry or cancel) until the user acts.
   const [urlError, setUrlError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -110,20 +110,23 @@ export function RepositoriesSection(): React.JSX.Element {
     }
   }, [url, addingUrl]);
 
+  // #346: the shared inline confirm. The work runs on ✓; the row
+  // disappears after the "✓ Confirmed" flash. A refused/failed remove
+  // stays inline in the pill (retry or cancel), never a toast.
   const remove = useCallback(async (repo: Repo) => {
     setRemoving(repo.id);
-    setRemoveError(null);
     try {
       await api.removeRepo(repo.id);
-      setRepos((prev) => (prev ? prev.filter((r) => r.id !== repo.id) : prev));
-      setConfirmRemove(null);
     } catch (err) {
-      // Stay on the confirm row with the reason inline: the user either
-      // retries or keeps the repo.
-      setRemoveError(`Couldn't remove ${repo.owner}/${repo.name}: ${friendlyError(err)}`);
-    } finally {
       setRemoving(null);
+      throw err;
     }
+  }, []);
+
+  const repoRemoved = useCallback((repo: Repo) => {
+    setRepos((prev) => (prev ? prev.filter((r) => r.id !== repo.id) : prev));
+    setConfirmRemove(null);
+    setRemoving(null);
   }, []);
 
   const remembered = (repos ?? []).filter((r) => !r.detected);
@@ -157,52 +160,32 @@ export function RepositoriesSection(): React.JSX.Element {
                   </div>
                 </div>
                 <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-                  {confirmRemove === r.id ? (
-                    <>
-                      <span className="hint">
-                        {r.managed
-                          ? `Delete the clone at ${r.localPath} from this machine?`
-                          : `Remove this repo from the list? ${r.localPath} is not touched.`}
-                      </span>
-                      {removeError && confirmRemove === r.id ? (
-                        <span className="err" role="alert">
-                          {removeError}
-                        </span>
-                      ) : null}
-                      <Button variant="primary" size="sm" type="button" disabled={removing === r.id} onClick={() => void remove(r)}>
-                        {removing === r.id ? "Removing…" : "Remove"}
-                      </Button>
-                      <Button
-                        variant="secondary" size="sm"
-                        type="button"
-                        disabled={removing === r.id}
-                        onClick={() => {
-                          setConfirmRemove(null);
-                          setRemoveError(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="quiet" size="sm"
-                      type="button"
-                      aria-label={`Remove ${r.owner}/${r.name}`}
-                      disabled={removing !== null}
-                      onClick={() => {
-                        setConfirmRemove(r.id);
-                        setRemoveError(null);
-                      }}
-                      title={
-                        r.managed
-                          ? "Remove this repo and delete Unvibe's clone of it"
-                          : "Remove this repo from the list (your folder is not touched)"
-                      }
-                    >
-                      Remove
-                    </Button>
-                  )}
+                  {/* #346: the shared inline confirm (was Remove/Cancel buttons). */}
+                  <InlineConfirm
+                    action="Remove"
+                    confirmAction={`remove ${r.owner}/${r.name}`}
+                    runningLabel="Removing…"
+                    variant="quiet"
+                    danger
+                    placement="stack"
+                    disabled={removing !== null}
+                    open={confirmRemove === r.id}
+                    onOpenChange={(v) => setConfirmRemove(v ? r.id : null)}
+                    onConfirm={() => remove(r)}
+                    onDone={() => repoRemoved(r)}
+                    formatError={(err) => `Couldn't remove ${r.owner}/${r.name}: ${friendlyError(err)}`}
+                    detail={
+                      r.managed
+                        ? `Delete the clone at ${r.localPath} from this machine?`
+                        : `Remove this repo from the list? ${r.localPath} is not touched.`
+                    }
+                    idleAriaLabel={`Remove ${r.owner}/${r.name}`}
+                    title={
+                      r.managed
+                        ? "Remove this repo and delete Unvibe's clone of it"
+                        : "Remove this repo from the list (your folder is not touched)"
+                    }
+                  />
                 </div>
               </div>
             ))}

@@ -3165,12 +3165,14 @@ test.describe("visual tour file tab (#81)", () => {
 });
 
 /**
- * Remove-confirm popover (#225, #234) on the worst-case Reviews row:
- * decision + new commits (open has no icon). Own service (agent-less) with a scratch repo
- * and a fake `gh` whose PR view resolves the branch head at call time,
- * so a commit added after open is picked up by refresh and the row gains
- * its new-commits tag. The popover is asserted not to move the row's title
- * or meta and not to cover them, then cancelled with Escape.
+ * Remove inline confirm (#346, ex #225 popover, #234) on the worst-case
+ * Reviews row: decision + new commits (open has no icon). Own service
+ * (agent-less) with a scratch repo and a fake `gh` whose PR view
+ * resolves the branch head at call time, so a commit added after open
+ * is picked up by refresh and the row gains its new-commits tag. The
+ * pill is asserted not to move the row's title or meta and to overlay
+ * within the row, then cancelled with Escape. Frames: idle,
+ * confirming (kept name `start-remove-confirm`), confirmed flash.
  */
 test.describe("visual tour remove-confirm (#225)", () => {
   let rcRepo = "";
@@ -3256,9 +3258,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
   ] as const) {
-    test(`remove-confirm popover on the worst-case row (${combo.name})`, async ({ page }) => {
+    test(`remove inline confirm on the worst-case row (${combo.name})`, async ({ page }) => {
       if (!rcSvc) throw new Error("remove-confirm service not running");
       test.setTimeout(240_000);
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -3285,7 +3288,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // "before" set — the 87px CI flake. Settle first (fonts, then
       // identical snapshots across two animation frames), then measure.
       interface RowBox { x: number; y: number; width: number; height: number }
-      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pop: RowBox | null }> =>
+      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pill: RowBox | null }> =>
         page.evaluate((id: string) => {
           const rect = (el: Element | null): RowBox | null => {
             if (!el) return null;
@@ -3293,12 +3296,12 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
             return { x: r.x, y: r.y, width: r.width, height: r.height };
           };
           const rowEl = document.querySelector(`[data-testid="session-${id}"]`);
-          const popEl = document.querySelector(".confirm-pop");
+          const pillEl = rowEl?.querySelector(".uic-pill") ?? null;
           return {
             row: rect(rowEl),
             title: rect(rowEl?.querySelector(".cx2") ?? null),
             meta: rect(rowEl?.querySelector(".cj > .hint") ?? null),
-            pop: popEl ? rect(popEl) : null,
+            pill: pillEl ? rect(pillEl) : null,
           };
         }, rcReview);
       await page.evaluate(() => document.fonts.ready).catch(() => {});
@@ -3315,19 +3318,22 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
           { timeout: 15_000 },
         )
         .toBe("stable");
+      // Idle state frame (#346: first of the three states).
+      await shot(page, "start-remove-idle", suffix, "Remove");
       // The row keeps its size and the title/meta keep their size and
-      // position relative to it; the popover covers neither. Each side
-      // is one atomic snapshot, so a layout shift can never mix boxes
-      // from two layouts into one comparison.
+      // position relative to it when the button expands in place: the
+      // pill is an overlay anchored to the button's slot, so neighbours
+      // never shift. Each side is one atomic snapshot, so a layout
+      // shift can never mix boxes from two layouts into one comparison.
       const before = await readLayout();
       expect(before.row).not.toBeNull();
       expect(before.title).not.toBeNull();
       expect(before.meta).not.toBeNull();
       await row.getByRole("button", { name: "Remove this review" }).click();
-      const pop = page.locator(".confirm-pop");
-      await expect(pop).toContainText("Remove this review?");
-      await expect(pop.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
-      await expect(pop.getByRole("button", { name: "Cancel" })).toBeVisible();
+      const pill = row.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm remove review");
+      await expect(pill.getByRole("button", { name: "Confirm remove review" })).toBeVisible();
+      await expect(pill.getByRole("button", { name: "Cancel" })).toBeVisible();
       const after = await readLayout();
       const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
       const offsetOf = (
@@ -3339,17 +3345,167 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(sizeOf(after.meta!)).toEqual(sizeOf(before.meta!));
       expect(offsetOf(after.title!, after.row!)).toEqual(offsetOf(before.title!, before.row!));
       expect(offsetOf(after.meta!, after.row!)).toEqual(offsetOf(before.meta!, before.row!));
-      const overlaps = (
-        a: { x: number; y: number; width: number; height: number },
-        b: { x: number; y: number; width: number; height: number },
-      ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-      expect(overlaps(after.pop!, after.title!)).toBe(false);
-      expect(overlaps(after.pop!, after.meta!)).toBe(false);
+      // The pill overlays within the row: fully inside the row's box.
+      expect(after.pill).not.toBeNull();
+      expect(after.pill!.x).toBeGreaterThanOrEqual(after.row!.x - 1);
+      expect(after.pill!.x + after.pill!.width).toBeLessThanOrEqual(after.row!.x + after.row!.width + 1);
+      expect(after.pill!.y).toBeGreaterThanOrEqual(after.row!.y - 1);
+      expect(after.pill!.y + after.pill!.height).toBeLessThanOrEqual(after.row!.y + after.row!.height + 1);
+      // Let the pill's entry animation settle: capturing mid-fade reads
+      // as a see-through pill with doubled text.
+      await page.waitForTimeout(300);
       await checkLayout(page, "start-remove-confirm");
-      await shot(page, "start-remove-confirm", suffix, "Remove this review?");
+      await shot(page, "start-remove-confirm", suffix, "Confirm remove review");
       await page.keyboard.press("Escape");
-      await expect(pop).toHaveCount(0);
+      await expect(pill).toHaveCount(0);
       await expect(row).toBeVisible();
+    });
+  }
+
+  // The third state (#346): confirming deletes the row, but only after
+  // the "✓ Confirmed" flash. Each scheme gets its own sacrificial
+  // branch review — created here, so the worst-case row above survives
+  // every combo and the tests stay order-independent.
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`remove confirmed flash (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rcSvc, rcRepo, `victim-remove-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${victim}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      await row.getByRole("button", { name: "Confirm remove review" }).click();
+      // The flash is brief (under a second): shot waits for it, then
+      // captures immediately.
+      await shot(page, "start-remove-confirmed", combo.name, "Confirmed");
+      await expect(row).toHaveCount(0);
+    });
+  }
+});
+
+/**
+ * A sacrificial branch review on a tour repo: opening the same source
+ * twice reuses the review (#92/#149), so each victim gets its own
+ * branch — creation never touches the shared scene review. Leaves the
+ * repo back on `feature`.
+ */
+async function createBranchVictim(svc: RunningService, repoDir: string, branch: string): Promise<string> {
+  await journeyGit(repoDir, "checkout", "-b", branch);
+  await journeyGit(repoDir, "checkout", "feature");
+  const repos = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+    repos: { id: string; localPath: string }[];
+  };
+  const repoId = repos.repos.find((r) => r.localPath === repoDir)?.id;
+  if (!repoId) throw new Error(`repo not registered: ${repoDir}`);
+  const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId, branch })) as {
+    review: { id: string };
+  };
+  return created.review.id;
+}
+
+/**
+ * Re-do guide top bar (#345) with the shared inline confirm (#346):
+ * idle icon, confirming pill, and the new review it lands on. Own
+ * agent-less service with a scratch repo; the confirming frame
+ * cancels with Escape so the shared review survives every scheme,
+ * while the result frame re-does a sacrificial review per scheme.
+ */
+test.describe("visual tour re-do guide (#345, #346)", () => {
+  let rdRepo = "";
+  let rdData = "";
+  let rdSvc: RunningService | null = null;
+  let rdReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rdRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-repo-"));
+    await makeScratchRepo(rdRepo);
+    rdData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-data-"));
+    rdSvc = await startService(rdData, { agent: "none" });
+    rdReview = await createJourneyReview(rdSvc, rdRepo);
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${rdReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+  });
+
+  test.afterAll(async () => {
+    await rdSvc?.stop().catch(() => {});
+    rdSvc = null;
+    for (const d of [rdRepo, rdData]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`re-do idle and confirming (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${rdSvc.origin}/review/${rdReview}?token=${rdSvc.token}`);
+      const bar = page.locator("#reviewbar");
+      await expect(bar).toBeVisible({ timeout: 30_000 });
+      const redo = page.getByRole("button", { name: "Re-do guide" });
+      await expect(redo).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-topbar");
+      await shot(page, "redo-topbar", combo.name, "Guide");
+      await redo.click();
+      const pill = bar.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm re-do guide");
+      await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      // Let the pill's entry animation settle before capturing.
+      await page.waitForTimeout(300);
+      await checkLayout(page, "redo-confirm");
+      await shot(page, "redo-confirm", combo.name, "Confirm re-do guide");
+      await page.keyboard.press("Escape");
+      await expect(pill).toHaveCount(0);
+      await expect(bar).toBeVisible();
+    });
+
+    test(`re-do result (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rdSvc, rdRepo, `victim-redo-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rdSvc.origin}/review/${victim}?token=${rdSvc.token}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Re-do guide" }).click();
+      await page.getByRole("button", { name: "Confirm re-do guide" }).click();
+      // The confirm lands on the new review; capture whatever it shows.
+      await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${victim}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-result");
+      await shot(page, "redo-result", combo.name);
     });
   }
 });

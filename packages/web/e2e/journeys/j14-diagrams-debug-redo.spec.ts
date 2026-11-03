@@ -176,12 +176,12 @@ test.describe("J14 diagrams, debug, redo", () => {
       await expect(redo).toHaveAttribute("title", "Re-do guide");
       await expect(redo).toHaveText("");
       await redo.click();
-      await expect(page.getByRole("button", { name: "Re-do" })).toHaveAttribute(
-        "title",
-        /Anything already on GitHub stays there/,
-        { timeout: 15_000 },
-      );
-      await page.getByRole("button", { name: "Re-do" }).click();
+      // #346: the shared inline confirm; the what-is-lost copy lives in
+      // the pill's accessible name.
+      const pill = page.locator("#reviewbar .uic-pill");
+      await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
+      await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      await pill.getByRole("button", { name: "Confirm re-do guide" }).click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);
       await expect(page.locator("#right")).toBeVisible({ timeout: 60_000 });
     } finally {
