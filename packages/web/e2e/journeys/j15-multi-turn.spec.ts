@@ -94,8 +94,8 @@ test.describe("J15 multi-turn thread", () => {
     // Access-mode change in between: turn full access on, then keep talking.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Access" }).click();
-    await page.getByRole("button", { name: "Turn on full access…" }).click();
-    await page.getByRole("button", { name: "I understand, turn on full access" }).click();
+    await page.getByRole("button", { name: "Turn on full access" }).click();
+    await page.getByRole("button", { name: "Confirm full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Full access is on", { timeout: 15_000 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(thread).toBeVisible({ timeout: 60_000 });

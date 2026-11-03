@@ -1978,7 +1978,22 @@ const MOCK_RELEASE_NOTES: Record<string, ReleaseNotes> = {
 
 function mockUpdateChannels(): UpdateChannel[] {
   const { current } = readUpdatePersisted();
-  return MOCK_UPDATE_CHANNELS.map((c) => ({ ...c, current: c.ref === current }));
+  // Test hook (#346 follow-up): `unvibe.mock.update.dataFormat` (an
+  // integer) pretends the preview channels were built with that format,
+  // so the Version picker can show the reset warn line.
+  let override: number | null = null;
+  try {
+    const raw = localStorage.getItem("unvibe.mock.update.dataFormat");
+    const n = raw === null ? NaN : Number(raw);
+    if (Number.isInteger(n)) override = n;
+  } catch {
+    // Non-fatal.
+  }
+  return MOCK_UPDATE_CHANNELS.map((c) => ({
+    ...c,
+    ...(override !== null && c.kind === "preview" ? { dataFormat: override } : {}),
+    current: c.ref === current,
+  }));
 }
 
 function mockUpdateBuild(): UpdateBuildInfo | null {
@@ -2625,8 +2640,32 @@ export const mockApi = {
   },
 
   // #311: mock data always matches this build's format.
-  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount: 0, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" }),
-  dataFormatOutbox: async () => ({ markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count: 0 }),
+  // Test hooks: `unvibe.mock.update.dataFormat` (an integer) pretends
+  // the preview channels were built with that format, so the Version
+  // picker can show the reset warn line; `unvibe.mock.update.outboxCount`
+  // seeds the Outbox counts for the warn line's Export drafts action.
+  dataFormat: async () => {
+    let outboxCount = 0;
+    try {
+      const raw = localStorage.getItem("unvibe.mock.update.outboxCount");
+      const n = raw === null ? NaN : Number(raw);
+      if (Number.isInteger(n) && n >= 0) outboxCount = n;
+    } catch {
+      // Non-fatal.
+    }
+    return { state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" };
+  },
+  dataFormatOutbox: async () => {
+    let count = 0;
+    try {
+      const raw = localStorage.getItem("unvibe.mock.update.outboxCount");
+      const n = raw === null ? NaN : Number(raw);
+      if (Number.isInteger(n) && n >= 0) count = n;
+    } catch {
+      // Non-fatal.
+    }
+    return { markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count };
+  },
   resetDataFormat: async () => ({ ok: true as const, movedTo: "(mock) data moved aside" }),
   goBackDataFormat: async () => ({ from: "release", to: "release" }),
 
