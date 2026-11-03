@@ -578,7 +578,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
   assert(readiness.code === 200, `${label}: readiness answers from the installed package`);
   try {
     const checks = JSON.parse(readiness.body)?.checks ?? [];
-    for (const role of ["agent:main", "agent:small", "agent:secondOpinion"]) {
+    for (const role of ["agent:main", "agent:small"]) {
       const c = checks.find((x) => x.id === role);
       assert(!!c && typeof c.summary === "string" && c.summary.length > 0, `${label}: readiness reports ${role}`);
     }

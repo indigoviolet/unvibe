@@ -222,7 +222,6 @@ const main = async () => {
     const patch = {
       main: { ...DEMO_LARGE_MODEL, effort: "" },
       small: { ...DEMO_LARGE_MODEL, effort: "" },
-      secondOpinion: { ...DEMO_LARGE_MODEL, effort: "" },
     };
     const r = await api(port, "PUT", "/api/settings", patch, token);
     if (r.code !== 200) {
