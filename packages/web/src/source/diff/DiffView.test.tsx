@@ -54,7 +54,17 @@ describe("DiffView", () => {
     // Two hidden runs: tconn imports (2 hunks) and the changelog. The tsock
     // import hunk is a one-line change, which PRD §4.13 never hides.
     expect(document.querySelectorAll("button.hid")).toHaveLength(2);
-    expect(screen.getByText(/Hunks 1–2 of 3 hidden · imports/)).toBeInTheDocument();
+    // Issue #342: the collapsed row keeps only the range, one score dot
+    // and the summary — no size, no score in words, no "hidden" — with
+    // the collapsed state shown visually and in the accessible name.
+    expect(screen.getByText("Hunks 1–2")).toBeInTheDocument();
+    const collapsed = screen.getByRole("button", { name: /Hunks 1–2, collapsed/ });
+    expect(collapsed.getAttribute("aria-expanded")).toBe("false");
+    expect(collapsed.textContent).not.toMatch(/hidden/i);
+    expect(collapsed.textContent).not.toMatch(/[+-]\d/);
+    expect(collapsed.textContent).not.toMatch(/mechanical|routine|substantive|needs attention/i);
+    expect(collapsed.textContent).toContain("Imports");
+    expect(collapsed.querySelector(".score-dot")).not.toBeNull();
   });
 
   it("folds and unfolds a hunk, keeping its card", async () => {
@@ -130,9 +140,24 @@ describe("DiffView", () => {
 
   it("expands a hidden run on click", async () => {
     await renderDiff();
-    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await fireEvent.click(screen.getByRole("button", { name: /Hunks 1–2, collapsed/ }));
     expect(await screen.findByText("Hunk 1 of 3")).toBeInTheDocument();
     expect(document.querySelectorAll("button.hid")).toHaveLength(1);
+  });
+
+  it("re-collapses a transient expand when the level changes (#342)", async () => {
+    await renderDiff();
+    // Expand the tconn import run: it shows transiently.
+    await fireEvent.click(screen.getByRole("button", { name: /Hunks 1–2, collapsed/ }));
+    expect(await screen.findByText("Hunk 1 of 3")).toBeInTheDocument();
+    // Choosing a level fully re-applies it: the expand is discarded and
+    // the run collapses again — at the higher level the routine hunk
+    // hides too, so the run now covers all three hunks.
+    await fireEvent.click(screen.getByRole("button", { name: /Hide level:/ }));
+    await fireEvent.click(document.querySelector('[data-hidecat="routine"]') as HTMLElement);
+    expect(useReview.getState().snapshot?.viewPrefs.hideLevel).toBe("substantive");
+    await screen.findByRole("button", { name: /Hunks 1–3, collapsed/ });
+    expect(screen.queryByText("Hunk 1 of 3")).toBeNull();
   });
 
 
@@ -176,13 +201,15 @@ describe("DiffView", () => {
     render(<DiffView reviewId="nosum" />);
     await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
     // Hidden run folds on the deterministic reason with its detail copy.
-    expect(screen.getByText(/Hunks 1–2 of 2 hidden · generated/)).toBeInTheDocument();
+    const genRow = screen.getByRole("button", { name: /Hunks 1–2, collapsed/ });
+    expect(genRow.textContent).not.toMatch(/hidden/i);
+    expect(genRow.textContent).not.toMatch(/[+-]\d/);
     expect(screen.getByText("Generated file; safe to skip.")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("(no summary yet)");
     expect(document.body.textContent).not.toContain("(pending)");
     expect(screen.queryByLabelText("Summarizing")).toBeNull();
     // Expanding the run shows the hunks.
-    await fireEvent.click(screen.getByText(/Hunks 1–2 of 2 hidden · generated/));
+    await fireEvent.click(genRow);
     expect(await screen.findByText("Hunk 1 of 2")).toBeInTheDocument();
     // Folding a hunk with no summary hides the code behind the header
     // chevron alone (no placeholder row), keeps the on-demand Summarize

@@ -87,7 +87,7 @@ export type HunkGroup = { type: "show"; index: number } | { type: "hidden"; indi
 
 /**
  * Group consecutive hidden hunks into runs (prototype `hunksHtml`): each run
- * renders as one thin "Hunks i–j hidden" row; everything else renders alone.
+ * renders as one thin collapsed row; everything else renders alone.
  */
 export function groupHunks(
   hunks: Hunk[],
@@ -207,11 +207,10 @@ export function hunkLabel(file: ReviewFile, index: number): string {
   return index === -1 ? "" : `Hunk ${index + 1} of ${total}`;
 }
 
-export function hiddenRunLabel(file: ReviewFile, indices: number[]): string {
-  const total = file.hunks.length;
+export function hiddenRunLabel(_file: ReviewFile, indices: number[]): string {
   return indices.length === 1
-    ? `Hunk ${indices[0] + 1} of ${total}`
-    : `Hunks ${indices[0] + 1}–${indices[indices.length - 1] + 1} of ${total}`;
+    ? `Hunk ${indices[0] + 1}`
+    : `Hunks ${indices[0] + 1}–${indices[indices.length - 1] + 1}`;
 }
 
 // --- reveal refs ---------------------------------------------------------------
@@ -252,7 +251,11 @@ export interface HideDecision {
   level: HideLevel;
   /** The hunk's score, when its pass has landed. */
   score?: HunkScoreLevel;
-  /** User clicked "show" on this hunk's hidden row (transient, per session). */
+  /**
+   * Issue #342: the hunk's hidden row was expanded or its citation
+   * clicked (transient UI state only — cleared on level change and
+   * never persisted, so reload re-collapses it).
+   */
   unhidden: boolean;
 }
 

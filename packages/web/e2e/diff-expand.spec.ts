@@ -98,7 +98,7 @@ test("expands above a hunk in steps and collapses back", async ({ page }) => {
 
 test("reveals a whole gap so the hunks read as continuous", async ({ page }) => {
   await scrollDiffToBottom(page);
-  await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
+  await page.getByRole("button", { name: /Hunks 1–2, collapsed/ }).click();
   await expect(page.getByText("Hunk 1 of 3")).toBeVisible();
   const tconn = page.locator(tconnFile);
   // Issue #265: the gap's show-all rides both ends; the upper side's
@@ -117,7 +117,7 @@ test("reveals a whole gap so the hunks read as continuous", async ({ page }) => 
 
 test("revealing a gap fully from below leaves no controls at the boundary", async ({ page }) => {
   await scrollDiffToBottom(page);
-  await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
+  await page.getByRole("button", { name: /Hunks 1–2, collapsed/ }).click();
   await expect(page.getByText("Hunk 1 of 3")).toBeVisible();
   const tconn = page.locator(tconnFile);
   // The small gap's lower step finishes it in one click.
@@ -198,7 +198,7 @@ test("headers still pin and code columns line up with expansion revealed", async
   await expect(conn.locator("tr[data-revealed]")).toHaveCount(20);
   // …and a fully revealed gap in another file.
   await scrollDiffToBottom(page);
-  await page.getByText(/Hunks 1–2 of 3 hidden · imports/).click();
+  await page.getByRole("button", { name: /Hunks 1–2, collapsed/ }).click();
   const tconn = page.locator(tconnFile);
   // Issue #265: the gap's show-all rides both ends; the upper side's
   // (first in DOM order) keeps the old path here.

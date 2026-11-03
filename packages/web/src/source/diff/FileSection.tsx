@@ -24,7 +24,7 @@
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Thread, DiffFilter, Hunk, HunkLine, HunkScoreLevel, Page, ReviewFile } from "@unvibe/shared";
-import { HUNK_SCORE_LABELS, hunkMatchesFilter } from "@unvibe/shared";
+import { HUNK_SCORE_LABELS, hunkMatchesFilter, hunkScoreRank } from "@unvibe/shared";
 import { Icon } from "../../components/Icon.js";
 import { Button, Card, DiffStat } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
@@ -579,26 +579,22 @@ function HiddenRow({
   summaries: ReadonlyMap<string, { summary?: string; score?: HunkScoreLevel }>;
   onUnhide(hashes: string[]): void;
 }): ReactNode {
-  const reasons = [
-    ...new Set(
-      indices.map((i) => {
-        const h = file.hunks[i];
-        if (h.hiddenReason) return h.hiddenReason;
-        const s = summaries.get(h.contentHash)?.score;
-        return s ? `${HUNK_SCORE_LABELS[s].toLowerCase()} score` : undefined;
-      }).filter((r) => r !== undefined),
-    ),
-  ].join(", ");
-  const added = indices.reduce((s, i) => s + file.hunks[i].added, 0);
-  const removed = indices.reduce((s, i) => s + file.hunks[i].removed, 0);
+  // Issue #342: the collapsed row keeps only the range, one score dot
+  // and the summary — no size, no score in words, no "hidden". The
+  // collapsed state shows visually (muted band + chevron, see `.hid`).
+  const label = hiddenRunLabel(file, indices);
+  let topScore: HunkScoreLevel | undefined;
+  for (const i of indices) {
+    const s = summaries.get(file.hunks[i].contentHash)?.score;
+    if (s !== undefined && (topScore === undefined || hunkScoreRank(s) > hunkScoreRank(topScore))) topScore = s;
+  }
   const brief = [...new Set(
     indices.map((i) => {
       const h = file.hunks[i];
-      const s = summaries.get(h.contentHash)?.score;
       return (
         briefs?.[`${file.fileKey}:${i}`] ??
         summaries.get(h.contentHash)?.summary ??
-        (h.hiddenReason ? hiddenDetail(h.hiddenReason) : s ? `${HUNK_SCORE_LABELS[s]} changes.` : hiddenDetail(undefined))
+        (h.hiddenReason ? hiddenDetail(h.hiddenReason) : "Changes below the current hide level.")
       );
     }),
   )]
@@ -612,15 +608,19 @@ function HiddenRow({
         className="hid"
         type="button"
         data-tip="Show these hunks"
-        aria-label={`${hiddenRunLabel(file, indices)} hidden. Show these hunks`}
+        aria-expanded="false"
+        aria-label={`${label}, collapsed. Show these hunks`}
         onClick={() => onUnhide(indices.map((i) => file.hunks[i].contentHash))}
       >
         <span className="hic" aria-hidden="true">
           <Icon name="right" />
         </span>
-        <span className="hidl">
-          {hiddenRunLabel(file, indices)} hidden · {reasons} · +{added} −{removed}
-        </span>
+        {topScore ? (
+          <span className="score-ind" role="img" aria-label={HUNK_SCORE_LABELS[topScore]} data-score={topScore} data-tip={HUNK_SCORE_LABELS[topScore]}>
+            <span className="score-dot" data-score={topScore} aria-hidden="true" />
+          </span>
+        ) : null}
+        <span className="hidl">{label}</span>
         <span className="hidb">{brief}</span>
       </button>
     </div>

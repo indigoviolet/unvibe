@@ -7,6 +7,7 @@ import {
   buildFileTree,
   filterFiles,
   groupHunks,
+  hiddenRunLabel,
   hunkOverlaps,
   pairSplitRows,
   parseDiffRef,
@@ -151,6 +152,18 @@ describe("shouldHideHunk", () => {
     expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: true })).toBe(false);
     expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: false })).toBe(true);
   });
+  it("re-applies the level from scratch with no remembered overrides (#342)", () => {
+    // A transient expand shows the hunk now ...
+    expect(shouldHideHunk(hidden, { level: "substantive", score: "mechanical", unhidden: true })).toBe(false);
+    // ... but the next level decision starts clean: the same hunk with
+    // no transient expand hides again, and "all" shows everything.
+    expect(shouldHideHunk(hidden, { level: "substantive", score: "mechanical", unhidden: false })).toBe(true);
+    expect(shouldHideHunk(hidden, { level: "all", unhidden: false })).toBe(false);
+    // Visibility is a pure function of the decision: repeated calls agree.
+    expect(shouldHideHunk(hidden, { level: "uninteresting", unhidden: false })).toBe(
+      shouldHideHunk(hidden, { level: "uninteresting", unhidden: false }),
+    );
+  });
 });
 
 describe("parseDiffRef", () => {
@@ -165,6 +178,22 @@ describe("parseDiffRef", () => {
     expect(parseDiffRef("diff:")).toBeNull();
     expect(parseDiffRef("diff:conn:0")).toBeNull();
     expect(parseDiffRef("diff:conn:9-2")).toBeNull();
+  });
+});
+
+describe("hiddenRunLabel (#342)", () => {
+  it("labels single and grouped runs by range only", () => {
+    const f = file("src/a.py", [hunk(), hunk(), hunk(), hunk()]);
+    expect(hiddenRunLabel(f, [1])).toBe("Hunk 2");
+    expect(hiddenRunLabel(f, [0, 1])).toBe("Hunks 1–2");
+  });
+  it("carries no size, no score words and no 'hidden'", () => {
+    const f = file("src/a.py", [hunk(), hunk(), hunk()]);
+    for (const label of [hiddenRunLabel(f, [0]), hiddenRunLabel(f, [0, 2])]) {
+      expect(label).not.toMatch(/hidden/i);
+      expect(label).not.toMatch(/[+-]\d/);
+      expect(label).not.toMatch(/mechanical|routine|substantive|needs attention/i);
+    }
   });
 });
 

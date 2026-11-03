@@ -1742,13 +1742,13 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
   async function expectHiddenRow(page: Page, row: Locator, step: string): Promise<void> {
     const rowBox = (await row.boundingBox())!;
     const label = row.locator(".hidl");
-    await expect(label).toContainText(/Hunks? \d+.*hidden/, { timeout: 10_000 });
+    await expect(label).toContainText(/^Hunks? \d+(–\d+)?$/, { timeout: 10_000 });
     const labelBox = (await label.boundingBox())!;
     const topmost = await page.evaluate(({ x, y }) => {
       const hit = document.elementFromPoint(x, y);
       return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
     }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
-    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/hidden\. Show these hunks/);
+    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/collapsed\. Show these hunks/);
     const briefBox = (await row.locator(".hidb").boundingBox())!;
     expect(
       briefBox.width > rowBox.width * 0.5 || briefBox.x <= rowBox.x + 14,
@@ -1779,22 +1779,22 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
       // header (no blank band), label showing.
       const first = page.locator(".dfile").first();
       await first.scrollIntoViewIfNeeded();
-      await expect(first.getByText(/Hunk 1 of 1 hidden/)).toBeVisible({ timeout: 15_000 });
+      await expect(first.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
       await page.mouse.move(20, 400);
       const firstHead = (await first.locator(".dfile-h").boundingBox())!;
       const firstTop = (await first.locator("button.hid").boundingBox())!.y;
       expect(firstTop - (firstHead.y + firstHead.height), "hidden-first: blank band above the row").toBeLessThanOrEqual(2);
       await expectHiddenRow(page, first.locator("button.hid"), "hidden-first");
       await stepChecks(page, "diff-hidden-first");
-      await shot(page, "diff-hidden-first", suffix, "Hunk 1 of 1 hidden");
+      await shot(page, "diff-hidden-first", suffix, "Rewords the four onboarding notes");
       // Mixed file: hidden imports hunk above a shown code hunk.
       const mixed = page.locator('[id="F-src-app.py"]');
-      await mixed.getByText(/Hunk 1 of 2 hidden/).scrollIntoViewIfNeeded();
-      await expect(mixed.getByText(/Hunk 1 of 2 hidden/)).toBeVisible({ timeout: 15_000 });
+      await mixed.getByRole("button", { name: /Hunk 1, collapsed/ }).scrollIntoViewIfNeeded();
+      await expect(mixed.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
       await page.mouse.move(20, 400);
       await expectHiddenRow(page, mixed.locator("button.hid"), "hidden-mixed");
       await stepChecks(page, "diff-hidden-mixed");
-      await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
+      await shot(page, "diff-hidden-mixed", suffix, "Swaps the two stdlib imports");
     });
   }
 });

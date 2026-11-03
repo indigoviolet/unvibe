@@ -92,7 +92,7 @@ describe("DiffView expansion", () => {
   it("reveals a whole gap so the hunks read as continuous", async () => {
     await renderDiff();
     // The tconn import hunks hide first; show them to reach the gap.
-    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await fireEvent.click(screen.getByRole("button", { name: /Hunks 1–2, collapsed/ }));
     await screen.findByText("Hunk 1 of 3");
     const tconn = within(document.getElementById(`F-${TCONN}`)!);
     // Issue #265: the gap's show-all rides both ends — down from the
@@ -236,7 +236,7 @@ describe("DiffView unit expansion", () => {
     const tconn = within(section);
     // Unhide the import hunks, then reveal their 4-line gap from below:
     // the gap is small enough that one step finishes it.
-    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await fireEvent.click(screen.getByRole("button", { name: /Hunks 1–2, collapsed/ }));
     await screen.findByText("Hunk 1 of 3");
     const steps = tconn.getAllByRole("button", { name: "Show 4 more lines" });
     expect(steps).toHaveLength(2);
@@ -269,7 +269,7 @@ describe("DiffView unit expansion", () => {
     await renderDiff();
     const section = document.getElementById(`F-${TCONN}`)!;
     const tconn = within(section);
-    await fireEvent.click(screen.getByText(/Hunks 1–2 of 3 hidden · imports/));
+    await fireEvent.click(screen.getByRole("button", { name: /Hunks 1–2, collapsed/ }));
     await screen.findByText("Hunk 1 of 3");
     // The third hunk starts folded (seeded): unfold it through its header
     // chevron so its lower step renders — the upper side alone still

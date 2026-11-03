@@ -1,11 +1,15 @@
-/** J325 (#325): hide-level selector — real service, seeded demo.
+/** J325 (#325) + #342: hide-level selector — real service, seeded demo.
  *
  * The seeded snapshot gets deterministic hunk scores written straight
  * into its hunk states (what the hunk pass would store), so the levels
  * are exercised without an agent. Asserts: the levels and their
  * visible hunks, the hidden-count tooltip, persistence across reload,
- * guide-cited and individually unhidden hunks staying visible, and
- * the old score filter buttons being gone.
+ * the old score filter buttons being gone, and (issue #342) the
+ * collapsed-row shape (range + one score dot + summary only: no size,
+ * no score words, no "hidden"), transient expand (a level change or a
+ * reload re-collapses; only the level itself is remembered), and
+ * citation clicks still revealing hidden hunks. Frames land in
+ * `test-results/` for the owner to look at.
  */
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -79,6 +83,26 @@ async function clickCategory(page: Page, category: string, expected: string): Pr
   await expect(page.locator(`[data-hidelevel-current="${expected}"]`)).toBeVisible();
 }
 
+/** Issue #342: a collapsed row carries only the range, one score dot
+ * and the summary — no size, no score words, no "hidden" — with the
+ * collapsed state in the accessible name and `aria-expanded`. */
+async function expectCollapsedRow(page: Page, index: number): Promise<void> {
+  const row = page.locator("button.hid").nth(index);
+  await expect(row).toBeVisible();
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  const accessible = (await row.getAttribute("aria-label")) ?? "";
+  expect(accessible).toMatch(/collapsed/);
+  expect(accessible).not.toMatch(/hidden/i);
+  const label = ((await row.locator(".hidl").textContent()) ?? "").trim();
+  expect(label).toMatch(/^Hunks? \d+(–\d+)?$/);
+  const text = (await row.textContent()) ?? "";
+  expect(text).not.toMatch(/hidden/i);
+  expect(text).not.toMatch(/\+\d+\s*−\d+/);
+  expect(text).not.toMatch(/mechanical|routine|substantive|needs attention/i);
+  expect(((await row.locator(".hidb").textContent()) ?? "").trim().length).toBeGreaterThan(0);
+  await expect(row.locator(".score-dot")).toHaveCount(1);
+}
+
 test.describe("J325 hide-level selector", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
@@ -95,9 +119,10 @@ test.describe("J325 hide-level selector", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("levels, tooltip, persistence, cited and unhidden hunks", async ({ page }) => {
+  test("levels, tooltip, persistence, transient expand and citation reveal", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator(`[id="F-${CONN}"]`)).toBeVisible({ timeout: 30_000 });
@@ -110,6 +135,27 @@ test.describe("J325 hide-level selector", () => {
     await expect(page.locator("button.hid")).toHaveCount(2);
     await expect(page.locator("[data-scorepick]")).toHaveCount(0);
     await expect(page.locator('.dhunk-h .score-ind[data-score="substantive"]').first()).toBeVisible();
+
+    // Issue #342: both collapsed rows keep only the range, one score
+    // dot and the summary — no size, no score words, no "hidden".
+    await expectCollapsedRow(page, 0);
+    await expectCollapsedRow(page, 1);
+
+    // Frames: 1440 light with hidden rows, then with a row expanded.
+    await page.locator("button.hid").first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "test-results/j342-hidden-1440-light.png" });
+    await page.locator("button.hid").first().click();
+    await expect(page.locator(`[data-hunk="test-test_connection.py:0"]`)).toBeVisible();
+    await page.locator(`[data-hunk="test-test_connection.py:0"]`).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "test-results/j342-expanded-1440-light.png" });
+
+    // Reload keeps the level but not the transient expansion.
+    await page.reload();
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator('[data-hidelevel-current="uninteresting"]')).toBeVisible({ timeout: 30_000 });
+    await revealAll(page);
+    await expect(page.locator("button.hid")).toHaveCount(2);
+    await expect(page.locator(`[data-hunk="test-test_connection.py:0"]`)).toHaveCount(0);
 
     // The menu is the category list: only Uninteresting starts hidden
     // (greyed, eye-off); clicking the shown Routine row hides it and
@@ -136,23 +182,27 @@ test.describe("J325 hide-level selector", () => {
     await revealAll(page);
     await expect(page.locator("button.hid")).toHaveCount(3);
 
-    // Individually unhide the socket-level mechanical hunk, then go to
-    // Needs attention: it stays visible. Guide-cited hunks no longer
-    // stay visible (owner decision, #325): the cited connection hunk
-    // hides like any other, and the tooltip drops "kept because cited".
+    // Expanding a hidden row is transient: it shows now ...
     await page.locator(`[id="F-${TSOCK}"] button.hid`).first().click();
     await expect(page.locator(`[data-hunk="${TSOCK}:0"]`)).toBeVisible();
-    // Clicking the shown Substantive row moves the threshold past it.
+    // ... but the next level change fully re-applies the level, so the
+    // run collapses again instead of staying visible. Guide-cited hunks
+    // hide like any other (owner decision, #325): the cited connection
+    // hunk hides too, and the tooltip drops both "kept" clauses.
     await clickCategory(page, "substantive", "needs-attention");
-    await expect(page.locator(`[data-hunk="${TSOCK}:0"]`)).toBeVisible();
+    await expect(page.locator(`[data-hunk="${TSOCK}:0"]`)).toHaveCount(0);
     await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toHaveCount(0);
-    await expect(selector).toHaveAttribute("data-tip", /kept because shown/);
-    await expect(selector).not.toHaveAttribute("data-tip", /kept because cited/);
-    await expect(selector).toContainText("Hiding 7");
+    await expect(selector).not.toHaveAttribute("data-tip", /kept because/);
+    await expect(selector).toContainText("Hiding 8");
     await expect(selector).toHaveAttribute("data-eye", "off");
 
-    // Clicking its guide citation reveals the hidden hunk through the
-    // per-hunk unhide and scrolls to it.
+    // Frame: 1440 dark with hidden rows.
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.locator("button.hid").first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "test-results/j342-hidden-1440-dark.png" });
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // Clicking a citation to a hidden hunk still reveals it temporarily.
     await page.locator('.lk[data-refs="diff:src-urllib3-connection.py:80-88"]').first().click();
     await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toBeVisible({ timeout: 15_000 });
 
