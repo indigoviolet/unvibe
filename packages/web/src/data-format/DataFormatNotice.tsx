@@ -204,6 +204,7 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
                   variant="primary"
                   size="md"
                   danger
+                  placement="stack"
                   disabled={goingBack}
                   onConfirm={reset}
                   formatError={friendlyError}

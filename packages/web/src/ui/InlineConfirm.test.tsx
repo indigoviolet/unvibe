@@ -156,6 +156,21 @@ describe("InlineConfirm", () => {
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 
+  test("below placement drops the pill under the slot (toolbar)", () => {
+    render(<InlineConfirm action="Re-do guide" confirmAction="re-do guide" onConfirm={async () => {}} placement="below" />);
+    fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+    expect(document.querySelector(".uic[data-placement='below'] .uic-pill")).not.toBeNull();
+  });
+
+  test("stack placement lays the question above the in-flow pill", () => {
+    render(<InlineConfirm action="Reset data" confirmAction="reset data" onConfirm={async () => {}} placement="stack" detail="Remove all reviews?" />);
+    fireEvent.click(screen.getByRole("button", { name: "Reset data" }));
+    const wrap = document.querySelector(".uic[data-placement='stack']");
+    expect(wrap).not.toBeNull();
+    expect(wrap?.querySelector(".uic-detail")).toHaveTextContent("Remove all reviews?");
+    expect(wrap?.querySelector(".uic-pill")).not.toBeNull();
+  });
+
   test("Enter on the focused confirm runs the action", async () => {
     const onConfirm = vi.fn(async () => {});
     render(<InlineConfirm action="Remove" confirmAction="remove review" onConfirm={onConfirm} />);

@@ -35,6 +35,7 @@ export function DataSection(): React.JSX.Element {
           runningLabel="Resetting…"
           size="md"
           danger
+          placement="stack"
           disabled={busy}
           onConfirm={reset}
           formatError={friendlyError}

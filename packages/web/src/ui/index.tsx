@@ -378,6 +378,7 @@ export function InlineConfirm({
   title,
   idleAriaLabel,
   idleRender,
+  placement = "overlay",
 }: {
   /** Idle button label, e.g. "Remove". */
   action: string;
@@ -421,6 +422,15 @@ export function InlineConfirm({
     disabled: boolean;
     onOpen: () => void;
   }) => ReactNode;
+  /**
+   * Where the pill anchors. `"overlay"` (default) covers the button's
+   * slot in place — right for list rows. `"below"` drops below the
+   * slot like a menu — right for the dense top bar, where an overlay
+   * would cover the review identity. `"stack"` lays the question
+   * above and the pill in flow below — right for settings cards,
+   * where the row can grow and nothing may be covered.
+   */
+  placement?: "overlay" | "below" | "stack";
 }): React.JSX.Element {
   const wrapRef = useRef<HTMLSpanElement>(null);
   const idleRef = useRef<HTMLButtonElement>(null);
@@ -556,7 +566,7 @@ export function InlineConfirm({
   const busy = runningLabel ?? `${action}…`;
   const openIdle = (): void => setGate(true);
   return (
-    <span ref={wrapRef} className="uic" data-phase={phase} data-size={size} data-danger={danger || undefined} data-testid={testId}>
+    <span ref={wrapRef} className="uic" data-phase={phase} data-size={size} data-danger={danger || undefined} data-placement={placement} data-testid={testId}>
       <span className="uic-slot">
         <span className="uic-idlehold" style={openNow ? { visibility: "hidden" } : undefined}>
           {idleRender ? (

@@ -151,12 +151,19 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
    pill — white label, subtly highlighted ✓ segment — then flashes
    "✓ Confirmed" with the check in the success colour. The pill is an
    overlay anchored to the button's slot, so neighbours never shift;
-   the idle button stays mounted (hidden) to hold the slot open. */
-.ic{display:inline-flex;align-items:center;gap:var(--space-2)}
+   the idle button stays mounted (hidden) to hold the slot open.
+   Detail and error stack on their own lines under the slot, so the
+   overlay never covers the question or the reason. */
+.uic{display:inline-flex;flex-direction:column;align-items:flex-start;gap:var(--space-2);min-width:0;max-width:100%}
 .uic-slot{position:relative;display:inline-flex}
 .uic-idlehold{display:inline-flex}
-.uic-pill{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:30;display:inline-flex;align-items:stretch;background:color-mix(in srgb,var(--ink) 18%,black);color:#fff;border-radius:var(--radius-control);box-shadow:var(--shadow-pop);white-space:nowrap;overflow:hidden;transform-origin:right center;animation:uic-in .16s ease-out}
-.ic[data-danger="true"] .uic-pill{box-shadow:var(--shadow-pop),inset 2px 0 0 var(--warn)}
+.uic-pill{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:30;display:inline-flex;align-items:stretch;background:color-mix(in srgb,var(--ink) 18%,black);color:#fff;border-radius:var(--radius-control);box-shadow:var(--shadow-pop);white-space:nowrap;overflow:hidden}
+.uic[data-placement="overlay"] .uic-pill{transform-origin:right center;animation:uic-in .16s ease-out}
+.uic[data-placement="below"] .uic-pill{top:calc(100% + 4px);transform:none;transform-origin:top right;animation:uic-drop .16s ease-out}
+.uic[data-placement="stack"]:not([data-phase="idle"]) .uic-idlehold{display:none}
+.uic[data-placement="stack"] .uic-pill{position:static;transform:none;transform-origin:top left;animation:uic-drop .16s ease-out}
+.uic[data-placement="stack"] .uic-detail{order:-1}
+.uic[data-danger="true"] .uic-pill{box-shadow:var(--shadow-pop),inset 2px 0 0 var(--warn)}
 .ic[data-size="sm"] .uic-label,.ic[data-size="sm"] .uic-busy,.ic[data-size="sm"] .uic-done{min-height:var(--control-sm)}
 .ic[data-size="md"] .uic-label,.ic[data-size="md"] .uic-busy,.ic[data-size="md"] .uic-done{min-height:var(--control-md)}
 .ic[data-size="lg"] .uic-label,.ic[data-size="lg"] .uic-busy,.ic[data-size="lg"] .uic-done{min-height:var(--control-lg)}
@@ -172,4 +179,5 @@ button.ui-select>span:first-child{overflow:hidden;text-overflow:ellipsis;white-s
 .uic-detail{font-size:var(--text-xs);color:var(--text-secondary)}
 .uic-error{font-size:var(--text-xs);color:var(--warn)}
 @keyframes uic-in{from{opacity:0;transform:translateY(-50%) scale(.85)}to{opacity:1;transform:translateY(-50%) scale(1)}}
-@media (prefers-reduced-motion: reduce){.uic-pill{animation:none}}
+@keyframes uic-drop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.uic-pill,.uic-pill[data-placement="below"]{animation:none}}

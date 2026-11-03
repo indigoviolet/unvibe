@@ -167,6 +167,7 @@ export function RepositoriesSection(): React.JSX.Element {
                     runningLabel="Removing…"
                     variant="quiet"
                     danger
+                    placement="stack"
                     disabled={removing !== null}
                     open={confirmRemove === r.id}
                     onOpenChange={(v) => setConfirmRemove(v ? r.id : null)}

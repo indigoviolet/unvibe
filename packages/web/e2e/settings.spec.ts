@@ -179,6 +179,22 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   await row.getByRole("button", { name: "Confirm remove urllib3/urllib3" }).click();
   // The refusal stays inline on the row, with Cancel working.
   await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
+  // Stacked layout (#346): question above the pill, error below it —
+  // nothing overlaps.
+  const boxes = await row.evaluate((el) => {
+    const rect = (s: string): { top: number; bottom: number } | null => {
+      const n = el.querySelector(s);
+      if (!n) return null;
+      const b = (n as HTMLElement).getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom };
+    };
+    return { detail: rect(".uic-detail"), pill: rect(".uic-pill"), error: rect(".uic-error") };
+  });
+  expect(boxes.detail).not.toBeNull();
+  expect(boxes.pill).not.toBeNull();
+  expect(boxes.error).not.toBeNull();
+  expect(boxes.detail!.bottom).toBeLessThanOrEqual(boxes.pill!.top + 1);
+  expect(boxes.pill!.bottom).toBeLessThanOrEqual(boxes.error!.top + 1);
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Cancel" }).click();
   await expect(row.getByRole("alert")).toHaveCount(0);

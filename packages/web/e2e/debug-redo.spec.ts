@@ -67,6 +67,9 @@ test("top bar fits at 1440 and 960 (light), plus the open confirmation", async (
     // The confirming state swaps in place and must hold the same row.
     await page.getByRole("button", { name: "Re-do guide" }).click();
     await expectConfirmOpen(page);
+    // Let the pill's entry animation settle: capturing mid-fade reads
+    // as a see-through pill with doubled text.
+    await page.waitForTimeout(300);
     await page.screenshot({ path: `${FRAMES}redo-confirm-${width}.png` });
     const confirming = await page.evaluate(() => {
       const bar = document.getElementById("reviewbar")!;

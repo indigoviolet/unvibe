@@ -11,8 +11,9 @@
  * the review is still opening.
  *
  * The confirm is #346's shared inline confirm with a toolbar icon
- * button as its idle control: clicking it expands in place into
- * "Confirm re-do guide" with ✓ and ✕. The what-is-lost copy lives in
+ * button as its idle control: clicking it drops a "Confirm re-do
+ * guide" pill with ✓ and ✕ below the button (menu-style, so the
+ * pill never covers the review identity). The what-is-lost copy lives in
  * the pill's accessible name; a rejection stays inline in the pill
  * (retry or cancel), so nothing is squeezed into the bar's row.
  */
@@ -70,6 +71,7 @@ export function RedoGuideButton({ reviewId }: { reviewId: string }): React.JSX.E
       runningLabel="Re-doing…"
       danger
       size="sm"
+      placement="below"
       open={open}
       onOpenChange={setOpen}
       onConfirm={redo}

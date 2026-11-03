@@ -3351,6 +3351,9 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(after.pill!.x + after.pill!.width).toBeLessThanOrEqual(after.row!.x + after.row!.width + 1);
       expect(after.pill!.y).toBeGreaterThanOrEqual(after.row!.y - 1);
       expect(after.pill!.y + after.pill!.height).toBeLessThanOrEqual(after.row!.y + after.row!.height + 1);
+      // Let the pill's entry animation settle: capturing mid-fade reads
+      // as a see-through pill with doubled text.
+      await page.waitForTimeout(300);
       await checkLayout(page, "start-remove-confirm");
       await shot(page, "start-remove-confirm", suffix, "Confirm remove review");
       await page.keyboard.press("Escape");
@@ -3471,6 +3474,8 @@ test.describe("visual tour re-do guide (#345, #346)", () => {
       const pill = bar.locator(".uic-pill");
       await expect(pill).toContainText("Confirm re-do guide");
       await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      // Let the pill's entry animation settle before capturing.
+      await page.waitForTimeout(300);
       await checkLayout(page, "redo-confirm");
       await shot(page, "redo-confirm", combo.name, "Confirm re-do guide");
       await page.keyboard.press("Escape");

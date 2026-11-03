@@ -262,10 +262,11 @@ test.describe("J225a settings, start page and PR badges", () => {
     await expect(staleRow).toContainText("new commits");
 
     // The row's title and meta keep their size and position when the
-    // button expands in place (#346): the pill overlays within the row.
-    // Boxes are compared relative to the row so async callouts above
-    // the list can't flake the assert; the pill box is read at the same
-    // moment.
+    // button expands in place (#346, overlay placement): the pill
+    // overlays within the row. Boxes are compared relative to the row
+    // so async callouts above the list can't flake the assert; the
+    // pill box is read at the same moment. (Stacked settings confirms
+    // grow instead — asserted in settings.spec.ts.)
     const rowTitle = staleRow.locator(".cx2");
     const rowMeta = staleRow.locator(".cj > .hint");
     const rowBoxBefore = await staleRow.boundingBox();
