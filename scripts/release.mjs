@@ -31,6 +31,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { extensionVersion } from "./extension-version-lib.mjs";
 import { buildUnvibeField } from "./preview-lib.mjs";
 import { parseDataFormat } from "./release-notes-lib.mjs";
 
@@ -211,6 +212,20 @@ copy("packages/service/dist/update-helper.js", "packages/service/dist/update-hel
 copy("packages/service/dist/grammars", "packages/service/dist/grammars");
 copy("packages/web/dist", "packages/web/dist");
 copy("extension", "extension");
+// Issue #350: stamp the shipped extension's version from the release
+// version at build time. The source manifest carries the `0.0.0`
+// placeholder (guarded by extension-version-350.test.ts); the shipped
+// copy gets the derived Chrome-valid `version` plus the full Unvibe
+// version in `version_name` so chrome://extensions tells builds apart.
+{
+  const manifestPath = path.join(RELEASE, "extension", "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const stamped = extensionVersion(version);
+  manifest.version = stamped.version;
+  manifest.version_name = stamped.version_name;
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  console.log(`release: extension ${manifest.version} (${manifest.version_name})`);
+}
 copy("prompts", "prompts");
 copy("fixtures/urllib3-5020", "fixtures/urllib3-5020");
 copy("README.md", "README.md");
