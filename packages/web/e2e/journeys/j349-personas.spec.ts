@@ -98,6 +98,18 @@ test.describe("J349 personas settings", () => {
     await page.emulateMedia({ colorScheme: "light" });
   });
 
+  test("edit form frame", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    const row = page.getByTestId("persona-second-opinion");
+    await row.getByTestId("persona-second-opinion-edit").click();
+    await expect(page.getByTestId("persona-second-opinion-lens")).toBeVisible();
+    await page.screenshot({ path: path.join(SHOTS, "personas-edit-form.png") });
+    await row.getByTestId("persona-second-opinion-edit").click();
+  });
+
   test("add, edit and delete a custom persona", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(180_000);
@@ -141,7 +153,19 @@ test.describe("J349 personas settings", () => {
     // Delete through the shared inline confirm: Escape cancels first.
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toBeVisible();
+    // Let the entry animation settle (uic-drop, .16s): the settled pill
+    // is the opaque dark one (#346 mid-fade capture).
+    const pill = row.locator(".uic-pill");
+    await expect
+      .poll(() => pill.evaluate((el) => getComputedStyle(el).opacity), { timeout: 5_000 })
+      .toBe("1");
+    // While confirming the Edit button hides, so the row actions stay put.
+    await expect(row.getByTestId("persona-perf-sceptic-edit")).toHaveCount(0);
     await page.screenshot({ path: path.join(SHOTS, "personas-delete-confirm.png") });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS, "personas-delete-confirm-dark.png") });
+    await page.emulateMedia({ colorScheme: "light" });
     await page.keyboard.press("Escape");
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
     await expect(row).toBeVisible();

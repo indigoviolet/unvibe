@@ -124,18 +124,20 @@ export function PersonasSection({
                 </div>
               </div>
               <div className="frow" style={{ gap: 4, alignItems: "center" }}>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="quiet"
-                  data-testid={`persona-${p.id}-edit`}
-                  onClick={() => {
-                    setEditingId((open) => (open === p.id ? null : p.id));
-                    setError(null);
-                  }}
-                >
-                  {editingId === p.id ? "Close" : "Edit"}
-                </Button>
+                {confirmRemove === p.id ? null : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="quiet"
+                    data-testid={`persona-${p.id}-edit`}
+                    onClick={() => {
+                      setEditingId((open) => (open === p.id ? null : p.id));
+                      setError(null);
+                    }}
+                  >
+                    {editingId === p.id ? "Close" : "Edit"}
+                  </Button>
+                )}
                 <InlineConfirm
                   action="Delete"
                   confirmAction={`delete the “${p.name}” persona`}
