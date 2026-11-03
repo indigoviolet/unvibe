@@ -177,8 +177,21 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // --- pages -----------------------------------------------------------
   const reader = parseReply(textOf("reader.md"));
   const readerCardIds = (reader.data?.cardIds as string[] | undefined) ?? [];
+  // Card ids mirror the live pipeline (`readerCardId` in
+  // `pipeline/apply.ts`: explicit ids, then title match, then index).
+  // The current prompts emit no card ids, so titles decide.
+  const titleCardId = (title: string | null, i: number): string => {
+    if (readerCardIds[i]) return readerCardIds[i];
+    const t = (title ?? "").trim().toLowerCase();
+    if (t === "the problem") return "problem";
+    if (t === "the central idea" || t === "the central change") return "central";
+    if (t === "how it's built up") return "buildup";
+    if (t === "decisions and questions") return "decisions";
+    if (t === "names") return "names";
+    return `reader-${i}`;
+  };
   const rootCards: Card[] = reader.cards.map((c, i) =>
-    mkCard(readerCardIds[i] ?? `reader-${i}`, "root", c.title, canonBlocks(c.blocks)),
+    mkCard(titleCardId(c.title, i), "root", c.title, canonBlocks(c.blocks)),
   );
 
   // Issue #252: the reader's glossary rides the snapshot (shared term list).
@@ -190,13 +203,32 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     citation: canonicalizeTarget(t.citation, resolveKey),
   }));
 
-  for (const key of ["flow", "design", "regex", "check"]) {
-    const entry = manifest.recordings.find((e) => e.kind === "go-deeper" && e.key === key)!;
+  // Go-deeper fills follow the reader's own pending-card order (#341:
+  // current prompts emit no fixed key set). Manifest keys are the
+  // pending-card ids without the `g-` prefix.
+  const pendingGoDeeper = (
+    (reader.data?.pendingCards as { id?: string }[] | undefined) ?? []
+  )
+    .map((p) => (typeof p.id === "string" ? p.id.replace(/^g-/, "") : ""))
+    .filter((k) => k !== "");
+  const goDeeperKeys =
+    pendingGoDeeper.length > 0
+      ? pendingGoDeeper
+      : manifest.recordings.filter((e) => e.kind === "go-deeper").map((e) => e.key as string);
+  for (const key of goDeeperKeys) {
+    const entry = manifest.recordings.find((e) => e.kind === "go-deeper" && e.key === key);
+    if (!entry) throw new Error(`go-deeper recording missing for pending direction "${key}" (manifest)`);
     const parsed = parseReply(textOf(entry.file));
     const cardId = (parsed.data?.cardId as string | undefined) ?? `g-${key}`;
     const title = (parsed.data?.title as string | undefined) ?? null;
     rootCards.push(mkCard(cardId, "root", title, canonBlocks(parsed.blocks)));
   }
+
+  // Issue #341: depth levels are NOT pre-seeded. The re-recorded reader
+  // carries standard text only, so the fixture is the post-ingest state
+  // before any on-demand depth action — exactly what the live pipeline
+  // builds. Depth fills run on demand from the `depth` recordings
+  // (problem/central/buildup simple/deep, expansion:deep for answers).
 
   const pages: Page[] = [
     {
@@ -213,8 +245,16 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     const findings = (parsed.data?.findings as { id?: string; title?: string; confidence?: string; summary?: string; cardIds?: string[] }[] | undefined) ?? null;
     if (findings) {
       let cursor = 0;
-      for (const f of findings) {
-        const pageId = f.id ?? entry.key ?? "f-critic";
+      // Page ids mirror the live pipeline (`criticApplyAll` in
+      // `pipeline/apply.ts`): first finding takes the fallback, later
+      // ones take suffixed ids — the current prompts emit no finding ids.
+      const usedIds = new Set<string>();
+      for (const [idx, f] of findings.entries()) {
+        const pageId =
+          (typeof f.id === "string" && /^[\w-]+$/.test(f.id) && !usedIds.has(f.id) && f.id) ||
+          (entry.key && !usedIds.has(entry.key) && entry.key) ||
+          (idx === 0 ? "f-critic" : `f-critic-${idx + 1}`);
+        usedIds.add(pageId);
         const cardIds = f.cardIds ?? [];
         const take = cardIds.length > 0 ? cardIds.length : 2;
         const slice = parsed.cards.slice(cursor, cursor + take);
@@ -252,9 +292,11 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
 
   // Finding → suggested-comment links (PRD §4.9): the seed threads below
   // exist with fixed ids, so the finding pages link them directly.
+  // Issue #341: page ids mirror the live pipeline (f-critic, f-critic-2);
+  // both current findings point at conn:82.
   const findingComment: Record<string, { thread: string; diff: string }> = {
-    "f-lf": { thread: "t-sglf", diff: `diff:${keyAliases["conn"]}:82` },
-    "f-perf": { thread: "t-sgperf", diff: `diff:${keyAliases["conn"]}:80` },
+    "f-critic": { thread: "t-sglf", diff: `diff:${keyAliases["conn"]}:86` },
+    "f-critic-2": { thread: "t-sgperf", diff: `diff:${keyAliases["tconn"]}:220` },
   };
   for (const page of pages) {
     if (page.kind !== "finding") continue;
@@ -298,15 +340,30 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       ...(suggested ? { suggested: true } : {}),
     };
   };
+  // Issue #341: seeds mirror the re-recorded run. The two suggested
+  // threads carry the critic's own suggested comments (plus the demo
+  // marker); x-seed replays the recorded explain-obs-fold answer. Seed
+  // text is parsed from the critic recording (like x-seed), so the seeds
+  // can never drift from what the critic actually suggested.
+  const demoMarker = "\n\n(Example comment for the demo)";
+  const criticFindings = (
+    (parseReply(textOf("critic.md")).data as { findings?: { suggestedComment?: { text?: string } }[] } | null)
+      ?.findings ?? []
+  );
+  const suggestedText = (i: number): string => {
+    const t = criticFindings[i]?.suggestedComment?.text;
+    if (!t) throw new Error(`critic.md recording is missing suggestedComment for finding ${i}`);
+    return `${t}${demoMarker}`;
+  };
   const annotations: Thread[] = [
     {
       id: "x-seed",
       type: "thread",
       anchor: {
         host: { kind: "block", blockId: "problem#b1" },
-        quotedText: "raw CRLF",
-        prefix: "value as it arrived, with the",
-        suffix: "inside it, and urllib3 copied",
+        quotedText: "obs-fold",
+        prefix: "header lines (",
+        suffix: ") inside the",
         position: 0,
         version: 1,
       },
@@ -330,24 +387,29 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       id: "t-seed",
       type: "thread",
       anchor: {
-        host: { kind: "block", blockId: "central#b4" },
-        quotedText: "fast path",
-        prefix: "them.",
-        suffix: ", which is almost all",
+        host: { kind: "block", blockId: "central#b2" },
+        quotedText: "same message object",
+        prefix: "all headers on the ",
+        suffix: ".",
         position: 0,
         version: 1,
       },
       open: true,
       pinned: false,
-      replies: [mkCommentReply("you", "Does the fast path still catch a fold that uses a bare LF?")],
+      replies: [
+        mkCommentReply(
+          "you",
+          "Is the rewritten message the same object downstream code already holds, or a copy?",
+        ),
+      ],
       post: false,
     },
     {
       id: "t-sglf",
       type: "thread",
       anchor: {
-        host: { kind: "diff-line", fileKey: connKey, line: 82 },
-        quotedText: "_OBSOLETE_FOLD_RE",
+        host: { kind: "diff-line", fileKey: connKey, line: 86 },
+        quotedText: '"\\\\r\\\\n" not in value',
         prefix: "",
         suffix: "",
         position: 0,
@@ -355,15 +417,15 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      replies: [mkCommentReply("agent", "Suggested comment.", true)],
+      replies: [mkCommentReply("agent", suggestedText(0), true)],
       post: false,
     },
     {
       id: "t-sgperf",
       type: "thread",
       anchor: {
-        host: { kind: "diff-line", fileKey: connKey, line: 80 },
-        quotedText: "Starting the optional OWS match",
+        host: { kind: "diff-line", fileKey: tconnKey, line: 220 },
+        quotedText: "one  three",
         prefix: "",
         suffix: "",
         position: 0,
@@ -371,7 +433,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       },
       open: true,
       pinned: false,
-      replies: [mkCommentReply("agent", "Suggested comment.", true)],
+      replies: [mkCommentReply("agent", suggestedText(1), true)],
       post: false,
     },
     {

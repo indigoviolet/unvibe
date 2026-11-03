@@ -1,0 +1,24 @@
+{
+  "godeeperKeys": ["downstream", "tests", "inplace", "regex"],
+  "concept": [],
+  "depth": [
+    { "cardId": "problem", "direction": "deeper" },
+    { "cardId": "central", "direction": "deeper" }
+  ],
+  "examples": [],
+  "diagram": [],
+  "explain": [],
+  "ask": [],
+  "threadDepths": [
+    {
+      "direction": "deeper",
+      "ask": {
+        "key": "thread-sync",
+        "quote": "keeps the message and the `HTTPHeaderDict` identical",
+        "message": "Why must the message and the dict stay identical?",
+        "anchor": { "where": "block", "blockId": "central#b2" }
+      }
+    }
+  ],
+  "secondOpinion": []
+}

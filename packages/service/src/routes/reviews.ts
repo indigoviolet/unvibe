@@ -793,7 +793,7 @@ export async function registerReviews(
           .prepare(
             "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
           )
-          .run("demo", "demo", "urllib3-5020", fixturesDir, Date.now());
+          .run("demo", "urllib3", "urllib3", fixturesDir, Date.now());
         writeReviewRows(ctx.db, "demo", { ...ingested, review: snapshot.review });
         saveVersionFiles(ctx.db, reviewId, ingested.version.n, ingested.files);
         ctx.reviews.putSnapshot(reviewId, snapshot);

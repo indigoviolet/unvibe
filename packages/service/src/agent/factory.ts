@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@unvibe/shared";
 import { NoAgentRunner } from "./none.js";
 import { ReplayAgentRunner } from "../replay/runner.js";
+import { CaptureAgentRunner } from "../replay/capture.js";
 import { createAcpRunner } from "./acp-runner.js";
 import { assertLiveAgentAllowed } from "./live-guard.js";
 import { CompositeAgentRunner, PiAgentRunner } from "./pi/index.js";
@@ -129,10 +130,17 @@ export function createAgentRunner(opts: CreateRunnerOptions = {}): AgentRunner {
   // provider for OpenAI/Codex models through the native pi runner; claude
   // and codex keep going through ACP unchanged. Without pi the factory
   // returns the ACP runner exactly as before.
-  if (isPiAvailable({ env })) {
-    return new CompositeAgentRunner(acp, new PiAgentRunner({ env }));
-  }
-  return acp;
+  const real: AgentRunner = isPiAvailable({ env })
+    ? new CompositeAgentRunner(acp, new PiAgentRunner({ env }))
+    : acp;
+  // Issue #341: live re-record capture. `UNVIBE_CAPTURE_DIR` (set only by
+  // `scripts/live-rerecord-341.mjs`, never in normal runs or tests) wraps
+  // the real runner so every marker-carrying prompt/reply pair is saved.
+  // The wrapper duck-types as a replay runner so the pipeline adds the
+  // markers, then strips them before delegating.
+  const captureDir = (env["UNVIBE_CAPTURE_DIR"] ?? "").trim();
+  if (captureDir) return new CaptureAgentRunner(real, captureDir);
+  return real;
 }
 
 /** True when the runner serves recordings (replay/demo path). */
