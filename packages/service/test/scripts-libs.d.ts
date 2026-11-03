@@ -85,6 +85,12 @@ declare module "*release-notes-gen-lib.mjs" {
   export function whatChangedAddsMore(item: { summary?: string; whatChanged?: string }): boolean;
 }
 
+declare module "*extension-version-lib.mjs" {
+  export function isChromeExtensionVersion(v: string | null | undefined): boolean;
+  export function fnv1a32(s: string): number;
+  export function extensionVersion(unvibeVersion: string): { version: string; version_name: string };
+}
+
 declare module "*global-install-lib.mjs" {
   export function platformBinaryPackages(platform?: string, arch?: string): string[];
   // The lib runtime-checks its inputs (non-objects answer null/false),

@@ -3,7 +3,7 @@
 //   mise run demo:large:build -- --repo <owner/name|url> --pr <n> [--cap <usd>] [--port N] [--budget-min M] [--allow-unpriced] [--force]
 //
 // Live token spend (real pi, real read-only `gh`; full access stays off,
-// nothing is ever posted). Every role (main, small, secondOpinion) runs
+// nothing is ever posted). Every role (main, small) runs
 // pi + muse-spark-1.3-contributor. Free pre-checks (`pi --list-models`,
 // pi catalogue pricing) run before any spend; the spend is tracked job by
 // job (failed jobs included) and the run stops over the cap. On success
@@ -204,7 +204,7 @@ const main = async () => {
   try {
     // Every role on pi + muse-spark (issue #309).
     try {
-      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small", "secondOpinion"]);
+      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small"]);
     } catch (e) {
       failures.push(e instanceof Error ? e.message : String(e));
     }
