@@ -113,7 +113,7 @@ export interface EnqueueOptions {
   accessMode?: AccessMode;
   /**
    * Card the job works on, when card-scoped (depth/examples/diagram/
-   * generate/concept/second-opinion). Carried on the job itself (so
+   * generate/concept). Carried on the job itself (so
    * snapshots, WS events and the debug views can match it) as well as on
    * the entry (for `text` events).
    */

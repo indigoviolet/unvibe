@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { ReadinessCheck, Settings } from "@unvibe/shared";
+import type { ReadinessCheck } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { RealCommandRunner } from "../exec/index.js";
 import { PI_MIN_VERSION, piTooOldMessage, piVersionMeetsMin } from "../agent/pi/detect.js";
@@ -306,12 +306,11 @@ export function gitHubFetchCheck(probe: GitHubFetchProbe): ReadinessCheck {
   };
 }
 
-export type AgentRole = "main" | "small" | "secondOpinion";
+export type AgentRole = "main" | "small";
 
 export const ROLE_LABEL: Record<AgentRole, string> = {
   main: "Main model",
   small: "Small model",
-  secondOpinion: "Second-opinion model",
 };
 
 const CLI_FOR_PROVIDER: Record<string, string> = {
@@ -395,18 +394,6 @@ export async function agentCheck(opts: {
 
   const provider = pick.provider;
   const cli = CLI_FOR_PROVIDER[provider] ?? provider;
-  // Unset second opinion: not an error — the guide and small jobs work
-  // without one; only second opinions need a different model from main.
-  if (role === "secondOpinion" && pick.model === "") {
-    return {
-      id,
-      label,
-      status: "warning",
-      summary: "Second opinion not set — needs a different model from main",
-      fix: "Pick a model different from main in Settings → Models to enable second opinions. Everything else works without one.",
-      settingsAnchor: "#models",
-    };
-  }
   if (provider !== "claude" && provider !== "codex" && provider !== "pi") {
     return {
       id,
@@ -808,30 +795,6 @@ export async function piCheck(opts: {
     status: "warning",
     summary: `${where} installed but not logged in (${reason})`,
     fix: "To offer pi as a provider for OpenAI/Codex models, run pi's /login once. Unvibe uses whatever login your pi has and never logs in for you.",
-    settingsAnchor: "#models",
-  };
-}
-
-export function distinctCheck(settings: Settings): ReadinessCheck {
-  const a = settings.main;
-  const b = settings.secondOpinion;
-  const same = a.provider === b.provider && a.model === b.model;
-  if (same) {
-    return {
-      id: "agents-distinct",
-      label: "Second opinion independence",
-      status: "warning",
-      summary: `Second opinion uses the same model as main (${a.provider}/${a.model})`,
-      fix: "Pick a different model for second opinion in Settings → Models so it stays independent.",
-      settingsAnchor: "#models",
-    };
-  }
-  return {
-    id: "agents-distinct",
-    label: "Second opinion independence",
-    status: "ok",
-    summary: "Second opinion differs from main",
-    fix: "",
     settingsAnchor: "#models",
   };
 }

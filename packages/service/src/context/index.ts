@@ -10,7 +10,6 @@
  * - `appendLogEntry` / `batchLogEntries` / `formatLogBatch` — L3 growth.
  * - `filterChangeList` / `formatChangeList` — a session's next-turn delta.
  * - `decideRebuild(state, thresholds)` — when to build a new base.
- * - `buildSecondOpinionContext(input)` — the isolated second-opinion base.
  * - `renderTemplate` + `loadTemplatesDirSync` — prompt templates (re-export).
  */
 export {
@@ -73,12 +72,6 @@ export {
   type RebuildReason,
   type RebuildThresholds,
 } from "./rebuild.js";
-export {
-  buildSecondOpinionContext,
-  type CodeExcerpt,
-  type SecondOpinionContext,
-  type SecondOpinionInput,
-} from "./secondOpinion.js";
 export {
   charTokenEstimator,
   countCodePoints,

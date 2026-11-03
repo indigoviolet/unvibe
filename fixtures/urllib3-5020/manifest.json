@@ -279,21 +279,6 @@
       "key": "forwarding",
       "pattern": "forward|proxy",
       "file": "ask-forwarding.md"
-    },
-    {
-      "kind": "second-opinion",
-      "key": "f-lf:blind",
-      "file": "second-opinion-f-lf-blind.md"
-    },
-    {
-      "kind": "second-opinion",
-      "key": "f-perf:blind",
-      "file": "second-opinion-f-perf-blind.md"
-    },
-    {
-      "kind": "second-opinion",
-      "key": "central:check",
-      "file": "second-opinion-central-check.md"
     }
   ]
 }
