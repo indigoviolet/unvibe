@@ -88,22 +88,6 @@ test("follow-up click disables the chip and shows the answer working state", asy
   expect(seen.stream).not.toBe(true);
 });
 
-test("second opinion shows dots on its control plus a card working state", async ({ page }) => {
-  await gotoReview(page);
-  await armObserver(page);
-  // Issue #167: the demo seeds an open pinned thread under C-problem that
-  // overlays the controls below it — close it first, as a reader would.
-  await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
-  await page.locator("#C-central [data-so-ctl] button").first().click();
-  // The control itself goes busy and the card shows where the verdict lands.
-  await expect(page.locator('#C-central [data-so-ctl] button[aria-busy="true"]')).toBeVisible({
-    timeout: 5000,
-  });
-  await expect(page.locator("#C-central > .working").first()).toHaveText(
-    "Getting a second opinion…",
-    { timeout: 5000 },
-  );
-  const seen = await seenFlags(page);
-  expect(seen.busy).toBe(true);
-  expect(seen.stream).not.toBe(true);
-});
+// Issue #349: the second-opinion action and its control are gone, so the
+// "dots on its control" scene has no subject anymore. The busy/streaming
+// flags are still covered by the explain/ask/depth scenes above.
