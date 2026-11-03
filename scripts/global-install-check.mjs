@@ -40,6 +40,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { extensionVersion, isChromeExtensionVersion } from "./extension-version-lib.mjs";
 import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 import { findRepoByPath, isParserOutline, platformBinaryPackages } from "./global-install-lib.mjs";
 
@@ -134,9 +135,23 @@ function s(secMs) {
  * node_modules anymore.)
  */
 /** Chrome extension (#322): shipped inside the installed package so Settings → Extension points at a folder matching the running version. */
-function checkExtensionFiles(installedPkgDir, label) {
+function checkExtensionFiles(installedPkgDir, label, installedVersion) {
   for (const f of ["extension/manifest.json", "extension/background.js"]) {
     assert(fs.existsSync(path.join(installedPkgDir, f)), `${label}: ships ${f}`);
+  }
+  // Issue #350: the shipped manifest is stamped from the release version at
+  // build time — version_name carries the full Unvibe version, version is
+  // the derived Chrome-valid form.
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(installedPkgDir, "extension/manifest.json"), "utf8"));
+    assert(manifest.version_name === installedVersion, `${label}: extension version_name matches installed ${installedVersion} (got ${JSON.stringify(manifest.version_name)})`);
+    const stamped = installedVersion ? extensionVersion(installedVersion).version : null;
+    assert(
+      typeof manifest.version === "string" && isChromeExtensionVersion(manifest.version) && manifest.version === stamped,
+      `${label}: extension version is the stamped Chrome-valid form ${JSON.stringify(stamped)} (got ${JSON.stringify(manifest.version)})`,
+    );
+  } catch (e) {
+    assert(false, `${label}: installed extension manifest parses and is stamped (${e instanceof Error ? e.message : String(e)})`);
   }
 }
 
@@ -493,7 +508,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
 
   checkAdapterBundles(installedPkg, label);
   checkGrammarFiles(installedPkg, label);
-  checkExtensionFiles(installedPkg, label);
+  checkExtensionFiles(installedPkg, label, installedVersion);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
 
   // Third-party notices (issue #14): the installed package must contain the
