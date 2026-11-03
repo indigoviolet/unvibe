@@ -3895,3 +3895,53 @@ hunk coverage) is reported for a separate issue, not fixed here.
   card flows gone), tour frames `personas-1440-light`,
   `personas-1440-dark`, `personas-delete-confirm` (inspected).
   Full gates not yet run.
+
+## Addendum: #349 step 2 — Personas run on cards (branch `feat/349-personas-step2`)
+
+- **Persona run:** the card toolbar gains a persona picker (the old
+  second-opinion bubbles icon; portal menu with colour dot + name).
+  Choosing one sends `persona` (cardId + personaId) through
+  `runInFork` with the persona: base L0 + lens in the system prompt
+  below it (never the instructions), `persona_card` task + the
+  persona's card instruction, on the persona's provider/model —
+  forking that provider's base session (or the shared fresh-session
+  fallback), never the main one. Button shows dots while running.
+- **Variants:** output is a normal card stored as `Card.variants`
+  keyed by persona (own blocks/level/revision/undo stack, its own
+  `sessionId`, run state): same citation validation as cards with
+  the one repair turn inside `runInFork`, plus inline-diagram
+  finalize + one repair. Usable content with unverified citations
+  stores with the normal red-text marks; a result with nothing
+  usable (or a thrown run) is a visible error on the variant
+  (banner + Retry re-runs the persona action), never a silent store.
+  Tabs appear only when a variant exists (Guide + one per persona,
+  orphan variants kept with fallback name/colour); the active tab is
+  UI state, the active persona colour borders the card (inset ring)
+  and recolours the agent avatar on its threads (name in the label).
+- **Conversations on a variant** (depth simpler/deeper, Explain, Ask,
+  replies incl. retry, follow-up, examples, diagram, undo) carry
+  `personaId`: they run under that persona (its model + lens, its
+  own session for the card — variant session continued for
+  rewrites, thread sessions for replies, persona-base forks for
+  first Ask/Explain turns), with the prompt carrying the variant's
+  text. Threads store `personaId` + `personaCardId`; each version
+  tab shows only its own threads/composers (block ids are shared).
+- **Data format stays 2:** `variants` (cards) and `personaId` /
+  `personaCardId` (threads) are new optional maps/fields; older
+  stored data reads as Guide-only with no conversion. Step 1's
+  removal-driven bump is unaffected.
+- Evidence: `packages/shared/test/persona-variants-349.test.ts`
+  (variant storage/selection/tab visibility), new
+  `packages/service/test/persona-variants-349.test.ts` (fake
+  runner: variant stored on persona provider/model with the lens in
+  the system prompt, single repair turn then store, lone
+  unverified citation stored with marks, Ask on the variant
+  answered by the same persona, depth on the variant rewrites the
+  variant not the guide), new real-service replay journey
+  `e2e/journeys/j349b-personas-variants.spec.ts` (dropdown, tabs,
+  persona-tab depth-stepper dots, persona-tab Ask with thread +
+  avatar assertions), `CardView.test.tsx` persona-tabs + mock
+  persona-action tests, new `persona-central-second-opinion.md`
+  fixture recording + manifest entry, tour frames
+  `persona-dropdown-1440-light`, `persona-version-1440-light` /
+  `-dark` (inspected). Full gates not yet run.

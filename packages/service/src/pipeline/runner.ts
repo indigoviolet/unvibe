@@ -24,6 +24,7 @@ import type {
   Job,
   JobKind,
   ParsedCard,
+  Persona,
   ReplyData,
   ReviewSnapshot,
   TokenUsage,
@@ -427,6 +428,39 @@ export class Pipeline {
 
   // -- reusable seam --------------------------------------------------
 
+  /**
+   * Issue #349 step 2: the agent role for a turn — the persona's
+   * provider/model (effort is the adapter default: personas name no
+   * effort) or the main guide role. The job stamp, the base key and the
+   * fork all use this, so the runner reaches the persona's model.
+   */
+  private roleFor(settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>, persona?: Persona): {
+    provider: string;
+    model: string;
+    effort: string;
+  } {
+    if (persona) return { provider: persona.provider, model: persona.model, effort: "" };
+    return { provider: settings.main.provider, model: settings.main.model, effort: settings.main.effort };
+  }
+
+  /**
+   * Issue #349 step 2: the L0 system prompt for a turn — base
+   * instructions alone for guide turns, base instructions plus the
+   * persona lens below them for persona turns (prompt structure, owner
+   * decision 2026-11-03: the lens travels in the system prompt and
+   * applies to every task the persona performs).
+   */
+  private instructionsFor(
+    lib: ReturnType<typeof loadTemplatesDirSync>,
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+    persona?: Persona,
+  ): string {
+    const base = renderSystemPrompt(lib, postureFor(settings));
+    const lens = persona?.lens?.trim() ?? "";
+    if (lens === "") return base;
+    return `${base}\n\n# Persona lens\n\n${persona!.lens}`;
+  }
+
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
@@ -434,10 +468,9 @@ export class Pipeline {
     // throw this anyway, but only after a job id went out (#122 keeps the
     // enqueue ahead of the base — a doomed job must never be handed out).
     if (isNoneRunner(this.opts.runner)) throw new NoAgentError();
+    if (o.persona && o.persona.lens.trim() === "") throw new Error("persona lens must be a non-empty string");
     const settings = await this.effectiveSettings();
-    const provider = settings.main.provider;
-    const model = settings.main.model;
-    const effort = settings.main.effort;
+    const { provider, model, effort } = this.roleFor(settings, o.persona);
     // #122: enqueue before awaiting the base, so the click gets its job id
     // at once. The base seq for the change list is read synchronously from
     // the current base (absent → 0, a safe under-approximation: the fork may
@@ -502,7 +535,11 @@ export class Pipeline {
             ctx.setPromptSnapshot(snapshotText);
             // #122: the base builds here, inside the job — after the job id
             // went out. forkFor ensures the same base again (a live-cache hit).
-            const base = await this.ensureBase(o.reviewId);
+            // Issue #349 step 2: persona turns ensure and fork the
+            // persona's own base (its provider/model), never the main one.
+            const base = o.persona
+              ? await this.ensureBaseForRole(o.reviewId, o.persona)
+              : await this.ensureBase(o.reviewId);
             void base;
             // Issue #136: later turns of a conversation card continue on
             // the card's session instead of forking again. All turns share
@@ -510,7 +547,9 @@ export class Pipeline {
             // and contribution handling.
             const forked = continuedId
               ? await this.continueOn(continuedId)
-              : await this.forkAndTrack(o.reviewId, o.conversationKey !== undefined);
+              : o.persona
+                ? await this.forkAndTrackForRole(o.reviewId, o.persona, o.conversationKey !== undefined)
+                : await this.forkAndTrack(o.reviewId, o.conversationKey !== undefined);
             ctx.setSessionId(forked.session.id);
             let buffer = "";
             // Per-attempt evidence: a retry must observe *its own* turn's
@@ -1475,17 +1514,27 @@ export class Pipeline {
   }
 
   private async ensureBase(reviewId: string): Promise<{ sessionId: string; key: string }> {
+    return this.ensureBaseForRole(reviewId, undefined);
+  }
+
+  /**
+   * Issue #349 step 2: ensure the base session for an explicit role —
+   * the persona's provider/model with L0 + lens — through the same path
+   * as the main base.
+   */
+  private async ensureBaseForRole(reviewId: string, persona?: Persona): Promise<{ sessionId: string; key: string }> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderSystemPrompt(lib, postureFor(settings));
+    const instructions = this.instructionsFor(lib, settings, persona);
+    const role = this.roleFor(settings, persona);
     // Document reviews build their pack from the document + repo maps
     // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
     const isDocument = isDocumentReview(snapshot);
     const pack = isDocument
       ? null
-      : buildBasePack(toPromptSnapshot(snapshot, { model: settings.main.model }), instructions, {
+      : buildBasePack(toPromptSnapshot(snapshot, { model: role.model }), instructions, {
           inlineBudgetTokens: settings.inlineBudgetTokens,
         });
     const packText = isDocument
@@ -1495,10 +1544,10 @@ export class Pipeline {
       reviewId,
       reviewVersion: `v${snapshot.version.n}`,
       guideRevision: guideRevisionForSnapshot(snapshot),
-      provider: settings.main.provider,
-      model: settings.main.model,
+      provider: role.provider,
+      model: role.model,
       access: postureFor(settings),
-      effort: settings.main.effort,
+      effort: role.effort,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1594,21 +1643,38 @@ export class Pipeline {
    * idle-closed and reopenable (#143); one-shot forks stay untracked.
    */
   private async forkAndTrack(reviewId: string, track: boolean): Promise<{ session: Session; viaFork: boolean }> {
-    const forked = await this.forkFor(reviewId);
+    const settings = await this.effectiveSettings();
+    return this.forkAndTrackForRole(reviewId, undefined, track, settings);
+  }
+
+  /**
+   * Issue #349 step 2: fork for a turn under an explicit role. The
+   * persona's base (its provider/model) is ensured and forked — or the
+   * fresh-session fallback below, which replays the base pack
+   * byte-identically (PRD §6) — through the normal path.
+   */
+  private async forkAndTrackForRole(
+    reviewId: string,
+    persona: Persona | undefined,
+    track: boolean,
+    settings?: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+  ): Promise<{ session: Session; viaFork: boolean }> {
+    const effective = settings ?? (await this.effectiveSettings());
+    const forked = await this.forkForRole(reviewId, persona, effective);
     if (track) {
       const snapshot = this.opts.reviews.getSnapshot(reviewId);
-      const settings = await this.effectiveSettings();
       if (snapshot) {
+        const role = this.roleFor(effective, persona);
         this.opts.sessions.registerConversation(
           forked.session,
           {
             reviewId,
             reviewVersion: `v${snapshot.version.n}`,
             guideRevision: guideRevisionForSnapshot(snapshot),
-            provider: settings.main.provider,
-            model: settings.main.model,
-            access: postureFor(settings),
-            effort: settings.main.effort,
+            provider: role.provider,
+            model: role.model,
+            access: postureFor(effective),
+            effort: role.effort,
           },
           forked.viaFork,
         );
@@ -1618,28 +1684,43 @@ export class Pipeline {
   }
 
   private async forkFor(reviewId: string): Promise<{ session: Session; viaFork: boolean }> {
+    const settings = await this.effectiveSettings();
+    return this.forkForRole(reviewId, undefined, settings);
+  }
+
+  /**
+   * Issue #349 step 2: ensure + fork under an explicit role (the
+   * persona's provider/model and its L0 + lens system prompt), with the
+   * same fresh-session fallback as the main path.
+   */
+  private async forkForRole(
+    reviewId: string,
+    persona: Persona | undefined,
+    settings?: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+  ): Promise<{ session: Session; viaFork: boolean }> {
     // #122: never fork from a stale log — wait for the previous turn's
     // bookkeeping (base growth) to land first.
     await this.drainBookkeeping(reviewId);
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const settings = await this.effectiveSettings();
+    const effective = settings ?? (await this.effectiveSettings());
     const lib = loadTemplatesDirSync(this.promptsDir);
-    const instructions = renderSystemPrompt(lib, postureFor(settings));
-    const packText = await this.basePackTextFor(snapshot, instructions, settings);
+    const instructions = this.instructionsFor(lib, effective, persona);
+    const packText = await this.basePackTextFor(snapshot, instructions, effective);
+    const role = this.roleFor(effective, persona);
     const base = await this.opts.sessions.getBase({
       key: {
         reviewId,
         reviewVersion: `v${snapshot.version.n}`,
         guideRevision: guideRevisionForSnapshot(snapshot),
-        provider: settings.main.provider,
-        model: settings.main.model,
-        access: postureFor(settings),
-        effort: settings.main.effort,
+        provider: role.provider,
+        model: role.model,
+        access: postureFor(effective),
+        effort: role.effort,
       },
       cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
-      readOnly: postureFor(settings) !== "full",
+      readOnly: postureFor(effective) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}/api/mcp/fallback` }],
       pack: packText,
     });
@@ -1647,10 +1728,10 @@ export class Pipeline {
       reviewId,
       reviewVersion: `v${snapshot.version.n}`,
       guideRevision: guideRevisionForSnapshot(snapshot),
-      provider: settings.main.provider,
-      model: settings.main.model,
-      access: postureFor(settings),
-      effort: settings.main.effort,
+      provider: role.provider,
+      model: role.model,
+      access: postureFor(effective),
+      effort: role.effort,
     };
     const runner = this.opts.runner;
     if (typeof runner.fork === "function") {
@@ -1667,10 +1748,10 @@ export class Pipeline {
     }
     const mcp = this.opts.mcp.issueSession(reviewId, `fork-${Date.now()}`, "session");
     const session = await runner.start({
-      ...roleFields(settings.main),
+      ...roleFields(role),
       cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
-      readOnly: postureFor(settings) !== "full",
+      readOnly: postureFor(effective) !== "full",
       mcpServers: [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }],
     });
     for await (const ev of runner.prompt(session, packText)) {

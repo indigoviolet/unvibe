@@ -22,7 +22,8 @@ describe("snapshot build", () => {
     // concept-stubs recording, #216; no second-opinion recordings, #349)
     // + 1 expansion-depth recording (audit #10)
     // + 1 list-first ask recording (#331).
-    expect(counts).toHaveLength(52);
+    // + 1 persona recording (#349 step 2: the card-version run).
+    expect(counts).toHaveLength(53);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

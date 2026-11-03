@@ -39,6 +39,8 @@ export function inflightLabel(kind: InFlightKind): string {
       return "Writing answer";
     case "concept":
       return "Writing the concept page…";
+    case "persona":
+      return "Persona is writing…";
     case "update":
       return "Updating…";
   }
@@ -59,6 +61,8 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("ask");
     case "concept":
       return inflightLabel("concept");
+    case "persona":
+      return inflightLabel("persona");
     case "update-pass":
       return inflightLabel("update");
     default:

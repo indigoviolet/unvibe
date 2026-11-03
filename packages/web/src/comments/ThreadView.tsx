@@ -17,6 +17,7 @@ import type { Thread, Block, Reply } from "@unvibe/shared";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
+import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -290,6 +291,13 @@ function AgentReplyView({
   // above; Explain shows the answer only. The accessible name keeps the
   // replies distinguishable for screen readers.
   const agentLabel = reply.kind === "explain" ? "Agent explanation" : "Agent answer";
+  // Issue #349 step 2: the AI avatar is recoloured wherever a persona
+  // speaks — its threads' answers wear the persona colour (with the
+  // name in the accessible label, so colour is never the only signal).
+  const personas = useEnabledPersonas();
+  const replyPersona = thread.personaId ? personas.find((p) => p.id === thread.personaId) : undefined;
+  const avatarStyle = replyPersona ? { background: replyPersona.color, color: "#fff" } : undefined;
+  const avatarLabel = replyPersona ? `${replyPersona.name} (persona)` : "Agent";
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
@@ -300,7 +308,7 @@ function AgentReplyView({
       role="article"
       aria-label={agentLabel}
     >
-      <span className="av ai" role="img" aria-label="Agent">
+      <span className="av ai" role="img" aria-label={avatarLabel} {...(avatarStyle ? { style: avatarStyle } : {})}>
         <Icon name="spark" />
       </span>
       {/* #274: the toolbar floats at the reply's top-right corner,

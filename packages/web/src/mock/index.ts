@@ -602,6 +602,102 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
   throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
 }
 
+/**
+ * Issue #349 step 2 (mock): a persona's variant of a mock page card.
+ * Created on the first persona run as a clone of the guide blocks (so
+ * tabs appear with real shapes); later runs bump the revision.
+ */
+function ensureMockVariant(
+  card: import("@unvibe/shared").Card,
+  personaId: string,
+): import("@unvibe/shared").CardVariant {
+  if (!card.variants) card.variants = {};
+  const existing = card.variants[personaId];
+  if (existing) return existing;
+  const clone = JSON.parse(JSON.stringify(card.blocks)) as import("@unvibe/shared").Block[];
+  const created: import("@unvibe/shared").CardVariant = {
+    personaId,
+    blocks: clone,
+    level: card.level,
+    revision: 1,
+    undoStack: [],
+    working: null,
+    error: null,
+  };
+  card.variants[personaId] = created;
+  return created;
+}
+
+/** Issue #349 step 2 (mock): depth/examples/diagram/undo on a persona's variant. */
+function mockVariantControl(a: { kind: string; cardId: string; direction?: string }, personaId: string): {
+  accepted: boolean;
+  cardId: string;
+  jobId?: string;
+  reused?: boolean;
+  level?: import("@unvibe/shared").DepthLevel;
+} {
+  const ref = findMockCard(a.cardId);
+  if (!ref || ref.kind !== "page") throw new Error(`unknown card ${a.cardId}`);
+  const card = ref.card;
+  const variant = (card.variants as Record<string, import("@unvibe/shared").CardVariant> | undefined)?.[personaId];
+  if (!variant) throw new Error(`persona ${personaId} has not run on card ${a.cardId} yet`);
+  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
+  const pushVariantUndo = (): void => {
+    (variant.undoStack as { blocks: unknown; level: unknown }[]).push({
+      blocks: JSON.parse(JSON.stringify(variant.blocks)),
+      level: variant.level,
+    });
+  };
+  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
+    const i = ORDER.indexOf(variant.level);
+    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
+    if (!next) {
+      if (
+        a.direction === "deeper" &&
+        !(variant.blocks as { type: string; kind?: string }[]).some(
+          (b) => b.type === "aside" && b.kind === "Underlying principle",
+        )
+      ) {
+        pushVariantUndo();
+        (variant.blocks as unknown[]).push(mockPrincipleAside() as never);
+        variant.revision += 1;
+        emitPages();
+        return { accepted: true, cardId: a.cardId, level: variant.level };
+      }
+      return { accepted: true, cardId: a.cardId, reused: true, level: variant.level };
+    }
+    pushVariantUndo();
+    variant.level = next;
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+  }
+  if (a.kind === "examples" || a.kind === "diagram") {
+    const blocks = variant.blocks as { type: string; kind?: string }[];
+    if (a.kind === "examples" && blocks.some((b) => b.type === "aside" && b.kind === "Example")) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    if (a.kind === "diagram" && blocks.some((b) => b.type === "diagram")) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    pushVariantUndo();
+    (variant.blocks as unknown[]).push((a.kind === "examples" ? mockExampleAside() : mockDiagramAside()) as never);
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId };
+  }
+  if (a.kind === "undo") {
+    const prev = (variant.undoStack as { blocks: never; level: never }[]).pop();
+    if (!prev) return { accepted: true, cardId: a.cardId };
+    (variant.blocks as unknown) = prev.blocks;
+    (variant.level as unknown) = prev.level;
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId };
+  }
+  throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
+}
+
 function readChangesFailures(): string[] {
   try {
     const raw = localStorage.getItem("unvibe.mock.repoChangesFail");
@@ -2979,9 +3075,19 @@ export const mockApi = {
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const replyId = newTurnId();
         const askJobId = `mock-ask-${id}`;
+        // Issue #349 step 2 (mock): threads opened on a persona's version
+        // carry the persona, like the service.
+        const mockPersonaId = (a as { personaId?: string }).personaId;
+        const mockHostCard =
+          host.kind === "block" && typeof host.blockId === "string" && host.blockId.includes("#")
+            ? host.blockId.split("#")[0]
+            : null;
         annotations.push({
           id,
           type: "thread",
+          ...(typeof mockPersonaId === "string" && mockPersonaId !== "" && mockHostCard
+            ? { personaId: mockPersonaId, personaCardId: mockHostCard }
+            : {}),
           anchor: {
             host: host as import("@unvibe/shared").Thread["anchor"]["host"],
             quotedText: a.quote,
@@ -3155,9 +3261,19 @@ export const mockApi = {
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const replyId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
+      // Issue #349 step 2 (mock): threads opened on a persona's version
+      // carry the persona, like the service.
+      const mockExplainPersonaId = (a as { personaId?: string }).personaId;
+      const mockExplainHostCard =
+        host.kind === "block" && typeof host.blockId === "string" && host.blockId.includes("#")
+          ? host.blockId.split("#")[0]
+          : null;
       annotations.push({
         id,
         type: "thread",
+        ...(typeof mockExplainPersonaId === "string" && mockExplainPersonaId !== "" && mockExplainHostCard
+          ? { personaId: mockExplainPersonaId, personaCardId: mockExplainHostCard }
+          : {}),
         anchor: {
           host: host as import("@unvibe/shared").Thread["anchor"]["host"],
           quotedText: a.quote,
@@ -3197,8 +3313,25 @@ export const mockApi = {
       return { accepted: true, annotationId: id, replyId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
+      const personaId = (a as { personaId?: string }).personaId;
+      if (typeof personaId === "string" && personaId !== "") {
+        const res = mockVariantControl(a as never, personaId);
+        return res as ActionResponse;
+      }
       const res = mockCardControl(a as never);
       return res as ActionResponse;
+    }
+    if (a.kind === "persona") {
+      const cardId = (a as { cardId?: string }).cardId ?? "";
+      const personaId = (a as { personaId?: string }).personaId ?? "";
+      const ref = findMockCard(cardId);
+      if (!ref || ref.kind !== "page") throw new Error(`unknown card ${cardId}`);
+      if (personaId === "") throw new Error("personaId is required");
+      const variant = ensureMockVariant(ref.card as never, personaId);
+      (variant as { revision: number }).revision += 1;
+      emitPages();
+      emitAnnotations();
+      return { accepted: true, cardId } as ActionResponse;
     }
     if (a.kind === "generate") {
       const card = mockPages.flatMap((p) => p.cards).find((c) => c.id === a.cardId);

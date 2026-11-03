@@ -818,22 +818,30 @@ export type ReviewAction =
    * selected text (`quote`, optionally from `sourceReplyId`) becomes a
    * hyperlink to the new reply (`linkTo`).
    */
-  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string; personaId?: string }
   /**
    * Issue #273: Ask starts a new thread anchored on content, or —
    * with `threadId` — appends an Ask reply inside that thread.
+   *
+   * Issue #349 step 2: `personaId` opens the thread on a persona's
+   * version of the card (answered by that persona). Threads already
+   * carrying a persona keep it for later turns without resending.
    */
-  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string; personaId?: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
    * `ans_…` id. Depth, examples, diagram and undo act on that unit's
    * own blocks/level/undo stack, so a reply rewrites alone.
+   *
+   * Issue #349 step 2: `personaId` selects a persona's version of a
+   * page card (its own blocks/level/undo stack and its own session).
+   * Absent means the Guide version.
    */
-  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
-  | { kind: "examples"; cardId: string }
-  | { kind: "diagram"; cardId: string }
-  | { kind: "undo"; cardId: string }
+  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper"; personaId?: string }
+  | { kind: "examples"; cardId: string; personaId?: string }
+  | { kind: "diagram"; cardId: string; personaId?: string }
+  | { kind: "undo"; cardId: string; personaId?: string }
   /** `cardId` is a page-card id or a thread id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
@@ -854,8 +862,11 @@ export type ReviewAction =
    * anchored on that block, quoting the suggestion label; on a thread
    * reply the suggestion is sent as the next agent reply in the same
    * thread.
+   *
+   * Issue #349 step 2: `personaId` selects a persona's version of a
+   * page card. Absent means the Guide version.
    */
-  | { kind: "followup"; cardId: string; blockId: string; index: number }
+  | { kind: "followup"; cardId: string; blockId: string; index: number; personaId?: string }
   /**
    * Follow-up user message on a thread, answered as an Ask reply on the
    * thread's session (`Thread.sessionId`) instead of forking again.
@@ -869,7 +880,12 @@ export type ReviewAction =
    * M4: write a concept page on first open (`ensureConceptPage`). The
    * page shows a working state while its job fills it.
    */
-  | { kind: "concept"; slug: string };
+  | { kind: "concept"; slug: string }
+  /**
+   * Issue #349 step 2: run a persona on a page card. The output is a
+   * normal card stored as a variant of that card, keyed by persona.
+   */
+  | { kind: "persona"; cardId: string; personaId: string };
 
 export type ActionAnchor =
   /**
