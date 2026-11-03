@@ -9,8 +9,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router";
 import { api } from "../api/client.js";
 import { resetMockState } from "../mock/index.js";
 import { useReview } from "../state/store.js";
@@ -339,6 +339,135 @@ describe("ReviewBar", () => {
     screen.getByRole("button", { name: "Source" }).click();
     expect(onToggleGuide).toHaveBeenCalledOnce();
     expect(onToggleSource).toHaveBeenCalledOnce();
+  });
+
+  describe("Re-do guide (#345)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function Location(): React.JSX.Element {
+      const loc = useLocation();
+      return <div data-testid="loc">{loc.pathname}</div>;
+    }
+
+    async function renderBarWithLocation(reviewId: string): Promise<void> {
+      useReview.getState().setSnapshot(await api.review(reviewId));
+      render(
+        <MemoryRouter initialEntries={[`/review/${reviewId}`]}>
+          <Location />
+          <ReviewBar reviewId={reviewId} guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+        </MemoryRouter>,
+      );
+      await screen.findByRole("button", { name: "Guide" });
+    }
+
+    it("sits in the bar after Debug as an icon button with tooltip Re-do guide", async () => {
+      // r-old is a PR review; the demo hides its GitHub link, so the
+      // present-case uses r-old.
+      await renderBarWithLocation("r-old");
+      const redo = screen.getByRole("button", { name: "Re-do guide" });
+      expect(document.getElementById("reviewbar")).toContainElement(redo);
+      expect(redo).toHaveAttribute("data-tip", "Re-do guide");
+      expect(redo).toHaveAttribute("title", "Re-do guide");
+      // Icon only: no visible text label.
+      expect(redo.textContent?.trim()).toBe("");
+      expect(redo.querySelector("svg.ic")).not.toBeNull();
+      // After the Debug icon: the other review actions stay in order.
+      const debug = screen.getByRole("link", { name: "Debug" });
+      expect(debug.compareDocumentPosition(redo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("is not offered for the demo review", async () => {
+      await renderBarWithLocation("demo");
+      await screen.findByText("urllib3/urllib3#5020", {}, { timeout: 5000 });
+      expect(screen.queryByRole("button", { name: "Re-do guide" })).toBeNull();
+    });
+
+    it("is disabled with the reason while the review is still opening", async () => {
+      const snap = await api.review("demo");
+      useReview.getState().setSnapshot({
+        ...snap,
+        review: { ...snap.review, id: "opening-1", repoId: "urllib3", branch: "feature" },
+        version: { ...snap.version, n: 0 },
+        files: [],
+        pages: [],
+        ingest: { status: "loading", step: "fetching" },
+      } as typeof snap);
+      render(
+        <MemoryRouter initialEntries={["/review/opening-1"]}>
+          <ReviewBar reviewId="opening-1" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+        </MemoryRouter>,
+      );
+      await screen.findByRole("button", { name: "Guide" });
+      const redo = screen.getByRole("button", { name: "Re-do guide" });
+      expect(redo).toBeDisabled();
+      expect(redo).toHaveAttribute("title", "The review is still opening.");
+    });
+
+    it.each([
+      { status: "failed", ingest: { status: "failed", error: "boom" } },
+      { status: "empty", ingest: { status: "empty" } },
+    ])("is not offered when ingest $status", async ({ ingest }) => {
+      const snap = await api.review("demo");
+      useReview.getState().setSnapshot({
+        ...snap,
+        review: { ...snap.review, id: "r-bad", repoId: "urllib3", branch: "feature" },
+        ingest,
+      } as unknown as typeof snap);
+      render(
+        <MemoryRouter initialEntries={["/review/r-bad"]}>
+          <ReviewBar reviewId="r-bad" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
+        </MemoryRouter>,
+      );
+      await screen.findByRole("button", { name: "Guide" });
+      expect(screen.queryByRole("button", { name: "Re-do guide" })).toBeNull();
+    });
+
+    it("confirms, then navigates to the new loading review", async () => {
+      await renderBarWithLocation("r-old");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByText(/Anything already on GitHub stays there\./);
+      fireEvent.click(screen.getByRole("button", { name: "Re-do" }));
+      await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
+      expect(screen.getByTestId("loc").textContent).toMatch(/^\/review\/mock-loading-/);
+    });
+
+    it("cancel closes the confirmation without calling", async () => {
+      await renderBarWithLocation("r-old");
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByText(/open this change again as a new review\?/);
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await waitFor(() =>
+        expect(screen.queryByText(/open this change again as a new review\?/)).toBeNull(),
+      );
+      expect(redo).not.toHaveBeenCalled();
+      expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
+    });
+
+    it("Escape closes the confirmation without calling", async () => {
+      await renderBarWithLocation("r-old");
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByText(/open this change again as a new review\?/);
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() =>
+        expect(screen.queryByText(/open this change again as a new review\?/)).toBeNull(),
+      );
+      expect(redo).not.toHaveBeenCalled();
+      expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
+    });
+
+    it("shows a refusal reason inline when the service refuses", async () => {
+      await renderBarWithLocation("r-old");
+      vi.spyOn(api, "redoReview").mockRejectedValue(new Error("POST /api/reviews/r-old/redo: 409 busy"));
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByText(/open this change again as a new review\?/);
+      fireEvent.click(screen.getByRole("button", { name: "Re-do" }));
+      await screen.findByText(/Couldn't re-do the guide/);
+      expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
+    });
   });
 
   describe("job count (#98)", () => {
