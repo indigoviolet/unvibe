@@ -358,6 +358,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
+/* Narrow screens (issue #341): the bar wraps instead of overflowing —
+   identity first, controls below. Desktop keeps the single row. */
+@media (max-width: 560px) {
+  .rbar { flex-wrap: wrap; }
+  .rbar .rid { flex: 1 1 100%; }
+}
 /* Live job count (issue #98): two numbers (running · queued) in the review
    bar's right corner, after Submit so appearing never shifts the title or
    the buttons. Nothing renders when no job is live, so it reserves no

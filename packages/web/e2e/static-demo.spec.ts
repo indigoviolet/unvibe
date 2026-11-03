@@ -132,8 +132,24 @@ test("the recorded guide opens at /", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
   await expect(page.locator("#C-central")).toBeVisible();
-  await expect(page.locator("#reviewbar")).toContainText("Reset demo");
+  // Issue #341: Reset demo lives in the demo banner, not the top bar.
+  await expect(page.locator('[data-testid="demo-banner"]')).toContainText("Reset demo");
+  await expect(page.locator("#reviewbar")).not.toContainText("Reset demo");
   await page.screenshot({ path: `${SHOTS}/demo-guide.png` });
+  expect(violations).toEqual([]);
+});
+
+test("the top bar fits at 390px with no horizontal scroll", async ({ page }) => {
+  const violations = await sameOriginOnly(page);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await gotoDemo(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(
+    0,
+  );
+  const bar = await page.locator("#reviewbar").boundingBox();
+  expect(bar).not.toBeNull();
+  expect(bar!.x).toBeGreaterThanOrEqual(0);
+  expect(bar!.x + bar!.width).toBeLessThanOrEqual(390);
   expect(violations).toEqual([]);
 });
 
@@ -216,9 +232,8 @@ test("comments persist across reload; Reset demo clears them", async ({ page }) 
     timeout: 10_000,
   });
 
-  // Two "Reset demo" buttons render (page + demo banner): reset from the
-  // page one, which carries the action's title.
-  await page.locator('button[title="Clear your demo comments and reload the demo"]').click();
+  // Reset demo lives only in the demo banner.
+  await page.locator('[data-testid="demo-banner"] button').click();
   await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
     timeout: 30_000,
   });

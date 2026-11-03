@@ -410,7 +410,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       type: "thread",
       anchor: {
         host: { kind: "diff-line", fileKey: connKey, line: 86 },
-        quotedText: '"\\\\r\\\\n" not in value',
+        quotedText: '"\\r\\n" not in value',
         prefix: "",
         suffix: "",
         position: 0,
