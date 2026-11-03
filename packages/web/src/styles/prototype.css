@@ -1158,6 +1158,9 @@ mark.anc.on { outline: 2px solid var(--note); }
 .cthr .n { font: 11px var(--mono); color: var(--note); }
 .cthr .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .ithread .mq { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Code-anchored quotes (diff lines, hunks) read upright in the code font
+   so escapes like \r\n stay legible; prose quotes keep the italic sans. */
+.ithread .mq.code { font-style: normal; font-family: var(--mono); }
 /* Read-only GitHub threads (issue #168): same thread chrome, neutral avatar. */
 .av.gh { background: var(--sunk); color: var(--muted); }
 .ghbody > *:first-child { margin-top: 2px; }

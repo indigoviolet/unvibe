@@ -653,10 +653,13 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   // CSS: below ~440px of thread width the quote hides entirely
   // (container query), keeping the location.
   const showQuote = (thread.anchor.quotedText ?? "").trim() !== "";
+  // Quotes anchored on code (diff lines, hunks) render upright in the
+  // code font so escapes read literally; prose quotes keep italic sans.
+  const codeQuote = thread.anchor.host.kind === "diff-line" || thread.anchor.host.kind === "hunk";
   return (
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
       <div className="thd">
-        {showQuote ? <span className="mq">“{thread.anchor.quotedText}”</span> : null}
+        {showQuote ? <span className={codeQuote ? "mq code" : "mq"}>“{thread.anchor.quotedText}”</span> : null}
         <span className="hint thd-loc">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}

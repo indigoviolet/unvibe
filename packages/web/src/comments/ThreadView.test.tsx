@@ -345,4 +345,26 @@ describe("ThreadView suggested comments (issue #163)", () => {
     render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.queryByText("Suggested question")).toBeNull();
   });
+
+  test("code-anchored quotes render upright mono; prose quotes stay italic", () => {
+    const code = thread({
+      anchor: {
+        host: { kind: "diff-line", fileKey: "conn", line: 86 },
+        quotedText: '"\\r\\n" not in value',
+        prefix: "",
+        suffix: "",
+        position: 0,
+        version: 1,
+      },
+    });
+    const first = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={code} /></MemoryRouter>);
+    expect(first.container.querySelector(".mq")).not.toBeNull();
+    expect(first.container.querySelector(".mq")).toHaveClass("code");
+    first.unmount();
+    cleanup();
+    const prose = thread();
+    const second = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={prose} /></MemoryRouter>);
+    expect(second.container.querySelector(".mq")).not.toBeNull();
+    expect(second.container.querySelector(".mq")).not.toHaveClass("code");
+  });
 });

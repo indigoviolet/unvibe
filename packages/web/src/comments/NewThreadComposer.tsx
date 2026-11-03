@@ -118,7 +118,10 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
   return (
     <div className="ithread" data-pending-thread="true" aria-busy={sending && ask ? true : undefined}>
       <div className="thd">
-        <span className="mq">{quote ? `“${quote}”` : "New comment"}</span>
+        {/* Same rule as the thread header: code-anchored quotes upright mono. */}
+        <span className={anchor.where === "diff-line" || anchor.where === "hunk" ? "mq code" : "mq"}>
+          {quote ? `“${quote}”` : "New comment"}
+        </span>
       </div>
       {sending && ask ? (
         <div className="working" role="status">
