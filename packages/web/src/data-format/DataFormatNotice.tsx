@@ -11,11 +11,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DataFormatStatusResponse } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
-import { Button, Card } from "../ui/index.js";
+import { Button, Card, InlineConfirm } from "../ui/index.js";
 import { downloadOutboxMarkdown } from "./outboxDownload.js";
 
 export function DataFormatNotice({ status }: { status: DataFormatStatusResponse }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState<number | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -78,6 +77,9 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
     }
   }, []);
 
+  // #346: the reset runs inside the shared inline confirm. Success
+  // stamps `movedTo` (the pill's flash gives way to the restarting
+  // hint); a rejection stays inline in the pill (retry or cancel).
   const reset = useCallback(async () => {
     setResetting(true);
     setError(null);
@@ -85,11 +87,9 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
       const res = await api.resetDataFormat();
       if (!cancelled.current) setMovedTo(res.movedTo);
     } catch (err) {
-      if (!cancelled.current) {
-        setResetting(false);
-        setError(`Couldn't reset: ${friendlyError(err)}`);
-      }
-      return;
+      if (cancelled.current) return;
+      setResetting(false);
+      throw err;
     }
     await waitAndReload("format");
   }, [waitAndReload]);
@@ -193,24 +193,23 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
               <p className="hint" role="status">
                 Your data was moved to {movedTo}. Restarting…
               </p>
-            ) : resetting ? (
-              <p className="hint" role="status">
-                Moving your data aside and restarting…
-              </p>
-            ) : confirming ? (
-              <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-                <span className="warnline">Your reviews and settings in this data will no longer be shown.</span>
-                <Button variant="danger" type="button" onClick={() => void reset()}>
-                  Move my data aside and reset
-                </Button>
-                <Button variant="secondary" type="button" onClick={() => setConfirming(false)}>
-                  Cancel
-                </Button>
-              </div>
             ) : (
-              <Button variant="primary" type="button" onClick={() => setConfirming(true)} disabled={goingBack}>
-                Reset and start fresh
-              </Button>
+              <div className="frow" style={{ gap: 8, alignItems: "center" }}>
+                {/* #346: the shared inline confirm (was Reset/Cancel buttons).
+                    The pill owns the running state; `movedTo` takes over after. */}
+                <InlineConfirm
+                  action="Reset and start fresh"
+                  confirmAction="reset and start fresh"
+                  runningLabel="Resetting…"
+                  variant="primary"
+                  size="md"
+                  danger
+                  disabled={goingBack}
+                  onConfirm={reset}
+                  formatError={friendlyError}
+                  detail="Your reviews and settings in this data will no longer be shown."
+                />
+              </div>
             )}
           </Card>
           {error ? (

@@ -163,7 +163,9 @@ test("repositories remove deletes a managed clone with clear confirm copy", asyn
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Remove acme/app" }).click();
   await expect(row).toContainText("Delete the clone at /mock/data/repos/acme/app from this machine?");
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  // The button expands in place (#346): confirm, see the flash, row goes.
+  await row.getByRole("button", { name: "Confirm remove acme/app" }).click();
+  await expect(row.getByText("Confirmed")).toBeVisible();
   await expect(row).toHaveCount(0);
 });
 
@@ -174,7 +176,7 @@ test("repositories remove is refused while reviews exist", async ({ page }) => {
   const row = section.locator('[data-testid="repo-urllib3"]');
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Remove urllib3/urllib3" }).click();
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await row.getByRole("button", { name: "Confirm remove urllib3/urllib3" }).click();
   // The refusal stays inline on the row, with Cancel working.
   await expect(row.getByRole("alert")).toContainText("still has 2 reviews");
   await expect(row).toBeVisible();
