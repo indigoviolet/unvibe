@@ -105,6 +105,12 @@ export const PLOTLINE_OTHER_ID = "other";
 export interface Plotline {
   /** Short kebab-case id, unique within the review. */
   id: string;
+  /**
+   * Issue #351: true when the update pass created this plotline for a
+   * genuinely new thread of work since the baseline — the row reads
+   * "new since B".
+   */
+  newSinceBaseline?: boolean;
   /** Short display name. */
   name: string;
   /** One line: what this step adds to the progression (issue #197). */
@@ -413,6 +419,12 @@ export function formatHideLevelStats(stats: HideLevelStats): string {
 export interface DiffFilter {
   /** Plotline id, or "other" for unassigned hunks. Absent = all. */
   plotline?: string;
+  /**
+   * Issue #351: true shows only hunks changed or added since the
+   * baseline (the snapshot's `sinceHunks`); composes with the plotline
+   * filter and every other filter.
+   */
+  sinceBaseline?: boolean;
 }
 
 /**

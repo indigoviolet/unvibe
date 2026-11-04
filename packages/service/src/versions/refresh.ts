@@ -47,6 +47,7 @@ import type { ReviewStore } from "../state/store.js";
 import { parseId } from "@unvibe/shared";
 import { remapAnchor } from "./anchors.js";
 import { compareHunks, compareVersions } from "./compare.js";
+import { computeSinceHunks } from "./since.js";
 import { cardCitations, remapCardCitations } from "./citations.js";
 import { loadVersionFiles, saveVersionFiles } from "./files.js";
 import { getRangeDiff } from "./rangeDiff.js";
@@ -524,6 +525,18 @@ export async function refreshReview(
     draft.review.versions = [...draft.review.versions, { ...version }];
     draft.review.currentVersion = version.n;
     draft.versionStatus = { ...versionStatus };
+    // Issue #351: B defaults to the version last opened. A stored pick
+    // survives the refresh (the user chose it); without one, B is the
+    // version just left. `sinceHunks` is recomputed from the stored
+    // version diffs by hunk-content comparison — never git ancestry, so
+    // a rebased B works the same as a fast-forward one.
+    if (!draft.sinceBaseline || draft.sinceBaseline.version >= version.n) {
+      draft.sinceBaseline = { kind: "version", version: oldVersion.n };
+    }
+    {
+      const bFiles = loadVersionFiles(deps.db, reviewId, draft.sinceBaseline.version) ?? oldFiles;
+      draft.sinceHunks = computeSinceHunks(bFiles, newFiles);
+    }
     // #298: the real new version supersedes the start page's tag.
     delete draft.pendingHeadSha;
 

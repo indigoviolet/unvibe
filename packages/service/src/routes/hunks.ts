@@ -142,11 +142,21 @@ export async function registerHunks(
     if (typeof body !== "object" || Array.isArray(body)) {
       return reply.code(400).send({ error: "invalid filter body" });
     }
-    const { plotline } = body;
+    // Issue #351: `sinceBaseline` joins the diff filter — explicit
+    // true/false shows only hunks changed or added since B, explicit null
+    // clears it back to all hunks.
+    const { plotline, sinceBaseline } = body;
     if (plotline !== undefined && plotline !== null && typeof plotline !== "string") {
       return reply.code(400).send({ error: "plotline must be a plotline or null" });
     }
-    if (plotline === undefined) {
+    if (
+      sinceBaseline !== undefined &&
+      sinceBaseline !== null &&
+      typeof sinceBaseline !== "boolean"
+    ) {
+      return reply.code(400).send({ error: "sinceBaseline must be a boolean or null" });
+    }
+    if (plotline === undefined && sinceBaseline === undefined) {
       return reply.code(400).send({ error: "nothing to update" });
     }
 
@@ -161,9 +171,14 @@ export async function registerHunks(
 
     try {
       await ctx.reviews.mutate(id, (draft) => {
-        const next: { plotline?: string } = draft.diffFilter?.plotline ? { plotline: draft.diffFilter.plotline } : {};
+        const next: { plotline?: string; sinceBaseline?: boolean } =
+          draft.diffFilter?.plotline ? { plotline: draft.diffFilter.plotline } : {};
+        if (draft.diffFilter?.sinceBaseline === true) next.sinceBaseline = true;
         if (plotline === null) delete next.plotline;
         else if (plotline !== undefined) next.plotline = plotline;
+        if (sinceBaseline === null) delete next.sinceBaseline;
+        else if (sinceBaseline === true) next.sinceBaseline = true;
+        else if (sinceBaseline === false) delete next.sinceBaseline;
         if (Object.keys(next).length === 0) delete draft.diffFilter;
         else draft.diffFilter = next;
       });

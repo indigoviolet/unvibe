@@ -7,7 +7,7 @@
  * untrusted context. Nothing here writes to GitHub.
  */
 
-import type { ExistingReviewComment } from "@unvibe/shared";
+import type { ExistingReviewComment, PrConversationRemark } from "@unvibe/shared";
 import { renderUntrustedMarkdown } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -65,4 +65,44 @@ export async function fetchExistingComments(
       ...(c.html_url ? { htmlUrl: c.html_url } : {}),
     };
   });
+}
+
+/**
+ * Issue #351: PR conversation (issue comments), read-only
+ * (`gh api repos/{o}/{r}/issues/{n}/comments`). Capped (count and body)
+ * for the snapshot; the update pass matches them to the delta by time.
+ * Best effort — callers keep the previous list on failure.
+ */
+export async function fetchPrConversation(
+  runner: CommandRunner,
+  repoPath: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<PrConversationRemark[]> {
+  const args = ["api", `repos/${owner}/${repo}/issues/${prNumber}/comments`];
+  const res = await runGh(runner, args, { args, cwd: repoPath });
+  if (res.code !== 0) {
+    throw new Error(`gh api conversation failed: ${res.stderr.trim() || res.stdout.trim()}`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(res.stdout);
+  } catch {
+    throw new Error("gh api conversation returned invalid JSON");
+  }
+  const list = (Array.isArray(json) ? json : []) as {
+    id?: number;
+    body?: string;
+    user?: { login?: string };
+    created_at?: string;
+    html_url?: string;
+  }[];
+  return list.slice(-20).map((c, i) => ({
+    id: typeof c.id === "number" ? c.id : -(i + 1),
+    body: (c.body ?? "").slice(0, 2000),
+    ...(c.user?.login ? { author: c.user.login } : {}),
+    ...(c.created_at ? { createdAt: c.created_at } : {}),
+    ...(c.html_url ? { htmlUrl: c.html_url } : {}),
+  }));
 }

@@ -183,6 +183,123 @@ export interface UpdatePassResult {
   hunkSummaries: Record<string, string>;
   /** Old pins that no longer apply (paths the agent dropped). */
   droppedPins?: string[];
+  /**
+   * Issue #351 step 1: the baseline this pass explained. Defaults to the
+   * version last opened; step 2 adds a commit kind alongside `version`.
+   */
+  baseline?: SinceBaseline;
+  /**
+   * Issue #351 step 1: new-side `h:` IDs changed or added since the
+   * baseline, by hunk-content comparison (rebase-proof, PRD §8). Drives
+   * the Since-B diff filter and the plotline `+N since B` markers.
+   */
+  sinceHunks?: SinceHunks;
+  /**
+   * Issue #351 step 1: new guide cards for the dated Since-B section.
+   * Fresh card IDs; the service appends the section, never rewrites it.
+   */
+  sinceSection?: { cards: import("./entities.js").Card[] };
+  /**
+   * Issue #351 step 1: dated blocks appended to existing cards, leaving
+   * the old text unchanged. The service stamps id/version/baseline/at.
+   */
+  addenda?: CardAddendumDraft[];
+  /**
+   * Issue #351 step 1: new-side contentHash → plotline id for hunks
+   * since the baseline. Genuinely new threads arrive as `newPlotlines`.
+   */
+  plotlineAssignments?: Record<string, string>;
+  /**
+   * Issue #351 step 1: genuinely new threads of work. The service marks
+   * each `newSinceBaseline` so the row reads "new since B".
+   */
+  newPlotlines?: import("./scores.js").Plotline[];
+}
+
+/**
+ * Issue #351: baseline B of "focus since B". Step 1 stores a version
+ * (the version last opened, or any earlier version picked by hand).
+ * Step 2 adds a commit baseline (`{ kind: "commit"; sha: string }` plus
+ * the no-review-yet path); shape the union then, not now.
+ */
+export type SinceBaseline = {
+  kind: "version";
+  version: number;
+};
+
+/** True when the value is a stored since-baseline. Pure. */
+export function isSinceBaseline(v: unknown): v is SinceBaseline {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return o["kind"] === "version" && Number.isSafeInteger(o["version"]) && (o["version"] as number) >= 1;
+}
+
+/**
+ * Issue #351: new-side `h:<fileKey>:<hash>` IDs changed or added since
+ * the baseline, computed by hunk-content comparison between the stored
+ * version diffs (never git ancestry, so rebases work).
+ */
+export interface SinceHunks {
+  added: string[];
+  changed: string[];
+}
+
+/** Empty since-hunks (no delta). Pure. */
+export function emptySinceHunks(): SinceHunks {
+  return { added: [], changed: [] };
+}
+
+/** Both sides as one lookup set. Pure. */
+export function sinceHunkSet(s: SinceHunks | undefined): Set<string> {
+  if (!s) return new Set();
+  return new Set([...s.added, ...s.changed]);
+}
+
+/** True when a new-side `h:` ID changed or was added since B. Pure. */
+export function hunkChangedSinceB(hunkId: string, s: SinceHunks | undefined): boolean {
+  if (!s) return false;
+  return s.added.includes(hunkId) || s.changed.includes(hunkId);
+}
+
+/**
+ * Issue #351: the dated, collapsible Since-B section at the top of the
+ * guide. Written once per update pass (replaced on the next pass) —
+ * never revised in place.
+ */
+export interface SinceSection {
+  /** Baseline version B this section explains. */
+  baseline: number;
+  /** Head version at the time of the update pass. */
+  headVersion: number;
+  /** Epoch ms the update pass wrote it. */
+  at: number;
+  /** Cards explaining what changed, why, and what feedback caused it. */
+  cards: import("./entities.js").Card[];
+}
+
+/**
+ * Issue #351: one appended addendum as the agent writes it — the target
+ * card plus the new blocks. The service stamps id/version/baseline/at.
+ */
+export interface CardAddendumDraft {
+  cardId: string;
+  blocks: import("./entities.js").Block[];
+}
+
+/**
+ * Issue #351: a dated addendum block appended to an existing card when a
+ * change since B affects it. The card's old blocks stay unchanged.
+ */
+export interface CardAddendum {
+  /** Stable id: `add-v<toVersion>-<index>` within the card. */
+  id: string;
+  /** Head version whose update pass wrote this addendum. */
+  version: number;
+  /** Baseline B it is relative to. */
+  baseline: number;
+  /** Epoch ms the update pass wrote it. */
+  at: number;
+  blocks: import("./entities.js").Block[];
 }
 
 /**
