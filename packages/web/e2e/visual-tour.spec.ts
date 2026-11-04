@@ -4466,6 +4466,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
           sinceBaseline?: unknown;
           sinceHunks?: unknown;
           sinceSection?: unknown;
+          pages?: unknown;
         };
         const hid = `h:${snap.files[0].fileKey}:${snap.files[0].hunks[0].contentHash}`;
         // A minimal root page + card (tour-only, citing a real hunk id):

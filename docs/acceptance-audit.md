@@ -4024,3 +4024,55 @@ one-variant union today).
   in `/tmp/351-frames/` (all 24 inspected zoomed: no
   overlaps/clipping, styling matches the prototype variables).
   Full gates not yet run.
+
+## Addendum: #351 step 2 — commit baselines, no-review-yet offer (branch `feat/351-since-b-step2`)
+
+- **Baseline B is a union:** `SinceBaseline` is now
+  `{ kind: "version"; version } | { kind: "commit"; sha }`
+  (`packages/shared/src/versions.ts`: `isCommitSha`,
+  `shortBaselineSha`, `sinceBaselineLabel`). Snapshot `sinceBaseline`
+  and card `addenda[].baseline` are the union; every user-facing
+  string names the real baseline (`Since v2`, `Since a1b2c3d`, never
+  `B`).
+- **Commit B:** computed by hunk-content comparison between the diff
+  at B (`base...B` via `diffFilesAtCommit`/`ensureCommitFetchable`,
+  parsed by `buildFilesFromDiffText`) and the head diff — never git
+  ancestry, so rebased/force-pushed B works. An unfetchable B fails
+  loudly: the picker route returns 502 naming the short sha, refresh
+  keeps the previous hunks and records `sinceError`, and the UI shows
+  an unfetchable notice with a clear-baseline action.
+- **No-review-yet offer:** `GET
+  /api/reviews/:id/prior-github-review` returns the authenticated
+  user's latest review (`commit_id` + date) via read-only `gh api`,
+  ignoring other users' reviews and commit-less entries; every
+  failure degrades to null. A one-line offer with a checkbox
+  (`PriorReviewOffer`, on guide loading/building/idle states, hidden
+  once cards exist) sets/clears the commit baseline without starting
+  a run. Accepting changes the existing guide run's prompt context
+  (`reviewed_context` in `prompts/reader.md`) and output — the
+  reader writes the normal guide plus the Since section with
+  feedback links in the same single run (no extra agent call or
+  job); plotline `+N since` markers and the Since filter work as in
+  step 1.
+- **Picker:** `SinceBaselinePicker` groups Versions, Commits (PR
+  commits from the existing ingest), and — when not already a
+  commit — "Your last GitHub review (`abc1234`, date)".
+- **Data format 3 → 4:** the baseline union is a stored-shape
+  change; no compat. Stamped as `user_version` on fresh data;
+  `j311-data-reset` expectations updated to 4.
+- Evidence: `packages/service/test/versions-since-commit.test.ts`
+  (commit baseline, rebased-B case, no-review path with stubbed
+  reviews incl. ignored other-user entries, exactly one guide run
+  writing guide + Since section, unfetchable-B error),
+  `e2e/journeys/j352-since-commit.spec.ts` (stubbed prior review →
+  accept offer → Since section + markers), `j351-since-b.spec.ts`
+  gains a commit-picker test, `versions-since-b` /
+  `snapshot` / `data-format` / `prompts` specs pass, tour scenes
+  `since-commit-*` and `since-offer-*` in `/tmp/351s2-frames/`
+  (32 frames: offer, offer-checked, picker-groups, commit-picker,
+  commit-section, commit-plotlines, commit-addendum, commit-filter,
+  unfetchable × 1440/960 × light/dark; step-1 `since-B` scenes
+  still pass). Targeted suites + typecheck + lint verified in
+  session; `PageView.plotlines.test.tsx` has 7 failures that also
+  fail on clean main-rc (pre-existing, unrelated). Full gates not
+  yet run.
