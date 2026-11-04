@@ -64,14 +64,16 @@
   flex: 1 1 auto;
 }
 /* Cards inside the section stack at the guide's own card rhythm
-   (`#page .ui-card` margins): the grid gap matches, and the cards'
-   own margins are neutralised so they don't double up. */
+   (the collapsed 14px of `#page .ui-card` margins): the grid gap
+   matches, and the cards' own margins are neutralised so they don't
+   double up. The `#page` prefix outranks `#page .ui-card`, which a
+   bare class selector does not. */
 .since-cards {
   display: grid;
   gap: 14px;
   margin-top: 10px;
 }
-.since-cards > div > .ui-card {
+#page .since-cards > div > .ui-card {
   margin: 0;
 }
 /* Visible feedback links under a Since-B card or addendum. */

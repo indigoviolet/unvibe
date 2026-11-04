@@ -4010,12 +4010,44 @@ test.describe("since-B tour (#351)", () => {
       await expect(since).toBeVisible({ timeout: 30_000 });
       await since.scrollIntoViewIfNeeded();
       await stepChecks(page, "since-expanded");
+      // #351 review: the gap between the Since cards must match the
+      // normal guide card rhythm. Differences of rect edges are
+      // scroll-independent; park the mouse first so no tooltip skews
+      // the shot (same before every capture below).
+      await page.mouse.move(20, 20);
       await shot(page, "since-expanded", suffix, "Obs-fold unfolded since v1");
+      {
+        const gaps = await page.evaluate(() => {
+          const bottom = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().bottom;
+          };
+          const top = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().top;
+          };
+          const sinceBottom = bottom("#page #C-since-obs-fold");
+          const sinceTop = top("#page #C-since-socket-tests");
+          const normalBottom = bottom("#page #C-problem");
+          const normalTop = top("#page #C-central");
+          return {
+            sinceGap: sinceBottom !== null && sinceTop !== null ? sinceTop - sinceBottom : null,
+            normalGap: normalBottom !== null && normalTop !== null ? normalTop - normalBottom : null,
+          };
+        });
+        console.log(`since-gaps ${suffix}: since=${gaps.sinceGap}px normal=${gaps.normalGap}px`);
+        expect(gaps.sinceGap).not.toBeNull();
+        expect(gaps.normalGap).not.toBeNull();
+        expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
+      }
 
       // 2. Collapsed: the cards fold away.
       await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
+      await page.mouse.move(20, 20);
       await shot(page, "since-collapsed", suffix, "Since v1 → v2");
       await since.getByRole("button", { name: /Expand Since-B section/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
@@ -4025,6 +4057,7 @@ test.describe("since-B tour (#351)", () => {
       await central.scrollIntoViewIfNeeded();
       await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
       await stepChecks(page, "since-addendum");
+      await page.mouse.move(20, 20);
       await shot(page, "since-addendum", suffix, "Updated since v1");
 
       // 4. The visible feedback link: the remark the delta answers.
@@ -4032,6 +4065,7 @@ test.describe("since-B tour (#351)", () => {
       await firstSince.scrollIntoViewIfNeeded();
       await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
       await stepChecks(page, "since-feedback");
+      await page.mouse.move(20, 20);
       await shot(page, "since-feedback", suffix, "Answers:");
 
       // 5. The plotlines card with the new-since marker.
@@ -4039,6 +4073,7 @@ test.describe("since-B tour (#351)", () => {
       await plotlines.scrollIntoViewIfNeeded();
       await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
       await stepChecks(page, "since-plotlines");
+      await page.mouse.move(20, 20);
       await shot(page, "since-plotlines", suffix, "new since v1");
 
       // 5. The diff with the Since-B filter on. The filter is stored
@@ -4054,6 +4089,7 @@ test.describe("since-B tour (#351)", () => {
       await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
       await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
       await stepChecks(page, "since-filter");
+      await page.mouse.move(20, 20);
       await shot(page, "since-filter", suffix, "Since v1");
     });
   }

@@ -4001,12 +4001,12 @@ one-variant union today).
   string names the actual baseline (`Since v1`, never `B`). The
   toolbar wraps cleanly at 960 (one row at 1440), matching the
   prototype's `flex-wrap: wrap`.
-- **Data format 2 → 4:** cards gain dated `addenda` plus `answers`
-  (`AnswerRef` `{ kind, id }` pointers, resolved at read time, unknown
-  ids dropped); the snapshot gains `sinceBaseline` / `sinceHunks` /
-  `sinceSection` (and `prConversation`). Stamped as `user_version` on
-  fresh data; e2e seeds stamp via the shared constant; old data takes
-  the reset notice.
+- **Data format 2 → 3:** cards gain dated `addenda` with resolved
+  `answers` (`AnswerRef` `{ kind, id }` pointers, resolved at read
+  time, unknown ids dropped); the snapshot gains `sinceBaseline` /
+  `sinceHunks` / `sinceSection` (and `prConversation`). Stamped as
+  `user_version` on fresh data; e2e seeds stamp via the shared
+  constant; old data takes the reset notice.
 - Evidence: `packages/service/test/versions-since-b.test.ts` (fake
   runner + stub-free branch repos: refresh defaults B, update writes
   section + addendum with old prose byte-for-byte, feedback matching

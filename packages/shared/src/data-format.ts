@@ -11,12 +11,11 @@
  * - 1: flat-threads shape (#273), shipped in v0.0.12.
  * - 2: personas (#349 step 1): `Settings` gains `personas` and loses the
  *   `secondOpinion` role; stored guide content loses `secondOpinions`.
- * - 3: since-B (#351 step 1): cards gain dated `addenda`, the snapshot
- *   gains `sinceBaseline` / `sinceHunks` / `sinceSection`.
- * - 4: since-B feedback links (#351 step 1 review): cards and addenda
- *   gain resolved `answers` links.
+ * - 3: since-B (#351 step 1): cards gain dated `addenda` (with resolved
+ *   `answers` feedback links), the snapshot gains `sinceBaseline` /
+ *   `sinceHunks` / `sinceSection`.
  */
-export const DATA_FORMAT = 4;
+export const DATA_FORMAT = 3;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";
