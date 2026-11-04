@@ -142,6 +142,12 @@ interface SectionProps {
    * by the caller.
    */
   plotFilter?: DiffFilter;
+  /**
+   * Issue #351: new-side `h:` IDs changed or added since the baseline.
+   * Present only while the Since-B filter is on; rejected hunks render
+   * nothing, like the plotline filter.
+   */
+  sinceIds?: ReadonlySet<string>;
   /** Issue #169: plotline id → display name, for the hunk header tag. */
   plotlineNames?: ReadonlyMap<string, string>;
   /** Issue #169: the header plotline chip is a filter selector. */
@@ -902,7 +908,9 @@ export function FileSection(props: SectionProps): ReactNode {
   function buildSections(): ReactNode {
     // Issue #169: hunks the score/plotline filter rejects render nothing
     // (not even a hidden row); the caller drops files left with none.
+    // Issue #351: the Since-B filter joins it the same way.
     const plotVisible = (hunk: Hunk): boolean => {
+      if (props.sinceIds && !props.sinceIds.has(`h:${file.fileKey}:${hunk.contentHash}`)) return false;
       const s = props.states.get(hunk.contentHash);
       return hunkMatchesFilter(s?.plotline, props.plotFilter);
     };

@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { updateKey } from "../guide/inflight.js";
+import { SinceBaselinePicker } from "../guide/SinceBaselinePicker.js";
 import { useReview } from "../state/store.js";
 import { versionCountsText } from "./versionUtils.js";
 
@@ -160,12 +161,26 @@ export function VersionBanner({
           Updating…
         </span>
       ) : (
-        <button className="x" type="button" onClick={() => void startUpdate()}>
-          Update
-        </button>
+        <>
+          <BaselinePick reviewId={reviewId} />
+          <button className="x" type="button" onClick={() => void startUpdate()}>
+            Update
+          </button>
+        </>
       )}
     </div>
   );
+}
+
+/**
+ * Baseline picker inside the stale banner (issue #351): B for the next
+ * update pass. Hidden while an update runs and when the review has a
+ * single version (the picker itself returns null there).
+ */
+function BaselinePick({ reviewId }: { reviewId: string }): React.JSX.Element | null {
+  const review = useReview((s) => s.snapshot?.review);
+  if (!review) return null;
+  return <SinceBaselinePicker reviewId={reviewId} review={review} />;
 }
 
 function updateError(err: unknown): string {

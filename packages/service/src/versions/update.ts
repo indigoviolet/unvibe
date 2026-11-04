@@ -462,7 +462,16 @@ export async function applyUpdateResult(
         let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
         if (known.has(id)) id = `${id}-v${toVersion}`;
         known.add(id);
-        return { ...c, id, pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since" };
+        return {
+          ...c,
+          id,
+          pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
+          level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
+          collapsed: c.collapsed === true,
+          revision: typeof c.revision === "number" ? c.revision : 1,
+          undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
+          blocks: Array.isArray(c.blocks) ? c.blocks : [],
+        };
       });
       draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
     }

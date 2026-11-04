@@ -29,6 +29,7 @@ import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
+import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
@@ -636,6 +637,26 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       ) : null}
       {blocks}
+      {(card.addenda ?? []).map((a) => (
+        <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since version ${a.baseline}`}>
+          <div className="addendum-h">
+            Updated since v{a.baseline} · {sinceDate(a.at)}
+          </div>
+          {a.blocks.map((block) => (
+            <BlockView
+              key={block.id}
+              block={block}
+              level="standard"
+              threads={[]}
+              footnotes={[]}
+              lookupPage={lookupPage}
+              cardId={card.id}
+              onOpenPage={onOpenPage}
+              onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+            />
+          ))}
+        </section>
+      ))}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
     </UiCard>
   );

@@ -40,6 +40,8 @@ import type {
   ResumeReviewResponse,
   RemoveRepoResponse,
   ResetDataResponse,
+  SetSinceBaselineRequest,
+  SetSinceBaselineResponse,
   DataFormatResetResponse,
   DataFormatGoBackResponse,
   DataFormatStatusResponse,
@@ -360,6 +362,9 @@ const realApi = {
   /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
   resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
   update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
+  /** Issue #351: pick the baseline B (any earlier version) the next update pass explains from. */
+  setSinceBaseline: (id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/since-baseline`, body),
   action: (id: string, action: ReviewAction): Promise<ActionResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/actions`, action),
 

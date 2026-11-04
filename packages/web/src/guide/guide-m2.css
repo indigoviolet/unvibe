@@ -53,6 +53,39 @@
   margin: 2px 0 4px;
 }
 
+/* Since-B section (issue #351): dated, collapsible, top of the guide. */
+.since-h {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.since-h .sp {
+  flex: 1 1 auto;
+}
+.since-cards {
+  display: grid;
+  gap: 10px;
+}
+.since-pick {
+  display: inline-flex;
+}
+
+/* Dated addendum block at the end of an affected card (issue #351). */
+.addendum {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--sunk);
+}
+.addendum-h {
+  font-size: 12.5px;
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
 /* Narrow panes (PRD §4.1): the card control row wraps instead of clipping. */
 .ctl {
   row-gap: 6px;

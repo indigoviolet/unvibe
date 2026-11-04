@@ -19,6 +19,7 @@ import { revealSource } from "../source/reveal.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
+import { SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
 import { inflightLabel } from "./inflight.js";
 import { useReviewIdentity } from "../shell/reviewIdentity.js";
@@ -166,6 +167,24 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   // countOf never filters them), so shares sum to the total.
   const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const otherCount = countOf(undefined);
+  // Issue #351: new-side `h:` IDs in the delta, for the per-row
+  // `+N since B` markers.
+  const sinceIds = (() => {
+    const since = snapshot?.sinceHunks;
+    if (!since) return null;
+    return new Set([...since.added, ...since.changed]);
+  })();
+  const sinceCountOf = (plotId: string | undefined): number => {
+    if (!sinceIds) return 0;
+    let n = 0;
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if (!sinceIds.has(`h:${f.fileKey}:${h.contentHash}`)) continue;
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
+      }
+    }
+    return n;
+  };
   const plotlineOf = (id: string | undefined): Plotline | undefined =>
     id === undefined ? undefined : plotlines.find((p) => p.id === id);
   const nameOf = (id: string | undefined): string | undefined => {
@@ -203,6 +222,8 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         count: countOf(p.id),
         reviewed: reviewedOf(p.id),
         ref: firstRefOf(p.id),
+        sinceN: sinceCountOf(p.id),
+        sinceNew: p.newSinceBaseline === true,
       };
     }),
     ...(otherCount > 0
@@ -217,6 +238,8 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
             count: otherCount,
             reviewed: reviewedOf(undefined),
             ref: firstRefOf(undefined),
+            sinceN: sinceCountOf(undefined),
+            sinceNew: false,
           },
         ]
       : []),
@@ -312,6 +335,16 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     <Badge tone="outline">
                       {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                     </Badge>
+                    {r.sinceN > 0 ? (
+                      <Badge tone="outline" data-since-n={r.id}>
+                        +{r.sinceN} since B
+                      </Badge>
+                    ) : null}
+                    {r.sinceNew ? (
+                      <Badge tone="ok" data-since-new={r.id}>
+                        new since B
+                      </Badge>
+                    ) : null}
                     <PlotlineReviewedBox
                       checked={plotChecked}
                       partial={plotPartial}
@@ -341,6 +374,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const rootTitle =
     page.kind === "root" && isDefaultGuideTitle(page.title) ? identityTitle : displayTitle(page.title);
   const allPages = useReview((s) => s.snapshot?.pages);
+  const review = useReview((s) => s.snapshot?.review);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
   const inflight = useReview((s) => s.inflight);
   const { cards, links } = contentsModel(page, lookupPage, allPages);
@@ -433,6 +467,9 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
+      {page.kind === "root" && review ? (
+        <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+      ) : null}
       {conceptWorking ? (
         <div className="working" role="status">
           <span className="dots" aria-hidden="true">
