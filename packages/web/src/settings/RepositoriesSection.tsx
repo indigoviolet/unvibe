@@ -163,7 +163,7 @@ export function RepositoriesSection(): React.JSX.Element {
                   {/* #346: the shared inline confirm (was Remove/Cancel buttons). */}
                   <InlineConfirm
                     action="Remove"
-                    confirmAction={`remove ${r.owner}/${r.name}`}
+                    confirmAction="remove repo"
                     runningLabel="Removing…"
                     variant="quiet"
                     danger
