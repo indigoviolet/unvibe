@@ -4063,16 +4063,28 @@ one-variant union today).
 - Evidence: `packages/service/test/versions-since-commit.test.ts`
   (commit baseline, rebased-B case, no-review path with stubbed
   reviews incl. ignored other-user entries, exactly one guide run
-  writing guide + Since section, unfetchable-B error),
+  writing guide + Since section, unfetchable-B error with persisted
+  `sinceError` cleared on the next baseline change),
   `e2e/journeys/j352-since-commit.spec.ts` (stubbed prior review →
   accept offer → Since section + markers), `j351-since-b.spec.ts`
   gains a commit-picker test, `versions-since-b` /
   `snapshot` / `data-format` / `prompts` specs pass, tour scenes
-  `since-commit-*` and `since-offer-*` in `/tmp/351s2-frames/`
-  (32 frames: offer, offer-checked, picker-groups, commit-picker,
-  commit-section, commit-plotlines, commit-addendum, commit-filter,
-  unfetchable × 1440/960 × light/dark; step-1 `since-B` scenes
-  still pass). Targeted suites + typecheck + lint verified in
-  session; `PageView.plotlines.test.tsx` has 7 failures that also
-  fail on clean main-rc (pre-existing, unrelated). Full gates not
-  yet run.
+  `since-commit-*`, `since-offer-*` and `since-unfetchable-picker-*`
+  in `/tmp/351s2-frames/` (40 frames: offer, offer-checked,
+  picker-groups, commit-picker, commit-section, commit-plotlines,
+  commit-addendum, commit-filter, unfetchable under the offer,
+  unfetchable next to the picker × 1440/960 × light/dark; step-1
+  `since-B` scenes still pass). Targeted suites + typecheck + lint
+  verified in session. `PageView.plotlines.test.tsx` needs
+  `VITE_MOCK=1` (13/13 with it; the 7 failures without it reproduce
+  on clean main-rc, unrelated). Full gates not yet run.
+- Review fixes (supervisor frame review): the offer is a normal
+  labelled checkbox (box first, vertically centred, text click
+  toggles via `<label>`); a failed pick stores `sinceError`
+  (`unfetchableCommitMessage`: "Couldn't find commit … here or on
+  the remote (it may have been force-pushed away). Pick another
+  baseline."), rendered verbatim under the offer and next to the
+  picker until the baseline changes; seed text fixed ("Rework beta
+  and add gamma", "The follow-up rework" — no `B`, no tour-seed
+  jargon); the stale banner wraps as two groups (summary +
+  range-diff, picker + Update) via `.dbar-group`.

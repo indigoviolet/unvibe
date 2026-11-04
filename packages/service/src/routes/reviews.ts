@@ -49,7 +49,7 @@ import type { RouteDeps } from "./deps.js";
 import { listAllRepos } from "./repos.js";
 import { loadVersionFiles, saveVersionFiles } from "../versions/files.js";
 import { refreshReview } from "../versions/refresh.js";
-import { computeSinceHunks, diffFilesAtCommit } from "../versions/since.js";
+import { computeSinceHunks, diffFilesAtCommit, unfetchableCommitMessage } from "../versions/since.js";
 import {
   enqueueUpdatePass,
   JsonBlockReplyParser,
@@ -1150,7 +1150,18 @@ export async function registerReviews(
       try {
         bFiles = await diffFilesAtCommit(ctx.runner, repo.localPath, snapshot.version.mergeBaseSha, sha);
       } catch (err) {
-        return reply.code(502).send({ error: (err as Error).message });
+        // Step 2: the failed pick leaves the stored baseline alone but
+        // records `sinceError`, so the picker and the offer show a
+        // persistent inline message until the baseline changes.
+        const message = err instanceof Error ? err.message : unfetchableCommitMessage(sha);
+        try {
+          await ctx.reviews.mutate(id, (draft) => {
+            draft.sinceError = message;
+          });
+        } catch {
+          // The review is gone; the 502 below still names the sha.
+        }
+        return reply.code(502).send({ error: message });
       }
       const since = computeSinceHunks(bFiles, snapshot.files);
       try {

@@ -93,6 +93,15 @@ section.since {
 .since-pick {
   display: inline-flex;
 }
+/* Issue #351 step 2: the no-review offer is a normal labelled checkbox —
+   box first, vertically centred on the text line; clicking the text
+   toggles it too (native `label` behaviour). */
+.prior-review-offer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
 
 /* Dated addendum block at the end of an affected card (issue #351). */
 .addendum {

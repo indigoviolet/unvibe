@@ -62,6 +62,7 @@ import {
   formatReaderReviewedContext,
   markNewSincePlotlines,
   normalizeAgentSinceCards,
+  unfetchableCommitMessage,
 } from "../versions/since.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
@@ -1818,7 +1819,16 @@ export class Pipeline {
           .catch(() => {});
         readerSnapshot = this.opts.reviews.getSnapshot(reviewId) ?? snapshot;
       } catch {
-        // The context below says the comparison is unavailable.
+        // The context below says the comparison is unavailable; record
+        // it too, so the picker names the gone commit inline.
+        const gone = snapshot.sinceBaseline;
+        if (gone?.kind === "commit") {
+          await this.opts.reviews
+            .mutate(reviewId, (draft) => {
+              draft.sinceError = unfetchableCommitMessage(gone.sha);
+            })
+            .catch(() => {});
+        }
       }
     }
     const reviewed_context = formatReaderReviewedContext(readerSnapshot, readerSnapshot.sinceHunks);

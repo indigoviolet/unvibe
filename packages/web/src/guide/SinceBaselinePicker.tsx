@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import type { Review, SinceBaseline } from "@unvibe/shared";
-import { shortBaselineSha, sinceBaselineLabel } from "@unvibe/shared";
+import { shortBaselineSha } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
@@ -105,8 +105,8 @@ export function SinceBaselinePicker({ reviewId, review }: { reviewId: string; re
         options={entries}
       />
       {snapshot?.sinceError ? (
-        <span className="hint" data-testid="since-error" title={snapshot.sinceError}>
-          Couldn't update the comparison ({baseline ? sinceBaselineLabel(baseline) : "baseline"} unreachable)
+        <span className="hint" data-testid="since-error">
+          {snapshot.sinceError}
         </span>
       ) : null}
     </span>

@@ -425,7 +425,6 @@ export async function ensureCommitFetchable(
   repoPath: string,
   sha: string,
 ): Promise<void> {
-  const short = shortBaselineSha(sha);
   const known = await runner.run("git", { args: ["cat-file", "-e", sha], cwd: repoPath }).catch(() => null);
   if (known && known.code === 0) return;
   try {
@@ -437,9 +436,19 @@ export async function ensureCommitFetchable(
   } catch {
     // Fall through to the explicit error below.
   }
-  throw new Error(
-    `couldn't find commit ${short} in this checkout or on the remote — ` +
-      `it may have been garbage-collected after a force-push`,
+  throw new Error(unfetchableCommitMessage(sha));
+}
+
+/**
+ * Issue #351 step 2: the UI-facing unfetchable-baseline message, stored
+ * as `sinceError` and rendered verbatim next to the picker and under
+ * the offer. Names the short sha and says what to do; it stays until
+ * the baseline changes (every successful set/clear deletes it).
+ */
+export function unfetchableCommitMessage(sha: string): string {
+  return (
+    `Couldn't find commit ${shortBaselineSha(sha)} here or on the remote ` +
+    `(it may have been force-pushed away). Pick another baseline.`
   );
 }
 

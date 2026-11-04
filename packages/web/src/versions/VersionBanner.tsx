@@ -135,21 +135,23 @@ export function VersionBanner({
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
-      <span className="hint">
-        New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
-        {versionCountsText(counts)} hunks)
+      <span className="dbar-group">
+        <span className="hint">
+          New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
+          {versionCountsText(counts)} hunks)
+        </span>
+        {counts.rangeDiff.trim() !== "" ? (
+          <details>
+            <summary className="hint" style={{ cursor: "pointer" }}>
+              range-diff
+            </summary>
+            <pre className="code" data-testid="range-diff">
+              {counts.rangeDiff}
+            </pre>
+          </details>
+        ) : null}
       </span>
       <span className="sp" />
-      {counts.rangeDiff.trim() !== "" ? (
-        <details>
-          <summary className="hint" style={{ cursor: "pointer" }}>
-            range-diff
-          </summary>
-          <pre className="code" data-testid="range-diff">
-            {counts.rangeDiff}
-          </pre>
-        </details>
-      ) : null}
       {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
       {updating ? (
         <span className="hint" data-testid="update-progress" aria-live="polite" role="status">
@@ -161,12 +163,12 @@ export function VersionBanner({
           Updating…
         </span>
       ) : (
-        <>
+        <span className="dbar-group">
           <BaselinePick reviewId={reviewId} />
           <button className="x" type="button" onClick={() => void startUpdate()}>
             Update
           </button>
-        </>
+        </span>
       )}
     </div>
   );

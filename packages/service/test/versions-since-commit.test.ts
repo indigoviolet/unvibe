@@ -260,8 +260,10 @@ describe("since-B step 2: commit baselines on branch reviews", () => {
       expect(missing.statusCode).toBe(502);
       expect((missing.json() as { error: string }).error).toContain(gone.slice(0, 8));
       expect((missing.json() as { error: string }).error).toContain("force-push");
-      // The failed pick leaves the stored baseline alone.
+      // The failed pick leaves the stored baseline alone but records a
+      // persistent `sinceError` for the picker and the offer.
       expect(ctx.reviews.getSnapshot(id)!.sinceBaseline).toEqual({ kind: "commit", sha: c1 });
+      expect(ctx.reviews.getSnapshot(id)!.sinceError).toContain(gone.slice(0, 8));
 
       // Clearing drops the baseline and the hunk set.
       const cleared = await app.inject({ method: "DELETE", url: `/api/reviews/${id}/since-baseline`, headers: authed });
@@ -269,6 +271,7 @@ describe("since-B step 2: commit baselines on branch reviews", () => {
       const clearedSnap = ctx.reviews.getSnapshot(id)!;
       expect(clearedSnap.sinceBaseline).toBeUndefined();
       expect(clearedSnap.sinceHunks).toBeUndefined();
+      expect(clearedSnap.sinceError).toBeUndefined();
     } finally {
       await app.close();
     }

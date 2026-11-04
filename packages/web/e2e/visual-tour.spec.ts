@@ -4152,7 +4152,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       snap.review.versions = [v1, v2];
       snap.review.currentVersion = 2;
       snap.version = v2;
-      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma (tour seed)", body: "", files: [], hunks: [] }];
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
       snap.sinceBaseline = { kind: "commit", sha: commit352 };
       snap.sinceHunks = { added: [addedId], changed: [changedId] };
       const para = (id: string, text: string, citations: string[]): unknown => ({
@@ -4208,7 +4208,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       ];
       snap.plotlines = [
         { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
-        { id: "beta-gamma", name: "Beta and gamma", description: "The post-B rework.", newSinceBaseline: true },
+        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework.", newSinceBaseline: true },
       ];
       const hashOf = (id: string): string => id.split(":").slice(2).join(":");
       for (const st of snap.hunkStates) {
@@ -4288,7 +4288,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       const pick = since.locator('[data-testid="since-pick"]');
       await pick.scrollIntoViewIfNeeded();
       await stepChecks(page, "since-commit-picker");
-      await pick.click();
+      await pick.getByRole("combobox").click();
       await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
       await page.mouse.move(20, 20);
@@ -4579,7 +4579,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await stepChecks(page, "since-offer");
       await page.mouse.move(20, 20);
       await shot(page, "since-offer", suffix, `You reviewed this at ${c1short}`);
-      await box.click();
+      // The label text toggles the box too (native `label` behaviour).
+      await offer.getByText(`You reviewed this at ${c1short}`).click();
       await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
       await stepChecks(page, "since-offer-checked");
       await page.mouse.move(20, 20);
@@ -4597,9 +4598,14 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
       await page.getByTestId("prior-review-checkbox").click();
       const toast = page.locator("#toast");
-      await expect(toast).toContainText(`couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(toast).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      // The failure also leaves a persistent inline message under the
+      // offer until the baseline changes.
+      const inline = page.getByTestId("prior-review-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
       await page.mouse.move(20, 20);
-      await shot(page, "since-unfetchable", suffix, `couldn't find commit ${goneShort}`);
+      await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
     });
 
     test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
@@ -4617,7 +4623,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // overlays the diff gutter by design, which the gutter check
       // would flag.
       await stepChecks(page, "since-picker-groups");
-      await pick.click();
+      await pick.getByRole("combobox").click();
       await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
       await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
@@ -4625,6 +4631,31 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.mouse.move(20, 20);
       await shot(page, "since-picker-groups", suffix, "GitHub reviews");
       await page.keyboard.press("Escape");
+    });
+
+    test(`unfetchable baseline picked in the picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await expect(pick).toBeVisible({ timeout: 30_000 });
+      await pick.scrollIntoViewIfNeeded();
+      await pick.getByRole("combobox").click();
+      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
+      await expect(goneOption).toBeVisible({ timeout: 15_000 });
+      await goneOption.click();
+      // The failed pick leaves the stored baseline alone but records
+      // `sinceError`, shown persistently next to the picker.
+      const inline = since.getByTestId("since-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await stepChecks(page, "since-unfetchable-picker");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
     });
   }
 });

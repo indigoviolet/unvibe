@@ -6,7 +6,9 @@
  * the normal guide plus the Since-B section in the same run. Off:
  * back to the normal whole-PR guide. Setting or clearing it never
  * starts an agent run. Toggling after the guide lands is impossible —
- * the offer only renders while no guide cards exist.
+ * the offer only renders while no guide cards exist. A failed pick
+ * leaves a persistent inline error under the offer until the baseline
+ * changes.
  */
 import { useState } from "react";
 import type { PriorGithubReview } from "@unvibe/shared";
@@ -47,17 +49,23 @@ export function PriorReviewOffer({ reviewId, prior }: { reviewId: string; prior:
   };
 
   return (
-    <p className="hint" data-testid="prior-review-offer">
-      {offerText(prior)}{" "}
-      <Checkbox
-        checked={checked}
-        onChange={(v) => void toggle(v)}
-        ariaLabel={offerText(prior)}
-        id="prior-review-focus"
-        testId="prior-review-checkbox"
-        disabled={saving}
-      />
-    </p>
+    <div data-testid="prior-review-offer">
+      <label className="hint prior-review-offer">
+        <Checkbox
+          checked={checked}
+          onChange={(v) => void toggle(v)}
+          id="prior-review-focus"
+          testId="prior-review-checkbox"
+          disabled={saving}
+        />
+        <span>{offerText(prior)}</span>
+      </label>
+      {snapshot?.sinceError ? (
+        <p className="hint" data-testid="prior-review-error">
+          {snapshot.sinceError}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
