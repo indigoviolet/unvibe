@@ -827,7 +827,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       <div className="dtool">
         {plotFilter.plotline !== undefined ? (
           <span className="fchip" data-filterchip="plotline">
-            Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden
+            <span
+              className="fchip-name"
+              title={plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline}
+            >Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden</span>
             <button
               type="button"
               aria-label="Clear plotline filter"

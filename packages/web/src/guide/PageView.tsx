@@ -309,7 +309,11 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       },
                     }
                   : {})}
-                primary={<span className="plname">{r.name}</span>}
+                primary={
+                  // Issue #353: names are stored whole; the row clamps to
+                  // two lines (CSS) and the full name is in the tooltip.
+                  <span className="plname" data-tip={r.name}>{r.name}</span>
+                }
                 meta={
                   <>
                     {r.desc ? <span className="pldesc">{r.desc}</span> : null}

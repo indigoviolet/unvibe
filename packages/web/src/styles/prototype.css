@@ -543,6 +543,9 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 /* Plotline tag on the hunk header: a neutral chip, reserving colour for
    the score dot. */
 .ptag { font-size: 10.5px; color: var(--muted); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; flex: none; }
+/* Issue #353: names are stored whole; a long name on the hunk header
+   ellipsizes on one line instead, and the full name is in the tooltip. */
+.ptag { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 /* The plotline chip is a selector (#169): a real button; the selected
    one is outlined and filled. Score dots are indicators only (#325). */
 .ptag-pick { cursor: pointer; background: none; font: inherit; font-size: 10.5px; }
@@ -552,7 +555,10 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    legend no longer lives in the file tree). */
 /* The one visible active-filter chip in the pinned actions bar: what is
    filtered, how much it hides, and a clear button. */
-.fchip { display: inline-flex; align-items: center; gap: 6px; border: var(--border-width) solid var(--line); background: var(--sunk); color: var(--ink); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; font-size: 12px; white-space: nowrap; flex: none; }
+.fchip { display: inline-flex; align-items: center; gap: 6px; border: var(--border-width) solid var(--line); background: var(--sunk); color: var(--ink); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; font-size: 12px; white-space: nowrap; flex: none; max-width: 100%; }
+/* Issue #353: the active plotline filter keeps its clear button while a
+   long name ellipsizes on one line; the full name is in the tooltip. */
+.fchip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fchip button { border: 0; background: none; color: var(--muted); width: 20px; height: 20px; border-radius: 50%; padding: 0; font-size: 14px; line-height: 1; cursor: pointer; }
 .fchip button:hover { background: var(--line); color: var(--ink); }
 /* Files rows: the dot is its own button beside the jump button. */
@@ -866,14 +872,20 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines .ui-row[role="button"] { cursor: pointer; }
 .plotlines .ui-row.sel { background: var(--sunk); }
 /* Titles show in full and all look the same (#242): no truncation,
-   no ellipsis, no underline — long titles wrap. This overrides the
+   no ellipsis, no underline — long titles wrap, except the plotline
+   name itself, which clamps to two lines (#353). This overrides the
    single-line ListRow defaults, which stay for every other list. */
 .plotlines .ui-row-primary { white-space: normal; overflow: visible; text-overflow: clip; }
 .plotlines .ui-row-meta { white-space: normal; overflow: visible; text-overflow: clip; display: flex; flex-direction: column; gap: 2px; }
-.plotlines .plname { font-weight: 600; text-decoration: none; }
+/* Issue #353: names are stored whole; the card row shows at most two
+   lines with an ellipsis, and the full name is in the tooltip. */
+.plotlines .plname { font-weight: 600; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .plotlines .pldesc { color: var(--muted); font-size: 12.5px; }
 .plotlines .plbuilds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
 .plotlines .plbuilds-chip { border: 0; background: none; padding: 0; margin: 0; cursor: pointer; font: inherit; }
+/* Issue #353: a builds-on name is another plotline name, so it gets the
+   same one-line ellipsis (its tooltip already names it in full). */
+.plotlines .plbuilds-chip .ui-badge { display: inline-block; max-width: min(320px, 100%); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .plotlines .plbuilds-chip:hover .ui-badge { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .divider { font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; margin: 30px 0 4px; }
 /* #274 start groups (Your PRs, Waiting on your review, Recent branches)

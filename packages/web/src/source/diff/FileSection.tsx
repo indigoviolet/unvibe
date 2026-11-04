@@ -747,6 +747,7 @@ function HunkBlock(
               aria-pressed={props.plotFilter?.plotline === st?.plotline}
               data-plotpick={st?.plotline}
               data-tip={props.plotFilter?.plotline === st?.plotline ? "Show all hunks" : `Show only ${plotName}`}
+              title={plotName}
               onClick={() => {
                 if (st?.plotline !== undefined) props.onSelectPlotline?.(st.plotline);
               }}
