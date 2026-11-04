@@ -21,6 +21,7 @@ import { CardView } from "./CardView.js";
 import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
 import { SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
+import { InlineCode, stripCodeSpans } from "../components/inlineCode.js";
 import { inflightLabel } from "./inflight.js";
 import { useReviewIdentity } from "../shell/reviewIdentity.js";
 
@@ -254,14 +255,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         <div
           className="plshare"
           role="img"
-          aria-label={`Hunk shares: ${rows.map((r) => `${r.name} ${r.count} of ${totalHunks}`).join(", ")}`}
+          aria-label={`Hunk shares: ${rows.map((r) => `${stripCodeSpans(r.name)} ${r.count} of ${totalHunks}`).join(", ")}`}
         >
           {rows.map((r, i) => (
             <span
               key={r.id}
               className="plshare-seg"
               data-share={r.id}
-              title={`${r.name}: ${r.count}/${totalHunks}`}
+              title={`${stripCodeSpans(r.name)}: ${r.count}/${totalHunks}`}
               style={{
                 width: `${(r.count / totalHunks) * 100}%`,
                 background: `var(--plseg-${i % 5})`,
@@ -299,7 +300,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       tabIndex: 0,
                       "aria-pressed": active,
                       "data-plotpick": r.id,
-                      "data-tip": active ? "Show all hunks" : `Show only ${r.name}`,
+                      "data-tip": active ? "Show all hunks" : `Show only ${stripCodeSpans(r.name)}`,
                       onClick: () => pick(r.id, r.ref),
                       onKeyDown: (e: KeyboardEvent) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -309,10 +310,19 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       },
                     }
                   : {})}
-                primary={<span className="plname">{r.name}</span>}
+                primary={
+                  // Issue #353: names are stored whole; the row clamps to
+                  // two lines (CSS), code spans render as code, and the
+                  // plain full name is in the tooltip.
+                  <span className="plname" data-tip={stripCodeSpans(r.name)}><InlineCode text={r.name} /></span>
+                }
                 meta={
                   <>
-                    {r.desc ? <span className="pldesc">{r.desc}</span> : null}
+                    {r.desc ? (
+                      <span className="pldesc" data-tip={stripCodeSpans(r.desc)}>
+                        <InlineCode text={r.desc} />
+                      </span>
+                    ) : null}
                     {r.buildsOnId && r.buildsOnName ? (
                       <span className="plbuilds">
                         Builds on{" "}
@@ -320,14 +330,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                           type="button"
                           className="plbuilds-chip"
                           data-buildson={r.buildsOnId}
-                          data-tip={`Show only ${r.buildsOnName}`}
-                          aria-label={`Show only ${r.buildsOnName}`}
+                          data-tip={`Show only ${stripCodeSpans(r.buildsOnName)}`}
+                          aria-label={`Show only ${stripCodeSpans(r.buildsOnName)}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             pick(r.buildsOnId as string, r.buildsOnRef);
                           }}
                         >
-                          <Badge tone="outline">{r.buildsOnName}</Badge>
+                          <Badge tone="outline">{stripCodeSpans(r.buildsOnName)}</Badge>
                         </button>
                       </span>
                     ) : null}

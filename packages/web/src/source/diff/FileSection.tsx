@@ -28,6 +28,7 @@ import { HUNK_SCORE_LABELS, hunkMatchesFilter, hunkScoreRank } from "@unvibe/sha
 import { Icon } from "../../components/Icon.js";
 import { Button, Card, DiffStat } from "../../ui/index.js";
 import { escapeHtml } from "../../components/escapeHtml.js";
+import { stripCodeSpans } from "../../components/inlineCode.js";
 import { friendlyError } from "../../api/client.js";
 import { toast } from "../../floating/Toast.js";
 import { performAction } from "../../guide/actions.js";
@@ -746,12 +747,13 @@ function HunkBlock(
               className={`ptag ptag-pick${props.plotFilter?.plotline === st?.plotline ? " sel" : ""}`}
               aria-pressed={props.plotFilter?.plotline === st?.plotline}
               data-plotpick={st?.plotline}
-              data-tip={props.plotFilter?.plotline === st?.plotline ? "Show all hunks" : `Show only ${plotName}`}
+              data-tip={props.plotFilter?.plotline === st?.plotline ? "Show all hunks" : `Show only ${stripCodeSpans(plotName)}`}
+              title={stripCodeSpans(plotName)}
               onClick={() => {
                 if (st?.plotline !== undefined) props.onSelectPlotline?.(st.plotline);
               }}
             >
-              {plotName}
+              {stripCodeSpans(plotName)}
             </button>
           ) : null}
         </span>

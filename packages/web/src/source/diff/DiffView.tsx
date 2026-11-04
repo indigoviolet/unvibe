@@ -37,6 +37,7 @@ import {
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
+import { stripCodeSpans } from "../../components/inlineCode.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import {
@@ -827,7 +828,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       <div className="dtool">
         {plotFilter.plotline !== undefined ? (
           <span className="fchip" data-filterchip="plotline">
-            Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden
+            <span
+              className="fchip-name"
+              title={stripCodeSpans(plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline)}
+            >Plotline: {stripCodeSpans(plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline)} · {hiddenHunks} hidden</span>
             <button
               type="button"
               aria-label="Clear plotline filter"
@@ -920,24 +924,28 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           counts={hideStats.counts}
           onCategory={(cat) => setHideLevel(hideLevelAfterCategoryClick(hideLevel, cat))}
         />
-        <button
-          className="x"
-          type="button"
-          data-tip={foldTip}
-          aria-label="Fold all"
-          onClick={() => void foldAll()}
-        >
-          <Icon name="fold" />
-        </button>
-        <button
-          className="x"
-          type="button"
-          data-tip="Unfold the code"
-          aria-label="Unfold all"
-          onClick={() => void unfoldAll()}
-        >
-          <Icon name="unfold" />
-        </button>
+        {/* Issue #353: the trailing fold pair wraps as a group, so one
+            button never sits alone on a wrapped toolbar line. */}
+        <span className="foldpair">
+          <button
+            className="x"
+            type="button"
+            data-tip={foldTip}
+            aria-label="Fold all"
+            onClick={() => void foldAll()}
+          >
+            <Icon name="fold" />
+          </button>
+          <button
+            className="x"
+            type="button"
+            data-tip="Unfold the code"
+            aria-label="Unfold all"
+            onClick={() => void unfoldAll()}
+          >
+            <Icon name="unfold" />
+          </button>
+        </span>
         <span
           className="rprog"
           role="progressbar"
