@@ -78,6 +78,8 @@ function goldenValues(): Record<string, RenderValues> {
       changed_hunks: "### [[h:conn:h111]] reflowed: +1 −1",
       stale_cards: "### The central change [[card:c-central]] (2 cited hunks changed)",
       findings: "### Folds that end in a bare LF are not unfolded (medium) [[page:f-lf]] — still applies",
+      since_context:
+        "## Baseline\n\nB is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 changed + 0 new hunks since B.",
     },
     consolidate: {
       contributions: '- c1 [fact] "Requests reads the original message" [[diff:tsock:139-146]]\n- c2 [fact] duplicate',

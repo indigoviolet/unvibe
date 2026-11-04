@@ -19,7 +19,7 @@
  * Requires `mise run build` first. Run via `mise run visual-tour`.
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -3820,6 +3820,215 @@ test.describe("visual tour version + access confirms (#346)", () => {
       await page.waitForTimeout(300);
       await checkLayout(page, "full-access-confirm");
       await shot(page, "full-access-confirm", suffix, "Confirm full access");
+    });
+  }
+});
+
+/**
+ * Since-B tour (#351 step 1): the dated Since-B section, a card addendum,
+ * the plotline `+N since B` / `new since B` markers, and the Since-B diff
+ * filter. The review is the seeded demo snapshot with the update pass's
+ * since state written in (the same shape `applyUpdateResult` stores, with
+ * real demo hunk ids), so every combo renders deterministically.
+ */
+test.describe("since-B tour (#351)", () => {
+  test.describe.configure({ mode: "serial" });
+  // Seeded-demo + synthetic since state: no agents, no refresh, no fixtures.
+  let svc351: RunningService | null = null;
+  let data351 = "";
+  let review351 = "";
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data351 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-351-"));
+    review351 = createSeededDemoReview(data351, "tour-351-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data351, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review351) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-351 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      // A synthetic second version (tour-only, like #325's scores): the
+      // picker needs two versions, so v1 is the recorded merge-base and
+      // v2 the recorded head.
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      snap.sinceSection = {
+        baseline: 1,
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-obs-fold",
+            pageId: "since",
+            title: "Obs-fold unfolded since v1",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-351-1",
+                "The follow-up unfolds the remaining obs-fold in request headers. The reviewer asked why bare line feeds survived, and this answers that.",
+                [changedId],
+              ),
+            ],
+          },
+          {
+            id: "since-socket-tests",
+            pageId: "since",
+            title: "Socket-level tests since v1",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [para("b-since-351-2", "New socket-level cases pin the unfolded headers.", [addedId])],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: 1,
+          at: now,
+          blocks: [
+            para("b-add-351-1", "Updated since v1: the headers are unfolded right after parsing now, not left raw.", [changedId]),
+          ],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const s of snap.hunkStates) {
+        if (s.contentHash === hashOf(changedId)) s.plotline = "unfold";
+        else if (s.contentHash === hashOf(addedId)) s.plotline = "socket-followups";
+        else if (s.plotline === undefined) s.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review351);
+    } finally {
+      db.close();
+    }
+    svc351 = await startService(data351, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc351?.stop().catch(() => {});
+    svc351 = null;
+    if (data351) rmSync(data351, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    const suffix = combo.name;
+    test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc351) throw new Error("tour-351 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // The Since-B filter is stored with the review, so an earlier combo
+      // may have left it on: reset it first to keep every combo's opening
+      // scenes deterministic (the filter scene re-enables it below).
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      {
+        const chip = page.locator('[data-filterchip="since"]');
+        if ((await chip.count()) > 0) {
+          await chip.locator("button").click();
+          await expect(chip).toHaveCount(0);
+        }
+      }
+
+      // 1. The dated Since-B section, expanded.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await since.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-expanded");
+      await shot(page, "since-expanded", suffix, "Obs-fold unfolded since v1");
+
+      // 2. Collapsed: the cards fold away.
+      await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
+      await stepChecks(page, "since-collapsed");
+      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
+      await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
+
+      // 3. The card addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-addendum");
+      await shot(page, "since-addendum", suffix, "Updated since v1");
+
+      // 4. The plotlines card with +N and new-since-B markers.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText("new since B")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-plotlines");
+      await shot(page, "since-plotlines", suffix, "new since B");
+
+      // 5. The diff with the Since-B filter on. The filter is stored
+      // with the review, so an earlier combo may have left it on: reset
+      // it first to keep every combo deterministic.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const sinceChip = page.locator('[data-filterchip="since"]');
+      if ((await sinceChip.count()) > 0) {
+        await sinceChip.locator("button").click();
+        await expect(sinceChip).toHaveCount(0);
+      }
+      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since the baseline" }).click();
+      await expect(sinceChip).toContainText("Since v1", { timeout: 30_000 });
+      await stepChecks(page, "since-filter");
+      await shot(page, "since-filter", suffix, "Since v1");
     });
   }
 });

@@ -3953,3 +3953,59 @@ hunk coverage) is reported for a separate issue, not fixed here.
   fixture recording + manifest entry, tour frames
   `persona-dropdown-1440-light`, `persona-version-1440-light` /
   `-dark` (inspected). Full gates not yet run.
+
+## Addendum: #351 step 1 — Since-B baseline, explain-and-append update, Since-B filter (branch `feat/351-since-b-step1`)
+
+Step 2 (commit baselines, no-review-yet path, arbitrary-commit picker)
+is not built; the data shapes leave room for it (`SinceBaseline` is a
+one-variant union today).
+
+- **Baseline B:** stored per review (`ReviewSnapshot.sinceBaseline`,
+  `{ kind: "version"; version }`), defaulting to the version last
+  opened (the refresh's `fromVersion`) and recomputed on every refresh
+  from the stored version diffs by hunk-content comparison — never git
+  ancestry, so a rebased B works. `POST
+  /api/reviews/:id/since-baseline` picks any earlier version (400
+  outside `1..currentVersion-1`, 404 when its files are missing); the
+  `sinceHunks` set (`added` + `changed` new-side `h:` ids) is
+  recomputed there too. A version select lives in the stale banner
+  (pre-update) and in the Since-B section header (post-update).
+- **Update pass, explain and append:** `prompts/update_pass.md` now
+  takes `{{since_context}}` (B identity, the commits touching since
+  hunks with their messages, the existing review comments matched by
+  file + line + between-B-and-head time, local threads on overlapping
+  anchors, PR conversation remarks in the window). The agent writes
+  Since-B cards (what/why/feedback, cited into the new hunks),
+  `addenda` (appended with `add-v<to>-<i>` ids, version/baseline/at
+  stamped; old blocks untouched, card leaves the stale set),
+  `plotlineAssignments` (unknown plotlines stay "other") and
+  `newPlotlines` (stored with `newSinceBaseline: true`), plus
+  `baseline`/`sinceHunks` echoes. Revised cards, rechecked findings,
+  new findings, hunk summaries and stale clearing work as before; no
+  extra agent calls. The PR conversation is fetched read-only beside
+  the existing-comments ingest (best effort, capped, kept on failure).
+- **Guide UI:** the dated collapsible Since-B section tops the root
+  page (`SinceSection.tsx`), cards render through `CardView`, addenda
+  render as `Updated since vB · date` blocks at the card's end,
+  plotline rows show `+N since B` (counted from `sinceHunks`) and a
+  `new since B` badge, and the diff toolbar gains a Since-B toggle +
+  `Since vB · N hidden` chip composing with every other filter
+  (`sinceIds` through `filterFiles`/`hunkPlotVisible`/`FileSection`).
+- **Data format 2 → 3:** cards gain dated `addenda`; the snapshot
+  gains `sinceBaseline` / `sinceHunks` / `sinceSection` (and
+  `prConversation`). Stamped as `user_version` on fresh data; e2e seeds
+  stamp via the shared constant; old data takes the reset notice.
+- Evidence: `packages/service/test/versions-since-b.test.ts` (fake
+  runner + stub-free branch repos: refresh defaults B, update writes
+  section + addendum with old prose byte-for-byte, feedback matching
+  by file/line/time with unrelated and out-of-window remarks excluded,
+  plotline `+N`/`new` markers, filter route, pure rebase case),
+  `packages/shared/test/replay-match.test.ts` (update-pass kind hint),
+  `diffLogic.test.ts` Since-B filter cases, new real-service replay
+  journey `e2e/journeys/j351-since-b.spec.ts` (refresh → Update →
+  section collapse/expand, addendum, plotline markers, filter on/off,
+  reviewed carryover), `update-pass.md` replay fixture + manifest
+  entry, tour scenes `since-{expanded,collapsed,addendum,plotlines,
+  filter}-{1440,960}-{light,dark}` in `/tmp/351-frames/` (inspected:
+  no overlaps/clipping, styling matches the prototype variables).
+  Full gates not yet run.
