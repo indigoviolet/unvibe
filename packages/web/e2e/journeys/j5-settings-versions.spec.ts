@@ -413,7 +413,10 @@ test.describe("J5 prompts list and debug expansion", () => {
     await expect(page.locator('[data-testid="prompt-concept_stub"]')).toHaveCount(0);
     const reader = page.locator('[data-testid="prompt-reader"]');
     await reader.getByRole("button", { name: "Expand reader" }).click();
-    await expect(reader.locator("mark.tm").first()).toContainText("{{source}}");
+    // The reader's `{{source}}` variable is marked, wherever it sits:
+    // `{{reviewed_context}}` frames the task first (#351 step 2), so
+    // `{{source}}` is no longer the first mark.
+    await expect(reader.locator("mark.tm", { hasText: "{{source}}" })).toHaveCount(1);
     // The debug page expands them for the review. Forked templates
     // (ask) serve L0–L3 from the warm base: cached.
     await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
