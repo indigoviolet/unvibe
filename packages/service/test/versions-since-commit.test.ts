@@ -147,7 +147,12 @@ describe("since-B step 2: pure context builders", () => {
     const cards = buildSinceSectionCards(snap, [
       {
         id: "since-1",
+        pageId: "since",
         title: "Delta",
+        level: "standard",
+        collapsed: false,
+        revision: 1,
+        undoStack: [],
         blocks: [],
         answerRefs: [
           { kind: "comment", id: "7" },
@@ -164,7 +169,11 @@ describe("since-B step 2: pure context builders", () => {
   });
 
   it("markNewSincePlotlines marks only all-since plotlines", () => {
-    const plotlines = [{ id: "fresh" }, { id: "mixed" }, { id: "old" }];
+    const plotlines: { id: string; newSinceBaseline?: boolean }[] = [
+      { id: "fresh" },
+      { id: "mixed" },
+      { id: "old" },
+    ];
     const states = [
       { contentHash: "a", plotline: "fresh" },
       { contentHash: "b", plotline: "fresh" },

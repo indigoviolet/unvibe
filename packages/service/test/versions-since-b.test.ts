@@ -69,12 +69,13 @@ function fakeReply(snap: ReviewSnapshot): string {
   const target = changed[0] ?? added[0] ?? "h:missing:none";
   const card = snap.pages.flatMap((p) => p.cards)[0];
   const commitSha = snap.commits?.find((c) => /rework/i.test(c.subject))?.sha ?? snap.commits?.[0]?.sha ?? "deadbee";
+  const baselineVersion = snap.sinceBaseline?.kind === "version" ? snap.sinceBaseline.version : 1;
   const result: UpdatePassResult = {
     revisedCards: [],
     recheckedFindings: [],
     newFindings: [],
     hunkSummaries: {},
-    baseline: { kind: "version", version: snap.sinceBaseline?.version ?? 1 },
+    baseline: { kind: "version", version: baselineVersion },
     sinceHunks: { added: [...added], changed: [...changed] },
     sinceSection: {
       cards: [{
@@ -228,6 +229,8 @@ describe("since-B step 1", () => {
             quotedText: "return 11",
             prefix: "",
             suffix: "",
+            position: line,
+            version: 2,
           },
           replies: [{
             id: "ans_thread1",
