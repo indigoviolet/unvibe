@@ -4044,12 +4044,12 @@ test.describe("since-B tour (#351)", () => {
       }
 
       // 2. Collapsed: the cards fold away.
-      await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
       await page.mouse.move(20, 20);
       await shot(page, "since-collapsed", suffix, "Since v1 → v2");
-      await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
 
       // 3. The card addendum on the central card.

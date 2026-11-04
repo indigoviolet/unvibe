@@ -61,7 +61,7 @@ function versionRow(
   snapshot: ReviewSnapshot,
   n: number,
 ): { headSha: string; fetchedAt: number } | null {
-  if (snapshot.version.n === n) {
+  if (snapshot.version?.n === n) {
     return { headSha: snapshot.version.headSha, fetchedAt: snapshot.version.fetchedAt };
   }
   const row = snapshot.review.versions.find((v) => v.n === n);
@@ -147,7 +147,7 @@ export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks):
   const windowEnd = headRow?.fetchedAt ?? null;
 
   const sinceIds = new Set([...since.added, ...since.changed]);
-  const ranges = sinceRanges(snapshot.files, sinceIds);
+  const ranges = sinceRanges(snapshot.files ?? [], sinceIds);
   const inWindow = (iso: string | undefined): boolean => {
     const t = timeOf(iso);
     if (t === null) return true;

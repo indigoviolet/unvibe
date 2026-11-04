@@ -94,11 +94,11 @@ test.describe("J351 since-B update", () => {
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 30_000 });
     await expect(since).toContainText(/Since v1 → v2/);
-    await expect(since.getByRole("button", { name: /Collapse Since-B section/ })).toBeVisible();
+    await expect(since.getByRole("button", { name: /Collapse changes since v1/ })).toBeVisible();
     // Collapse it, then expand it again: the cards come and go.
-    await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+    await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
-    await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+    await since.getByRole("button", { name: /Expand changes since v1/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
 
     // The card addendum: old text unchanged, addendum appended.

@@ -109,7 +109,7 @@ test.describe("J311 data-format notice", () => {
       expect(status.status).toBe(200);
       expect(status.json as unknown as Record<string, unknown>).toMatchObject({
         state: "mismatch",
-        expected: 3, // DATA_FORMAT 3 after #351 step 1.
+        expected: 4, // DATA_FORMAT 4 after #351 step 2.
         stored: null,
         outboxCount: 1,
         previousRef: "preview/old",
