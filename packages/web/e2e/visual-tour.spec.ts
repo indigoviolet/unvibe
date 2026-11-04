@@ -4617,6 +4617,13 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
       await expect(inline).toContainText("Pick another baseline.");
       await expect(page.locator("#toast")).toBeHidden();
+      // The error sits on its own line below the offer label at every
+      // width — never inline after the offer text.
+      const labelBox = await offer.locator("label").boundingBox();
+      const errBox = await inline.boundingBox();
+      expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
+        (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
+      );
       const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
       expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
       await page.mouse.move(20, 20);
