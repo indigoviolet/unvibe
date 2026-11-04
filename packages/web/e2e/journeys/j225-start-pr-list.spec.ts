@@ -221,14 +221,16 @@ test.describe("J225 start-page PR list", () => {
     const row = page.locator(`[data-testid="session-${demoId}"]`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     const remove = row.getByRole("button", { name: "Remove this review" });
-    // Hidden until the row is hovered...
-    await expect(remove).toHaveCSS("opacity", "0");
+    // Hidden until the row is hovered... (#346: the rule hides the
+    // confirm's idle slot, so the slot is the element to read.)
+    const idle = row.locator(".uic-idlehold");
+    await expect(idle).toHaveCSS("opacity", "0");
     await row.hover();
-    await expect(remove).toHaveCSS("opacity", "1");
+    await expect(idle).toHaveCSS("opacity", "1");
     // ...and still keyboard-reachable: focusing it reveals it via :focus-within.
     await page.mouse.move(0, 0);
     await remove.focus();
-    await expect(remove).toHaveCSS("opacity", "1");
+    await expect(idle).toHaveCSS("opacity", "1");
     await checkLayout(page, "start-quiet-remove");
   });
 });

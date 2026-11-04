@@ -1,5 +1,5 @@
 /**
- * J352 (#351 step 2): the no-review-yet path on a real PR. The reviewer
+ * J351 (#351 step 2): the no-review-yet path on a real PR. The reviewer
  * already reviewed on GitHub up to a commit B; the service offers
  * "focus on changes since then", one guide run writes the normal guide
  * plus the Since-B section, and the stored hunk set drives the Since
@@ -26,7 +26,7 @@ const V1 = [
 const V2 = V1.replace("    return 1", "    return 11");
 const V3 = V2.replace("    return 2", "    return 22").replace("CONST_B = 20", "CONST_B = 20\n\n\ndef gamma():\n    return 3");
 
-test.describe("J352 no-review-yet offer", () => {
+test.describe("J351 no-review-yet offer", () => {
   test.describe.configure({ mode: "serial" });
   let repoDir = "", bareDir = "", binDir = "", logDir = "", dataDir = "";
   let svc: RunningService | null = null;

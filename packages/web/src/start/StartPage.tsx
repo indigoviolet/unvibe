@@ -1172,6 +1172,21 @@ export function StartPage(): React.JSX.Element {
     setDeleting(null);
   }, []);
 
+  // #352: failed rows offer Retry next to Remove. It re-runs the failed
+  // ingest (#92), then reloads the list so the row reads loading. A
+  // rejection toasts — the row keeps showing the error line.
+  const retrySession = useCallback(
+    async (id: string) => {
+      try {
+        await api.retryReview(id);
+        await loadSessions();
+      } catch (err) {
+        toast(`Couldn't retry the review: ${friendlyError(err)}`);
+      }
+    },
+    [loadSessions],
+  );
+
   const recheck = useCallback(async () => {
     setChecking(true);
     try {
@@ -1489,6 +1504,7 @@ export function StartPage(): React.JSX.Element {
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
                   sessionRemoved={sessionRemoved}
+                  retrySession={retrySession}
                   onOpen={() => navigate(`/review/${s.id}`)}
                   stackInfo={s.prNumber !== undefined ? stacks[s.prNumber] : undefined}
                   onOpenStackPr={openStackPr}
@@ -1504,6 +1520,7 @@ export function StartPage(): React.JSX.Element {
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
                   sessionRemoved={sessionRemoved}
+                  retrySession={retrySession}
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
@@ -1533,8 +1550,13 @@ export function StartPage(): React.JSX.Element {
                       >
                         <span className="cw">Demo · no agent needed</span>
                         <span className="cx2">{c.title}</span>
+                        {/* #352: opening reads under the title, never on the right. */}
+                        {opening === changeKey(c, i) ? (
+                          <span className="hint" role="status">
+                            Opening… <ProcessingDots />
+                          </span>
+                        ) : null}
                       </button>
-                      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
                     </div>
                   ))
                 : null}
@@ -1554,6 +1576,7 @@ export function StartPage(): React.JSX.Element {
                       setConfirmDelete={setConfirmDelete}
                       removeSession={removeSession}
                       sessionRemoved={sessionRemoved}
+                      retrySession={retrySession}
                       onOpen={() => navigate(`/review/${s.id}`)}
                     />
                   ))}
@@ -1868,6 +1891,7 @@ export function SessionRow({
   setConfirmDelete,
   removeSession,
   sessionRemoved,
+  retrySession,
   onOpen,
   stackInfo,
   onOpenStackPr,
@@ -1881,6 +1905,9 @@ export function SessionRow({
   removeSession: (id: string) => Promise<void>;
   /** Applies the result after the pill's "✓ Confirmed" flash. */
   sessionRemoved: (id: string) => void;
+  /** Re-run a failed ingest, then reload; toasts on failure. Optional:
+      rows without it (documents) never offer Retry. */
+  retrySession?: (id: string) => Promise<void>;
   onOpen: () => void;
   stackInfo?: PrStackInfo;
   onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
@@ -1894,6 +1921,9 @@ export function SessionRow({
       : null;
   const canOpen = opening === null && deleting === null;
   const faded = s.prState === "merged" || s.prState === "closed";
+  // #352: failed rows offer Retry next to Remove (same hover/focus
+  // reveal); it re-runs the failed ingest, then the row reads loading.
+  const [retrying, setRetrying] = useState(false);
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
@@ -1936,9 +1966,16 @@ export function SessionRow({
             <span className="cx2">{s.title}</span>
           )}
         </button>
-        <span className="hint">
+        {/* #352: one place for the row's progress through every phase —
+            the line under the title names the phase (opening, ingesting,
+            building, failed, done) in the same muted style. The right side
+            keeps only status icons and hover/focus actions, never a phase
+            pill, so the row never reflows between phases. */}
+        <span className="hint" role="status" data-testid="session-progress">
           {s.ingestStatus === "loading" ? (
-            <>{ingestStepLabel(s.ingestStep)}</>
+            <>
+              Opening · {ingestStepLabel(s.ingestStep)} <ProcessingDots />
+            </>
           ) : s.ingestStatus === "failed" ? (
             <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
           ) : s.ingestStatus === "empty" ? (
@@ -1959,17 +1996,20 @@ export function SessionRow({
                 </span>
               </span>
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
+              {/* #352: no middot before the dots — at this size it reads
+                  as a stray tick, and the dots already mark activity. */}
               {s.guideStatus === "running" ? (
                 <>
-                  {" · "}
+                  {" "}
                   <ProcessingDots />
                 </>
               ) : s.guideStatus === "error" ? (
                 <>
                   {" · "}
-                  <span className="err" role="status">Guide didn&apos;t finish</span>
+                  <span className="err">Guide didn&apos;t finish</span>
                 </>
               ) : null}
+              {s.stale ? " · new commits" : ""}
             </>
           )}
         </span>
@@ -1979,11 +2019,22 @@ export function SessionRow({
         {stackInfo && s.prNumber !== undefined && onOpenStackPr ? (
           <StackBadge info={stackInfo} currentNumber={s.prNumber} onOpenPr={onOpenStackPr} />
         ) : null}
-        {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
-        {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
-        {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
-        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
-          <span className="prtag">new commits</span>
+        {s.ingestStatus === "failed" && retrySession ? (
+          <span className="uic-idlehold" data-testid="session-retry">
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              disabled={retrying || deleting !== null}
+              title={`Retry opening ${s.title}`}
+              onClick={() => {
+                setRetrying(true);
+                void retrySession(s.id).finally(() => setRetrying(false));
+              }}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          </span>
         ) : null}
         {/* #346: the Remove button expands in place into the shared
             inline confirm (no popover), so the row never reflows. */}
@@ -2107,8 +2158,15 @@ function ChangeRow({
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
         </button>
+        {/* #352: the opening state reads under the title like every other
+            phase — never as a right-side pill — so the title never moves. */}
+        {opening === changeKey(c, i) ? (
+          <span className="hint" role="status" data-testid="change-progress">
+            Opening… <ProcessingDots />
+          </span>
+        ) : null}
       </div>
-      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision || stackInfo ? (
+      {c.reviewId || c.prState || c.reviewDecision || stackInfo ? (
         <div className="frow" style={{ gap: 4, alignItems: "center" }}>
           <PrBadges prState={c.prState} reviewDecision={c.reviewDecision} />
           {stackInfo && c.prNumber !== undefined && onOpenStackPr ? (
@@ -2116,7 +2174,6 @@ function ChangeRow({
           ) : null}
           {c.reviewId ? <span className="prtag">review</span> : null}
           {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
-          {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
         </div>
       ) : null}
     </div>

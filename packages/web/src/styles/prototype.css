@@ -916,6 +916,18 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .ci[data-testid^="session-"] .uic-idlehold { opacity: 0; transition: opacity .15s; }
 .ci[data-testid^="session-"]:hover .uic-idlehold, .ci[data-testid^="session-"]:focus-within .uic-idlehold { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .ci[data-testid^="session-"] .uic-idlehold { transition: none; } }
+/* #352: the Reviews progress line is always exactly one line (long
+   failure text truncates with an ellipsis; the review page carries the
+   full error), so rows never change height between phases. The 4px top
+   margin lives on the line (not the hunks `.pw` span), so text-only
+   phases measure the same as hunks phases. */
+.ci[data-testid^="session-"] .cj > [data-testid="session-progress"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+.ci[data-testid^="session-"] .cj > [data-testid="session-progress"] .pw { margin-top: 0; }
+/* #352: on branch rows (name once, date right) the opening line wraps to
+   its own full-width line under the title, like the column rows (wrap is
+   scoped to the opening row so other rows never reflow). */
+.cj-branch:has(> [data-testid="change-progress"]) { flex-wrap: wrap; }
+.cj-branch > [data-testid="change-progress"] { flex-basis: 100%; order: 3; }
 /* #274 branch rows: the name once (the title), the date right-aligned. */
 .cj-branch { flex-direction: row; align-items: baseline; gap: 12px; }
 .cj-branch .cj-open { flex: 1; min-width: 0; order: 1; }
