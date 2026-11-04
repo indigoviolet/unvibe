@@ -86,7 +86,11 @@ export function SinceBaselinePicker({ reviewId, review }: { reviewId: string; re
       await api.setSinceBaseline(reviewId, parsed);
       setSnapshot(await api.review(reviewId));
     } catch (err) {
-      toast(`Couldn't set the baseline: ${friendlyError(err)}`);
+      // A failed commit pick records `sinceError`, shown persistently
+      // inline — no toast then. Anything else still toasts.
+      const snap = await api.review(reviewId).catch(() => null);
+      if (snap) setSnapshot(snap);
+      if (!snap?.sinceError) toast(`Couldn't set the baseline: ${friendlyError(err)}`);
     } finally {
       setSaving(false);
     }
@@ -104,11 +108,24 @@ export function SinceBaselinePicker({ reviewId, review }: { reviewId: string; re
         onValueChange={(v) => void pick(v)}
         options={entries}
       />
-      {snapshot?.sinceError ? (
-        <span className="hint" data-testid="since-error">
-          {snapshot.sinceError}
-        </span>
-      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Issue #351 step 2: the persistent unfetchable-baseline message. A
+ * full-width block *below* the controls row (the wrapping banner and
+ * the section header both give it its own line), in the warning tone —
+ * so it never squeezes beside the picker nor changes the controls
+ * row's layout. It stays until the baseline changes; every
+ * successful set/clear deletes it service-side.
+ */
+export function SinceBaselineError({ testId = "since-error" }: { testId?: string }): React.JSX.Element | null {
+  const sinceError = useReview((s) => s.snapshot?.sinceError);
+  if (!sinceError) return null;
+  return (
+    <span className="hint since-error" data-testid={testId}>
+      {sinceError}
     </span>
   );
 }

@@ -4582,12 +4582,20 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // The label text toggles the box too (native `label` behaviour).
       await offer.getByText(`You reviewed this at ${c1short}`).click();
       await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+      // The range-diff toggle never breaks over lines: one line high
+      // and fully visible (no clipped overflow).
+      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
+      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
+      const rdBox = await rangeDiff.boundingBox();
+      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
+      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
+      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
       await stepChecks(page, "since-offer-checked");
       await page.mouse.move(20, 20);
       await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
     });
 
-    test(`unfetchable baseline toast (${suffix})`, async ({ page }) => {
+    test(`unfetchable baseline message under the offer (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svcO) throw new Error("tour-offer service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4596,14 +4604,21 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       const offer = page.getByTestId("prior-review-offer");
       await expect(offer).toBeVisible({ timeout: 60_000 });
       await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
+      // The banner picker is untouched by the error below it: same
+      // trigger width with and without the message (±2px).
+      const bannerTrigger = page.getByTestId("since-pick").getByRole("combobox");
+      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
+      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
       await page.getByTestId("prior-review-checkbox").click();
-      const toast = page.locator("#toast");
-      await expect(toast).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
-      // The failure also leaves a persistent inline message under the
-      // offer until the baseline changes.
+      // The failure leaves a persistent inline message under the
+      // offer until the baseline changes — and no toast for this case.
       const inline = page.getByTestId("prior-review-error");
       await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
       await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
       await page.mouse.move(20, 20);
       await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
     });
@@ -4643,16 +4658,24 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await expect(since).toBeVisible({ timeout: 60_000 });
       const pick = since.locator('[data-testid="since-pick"]');
       await expect(pick).toBeVisible({ timeout: 30_000 });
+      // The header picker keeps its size when the error lands below
+      // it: same trigger width with and without the message (±2px).
+      const trigger = pick.getByRole("combobox");
+      const wBefore = (await trigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
       await pick.scrollIntoViewIfNeeded();
-      await pick.getByRole("combobox").click();
+      await trigger.click();
       const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
       await expect(goneOption).toBeVisible({ timeout: 15_000 });
       await goneOption.click();
       // The failed pick leaves the stored baseline alone but records
-      // `sinceError`, shown persistently next to the picker.
+      // `sinceError`, shown persistently below the header row.
       const inline = since.getByTestId("since-error");
       await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
       await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      const wAfter = (await trigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
       await stepChecks(page, "since-unfetchable-picker");
       await page.mouse.move(20, 20);
       await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);

@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { updateKey } from "../guide/inflight.js";
-import { SinceBaselinePicker } from "../guide/SinceBaselinePicker.js";
+import { SinceBaselineError, SinceBaselinePicker } from "../guide/SinceBaselinePicker.js";
 import { useReview } from "../state/store.js";
 import { versionCountsText } from "./versionUtils.js";
 
@@ -135,14 +135,14 @@ export function VersionBanner({
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
-      <span className="dbar-group">
+      <span className="dbar-group dbar-group-summary">
         <span className="hint">
           New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
           {versionCountsText(counts)} hunks)
         </span>
         {counts.rangeDiff.trim() !== "" ? (
           <details>
-            <summary className="hint" style={{ cursor: "pointer" }}>
+            <summary className="hint" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
               range-diff
             </summary>
             <pre className="code" data-testid="range-diff">
@@ -151,7 +151,6 @@ export function VersionBanner({
           </details>
         ) : null}
       </span>
-      <span className="sp" />
       {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
       {updating ? (
         <span className="hint" data-testid="update-progress" aria-live="polite" role="status">
@@ -170,6 +169,7 @@ export function VersionBanner({
           </button>
         </span>
       )}
+      <SinceBaselineError />
     </div>
   );
 }

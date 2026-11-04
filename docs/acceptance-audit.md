@@ -4083,8 +4083,13 @@ one-variant union today).
   toggles via `<label>`); a failed pick stores `sinceError`
   (`unfetchableCommitMessage`: "Couldn't find commit … here or on
   the remote (it may have been force-pushed away). Pick another
-  baseline."), rendered verbatim under the offer and next to the
-  picker until the baseline changes; seed text fixed ("Rework beta
-  and add gamma", "The follow-up rework" — no `B`, no tour-seed
-  jargon); the stale banner wraps as two groups (summary +
-  range-diff, picker + Update) via `.dbar-group`.
+  baseline."), rendered verbatim as a full-width warning-tone block
+  *below* the controls row (banner and section header) and under
+  the offer line, until the baseline changes — no toast for this
+  case; seed text fixed ("Rework beta and add gamma", "The
+  follow-up rework" — no `B`, no tour-seed jargon); the stale banner
+  always stacks (summary + nowrap range-diff on its own full-width
+  line, picker + Update left-aligned below) via `.dbar-group` /
+  `.dbar-group-summary`. Tour asserts range-diff is one line high
+  with no clipped overflow, and both pickers keep their trigger
+  width ±2px with and without the error.

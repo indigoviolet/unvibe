@@ -17,6 +17,7 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { Checkbox } from "../ui/index.js";
+import { SinceBaselineError } from "./SinceBaselinePicker.js";
 import { priorReviewDate, usePriorGithubReview } from "./usePriorGithubReview.js";
 
 function offerText(prior: PriorGithubReview): string {
@@ -42,7 +43,11 @@ export function PriorReviewOffer({ reviewId, prior }: { reviewId: string; prior:
       }
       setSnapshot(await api.review(reviewId));
     } catch (err) {
-      toast(`Couldn't set the baseline: ${friendlyError(err)}`);
+      // A failed commit pick records `sinceError`, shown persistently
+      // inline under the offer — no toast then.
+      const snap = await api.review(reviewId).catch(() => null);
+      if (snap) setSnapshot(snap);
+      if (!snap?.sinceError) toast(`Couldn't set the baseline: ${friendlyError(err)}`);
     } finally {
       setSaving(false);
     }
@@ -60,11 +65,7 @@ export function PriorReviewOffer({ reviewId, prior }: { reviewId: string; prior:
         />
         <span>{offerText(prior)}</span>
       </label>
-      {snapshot?.sinceError ? (
-        <p className="hint" data-testid="prior-review-error">
-          {snapshot.sinceError}
-        </p>
-      ) : null}
+      <SinceBaselineError testId="prior-review-error" />
     </div>
   );
 }

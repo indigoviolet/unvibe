@@ -12,7 +12,7 @@ import { sinceBaselineLabel } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
-import { SinceBaselinePicker } from "./SinceBaselinePicker.js";
+import { SinceBaselineError, SinceBaselinePicker } from "./SinceBaselinePicker.js";
 
 export function sinceDate(at: number): string {
   const d = new Date(at);
@@ -57,6 +57,7 @@ export function SinceSection({
         <span className="sp" />
         <SinceBaselinePicker reviewId={reviewId} review={review} />
       </div>
+      <SinceBaselineError />
       {open ? (
         <div className="since-cards">
           {since.cards.map((card) => (
