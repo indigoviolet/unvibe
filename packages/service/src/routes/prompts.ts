@@ -403,6 +403,9 @@ const PH = {
   direction: "(no placeholder selected)",
   changedHunks: "(no newer version — the update pass lists changed hunks here)",
   staleCards: "(guide is current — affected cards are listed here after a refresh)",
+  // Issue #351: same fallback `buildUpdateVariables` uses when there is
+  // no baseline yet — the preview is placeholder-based by design.
+  sinceContext: "(no baseline yet)",
   citedCode: "(cited excerpts are attached when the action runs)",
   topic: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
@@ -542,6 +545,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     changed_hunks: PH.changedHunks,
     stale_cards: PH.staleCards,
     findings: findingsText === "" ? "(no findings)" : findingsText,
+    since_context: PH.sinceContext,
   });
 
   push("hunk_pass", [

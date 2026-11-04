@@ -25,6 +25,8 @@ describe("snapshot build", () => {
     // No second-opinion recordings (#349); the cost ask was dropped —
     // Sonnet cited stdlib files outside the review.
     // + 1 persona recording (#349 step 2: central second-opinion).
+    // Journey-only manifest entries (the #351 update-pass reply) are not
+    // demo content and are skipped by the builder, so the count stays 70.
     expect(counts).toHaveLength(70);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
