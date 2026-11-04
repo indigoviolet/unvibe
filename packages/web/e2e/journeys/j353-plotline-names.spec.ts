@@ -18,6 +18,13 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 // cut would have destroyed: its last space before 40 sits at "Add the".
 const LONG_NAME =
   "Add the `some_very_long_table_identifier_xyz` guard for the retry path with backoff and jitter";
+const IDENTIFIER = "some_very_long_table_identifier_xyz";
+// Plain-text forms: code spans render as code on screen, while tooltips
+// and chips read the name and description without backticks.
+const STRIPPED_NAME =
+  "Add the some_very_long_table_identifier_xyz guard for the retry path with backoff and jitter";
+const STRIPPED_DESC =
+  "Watches the retry path end to end: the some_very_long_table_identifier_xyz guard trips on repeated failures, backs off with jitter, and reports through the shared retry_helper without touching unrelated hunks.";
 const LONG_DESC =
   "Watches the retry path end to end: the `some_very_long_table_identifier_xyz` guard trips on repeated failures, backs off with jitter, and reports through the shared retry_helper without touching unrelated hunks.";
 const SECOND_NAME = "Retry failed uploads with the `retry_helper` and exponential backoff";
@@ -109,34 +116,50 @@ test.describe("J353 long plotline names", () => {
     await expect(box).toBeVisible({ timeout: 15_000 });
 
     // Stored whole: the row shows the full name, not a cut prefix.
+    // Backticks render as code; tooltips and chips read plain text.
     const nameEl = box.locator(".plname").first();
-    await expect(nameEl).toHaveText(LONG_NAME);
-    await expect(nameEl).toHaveAttribute("data-tip", LONG_NAME);
+    await expect(nameEl).toHaveText(STRIPPED_NAME);
+    await expect(nameEl).toHaveAttribute("data-tip", STRIPPED_NAME);
+    await expect(nameEl.locator("code")).toHaveText(IDENTIFIER);
+    await expect(box.locator('[data-plotpick]').first()).toHaveAttribute(
+      "data-tip",
+      `Show only ${STRIPPED_NAME}`,
+    );
 
-    // The row clamps to two lines (the rule), while the data stays whole.
+    // The name and description rows clamp to two lines (the rule),
+    // while the data stays whole.
     expect(await nameEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
+    const descEl = box.locator(".pldesc").first();
+    await expect(descEl).toHaveText(STRIPPED_DESC);
+    await expect(descEl).toHaveAttribute("data-tip", STRIPPED_DESC);
+    await expect(descEl.locator("code").first()).toHaveText(IDENTIFIER);
+    expect(await descEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
 
-    // The tooltip shows the full text.
-    await nameEl.hover();
+    // The tooltips show the full plain text.
     const tip = page.locator("#tip");
+    await nameEl.hover();
     await expect(tip).toBeVisible({ timeout: 5_000 });
-    await expect(tip).toHaveText(LONG_NAME);
+    await expect(tip).toHaveText(STRIPPED_NAME);
+    await descEl.hover();
+    await expect(tip).toHaveText(STRIPPED_DESC);
 
     // The second row builds on the first: its chip names the long
-    // name in full via its tooltip.
+    // name in plain text via its tooltip.
     const buildsOn = box.locator('[data-buildson]').first();
-    await expect(buildsOn).toHaveAttribute("data-tip", `Show only ${LONG_NAME}`);
+    await expect(buildsOn).toHaveAttribute("data-tip", `Show only ${STRIPPED_NAME}`);
+    await expect(buildsOn.locator(".ui-badge")).toHaveText(STRIPPED_NAME);
 
     // The Since marker counts the two fabricated changed hunks. (Badge
     // drops extra props, so there is no data hook — assert the text in
     // the first row instead.)
     await expect(box.locator("li").first().getByText("+2 since v1")).toBeVisible();
 
-    // Hunk header chips carry the full name in text and tooltip, and
-    // ellipsize on one line instead of wrapping the header.
+    // Hunk header chips carry the full plain name in text and tooltip,
+    // and ellipsize on one line instead of wrapping the header.
     const chip = page.locator(".dhunk-h .ptag").first();
-    await expect(chip).toHaveText(LONG_NAME);
-    await expect(chip).toHaveAttribute("title", LONG_NAME);
+    await expect(chip).toHaveText(STRIPPED_NAME);
+    await expect(chip).toHaveAttribute("title", STRIPPED_NAME);
+    await expect(chip).toHaveAttribute("data-tip", `Show only ${STRIPPED_NAME}`);
     expect(await chip.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
 
     await checkLayout(page, "j353-plotlines");
@@ -145,15 +168,26 @@ test.describe("J353 long plotline names", () => {
     await box.locator('[data-plotpick]').first().click();
     const fchip = page.locator('[data-filterchip="plotline"]');
     await expect(fchip).toBeVisible({ timeout: 15_000 });
-    await expect(fchip.locator(".fchip-name")).toContainText("Plotline:");
-    await expect(fchip.locator(".fchip-name")).toHaveAttribute("title", LONG_NAME);
+    await expect(fchip.locator(".fchip-name")).toContainText(`Plotline: ${STRIPPED_NAME}`);
+    await expect(fchip.locator(".fchip-name")).toHaveAttribute("title", STRIPPED_NAME);
 
-    // Narrow: the two-line clamp visibly engages on the card row, and
-    // the filter chip ellipsizes on one line keeping its clear button.
+    // Narrow: the two-line clamps visibly engage on the card rows, the
+    // filter chip ellipsizes on one line keeping its clear button, and
+    // the builds-on chip stays inside the row.
     await page.setViewportSize({ width: 960, height: 900 });
     await expect(box).toBeVisible();
     expect(await nameEl.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
+    expect(await descEl.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
     expect(await fchip.locator(".fchip-name").evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
+    const buildsBadge = buildsOn.locator(".ui-badge");
+    expect(await buildsBadge.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
+    expect(
+      await buildsBadge.evaluate((el) => {
+        const chip = el.getBoundingClientRect();
+        const card = el.closest(".plotlines")?.getBoundingClientRect();
+        return !!card && chip.right <= card.right + 1;
+      }),
+    ).toBe(true);
   });
 
   test("frames: card, hunk chip and filter at 1440 and 960, light and dark", async ({ page }) => {
@@ -191,6 +225,14 @@ test.describe("J353 long plotline names", () => {
     await box.screenshot({ path: shot("j353-card-960-light.png") });
     await page.emulateMedia({ colorScheme: "dark" });
     await box.screenshot({ path: shot("j353-card-960-dark.png") });
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // The builds-on chip stays inside the row at 960.
+    const builds = box.locator(".plbuilds").first();
+    await builds.scrollIntoViewIfNeeded();
+    await builds.screenshot({ path: shot("j353-buildson-960-light.png") });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await builds.screenshot({ path: shot("j353-buildson-960-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
 
     // A hunk header chip with the long name. The two-pane header line
@@ -243,5 +285,17 @@ test.describe("J353 long plotline names", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await dtool.screenshot({ path: shot("j353-filter-960-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
+
+    // The trailing fold pair wraps as a group at both widths: the two
+    // buttons always share a line.
+    for (const width of [1440, 960]) {
+      await page.setViewportSize({ width, height: 900 });
+      const tops = await page.evaluate(() => {
+        const btns = [...document.querySelectorAll(".dtool .foldpair .x")];
+        return btns.map((b) => b.getBoundingClientRect().top);
+      });
+      expect(tops).toHaveLength(2);
+      expect(tops[0]).toBe(tops[1]);
+    }
   });
 });
