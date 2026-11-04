@@ -47,7 +47,7 @@ export function SinceBaselinePicker({ reviewId, review }: { reviewId: string; re
           .filter((v) => v.n < current)
           .map((v) => ({
             value: String(v.n),
-            label: `Since v${v.n} · ${v.headSha.slice(0, 8)}`,
+            label: `v${v.n} · ${v.headSha.slice(0, 8)}`,
           }))}
       />
     </span>

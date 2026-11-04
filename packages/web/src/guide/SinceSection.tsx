@@ -10,7 +10,7 @@ import { useState, type ReactNode } from "react";
 import type { Card, Review } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
-import { Badge, Button, Card as UiCard } from "../ui/index.js";
+import { Button, Card as UiCard } from "../ui/index.js";
 import { SinceBaselinePicker } from "./SinceBaselinePicker.js";
 
 export function sinceDate(at: number): string {
@@ -33,9 +33,6 @@ export function SinceSection({
   const since = snapshot?.sinceSection;
   const [open, setOpen] = useState(true);
   if (!since || since.cards.length === 0) return null;
-  const changedTotal = snapshot?.sinceHunks
-    ? snapshot.sinceHunks.added.length + snapshot.sinceHunks.changed.length
-    : 0;
 
   return (
     <UiCard as="section" variant="raised" className="since" aria-label="Since baseline" data-testid="since-section">
@@ -53,7 +50,6 @@ export function SinceSection({
           Since v{since.baseline} → v{since.headVersion} · {sinceDate(since.at)}
         </Button>
         <span className="sp" />
-        {changedTotal > 0 ? <Badge tone="outline">{changedTotal} hunks</Badge> : null}
         <SinceBaselinePicker reviewId={reviewId} review={review} />
       </div>
       {open ? (

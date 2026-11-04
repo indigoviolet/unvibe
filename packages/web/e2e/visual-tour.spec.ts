@@ -3889,6 +3889,22 @@ test.describe("since-B tour (#351)", () => {
         text: { standard: text },
         citations: citations.map((target) => ({ target })),
       });
+      // Tour-local resolved feedback links (what `applyUpdateResult`
+      // stores after resolving the agent's pointers): remark excerpts
+      // from the PR under review, linking back to it.
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      const bareLfAnswer = {
+        kind: "comment",
+        label: "@reviewer on src/urllib3/connection.py:651",
+        excerpt: "http.client accepts lines ending in a bare \\n, so a folded header leaves '\\n ' in the value",
+        url: prUrl,
+      };
+      const socketAnswer = {
+        kind: "comment",
+        label: "@reviewer on test/test_connection.py:211",
+        excerpt: "Please add a socket test with bare-LF folds",
+        url: prUrl,
+      };
       snap.sinceSection = {
         baseline: 1,
         headVersion: 2,
@@ -3905,10 +3921,11 @@ test.describe("since-B tour (#351)", () => {
             blocks: [
               para(
                 "b-since-351-1",
-                "The follow-up unfolds the remaining obs-fold in request headers. The reviewer asked why bare line feeds survived, and this answers that.",
+                "The follow-up unfolds the remaining obs-fold in request headers. It answers the review remark quoted below.",
                 [changedId],
               ),
             ],
+            answers: [bareLfAnswer],
           },
           {
             id: "since-socket-tests",
@@ -3919,6 +3936,7 @@ test.describe("since-B tour (#351)", () => {
             revision: 1,
             undoStack: [],
             blocks: [para("b-since-351-2", "New socket-level cases pin the unfolded headers.", [addedId])],
+            answers: [socketAnswer],
           },
         ],
       };
@@ -3932,8 +3950,9 @@ test.describe("since-B tour (#351)", () => {
           baseline: 1,
           at: now,
           blocks: [
-            para("b-add-351-1", "Updated since v1: the headers are unfolded right after parsing now, not left raw.", [changedId]),
+            para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
           ],
+          answers: [bareLfAnswer],
         },
       ];
       snap.plotlines = [
@@ -3980,9 +3999,9 @@ test.describe("since-B tour (#351)", () => {
       await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
       {
         const chip = page.locator('[data-filterchip="since"]');
-        if ((await chip.count()) > 0) {
-          await chip.locator("button").click();
-          await expect(chip).toHaveCount(0);
+        if ((await chip.getAttribute("aria-pressed")) === "true") {
+          await chip.click();
+          await expect(chip).toHaveAttribute("aria-pressed", "false");
         }
       }
 
@@ -4008,12 +4027,19 @@ test.describe("since-B tour (#351)", () => {
       await stepChecks(page, "since-addendum");
       await shot(page, "since-addendum", suffix, "Updated since v1");
 
-      // 4. The plotlines card with +N and new-since-B markers.
+      // 4. The visible feedback link: the remark the delta answers.
+      const firstSince = page.locator("#page #C-since-obs-fold");
+      await firstSince.scrollIntoViewIfNeeded();
+      await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-feedback");
+      await shot(page, "since-feedback", suffix, "Answers:");
+
+      // 5. The plotlines card with the new-since marker.
       const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
       await plotlines.scrollIntoViewIfNeeded();
-      await expect(plotlines.getByText("new since B")).toBeVisible({ timeout: 30_000 });
+      await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
       await stepChecks(page, "since-plotlines");
-      await shot(page, "since-plotlines", suffix, "new since B");
+      await shot(page, "since-plotlines", suffix, "new since v1");
 
       // 5. The diff with the Since-B filter on. The filter is stored
       // with the review, so an earlier combo may have left it on: reset
@@ -4021,12 +4047,12 @@ test.describe("since-B tour (#351)", () => {
       await page.locator('#right [role="tab"]').getByText("Diff").click();
       await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
       const sinceChip = page.locator('[data-filterchip="since"]');
-      if ((await sinceChip.count()) > 0) {
-        await sinceChip.locator("button").click();
-        await expect(sinceChip).toHaveCount(0);
+      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
+        await sinceChip.click();
+        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
       }
-      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since the baseline" }).click();
-      await expect(sinceChip).toContainText("Since v1", { timeout: 30_000 });
+      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
+      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
       await stepChecks(page, "since-filter");
       await shot(page, "since-filter", suffix, "Since v1");
     });

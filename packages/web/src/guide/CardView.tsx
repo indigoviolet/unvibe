@@ -29,6 +29,7 @@ import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
+import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
 import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
@@ -637,24 +638,35 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       ) : null}
       {blocks}
+      {card.answers && card.answers.length > 0 ? <SinceAnswers answers={card.answers} /> : null}
       {(card.addenda ?? []).map((a) => (
         <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since version ${a.baseline}`}>
           <div className="addendum-h">
             Updated since v{a.baseline} · {sinceDate(a.at)}
           </div>
-          {a.blocks.map((block) => (
-            <BlockView
-              key={block.id}
-              block={block}
-              level="standard"
-              threads={[]}
-              footnotes={[]}
-              lookupPage={lookupPage}
-              cardId={card.id}
-              onOpenPage={onOpenPage}
-              onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
-            />
-          ))}
+          {a.blocks.map((block, bi) => {
+            const shown =
+              bi === 0 && block.type === "paragraph"
+                ? {
+                    ...block,
+                    text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) },
+                  }
+                : block;
+            return (
+              <BlockView
+                key={block.id}
+                block={shown}
+                level="standard"
+                threads={[]}
+                footnotes={[]}
+                lookupPage={lookupPage}
+                cardId={card.id}
+                onOpenPage={onOpenPage}
+                onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+              />
+            );
+          })}
+          {a.answers && a.answers.length > 0 ? <SinceAnswers answers={a.answers} /> : null}
         </section>
       ))}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />

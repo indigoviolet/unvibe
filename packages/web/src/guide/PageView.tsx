@@ -107,6 +107,8 @@ function PlotlineReviewedBox({
  */
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
+  // Issue #351: the baseline version the `+N`/new markers are relative to.
+  const sinceV = snapshot?.sinceBaseline?.version ?? null;
   // Issue #343: older versions are view-only — the checkbox disables
   // with the usual tooltip, like the diff's other read-only controls.
   const readOnly = useIsReadOnlyVersion();
@@ -335,14 +337,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     <Badge tone="outline">
                       {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                     </Badge>
-                    {r.sinceN > 0 ? (
+                    {sinceV !== null && r.sinceN > 0 && !r.sinceNew ? (
                       <Badge tone="outline" data-since-n={r.id}>
-                        +{r.sinceN} since B
+                        +{r.sinceN} since v{sinceV}
                       </Badge>
                     ) : null}
-                    {r.sinceNew ? (
-                      <Badge tone="ok" data-since-new={r.id}>
-                        new since B
+                    {sinceV !== null && r.sinceNew ? (
+                      <Badge tone="outline" data-since-new={r.id}>
+                        new since v{sinceV}
                       </Badge>
                     ) : null}
                     <PlotlineReviewedBox

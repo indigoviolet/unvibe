@@ -3986,26 +3986,41 @@ one-variant union today).
   the existing-comments ingest (best effort, capped, kept on failure).
 - **Guide UI:** the dated collapsible Since-B section tops the root
   page (`SinceSection.tsx`), cards render through `CardView`, addenda
-  render as `Updated since vB · date` blocks at the card's end,
-  plotline rows show `+N since B` (counted from `sinceHunks`) and a
-  `new since B` badge, and the diff toolbar gains a Since-B toggle +
-  `Since vB · N hidden` chip composing with every other filter
-  (`sinceIds` through `filterFiles`/`hunkPlotVisible`/`FileSection`).
-- **Data format 2 → 3:** cards gain dated `addenda`; the snapshot
-  gains `sinceBaseline` / `sinceHunks` / `sinceSection` (and
-  `prConversation`). Stamped as `user_version` on fresh data; e2e seeds
-  stamp via the shared constant; old data takes the reset notice.
+  render as `Updated since v1 · date` blocks at the card's end (the
+  agent is told never to repeat that header inside the body, and the
+  renderer strips a leading `Updated since vN:` defensively), each
+  since card and addendum ends with a visible `Answers: <comment
+  excerpt> ↗` link (`SinceAnswers.tsx`, resolved service-side to
+  `SinceFeedbackLink`: review URL, `#thread-…` anchor, or commit
+  text), plotline rows show a `+N since v1` pill (counted from
+  `sinceHunks`) or, on new rows only, a matching `new since v1` pill,
+  and the diff toolbar gains a single Since-B toggle that shows its
+  on-state and hidden count (`Since v1 · N hidden`, hunk-granular)
+  composing with every other filter (`sinceIds` through
+  `filterFiles`/`hunkPlotVisible`/`FileSection`). Every user-facing
+  string names the actual baseline (`Since v1`, never `B`). The
+  toolbar wraps cleanly at 960 (one row at 1440), matching the
+  prototype's `flex-wrap: wrap`.
+- **Data format 2 → 4:** cards gain dated `addenda` plus `answers`
+  (`AnswerRef` `{ kind, id }` pointers, resolved at read time, unknown
+  ids dropped); the snapshot gains `sinceBaseline` / `sinceHunks` /
+  `sinceSection` (and `prConversation`). Stamped as `user_version` on
+  fresh data; e2e seeds stamp via the shared constant; old data takes
+  the reset notice.
 - Evidence: `packages/service/test/versions-since-b.test.ts` (fake
   runner + stub-free branch repos: refresh defaults B, update writes
   section + addendum with old prose byte-for-byte, feedback matching
   by file/line/time with unrelated and out-of-window remarks excluded,
-  plotline `+N`/`new` markers, filter route, pure rebase case),
+  answers resolution incl. dropped unknowns, plotline `+N`/`new`
+  markers, filter route, pure rebase case),
   `packages/shared/test/replay-match.test.ts` (update-pass kind hint),
-  `diffLogic.test.ts` Since-B filter cases, new real-service replay
-  journey `e2e/journeys/j351-since-b.spec.ts` (refresh → Update →
-  section collapse/expand, addendum, plotline markers, filter on/off,
+  `diffLogic.test.ts` Since-B filter cases, `SinceAnswers.test.tsx`
+  (prefix strip, link rendering), new real-service replay journey
+  `e2e/journeys/j351-since-b.spec.ts` (refresh → Update → section
+  collapse/expand, addendum, plotline markers, filter on/off,
   reviewed carryover), `update-pass.md` replay fixture + manifest
-  entry, tour scenes `since-{expanded,collapsed,addendum,plotlines,
-  filter}-{1440,960}-{light,dark}` in `/tmp/351-frames/` (inspected:
-  no overlaps/clipping, styling matches the prototype variables).
+  entry, tour scenes
+  `since-{expanded,collapsed,addendum,plotlines,filter,feedback}-{1440,960}-{light,dark}`
+  in `/tmp/351-frames/` (all 24 inspected zoomed: no
+  overlaps/clipping, styling matches the prototype variables).
   Full gates not yet run.

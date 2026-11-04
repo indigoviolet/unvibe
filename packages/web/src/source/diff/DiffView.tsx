@@ -410,6 +410,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }
     return ids;
   }, [sinceActive, snapshot]);
+  // Issue #351: hunks the Since-B filter hides (hunk-granular, unlike the
+  // file-granular `hiddenHunks` behind the plotline chip).
+  const sinceHidden = useMemo(() => {
+    if (!sinceIds) return 0;
+    let n = 0;
+    for (const f of snapshot?.files ?? []) {
+      for (const h of f.hunks) {
+        if (!sinceIds.has(hunkVisibleId(f.fileKey, h.contentHash))) n += 1;
+      }
+    }
+    return n;
+  }, [sinceIds, snapshot]);
   const visible = useMemo(
     () =>
       snapshot
@@ -825,25 +837,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             </button>
           </span>
         ) : null}
-        {sinceActive ? (
-          <span className="fchip" data-filterchip="since">
-            Since v{snapshot.sinceBaseline?.version ?? "?"} · {hiddenHunks} hidden
-            <button type="button" aria-label="Clear Since-B filter" data-tip="Clear filter" onClick={toggleSinceBaseline}>
-              ×
-            </button>
-          </span>
-        ) : null}
-        {snapshot.sinceHunks !== undefined && !readOnly ? (
+        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline?.version !== undefined && !readOnly ? (
           <Button
             variant="secondary"
             size="sm"
             type="button"
             aria-pressed={sinceActive}
-            data-tip={sinceActive ? "Show all hunks" : "Show only hunks changed since the baseline"}
-            aria-label={sinceActive ? "Show all hunks" : "Show only hunks changed since the baseline"}
+            data-filterchip="since"
+            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since v${snapshot.sinceBaseline.version}`}
+            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since v${snapshot.sinceBaseline.version}`}
             onClick={toggleSinceBaseline}
           >
-            Since B
+            Since v{snapshot.sinceBaseline.version}
+            {sinceActive ? ` · ${sinceHidden} hidden` : ""}
           </Button>
         ) : null}
         <Button

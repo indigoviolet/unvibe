@@ -75,7 +75,7 @@ test.describe("J351 since-B update", () => {
     // The unchanged hunk keeps reviewed; the changed one reopens.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
     // The baseline picker defaults to the version last opened.
-    await expect(page.locator('[data-testid="since-pick"]')).toContainText("Since v1", { timeout: 30_000 });
+    await expect(page.locator('[data-testid="since-pick"]')).toContainText("v1 ·", { timeout: 30_000 });
 
     await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Update" }).click();
     const jobDeadline = Date.now() + 90_000;
@@ -108,20 +108,20 @@ test.describe("J351 since-B update", () => {
 
     // Plotlines: the new thread reads new since B, with its +N.
     const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
-    await expect(plotlines.getByText("new since B")).toBeVisible({ timeout: 30_000 });
-    await expect(plotlines.getByText("+1 since B")).toBeVisible();
+    await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
+    await expect(plotlines.getByText("+1 since v1")).toHaveCount(0);
 
     // The diff: the Since-B filter shows only the delta.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
-    await page.locator("#right").getByRole("button", { name: "Show only hunks changed since the baseline" }).click();
-    await expect(page.locator('[data-filterchip="since"]')).toContainText("Since v1");
+    await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
+    await expect(page.locator('[data-filterchip="since"]')).toContainText("Since v1 · 1 hidden");
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".dhunk").first()).toContainText("return 111");
     // Unchanged hunks keep reviewed state through the pass.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2");
-    await page.locator('[data-filterchip="since"] button').click();
+    await page.locator('[data-filterchip="since"]').click();
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
   });
 });
