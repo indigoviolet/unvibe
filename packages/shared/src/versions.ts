@@ -243,21 +243,53 @@ export interface UpdatePassResult {
 }
 
 /**
- * Issue #351: baseline B of "focus since B". Step 1 stores a version
- * (the version last opened, or any earlier version picked by hand).
- * Step 2 adds a commit baseline (`{ kind: "commit"; sha: string }` plus
- * the no-review-yet path); shape the union then, not now.
+ * Issue #351: baseline B of "focus since B". Either an earlier stored
+ * version (the version last opened, or any earlier version picked by
+ * hand) or any commit sha (a PR commit from ingest, or the `commit_id`
+ * of the reviewer's own latest GitHub review — the no-review-yet path).
+ * "Since" is always hunk-content comparison against the head diff, never
+ * git ancestry, so a rebased or force-pushed B works the same.
  */
-export type SinceBaseline = {
-  kind: "version";
-  version: number;
-};
+export type SinceBaseline =
+  | {
+      kind: "version";
+      version: number;
+    }
+  | {
+      kind: "commit";
+      sha: string;
+    };
+
+/** Full-length hex commit sha (40 chars) or an unambiguous short form. Pure. */
+export function isCommitSha(v: unknown): v is string {
+  return typeof v === "string" && /^[0-9a-f]{4,64}$/i.test(v);
+}
 
 /** True when the value is a stored since-baseline. Pure. */
 export function isSinceBaseline(v: unknown): v is SinceBaseline {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
-  return o["kind"] === "version" && Number.isSafeInteger(o["version"]) && (o["version"] as number) >= 1;
+  if (o["kind"] === "version") {
+    return Number.isSafeInteger(o["version"]) && (o["version"] as number) >= 1;
+  }
+  if (o["kind"] === "commit") {
+    return isCommitSha(o["sha"]);
+  }
+  return false;
+}
+
+/** Short display sha for a commit baseline (8 hex chars, like version labels). Pure. */
+export function shortBaselineSha(sha: string): string {
+  return sha.slice(0, 8);
+}
+
+/**
+ * Issue #351 step 2: the baseline's display label — the real version
+ * (`v1`) or the real short sha (`abc12345`). Never the letter "B".
+ * Pure.
+ */
+export function sinceBaselineLabel(b: SinceBaseline): string {
+  return b.kind === "version" ? `v${b.version}` : shortBaselineSha(b.sha);
 }
 
 /**
@@ -293,11 +325,11 @@ export function hunkChangedSinceB(hunkId: string, s: SinceHunks | undefined): bo
  * never revised in place.
  */
 export interface SinceSection {
-  /** Baseline version B this section explains. */
-  baseline: number;
-  /** Head version at the time of the update pass. */
+  /** Baseline B this section explains (version or commit). */
+  baseline: SinceBaseline;
+  /** Head version at the time of the pass that wrote it. */
   headVersion: number;
-  /** Epoch ms the update pass wrote it. */
+  /** Epoch ms the pass wrote it. */
   at: number;
   /** Cards explaining what changed, why, and what feedback caused it. */
   cards: import("./entities.js").Card[];
@@ -323,8 +355,8 @@ export interface CardAddendum {
   id: string;
   /** Head version whose update pass wrote this addendum. */
   version: number;
-  /** Baseline B it is relative to. */
-  baseline: number;
+  /** Baseline B it is relative to (version or commit). */
+  baseline: SinceBaseline;
   /** Epoch ms the update pass wrote it. */
   at: number;
   blocks: import("./entities.js").Block[];

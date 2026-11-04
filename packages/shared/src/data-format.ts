@@ -14,8 +14,11 @@
  * - 3: since-B (#351 step 1): cards gain dated `addenda` (with resolved
  *   `answers` feedback links), the snapshot gains `sinceBaseline` /
  *   `sinceHunks` / `sinceSection`.
+ * - 4: commit baselines (#351 step 2): `sinceBaseline` gains the commit
+ *   kind, `sinceSection.baseline` / `addenda[].baseline` become the
+ *   baseline union, and the snapshot gains `sinceError`.
  */
-export const DATA_FORMAT = 3;
+export const DATA_FORMAT = 4;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";
