@@ -8,6 +8,7 @@
  */
 import { useState, type ReactNode } from "react";
 import type { Card, Review } from "@unvibe/shared";
+import { sinceBaselineLabel } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
@@ -35,21 +36,23 @@ export function SinceSection({
   if (!since || since.cards.length === 0) return null;
 
   // Plain header plus full-width cards — never a box holding cards
-  // (prototype parity): the cards keep the normal guide width.
+  // (prototype parity): the cards keep the normal guide width. The
+  // header names the real baseline (version or short sha), never "B".
+  const label = sinceBaselineLabel(since.baseline);
   return (
-    <section className="since" aria-label="Since baseline" data-testid="since-section">
+    <section className="since" aria-label={`Changes since ${label}`} data-testid="since-section">
       <div className="since-h">
         <Button
           variant="secondary"
           size="sm"
           type="button"
           aria-expanded={open}
-          aria-label={open ? "Collapse Since-B section" : "Expand Since-B section"}
+          aria-label={open ? `Collapse changes since ${label}` : `Expand changes since ${label}`}
           data-testid="since-toggle"
           onClick={() => setOpen((v) => !v)}
         >
           <Icon name={open ? "down" : "right"} />
-          Since v{since.baseline} → v{since.headVersion} · {sinceDate(since.at)}
+          Since {label} → v{since.headVersion} · {sinceDate(since.at)}
         </Button>
         <span className="sp" />
         <SinceBaselinePicker reviewId={reviewId} review={review} />

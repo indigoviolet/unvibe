@@ -8,7 +8,7 @@
  */
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -107,8 +107,9 @@ function PlotlineReviewedBox({
  */
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
-  // Issue #351: the baseline version the `+N`/new markers are relative to.
-  const sinceV = snapshot?.sinceBaseline?.version ?? null;
+  // Issue #351: the baseline label (`v1` or a short sha) the
+  // `+N`/new markers are relative to. Never the letter "B".
+  const sinceLabel = snapshot?.sinceBaseline ? sinceBaselineLabel(snapshot.sinceBaseline) : null;
   // Issue #343: older versions are view-only — the checkbox disables
   // with the usual tooltip, like the diff's other read-only controls.
   const readOnly = useIsReadOnlyVersion();
@@ -337,14 +338,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     <Badge tone="outline">
                       {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                     </Badge>
-                    {sinceV !== null && r.sinceN > 0 && !r.sinceNew ? (
+                    {sinceLabel !== null && r.sinceN > 0 && !r.sinceNew ? (
                       <Badge tone="outline" data-since-n={r.id}>
-                        +{r.sinceN} since v{sinceV}
+                        +{r.sinceN} since {sinceLabel}
                       </Badge>
                     ) : null}
-                    {sinceV !== null && r.sinceNew ? (
+                    {sinceLabel !== null && r.sinceNew ? (
                       <Badge tone="outline" data-since-new={r.id}>
-                        new since v{sinceV}
+                        new since {sinceLabel}
                       </Badge>
                     ) : null}
                     <PlotlineReviewedBox

@@ -2946,13 +2946,28 @@ export const mockApi = {
   },
 
   // Issue #351: the mock keeps no version history, so any earlier
-  // version number is accepted and reported back unchanged.
+  // version number is accepted and reported back unchanged; step 2
+  // accepts commit shas the same way, and clearing answers ok.
   setSinceBaseline: async (_id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> => {
     await wait(50);
-    if (!Number.isSafeInteger(body.version) || body.version < 1) {
-      throw new Error("version must be an earlier version");
+    if ("version" in body) {
+      if (!Number.isSafeInteger(body.version) || body.version < 1) {
+        throw new Error("version must be an earlier version");
+      }
+      return { ok: true, baseline: { kind: "version", version: body.version }, changedHunks: 0, newHunks: 0 };
     }
-    return { ok: true, baseline: { kind: "version", version: body.version }, changedHunks: 0, newHunks: 0 };
+    if (!/^[0-9a-f]{4,64}$/i.test(body.sha)) {
+      throw new Error("sha must be a commit sha (4-64 hex chars)");
+    }
+    return { ok: true, baseline: { kind: "commit", sha: body.sha.toLowerCase() }, changedHunks: 0, newHunks: 0 };
+  },
+  clearSinceBaseline: async (): Promise<{ ok: boolean }> => {
+    await wait(50);
+    return { ok: true };
+  },
+  priorGithubReview: async (): Promise<import("@unvibe/shared").GetPriorGithubReviewResponse> => {
+    await wait(50);
+    return { review: null };
   },
 
   resume: async (): Promise<ResumeReviewResponse> => {

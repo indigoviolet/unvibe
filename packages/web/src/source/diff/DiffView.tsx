@@ -31,6 +31,7 @@ import {
   hunkCategory,
   hunkMatchesFilter,
   HUNK_PASS_FANOUT_LIMIT,
+  sinceBaselineLabel,
   type HideCategory,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
@@ -837,18 +838,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             </button>
           </span>
         ) : null}
-        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline?.version !== undefined && !readOnly ? (
+        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline !== undefined && !readOnly ? (
           <Button
             variant="secondary"
             size="sm"
             type="button"
             aria-pressed={sinceActive}
             data-filterchip="since"
-            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since v${snapshot.sinceBaseline.version}`}
-            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since v${snapshot.sinceBaseline.version}`}
+            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
+            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
             onClick={toggleSinceBaseline}
           >
-            Since v{snapshot.sinceBaseline.version}
+            Since {sinceBaselineLabel(snapshot.sinceBaseline)}
             {sinceActive ? ` · ${sinceHidden} hidden` : ""}
           </Button>
         ) : null}
