@@ -59,9 +59,7 @@ export function SinceSection({
       {open ? (
         <div className="since-cards">
           {since.cards.map((card) => (
-            <div key={card.id} id={`C-${card.id}`}>
-              {renderCard(card)}
-            </div>
+            <div key={card.id}>{renderCard(card)}</div>
           ))}
         </div>
       ) : null}

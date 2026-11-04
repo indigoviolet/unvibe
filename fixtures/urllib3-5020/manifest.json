@@ -15,6 +15,10 @@
       "file": "critic.md"
     },
     {
+      "kind": "update-pass",
+      "file": "update-pass.md"
+    },
+    {
       "kind": "concept-page",
       "key": "obs-fold",
       "file": "concept-obs-fold.md"
