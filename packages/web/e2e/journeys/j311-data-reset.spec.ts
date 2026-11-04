@@ -109,7 +109,7 @@ test.describe("J311 data-format notice", () => {
       expect(status.status).toBe(200);
       expect(status.json as unknown as Record<string, unknown>).toMatchObject({
         state: "mismatch",
-        expected: 2, // DATA_FORMAT 2 after #349 step 1.
+        expected: 3, // DATA_FORMAT 3 after #351 step 1.
         stored: null,
         outboxCount: 1,
         previousRef: "preview/old",
@@ -181,7 +181,7 @@ test.describe("J311 data-format notice", () => {
       await expect(page.getByTestId("data-format-notice")).toHaveCount(0);
 
       const after = await apiJson(svc, "GET", "/api/data-format");
-      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 2, stored: 2 });
+      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 3, stored: 3 });
 
       // Nothing was deleted: the old DB sits in a dated sibling dir.
       expect(asideDirs(dataDir)).toHaveLength(1);

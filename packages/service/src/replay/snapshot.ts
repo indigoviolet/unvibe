@@ -518,6 +518,11 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   const failures: BuildFailure[] = [];
   const counts: { file: string; citations: number; links: number }[] = [];
   for (const entry of manifest.recordings) {
+    // Journey-only fixtures share the replay manifest but are not demo
+    // content: the update-pass reply (issue #351) is hand-made for a
+    // scratch repo, so it is neither validated nor counted here. Its
+    // journey (j351) covers it.
+    if (entry.kind === "update-pass") continue;
     const text = textOf(entry.file);
     const parsed = parseReply(text);
     if (parsed.splitError && parsed.splitError.kind !== "missing") {
