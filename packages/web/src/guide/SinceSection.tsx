@@ -10,7 +10,7 @@ import { useState, type ReactNode } from "react";
 import type { Card, Review } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
-import { Button, Card as UiCard } from "../ui/index.js";
+import { Button } from "../ui/index.js";
 import { SinceBaselinePicker } from "./SinceBaselinePicker.js";
 
 export function sinceDate(at: number): string {
@@ -34,8 +34,10 @@ export function SinceSection({
   const [open, setOpen] = useState(true);
   if (!since || since.cards.length === 0) return null;
 
+  // Plain header plus full-width cards — never a box holding cards
+  // (prototype parity): the cards keep the normal guide width.
   return (
-    <UiCard as="section" variant="raised" className="since" aria-label="Since baseline" data-testid="since-section">
+    <section className="since" aria-label="Since baseline" data-testid="since-section">
       <div className="since-h">
         <Button
           variant="secondary"
@@ -59,6 +61,6 @@ export function SinceSection({
           ))}
         </div>
       ) : null}
-    </UiCard>
+    </section>
   );
 }

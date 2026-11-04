@@ -33,7 +33,9 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    `answers` list with the bracketed ids of the feedback it answers
    (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`,
    `conversation` or `commit`; the id is the bracketed comment, thread
-   or conversation id, or the full commit sha). Keep each card to its
+   or conversation id, or the full commit sha). Title each card with
+   the change alone — never repeat the baseline ("since vN"): the
+   section header already says it. Keep each card to its
    own thread; don't restate the old guide.
 2. **Append addenda, don't rewrite cards.** Where a change affects an
    existing card, write an "Updated since B" addendum for the end of

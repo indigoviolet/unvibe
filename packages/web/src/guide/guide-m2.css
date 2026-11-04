@@ -53,7 +53,12 @@
   margin: 2px 0 4px;
 }
 
-/* Since-B section (issue #351): dated, collapsible, top of the guide. */
+/* Since-B section (issue #351): dated, collapsible, top of the guide.
+   A plain header plus full-width cards — the section itself is
+   unboxed, so its cards keep the normal guide width and rhythm. */
+section.since {
+  margin: 14px 0;
+}
 .since-h {
   display: flex;
   flex-wrap: wrap;

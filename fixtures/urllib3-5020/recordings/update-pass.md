@@ -26,7 +26,7 @@ A new follow-up thread starts here, so it gets its own plotline.
       {
         "id": "since-alpha-111",
         "pageId": "since",
-        "title": "Alpha reworked since v1",
+        "title": "Alpha reworked",
         "level": "standard",
         "collapsed": false,
         "revision": 1,
@@ -56,7 +56,7 @@ A new follow-up thread starts here, so it gets its own plotline.
           "type": "paragraph",
           "id": "b-add-alpha-1",
           "text": {
-            "standard": "Updated since v1: alpha returns 111 now, not 11 as this card says."
+            "standard": "Alpha returns 111 now, not 11 as this card says."
           },
           "citations": [
             {

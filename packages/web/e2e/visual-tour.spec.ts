@@ -3913,7 +3913,7 @@ test.describe("since-B tour (#351)", () => {
           {
             id: "since-obs-fold",
             pageId: "since",
-            title: "Obs-fold unfolded since v1",
+            title: "Obs-fold unfolded",
             level: "standard",
             collapsed: false,
             revision: 1,
@@ -3930,7 +3930,7 @@ test.describe("since-B tour (#351)", () => {
           {
             id: "since-socket-tests",
             pageId: "since",
-            title: "Socket-level tests since v1",
+            title: "Socket-level tests",
             level: "standard",
             collapsed: false,
             revision: 1,
@@ -4015,7 +4015,7 @@ test.describe("since-B tour (#351)", () => {
       // scroll-independent; park the mouse first so no tooltip skews
       // the shot (same before every capture below).
       await page.mouse.move(20, 20);
-      await shot(page, "since-expanded", suffix, "Obs-fold unfolded since v1");
+      await shot(page, "since-expanded", suffix, "Obs-fold unfolded");
       {
         const gaps = await page.evaluate(() => {
           const bottom = (sel: string): number | null => {
