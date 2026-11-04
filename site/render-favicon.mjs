@@ -13,6 +13,9 @@
 // (180x180) from site/favicon.svg. One-off renders (e.g. the app icons in
 // packages/web/public, issue #299):
 //   node site/render-favicon.mjs <svg-in> <size> <png-out>
+// Multi-size ICO container (PNG payloads, issue #355):
+//   node site/render-favicon.mjs <svg-in> ico <ico-out>
+// renders 16, 32 and 48px from <svg-in> and packs them into <ico-out>.
 import { deflateSync } from "node:zlib";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -204,7 +207,7 @@ function chunk(type, data) {
   return Buffer.concat([len, td, data, c]);
 }
 
-function writePng(file, size, px) {
+function pngBytes(size, px) {
   const raw = Buffer.alloc(size * (size * 4 + 1));
   for (let y = 0; y < size; y++) {
     raw[y * (size * 4 + 1)] = 0;
@@ -215,15 +218,50 @@ function writePng(file, size, px) {
   ihdr.writeUInt32BE(size, 4);
   ihdr[8] = 8;
   ihdr[9] = 6;
-  const png = Buffer.concat([
+  return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk("IHDR", ihdr),
     chunk("IDAT", deflateSync(raw)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+function writePng(file, size, px) {
+  const png = pngBytes(size, px);
   writeFileSync(file, png);
   console.log(`wrote ${file} (${png.length} bytes)`);
 }
+
+// ICO container around PNG payloads (issue #355): 6-byte ICONDIR
+// (reserved, type 1, count) followed by one 16-byte ICONDIRENTRY per
+// image (width/height bytes, color count 0, reserved 0, planes 1,
+// bit count 32, payload size, payload offset), then the PNG blobs.
+function writeIco(file, svg, sizes) {
+  const payloads = sizes.map((size) => pngBytes(size, render(svg, size)));
+  const header = Buffer.alloc(6 + 16 * payloads.length);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(payloads.length, 4);
+  let offset = header.length;
+  payloads.forEach((png, i) => {
+    const size = sizes[i];
+    const entry = header.subarray(6 + 16 * i, 6 + 16 * (i + 1));
+    entry[0] = size;
+    entry[1] = size;
+    entry[2] = 0;
+    entry[3] = 0;
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(png.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    offset += png.length;
+  });
+  const ico = Buffer.concat([header, ...payloads]);
+  writeFileSync(file, ico);
+  console.log(`wrote ${file} (${ico.length} bytes, ${payloads.length} images)`);
+}
+
+const ICO_SIZES = [16, 32, 48];
 
 const args = process.argv.slice(2);
 const jobs =
@@ -232,15 +270,18 @@ const jobs =
         { svg: join(here, "favicon.svg"), size: 32, out: join(here, "favicon-32.png") },
         { svg: join(here, "favicon.svg"), size: 180, out: join(here, "apple-touch-icon.png") },
       ]
-    : args.length === 3
+    : args.length === 3 && args[1] !== "ico"
       ? [{ svg: resolve(args[0]), size: Number(args[1]), out: resolve(args[2]) }]
-      : null;
-if (!jobs || !Number.isInteger(jobs[0].size) || jobs[0].size <= 0) {
-  console.error("usage: node site/render-favicon.mjs [<svg-in> <size> <png-out>]");
+      : args.length === 3 && args[1] === "ico"
+        ? [{ svg: resolve(args[0]), ico: true, out: resolve(args[2]) }]
+        : null;
+if (!jobs || (jobs[0].ico !== true && (!Number.isInteger(jobs[0].size) || jobs[0].size <= 0))) {
+  console.error("usage: node site/render-favicon.mjs [<svg-in> (<size> <png-out> | ico <ico-out>)]");
   process.exit(2);
 }
 for (const j of jobs) {
   const svg = parseSvg(readFileSync(j.svg, "utf8"));
   if (svg.w !== svg.h) throw new Error("square viewBox only");
-  writePng(j.out, j.size, render(svg, j.size));
+  if (j.ico) writeIco(j.out, svg, ICO_SIZES);
+  else writePng(j.out, j.size, render(svg, j.size));
 }
