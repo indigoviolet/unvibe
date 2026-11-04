@@ -55,6 +55,14 @@ import { createSuggestedCommentInDraft } from "../comments/threads.js";
 import { buildDocumentBaseText } from "../document/map.js";
 import { resolveDocumentCodeExistence } from "../document/resolve.js";
 import { criticApplyAll, isDefaultReaderCardId, readerApply, readerCardId, requestedReaderFields, splitFinalizedBlocks } from "./apply.js";
+import {
+  buildSinceSectionCards,
+  computeSinceHunks,
+  diffFilesAtCommit,
+  formatReaderReviewedContext,
+  markNewSincePlotlines,
+  normalizeAgentSinceCards,
+} from "../versions/since.js";
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
@@ -1780,10 +1788,47 @@ export class Pipeline {
     // Issue #252: the reader-result parser stores only trailing-JSON
     // fields this prompt requested (see `requestedReaderFields`).
     const requestedKeys = requestedReaderFields(readerTemplateBody);
+    // Issue #351 step 2: when the reviewer already reviewed this PR on
+    // GitHub up to a commit B (accepted before this run), the reader is
+    // told so and writes the Since-B section in this same run — one run,
+    // not two. Otherwise the variable sends it down the normal path.
+    // The baseline may have been picked while the review was still
+    // opening (no head diff to compare then): fill the missing hunk set
+    // through git before rendering, so the pending run picks it up.
+    // Never throws — without the set the run goes down the normal path.
+    let readerSnapshot = snapshot;
+    if (
+      snapshot.sinceBaseline?.kind === "commit" &&
+      snapshot.sinceHunks === undefined &&
+      snapshot.version?.mergeBaseSha
+    ) {
+      try {
+        const bFiles = await diffFilesAtCommit(
+          this.opts.commands,
+          this.worktreeOf(reviewId),
+          snapshot.version.mergeBaseSha,
+          snapshot.sinceBaseline.sha,
+        );
+        const filled = computeSinceHunks(bFiles, snapshot.files);
+        await this.opts.reviews
+          .mutate(reviewId, (draft) => {
+            draft.sinceHunks = { added: [...filled.added], changed: [...filled.changed] };
+            delete draft.sinceError;
+          })
+          .catch(() => {});
+        readerSnapshot = this.opts.reviews.getSnapshot(reviewId) ?? snapshot;
+      } catch {
+        // The context below says the comparison is unavailable.
+      }
+    }
+    const reviewed_context = formatReaderReviewedContext(readerSnapshot, readerSnapshot.sinceHunks);
+    // Whether this run writes a Since-B section (for the repair message).
+    const wantsReaderSinceSection = readerSnapshot.sinceBaseline?.kind === "commit";
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
       diff_inline: diff.text,
       repo_path: this.worktreeOf(reviewId),
+      reviewed_context,
     });
     if (isReplayRunner(this.opts.runner)) prompt = withReplayMark(prompt, { kind: "reader" });
     this.setStage(reviewId, "reader", "running");
@@ -1913,11 +1958,13 @@ export class Pipeline {
               if (repaired.ok) {
                 finalData = repaired.data as ReplyData;
               } else {
-                // Name only what the prompt requested (see above).
+                // Name only what the prompt requested (see above). The
+                // Since-B section only when this run had a commit baseline.
                 const missing = [
                   ...(requestedKeys.includes("plotlines") ? ["plotlines"] : []),
                   ...(requestedKeys.includes("glossary") ? ["glossary"] : []),
                   ...(requestedKeys.includes("pendingCards") ? ["go-deeper directions"] : []),
+                  ...(wantsReaderSinceSection ? ["Since-B section"] : []),
                 ];
                 degradedReason =
                   "The reader's trailing data block did not parse and the repair reply did not parse either, " +
@@ -2218,6 +2265,34 @@ export class Pipeline {
           draft.hunkStates.push(state);
         }
         state.plotline = pid;
+      }
+      // Issue #351 step 2: the no-review-yet path — the reader wrote the
+      // Since-B section in this same run. Stored only when the run had a
+      // commit baseline (a stray section without one is dropped, never
+      // stored), with resolved feedback links like the update pass.
+      const readerBaseline = draft.sinceBaseline;
+      if (
+        readerBaseline?.kind === "commit" &&
+        applied.sinceSection &&
+        applied.sinceSection.cards.length > 0
+      ) {
+        const normalized = normalizeAgentSinceCards({ cards: applied.sinceSection.cards });
+        if (normalized && normalized.length > 0) {
+          draft.sinceSection = {
+            baseline: readerBaseline,
+            headVersion: draft.review.currentVersion,
+            at: Date.now(),
+            cards: buildSinceSectionCards(draft, normalized),
+          };
+        }
+      }
+      // A plotline covering only post-B hunks is a new thread since B.
+      if (draft.sinceBaseline?.kind === "commit" && draft.sinceHunks) {
+        const sinceSet = new Set([...draft.sinceHunks.added, ...draft.sinceHunks.changed]);
+        const sinceHashes = new Set(
+          [...sinceSet].map((hid) => hid.slice(hid.lastIndexOf(":") + 1)),
+        );
+        markNewSincePlotlines(draft.plotlines ?? [], draft.hunkStates, sinceHashes);
       }
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;

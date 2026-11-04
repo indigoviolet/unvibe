@@ -6,11 +6,12 @@ variables: [changed_hunks, stale_cards, findings, since_context]
 
 # Update pass: explain the delta since B, and append
 
-New commits landed on the branch. The reviewer last opened baseline B;
-the head has moved since. Your job is to **explain what changed between
-B and the head and append that explanation** — not to rewrite the guide.
-No background work, no extra sessions: one reply, then the trailing
-JSON block.
+New commits landed on the branch. The baseline B is named in ##
+Baseline below — usually the version the reviewer last opened, sometimes
+a commit they picked (or already reviewed on GitHub). The head has moved
+since. Your job is to **explain what changed between B and the head and
+append that explanation** — not to rewrite the guide. No background
+work, no extra sessions: one reply, then the trailing JSON block.
 
 {{since_context}}
 
@@ -38,9 +39,9 @@ JSON block.
    (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`,
    `conversation` or `commit`; the id is the bracketed comment, thread
    or conversation id, or the full commit sha). Title each card with
-   the change alone — never repeat the baseline ("since vN"): the
-   section header already says it. Keep each card to its
-   own thread; don't restate the old guide.
+   the change alone — never repeat the baseline ("since vN" or
+   "since <sha>"): the section header already says it. Keep each card to
+   its own thread; don't restate the old guide.
 2. **Append addenda, don't rewrite cards.** Where a change affects an
    existing card, write an "Updated since B" addendum for the end of
    that card: dated, explaining what changed relative to what the card

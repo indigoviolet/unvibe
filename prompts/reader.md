@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [source, diff_inline, repo_path]
+variables: [source, diff_inline, repo_path, reviewed_context]
 ---
 
 # Reader task
@@ -9,6 +9,8 @@ variables: [source, diff_inline, repo_path]
 You are the reader: the first agent to look at this change. Explore the
 repository and write the guided review's root page. Stream each card as soon
 as it is finished, in the order below.
+
+{{reviewed_context}}
 
 ## Source under review
 
@@ -205,8 +207,26 @@ plotlines and glossary travel in the trailing `json` block, not as cards:
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
  "plotlines": [{"id": "retry-logic", "name": "Retry failed uploads", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}],
- "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}]}
+ "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}],
+ "sinceSection": {"cards": [{"id": "since-1", "title": "...", "blocks": [...], "answers": [{"kind": "comment", "id": "7"}]}]}}
 ```
+
+When the reviewed context at the top names a baseline commit, the
+reviewer has already reviewed up to that commit: after the normal guide
+cards, stream one Since-B card per thread of what changed since the
+baseline — what changed and how, **why** (from the commits' messages),
+and **what feedback caused each change** (the review comment, thread or
+conversation remark it answers, where one exists in the context). Say
+what the change means for the earlier guide, and cite every claim into
+the since hunks named above (`[[h:fileKey:hash]]` or `[[diff:…]]`). Each
+card carries an `answers` list with the bracketed ids of the feedback it
+answers (`{ "kind": "comment", "id": "7" }`: kind is `comment`,
+`thread`, `conversation` or `commit`; the id is the bracketed comment,
+thread or conversation id, or the full commit sha). Title each card with
+the change alone — never repeat the baseline. Keep each card to its own
+thread; don't restate the guide. When no baseline commit is named above
+— or nothing changed since it — omit `sinceSection` from the trailing
+block entirely.
 
 The `glossary` is the guide's shared term list: key existing and newly
 introduced terms. Each entry has the exact name from the code (or the

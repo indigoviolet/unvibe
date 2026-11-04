@@ -499,7 +499,12 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     {
       layer: "L1",
       label: "reader task",
-      text: render("reader", { source: blurb, diff_inline: diff.text, repo_path: "(worktree path)" }),
+      text: render("reader", {
+        source: blurb,
+        diff_inline: diff.text,
+        repo_path: "(worktree path)",
+        reviewed_context: "(No prior-review baseline: explain the whole change; write no Since-B section.)",
+      }),
       cached: false,
     },
   ]);
