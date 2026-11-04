@@ -1533,8 +1533,13 @@ export function StartPage(): React.JSX.Element {
                       >
                         <span className="cw">Demo · no agent needed</span>
                         <span className="cx2">{c.title}</span>
+                        {/* #352: opening reads under the title, never on the right. */}
+                        {opening === changeKey(c, i) ? (
+                          <span className="hint" role="status">
+                            Opening… <ProcessingDots />
+                          </span>
+                        ) : null}
                       </button>
-                      {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
                     </div>
                   ))
                 : null}
@@ -1936,9 +1941,16 @@ export function SessionRow({
             <span className="cx2">{s.title}</span>
           )}
         </button>
-        <span className="hint">
+        {/* #352: one place for the row's progress through every phase —
+            the line under the title names the phase (opening, ingesting,
+            building, failed, done) in the same muted style. The right side
+            keeps only status icons and hover/focus actions, never a phase
+            pill, so the row never reflows between phases. */}
+        <span className="hint" role="status" data-testid="session-progress">
           {s.ingestStatus === "loading" ? (
-            <>{ingestStepLabel(s.ingestStep)}</>
+            <>
+              Opening · {ingestStepLabel(s.ingestStep)} <ProcessingDots />
+            </>
           ) : s.ingestStatus === "failed" ? (
             <>{s.ingestError ? `Couldn't open this review: ${s.ingestError}` : "Couldn't open this review"}</>
           ) : s.ingestStatus === "empty" ? (
@@ -1967,9 +1979,10 @@ export function SessionRow({
               ) : s.guideStatus === "error" ? (
                 <>
                   {" · "}
-                  <span className="err" role="status">Guide didn&apos;t finish</span>
+                  <span className="err">Guide didn&apos;t finish</span>
                 </>
               ) : null}
+              {s.stale ? " · new commits" : ""}
             </>
           )}
         </span>
@@ -1978,12 +1991,6 @@ export function SessionRow({
         <PrBadges prState={s.prState} reviewDecision={s.reviewDecision} />
         {stackInfo && s.prNumber !== undefined && onOpenStackPr ? (
           <StackBadge info={stackInfo} currentNumber={s.prNumber} onOpenPr={onOpenStackPr} />
-        ) : null}
-        {s.ingestStatus === "loading" ? <span className="prtag">opening</span> : null}
-        {s.ingestStatus === "failed" ? <span className="prtag">couldn&apos;t open</span> : null}
-        {s.ingestStatus === "empty" ? <span className="prtag">no changes</span> : null}
-        {s.stale && s.ingestStatus !== "loading" && s.ingestStatus !== "failed" && s.ingestStatus !== "empty" ? (
-          <span className="prtag">new commits</span>
         ) : null}
         {/* #346: the Remove button expands in place into the shared
             inline confirm (no popover), so the row never reflows. */}
@@ -2107,8 +2114,15 @@ function ChangeRow({
         <button className="cj-open" type="button" disabled={opening !== null} onClick={() => onOpen(c, i)}>
           <span className="cx2">{c.title}</span>
         </button>
+        {/* #352: the opening state reads under the title like every other
+            phase — never as a right-side pill — so the title never moves. */}
+        {opening === changeKey(c, i) ? (
+          <span className="hint" role="status" data-testid="change-progress">
+            Opening… <ProcessingDots />
+          </span>
+        ) : null}
       </div>
-      {c.reviewId || opening === changeKey(c, i) || c.prState || c.reviewDecision || stackInfo ? (
+      {c.reviewId || c.prState || c.reviewDecision || stackInfo ? (
         <div className="frow" style={{ gap: 4, alignItems: "center" }}>
           <PrBadges prState={c.prState} reviewDecision={c.reviewDecision} />
           {stackInfo && c.prNumber !== undefined && onOpenStackPr ? (
@@ -2116,7 +2130,6 @@ function ChangeRow({
           ) : null}
           {c.reviewId ? <span className="prtag">review</span> : null}
           {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
-          {opening === changeKey(c, i) ? <span className="hint">Opening…</span> : null}
         </div>
       ) : null}
     </div>
