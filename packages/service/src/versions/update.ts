@@ -20,7 +20,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   Block,
-  Card,
   CardAddendumDraft,
   FindingVerdict,
   Job,
@@ -32,8 +31,15 @@ import type {
   UpdatePassResult,
 } from "@unvibe/shared";
 import { isSinceBaseline, JOB_PRIORITY } from "@unvibe/shared";
-import { formatSinceContext, isSinceFeedbackRef, resolveSinceAnswers } from "./since.js";
-import { resolveSinceBaseline } from "./since.js";
+import {
+  buildSinceSectionCards,
+  formatSinceContext,
+  isSinceFeedbackRef,
+  normalizeAgentSinceCards,
+  resolveSinceAnswers,
+  resolveSinceBaseline,
+  type SinceCardDraftWithRefs,
+} from "./since.js";
 import {
   charTokenEstimator,
   countCodePoints,
@@ -285,9 +291,10 @@ export class JsonBlockReplyParser implements UpdateReplyParser {
     }
     // Issue #351: explain-and-append fields. Malformed entries are
     // dropped, never applied half-way; verdicts above stay strict.
-    const baseline = isSinceBaseline(json["baseline"]) ? json["baseline"] : undefined;
+    // Step 2: the baseline may be a version or a commit sha.
+    const baseline = isSinceBaseline(json["baseline"]) ? (json["baseline"] as UpdatePassResult["baseline"]) : undefined;
     const sinceHunks = normalizeSinceHunks(json["sinceHunks"]);
-    const sinceCards = normalizeSinceCards(json["sinceSection"]);
+    const sinceCards = normalizeAgentSinceCards(json["sinceSection"]);
     const addenda = normalizeAddenda(json["addenda"]);
     const plotlineAssignments = normalizePlotlineAssignments(json["plotlineAssignments"]);
     const newPlotlines = normalizeNewPlotlines(json["newPlotlines"]);
@@ -322,34 +329,6 @@ function normalizeSinceHunks(v: unknown): SinceHunks | undefined {
   const changed = stringArray(o["changed"]) ?? [];
   if (!Array.isArray(o["added"]) || !Array.isArray(o["changed"])) return undefined;
   return { added, changed };
-}
-
-/**
- * Agent-written Since-B cards. The agent's `answers` are `{ kind, id }`
- * pointers, carried as `answerRefs` and resolved at apply time (the
- * stored `Card.answers` holds resolved links only).
- */
-interface SinceCardDraft extends Card {
-  answerRefs?: SinceFeedbackRef[];
-}
-
-function normalizeSinceCards(v: unknown): Card[] | undefined {
-  if (v === undefined) return undefined;
-  if (typeof v !== "object" || v === null) return undefined;
-  const cards = (v as Record<string, unknown>)["cards"];
-  if (!Array.isArray(cards)) return undefined;
-  return cards
-    .filter((c) => typeof c === "object" && c !== null)
-    .map((c) => {
-      const card = c as SinceCardDraft;
-      const raw = (c as unknown as Record<string, unknown>)["answers"];
-      if (Array.isArray(raw)) {
-        const refs = normalizeRefs(raw);
-        if (refs) card.answerRefs = refs;
-        delete (c as unknown as Record<string, unknown>)["answers"];
-      }
-      return card as Card;
-    });
 }
 
 function normalizeAddenda(v: unknown): CardAddendumDraft[] | undefined {
@@ -412,10 +391,9 @@ export async function applyUpdateResult(
 ): Promise<void> {
   await reviews.mutate(reviewId, (draft) => {
     const toVersion = draft.review.currentVersion;
+    // Step 2: the baseline is the union — a version or a commit sha.
     const baselineV =
-      result.baseline && isSinceBaseline(result.baseline)
-        ? result.baseline.version
-        : resolveSinceBaseline(draft).version;
+      result.baseline && isSinceBaseline(result.baseline) ? result.baseline : resolveSinceBaseline(draft);
     const now = Date.now();
     for (const rev of result.revisedCards) {
       for (const page of draft.pages) {
@@ -487,34 +465,9 @@ export async function applyUpdateResult(
       }
     }
     // The Since-B section is replaced whole on every pass, never revised.
+    // Step 2: card storage is shared with the guide run (`since.ts`).
     if (result.sinceSection && result.sinceSection.cards.length > 0) {
-      const known = new Set(draft.pages.flatMap((p) => p.cards.map((c) => c.id)));
-      if (draft.sinceSection) {
-        for (const c of draft.sinceSection.cards) known.add(c.id);
-      }
-      const cards = result.sinceSection.cards.map((c, i) => {
-        let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
-        if (known.has(id)) id = `${id}-v${toVersion}`;
-        known.add(id);
-        // The agent's `answers` arrive as `{ kind, id }` pointers on
-        // `answerRefs`; resolve them and store links only.
-        const answers = resolveSinceAnswers(draft, (c as SinceCardDraft).answerRefs);
-        const cardOut: Card = {
-          ...(c as Card),
-          id,
-          pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
-          level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
-          collapsed: c.collapsed === true,
-          revision: typeof c.revision === "number" ? c.revision : 1,
-          undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
-          blocks: Array.isArray(c.blocks) ? c.blocks : [],
-        };
-        const rec = cardOut as unknown as Record<string, unknown>;
-        delete rec["answerRefs"];
-        delete rec["answers"];
-        if (answers.length > 0) cardOut.answers = answers;
-        return cardOut;
-      });
+      const cards = buildSinceSectionCards(draft, result.sinceSection.cards as SinceCardDraftWithRefs[]);
       draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
     }
     // New plotline threads first, so assignments below can target them.
@@ -544,7 +497,7 @@ export async function applyUpdateResult(
         Array.isArray(ids) ? ids.filter((e): e is string => typeof e === "string") : [];
       draft.sinceHunks = { added: clean(result.sinceHunks.added), changed: clean(result.sinceHunks.changed) };
     }
-    draft.sinceBaseline = { kind: "version", version: baselineV };
+    draft.sinceBaseline = baselineV;
     if (draft.versionStatus) draft.versionStatus = { ...draft.versionStatus, stale: false };
     const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
     draft.logTail.push({

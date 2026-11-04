@@ -8,6 +8,7 @@
  * `ReviewFile` lists; git and routing stay out.
  */
 import type {
+  Card,
   ExistingReviewComment,
   PrConversationRemark,
   ReviewCommit,
@@ -18,7 +19,17 @@ import type {
   SinceFeedbackRef,
   SinceHunks,
 } from "@unvibe/shared";
+import {
+  classifyFile,
+  fileKeyForPath,
+  isCommitSha,
+  isSinceBaseline,
+  shortBaselineSha,
+  sinceBaselineLabel,
+} from "@unvibe/shared";
 import { compareHunks, hunkId } from "./compare.js";
+import type { CommandRunner } from "../exec/index.js";
+import { hashHunkLines, parseUnifiedDiff } from "../ingest/index.js";
 
 /** New-side `h:` IDs changed or added between two stored diffs. Pure. */
 export function computeSinceHunks(bFiles: ReviewFile[], curFiles: ReviewFile[]): SinceHunks {
@@ -30,14 +41,14 @@ export function computeSinceHunks(bFiles: ReviewFile[], curFiles: ReviewFile[]):
 }
 
 /**
- * Baseline the next update pass explains from: the stored pick, or the
- * version last opened (the refresh's `fromVersion`) when nothing was
- * picked. Pure.
+ * Baseline the next update pass (or the still-pending guide run) explains
+ * from: the stored pick — a version or a commit sha — or the version last
+ * opened (the refresh's `fromVersion`) when nothing was picked. Pure.
  */
 export function resolveSinceBaseline(snapshot: ReviewSnapshot): SinceBaseline {
   const stored = snapshot.sinceBaseline;
-  if (stored && Number.isSafeInteger(stored.version) && stored.version >= 1) {
-    return { kind: "version", version: stored.version };
+  if (isSinceBaseline(stored)) {
+    return stored.kind === "version" ? { kind: "version", version: stored.version } : { kind: "commit", sha: stored.sha };
   }
   const from = snapshot.versionStatus?.fromVersion;
   const cur = snapshot.review.currentVersion;
@@ -100,7 +111,7 @@ export interface SinceFeedback {
   threads: SinceThreadMatch[];
   commits: ReviewCommit[];
   conversation: PrConversationRemark[];
-  baseline: number;
+  baseline: SinceBaseline;
   headVersion: number;
   windowStart: number | null;
   windowEnd: number | null;
@@ -124,10 +135,14 @@ function excerpt(text: string, cap: number): string {
  * Pure. Capped so the prompt variable stays small.
  */
 export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks): SinceFeedback {
-  const baseline = resolveSinceBaseline(snapshot).version;
+  const baseline = resolveSinceBaseline(snapshot);
   const headVersion = snapshot.review.currentVersion;
-  const bRow = versionRow(snapshot, baseline);
+  const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, headVersion);
+  // A commit baseline carries no stored timestamp (the commit's date is
+  // not kept on the snapshot), so there is no lower time bound: every
+  // remark on a since hunk counts. An old remark on a reworked line is
+  // plausibly what the rework answers.
   const windowStart = bRow?.fetchedAt ?? null;
   const windowEnd = headRow?.fetchedAt ?? null;
 
@@ -280,21 +295,46 @@ export function versionLabel(n: number, headSha: string, fetchedAt: number): str
  * the commits since B (why, from their messages), and the matched
  * feedback (review comments, threads, conversation remarks). Pure.
  */
+/**
+ * The baseline's identity for prompts: the version label (`v1 · abc12345
+ * · 4 Nov`) or the commit's short sha with its subject when the commit is
+ * one of the PR's (`abc12345 "rework alpha"`). Pure.
+ */
+export function baselineIdentity(snapshot: ReviewSnapshot, baseline: SinceBaseline): string {
+  if (baseline.kind === "version") {
+    const row = versionRow(snapshot, baseline.version);
+    return row ? versionLabel(baseline.version, row.headSha, row.fetchedAt) : `v${baseline.version}`;
+  }
+  const known = snapshot.commits?.find((c) => c.sha === baseline.sha || c.sha.startsWith(baseline.sha));
+  const subject = known ? ` "${known.subject}"` : "";
+  return `${shortBaselineSha(baseline.sha)}${subject}`;
+}
+
 export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks): string {
   const fb = matchSinceFeedback(snapshot, since);
-  const bRow = versionRow(snapshot, fb.baseline);
+  const baseline = fb.baseline;
+  const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, fb.headVersion);
   const lines: string[] = [];
   lines.push("## Baseline");
-  if (bRow && headRow) {
+  if (bRow && headRow && baseline.kind === "version") {
     lines.push(
-      `B is ${versionLabel(fb.baseline, bRow.headSha, bRow.fetchedAt)}; ` +
+      `B is ${versionLabel(baseline.version, bRow.headSha, bRow.fetchedAt)}; ` +
         `head is ${versionLabel(fb.headVersion, headRow.headSha, headRow.fetchedAt)}. ` +
         `Explain only the ${since.changed.length} changed + ${since.added.length} new hunks since B.`,
     );
-  } else {
+  } else if (baseline.kind === "commit") {
+    const head = headRow
+      ? versionLabel(fb.headVersion, headRow.headSha, headRow.fetchedAt)
+      : `v${fb.headVersion}`;
     lines.push(
-      `B is v${fb.baseline}; head is v${fb.headVersion}. ` +
+      `B is commit ${baselineIdentity(snapshot, fb.baseline)}; ` +
+        `head is ${head}. ` +
+        `Explain only the ${since.changed.length} changed + ${since.added.length} new hunks since B.`,
+    );
+  } else if (baseline.kind === "version") {
+    lines.push(
+      `B is v${baseline.version}; head is v${fb.headVersion}. ` +
         `Explain only the ${since.changed.length} changed + ${since.added.length} new hunks since B.`,
     );
   }
@@ -331,6 +371,281 @@ export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks):
     remarks.push(
       `- [conversation ${r.id}] PR conversation remark by @${r.author ?? "unknown"} (${when}): ` +
         `"${excerpt(r.body, 200)}"`,
+    );
+  }
+  lines.push(remarks.length > 0 ? remarks.join("\n") : "(no review comment, thread or conversation remark matched the delta)");
+  return lines.join("\n");
+}
+
+/**
+ * Issue #351 step 2: the diff at a commit B as `ReviewFile[]` — the
+ * other side of the commit-baseline comparison. Parsed and hashed like
+ * any stored diff (same `fileKey` + `contentHash` identity), so
+ * `computeSinceHunks` compares it against the head diff by hunk content
+ * with no regard for ancestry. Pure over the diff text.
+ */
+export function buildFilesFromDiffText(diffText: string): ReviewFile[] {
+  return parseUnifiedDiff(diffText).map((f) => {
+    const fileKey = fileKeyForPath(f.path);
+    const category = classifyFile(f.path);
+    return {
+      fileKey,
+      path: f.path,
+      category,
+      hunks: f.hunks.map((h) => ({
+        contentHash: hashHunkLines(h.lines),
+        header: h.header,
+        ...(h.context !== undefined ? { context: h.context } : {}),
+        newStart: h.newStart,
+        newEnd: h.newEnd,
+        oldStart: h.oldStart,
+        oldEnd: h.oldEnd,
+        added: h.added,
+        removed: h.removed,
+        lines: h.lines.map((l) => ({ ...l })),
+        ...(h.noNewline ? { noNewline: true as const } : {}),
+      })),
+      ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}),
+      ...(f.isNew ? { isNew: true as const } : {}),
+      ...(f.isDeleted ? { isDeleted: true as const } : {}),
+      ...(f.isRename ? { isRename: true as const } : {}),
+      ...(f.isBinary ? { isBinary: true as const } : {}),
+    };
+  });
+}
+
+/**
+ * Issue #351 step 2: make sure the baseline commit's content is
+ * available. A locally known sha passes at once; otherwise one
+ * `git fetch origin <sha>` is tried (read-only — GitHub serves any sha
+ * this way). Anything else throws a UI-facing error naming the short
+ * sha; callers surface it instead of failing silently.
+ */
+export async function ensureCommitFetchable(
+  runner: CommandRunner,
+  repoPath: string,
+  sha: string,
+): Promise<void> {
+  const short = shortBaselineSha(sha);
+  const known = await runner.run("git", { args: ["cat-file", "-e", sha], cwd: repoPath }).catch(() => null);
+  if (known && known.code === 0) return;
+  try {
+    const fetched = await runner.run("git", { args: ["fetch", "origin", sha], cwd: repoPath });
+    if (fetched.code === 0) {
+      const again = await runner.run("git", { args: ["cat-file", "-e", sha], cwd: repoPath });
+      if (again.code === 0) return;
+    }
+  } catch {
+    // Fall through to the explicit error below.
+  }
+  throw new Error(
+    `couldn't find commit ${short} in this checkout or on the remote — ` +
+      `it may have been garbage-collected after a force-push`,
+  );
+}
+
+/**
+ * Issue #351 step 2: the `base...B` side of a commit baseline — the
+ * merge-base-to-commit diff parsed into `ReviewFile[]` for
+ * hunk-content comparison against the head diff. Throws the
+ * UI-facing unfetchable error when B is gone.
+ */
+export async function diffFilesAtCommit(
+  runner: CommandRunner,
+  repoPath: string,
+  mergeBaseSha: string,
+  sha: string,
+): Promise<ReviewFile[]> {
+  await ensureCommitFetchable(runner, repoPath, sha);
+  let diff: { ok: boolean; stdout: string };
+  try {
+    const res = await runner.run("git", {
+      args: ["diff", "-U3", "-M", "--no-color", "--no-ext-diff", mergeBaseSha, sha, "--"],
+      cwd: repoPath,
+    });
+    diff = { ok: res.code === 0, stdout: res.stdout };
+  } catch {
+    diff = { ok: false, stdout: "" };
+  }
+  if (!diff.ok) {
+    throw new Error(
+      `couldn't diff ${shortBaselineSha(sha)} against the base — the commit may have been garbage-collected after a force-push`,
+    );
+  }
+  return buildFilesFromDiffText(diff.stdout);
+}
+
+/** Agent-shaped since cards with the service-resolved shape. Pure. */
+export interface SinceCardDraftWithRefs extends Card {
+  answerRefs?: SinceFeedbackRef[];
+}
+
+/**
+ * Issue #351 step 2: the agent's `answers` pointers arrive as
+ * `{ kind, id }` on `answerRefs`; keep only well-formed ones here —
+ * resolution against the snapshot (unknown ids dropped) happens in
+ * `buildSinceSectionCards` below. Pure.
+ */
+export function normalizeAgentSinceCards(v: unknown): SinceCardDraftWithRefs[] | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const cards = (v as Record<string, unknown>)["cards"];
+  if (!Array.isArray(cards)) return undefined;
+  return cards
+    .filter((c) => typeof c === "object" && c !== null)
+    .map((c) => {
+      const card = c as SinceCardDraftWithRefs;
+      const raw = (c as unknown as Record<string, unknown>)["answers"];
+      if (Array.isArray(raw)) {
+        const refs = raw.filter(isSinceFeedbackRef).map((r) => ({ kind: r.kind, id: r.id }));
+        if (refs.length > 0) (card as { answerRefs?: SinceFeedbackRef[] }).answerRefs = refs;
+        delete (c as unknown as Record<string, unknown>)["answers"];
+      }
+      return card as SinceCardDraftWithRefs;
+    });
+}
+
+/**
+ * Issue #351 step 2: store the agent-written Since-B cards — fresh
+ * unique ids, resolved feedback links (unknown ids dropped at once),
+ * canonical card shape. Shared by the update pass and the guide run so
+ * both store the same shape. Pure over the snapshot (read-only).
+ */
+export function buildSinceSectionCards(
+  snapshot: ReviewSnapshot,
+  cards: SinceCardDraftWithRefs[],
+): Card[] {
+  const known = new Set(snapshot.pages.flatMap((p) => p.cards.map((c) => c.id)));
+  if (snapshot.sinceSection) {
+    for (const c of snapshot.sinceSection.cards) known.add(c.id);
+  }
+  const toVersion = snapshot.review.currentVersion;
+  return cards.map((c, i) => {
+    let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
+    if (known.has(id)) id = `${id}-v${toVersion}`;
+    known.add(id);
+    const answers = resolveSinceAnswers(snapshot, c.answerRefs);
+    const cardOut: Card = {
+      ...(c as Card),
+      id,
+      pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
+      level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
+      collapsed: c.collapsed === true,
+      revision: typeof c.revision === "number" ? c.revision : 1,
+      undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
+      blocks: Array.isArray(c.blocks) ? c.blocks : [],
+    };
+    const rec = cardOut as unknown as Record<string, unknown>;
+    delete rec["answerRefs"];
+    delete rec["answers"];
+    if (answers.length > 0) cardOut.answers = answers;
+    return cardOut;
+  });
+}
+
+/**
+ * Issue #351 step 2: mark plotlines whose every assigned hunk changed
+ * since B as `newSinceBaseline` (the guide run names plotlines for the
+ * whole PR; the ones covering only post-B hunks are the new threads).
+ * Callers pass the draft's plotlines + hunk states and the stored
+ * since-hunk set. Returns the marked plotline ids. Pure.
+ */
+export function markNewSincePlotlines(
+  plotlines: { id: string; newSinceBaseline?: boolean }[],
+  states: { contentHash: string; plotline?: string }[],
+  sinceHashes: Set<string>,
+): string[] {
+  if (sinceHashes.size === 0) return [];
+  const assigned = new Map<string, Set<string>>();
+  for (const s of states) {
+    if (s.plotline === undefined) continue;
+    let set = assigned.get(s.plotline);
+    if (!set) {
+      set = new Set();
+      assigned.set(s.plotline, set);
+    }
+    set.add(s.contentHash);
+  }
+  const marked: string[] = [];
+  for (const [plotline, hashes] of assigned) {
+    if (hashes.size === 0) continue;
+    let allSince = true;
+    for (const h of hashes) {
+      if (!sinceHashes.has(h)) {
+        allSince = false;
+        break;
+      }
+    }
+    if (!allSince) continue;
+    const row = plotlines.find((p) => p.id === plotline);
+    if (row && row.newSinceBaseline !== true) {
+      row.newSinceBaseline = true;
+      marked.push(plotline);
+    }
+  }
+  return marked;
+}
+
+/** Max since-hunk ids named in the reader's reviewed context. */
+export const READER_SINCE_HUNK_CAP = 200;
+
+/**
+ * Issue #351 step 2: the reader prompt's `{{reviewed_context}}` variable.
+ * When the reviewer already reviewed this PR on GitHub up to a commit B
+ * (accepted before the guide run), the reader is told so, is shown the
+ * since-hunk ids to cite and the feedback the delta may answer, and
+ * writes the normal guide plus the Since-B section in the same run.
+ * Otherwise a one-liner sending it down the normal whole-PR path. Pure.
+ */
+export function formatReaderReviewedContext(snapshot: ReviewSnapshot, since?: SinceHunks): string {
+  const baseline = snapshot.sinceBaseline;
+  if (!baseline || baseline.kind !== "commit" || !isCommitSha(baseline.sha)) {
+    return "(No prior-review baseline: explain the whole change; write no Since-B section.)";
+  }
+  const lines: string[] = [];
+  lines.push("## Reviewed up to B");
+  lines.push(
+    `The reviewer has already reviewed this PR on GitHub up to commit ${baselineIdentity(snapshot, baseline)} ` +
+      `(their latest GitHub review). ` +
+      `Write the normal guide for the whole PR, then add the Since-B section below.`,
+  );
+  lines.push("");
+  lines.push("## Since hunks (cite these in the Since-B cards)");
+  if (since === undefined) {
+    lines.push(
+      "(the since-hunk comparison is unavailable — B could not be diffed: " +
+        "write the normal guide and no Since-B section)",
+    );
+  } else {
+    const ids = [...since.changed, ...since.added];
+    const kept = ids.slice(0, READER_SINCE_HUNK_CAP);
+    const omitted = ids.length - kept.length;
+    if (kept.length === 0) {
+      lines.push("(no hunks changed since B — B is the head or its content matches the head: write no Since-B section)");
+    } else {
+      lines.push(kept.join(", "));
+      if (omitted > 0) lines.push(`(+${omitted} more since hunks, all in the diff above)`);
+    }
+  }
+  lines.push("");
+  lines.push("## Feedback the delta since B may answer");
+  lines.push("Each item's bracketed id goes in the `answers` list of the Since-B card that answers it.");
+  const fb = matchSinceFeedback(snapshot, since ?? { added: [], changed: [] });
+  const remarks: string[] = [];
+  for (const m of fb.comments) {
+    remarks.push(
+      `- [comment ${m.comment.id}] PR review comment by @${m.comment.author ?? "unknown"} on ${m.comment.path}:${m.comment.line}: ` +
+        `"${excerpt(m.comment.body, 200)}" → ${m.hunkIds.join(", ")}`,
+    );
+  }
+  for (const t of fb.threads) {
+    remarks.push(
+      `- [thread ${t.threadId}] Local thread (${t.commentCount} comment${t.commentCount === 1 ? "" : "s"}): ` +
+        `"${t.excerpt}" → ${t.hunkIds.join(", ")}`,
+    );
+  }
+  for (const r of fb.conversation) {
+    remarks.push(
+      `- [conversation ${r.id}] PR conversation remark by @${r.author ?? "unknown"}: ` + `"${excerpt(r.body, 200)}"`,
     );
   }
   lines.push(remarks.length > 0 ? remarks.join("\n") : "(no review comment, thread or conversation remark matched the delta)");
