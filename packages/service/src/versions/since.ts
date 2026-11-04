@@ -25,7 +25,6 @@ import {
   isCommitSha,
   isSinceBaseline,
   shortBaselineSha,
-  sinceBaselineLabel,
 } from "@unvibe/shared";
 import { compareHunks, hunkId } from "./compare.js";
 import type { CommandRunner } from "../exec/index.js";

@@ -181,7 +181,7 @@ test.describe("J311 data-format notice", () => {
       await expect(page.getByTestId("data-format-notice")).toHaveCount(0);
 
       const after = await apiJson(svc, "GET", "/api/data-format");
-      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 3, stored: 3 });
+      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 4, stored: 4 });
 
       // Nothing was deleted: the old DB sits in a dated sibling dir.
       expect(asideDirs(dataDir)).toHaveLength(1);
