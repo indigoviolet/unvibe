@@ -63,8 +63,10 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByText("Fetching…")).toBeInTheDocument();
-    expect(screen.getByText("opening")).toBeInTheDocument();
+    // #352: the phase reads under the title ("Opening · Fetching…"),
+    // never as a right-side pill.
+    expect(screen.getByTestId("session-progress")).toHaveTextContent("Opening · Fetching…");
+    expect(screen.queryByText("opening")).not.toBeInTheDocument();
     // Reopenable from there (open button enabled).
     const btn = screen.getByTestId("session-r1").querySelector("button.cj-open");
     expect(btn).not.toBeNull();
@@ -88,7 +90,8 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Couldn't open this review: the PR wasn't found")).toBeInTheDocument();
-    expect(screen.getByText("couldn't open")).toBeInTheDocument();
+    // #352: no right-side phase pill; the error line carries it.
+    expect(screen.queryByText("couldn't open")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove this review" })).toBeInTheDocument();
   });
 });
@@ -140,7 +143,8 @@ describe("EmptyOpen (#179 empty diff)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("No changes to review: the diff is empty.")).toBeInTheDocument();
-    expect(screen.getByText("no changes")).toBeInTheDocument();
+    // #352: no right-side phase pill; the message line carries it.
+    expect(screen.queryByText("no changes")).not.toBeInTheDocument();
   });
 });
 
