@@ -1172,6 +1172,21 @@ export function StartPage(): React.JSX.Element {
     setDeleting(null);
   }, []);
 
+  // #352: failed rows offer Retry next to Remove. It re-runs the failed
+  // ingest (#92), then reloads the list so the row reads loading. A
+  // rejection toasts — the row keeps showing the error line.
+  const retrySession = useCallback(
+    async (id: string) => {
+      try {
+        await api.retryReview(id);
+        await loadSessions();
+      } catch (err) {
+        toast(`Couldn't retry the review: ${friendlyError(err)}`);
+      }
+    },
+    [loadSessions],
+  );
+
   const recheck = useCallback(async () => {
     setChecking(true);
     try {
@@ -1489,6 +1504,7 @@ export function StartPage(): React.JSX.Element {
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
                   sessionRemoved={sessionRemoved}
+                  retrySession={retrySession}
                   onOpen={() => navigate(`/review/${s.id}`)}
                   stackInfo={s.prNumber !== undefined ? stacks[s.prNumber] : undefined}
                   onOpenStackPr={openStackPr}
@@ -1504,6 +1520,7 @@ export function StartPage(): React.JSX.Element {
                   setConfirmDelete={setConfirmDelete}
                   removeSession={removeSession}
                   sessionRemoved={sessionRemoved}
+                  retrySession={retrySession}
                   onOpen={() => navigate(`/review/${s.id}`)}
                 />
               ))}
@@ -1559,6 +1576,7 @@ export function StartPage(): React.JSX.Element {
                       setConfirmDelete={setConfirmDelete}
                       removeSession={removeSession}
                       sessionRemoved={sessionRemoved}
+                      retrySession={retrySession}
                       onOpen={() => navigate(`/review/${s.id}`)}
                     />
                   ))}
@@ -1873,6 +1891,7 @@ export function SessionRow({
   setConfirmDelete,
   removeSession,
   sessionRemoved,
+  retrySession,
   onOpen,
   stackInfo,
   onOpenStackPr,
@@ -1886,6 +1905,9 @@ export function SessionRow({
   removeSession: (id: string) => Promise<void>;
   /** Applies the result after the pill's "✓ Confirmed" flash. */
   sessionRemoved: (id: string) => void;
+  /** Re-run a failed ingest, then reload; toasts on failure. Optional:
+      rows without it (documents) never offer Retry. */
+  retrySession?: (id: string) => Promise<void>;
   onOpen: () => void;
   stackInfo?: PrStackInfo;
   onOpenStackPr?: (prNumber: number, title: string, branch: string) => void;
@@ -1899,6 +1921,9 @@ export function SessionRow({
       : null;
   const canOpen = opening === null && deleting === null;
   const faded = s.prState === "merged" || s.prState === "closed";
+  // #352: failed rows offer Retry next to Remove (same hover/focus
+  // reveal); it re-runs the failed ingest, then the row reads loading.
+  const [retrying, setRetrying] = useState(false);
   return (
     <div key={s.id} className="ci" data-testid={`session-${s.id}`} style={faded ? { opacity: 0.55 } : undefined}>
       <div className="cj" onClick={canOpen ? onOpen : undefined}>
@@ -1971,9 +1996,11 @@ export function SessionRow({
                 </span>
               </span>
               {s.pendingComments > 0 ? ` · ${s.pendingComments} in Outbox` : ""}
+              {/* #352: no middot before the dots — at this size it reads
+                  as a stray tick, and the dots already mark activity. */}
               {s.guideStatus === "running" ? (
                 <>
-                  {" · "}
+                  {" "}
                   <ProcessingDots />
                 </>
               ) : s.guideStatus === "error" ? (
@@ -1991,6 +2018,23 @@ export function SessionRow({
         <PrBadges prState={s.prState} reviewDecision={s.reviewDecision} />
         {stackInfo && s.prNumber !== undefined && onOpenStackPr ? (
           <StackBadge info={stackInfo} currentNumber={s.prNumber} onOpenPr={onOpenStackPr} />
+        ) : null}
+        {s.ingestStatus === "failed" && retrySession ? (
+          <span className="uic-idlehold" data-testid="session-retry">
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              disabled={retrying || deleting !== null}
+              title={`Retry opening ${s.title}`}
+              onClick={() => {
+                setRetrying(true);
+                void retrySession(s.id).finally(() => setRetrying(false));
+              }}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          </span>
         ) : null}
         {/* #346: the Remove button expands in place into the shared
             inline confirm (no popover), so the row never reflows. */}

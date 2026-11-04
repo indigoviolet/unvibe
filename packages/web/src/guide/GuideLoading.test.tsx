@@ -94,6 +94,41 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
     expect(screen.queryByText("couldn't open")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove this review" })).toBeInTheDocument();
   });
+
+  test("failed row with retrySession offers Retry; without it, no Retry", () => {
+    const s = summary({ ingestStatus: "failed", ingestError: "the PR wasn't found" });
+    const { rerender } = render(
+      <MemoryRouter>
+        <SessionRow
+          s={s}
+          opening={null}
+          deleting={null}
+          confirmDelete={null}
+          setConfirmDelete={() => {}}
+          removeSession={async () => {}}
+          sessionRemoved={() => {}}
+          retrySession={async () => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    rerender(
+      <MemoryRouter>
+        <SessionRow
+          s={s}
+          opening={null}
+          deleting={null}
+          confirmDelete={null}
+          setConfirmDelete={() => {}}
+          removeSession={async () => {}}
+          sessionRemoved={() => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
 });
 
 describe("EmptyOpen (#179 empty diff)", () => {

@@ -279,15 +279,26 @@ test.describe("J352 reviews-list progress line", () => {
     await expect(failedProgress).toContainText("Couldn't open this review");
     await expect(failedProgress).toHaveAttribute("role", "status");
     await expect(failedRow.locator(".prtag")).toHaveCount(0);
-    const failedIdle = failedRow.locator(".uic-idlehold");
-    await expect(failedIdle).toHaveCSS("opacity", "0");
+    // Retry hides until hover or keyboard focus (Remove is covered on the
+    // loading row above and by J225).
+    const retrySlot = failedRow.getByTestId("session-retry");
+    const retry = failedRow.getByRole("button", { name: "Retry" });
+    await expect(retrySlot).toHaveCSS("opacity", "0");
     await failedRow.hover();
-    await expect(failedIdle).toHaveCSS("opacity", "1");
+    await expect(retrySlot).toHaveCSS("opacity", "1");
     await page.mouse.move(0, 0);
     const failedGeo = await measure(failedRow, "failed");
     const doneGeo = geometries.find((g) => g.phase === "done")!;
     expect(Math.abs(failedGeo.height - doneGeo.height), "failed row height").toBeLessThanOrEqual(1);
     expect(Math.abs(failedGeo.titleOffsetY - doneGeo.titleOffsetY), "failed title position").toBeLessThanOrEqual(1);
     await checkLayout(page, "start-progress-failed");
+    // Retry re-runs the failed ingest: the row returns to the ingesting
+    // phase, at the same height.
+    await failedRow.hover();
+    await retry.click();
+    await expect(failedProgress).toContainText(/Opening ·/, { timeout: 30_000 });
+    const retryGeo = await measure(failedRow, "retrying");
+    expect(Math.abs(retryGeo.height - doneGeo.height), "retrying row height").toBeLessThanOrEqual(1);
+    expect(Math.abs(retryGeo.titleOffsetY - doneGeo.titleOffsetY), "retrying title position").toBeLessThanOrEqual(1);
   });
 });
