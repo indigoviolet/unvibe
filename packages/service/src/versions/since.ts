@@ -14,6 +14,8 @@ import type {
   ReviewFile,
   ReviewSnapshot,
   SinceBaseline,
+  SinceFeedbackLink,
+  SinceFeedbackRef,
   SinceHunks,
 } from "@unvibe/shared";
 import { compareHunks, hunkId } from "./compare.js";
@@ -195,6 +197,76 @@ export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks):
   return { comments, threads, commits, conversation, baseline, headVersion, windowStart, windowEnd };
 }
 
+/**
+ * Resolve the agent's feedback pointers against the snapshot into
+ * renderable links. Unknown ids are dropped; the list is capped.
+ * Pure. Comment/thread/conversation remarks link out (stored URL) or
+ * to the thread on the page; commits render as text (no stable URL).
+ */
+export function resolveSinceAnswers(
+  snapshot: ReviewSnapshot,
+  refs: SinceFeedbackRef[] | undefined,
+): SinceFeedbackLink[] {
+  if (!refs) return [];
+  const out: SinceFeedbackLink[] = [];
+  for (const r of refs.slice(0, 5)) {
+    if (typeof r !== "object" || r === null || typeof r.id !== "string" || r.id.length === 0) continue;
+    if (r.kind === "comment") {
+      const c = (snapshot.existingComments ?? []).find((x) => String(x.id) === r.id);
+      if (!c) continue;
+      out.push({
+        kind: "comment",
+        label: `@${c.author ?? "unknown"} on ${c.path ?? "?"}:${c.line ?? "?"}`,
+        excerpt: excerpt(c.body, 160),
+        ...(c.htmlUrl ? { url: c.htmlUrl } : {}),
+      });
+    } else if (r.kind === "thread") {
+      const t = (snapshot.annotations ?? []).find((x) => x.id === r.id);
+      if (!t) continue;
+      const first = t.replies.find((x) => x.kind === "comment");
+      const para = first?.blocks.find((b) => b.type === "paragraph");
+      const text = para && para.type === "paragraph" ? para.text.standard : t.anchor.quotedText;
+      out.push({ kind: "thread", label: `Thread ${t.id}`, excerpt: excerpt(text, 160), url: `#${t.id}` });
+    } else if (r.kind === "conversation") {
+      const m = (snapshot.prConversation ?? []).find((x) => String(x.id) === r.id);
+      if (!m) continue;
+      out.push({
+        kind: "conversation",
+        label: m.author ? `PR conversation by @${m.author}` : "PR conversation",
+        excerpt: excerpt(m.body, 160),
+        ...(m.htmlUrl ? { url: m.htmlUrl } : {}),
+      });
+    } else if (r.kind === "commit") {
+      const c = (snapshot.commits ?? []).find((x) => x.sha === r.id || x.sha.startsWith(r.id));
+      if (!c) continue;
+      const body = (c.body ?? "").trim().split("\n")[0] ?? "";
+      out.push({
+        kind: "commit",
+        label: `${c.sha.slice(0, 8)} ${c.subject}`,
+        excerpt: excerpt(body.length > 0 ? body : c.subject, 160),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * True when the value looks like an agent-written feedback pointer.
+ * Pure. Used by the update-pass parser before service-side resolution.
+ */
+export function isSinceFeedbackRef(v: unknown): v is SinceFeedbackRef {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    (o["kind"] === "comment" ||
+      o["kind"] === "thread" ||
+      o["kind"] === "conversation" ||
+      o["kind"] === "commit") &&
+    typeof o["id"] === "string" &&
+    (o["id"] as string).length > 0
+  );
+}
+
 /** Short `v3 · abc1234 · 4 Nov` label for prompts and the UI. Pure. */
 export function versionLabel(n: number, headSha: string, fetchedAt: number): string {
   const date = new Date(fetchedAt);
@@ -232,31 +304,32 @@ export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks):
     lines.push("(no commit touches the hunks since B)");
   } else {
     for (const c of fb.commits.slice(0, 30)) {
-      lines.push(`- ${c.sha.slice(0, 8)} ${c.subject}`);
+      lines.push(`- [commit ${c.sha}] ${c.sha.slice(0, 8)} ${c.subject}`);
       const body = (c.body ?? "").trim().split("\n").slice(0, 3).join("\n").trim();
       if (body) lines.push(`  ${body.split("\n").join("\n  ")}`);
     }
   }
   lines.push("");
   lines.push("## Feedback this delta may answer");
+  lines.push("Each item's bracketed id goes in the `answers` list of the card or addendum that answers it.");
   const remarks: string[] = [];
   for (const m of fb.comments) {
     const when = m.comment.createdAt ?? "undated";
     remarks.push(
-      `- PR review comment by @${m.comment.author ?? "unknown"} on ${m.comment.path}:${m.comment.line} (${when}): ` +
+      `- [comment ${m.comment.id}] PR review comment by @${m.comment.author ?? "unknown"} on ${m.comment.path}:${m.comment.line} (${when}): ` +
         `"${excerpt(m.comment.body, 200)}" → ${m.hunkIds.join(", ")}`,
     );
   }
   for (const t of fb.threads) {
     remarks.push(
-      `- Local thread ${t.threadId} (${t.commentCount} comment${t.commentCount === 1 ? "" : "s"}): ` +
+      `- [thread ${t.threadId}] Local thread (${t.commentCount} comment${t.commentCount === 1 ? "" : "s"}): ` +
         `"${t.excerpt}" → ${t.hunkIds.join(", ")}`,
     );
   }
   for (const r of fb.conversation) {
     const when = r.createdAt ?? "undated";
     remarks.push(
-      `- PR conversation remark by @${r.author ?? "unknown"} (${when}): ` +
+      `- [conversation ${r.id}] PR conversation remark by @${r.author ?? "unknown"} (${when}): ` +
         `"${excerpt(r.body, 200)}"`,
     );
   }

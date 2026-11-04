@@ -26,12 +26,13 @@ import type {
   Job,
   Plotline,
   ReviewSnapshot,
+  SinceFeedbackRef,
   SinceHunks,
   TokenUsage,
   UpdatePassResult,
 } from "@unvibe/shared";
 import { isSinceBaseline, JOB_PRIORITY } from "@unvibe/shared";
-import { formatSinceContext } from "./since.js";
+import { formatSinceContext, isSinceFeedbackRef, resolveSinceAnswers } from "./since.js";
 import { resolveSinceBaseline } from "./since.js";
 import {
   charTokenEstimator,
@@ -323,12 +324,32 @@ function normalizeSinceHunks(v: unknown): SinceHunks | undefined {
   return { added, changed };
 }
 
+/**
+ * Agent-written Since-B cards. The agent's `answers` are `{ kind, id }`
+ * pointers, carried as `answerRefs` and resolved at apply time (the
+ * stored `Card.answers` holds resolved links only).
+ */
+interface SinceCardDraft extends Card {
+  answerRefs?: SinceFeedbackRef[];
+}
+
 function normalizeSinceCards(v: unknown): Card[] | undefined {
   if (v === undefined) return undefined;
   if (typeof v !== "object" || v === null) return undefined;
   const cards = (v as Record<string, unknown>)["cards"];
   if (!Array.isArray(cards)) return undefined;
-  return cards.filter((c) => typeof c === "object" && c !== null) as Card[];
+  return cards
+    .filter((c) => typeof c === "object" && c !== null)
+    .map((c) => {
+      const card = c as SinceCardDraft;
+      const raw = (c as unknown as Record<string, unknown>)["answers"];
+      if (Array.isArray(raw)) {
+        const refs = normalizeRefs(raw);
+        if (refs) card.answerRefs = refs;
+        delete (c as unknown as Record<string, unknown>)["answers"];
+      }
+      return card as Card;
+    });
 }
 
 function normalizeAddenda(v: unknown): CardAddendumDraft[] | undefined {
@@ -338,8 +359,19 @@ function normalizeAddenda(v: unknown): CardAddendumDraft[] | undefined {
     if (typeof e !== "object" || e === null) continue;
     const o = e as Record<string, unknown>;
     if (typeof o["cardId"] !== "string" || !Array.isArray(o["blocks"])) continue;
-    out.push({ cardId: o["cardId"], blocks: o["blocks"] as Block[] });
+    out.push({
+      cardId: o["cardId"],
+      blocks: o["blocks"] as Block[],
+      ...(Array.isArray(o["answers"]) ? { answers: normalizeRefs(o["answers"]) } : {}),
+    });
   }
+  return out.length > 0 ? out : undefined;
+}
+
+/** Agent-written feedback pointers; malformed entries are dropped. Pure. */
+function normalizeRefs(v: unknown): SinceFeedbackRef[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(isSinceFeedbackRef).map((r) => ({ kind: r.kind, id: r.id }));
   return out.length > 0 ? out : undefined;
 }
 
@@ -439,12 +471,14 @@ export async function applyUpdateResult(
         const card = page.cards.find((c) => c.id === a.cardId);
         if (!card) continue;
         const addenda = (card.addenda ?? []) as NonNullable<typeof card.addenda>;
+        const answers = resolveSinceAnswers(draft, a.answers);
         addenda.push({
           id: `add-v${toVersion}-${addenda.length + 1}`,
           version: toVersion,
           baseline: baselineV,
           at: now,
           blocks: a.blocks as typeof addenda[number]["blocks"],
+          ...(answers.length > 0 ? { answers } : {}),
         });
         card.addenda = addenda;
         card.stale = false;
@@ -462,8 +496,11 @@ export async function applyUpdateResult(
         let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
         if (known.has(id)) id = `${id}-v${toVersion}`;
         known.add(id);
-        return {
-          ...c,
+        // The agent's `answers` arrive as `{ kind, id }` pointers on
+        // `answerRefs`; resolve them and store links only.
+        const answers = resolveSinceAnswers(draft, (c as SinceCardDraft).answerRefs);
+        const cardOut: Card = {
+          ...(c as Card),
           id,
           pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
           level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
@@ -472,6 +509,11 @@ export async function applyUpdateResult(
           undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
           blocks: Array.isArray(c.blocks) ? c.blocks : [],
         };
+        const rec = cardOut as unknown as Record<string, unknown>;
+        delete rec["answerRefs"];
+        delete rec["answers"];
+        if (answers.length > 0) cardOut.answers = answers;
+        return cardOut;
       });
       draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
     }

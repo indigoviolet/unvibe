@@ -68,6 +68,7 @@ function fakeReply(snap: ReviewSnapshot): string {
   const added = snap.sinceHunks?.added ?? [];
   const target = changed[0] ?? added[0] ?? "h:missing:none";
   const card = snap.pages.flatMap((p) => p.cards)[0];
+  const commitSha = snap.commits?.find((c) => /rework/i.test(c.subject))?.sha ?? snap.commits?.[0]?.sha ?? "deadbee";
   const result: UpdatePassResult = {
     revisedCards: [],
     recheckedFindings: [],
@@ -90,6 +91,15 @@ function fakeReply(snap: ReviewSnapshot): string {
           text: { standard: "Alpha now returns 11 and gamma is new, answering the review comment." },
           citations: [{ target }],
         }],
+        // Agent-shaped `{ kind, id }` pointers: the JSON text goes
+        // through the real parser, which carries them as answerRefs.
+        answers: [
+          { kind: "comment", id: "7" },
+          { kind: "thread", id: "t-1" },
+          { kind: "conversation", id: "3" },
+          { kind: "commit", id: commitSha },
+          { kind: "comment", id: "999" },
+        ] as unknown as import("@unvibe/shared").SinceFeedbackLink[],
       }],
     },
     addenda: card
@@ -101,6 +111,10 @@ function fakeReply(snap: ReviewSnapshot): string {
           text: { standard: "Updated since v1: alpha returns 11 now." },
           citations: [{ target }],
         }],
+        answers: [
+          { kind: "comment", id: "7" },
+          { kind: "bogus" as never, id: "x" },
+        ],
       }]
       : [],
     plotlineAssignments: {},
@@ -201,11 +215,11 @@ describe("since-B step 1", () => {
       const line = changedHunk.newStart;
       await ctx.reviews.mutate(id, (draft) => {
         draft.existingComments = [
-          { id: 7, path: "a.py", line, body: "Should return 11 here.", bodyHtml: "Should return 11 here.", author: "reviewer", createdAt: mid },
+          { id: 7, path: "a.py", line, body: "Should return 11 here.", bodyHtml: "Should return 11 here.", author: "reviewer", createdAt: mid, htmlUrl: "https://example.test/pr/1#issuecomment-7" },
           { id: 8, path: "other.py", line: 1, body: "Unrelated note.", bodyHtml: "Unrelated note.", createdAt: mid },
           { id: 9, path: "a.py", line, body: "Ancient note.", bodyHtml: "Ancient note.", createdAt: before },
         ];
-        draft.prConversation = [{ id: 3, author: "reviewer", body: "Please rework alpha.", createdAt: mid }];
+        draft.prConversation = [{ id: 3, author: "reviewer", body: "Please rework alpha.", createdAt: mid, htmlUrl: "https://example.test/pr/1#issue-3" }];
         draft.annotations.push({
           id: "t-1",
           type: "thread",
@@ -261,6 +275,9 @@ describe("since-B step 1", () => {
       expect(seenPrompts).toHaveLength(1);
       expect(seenPrompts[0]).toContain("## Baseline");
       expect(seenPrompts[0]).toContain("append");
+      expect(seenPrompts[0]).toContain("[comment 7]");
+      expect(seenPrompts[0]).toContain("[thread t-1]");
+      expect(seenPrompts[0]).toContain("[conversation 3]");
 
       const after = ctx.reviews.getSnapshot(id)!;
       // The dated Since-B section, with its cards cited into the new hunks.
@@ -281,6 +298,21 @@ describe("since-B step 1", () => {
       expect(card.addenda![0].baseline).toBe(1);
       expect(card.addenda![0].version).toBe(2);
       expect(card.stale).toBe(false);
+      // The addendum's bogus pointer is dropped; comment 7 resolves.
+      expect(card.addenda![0].answers).toHaveLength(1);
+      expect(card.addenda![0].answers![0]).toMatchObject({
+        kind: "comment",
+        url: "https://example.test/pr/1#issuecomment-7",
+      });
+      // The Since-B card's pointers resolve; unknown id 999 is dropped.
+      expect(sc.answers).toHaveLength(4);
+      const byKind = Object.fromEntries(sc.answers!.map((a) => [a.kind, a]));
+      expect(byKind["comment"].label).toContain("@reviewer on a.py:");
+      expect(byKind["comment"].excerpt).toContain("Should return 11 here.");
+      expect(byKind["thread"]).toMatchObject({ label: "Thread t-1", url: "#t-1" });
+      expect(byKind["thread"].excerpt).toContain("Agreed, fix alpha.");
+      expect(byKind["conversation"].url).toBe("https://example.test/pr/1#issue-3");
+      expect(byKind["commit"].label).toContain("rework alpha");
       // Plotlines: the assigned hunk joins its plotline; perf is new since B.
       const plotIds = new Set((after.plotlines ?? []).map((p) => p.id));
       expect(plotIds.has("core")).toBe(true);
@@ -353,12 +385,15 @@ describe("since-B step 1", () => {
   it("JsonBlockReplyParser reads the since-B fields and drops malformed ones", () => {
     const parser = new JsonBlockReplyParser();
     const ok = parser.parseReply(
-      'prose\n```json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"version","version":1},"sinceHunks":{"added":["h:k:a"],"changed":[]},"sinceSection":{"cards":[{"id":"s-1"}]},"addenda":[{"cardId":"c-a","blocks":[]}],"plotlineAssignments":{"abc":"core"},"newPlotlines":[{"id":"perf","name":"Perf"}]}\n```\n',
+      'prose\n```json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"version","version":1},"sinceHunks":{"added":["h:k:a"],"changed":[]},"sinceSection":{"cards":[{"id":"s-1","answers":[{"kind":"comment","id":"7"},{"kind":"nope","id":"x"}]}]},"addenda":[{"cardId":"c-a","blocks":[],"answers":[{"kind":"thread","id":"t-1"}]}],"plotlineAssignments":{"abc":"core"},"newPlotlines":[{"id":"perf","name":"Perf"}]}\n```\n',
     );
     expect(ok.baseline).toEqual({ kind: "version", version: 1 });
     expect(ok.sinceHunks).toEqual({ added: ["h:k:a"], changed: [] });
     expect(ok.sinceSection?.cards).toHaveLength(1);
-    expect(ok.addenda).toEqual([{ cardId: "c-a", blocks: [] }]);
+    expect((ok.sinceSection?.cards[0] as unknown as { answerRefs?: unknown }).answerRefs).toEqual([
+      { kind: "comment", id: "7" },
+    ]);
+    expect(ok.addenda).toEqual([{ cardId: "c-a", blocks: [], answers: [{ kind: "thread", id: "t-1" }] }]);
     expect(ok.plotlineAssignments).toEqual({ abc: "core" });
     expect(ok.newPlotlines).toEqual([{ id: "perf", name: "Perf" }]);
     const dropped = parser.parseReply(

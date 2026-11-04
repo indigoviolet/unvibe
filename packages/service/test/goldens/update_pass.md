@@ -29,13 +29,20 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    **what feedback caused each change** — the review comment, thread or
    conversation remark it answers, where one exists above. Say what the
    change means for the earlier guide, and cite every claim into the new
-   hunks (`[[h:fileKey:hash]]` or `[[diff:…]]`). Keep each card to its
+   hunks (`[[h:fileKey:hash]]` or `[[diff:…]]`). Each card carries an
+   `answers` list with the bracketed ids of the feedback it answers
+   (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`,
+   `conversation` or `commit`; the id is the bracketed comment, thread
+   or conversation id, or the full commit sha). Keep each card to its
    own thread; don't restate the old guide.
 2. **Append addenda, don't rewrite cards.** Where a change affects an
    existing card, write an "Updated since B" addendum for the end of
    that card: dated, explaining what changed relative to what the card
-   says. Never edit the card's text. Rewrite a card's prose only when it
-   is now plainly wrong — prefer the addendum.
+   says, with its own `answers` list in the same shape. Start the body
+   with the explanation itself — never with "Updated since …" (the
+   dated header above it already says that). Never edit the card's
+   text. Rewrite a card's prose only when it is now plainly wrong —
+   prefer the addendum.
 3. **Recheck findings.** Each finding still applies, is resolved, or has
    changed. Say which, with the new evidence. Resolved findings stay
    visible, marked resolved.

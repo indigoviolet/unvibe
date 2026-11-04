@@ -344,6 +344,12 @@ export interface Card extends ContentBody {
    * pass, in write order. The card's own blocks stay unchanged.
    */
   addenda?: import("./versions.js").CardAddendum[];
+  /**
+   * Issue #351: resolved feedback links ("Answers: … ↗") stored by the
+   * update pass on Since-B cards. The agent writes `{ kind, id }`
+   * pointers; the service resolves them and drops unknown ids.
+   */
+  answers?: import("./versions.js").SinceFeedbackLink[];
 }
 
 /** A single undo entry: block list + depth level. No redo (PRD §4.4). */

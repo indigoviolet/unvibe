@@ -13,8 +13,10 @@
  *   `secondOpinion` role; stored guide content loses `secondOpinions`.
  * - 3: since-B (#351 step 1): cards gain dated `addenda`, the snapshot
  *   gains `sinceBaseline` / `sinceHunks` / `sinceSection`.
+ * - 4: since-B feedback links (#351 step 1 review): cards and addenda
+ *   gain resolved `answers` links.
  */
-export const DATA_FORMAT = 3;
+export const DATA_FORMAT = 4;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

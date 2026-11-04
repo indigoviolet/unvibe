@@ -175,6 +175,32 @@ export interface NewFinding {
 }
 
 /** Structured result of the update pass, applied to review state. */
+/**
+ * Issue #351: one feedback item the delta answers, as the agent writes
+ * it — a pointer. The service resolves it against the snapshot
+ * (existing comments, threads, PR conversation, commits) into a
+ * `SinceFeedbackLink` and drops unknown ids.
+ */
+export interface SinceFeedbackRef {
+  kind: "comment" | "thread" | "conversation" | "commit";
+  /** ExistingComment id, Thread id, PrConversationRemark id, or commit sha. */
+  id: string;
+}
+
+/**
+ * Issue #351: a resolved feedback link rendered under a Since-B card or
+ * addendum ("Answers: <excerpt> ↗"). Remote remarks link to GitHub via
+ * their stored URL; local threads link to the thread on the page;
+ * commits render as text (no stable URL).
+ */
+export interface SinceFeedbackLink {
+  kind: SinceFeedbackRef["kind"];
+  /** `@user on path:line`, `Thread t-1`, `PR conversation`, `abc1234 subject`. */
+  label: string;
+  excerpt: string;
+  url?: string;
+}
+
 export interface UpdatePassResult {
   revisedCards: RevisedCard[];
   recheckedFindings: RecheckedFinding[];
@@ -284,6 +310,8 @@ export interface SinceSection {
 export interface CardAddendumDraft {
   cardId: string;
   blocks: import("./entities.js").Block[];
+  /** Feedback pointers (resolved by the service, unknown ids dropped). */
+  answers?: SinceFeedbackRef[];
 }
 
 /**
@@ -300,6 +328,8 @@ export interface CardAddendum {
   /** Epoch ms the update pass wrote it. */
   at: number;
   blocks: import("./entities.js").Block[];
+  /** Resolved feedback links (unknown ids dropped at apply time). */
+  answers?: SinceFeedbackLink[];
 }
 
 /**
