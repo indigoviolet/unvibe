@@ -281,7 +281,7 @@ describe("since-B step 1", () => {
 
       const after = ctx.reviews.getSnapshot(id)!;
       // The dated Since-B section, with its cards cited into the new hunks.
-      expect(after.sinceSection?.baseline).toBe(1);
+      expect(after.sinceSection?.baseline).toEqual({ kind: "version", version: 1 });
       expect(after.sinceSection?.headVersion).toBe(2);
       expect(after.sinceSection?.cards).toHaveLength(1);
       const sc = after.sinceSection!.cards[0];
@@ -295,7 +295,7 @@ describe("since-B step 1", () => {
       if (card.blocks[0].type !== "paragraph") throw new Error("unexpected block");
       expect(card.blocks[0].text.standard).toBe("old prose");
       expect(card.addenda).toHaveLength(1);
-      expect(card.addenda![0].baseline).toBe(1);
+      expect(card.addenda![0].baseline).toEqual({ kind: "version", version: 1 });
       expect(card.addenda![0].version).toBe(2);
       expect(card.stale).toBe(false);
       // The addendum's bogus pointer is dropped; comment 7 resolves.
@@ -402,5 +402,15 @@ describe("since-B step 1", () => {
     expect(dropped.baseline).toBeUndefined();
     expect(dropped.sinceHunks).toBeUndefined();
     expect(dropped.addenda).toBeUndefined();
+  });
+
+  it("JsonBlockReplyParser keeps a commit-sha baseline (step 2)", () => {
+    const parser = new JsonBlockReplyParser();
+    const sha = "a".repeat(40);
+    const ok = parser.parseReply(
+      `prose\n\`\`\`json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"commit","sha":"${sha}"}}\n\`\`\`\n`,
+    );
+    expect(ok.baseline).toEqual({ kind: "commit", sha });
+    expect(isSinceBaseline(ok.baseline)).toBe(true);
   });
 });

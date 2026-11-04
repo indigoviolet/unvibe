@@ -19,4 +19,4 @@ export {
   splitRawBlocks,
   type RawBlock,
 } from "./description.js";
-export { fetchExistingComments, fetchPrConversation } from "./existing.js";
+export { fetchExistingComments, fetchLatestUserReview, fetchPrConversation } from "./existing.js";

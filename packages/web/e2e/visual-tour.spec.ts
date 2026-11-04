@@ -3906,7 +3906,7 @@ test.describe("since-B tour (#351)", () => {
         url: prUrl,
       };
       snap.sinceSection = {
-        baseline: 1,
+        baseline: { kind: "version", version: 1 },
         headVersion: 2,
         at: now,
         cards: [
@@ -3947,7 +3947,7 @@ test.describe("since-B tour (#351)", () => {
         {
           id: "add-v2-1",
           version: 2,
-          baseline: 1,
+          baseline: { kind: "version", version: 1 },
           at: now,
           blocks: [
             para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
@@ -4044,12 +4044,12 @@ test.describe("since-B tour (#351)", () => {
       }
 
       // 2. Collapsed: the cards fold away.
-      await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
       await page.mouse.move(20, 20);
       await shot(page, "since-collapsed", suffix, "Since v1 → v2");
-      await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
 
       // 3. The card addendum on the central card.
@@ -4091,6 +4091,601 @@ test.describe("since-B tour (#351)", () => {
       await stepChecks(page, "since-filter");
       await page.mouse.move(20, 20);
       await shot(page, "since-filter", suffix, "Since v1");
+    });
+  }
+});
+
+/**
+ * Since-commit tour (#351 step 2): the baseline is a commit, not a
+ * version. Same seeded-demo technique as the step-1 scene (tour-only
+ * synthetic state with real demo hunk ids, so every combo renders
+ * deterministically): the header, addendum, markers and filter chip all
+ * name the real short sha, and the picker lists versions and commits.
+ */
+test.describe("since-commit tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svc352: RunningService | null = null;
+  let data352 = "";
+  let review352 = "";
+  // Tour-seeded commit sha (40 hex): the demo seed carries no commits, so
+  // the baseline commit is tour-local synthetic state like the v1/v2 rows.
+  const commit352 = "a1b2c3d4".repeat(5);
+  const short352 = commit352.slice(0, 8);
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data352 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-352-"));
+    review352 = createSeededDemoReview(data352, "tour-352-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data352, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review352) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-352 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
+      snap.sinceBaseline = { kind: "commit", sha: commit352 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      snap.sinceSection = {
+        baseline: { kind: "commit", sha: commit352 },
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-beta-gamma",
+            pageId: "since",
+            title: "Beta reworked, gamma added",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-352-1",
+                "Beta now returns 22 and the gamma probe is new. It answers the review remark quoted below.",
+                [changedId, addedId],
+              ),
+            ],
+            answers: [
+              {
+                kind: "comment",
+                label: "@reviewer on src/urllib3/connection.py:651",
+                excerpt: "please rework beta against the new gamma probe",
+                url: prUrl,
+              },
+            ],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: { kind: "commit", sha: commit352 },
+          at: now,
+          blocks: [para("b-add-352-1", "Beta reads the new value now.", [changedId])],
+          answers: [],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const st of snap.hunkStates) {
+        if (st.contentHash === hashOf(changedId) || st.contentHash === hashOf(addedId)) st.plotline = "beta-gamma";
+        else if (st.plotline === undefined) st.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review352);
+    } finally {
+      db.close();
+    }
+    svc352 = await startService(data352, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc352?.stop().catch(() => {});
+    svc352 = null;
+    if (data352) rmSync(data352, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ]) {
+    const suffix = combo.name;
+    test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc352) throw new Error("tour-352 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc352.origin}/review/${review352}?token=${svc352.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // 1. The Since section names the short sha, not a version.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await expect(since).toContainText(new RegExp(`Since ${short352} → v2`));
+      await stepChecks(page, "since-commit-section");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-section", suffix, `Since ${short352}`);
+
+      // 2. The addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-addendum", suffix, `Updated since ${short352}`);
+
+      // 3. The plotline marker names the short sha too.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText(`new since ${short352}`)).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-plotlines", suffix, `new since ${short352}`);
+
+      // 4. The diff filter chip.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const chip = page.locator('[data-filterchip="since"]');
+      if ((await chip.getAttribute("aria-pressed")) === "true") {
+        await chip.click();
+        await expect(chip).toHaveAttribute("aria-pressed", "false");
+      }
+      await expect(chip).toContainText(`Since ${short352}`, { timeout: 30_000 });
+      await stepChecks(page, "since-commit-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
+
+      // 5. The picker lists versions and the commit (guide is the
+      // left pane, always present — just scroll back to the section).
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-commit-picker");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-picker", suffix, "Commits");
+      await page.keyboard.press("Escape");
+    });
+  }
+});
+/**
+ * Since-offer tour (#351 step 2): a real PR review with a stubbed prior
+ * GitHub review, served agent-less so the guide never runs and the offer
+ * stays put. The offer line, its checked state, the picker with versions,
+ * commits and the last GitHub review, and the unfetchable-commit toast
+ * are all the real service path (stubbed `gh` in, real git + sqlite).
+ */
+test.describe("since-offer tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svcO: RunningService | null = null;
+  let dataO = "", repoO = "", bareO = "", binO = "", logO = "";
+  let revValid = "", revGone = "", revToast = "";
+  let c1 = "", c1short = "";
+  const gone = "f".repeat(40);
+  const goneShort = gone.slice(0, 8);
+
+  async function shell(cwd: string, ...args: string[]): Promise<string> {
+    const { stdout } = await exec("git", args, { cwd });
+    return stdout.trim();
+  }
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    dataO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-data-"));
+    repoO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-repo-"));
+    bareO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-remote-"));
+    binO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-bin-"));
+    logO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-log-"));
+    const V1 = ["def alpha():", "    return 1", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    const V2 = ["def alpha():", "    return 11", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    await shell(bareO, "init", "--bare", "-b", "main");
+    await shell(repoO, "init", "-b", "main");
+    await shell(repoO, "config", "user.email", "t@example.com");
+    await shell(repoO, "config", "user.name", "T");
+    writeFileSync(path.join(repoO, "src-app.py"), V1);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "base");
+    await shell(repoO, "checkout", "-b", "feature");
+    writeFileSync(path.join(repoO, "src-app.py"), V2);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha");
+    c1 = await shell(repoO, "rev-parse", "HEAD");
+    c1short = c1.slice(0, 8);
+    await shell(repoO, "remote", "add", "origin", "https://github.com/acme/app.git");
+    await shell(repoO, "config", `url.${bareO}.insteadOf`, "https://github.com/acme/app.git");
+    await shell(repoO, "push", "origin", "main", "feature");
+    await shell(repoO, "fetch", "origin");
+    const head = c1;
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(binO, realGitPath());
+    const fakeShell = path.join(binO, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binO}:$PATH"\n`, { mode: 0o755 });
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}` },
+      label: "tour-offer",
+    });
+    const repos = (await apiJson(svcO!.origin, svcO!.token, "POST", "/api/repos", { path: repoO })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repoO);
+    if (!registered) throw new Error("tour offer repo not registered");
+    if (!svcO) throw new Error("tour-offer service did not start");
+    const svc = svcO;
+    const mk = async (pr: number): Promise<string> => {
+      const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: registered.id, pr })) as {
+        review: { id: string };
+      };
+      return created.review.id;
+    };
+    revValid = await mk(78);
+    revGone = await mk(79);
+    revToast = await mk(80);
+    // Agent-less: ingest finishes, the guide never starts. Wait for ready.
+    for (const id of [revValid, revGone, revToast]) {
+      await expect
+        .poll(
+          async () => {
+            const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${id}`)) as {
+              ingest?: { status?: string };
+            };
+            return snap.ingest?.status ?? null;
+          },
+          { timeout: 60_000 },
+        )
+        .toBe("ready");
+    }
+
+    // A second version on the gone-baseline review, so its picker can
+    // show all three groups (versions, commits, last GitHub review):
+    // one more commit, a refresh, then a tour-seeded Since section with
+    // real hunk ids (same technique as the step-1 scene).
+    writeFileSync(path.join(repoO, "src-app.py"), V2.replace("    return 11", "    return 111"));
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha again");
+    await shell(repoO, "push", "origin", "feature");
+    const c3 = await shell(repoO, "rev-parse", "HEAD");
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${c3}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    const refreshed = (await apiJson(svcO!.origin, svcO!.token, "POST", `/api/reviews/${revGone}/refresh`, {})) as {
+      newVersion?: boolean;
+      error?: string;
+    };
+    expect({ newVersion: refreshed.newVersion, error: refreshed.error }).toEqual({
+      newVersion: true,
+      error: undefined,
+    });
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${revGone}`)) as {
+            review?: { currentVersion?: number };
+          };
+          return snap.review?.currentVersion ?? 0;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(2);
+    await svcO!.stop();
+    {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(path.join(dataO, "unvibe.db"));
+      try {
+        const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        if (!row?.snapshot) throw new Error("tour offer review has no snapshot");
+        const snap = JSON.parse(row.snapshot) as {
+          files: { fileKey: string; hunks: { contentHash: string }[] }[];
+          sinceBaseline?: unknown;
+          sinceHunks?: unknown;
+          sinceSection?: unknown;
+          pages?: unknown;
+        };
+        const hid = `h:${snap.files[0].fileKey}:${snap.files[0].hunks[0].contentHash}`;
+        // A minimal root page + card (tour-only, citing a real hunk id):
+        // agent:none never runs the guide, and the section — hence the
+        // picker — only renders on a root page.
+        snap.pages = [
+          {
+            id: "root",
+            kind: "root",
+            title: "Guide",
+            cards: [
+              {
+                id: "problem",
+                pageId: "root",
+                title: "The problem",
+                level: "standard",
+                collapsed: false,
+                revision: 1,
+                undoStack: [],
+                blocks: [
+                  {
+                    type: "paragraph",
+                    id: "b-problem-1",
+                    text: { standard: "Alpha was reworked." },
+                    citations: [{ target: hid }],
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+        snap.sinceBaseline = { kind: "commit", sha: c1 };
+        snap.sinceHunks = { added: [], changed: [hid] };
+        snap.sinceSection = {
+          baseline: { kind: "commit", sha: c1 },
+          headVersion: 2,
+          at: Date.now(),
+          cards: [
+            {
+              id: "since-tour-1",
+              pageId: "since",
+              title: "Alpha reworked again",
+              level: "standard",
+              collapsed: false,
+              revision: 1,
+              undoStack: [],
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b-since-tour-1",
+                  text: { standard: "Alpha returns 111 now." },
+                  citations: [{ target: hid }],
+                },
+              ],
+              answers: [],
+            },
+          ],
+        };
+        const changed = db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), revGone);
+        const back = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        const check = back?.snapshot ? (JSON.parse(back.snapshot) as { sinceSection?: unknown }).sinceSection : undefined;
+        if (changed.changes !== 1 || check === undefined) {
+          throw new Error(`tour offer seed failed (changes=${changed.changes}, section=${check !== undefined})`);
+        }
+      } finally {
+        db.close();
+      }
+    }
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: {
+        SHELL: path.join(binO, "fakeshell"),
+        PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}`,
+      },
+      label: "tour-offer",
+    });
+  });
+  test.afterAll(async () => {
+    await svcO?.stop().catch(() => {});
+    svcO = null;
+    for (const d of [dataO, repoO, bareO, binO, logO]) {
+      if (d) rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ]) {
+    const suffix = combo.name;
+    test(`since offer unchecked and checked (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revValid}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${c1short}`);
+      // Reset for combo determinism: an earlier combo may have left it on.
+      const box = page.getByTestId("prior-review-checkbox");
+      if (await box.getAttribute("aria-checked") === "true") {
+        await box.click();
+        await expect(box).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
+      }
+      await stepChecks(page, "since-offer");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer", suffix, `You reviewed this at ${c1short}`);
+      // The label text toggles the box too (native `label` behaviour).
+      await offer.getByText(`You reviewed this at ${c1short}`).click();
+      await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+      // The range-diff toggle never breaks over lines: one line high
+      // and fully visible (no clipped overflow).
+      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
+      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
+      const rdBox = await rangeDiff.boundingBox();
+      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
+      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
+      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
+      await stepChecks(page, "since-offer-checked");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
+    });
+
+    test(`unfetchable baseline message under the offer (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revToast}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
+      // The banner picker is untouched by the error below it: same
+      // trigger width with and without the message (±2px).
+      const bannerTrigger = page.getByTestId("since-pick").getByRole("combobox");
+      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
+      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await page.getByTestId("prior-review-checkbox").click();
+      // The failure leaves a persistent inline message under the
+      // offer until the baseline changes — and no toast for this case.
+      const inline = page.getByTestId("prior-review-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      // The error sits on its own line below the offer label at every
+      // width — never inline after the offer text.
+      const labelBox = await offer.locator("label").boundingBox();
+      const errBox = await inline.boundingBox();
+      expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
+        (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
+      );
+      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
+    });
+
+    test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      await expect(since).toContainText(new RegExp(`Since ${c1short} → v2`));
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await stepChecks(page, "since-picker-groups");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
+      await expect(page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-picker-groups", suffix, "GitHub reviews");
+      await page.keyboard.press("Escape");
+    });
+
+    test(`unfetchable baseline picked in the picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await expect(pick).toBeVisible({ timeout: 30_000 });
+      // The header picker keeps its size when the error lands below
+      // it: same trigger width with and without the message (±2px).
+      const trigger = pick.getByRole("combobox");
+      const wBefore = (await trigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await pick.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
+      await expect(goneOption).toBeVisible({ timeout: 15_000 });
+      await goneOption.click();
+      // The failed pick leaves the stored baseline alone but records
+      // `sinceError`, shown persistently below the header row.
+      const inline = since.getByTestId("since-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      const wAfter = (await trigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await stepChecks(page, "since-unfetchable-picker");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
     });
   }
 });

@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
-import { displayCardTitle } from "@unvibe/shared";
+import { displayCardTitle, sinceBaselineLabel } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -640,9 +640,9 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       {blocks}
       {card.answers && card.answers.length > 0 ? <SinceAnswers answers={card.answers} /> : null}
       {(card.addenda ?? []).map((a) => (
-        <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since version ${a.baseline}`}>
+        <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since ${sinceBaselineLabel(a.baseline)}`}>
           <div className="addendum-h">
-            Updated since v{a.baseline} · {sinceDate(a.at)}
+            Updated since {sinceBaselineLabel(a.baseline)} · {sinceDate(a.at)}
           </div>
           {a.blocks.map((block, bi) => {
             const shown =

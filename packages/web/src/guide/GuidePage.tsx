@@ -22,6 +22,7 @@ import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest
 import { emptyGuideState } from "./guideUtils.js";
 import { DocumentView } from "./DocumentView.js";
 import { PageView } from "./PageView.js";
+import { PriorReviewOfferSlot } from "./PriorReviewOffer.js";
 import { Button, PaneLoading } from "../ui/index.js";
 import "./guide-m2.css";
 
@@ -247,6 +248,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return (
       <div className="doc pane-loading-pad" data-testid="review-loading">
         <PaneLoading label="Building the guide" variant="guide" />
+        <PriorReviewOfferSlot reviewId={reviewId} />
       </div>
     );
   }
@@ -295,6 +297,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
       return (
         <div className="doc pane-loading-pad" data-testid="guide-empty" data-state="building">
           <PaneLoading label="Building the guide" variant="guide" />
+          <PriorReviewOfferSlot reviewId={reviewId} />
         </div>
       );
     }
@@ -315,6 +318,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">No guide yet</h1>
               <p className="hint">The guide hasn't been started for this review. The diff is ready to read.</p>
+              <PriorReviewOfferSlot reviewId={reviewId} />
             </>
           )}
         </div>

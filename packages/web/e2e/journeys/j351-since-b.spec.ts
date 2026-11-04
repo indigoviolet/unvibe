@@ -94,11 +94,11 @@ test.describe("J351 since-B update", () => {
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 30_000 });
     await expect(since).toContainText(/Since v1 → v2/);
-    await expect(since.getByRole("button", { name: /Collapse Since-B section/ })).toBeVisible();
+    await expect(since.getByRole("button", { name: /Collapse changes since v1/ })).toBeVisible();
     // Collapse it, then expand it again: the cards come and go.
-    await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+    await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
-    await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+    await since.getByRole("button", { name: /Expand changes since v1/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
 
     // The card addendum: old text unchanged, addendum appended.
@@ -123,5 +123,39 @@ test.describe("J351 since-B update", () => {
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2");
     await page.locator('[data-filterchip="since"]').click();
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
+  });
+
+  test("the picker offers versions and commits; picking a commit re-baselines", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      commits: { sha: string; subject: string }[];
+    };
+    expect(before.commits.length).toBeGreaterThanOrEqual(2);
+    // Commits are oldest-first: the oldest is v1's commit, strictly
+    // before the head, so the delta is non-empty.
+    const older = before.commits[0];
+    const short = older.sha.slice(0, 8);
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
+    const pick = page.locator('[data-testid="since-section"] [data-testid="since-pick"]');
+    await expect(pick).toContainText("v1 ·", { timeout: 30_000 });
+    await pick.click();
+    await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+    const commitsGroup = page.getByRole("group", { name: "Commits" });
+    await expect(commitsGroup).toBeVisible();
+    // The v1 head sha is this same commit, so scope to the Commits group.
+    await expect(commitsGroup.getByRole("option", { name: new RegExp(short) })).toBeVisible();
+    await commitsGroup.getByRole("option", { name: new RegExp(short) }).click();
+    // The trigger names the picked commit (short sha + subject).
+    await expect(pick).toContainText(short, { timeout: 30_000 });
+    await expect(pick).toContainText(older.subject.slice(0, 12), { timeout: 30_000 });
+    const after = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      sinceBaseline: unknown;
+      sinceHunks?: { added: string[]; changed: string[] };
+    };
+    expect(after.sinceBaseline).toEqual({ kind: "commit", sha: older.sha });
+    const hunks = [...(after.sinceHunks?.added ?? []), ...(after.sinceHunks?.changed ?? [])];
+    expect(hunks.length).toBeGreaterThan(0);
   });
 });

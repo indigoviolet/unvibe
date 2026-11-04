@@ -591,6 +591,18 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 #right .ui-card.desc { margin: 14px 16px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: var(--radius-10); background: var(--surface); }
 .dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
+/* Issue #351: the banner stacks as coherent groups — the summary text
+   with range-diff always on its own full-width line, then the picker
+   with Update left-aligned below — so a narrow pane never strands one
+   control on its own line. */
+.dbar-group { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.dbar-group-summary { flex: 1 1 100%; }
+/* Issue #351 step 2: the persistent unfetchable-baseline message. Its
+   own block below the controls row at every width (block outside a
+   flex container; full-width flex item inside one), in the warning
+   tone — it never runs inline after the offer text or beside the
+   picker. */
+.since-error { display: block; flex: 1 1 100%; margin-top: 4px; color: var(--warn); }
 .desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; padding: 2px 6px; }
 .desc p, .desc li { margin: 6px 0; }
 /* #263: one consistent content inset. Paragraphs, lists and headings share

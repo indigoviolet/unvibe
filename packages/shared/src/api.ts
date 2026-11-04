@@ -607,9 +607,12 @@ interface ReviewSnapshotBase {
    */
   prConversation?: PrConversationRemark[];
   /**
-   * Issue #351 step 1: baseline B of "focus since B" — the version the
-   * next update pass explains from. Defaults to the version last opened;
-   * the picker may set any earlier version. Step 2 adds commit baselines.
+   * Issue #351: baseline B of "focus since B" — an earlier version (the
+   * version last opened by default; the picker may set any earlier one)
+   * or any commit sha (a PR commit, or the `commit_id` of the reviewer's
+   * own latest GitHub review — the no-review-yet path, step 2). The next
+   * update pass explains from it; a fresh guide run does too when it is
+   * set before the reader runs.
    */
   sinceBaseline?: import("./versions.js").SinceBaseline;
   /**
@@ -620,9 +623,17 @@ interface ReviewSnapshotBase {
   sinceHunks?: import("./versions.js").SinceHunks;
   /**
    * Issue #351: the dated Since-B section at the top of the guide,
-   * written by the last update pass (replaced, never revised in place).
+   * written by the last update pass — or by the guide run itself on the
+   * no-review-yet path (replaced, never revised in place).
    */
   sinceSection?: import("./versions.js").SinceSection;
+  /**
+   * Issue #351 step 2: the last commit-baseline recompute that failed
+   * (refresh with an unfetchable B keeps the previous `sinceHunks` and
+   * records why here). Cleared on the next successful recompute.
+   * Version baselines never set this.
+   */
+  sinceError?: string;
   /**
    * Issue #194: timed non-agent steps of the most recent refresh that
    * created a version (fetch, range diff, building, remapping). Shown on
@@ -832,13 +843,21 @@ export interface UpdateReviewResponse {
 
 /**
  * Issue #351: `POST /api/reviews/:id/since-baseline` — pick the baseline
- * B (any earlier version) the next update pass explains from. Step 1
- * accepts versions only; step 2 adds commit baselines.
+ * B the next update pass (or the still-pending guide run) explains from:
+ * any earlier version, or any commit sha (a PR commit, or the
+ * `commit_id` of the reviewer's own latest GitHub review). "Since" is
+ * hunk-content comparison against the head diff, never git ancestry, so
+ * a rebased or force-pushed B works the same.
  */
-export interface SetSinceBaselineRequest {
-  /** Earlier version number: 1 ≤ version < currentVersion. */
-  version: number;
-}
+export type SetSinceBaselineRequest =
+  | {
+      /** Earlier version number: 1 ≤ version < currentVersion. */
+      version: number;
+    }
+  | {
+      /** Commit sha: must be fetchable (locally or from the remote). */
+      sha: string;
+    };
 
 /** The stored baseline plus the recomputed since-hunk count. */
 export interface SetSinceBaselineResponse {
@@ -846,6 +865,27 @@ export interface SetSinceBaselineResponse {
   baseline: import("./versions.js").SinceBaseline;
   changedHunks: number;
   newHunks: number;
+}
+
+/**
+ * Issue #351 step 2: `GET /api/reviews/:id/prior-github-review` — the
+ * reviewer's own latest GitHub review on this PR (read-only `gh api`,
+ * filtered to the authenticated user's login; other users' reviews are
+ * ignored), or null when there is none, the review is not a PR review,
+ * or GitHub cannot be reached. Best effort: every failure answers null,
+ * never an error.
+ */
+export interface PriorGithubReview {
+  /** The `commit_id` the user reviewed. */
+  sha: string;
+  /** When the user submitted that review (ISO), if GitHub gave one. */
+  submittedAt?: string;
+  /** The authenticated user's login. */
+  author: string;
+}
+
+export interface GetPriorGithubReviewResponse {
+  review: PriorGithubReview | null;
 }
 
 // --- actions -------------------------------------------------------------

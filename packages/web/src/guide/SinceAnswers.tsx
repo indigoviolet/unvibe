@@ -14,7 +14,7 @@ import type { SinceFeedbackLink } from "@unvibe/shared";
  * the dated header above the body already says it. Pure.
  */
 export function stripAddendumPrefix(standard: string): string {
-  return standard.replace(/^updated since v\d+\s*(·[^:]*)?[:\-–—]\s*/i, "");
+  return standard.replace(/^updated since (?:v\d+|[0-9a-f]{7,8})\s*(·[^:]*)?[:\-–—]\s*/i, "");
 }
 
 function AnswerLink({ answer }: { answer: SinceFeedbackLink }): React.JSX.Element {

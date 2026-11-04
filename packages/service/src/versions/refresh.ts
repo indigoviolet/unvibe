@@ -47,7 +47,7 @@ import type { ReviewStore } from "../state/store.js";
 import { parseId } from "@unvibe/shared";
 import { remapAnchor } from "./anchors.js";
 import { compareHunks, compareVersions } from "./compare.js";
-import { computeSinceHunks } from "./since.js";
+import { computeSinceHunks, diffFilesAtCommit } from "./since.js";
 import { cardCitations, remapCardCitations } from "./citations.js";
 import { loadVersionFiles, saveVersionFiles } from "./files.js";
 import { getRangeDiff } from "./rangeDiff.js";
@@ -510,6 +510,20 @@ export async function refreshReview(
 
   buildStep.finishedAt = Date.now();
 
+  // Issue #351 step 2: a stored commit baseline's `base...B` side comes
+  // from git BEFORE the mutate (the draft callback below is sync). When
+  // B is gone the error is kept for the mutate to record.
+  const preBaseline = deps.reviews.getSnapshot(reviewId)?.sinceBaseline ?? snapshot.sinceBaseline;
+  let commitBFiles: ReviewFile[] | null = null;
+  let commitBError: string | null = null;
+  if (preBaseline?.kind === "commit") {
+    try {
+      commitBFiles = await diffFilesAtCommit(deps.runner, repoPath, version.mergeBaseSha, preBaseline.sha);
+    } catch (err) {
+      commitBError = (err as Error).message;
+    }
+  }
+
   // One mutate so the UI gets one patch (PRD §8.4).
   await deps.reviews.mutate(reviewId, (draft) => {
     // #224: same PR-state refresh as the steady-head path above.
@@ -529,12 +543,31 @@ export async function refreshReview(
     // survives the refresh (the user chose it); without one, B is the
     // version just left. `sinceHunks` is recomputed from the stored
     // version diffs by hunk-content comparison — never git ancestry, so
-    // a rebased B works the same as a fast-forward one.
-    if (!draft.sinceBaseline || draft.sinceBaseline.version >= version.n) {
-      draft.sinceBaseline = { kind: "version", version: oldVersion.n };
-    }
-    {
-      const bFiles = loadVersionFiles(deps.db, reviewId, draft.sinceBaseline.version) ?? oldFiles;
+    // a rebased B works the same as a fast-forward one. Step 2: a stored
+    // commit pick survives too, recomputed through git; when B is gone
+    // the previous hunk set stays and `sinceError` says so instead of
+    // failing the refresh.
+    const storedBaseline = draft.sinceBaseline;
+    if (storedBaseline !== undefined && storedBaseline.kind === "commit") {
+      // A pick that changed mid-refresh keeps the picker's own values;
+      // the next refresh recomputes them.
+      if (preBaseline?.kind === "commit" && preBaseline.sha === storedBaseline.sha) {
+        if (commitBFiles) {
+          draft.sinceHunks = computeSinceHunks(commitBFiles, newFiles);
+          delete draft.sinceError;
+        } else if (commitBError) {
+          draft.sinceError = commitBError;
+        }
+      }
+    } else {
+      if (storedBaseline === undefined || storedBaseline.version >= version.n) {
+        draft.sinceBaseline = { kind: "version", version: oldVersion.n };
+      }
+      const baseline = draft.sinceBaseline;
+      const bFiles =
+        baseline !== undefined && baseline.kind === "version"
+          ? (loadVersionFiles(deps.db, reviewId, baseline.version) ?? oldFiles)
+          : oldFiles;
       draft.sinceHunks = computeSinceHunks(bFiles, newFiles);
     }
     // #298: the real new version supersedes the start page's tag.

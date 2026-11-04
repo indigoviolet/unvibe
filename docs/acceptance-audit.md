@@ -4024,3 +4024,72 @@ one-variant union today).
   in `/tmp/351-frames/` (all 24 inspected zoomed: no
   overlaps/clipping, styling matches the prototype variables).
   Full gates not yet run.
+
+## Addendum: #351 step 2 — commit baselines, no-review-yet offer (branch `feat/351-since-b-step2`)
+
+- **Baseline B is a union:** `SinceBaseline` is now
+  `{ kind: "version"; version } | { kind: "commit"; sha }`
+  (`packages/shared/src/versions.ts`: `isCommitSha`,
+  `shortBaselineSha`, `sinceBaselineLabel`). Snapshot `sinceBaseline`
+  and card `addenda[].baseline` are the union; every user-facing
+  string names the real baseline (`Since v2`, `Since a1b2c3d`, never
+  `B`).
+- **Commit B:** computed by hunk-content comparison between the diff
+  at B (`base...B` via `diffFilesAtCommit`/`ensureCommitFetchable`,
+  parsed by `buildFilesFromDiffText`) and the head diff — never git
+  ancestry, so rebased/force-pushed B works. An unfetchable B fails
+  loudly: the picker route returns 502 naming the short sha, refresh
+  keeps the previous hunks and records `sinceError`, and the UI shows
+  an unfetchable notice with a clear-baseline action.
+- **No-review-yet offer:** `GET
+  /api/reviews/:id/prior-github-review` returns the authenticated
+  user's latest review (`commit_id` + date) via read-only `gh api`,
+  ignoring other users' reviews and commit-less entries; every
+  failure degrades to null. A one-line offer with a checkbox
+  (`PriorReviewOffer`, on guide loading/building/idle states, hidden
+  once cards exist) sets/clears the commit baseline without starting
+  a run. Accepting changes the existing guide run's prompt context
+  (`reviewed_context` in `prompts/reader.md`) and output — the
+  reader writes the normal guide plus the Since section with
+  feedback links in the same single run (no extra agent call or
+  job); plotline `+N since` markers and the Since filter work as in
+  step 1.
+- **Picker:** `SinceBaselinePicker` groups Versions, Commits (PR
+  commits from the existing ingest), and — when not already a
+  commit — "Your last GitHub review (`abc1234`, date)".
+- **Data format 3 → 4:** the baseline union is a stored-shape
+  change; no compat. Stamped as `user_version` on fresh data;
+  `j311-data-reset` expectations updated to 4.
+- Evidence: `packages/service/test/versions-since-commit.test.ts`
+  (commit baseline, rebased-B case, no-review path with stubbed
+  reviews incl. ignored other-user entries, exactly one guide run
+  writing guide + Since section, unfetchable-B error with persisted
+  `sinceError` cleared on the next baseline change),
+  `e2e/journeys/j352-since-commit.spec.ts` (stubbed prior review →
+  accept offer → Since section + markers), `j351-since-b.spec.ts`
+  gains a commit-picker test, `versions-since-b` /
+  `snapshot` / `data-format` / `prompts` specs pass, tour scenes
+  `since-commit-*`, `since-offer-*` and `since-unfetchable-picker-*`
+  in `/tmp/351s2-frames/` (40 frames: offer, offer-checked,
+  picker-groups, commit-picker, commit-section, commit-plotlines,
+  commit-addendum, commit-filter, unfetchable under the offer,
+  unfetchable next to the picker × 1440/960 × light/dark; step-1
+  `since-B` scenes still pass). Targeted suites + typecheck + lint
+  verified in session. `PageView.plotlines.test.tsx` needs
+  `VITE_MOCK=1` (13/13 with it; the 7 failures without it reproduce
+  on clean main-rc, unrelated). Full gates not yet run.
+- Review fixes (supervisor frame review): the offer is a normal
+  labelled checkbox (box first, vertically centred, text click
+  toggles via `<label>`); a failed pick stores `sinceError`
+  (`unfetchableCommitMessage`: "Couldn't find commit … here or on
+  the remote (it may have been force-pushed away). Pick another
+  baseline."), rendered verbatim as a full-width warning-tone block
+  *below* the controls row (banner and section header) and under
+  the offer line, until the baseline changes — no toast for this
+  case; seed text fixed ("Rework beta and add gamma", "The
+  follow-up rework" — no `B`, no tour-seed jargon); the stale banner
+  always stacks (summary + nowrap range-diff on its own full-width
+  line, picker + Update left-aligned below) via `.dbar-group` /
+  `.dbar-group-summary`. Tour asserts range-diff is one line high
+  with no clipped overflow, and both pickers keep their trigger
+  width ±2px with and without the error.
