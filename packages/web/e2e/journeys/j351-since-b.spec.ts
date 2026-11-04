@@ -124,4 +124,38 @@ test.describe("J351 since-B update", () => {
     await page.locator('[data-filterchip="since"]').click();
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
   });
+
+  test("the picker offers versions and commits; picking a commit re-baselines", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      commits: { sha: string; subject: string }[];
+    };
+    expect(before.commits.length).toBeGreaterThanOrEqual(2);
+    // Commits are oldest-first: the oldest is v1's commit, strictly
+    // before the head, so the delta is non-empty.
+    const older = before.commits[0];
+    const short = older.sha.slice(0, 8);
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
+    const pick = page.locator('[data-testid="since-section"] [data-testid="since-pick"]');
+    await expect(pick).toContainText("v1 ·", { timeout: 30_000 });
+    await pick.click();
+    await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+    const commitsGroup = page.getByRole("group", { name: "Commits" });
+    await expect(commitsGroup).toBeVisible();
+    // The v1 head sha is this same commit, so scope to the Commits group.
+    await expect(commitsGroup.getByRole("option", { name: new RegExp(short) })).toBeVisible();
+    await commitsGroup.getByRole("option", { name: new RegExp(short) }).click();
+    // The trigger names the picked commit (short sha + subject).
+    await expect(pick).toContainText(short, { timeout: 30_000 });
+    await expect(pick).toContainText(older.subject.slice(0, 12), { timeout: 30_000 });
+    const after = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      sinceBaseline: unknown;
+      sinceHunks?: { added: string[]; changed: string[] };
+    };
+    expect(after.sinceBaseline).toEqual({ kind: "commit", sha: older.sha });
+    const hunks = [...(after.sinceHunks?.added ?? []), ...(after.sinceHunks?.changed ?? [])];
+    expect(hunks.length).toBeGreaterThan(0);
+  });
 });

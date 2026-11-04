@@ -318,6 +318,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
             <>
               <h1 className="title">No guide yet</h1>
               <p className="hint">The guide hasn't been started for this review. The diff is ready to read.</p>
+              <PriorReviewOfferSlot reviewId={reviewId} />
             </>
           )}
         </div>
