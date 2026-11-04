@@ -16,6 +16,7 @@ import type {
   ExistingReviewComment,
   FileState,
   HunkState,
+  PrConversationRemark,
   PrReviewDecision,
   PrState,
   Reply,
@@ -600,6 +601,29 @@ interface ReviewSnapshotBase {
    */
   existingComments?: ExistingReviewComment[];
   /**
+   * Issue #351: read-only cache of PR conversation (issue-comment)
+   * remarks, refreshed with the existing-comments ingest on PR reviews
+   * (best effort). The update pass matches them to the delta by time.
+   */
+  prConversation?: PrConversationRemark[];
+  /**
+   * Issue #351 step 1: baseline B of "focus since B" — the version the
+   * next update pass explains from. Defaults to the version last opened;
+   * the picker may set any earlier version. Step 2 adds commit baselines.
+   */
+  sinceBaseline?: import("./versions.js").SinceBaseline;
+  /**
+   * Issue #351: new-side `h:` IDs changed or added since B, by
+   * hunk-content comparison (rebase-proof). Drives the Since-B diff
+   * filter and the plotline `+N since B` markers.
+   */
+  sinceHunks?: import("./versions.js").SinceHunks;
+  /**
+   * Issue #351: the dated Since-B section at the top of the guide,
+   * written by the last update pass (replaced, never revised in place).
+   */
+  sinceSection?: import("./versions.js").SinceSection;
+  /**
    * Issue #194: timed non-agent steps of the most recent refresh that
    * created a version (fetch, range diff, building, remapping). Shown on
    * the Debug page; absent until a refresh moves the head.
@@ -804,6 +828,24 @@ export interface UpdateReviewResponse {
   jobId: string;
   /** New version the pass updates to (current version at enqueue time). */
   toVersion: number;
+}
+
+/**
+ * Issue #351: `POST /api/reviews/:id/since-baseline` — pick the baseline
+ * B (any earlier version) the next update pass explains from. Step 1
+ * accepts versions only; step 2 adds commit baselines.
+ */
+export interface SetSinceBaselineRequest {
+  /** Earlier version number: 1 ≤ version < currentVersion. */
+  version: number;
+}
+
+/** The stored baseline plus the recomputed since-hunk count. */
+export interface SetSinceBaselineResponse {
+  ok: true;
+  baseline: import("./versions.js").SinceBaseline;
+  changedHunks: number;
+  newHunks: number;
 }
 
 // --- actions -------------------------------------------------------------
@@ -1108,6 +1150,11 @@ export interface SummarizeHunkResponse {
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
+  /**
+   * Issue #351: true shows only hunks changed or added since the
+   * baseline; false and null both clear it back to all hunks.
+   */
+  sinceBaseline?: boolean | null;
 }
 
 /**

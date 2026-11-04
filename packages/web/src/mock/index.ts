@@ -48,6 +48,8 @@ import type {
   ReviewSnapshot,
   ReviewsListResponse,
   ReviewSummary,
+  SetSinceBaselineRequest,
+  SetSinceBaselineResponse,
   Settings,
   SwitchOutcome,
   ReleaseNotes,
@@ -2943,6 +2945,16 @@ export const mockApi = {
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },
 
+  // Issue #351: the mock keeps no version history, so any earlier
+  // version number is accepted and reported back unchanged.
+  setSinceBaseline: async (_id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> => {
+    await wait(50);
+    if (!Number.isSafeInteger(body.version) || body.version < 1) {
+      throw new Error("version must be an earlier version");
+    }
+    return { ok: true, baseline: { kind: "version", version: body.version }, changedHunks: 0, newHunks: 0 };
+  },
+
   resume: async (): Promise<ResumeReviewResponse> => {
     await wait(50);
     return { resumed: false, jobIds: [], pendingStages: [] };
@@ -3729,16 +3741,24 @@ export const mockApi = {
   },
 
   // Issue #169: mirrors the service PATCH semantics (null clears a field;
-  // unknown plotlines and levels are refused).
+  // unknown plotlines and levels are refused). Issue #351: `sinceBaseline`
+  // joins the filter (true shows only the delta; false and null clear).
   updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
-    const { plotline } = body;
+    const { plotline, sinceBaseline } = body;
     if (plotline !== undefined && plotline !== null) {
       const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
       if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
     }
+    if (sinceBaseline !== undefined && sinceBaseline !== null && typeof sinceBaseline !== "boolean") {
+      throw new Error("sinceBaseline must be a boolean or null");
+    }
     const next: DiffFilter = mockDiffFilter?.plotline ? { plotline: mockDiffFilter.plotline } : {};
+    if (mockDiffFilter?.sinceBaseline === true) next.sinceBaseline = true;
     if (plotline === null) delete next.plotline;
     else if (plotline !== undefined) next.plotline = plotline;
+    if (sinceBaseline === null) delete next.sinceBaseline;
+    else if (sinceBaseline === true) next.sinceBaseline = true;
+    else if (sinceBaseline === false) delete next.sinceBaseline;
     mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
     emitDiffFilter();
     return { ok: true };

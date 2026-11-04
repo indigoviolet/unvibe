@@ -3823,3 +3823,274 @@ test.describe("visual tour version + access confirms (#346)", () => {
     });
   }
 });
+
+/**
+ * Since-B tour (#351 step 1): the dated Since-B section, a card addendum,
+ * the plotline `+N since B` / `new since B` markers, and the Since-B diff
+ * filter. The review is the seeded demo snapshot with the update pass's
+ * since state written in (the same shape `applyUpdateResult` stores, with
+ * real demo hunk ids), so every combo renders deterministically.
+ */
+test.describe("since-B tour (#351)", () => {
+  test.describe.configure({ mode: "serial" });
+  // Seeded-demo + synthetic since state: no agents, no refresh, no fixtures.
+  let svc351: RunningService | null = null;
+  let data351 = "";
+  let review351 = "";
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data351 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-351-"));
+    review351 = createSeededDemoReview(data351, "tour-351-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data351, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review351) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-351 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      // A synthetic second version (tour-only, like #325's scores): the
+      // picker needs two versions, so v1 is the recorded merge-base and
+      // v2 the recorded head.
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      // Tour-local resolved feedback links (what `applyUpdateResult`
+      // stores after resolving the agent's pointers): remark excerpts
+      // from the PR under review, linking back to it.
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      const bareLfAnswer = {
+        kind: "comment",
+        label: "@reviewer on src/urllib3/connection.py:651",
+        excerpt: "http.client accepts lines ending in a bare \\n, so a folded header leaves '\\n ' in the value",
+        url: prUrl,
+      };
+      const socketAnswer = {
+        kind: "comment",
+        label: "@reviewer on test/test_connection.py:211",
+        excerpt: "Please add a socket test with bare-LF folds",
+        url: prUrl,
+      };
+      snap.sinceSection = {
+        baseline: 1,
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-obs-fold",
+            pageId: "since",
+            title: "Obs-fold unfolded",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-351-1",
+                "The follow-up unfolds the remaining obs-fold in request headers. It answers the review remark quoted below.",
+                [changedId],
+              ),
+            ],
+            answers: [bareLfAnswer],
+          },
+          {
+            id: "since-socket-tests",
+            pageId: "since",
+            title: "Socket-level tests",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [para("b-since-351-2", "New socket-level cases pin the unfolded headers.", [addedId])],
+            answers: [socketAnswer],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: 1,
+          at: now,
+          blocks: [
+            para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
+          ],
+          answers: [bareLfAnswer],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const s of snap.hunkStates) {
+        if (s.contentHash === hashOf(changedId)) s.plotline = "unfold";
+        else if (s.contentHash === hashOf(addedId)) s.plotline = "socket-followups";
+        else if (s.plotline === undefined) s.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review351);
+    } finally {
+      db.close();
+    }
+    svc351 = await startService(data351, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc351?.stop().catch(() => {});
+    svc351 = null;
+    if (data351) rmSync(data351, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    const suffix = combo.name;
+    test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc351) throw new Error("tour-351 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // The Since-B filter is stored with the review, so an earlier combo
+      // may have left it on: reset it first to keep every combo's opening
+      // scenes deterministic (the filter scene re-enables it below).
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      {
+        const chip = page.locator('[data-filterchip="since"]');
+        if ((await chip.getAttribute("aria-pressed")) === "true") {
+          await chip.click();
+          await expect(chip).toHaveAttribute("aria-pressed", "false");
+        }
+      }
+
+      // 1. The dated Since-B section, expanded.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await since.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-expanded");
+      // #351 review: the gap between the Since cards must match the
+      // normal guide card rhythm. Differences of rect edges are
+      // scroll-independent; park the mouse first so no tooltip skews
+      // the shot (same before every capture below).
+      await page.mouse.move(20, 20);
+      await shot(page, "since-expanded", suffix, "Obs-fold unfolded");
+      {
+        const gaps = await page.evaluate(() => {
+          const bottom = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().bottom;
+          };
+          const top = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().top;
+          };
+          const sinceBottom = bottom("#page #C-since-obs-fold");
+          const sinceTop = top("#page #C-since-socket-tests");
+          const normalBottom = bottom("#page #C-problem");
+          const normalTop = top("#page #C-central");
+          return {
+            sinceGap: sinceBottom !== null && sinceTop !== null ? sinceTop - sinceBottom : null,
+            normalGap: normalBottom !== null && normalTop !== null ? normalTop - normalBottom : null,
+          };
+        });
+        console.log(`since-gaps ${suffix}: since=${gaps.sinceGap}px normal=${gaps.normalGap}px`);
+        expect(gaps.sinceGap).not.toBeNull();
+        expect(gaps.normalGap).not.toBeNull();
+        expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
+      }
+
+      // 2. Collapsed: the cards fold away.
+      await since.getByRole("button", { name: /Collapse Since-B section/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
+      await stepChecks(page, "since-collapsed");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
+      await since.getByRole("button", { name: /Expand Since-B section/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
+
+      // 3. The card addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-addendum", suffix, "Updated since v1");
+
+      // 4. The visible feedback link: the remark the delta answers.
+      const firstSince = page.locator("#page #C-since-obs-fold");
+      await firstSince.scrollIntoViewIfNeeded();
+      await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-feedback");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-feedback", suffix, "Answers:");
+
+      // 5. The plotlines card with the new-since marker.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-plotlines", suffix, "new since v1");
+
+      // 5. The diff with the Since-B filter on. The filter is stored
+      // with the review, so an earlier combo may have left it on: reset
+      // it first to keep every combo deterministic.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const sinceChip = page.locator('[data-filterchip="since"]');
+      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
+        await sinceChip.click();
+        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
+      }
+      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
+      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
+      await stepChecks(page, "since-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-filter", suffix, "Since v1");
+    });
+  }
+});

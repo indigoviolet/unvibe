@@ -9,6 +9,7 @@ import {
   groupHunks,
   hiddenRunLabel,
   hunkOverlaps,
+  hunkPlotVisible,
   pairSplitRows,
   parseDiffRef,
   shouldHideHunk,
@@ -127,6 +128,30 @@ describe("filterFiles", () => {
   });
   it("hides fully reviewed files when asked", () => {
     expect(filterFiles(files, { query: "", cats: new Set(["source", "tests"]), hideReviewed: true, reviewedCount: reviewed })).toHaveLength(1);
+  });
+  it("Since-B filter keeps only files with a hunk in the delta (#351)", () => {
+    const base = { query: "", cats: new Set(["source", "tests"]), hideReviewed: false, reviewedCount: reviewed };
+    const all = new Set(["h:src-a-py:a1", "h:test-b-py:b1"]);
+    expect(filterFiles(files, { ...base, plot: { sinceBaseline: true }, sinceIds: all })).toHaveLength(2);
+    expect(
+      filterFiles(files, { ...base, plot: { sinceBaseline: true }, sinceIds: new Set(["h:src-a-py:a1"]) }),
+    ).toEqual([expect.objectContaining({ path: "src/a.py" })]);
+    expect(filterFiles(files, { ...base, plot: {}, sinceIds: new Set(["h:src-a-py:a1"]) })).toHaveLength(1);
+  });
+  it("hunkPlotVisible combines the Since-B set with the plotline filter (#351)", () => {
+    const ha = hunk({ contentHash: "a1" });
+    const hb = hunk({ contentHash: "b1" });
+    const st = (hash: string) => (hash === "a1" ? { plotline: "unfold" } : undefined);
+    expect(hunkPlotVisible(ha, "src-a-py", { plot: { plotline: "unfold" }, hunkStateOf: st })).toBe(true);
+    expect(hunkPlotVisible(hb, "test-b-py", { plot: { plotline: "unfold" }, hunkStateOf: st })).toBe(false);
+    expect(
+      hunkPlotVisible(ha, "src-a-py", {
+        plot: { sinceBaseline: true },
+        sinceIds: new Set(["h:test-b-py:b1"]),
+        hunkStateOf: st,
+      }),
+    ).toBe(false);
+    expect(hunkPlotVisible(hb, "test-b-py", { sinceIds: new Set(["h:test-b-py:b1"]) })).toBe(true);
   });
 });
 

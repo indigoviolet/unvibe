@@ -53,6 +53,61 @@
   margin: 2px 0 4px;
 }
 
+/* Since-B section (issue #351): dated, collapsible, top of the guide.
+   A plain header plus full-width cards — the section itself is
+   unboxed, so its cards keep the normal guide width and rhythm. */
+section.since {
+  margin: 14px 0;
+}
+.since-h {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.since-h .sp {
+  flex: 1 1 auto;
+}
+/* Cards inside the section stack at the guide's own card rhythm
+   (the collapsed 14px of `#page .ui-card` margins): the grid gap
+   matches, and the cards' own margins are neutralised so they don't
+   double up. The `#page` prefix outranks `#page .ui-card`, which a
+   bare class selector does not. */
+.since-cards {
+  display: grid;
+  gap: 14px;
+  margin-top: 10px;
+}
+#page .since-cards > div > .ui-card {
+  margin: 0;
+}
+/* Visible feedback links under a Since-B card or addendum. */
+.since-answers {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.since-answers-h {
+  font-weight: var(--weight-semibold);
+}
+.since-pick {
+  display: inline-flex;
+}
+
+/* Dated addendum block at the end of an affected card (issue #351). */
+.addendum {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--sunk);
+}
+.addendum-h {
+  font-size: 12.5px;
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
 /* Narrow panes (PRD §4.1): the card control row wraps instead of clipping. */
 .ctl {
   row-gap: 6px;

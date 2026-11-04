@@ -339,6 +339,17 @@ export interface Card extends ContentBody {
   stale?: boolean;
   staleChangedHunks?: number;
   staleHunks?: string[];
+  /**
+   * Issue #351: dated "Updated since B" blocks appended by the update
+   * pass, in write order. The card's own blocks stay unchanged.
+   */
+  addenda?: import("./versions.js").CardAddendum[];
+  /**
+   * Issue #351: resolved feedback links ("Answers: … ↗") stored by the
+   * update pass on Since-B cards. The agent writes `{ kind, id }`
+   * pointers; the service resolves them and drops unknown ids.
+   */
+  answers?: import("./versions.js").SinceFeedbackLink[];
 }
 
 /** A single undo entry: block list + depth level. No redo (PRD §4.4). */
@@ -954,6 +965,19 @@ export interface ReviewDescription {
  * renderer (raw HTML from GitHub never reaches the DOM); `replyTo` groups
  * replies under their root (`in_reply_to_id`).
  */
+/**
+ * Issue #351: one PR conversation (issue-comment) remark, fetched
+ * read-only with the existing-comments ingest and kept for the update
+ * pass's feedback matching. Capped (count and body length) at fetch.
+ */
+export interface PrConversationRemark {
+  id: number;
+  author?: string;
+  body: string;
+  createdAt?: string;
+  htmlUrl?: string;
+}
+
 export interface ExistingReviewComment {
   id: number;
   path?: string;
