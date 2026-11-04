@@ -18,7 +18,6 @@
  *   reader leaves out read as "other" without storing anything.
  */
 import { parseId } from "./ids.js";
-import { truncateAtWordBoundary } from "./content/hunk.js";
 
 /** Ordered interestingness levels, least to most interesting. */
 export const HUNK_SCORE_LEVELS = ["mechanical", "routine", "substantive", "needs-attention"] as const;
@@ -150,8 +149,33 @@ function slugify(text: string): string {
   return slug === "" ? "plotline" : slug;
 }
 
+/**
+ * Safety cap for stored plotline names (issue #353): generous enough
+ * to keep any real name whole — the reader builds names from the
+ * code's own identifiers, so a hard 40-character cut could drop most
+ * of the name. Shortening happens on screen with CSS, never here.
+ */
+export const MAX_PLOTLINE_NAME = 120;
+
+/**
+ * Safety cap for stored plotline descriptions (issue #353): larger
+ * than the old 140, same no-cut-inside-a-token rule as names.
+ */
+export const MAX_PLOTLINE_DESCRIPTION = 280;
+
+/**
+ * Collapse whitespace and apply a generous safety cap that never cuts
+ * inside a token (issue #353) and never appends an ellipsis: when a
+ * cut is needed, cut at the last whitespace before the cap; when a
+ * single token runs past the cap, keep the whole token.
+ */
 function cleanLine(text: string, max: number): string {
-  return truncateAtWordBoundary(text.replace(/\s+/g, " ").trim(), max);
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace <= 0) return flat;
+  return cut.slice(0, lastSpace);
 }
 
 /**
@@ -190,7 +214,7 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
   for (const raw of input) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
     const rec = raw as Record<string, unknown>;
-    const name = typeof rec["name"] === "string" ? cleanLine(rec["name"], 40) : "";
+    const name = typeof rec["name"] === "string" ? cleanLine(rec["name"], MAX_PLOTLINE_NAME) : "";
     if (name === "") continue;
     if (plotlines.length >= MAX_PLOTLINES) {
       extraPlotlines += 1;
@@ -204,7 +228,7 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
     for (let n = 2; seenIds.has(id); n++) id = `${wantId}-${n}`;
     seenIds.add(id);
     const description =
-      typeof rec["description"] === "string" ? cleanLine(rec["description"], 140) : "";
+      typeof rec["description"] === "string" ? cleanLine(rec["description"], MAX_PLOTLINE_DESCRIPTION) : "";
     const buildsOnRaw = typeof rec["buildsOn"] === "string" && rec["buildsOn"].trim() !== "" ? slugify(rec["buildsOn"]) : undefined;
     const hunks = Array.isArray(rec["hunks"]) ? rec["hunks"] : [];
     for (const h of hunks) {
