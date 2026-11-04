@@ -473,8 +473,8 @@ test.describe("J5 repo add and remove", () => {
       await row.getByRole("button", { name: `Remove local/${base}` }).click();
       await expect(row).toContainText("Remove this repo from the list? ");
       await expect(row).toContainText("is not touched.");
-      // #346: the shared inline confirm ("Confirm remove …" ✓ ✕).
-      await row.getByRole("button", { name: `Confirm remove local/${base}` }).click();
+      // #346: the shared inline confirm ("Confirm remove repo" ✓ ✕).
+      await row.getByRole("button", { name: "Confirm remove repo" }).click();
       await expect(row).toHaveCount(0);
       const listed = await apiJson(svc, "GET", "/api/repos");
       expect(((listed.json as { repos: { localPath: string }[] }).repos ?? []).some((r) => r.localPath === extraDir)).toBe(false);

@@ -160,8 +160,8 @@ test.describe("J11 settings combos", () => {
     const row = section.locator('[data-testid^="repo-"]', { hasText: path.basename(repo2Dir) }).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: `Remove local/${path.basename(repo2Dir)}` }).click();
-    // #346: the shared inline confirm ("Confirm remove …" ✓ ✕).
-    await row.getByRole("button", { name: `Confirm remove local/${path.basename(repo2Dir)}` }).click();
+    // #346: the shared inline confirm ("Confirm remove repo" ✓ ✕).
+    await row.getByRole("button", { name: "Confirm remove repo" }).click();
     await expect(row).toHaveCount(0, { timeout: 15_000 });
     expect(existsSync(path.join(repo2Dir, ".git"))).toBe(true);
 
