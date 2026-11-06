@@ -3903,6 +3903,33 @@ export const mockApi = {
     return { ok: true };
   },
 
+  // Issue #364: one reply goes; the last turn takes the thread with it.
+  // Mirrors the service: posted threads refuse, filling replies refuse.
+  deleteReply: async (_id: string, commentId: string, replyId: string) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread) throw new Error("unknown comment");
+    if (thread.postedAt !== undefined) throw new Error("posted content can't be deleted");
+    const idx = thread.replies.findIndex((r) => r.id === replyId);
+    if (idx < 0) throw new Error(`unknown reply ${replyId}`);
+    const target = thread.replies[idx];
+    if (target.jobId !== undefined || (target.working ?? null) !== null) {
+      throw new Error("that reply is still filling — wait for the answer");
+    }
+    thread.replies.splice(idx, 1);
+    for (const rest of thread.replies) {
+      if (rest.linkTo === replyId) {
+        delete rest.linkTo;
+        delete rest.linkText;
+      }
+    }
+    if (thread.replies.length === 0) {
+      const tIdx = annotations.findIndex((a) => a.id === commentId);
+      if (tIdx >= 0) annotations.splice(tIdx, 1);
+    }
+    emitAnnotations();
+    return { ok: true };
+  },
+
   updateDescription: async (_id: string, body: { html: string }) => {
     description = {
       ...description,

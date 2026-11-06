@@ -439,6 +439,11 @@ const realApi = {
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
       method: "DELETE",
     }),
+  /** Issue #364: delete one reply (no confirm); the last turn deletes the thread. */
+  deleteReply: (reviewId: string, commentId: string, replyId: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies/${encodeURIComponent(replyId)}`, {
+      method: "DELETE",
+    }),
 
   updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean; changed?: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/description`, {
