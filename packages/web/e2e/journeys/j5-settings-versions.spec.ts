@@ -352,6 +352,63 @@ test.describe("J5 update icon when the check fails (#231)", () => {
   });
 });
 
+// Moved from update-picker.spec.ts (#357 Q4): a failing switch rolls back
+// over the real service with the fake updater (fake-installed.json stands
+// in for an npm-installed build so the switch is accepted; the install
+// stage is injected to fail).
+test.describe("J5 failed switch rolls back", () => {
+  let rbDir = "";
+  let rbSvc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    rbDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j5-rollback-"));
+    rbSvc = await startService(rbDir, {
+      agent: "none",
+      extraEnv: {
+        UNVIBE_UPDATER_BACKEND: "fake",
+        UNVIBE_UPDATE_FAKE_FAIL: "install:preview/feat-x",
+      },
+    });
+    mkdirSync(path.join(rbDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(rbDir, "update", "fake-installed.json"),
+      JSON.stringify({ version: "0.0.1", commit: "oldcommit0000001", builtAt: new Date().toISOString() }),
+    );
+  });
+  test.afterAll(async () => {
+    await rbSvc?.stop().catch(() => {});
+    rmSync(rbDir, { recursive: true, force: true });
+  });
+
+  test("failed switch rolls back with a reason and stays on release", async ({ page }) => {
+    test.setTimeout(120_000);
+    if (!rbSvc) throw new Error("no service");
+    await page.goto(`${rbSvc.origin}/settings?tab=version&token=${rbSvc.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if ((await toggle.count()) > 0 && !(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await expect(feat).toBeVisible({ timeout: 30_000 });
+    await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+    await expect(feat.getByText("Confirm switch")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(feat.getByText("Confirm switch")).toHaveCount(0);
+    await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+    await page.getByRole("button", { name: "Confirm switch" }).click();
+    await expect(page.getByTestId("update-switching")).toBeVisible();
+    await expect(page.getByTestId("update-outcome")).toContainText("Rolled back to release", {
+      timeout: 60_000,
+    });
+    await expect(
+      page.locator('[data-testid="update-channel"][data-ref="release"]').getByTestId("update-current"),
+    ).toBeVisible();
+    await expect(page.getByTestId("preview-badge")).toHaveCount(0);
+  });
+});
+
 // Merged from settings-versions-service.spec.ts (#256): the Prompts tab
 // lists every template and the debug page expands them for the review.
 // (Limits persistence is already proven by the J5 test above; the

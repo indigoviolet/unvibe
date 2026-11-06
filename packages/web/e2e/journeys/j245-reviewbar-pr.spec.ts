@@ -178,4 +178,50 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
       await bar.screenshot({ path: path.join(SHOTS, `reviewbar-pr-${combo.theme}-${combo.scheme}.png`) });
     });
   }
+
+  // Folded from review-bar.spec.ts (#357): one bar with a working home
+  // control (#141), comments menu with the source pane closed, guide
+  // toggle spanning the source (#83), and no overflow at 800px.
+  test("one bar, home, comments with source closed, guide toggle, fits at 800", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    // Issue #141: no application top bar on a review, no breadcrumb;
+    // the bar's home control returns to the start page.
+    await expect(page.locator("header.top")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+    const bar = page.locator("#reviewbar");
+    const home = bar.getByRole("link", { name: "Back to the start page" });
+    await expect(home).toHaveAttribute("href", "/");
+    await home.click();
+    await expect(page).toHaveURL(`${svc.origin}/?token=${svc.token}`);
+    await page.goBack();
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    // Comments menu opens with the source pane closed.
+    await page.locator("#toggleRight").click();
+    await expect(page.locator("#right")).toHaveClass(/hide/);
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await expect(page.locator("#reviewbar .cmenu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Issue #83: guide off, the source pane spans the window with no
+    // drag handle; back on, the two-pane split returns.
+    const guide = page.getByRole("button", { name: "Guide" });
+    await guide.click();
+    await expect(page.locator("#page")).toHaveClass(/hide/);
+    const box = await page.locator("#right").boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(1430);
+    await expect(page.locator("#handle")).toBeHidden();
+    await guide.click();
+    await expect(page.locator("#page")).not.toHaveClass(/hide/);
+    await expect(page.locator("#right")).not.toHaveClass(/hide/);
+    await expect(page.locator("#handle")).toBeVisible();
+    // Narrow window: the bar never overflows.
+    await page.setViewportSize({ width: 800, height: 600 });
+    const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await checkLayout(page, "reviewbar-pr-narrow");
+  });
 });
