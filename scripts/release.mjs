@@ -148,7 +148,9 @@ function resolveVersion() {
     if (/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ref)) v = stripV(ref);
     else v = srcPkg.version;
   }
-  if (isDebug && !/-debug$/.test(v)) v = `${v}-debug`;
+  // Preview slugs already carry `-debug` (preview/<slug>-debug); do not
+  // stack a second suffix.
+  if (isDebug && !/-debug/.test(v)) v = `${v}-debug`;
   return v;
 }
 
@@ -426,10 +428,13 @@ if (version !== srcPkg.version) {
   console.log(`release: patched bundle versions ${srcPkg.version} -> ${version}`);
 }
 
-// 5. Tarball at the repo root (remove stale ones first so unvibe-*.tgz
-// globs in CI attach exactly one file).
+// 5. Tarball at the repo root. Remove stale same-line tarballs first so
+// the CI glob attaches exactly one — but keep the sibling flavour
+// (lean vs `-debug`) so both tarballs can sit side by side.
 for (const e of readdirSync(ROOT)) {
-  if (e.startsWith("unvibe-") && e.endsWith(".tgz")) rmSync(path.join(ROOT, e), { force: true });
+  if (!e.startsWith("unvibe-") || !e.endsWith(".tgz")) continue;
+  const keep = isDebug ? `unvibe-${version.replace(/-debug$/, "")}.tgz` : `unvibe-${version}-debug.tgz`;
+  if (e !== `unvibe-${version}.tgz` && e !== keep) rmSync(path.join(ROOT, e), { force: true });
 }
 const tarball = sh("npm", ["pack", "--pack-destination", ROOT], RELEASE);
 console.log(`release: tarball ${tarball}`);

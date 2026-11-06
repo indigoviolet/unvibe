@@ -21,23 +21,58 @@
  * than deleting older data.
  */
 import fs from "node:fs";
-import { context, propagation, trace, SpanKind, type Span } from "@opentelemetry/api";
-import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
-import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import {
+import { createRequire } from "node:module";
+// Type-only OTel imports (erased at build — safe in lean installs).
+import type { Span } from "@opentelemetry/api";
+import type {
   BasicTracerProvider,
   SamplingDecision,
-  type Sampler,
-  type SamplingResult,
-  type ReadableSpan,
-  type SpanProcessor,
+  Sampler,
+  SamplingResult,
+  ReadableSpan,
+  SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
-import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify";
-import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
-import { FsInstrumentation } from "@opentelemetry/instrumentation-fs";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
+
+/**
+ * Lazily `require()`d OTel packages. Static imports would make the
+ * service bundle evaluate them at load, crashing lean installs that do
+ * not ship them — every value import here happens at first *use*, and
+ * any failure propagates to the caller (the loader treats it as
+ * "tracing unavailable"). See `loader.ts`.
+ */
+interface OtelModules {
+  api: typeof import("@opentelemetry/api");
+  core: typeof import("@opentelemetry/core");
+  ctxHooks: typeof import("@opentelemetry/context-async-hooks");
+  sdkBase: typeof import("@opentelemetry/sdk-trace-base");
+  instr: typeof import("@opentelemetry/instrumentation");
+  http: typeof import("@opentelemetry/instrumentation-http");
+  fastify: typeof import("@opentelemetry/instrumentation-fastify");
+  undici: typeof import("@opentelemetry/instrumentation-undici");
+  fsInstr: typeof import("@opentelemetry/instrumentation-fs");
+}
+
+let otelModules: OtelModules | null = null;
+
+function otel(): OtelModules {
+  if (!otelModules) {
+    const requireOtel = createRequire(import.meta.url);
+    otelModules = {
+      api: requireOtel("@opentelemetry/api"),
+      core: requireOtel("@opentelemetry/core"),
+      ctxHooks: requireOtel("@opentelemetry/context-async-hooks"),
+      sdkBase: requireOtel("@opentelemetry/sdk-trace-base"),
+      instr: requireOtel("@opentelemetry/instrumentation"),
+      http: requireOtel("@opentelemetry/instrumentation-http"),
+      fastify: requireOtel("@opentelemetry/instrumentation-fastify"),
+      undici: requireOtel("@opentelemetry/instrumentation-undici"),
+      fsInstr: requireOtel("@opentelemetry/instrumentation-fs"),
+    };
+  }
+  return otelModules;
+}
 import type { FastifyInstance } from "fastify";
+import type { SpanKind } from "@opentelemetry/api";
 import type { OtlpSpan, TraceExport, TraceStatusResponse } from "@unvibe/shared";
 import { ensureTracesDir, spansFile, TRACE_SAFETY_CAP_BYTES } from "./paths.js";
 import { isRoutePattern, scrubExportedSpan } from "./scrub.js";
@@ -70,6 +105,17 @@ const HEX16 = /^[0-9a-f]{16}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
 
 /**
+ * Run fn with tracing suppressed (hides our own file IO from the fs
+ * instrumentation, which would otherwise recurse until the stack
+ * overflows and recording silently stops).
+ */
+function unsampled<T>(fn: () => T): T {
+  const { context } = otel().api;
+  const { suppressTracing } = otel().core;
+  return context.with(suppressTracing(context.active()), fn);
+}
+
+/**
  * One shared SDK per process (production has one recorder; tests swap
  * targets): toggling recording flips the sampler, never the plumbing.
  * Auto-instrumentations register once against the shared provider, so
@@ -83,6 +129,7 @@ let propagatorInstalled = false;
 
 class ToggleSampler implements Sampler {
   shouldSample(): SamplingResult {
+    const { SamplingDecision } = otel().sdkBase;
     return {
       decision: recordingOn ? SamplingDecision.RECORD_AND_SAMPLED : SamplingDecision.NOT_RECORD,
     };
@@ -108,12 +155,22 @@ export function ensureTracingSetup(): BasicTracerProvider {
   // silently stop working). The global *tracer* provider stays untouched.
   if (!contextManagerInstalled) {
     contextManagerInstalled = true;
+    const { context } = otel().api;
+    const { AsyncLocalStorageContextManager } = otel().ctxHooks;
     context.setGlobalContextManager(new AsyncLocalStorageContextManager());
   }
   return sharedTracerProvider();
 }
 
 function sharedTracerProvider(): BasicTracerProvider {
+  const { propagation } = otel().api;
+  const { W3CTraceContextPropagator } = otel().core;
+  const { BasicTracerProvider } = otel().sdkBase;
+  const { registerInstrumentations } = otel().instr;
+  const { HttpInstrumentation } = otel().http;
+  const { FastifyInstrumentation } = otel().fastify;
+  const { UndiciInstrumentation } = otel().undici;
+  const { FsInstrumentation } = otel().fsInstr;
   if (!sharedProvider) {
     if (!propagatorInstalled) {
       propagatorInstalled = true;
@@ -202,16 +259,18 @@ export class TraceRecorder {
     name: string,
     attrs: Record<string, string | number | boolean> = {},
     parent?: SpanParent,
-    kind: SpanKind = SpanKind.INTERNAL,
+    kind?: SpanKind,
   ): SpanHandle {
     if (!this.enabled) return NOOP_SPAN;
+    const { context, propagation, SpanKind } = otel().api;
+    const kindValue = kind ?? SpanKind.INTERNAL;
     const tracer = sharedTracerProvider().getTracer("unvibe", "0.0.15");
     let ctx = context.active();
     if (parent && HEX32.test(parent.traceId) && HEX16.test(parent.spanId)) {
       const extracted = propagation.extract(ctx, { traceparent: `00-${parent.traceId}-${parent.spanId}-01` });
       ctx = extracted ?? ctx;
     }
-    const span = tracer.startSpan(name, { kind }, ctx);
+    const span = tracer.startSpan(name, { kind: kindValue }, ctx);
     for (const [k, v] of Object.entries(attrs)) span.setAttribute(k, v);
     return new LiveSpan(span);
   }
@@ -231,7 +290,7 @@ export class TraceRecorder {
     }
     try {
       const line = `${JSON.stringify(toOtlp(span))}\n`;
-      context.with(suppressTracing(context.active()), () => {
+      unsampled(() => {
         fs.appendFileSync(spansFile(this.dataDir), line, "utf8");
       });
       this.spanCount++;
@@ -245,7 +304,7 @@ export class TraceRecorder {
   /** Size check without feeding the check itself back into the store. */
   private cappedNow(): boolean {
     try {
-      return context.with(suppressTracing(context.active()), () => currentBytes(this.dataDir))
+      return unsampled(() => currentBytes(this.dataDir))
         >= TRACE_SAFETY_CAP_BYTES;
     } catch {
       return false;
@@ -269,7 +328,7 @@ export class TraceRecorder {
       }
       try {
         const line = `${JSON.stringify(otlp)}\n`;
-        context.with(suppressTracing(context.active()), () => {
+        unsampled(() => {
           fs.appendFileSync(spansFile(this.dataDir), line, "utf8");
         });
         this.spanCount++;
@@ -296,7 +355,7 @@ export class TraceRecorder {
   /** Store size without capturing the check itself as a span. */
   private unsampledBytes(): number {
     try {
-      return context.with(suppressTracing(context.active()), () => currentBytes(this.dataDir));
+      return unsampled(() => currentBytes(this.dataDir));
     } catch {
       return 0;
     }
@@ -308,7 +367,7 @@ export class TraceRecorder {
    */
   clear(): void {
     try {
-      context.with(suppressTracing(context.active()), () => {
+      unsampled(() => {
         fs.rmSync(spansFile(this.dataDir), { force: true });
       });
     } catch {
@@ -326,7 +385,7 @@ export class TraceRecorder {
     const spans: OtlpSpan[] = [];
     let text = "";
     try {
-      text = context.with(suppressTracing(context.active()), () =>
+      text = unsampled(() =>
         fs.readFileSync(spansFile(this.dataDir), "utf8"),
       );
       for (const line of text.split("\n")) {
@@ -368,6 +427,7 @@ export function attachRouteHook(
       if (!getRecorder()?.enabled) return;
       const pattern = req.routeOptions?.url;
       if (typeof pattern === "string" && isRoutePattern(pattern)) {
+        const { context, trace } = otel().api;
         trace.getSpan(context.active())?.setAttribute("http.route", pattern);
       }
     } catch {

@@ -7,11 +7,32 @@
  * packages. This module itself imports nothing but the pure seam
  * surface and `fastify` types (erased).
  */
+import { createRequire } from "node:module";
 import type { FastifyInstance } from "fastify";
 import { setActiveTracer, type TraceBackend } from "./tracing.js";
 import type { TraceRecorder } from "./recorder.js";
 
 type RecorderModule = typeof import("./recorder.js");
+
+/**
+ * Probe for the OTel packages with the runtime resolver *before*
+ * touching the recorder module. This matters because bundlers inline
+ * the dynamic `import()` below into a single file: the import itself
+ * can no longer fail in a lean install, but the *evaluation* of the
+ * bundled recorder is side-effect free, so probing first keeps the
+ * whole path throw-free. (In unbundled source the import fails
+ * directly and this is just a fast path.)
+ */
+function otelPresent(): boolean {
+  // Resolve the entry point, not package.json: several OTel packages
+  // restrict subpath exports, so ./package.json does not resolve.
+  try {
+    createRequire(import.meta.url).resolve("@opentelemetry/api");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Dynamic importer, injectable so tests can simulate a lean install. */
 export type RecorderImporter = () => Promise<RecorderModule>;
@@ -34,6 +55,11 @@ function isRecorderModule(mod: unknown): mod is RecorderModule {
 async function recorderModule(importer: RecorderImporter = defaultImporter): Promise<RecorderModule | null> {
   const useCache = importer === defaultImporter;
   if (useCache && cached !== undefined) return cached;
+  // Lean install: OTel is absent, so do not even load the recorder.
+  if (useCache && !otelPresent()) {
+    cached = null;
+    return null;
+  }
   let mod: RecorderModule | null = null;
   try {
     const loaded = await importer();
