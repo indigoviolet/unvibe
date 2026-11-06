@@ -155,6 +155,15 @@ test.describe("J11 settings combos", () => {
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Repos" }).click();
     const section = page.locator('[data-testid="repositories-section"]');
+    // From settings.spec.ts (#357): empty path hints instead of doing nothing.
+    await section.getByRole("button", { name: "Add by path" }).click();
+    await expect(section.getByText("Enter a folder path first.")).toBeVisible();
+    // From settings.spec.ts (#357): invalid URLs are rejected inline with no request.
+    await section.getByLabel("Add a repo by URL").fill("not a repo!!!");
+    await section.getByRole("button", { name: "Clone and add" }).click();
+    await expect(section.getByText(/not a GitHub repo URL or owner\/name/)).toBeVisible();
+    await expect(page.locator("#toast")).toBeHidden();
+    await expect(section.getByRole("button", { name: "Clone and add" })).toBeEnabled();
     await section.getByLabel("Add a repo by path").fill(repo2Dir);
     await section.getByRole("button", { name: "Add by path" }).click();
     const row = section.locator('[data-testid^="repo-"]', { hasText: path.basename(repo2Dir) }).first();
@@ -164,6 +173,16 @@ test.describe("J11 settings combos", () => {
     await row.getByRole("button", { name: "Confirm remove repo" }).click();
     await expect(row).toHaveCount(0, { timeout: 15_000 });
     expect(existsSync(path.join(repo2Dir, ".git"))).toBe(true);
+
+    // From settings.spec.ts (#357): removing a repo with reviews is refused inline.
+    const ownRow = section.locator('[data-testid^="repo-"]', { hasText: path.basename(repoDir) }).first();
+    await expect(ownRow).toBeVisible();
+    await ownRow.getByRole("button", { name: `Remove local/${path.basename(repoDir)}` }).click();
+    await ownRow.getByRole("button", { name: "Confirm remove repo" }).click();
+    await expect(ownRow.getByRole("alert")).toContainText(/still has 1 review/);
+    await ownRow.getByRole("button", { name: "Cancel" }).click();
+    await expect(ownRow.getByRole("alert")).toHaveCount(0);
+    await expect(ownRow).toBeVisible();
 
     // Data reset: removes the review, keeps settings and repos.
     // #346: the shared inline confirm ("Confirm reset data" ✓ ✕).

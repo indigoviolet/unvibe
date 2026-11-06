@@ -183,6 +183,26 @@ test.describe("J3 comments and submit", () => {
     await expect(menu).toHaveCount(0);
     await expect(thread).toContainText("does helper need to handle zero?");
 
+    // From comments.spec.ts (#357): existing comments render read-only
+    // under their own heading in the menu.
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await expect(menu).toContainText("On GitHub");
+    await expect(menu).toContainText("teammate · 2 comments");
+    await expect(menu).toContainText("does helper need to handle zero?");
+    await page.keyboard.press("Escape");
+
+    // From comments.spec.ts (#357 #183): the section heading restores
+    // hidden threads without the filter menu.
+    await page.getByRole("button", { name: "Review filters" }).click();
+    await page.getByRole("menuitemcheckbox", { name: /GitHub comments/ }).click();
+    await expect(page.locator("#gh-thread-9001")).toHaveCount(0);
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await expect(menu.locator("[data-ghhead]")).toContainText("hidden");
+    await menu.locator("[data-ghhead]").click();
+    await expect(menu.locator('[data-ghjump="9001"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#gh-thread-9001")).toBeVisible({ timeout: 10_000 });
+
     // Remembered with the review: still shown after reload.
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });

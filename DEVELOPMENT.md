@@ -220,7 +220,7 @@ Rules:
   ```sh
   cd packages/service && npx vitest run test/reviews.test.ts        # one file, 1 to 3 s
   cd packages/web && VITE_MOCK=1 npx vitest run src/guide/CardView.test.tsx  # VITE_MOCK=1 is required: without it the mock API is real fetch
-  cd packages/web && npx playwright test e2e/comments.spec.ts       # one spec; *-service specs skip without a build, so `mise run build` first to exercise them
+  cd packages/web && npx playwright test e2e/journeys/j3-comments-submit.spec.ts       # one spec; *-service specs skip without a build, so `mise run build` first to exercise them
   ```
   (`mise run test:e2e -- e2e/<spec>` from the root narrows the same way
   but rebuilds first.)

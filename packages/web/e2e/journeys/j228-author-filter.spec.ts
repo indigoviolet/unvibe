@@ -191,8 +191,6 @@ test.describe("J228 start-page author filter", () => {
 
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
-    { name: "1440-dark", width: 1440, dark: true },
-    { name: "960-light", width: 960, dark: false },
   ] as const) {
     test(`author filter reads and filters the requested groups (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);

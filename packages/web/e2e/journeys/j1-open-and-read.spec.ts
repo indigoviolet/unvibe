@@ -193,6 +193,21 @@ test.describe("J1 open and read the guide", () => {
       rmSync(scratchData, { recursive: true, force: true });
     }
   });
+
+  // Folded from open-review.spec.ts (#357): opening a review that already
+  // exists reuses it (#149) instead of creating a second review.
+  test("opening the existing demo review from the start page reuses it (#149)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    const before = await apiJson(svc, "GET", "/api/reviews");
+    const idsBefore = new Set((before.json as { reviews: { id: string }[] }).reviews.map((r) => r.id));
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Unfold obsolete folded response headers/ }).first().click();
+    await page.waitForURL(new RegExp(`/review/${reviewId}`), { timeout: 30_000 });
+    const after = await apiJson(svc, "GET", "/api/reviews");
+    expect((after.json as { reviews: { id: string }[] }).reviews.map((r) => r.id).filter((id) => !idsBefore.has(id))).toEqual([]);
+  });
 });
 
 // Merged from guide-service.spec.ts (#256): the guide pipeline's seed

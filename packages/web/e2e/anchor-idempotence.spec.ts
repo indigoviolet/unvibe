@@ -12,7 +12,7 @@
  *
  * Keeps every behaviour the rest of the suite covers (open-thread
  * styles, thread highlights); hover previews, click-to-expand and
- * fallbacks stay covered by interaction.spec.ts / guide.spec.ts.
+ * fallbacks stay covered by journeys J2/J266 and guide.spec.ts.
  */
 import { expect, test } from "./network-guard.js";
 import type { Page } from "@playwright/test";

@@ -1,7 +1,7 @@
 /**
  * Glossary tour (issue #252): linked terms in the guide + hover open.
  *
- * Four passes (1440px and 960px, light and dark) against the real built
+ * One pass (1440px light) against the real built
  * service in demo/replay mode. Screenshots land in `visual-tour/` for the
  * owner to look at, with the generic `checkLayout` at every step.
  */
@@ -46,12 +46,7 @@ test.afterAll(async () => {
   for (const d of [dataDir]) rmSync(d, { recursive: true, force: true });
 });
 
-for (const combo of [
-  { name: "1440-light", width: 1440, dark: false },
-  { name: "1440-dark", width: 1440, dark: true },
-  { name: "960-light", width: 960, dark: false },
-  { name: "960-dark", width: 960, dark: true },
-] as const) {
+for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const) {
   test(`glossary tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(240_000);

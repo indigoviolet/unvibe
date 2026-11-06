@@ -18,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
@@ -178,4 +179,71 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
       await bar.screenshot({ path: path.join(SHOTS, `reviewbar-pr-${combo.theme}-${combo.scheme}.png`) });
     });
   }
+
+  // Folded from review-bar.spec.ts (#357): one bar with a working home
+  // control (#141), comments menu with the source pane closed, guide
+  // toggle spanning the source (#83), and no overflow at 800px.
+  test("one bar, home, comments with source closed, guide toggle, fits at 800", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    // Issue #141: no application top bar on a review, no breadcrumb;
+    // the bar's home control returns to the start page.
+    await expect(page.locator("header.top")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+    const bar = page.locator("#reviewbar");
+    const home = bar.getByRole("link", { name: "Back to the start page" });
+    await expect(home).toHaveAttribute("href", "/");
+    await home.click();
+    expect(new URL(page.url()).pathname).toBe("/");
+    await page.goBack();
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    // Comments menu opens with the source pane closed.
+    await page.locator("#toggleRight").click();
+    await expect(page.locator("#right")).toHaveClass(/hide/);
+    await page.locator('#reviewbar [data-cm=""]').click();
+    await expect(page.locator("#reviewbar .cmenu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Issue #83: guide off, the source pane spans the window with no
+    // drag handle; back on, the two-pane split returns.
+    const guide = page.getByRole("button", { name: "Guide", exact: true });
+    await guide.click();
+    await expect(page.locator("#page")).toHaveClass(/hide/);
+    const box = await page.locator("#right").boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(1430);
+    await expect(page.locator("#handle")).toBeHidden();
+    await guide.click();
+    await expect(page.locator("#page")).not.toHaveClass(/hide/);
+    await expect(page.locator("#right")).not.toHaveClass(/hide/);
+    await expect(page.locator("#handle")).toBeVisible();
+    // Narrow window: the bar never overflows.
+    await page.setViewportSize({ width: 800, height: 600 });
+    const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await checkLayout(page, "reviewbar-pr-narrow");
+  });
+
+  // From comments.spec.ts (#357): the GitHub action links selected diff
+  // lines at the review commit in a new tab.
+  test("GitHub action links diff lines at the review commit", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?nohl=1&token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, "#right table.diff", "return 2");
+    await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
+    const link = page.locator('#selbar [data-act="github"]');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute(
+      "href",
+      /https:\/\/github\.com\/example-org\/a-fairly-long-repository-name\/blob\/[0-9a-f]+\/.+#L\d+(-L\d+)?/,
+    );
+    await expect(link).toHaveAttribute("target", "_blank");
+  });
 });

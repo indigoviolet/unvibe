@@ -134,8 +134,8 @@ UI); nothing below was edited by this pass.
 - Top bar (app-wide, every screen but reviews: Unvibe home link,
   breadcrumb trail, badge on start/Settings, gear Settings icon in the same
   place; Settings screen has none; no Tips anywhere per #141) — met
-  (`ScreenTopBar.tsx`, `settings.spec.ts` gear + breadcrumb cases,
-  `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
+  (`ScreenTopBar.tsx`, `journeys/j245-reviewbar-pr.spec.ts` one-bar/home
+  cases, `doctor.spec.ts` / `debug.spec.ts` breadcrumb cases; issues #31/#55
   round 2, #141).
 - Review bar (the only bar on a review per #141: home control first, then
   identity + version selector next to it per #120 + GitHub link-out + Debug
@@ -144,7 +144,8 @@ UI); nothing below was edited by this pass.
   the title gives way first and the selector never truncates; no Settings
   gear) — met
   (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
-  `e2e/review-bar.spec.ts`; `docs/screenshots/55-review.png`,
+  `journeys/j245-reviewbar-pr.spec.ts` (+ `journeys/j12-refresh.spec.ts`
+  for the older-version read-only side); `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
@@ -156,7 +157,7 @@ UI); nothing below was edited by this pass.
   `141-review-readonly-800-dark.png`).
 - Guide left / Source pane right (PR description + Diff tabs, Comments
   menu), drag resize, arrow keys on handle — met (`e2e/diff.spec.ts`,
-  `comments.spec.ts`; walk shows pane + tabs).
+  `journeys/j3-comments-submit.spec.ts`; walk shows pane + tabs).
 - Docked ≥900px, overlay below — met (`App.tsx` responsive layout,
   covered by `guide.spec.ts` viewport cases).
 - Nothing lost when narrow (wrap/icons/pinned) — met (`diff.spec.ts`
@@ -216,8 +217,9 @@ UI); nothing below was edited by this pass.
   "reviews for checkouts no longer listed").
 - Repos are added in Settings — met (`RepositoriesSection.tsx`:
   remembered repos with owner/name + path, add-by-path input with an
-  empty-field hint; `#repositories` anchor; `e2e/settings.spec.ts`
-  "repositories section lists remembered repos and adds by path").
+  empty-field hint; `#repositories` anchor; repos add/remove covered in
+  `journeys/j11-settings-combos.spec.ts` (invalid inline, refused while
+  reviews exist).
   Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
   per-kind confirms in the same section).
 - Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
@@ -263,7 +265,7 @@ UI); nothing below was edited by this pass.
   row goes through the fresh open path; entries for unlisted repos are
   pruned and a changed login clears them. No contract change.
   `start/keptChanges.test.ts`, `start/StartPage.kept.test.tsx`,
-  `e2e/start-kept.spec.ts`).
+  `e2e/start.spec.ts` kept-rows section).
 - Native folder picker (#26) — met: `POST /api/repos/pick-folder`
   (frontmost osascript dialog / zenity→kdialog with cancelled/unavailable
   outcomes, `pick-folder.test.ts`) plus the `BrowseFolderButton`
@@ -422,8 +424,8 @@ needed (that deviation is closed, not added).
   --strict` green; snapshot hashes unchanged). The uniform D2
   blue is remapped to the guide palette by stylesheet rules over D2's
   shape classes, with `.class: [ok]` / `[bad]` for ok/warn states
-  (`e2e/d2-diagrams.spec.ts` "diagram wears
-  the guide palette", `docs/d2-diagrams.md` "Look"). Uneven letter
+  (`journeys/j14-diagrams-debug-redo.spec.ts` seeded light/dark renders;
+  `docs/d2-diagrams.md` "Look"). Uneven letter
   spacing (#16) reproduces identically in headed Chromium, so it is not
   a session artifact: D2's embedded subset font carries no kerning
   tables (WOFF has OS/2, cmap, glyf, head, hhea, hmtx, loca, maxp, name,
@@ -508,11 +510,12 @@ needed (that deviation is closed, not added).
 ### §4.6 Selecting text — all met
 
 - Works in guide, description, diff code — met (`comments/selection.test.ts`).
-- Snap to words, trim, highlight matches — met (`e2e/comments.spec.ts`
-  “selection snaps to whole words”).
+- Snap to words, trim, highlight matches — met
+  (`journeys/j2-explain-ask.spec.ts` word-snap).
 - Toolbar Explain / Ask… / Comment / GitHub; no examples/diagrams there;
-  appears only on selection-finish — met (`comments.spec.ts` “toolbar
-  Comment creates a quiet thread”, “GitHub action links diff lines”).
+  appears only on selection-finish — met
+  (`journeys/j3-comments-submit.spec.ts` comment create,
+  `journeys/j245-reviewbar-pr.spec.ts` GitHub action).
   Inside an explanation the same toolbar appears (#116); inside
   second-opinion reasoning and thread replies it does not (neither is an
   anchor host — `SelectionToolbar.test.tsx`).
@@ -530,7 +533,7 @@ needed (that deviation is closed, not added).
   version's commits). No job, no pending thread. Hidden for prose,
   non-GitHub repos and the demo — met (shared `githubFileUrl` +
   `repos.test.ts`, `SelectionToolbar.test.tsx` range cases,
-  `comments.spec.ts` “GitHub action links diff lines”).
+  `journeys/j245-reviewbar-pr.spec.ts` GitHub action).
 
 ### §4.7 Threads — all met (#273 flat threads, from #268 spike; replaces #136 slices 1+2, #152, #167)
 
@@ -640,7 +643,8 @@ needed (that deviation is closed, not added).
   everything has settled), a failed fill shows the error with Retry on
   the page, and second opinions move to the page with the answers — met
   (`conversation.test.ts` “promote mid-fill” with `promotedReplies`,
-  `guide/CardViewPromoted.test.tsx`, `e2e/promote-midfill.spec.ts`).
+  `guide/CardViewPromoted.test.tsx`, `journeys/j206-anchor-blink.spec.ts`
+  open-as-page flow; mid-fill writing states in the visual tour).
 - One box while working (issue #97) — met: the Explain placeholder gives
   way as soon as its expansion is in the snapshot (guide, description and
   diff alike), the card shows the fixed “Writing explanation…” label from
@@ -743,8 +747,8 @@ needed (that deviation is closed, not added).
   reopen + click-number starts; description under paragraph; code/file
   tab under cited lines) — threads render inline under the card,
   description block or diff line they started from (owner decision #273)
-  — met (journeys J2/J214/J223, `comments.spec.ts` “diff line click
-  starts a comment; close leaves an icon; reopen works”). The hover
+  — met (journeys J2/J214/J223, `journeys/j9-comment-edges.spec.ts`
+  close/reopen/icon flow). The hover
   outline clears only its own marks and threads (issue #111), never the
   depth stepper pips (`guide/expansions/hoverOutline.test.tsx`).
 - One composer while asking (issue #97) — met: the Ask composer hides
@@ -769,8 +773,9 @@ needed (that deviation is closed, not added).
   the source pane closed) — met (`comments/CommentsMenu.test.tsx`
   tabs/counts/fold cases, `comments-service.spec.ts` “mark Outbox, edit
   the draft, submit posts exactly one review”; branch-review tabs covered
-  by `journeys/j223-outbox.spec.ts`; `e2e/review-bar.spec.ts` “comments
-  menu opens with the source pane closed”).
+  by `journeys/j223-outbox.spec.ts`;
+  `journeys/j245-reviewbar-pr.spec.ts` “comments menu with source pane
+  closed”).
 - Already on GitHub (issue #168) — met: existing review comments load
   with the review and reload on refresh (read-only `gh api`, stubbed in
   tests), render as collapsed read-only threads on their diff lines
@@ -785,8 +790,8 @@ needed (that deviation is closed, not added).
   review) without removing them from the agents' context, where they
   arrive framed as other people's material, never instructions
   (`comments/GithubThreads.test.tsx`,
-  `source/diff/DiffView.github.test.tsx`, `e2e/comments.spec.ts`
-  GitHub-thread cases, `service/test/context.test.ts` framing cases; issue
+  `source/diff/DiffView.github.test.tsx`, `journeys/j3-comments-submit.spec.ts`
+  #296 GitHub-thread cases, `service/test/context.test.ts` framing cases; issue
   #296: new reviews start with existing comments hidden — the shared
   default is `showExistingComments: false`, the toggle and its count are
   unchanged, the choice is still remembered per review, and the agents'
@@ -810,7 +815,8 @@ needed (that deviation is closed, not added).
   accept / edit / dismiss unchanged — met (`ThreadView.tsx`,
   `SelectionToolbar.tsx` ai-comment scope, `ThreadView.test.tsx`
   suggested cases, `SelectionToolbar.test.tsx` ai-comment resolution,
-  `e2e/comments.spec.ts` “AI-suggested comments carry no reply box”,
+  `journeys/j10-suggested.spec.ts` “no reply box; #301 Ask lands in the
+  thread”,
   `docs/screenshots/163-suggested-comment.png`).
 - Open questions as suggestions (issue #181): a kept `open_questions`
   contribution becomes one AI-suggested comment on the turn's source
@@ -965,17 +971,17 @@ needed (that deviation is closed, not added).
   leaving no summary (owner decision on #161) — met (`service/test/hunk-cards.test.ts`,
   `source/diff/hunkAnchor.test.ts`,
   `source/diff/HunkCardActivation.test.tsx`,
-  `e2e/hunk-summary.spec.ts`). Issue #161: idle summaries carry no icons
+  `journeys/j13-hunk-summaries.spec.ts`). Issue #161: idle summaries carry no icons
   and no controls at all (avatar + Delete removed; deleting the stored
   summary text is no longer offered in the UI), and an activated card is
   one card at the hunk's level with no `.fcard`/`.fwrap` wrapper
   (`HunkCardActivation.test.tsx` idle/activated cases,
   `docs/screenshots/161-idle-summary.png`,
-  `161-activated-card.png`, `hunk-summary.spec.ts` green). A hunk card opened as a page keeps its
+  `161-activated-card.png`, `journeys/j13-hunk-summaries.spec.ts` flows). A hunk card opened as a page keeps its
   summary text plus a page-link chip; the summary's click/Explain/Ask
   open that page instead of a second card, and a hunk whose page is gone
   reads as ordinary idle — met (`HunkCardActivation.test.tsx` promoted
-  cases, `hunk-summary.spec.ts` promoted flow).
+  cases, `journeys/j13-hunk-summaries.spec.ts` promote-keeps-chip flow).
 - Hide uninteresting (generated/import-only/docs-or-config, one row per
   run with reason, click reveals; one-line never hidden; guide-cited
   hunks hide like any other since the #325 owner decision — clicking
@@ -1101,7 +1107,8 @@ needed (that deviation is closed, not added).
 ### §4.14 Settings — all met
 
 - Model pickers per role with provider models — met
-  (`settings.spec.ts` “model pickers list provider models”, `routes/settings.ts`,
+  (`journeys/j5-settings-versions.spec.ts` “model pickers show display names”,
+  `journeys/j11-settings-combos.spec.ts` model persists, `routes/settings.ts`,
   `GET /api/models` ran 200). Switching a role's provider only browses that
   provider's list and saves nothing; choosing a model saves provider + model
   together, with no false “no longer offered” alert mid-browse (issue #87;
@@ -1131,10 +1138,12 @@ needed (that deviation is closed, not added).
   with L0–L4 marks, tokens, cache part on the debug page's Prompts tab,
   issue #60: collapsible templates + layers with Expand/Collapse all;
   view-only) — met
-  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`,
+  (`journeys/j5-settings-versions.spec.ts` prompts list + debug expansion,
+  `e2e/debug.spec.ts`, `service/test/prompts.test.ts`,
   `GET /api/prompts` ran 200 from the global install).
 - Limits/budgets (sessions per provider, inline budget, rebuild
-  thresholds) — met (`settings.spec.ts` “limits persist across reload”).
+  thresholds) — met (`journeys/j5-settings-versions.spec.ts` “limits persist,
+  invalid shows inline”).
 - UI theme (issue #196) — met: the current look is the named `default`
   theme in `prototype.css` (every themeable colour, radius, shadow and
   base font size is a CSS variable; light/dark stays a separate axis),
@@ -1194,7 +1203,7 @@ needed (that deviation is closed, not added).
   the owner: keep the new id vs keep the old one, and keep vs discard
   user comments/notes (default = delete semantics). Evidence:
   `service/test/reviews-redo.test.ts`, `ReviewBar.test.tsx`,
-  `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
+  `journeys/j14-diagrams-debug-redo.spec.ts` re-do test, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
 
@@ -1621,7 +1630,8 @@ needed (that deviation is closed, not added).
   `routes/prompts.ts` serves template + expanded).
 - Settings shows the template; the debug page shows the per-review
   expanded text with L0–L4 marks, tokens, cache part — met
-  (`settings.spec.ts`, `e2e/debug.spec.ts`, `prompts-route.test.ts`).
+  (`journeys/j5-settings-versions.spec.ts` prompts list + debug expansion,
+  `e2e/debug.spec.ts`, `service/test/prompts.test.ts`).
   Both pages are tabbed now (issues #60/#61; see §4.14).
 - Diagrams: D2 with `link:` citations on shapes/connections — met
   (`reply-format.md` §5, `prompts/includes/d2-convention.md` single source,
@@ -2033,8 +2043,8 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   unchanged/update, auth/host, commit path with entry-path
   identification), `test/update-helper-bundle.test.ts`
  (metafile containment), `versionFormat.test.ts` (+ newer-available),
- `e2e/update-picker.spec.ts` (4/4 mock-mode green, full `test:e2e` 113
- green). Real-install drill (no pushes): two local preview trees via
+ `journeys/j5-settings-versions.spec.ts` (failed-switch rollback, 409
+ refusal, no-drafts warn line, inline-confirm cancel). Real-install drill (no pushes): two local preview trees via
  `release.mjs` into a bare repo (HEAD set — npm dereferences it), install
   A into a temp prefix, run it, switch to B through the real helper +
   real npm (health flipped, live DB carried over, slot `preview-drill-a` written),
@@ -2079,8 +2089,9 @@ respectively; the outcome (`ok` / `rolled-back` / `failed` + reason +
   client-side validation, named busy state, toasts), managed marks, and
   per-kind remove confirms; the start page offers to clone on pasted PR URLs
   for unknown repos and shows `fetchError` once. Covered by mock-mode
-  Playwright specs (`settings.spec.ts`, `start.spec.ts`) plus a real-service
-  spec for invalid input and path-checkout remove.
+  Playwright specs (mock `start.spec.ts`) plus real-service coverage in
+  `journeys/j11-settings-combos.spec.ts` for invalid input and
+  path-checkout remove.
 
 ### User-facing copy (#45, branch `fix/45-user-facing-copy`, applied)
 
@@ -2217,9 +2228,8 @@ every agent action so the same handover runs. Service jobs now carry
  `guide/actions.test.ts` (funnel incl. stale-response guard and insert
  ordering), `service/test/jobs.test.ts` (card scope incl. persistence),
  `CardView.test.tsx` (incl. reload-mid-rewrite) + `ThreadView.test.tsx` +
- `GuideThreads.test.tsx` (component immediacy), new
- `e2e/immediate-feedback.spec.ts` (mock-mode explain/follow-up/second
- opinion), updated `ask-service.spec.ts` (streams never render), full
+ `GuideThreads.test.tsx` (component immediacy), instant working states
+ and never-streamed labels in `journeys/j2-explain-ask.spec.ts`, updated `ask-service.spec.ts` (streams never render), full
  `test:e2e` green incl. the depth-principle + journey service specs
  (which caught and verify the job-upsert handover fix). Screenshots in
  the issue report (before/after for depth, examples, generate,
@@ -2259,12 +2269,9 @@ every agent action so the same handover runs. Service jobs now carry
   dependency, no CSP change.
   Evidence: `shell/jobCounts.test.ts` (mapping across all six states),
   `shell/ReviewBar.test.tsx` (present with numbers/name/target, quiet
-  queued-only, hidden idle, hidden while opening), new
-  `e2e/progress-signs.spec.ts` (mock-mode count appears/links, disappears
-  after cancelling all live jobs, 800px fit, computed
-  `animation-name`/`duration` on the dots and on the pill's border in full
-  motion, pill + Submit boxes identical over a full travel cycle, depth
-  stepper still in both modes, reduced-motion fade animations with no
+  queued-only, hidden idle, hidden while opening), the count link in
+  `journeys/j247-running-agreement.spec.ts` (live pipeline: bar shows
+  the count linking to Debug, hidden once drained).
   transform via emulation), `copy-guard` green. Screenshots
   `docs/screenshots/98-*` and `docs/screenshots/144-*` (both pill options
   tried; the travelling border picked over the stronger gradient: visible
@@ -2528,7 +2535,9 @@ two content-split plotlines with `buildsOn`). Evidence: `test/hunk-plotlines-169
 valid/invalid, rules on top, plotlines valid/unknown/empty/>8,
 fallback fires/capped, stored shape, filter PATCH),
 `packages/shared/test/scores.test.ts`, `DiffView.scorePlotline.test.tsx`,
-`PageView.plotlines.test.tsx`, `e2e/score-plotline.spec.ts`,
+`PageView.plotlines.test.tsx`, `journeys/j353-plotline-names.spec.ts`
+(#184 files-list exclusion), `journeys/j242-plotlines-card.spec.ts`,
+`journeys/j4-diff-work.spec.ts` (dots), `journeys/j325-hide-level.spec.ts`,
 `docs/screenshots/169-*.png`, live findings on #169 (demo + 3 public
 PRs, costs per job kind). Open: owner tries the preview and decides;
 a small-PR reader degraded failure seen live (code citations outside
@@ -2560,7 +2569,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   window. One extra `gh` call per repo at most. Evidence:
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
-  `e2e/start-lists.spec.ts`.
+  `e2e/start.spec.ts` lists section.
 - **#131 (start page, §4.2):** the one recency filter sits below Reviews
   and applies to every list below it — "Your PRs" (newest first with the
   same relative time) and Recent branches (by last commit date, newest
@@ -2570,7 +2579,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   branch commit dates already rode `updatedAt`. Evidence:
   `StartPage.requested.test.tsx` (authoring sort, one control below
   Reviews, filtered-empty with Show all, branch ages, Reviews ignores the
-  window), `e2e/start-lists.spec.ts`.
+  window), `e2e/start.spec.ts` lists section.
 - **#148 (start page, §4.2):** the PR and branch lists the filter governs
   are one delineated block ("PRs and branches": bordered container with a
   heading row) whose boundary matches exactly what the filter covers;
@@ -2580,7 +2589,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   same load the Retry button triggers — spinning while fetching (still
   under reduced motion) with the time in its tooltip, so no text line
   ever shifts the layout. Filtered-empty states with Show all keep
-  working inside the block. Evidence: `e2e/start-block.spec.ts` (block
+  working inside the block. Evidence: `e2e/start.spec.ts` block section (block
   boundary, compact filter, refresh click → spinning → settled tooltip,
   filtered-empty way back), `StartPage.kept.test.tsx` (tooltip states),
   `docs/screenshots/148-wide-light.png`,
@@ -2604,12 +2613,13 @@ hunk coverage) is reported for a separate issue, not fixed here.
   directly. Evidence: `test/reviews-async.test.ts` (ready-PR reuse,
   branch reuse, PR-vs-branch distinct, concurrent creates → one row),
   `test/changes-pr-branch.test.ts` (row markers, PR review does not
-  mark its branch), `e2e/open-review.spec.ts` (marker + direct open).
+  mark its branch), `journeys/j1-open-and-read.spec.ts` #149 (existing
+  review reused, no second review).
 - **#100 (start page, §4.2):** PR rows show `+added −deleted · N files`
   in the quiet meta style with the diff add/delete colours, omitted when
   unknown; thousands separators, "1 file" singular. Evidence:
   `StartPage.test.tsx` (`diffSizeParts`), `StartPage.requested.test.tsx`
-  (render + omission), `e2e/start-lists.spec.ts`.
+  (render + omission), `e2e/start.spec.ts` lists section.
 - **#94 (start page + review bar, §4.2):** the PR label links to the PR
   page (new tab, `rel="noreferrer"`): the review-bar identity and the
   start-page PR and Reviews rows. The URL is built once in
@@ -2617,8 +2627,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `changePrUrl`); row clicks still open the review and the label stays
   keyboard-reachable. Nothing for branch-only reviews or the demo.
   Evidence: `test/repos.test.ts` (URL helper), `StartPage.requested.test.tsx`
-  (link isolation + session rows), `e2e/start-lists.spec.ts`,
-  `e2e/review-bar.spec.ts`.
+  (link isolation + session rows), `e2e/start.spec.ts` lists section,
+  `journeys/j245-reviewbar-pr.spec.ts` (GitHub action link).
 - **#92 (async open, §4.2, §7, §11, §14.1):** `POST /api/reviews` creates
   the row + a loading snapshot (`ingest: {status, step, error}`; placeholder
   version n: 0, empty files) and answers 202 before any fetch; the ingest
@@ -2637,8 +2647,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   with 409. Old rows (no `ingest`) load as ready. Evidence:
   `test/reviews-async.test.ts` (202-before-ingest, loading→ready patch,
   failed + retry + remove, restart, dedupe, pipeline-after-ingest, old-row
-  ready), `GuideLoading.test.tsx`, `e2e/open-review.spec.ts` (mock loading
-  → guide, failing → Retry).
+  ready), `GuideLoading.test.tsx`, `journeys/j1-open-and-read.spec.ts`
+  (#149: existing review reused).
 - **#179 (empty diff):** ingest with no hunks (and no binary change) ends
   in a distinct `ingest: {status: "empty"}` outcome — "No changes to
   review" with the PR-merged / branch-equals-base reason — instead of a
@@ -2671,7 +2681,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   Models, Version picker, Appearance). Evidence: journey
   `e2e/journeys/j225a-settings-badges.spec.ts` (real service: one-card
   screens, row heights/right edges, no page scroll, Base UI selects in
-  `e2e/start*.spec.ts`, `settings.spec.ts`, journeys J5/J11/J12/J18).
+  `e2e/start*.spec.ts`, `journeys/j11-settings-combos.spec.ts`, journeys J5/J11/J12/J18).
 - **#224 (PR state + review decision; §4.2, §4.1):** open/draft/merged/
   closed and approved/changes-requested/review-required ride the shared
   Badge with theme colours on the review bar (next to the PR title), the
@@ -2957,8 +2967,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `e2e/journeys/j5-settings-versions.spec.ts` (real service + fake
   updater: release-newer shows, up to date hides, preview-date shows,
   failing check hides with the panel naming the failure, toggle hides
-  previews while releases stay), mock `e2e/update-picker.spec.ts`
-  (toggle off lists releases, hides previews), tour frames
+  previews while releases stay), `journeys/j5-settings-versions.spec.ts`
+  (toggle hides previews, releases stay), tour frames
   `packages/web/visual-tour/start-update-icon-*` and
   `settings-version-*` (git-ignored).
 
@@ -3047,8 +3057,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   2px, asserted in the tour). The ingest "Opening PR…" heading and
   its step label go the same way (the review bar already names the
   review); the start page's Reviews-row step text is untouched, as
-  are the failed/empty terminal states. Evidence: updated
-  `e2e/open-review.spec.ts` + `e2e/debug-redo.spec.ts` (loading now
+  are the failed/empty terminal states. Evidence:
+  `journeys/j1-open-and-read.spec.ts` #149 (reused review) +
+  `journeys/j14-diagrams-debug-redo.spec.ts` re-do (loading now
   asserts "Building the guide", no step), new tour scenes
   `review-preparing-*` (ingest loading: both panes) and
   `guide-building-*` (seeded about-to-queue pipeline stages — one done,
@@ -3137,7 +3148,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
   shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
   hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
-  `review-bar.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
+  `journeys/j245-reviewbar-pr.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
   (Refresh in `#reviewbar`), J225 (tooltip "Refresh").
 
 ## Addendum: #244 (branch `fix/244-github-link-box`)
@@ -3151,7 +3162,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   after it; branch reviews (no PR) and document reviews keep the plain
   `.num` span. Bottom alignment from #239 kept (`.rid` stays
   `flex-end`; the link aligns like the icon buttons). Evidence:
-  `src/shell/ReviewBar.test.tsx` (boxed classes), `e2e/review-bar.spec.ts`
+  `src/shell/ReviewBar.test.tsx` (boxed classes),
+  `journeys/j245-reviewbar-pr.spec.ts`
   (boxed link: same height as Comments, bottoms within 2px),
   `e2e/journeys/j230-pr-state-fresh.spec.ts` (title selector + Comments
   height check), tour review-page frames (light + dark, 1440 + 960).
@@ -3164,7 +3176,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   height (`--control-sm`) with the same vertical centre (within 1px) in
   Default, Studio and Console, light and dark. `.rid` is centred
   (`align-items: center`, old `align-self: flex-end` overrides removed).
-  Evidence: `e2e/review-bar.spec.ts` (all 6 theme combos), J230 (bottoms
+  Evidence: `journeys/j245-reviewbar-pr.spec.ts` (theme combos), J230 (bottoms
   + icon centre), tour review-page frames in all three themes.
 - **#245 (status icon inside the link box; §4.1):** `PrBadges` renders
   inside the GitHub link after `owner/repo#N`, vertically centred by the
@@ -3172,8 +3184,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `data-tip` tooltip (e.g. "Changes requested", "Merged"); the link keeps
   its own "Open PR on GitHub" title. No sibling badges in the row.
   Evidence: `src/shell/ReviewBar.test.tsx` (inside + tooltip attrs),
-  J225a + J230 (inside + hover `#tip` + no sibling), `review-bar.spec.ts`
-  (no sibling + centre).
+  J225a + J230 (inside + hover `#tip` + no sibling),
+  `journeys/j245-reviewbar-pr.spec.ts` (no sibling + centre).
 
 ## Addendum: #246 (Version tab: hint text + Installed line removed)
 
@@ -3186,7 +3198,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   now-unused import are gone — no dead code (`mergedProvenance` stays,
   still used by the preview badge title). The installed channel is marked
   by the Installed badge in the channel list. Evidence:
-  `e2e/update-picker.spec.ts`, J5, `VersionSection.disabled.test.tsx`
+  `journeys/j5-settings-versions.spec.ts`, `VersionSection.disabled.test.tsx`
   (Installed badge / absent line), tour Version frames.
 
 
@@ -3200,7 +3212,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   (sha, then "—"). The row tooltip names the full version on release
   rows, the full commit elsewhere. Evidence: new
   `channelRowMiddle` in `web/src/settings/versionFormat.ts` (+ unit
-  test),   `e2e/update-picker.spec.ts` (release `v0.0.1`, no sha;
+  test), `journeys/j5-settings-versions.spec.ts` (release `v0.0.1`, no sha;
   preview sha unchanged), J5 (seed + staged fake channels), tour
   Version frames.
 - **#250 (update-available icon is a gift; §4.14):** the top-bar
@@ -3281,7 +3293,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   in every theme and mode; the sparkle stays only as the AI avatar and
   Second opinion / Summarize get their own `second` / `summary` icons
   (same 16x16 stroke style). Evidence: `ThreadView.test.tsx` (removal +
-  inline-avatar layout), `e2e/comments.spec.ts` (in-thread Ask flow),
+  inline-avatar layout), `journeys/j10-suggested.spec.ts` (#301 in-thread
+  Ask flow),
   thread-polish tour frames (rest, focused, Ask + follow-up, comment
   thread, both new icons).
 - **#302 (thread links vs glossary):** collapsed-thread marks
@@ -3804,8 +3817,9 @@ hunk coverage) is reported for a separate issue, not fixed here.
   journey `e2e/journeys/j346-inline-confirm.spec.ts` (review +
   document remove through the pill, Escape/outside cancel, API
   cross-checks), reworked J14 (re-do through the pill) and J225a
-  (pill-in-row geometry), mock `start.spec.ts` / `settings.spec.ts`
-  / `debug-redo.spec.ts`, tour frames `start-remove-idle`,
+  (pill-in-row geometry), mock `start.spec.ts`,
+  `journeys/j11-settings-combos.spec.ts` and
+  `journeys/j14-diagrams-debug-redo.spec.ts`, tour frames `start-remove-idle`,
   `start-remove-confirm`, `start-remove-confirmed` and
   `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
   (inspected). Full gates not yet run.
@@ -3841,9 +3855,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   refusal panel, not a generic confirm); DataFormatNotice Go back,
   Access turn-off (safe directions, data untouched / access
   reduced). No `window.confirm` anywhere.
-- Evidence: reworked mock `e2e/update-picker.spec.ts` (inline
-  confirm incl. Escape cancel, blocked flow, rollback, warn line
-  with/without drafts), new J5 "version data-format warn line"
+- Evidence: `journeys/j5-settings-versions.spec.ts` (inline confirm
+  incl. Escape cancel, no-drafts warn line, failed-switch rollback), new J5 "version data-format warn line"
   journey (real service, one short line + no Export without
   drafts), reworked J11 full-access + repo/data-reset steps through
   the pills, updated disabled `VersionSection`/`AccessSection`

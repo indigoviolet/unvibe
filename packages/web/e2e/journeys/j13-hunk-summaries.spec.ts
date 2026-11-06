@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createDemoReview } from "./journey-helpers.js";
 
@@ -31,6 +32,7 @@ test.describe("J13 hunk summaries", () => {
     await svc?.stop().catch(() => {});
     rmSync(dataDir, { recursive: true, force: true });
   });
+
 
   test("summary activates as a card, delete removes it, Summarize restores it, Fold all folds", async ({ page }) => {
     test.setTimeout(240_000);
@@ -64,5 +66,62 @@ test.describe("J13 hunk summaries", () => {
     // Fold all (diff toolbar): hunks fold behind their headers.
     await page.getByRole("button", { name: "Fold all", exact: true }).click();
     await expect(connFile.getByRole("button", { name: "Show code" }).first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  // Folded from hunk-summary.spec.ts (#357): summary Explain/Comment/promote flows.
+  test("summary Comment never activates, Explain activates under the hunk, promoted hunk keeps its chip", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    const connFile = page.locator(`[id="F-${CONN}"]`);
+    await expect(connFile).toBeVisible({ timeout: 60_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click().catch(() => {});
+    // The previous test leaves hunks folded; expand the first folded
+    // hunk so its summary is selectable (expanding more would remount
+    // bodies under the selection and drop the toolbar).
+    const folded = connFile.getByRole("button", { name: "Show code" }).first();
+    if (await folded.count()) {
+      await folded.click();
+    }
+    await expect(connFile.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 60_000 });
+    const words = (h: string | null): string =>
+      (h ?? "").trim().split(/\s+/).slice(0, 3).join(" ");
+
+    // A Comment on a summary lands on the line and never activates the hunk.
+    const threadsBefore = await connFile.locator(".dhunk section.ithread[data-thread]").count();
+    const idleText = words(await connFile.locator("p[data-hunksum]").first().textContent());
+    await selectText(page, "p[data-hunksum]", idleText);
+    await page.locator('#selbar [data-act="note"]').click();
+    await expect(page.locator(".ithread[data-pending-thread]")).toBeVisible({ timeout: 15_000 });
+    await expect(connFile.locator("p[data-hunksum]").first()).toBeVisible();
+    await expect(connFile.locator(".dhunk section.ithread[data-thread]")).toHaveCount(threadsBefore);
+    await page.keyboard.press("Escape");
+
+    // Explain on a summary activates it into a thread under the hunk.
+    const target = connFile.locator("p[data-hunksum]").first();
+    const summaryText = words(await target.textContent());
+    await selectText(page, "p[data-hunksum]", summaryText);
+    await page.locator('#selbar [data-act="explain"]').click();
+    const thread = connFile.locator(".dhunk section.ithread[data-thread]", { hasText: summaryText }).first();
+    await expect(thread).toBeVisible({ timeout: 30_000 });
+    // Let the answer fill so the pipeline is idle for the tests below.
+    await expect(thread.locator(".exp-b").first()).not.toBeEmpty({ timeout: 90_000 });
+
+    // Promoting the hunk keeps its summary plus chip; Explain reopens the page.
+    await thread.getByRole("button", { name: "Open as page" }).click();
+    await expect(page).toHaveURL(/\/review\/[\w-]+\/page\/p-/, { timeout: 30_000 });
+    const pageUrl = page.url();
+    await page.goBack();
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(connFile.locator("p[data-hunksum]", { hasText: summaryText }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    const chip = connFile.locator(".dhunk a.cx.pg").first();
+    await expect(chip).toBeVisible({ timeout: 15_000 });
+    await selectText(page, "p[data-hunksum]", summaryText);
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect(page).toHaveURL(pageUrl, { timeout: 30_000 });
   });
 });

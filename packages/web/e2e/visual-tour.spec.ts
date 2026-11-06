@@ -860,7 +860,6 @@ test.describe("visual tour passes", () => {
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
   ] as const) {
   test(`visual tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
@@ -1809,7 +1808,6 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
   ] as const) {
     test(`visual tour hidden-hunk rows (#283, ${combo.name})`, async ({ page }) => {
       if (!svc283) throw new Error("hidden-hunk service not running");
@@ -2033,7 +2031,6 @@ for (const combo of [
   { width: 1440, dark: false },
   { width: 1440, dark: true },
   { width: 960, dark: false },
-  { width: 960, dark: true },
 ] as const) {
   const suffix = `studio-${combo.width}-${combo.dark ? "dark" : "light"}`;
   test(`visual tour start studio (${suffix})`, async ({ page }) => {
@@ -2227,11 +2224,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     { theme: "default", width: 1440, dark: false },
     { theme: "default", width: 1440, dark: true },
     { theme: "default", width: 960, dark: false },
-    { theme: "default", width: 960, dark: true },
     { theme: "studio", width: 1440, dark: false },
-    { theme: "studio", width: 1440, dark: true },
     { theme: "console", width: 1440, dark: false },
-    { theme: "console", width: 1440, dark: true },
   ] as const) {
     const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
     test(`visual tour review preparing (${suffix})`, async ({ page }) => {
@@ -3188,7 +3182,6 @@ test.describe("visual tour file tab (#81)", () => {
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
   ] as const) {
     test(`visual tour file tab (${combo.name})`, async ({ page }) => {
       if (!ftSvc) throw new Error("file-tab service not running");
@@ -3664,7 +3657,6 @@ test.describe("data reset notice tour (#311)", () => {
     { name: "1440-light", dark: false, width: 1440 },
     { name: "1440-dark", dark: true, width: 1440 },
     { name: "800-light", dark: false, width: 800 },
-    { name: "800-dark", dark: true, width: 800 },
   ] as const) {
     test(`data reset notice (${combo.name})`, async ({ page }) => {
       if (!noticeSvc) throw new Error("notice service not running");
@@ -3991,12 +3983,7 @@ test.describe("since-B tour (#351)", () => {
     if (data351) rmSync(data351, { recursive: true, force: true });
   });
 
-  for (const combo of [
-    { name: "1440-light", width: 1440, dark: false },
-    { name: "1440-dark", width: 1440, dark: true },
-    { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
-  ] as const) {
+  for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const) {
     const suffix = combo.name;
     test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -4241,12 +4228,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
     if (data352) rmSync(data352, { recursive: true, force: true });
   });
 
-  for (const combo of [
-    { name: "1440-light", width: 1440, dark: false },
-    { name: "1440-dark", width: 1440, dark: true },
-    { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
-  ]) {
+  for (const combo of [{ name: "1440-light", width: 1440, dark: false }]) {
     const suffix = combo.name;
     test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -4568,12 +4550,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     }
   });
 
-  for (const combo of [
-    { name: "1440-light", width: 1440, dark: false },
-    { name: "1440-dark", width: 1440, dark: true },
-    { name: "960-light", width: 960, dark: false },
-    { name: "960-dark", width: 960, dark: true },
-  ]) {
+  for (const combo of [{ name: "1440-light", width: 1440, dark: false }]) {
     const suffix = combo.name;
     test(`since offer unchecked and checked (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");

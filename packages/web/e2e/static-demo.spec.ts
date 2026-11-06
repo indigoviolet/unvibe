@@ -9,16 +9,24 @@
  * recordings, Submit is disabled with an install pointer, and Settings
  * are read-only — all with no request beyond the static origin. Debug,
  * Version and Doctor stay hidden: no Settings tabs or routes for the
- * first two, no per-review debug page, no Doctor route or link.
+ * first two, no per-review debug page, no Doctor route or link. Plus the
+ * demo banner geometry (own row at both widths, both demos) and the sync
+ * check (static build shows the same content as the real service in
+ * replay mode) — merged from demo-banner.spec.ts and
+ * static-demo-sync.spec.ts (#357 Q6).
  *
- * Needs `mise run demo:build` first (skipped without it).
+ * Needs `mise run demo:build` first (skipped without it); the sync
+ * describe additionally needs `mise run build` first.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
+import { apiJson } from "./journeys/journey-helpers.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { startStaticServer, type StaticServer } from "./static-server.js";
 
 const DEMO_DIST = fileURLToPath(new URL("../dist-demo", import.meta.url));
@@ -356,4 +364,213 @@ test("bundle stays reasonable (size report)", async () => {
   // 4.2 MB today (Shiki grammars + bundled fonts); 10 MB leaves headroom
   // without letting a dependency accident slip through.
   expect(total).toBeLessThan(10_000_000);
+});
+
+/**
+ * Demo banner geometry (issue #341 follow-up; merged from
+ * demo-banner.spec.ts): the banner must be a full, readable slim strip
+ * that takes its own row in the layout — never overlapped by the
+ * guide/source panes — in both demos and both widths.
+ */
+async function expectFullBanner(page: Page): Promise<void> {
+  const banner = page.locator('[data-testid="demo-banner"]');
+  await expect(banner).toBeVisible({ timeout: 15000 });
+  await expect(banner).toContainText("Demo: a recorded Unvibe review of urllib3#5020");
+  await expect(banner).toContainText("Install Unvibe");
+  const box = await banner.boundingBox();
+  if (!box) throw new Error("banner has no bounding box");
+  // A readable strip, not a clipped sliver.
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  // Nothing covers it: the element at its center belongs to the banner.
+  const top = await page.evaluate(
+    ({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? (el.closest('[data-testid="demo-banner"]') ? "banner" : el.tagName + "." + (el.className ?? "")) : "none";
+    },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+  expect(top).toBe("banner");
+  // The guide pane starts at or below the banner's bottom edge.
+  const guideTop = await page.evaluate(() => document.querySelector("#page")?.getBoundingClientRect().top ?? -1);
+  expect(guideTop).toBeGreaterThanOrEqual(Math.floor(box.y + box.height) - 1);
+}
+
+test.describe("demo banner takes its own row", () => {
+  for (const width of [1440, 960]) {
+    test(`in-app demo at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/review/demo");
+      await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+        timeout: 30000,
+      });
+      await expectFullBanner(page);
+    });
+  }
+});
+
+test.describe("demo banner on the static demo", () => {
+  for (const width of [1440, 960]) {
+    test(`static demo at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin()}/#/review/demo`);
+      await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+        timeout: 30000,
+      });
+      await expectFullBanner(page);
+      await expect(page.locator('[data-testid="demo-banner"] button')).toContainText("Reset demo");
+    });
+  }
+});
+
+/**
+ * Static-demo sync check (issue #334; merged from
+ * static-demo-sync.spec.ts): the static build shows the same content as
+ * the real service in replay mode. A fixture or UI change that breaks
+ * the static demo fails here: the key screens are rendered against both
+ * backends and compared as text — the guide cards (minus live threads),
+ * one recorded Explain answer, and one on-demand hunk summary.
+ */
+test.describe("static-demo sync", () => {
+  test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+  let syncDataDir = "";
+  let syncSvc: RunningService | null = null;
+  let syncReviewId = "";
+
+  test.beforeAll(async () => {
+    syncDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-demo-sync-data-"));
+    syncSvc = await startService(syncDataDir, { agent: "replay" });
+    if (!syncSvc) throw new Error("no service");
+    const created = await apiJson(syncSvc, "POST", "/api/reviews", { repoId: "demo" });
+    syncReviewId = (created.json as { review: { id: string } }).review.id;
+    const deadline = Date.now() + 120_000;
+    for (;;) {
+      const snap = await apiJson(syncSvc, "GET", `/api/reviews/${syncReviewId}`);
+      const pages = (snap.json as { pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[] }).pages;
+      const root = pages.find((p) => p.id === "root");
+      if (
+        root?.cards.some((c) => c.id === "problem" && c.blocks.length > 0) &&
+        root?.cards.some((c) => c.id === "central" && c.blocks.length > 0)
+      )
+        break;
+      if (Date.now() > deadline) throw new Error("guide did not fill in time");
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  });
+
+  test.afterAll(async () => {
+    await syncSvc?.stop().catch(() => {});
+    syncSvc = null;
+    rmSync(syncDataDir, { recursive: true, force: true });
+  });
+
+  const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+  /** Guide card texts with live threads removed (threads differ by backend by design). */
+  async function guideCardTexts(pg: Page): Promise<Record<string, string>> {
+    return pg.evaluate(() => {
+      const out: Record<string, string> = {};
+      for (const el of document.querySelectorAll('#page [id^="C-"]')) {
+        const clone = el.cloneNode(true) as HTMLElement;
+        for (const t of clone.querySelectorAll("section.ithread, [data-pending-thread], button.cm, button.rlink, div.suggest"))
+          t.remove();
+        for (const t of clone.querySelectorAll("svg, style")) t.remove();
+        for (const m of clone.querySelectorAll("span.lo mark.anc")) m.remove();
+        for (const m of clone.querySelectorAll("mark.anc")) m.replaceWith(...Array.from(m.childNodes));
+        const id = (el as HTMLElement).id;
+        if (id && !id.includes(" ")) out[id] = (clone.textContent ?? "").replace(/\s+/g, " ").trim();
+      }
+      return out;
+    });
+  }
+
+  test("guide cards match between the static demo and the replay service", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!syncSvc) throw new Error("not started");
+    const expandAll = async (): Promise<void> => {
+      for (let i = 0; i < 12; i++) {
+        const btn = page.locator("#page section.collapsed").getByRole("button", { name: "Expand" });
+        if ((await btn.count()) === 0) return;
+        await btn.first().click();
+      }
+    };
+    await page.goto(`${syncSvc.origin}/review/${syncReviewId}?token=${syncSvc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+      timeout: 60_000,
+    });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await expandAll();
+    await expect
+      .poll(
+        async () => {
+          const snap = await apiJson(syncSvc!, "GET", `/api/reviews/${syncReviewId}`);
+          const pages = (snap.json as { pages: { id: string; cards: { id: string; blocks: unknown[]; pending?: unknown }[] }[] }).pages;
+          const root = pages.find((p) => p.id === "root");
+          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending && c.blocks.length > 0);
+        },
+        { timeout: 300_000 },
+      )
+      .toBe(true);
+    const fromService = await guideCardTexts(page);
+    await page.goto(`${origin()}/#/review/demo`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+      timeout: 60_000,
+    });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await expandAll();
+    const fromStatic = await guideCardTexts(page);
+    expect(Object.keys(fromStatic).sort()).toEqual(Object.keys(fromService).sort());
+    for (const id of Object.keys(fromService)) {
+      expect(norm(fromStatic[id] ?? ""), `guide card ${id}`).toBe(norm(fromService[id]));
+    }
+  });
+
+  test("a recorded Explain matches between the static demo and the replay service", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!syncSvc) throw new Error("not started");
+    const answers: string[] = [];
+    for (const base of [`${syncSvc.origin}/review/${syncReviewId}?token=${syncSvc.token}`, `${origin()}/#/review/demo`]) {
+      await page.goto(base);
+      await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+        timeout: 60_000,
+      });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await selectText(page, "#C-central", "optional whitespace");
+      await page.locator('#selbar [data-act="explain"]').click();
+      const first = page.locator("#C-central section.ithread[data-thread] .exp-b").first();
+      await expect(first).toContainText(/obs-fold|RFC 9112/i, { timeout: 90_000 });
+      await expect(page.locator("#C-central .working")).toHaveCount(0, { timeout: 60_000 });
+      answers.push(norm(await first.innerText()));
+    }
+    expect(answers[1], "static demo explain").toBe(answers[0]);
+  });
+
+  test("an on-demand hunk summary matches between the static demo and the replay service", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!syncSvc) throw new Error("not started");
+    const summaries: string[] = [];
+    for (const base of [`${syncSvc.origin}/review/${syncReviewId}?token=${syncSvc.token}`, `${origin()}/#/review/demo`]) {
+      await page.goto(base);
+      await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
+        timeout: 60_000,
+      });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      const connFile = page.locator(`[id="F-src-urllib3-connection.py"]`);
+      await expect(connFile.locator("table.diff").first()).toBeVisible({ timeout: 30_000 });
+      // Scope every step to the first hunk: after the delete, a bare
+      // `p[data-hunksum]` first() would match the next hunk's summary and
+      // pass at once (the race CI hit on a slow runner).
+      const hunk = connFile.locator(".dhunk").first();
+      const idle = hunk.locator("p[data-hunksum]");
+      await idle.click();
+      const card = hunk.locator("[data-thread]").first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await card.getByRole("button", { name: "Delete" }).click();
+      await expect(idle).toHaveCount(0, { timeout: 30_000 });
+      await hunk.getByRole("button", { name: "Summarize" }).click();
+      await expect(idle).toBeVisible({ timeout: 90_000 });
+      summaries.push(norm(await idle.innerText()));
+    }
+    expect(summaries[1], "static demo hunk summary").toBe(summaries[0]);
+  });
 });

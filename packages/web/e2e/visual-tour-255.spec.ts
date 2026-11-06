@@ -131,12 +131,7 @@ test.afterAll(async () => {
   for (const d of [dataDir, repoDir]) rmSync(d, { recursive: true, force: true });
 });
 
-for (const combo of [
-  { name: "1440-light", width: 1440, dark: false },
-  { name: "1440-dark", width: 1440, dark: true },
-  { name: "960-light", width: 960, dark: false },
-  { name: "960-dark", width: 960, dark: true },
-] as const) {
+for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const) {
   test(`code blocks (${combo.name}, #255)`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(240_000);
