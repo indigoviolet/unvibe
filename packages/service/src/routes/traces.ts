@@ -27,7 +27,18 @@ export async function registerTraces(app: FastifyInstance, deps: TracesRouteDeps
 
   app.post("/api/traces/clear", async (_req, reply) => {
     if (!deps.traces) return reply.code(501).send({ error: "traces are not available in this build" });
+    // Read the switch before clearing: the read itself is a traced
+    // SQLite op, and it must not land in the emptied store.
+    let wantOn = false;
+    try {
+      wantOn = deps.settings?.get().recordTraces === true;
+    } catch {
+      // Unreadable settings: clear only, never enable.
+    }
     deps.traces.clear();
+    // "Clear to record again" is literal: with the store emptied the
+    // safety cap lifts, so resume when the switch is still on.
+    if (wantOn) deps.traces.setEnabled(true);
     return deps.traces.status();
   });
 

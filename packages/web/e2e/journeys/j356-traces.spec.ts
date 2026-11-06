@@ -146,15 +146,27 @@ test.describe("J356 debug frames", () => {
   for (const combo of combos) {
     test(`debug capped frame (${combo.name})`, async ({ page }) => {
       test.setTimeout(120_000);
-      // Sparse 256 MB + 1 byte store: enabling refuses with the cap notice.
+      // Realistic over-cap store: a few real span lines, then sparse
+      // padding past 256 MB (instant, no 256 MB write). Created before
+      // the service boots so the count is picked up.
       const cappedDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j356-capped-"));
       let capped: RunningService | null = null;
       try {
-        capped = await startService(cappedDir, { agent: "none" });
         mkdirSync(path.join(cappedDir, "traces"), { recursive: true });
         const file = path.join(cappedDir, "traces", "spans.jsonl");
-        writeFileSync(file, "{}\n");
+        const line = (i: number): string =>
+          JSON.stringify({
+            traceId: "a".repeat(32),
+            spanId: String(i).padStart(16, "0"),
+            name: "http GET /api/reviews",
+            kind: 2,
+            startTimeUnixNano: "1793949394000000500",
+            endTimeUnixNano: "1793949394000000600",
+            attributes: [{ key: "http.method", value: { stringValue: "GET" } }],
+          });
+        writeFileSync(file, [line(1), line(2), line(3)].join("\n") + "\n");
         truncateSync(file, 256 * 1024 * 1024 + 1);
+        capped = await startService(cappedDir, { agent: "none" });
         await page.setViewportSize({ width: combo.width, height: 900 });
         if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
         await page.evaluate(() => document.fonts?.ready).catch(() => {});
@@ -164,6 +176,10 @@ test.describe("J356 debug frames", () => {
         await expect(page.getByTestId("trace-state")).toHaveText("Paused (size limit)", {
           timeout: 15_000,
         });
+        await expect(page.getByTestId("trace-size")).toContainText("3 spans", { timeout: 15_000 });
+        // Clear and Export are both available on an over-cap store.
+        await expect(page.getByRole("button", { name: "Clear traces" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Export traces" })).toBeEnabled();
         const region = page.getByRole("region", { name: "Performance traces" });
         await region.scrollIntoViewIfNeeded();
         await region.screenshot({ path: path.join(FRAMES, `debug-capped-${combo.name}.png`) });

@@ -81,6 +81,15 @@ describe("DebugSection", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("256");
   });
 
+  it("Clear stays enabled on an over-cap store with no counted spans", async () => {
+    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: false, spans: 0, bytes: 300 * 1024 * 1024, capped: true });
+    vi.spyOn(api, "traceClear").mockResolvedValue({ recording: false, spans: 0, bytes: 0, capped: false });
+    render(<DebugSection settings={settings} onSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Clear traces" })).toBeEnabled());
+    // ...while Export still needs spans to write.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Export traces" })).toBeDisabled());
+  });
+
   it(" Clear runs through the inline confirm and reports", async () => {
     vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 7, bytes: 512, capped: false });
     const clear = vi.spyOn(api, "traceClear").mockResolvedValue({ recording: true, spans: 0, bytes: 0, capped: false });

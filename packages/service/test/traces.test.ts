@@ -327,7 +327,12 @@ describe("traces (#356)", () => {
       expect(names).toContain("sqlite select");
       expect(JSON.stringify(body)).not.toContain("tok-traces-test");
       const cleared = await app.inject({ method: "POST", url: "/api/traces/clear", headers: auth });
-      expect(cleared.json()).toMatchObject({ spans: 0, bytes: 0 });
+      // The switch is still on, so clearing resumes recording. (The
+      // clear request's own fastify spans end after the wipe, so the
+      // store is not exactly empty — but the beacon span is gone.)
+      expect(cleared.json()).toMatchObject({ recording: true });
+      const wiped = JSON.stringify(await app.inject({ method: "GET", url: "/api/traces/export", headers: auth }).then((r) => r.json()));
+      expect(wiped).not.toContain("1".repeat(32));
       const beacon = await app.inject({
         method: "POST", url: "/api/traces/spans", headers: auth,
         payload: { spans: [{ kind: "fetch", name: "fetch", startMs: Date.now() - 5, durationMs: 5, traceId: "1".repeat(32), spanId: "2".repeat(16), attributes: { "url.full": "http://127.0.0.1/settings?token=tok-traces-test" } }] },

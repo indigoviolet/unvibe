@@ -219,14 +219,20 @@ export function DebugSection({
           >
             Export traces
           </button>
-          {/* #346: the shared inline confirm. */}
+          {/* #346: the shared inline confirm. Clear is available whenever
+              the store has anything (size > 0), and always when capped —
+              a capped store can hold zero counted spans. Export needs
+              spans to write. */}
           <InlineConfirm
             action="Clear traces"
             confirmAction="clear traces"
             runningLabel="Clearing…"
             size="md"
             placement="stack"
-            disabled={saving || status?.spans === 0}
+            disabled={
+              saving ||
+              ((status?.spans ?? 0) === 0 && (status?.bytes ?? 0) === 0 && status?.capped !== true)
+            }
             onConfirm={clearTraces}
             formatError={friendlyError}
             detail="Delete every recorded span on this machine? This cannot be undone."
