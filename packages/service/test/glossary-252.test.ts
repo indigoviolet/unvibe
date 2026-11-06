@@ -137,7 +137,7 @@ describe("glossary #252", () => {
     }
   });
 
-  it("Ask, Go deeper and concept prompts carry the glossary", { timeout: 120000 }, async () => {
+  it("Go deeper and concept prompts carry the glossary; Ask turns stay minimal (#252/#365)", { timeout: 120000 }, async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Hunk pass", events: textEvents(hunkReply("Does the thing.")) },
@@ -188,7 +188,10 @@ describe("glossary #252", () => {
         stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "pending" },
       };
       ctx.reviews.putSnapshot(id, base);
-      // Ask via HTTP (first turn renders the ask template with glossary).
+      // Ask via HTTP. Issue #365: the Ask turn is minimal (quote, item
+      // ID, offsets, question, changed hunks) — the glossary is not
+      // pasted into it. The turn's fork still sees the glossary through
+      // the base it continues, so exact-term behaviour is unchanged.
       const res = (await app.inject({
         method: "POST",
         url: `/api/reviews/${id}/actions`,
@@ -197,7 +200,10 @@ describe("glossary #252", () => {
       } as never)) as unknown as { statusCode: number; json: () => { jobId?: string } };
       expect(res.statusCode).toBe(200);
       if (res.json().jobId) await ctx.jobs.drain(60000);
-      await waitFor(() => agents.prompts.some((p) => p.text.includes("# Ask") && p.text.includes("## Glossary")));
+      await waitFor(() => agents.prompts.some((p) => p.text.includes("# Ask")));
+      for (const p of agents.prompts.filter((x) => x.text.includes("# Ask"))) {
+        expect(p.text).not.toContain("## Glossary");
+      }
       // Go deeper fill.
       agents.prompts.length = 0;
       await ctx.pipeline.fillGoDeeper(id, "g-flow", undefined, () => {});
