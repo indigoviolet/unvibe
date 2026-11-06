@@ -265,6 +265,28 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(note.locator('[data-reply][data-kind="comment"]')).toHaveCount(1);
   });
 
+  // From selection-scroll.spec.ts (#357 #147): an app-initiated scroll
+  // just after selection keeps the toolbar; a later scroll hides it.
+  test("app-initiated scroll just after selection keeps the toolbar; a later scroll hides it (#147)", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await selectText(page, "#C-central", "optional whitespace");
+    const bar = page.locator("#selbar");
+    await expect(bar).toBeVisible({ timeout: 10_000 });
+    // App-initiated scroll immediately after the bar shows: it stays.
+    await page.locator("#page").evaluate((el) => el.scrollBy(0, 200));
+    await page.waitForTimeout(150);
+    await expect(bar).toBeVisible();
+    // Past the grace window a scroll hides it as before.
+    await page.waitForTimeout(600);
+    await page.locator("#page").evaluate((el) => el.scrollBy(0, 200));
+    await expect(bar).toBeHidden({ timeout: 5_000 });
+  });
+
   // Merged from ask-service.spec.ts (#256): the Ask answer arrives as
   // blocks with citation markers through the streamed patch path (never
   // the old 60 s waiting fallback, never raw thread HTML), and streamed
