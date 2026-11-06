@@ -1688,6 +1688,8 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
    weight on the theme token; the answer below sits on the card
    background. (Specificity beats the old per-reply rules above.) */
 .spike-thread .turn + .turn { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; }
+/* Issue #364: scrolled-to turns land below the sticky review bar. */
+.spike-thread .turn { scroll-margin-top: 60px; }
 .spike-thread .turn > .spike-reply { border-top: none; padding-top: 2px; }
 .spike-thread .spike-reply.ask-question { background: var(--accent-soft); border-radius: var(--radius-6); padding: 6px 10px; }
 .spike-thread .spike-reply.ask-question > p { font-weight: 500; }
