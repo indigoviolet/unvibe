@@ -201,6 +201,14 @@ run = "npm run test:slow --workspaces --if-present"
 description = "Slow suite: slow vitest files, then Playwright behaviour tests"
 run = "mise run test:slow:unit && mise run test:e2e"
 
+[tasks."test:affected"]
+description = "Pre-fold check (issue #358): full check, then Playwright affected-by-base plus trigger specs (--dry-run prints the choice; --base <ref> overrides the merge-base with main-rc)"
+run = "node scripts/test-affected.mjs"
+
+[tasks."gate:failed"]
+description = "Re-run only what failed (issue #358): Playwright --last-failed; vitest has no last-failed state (re-run files by name)"
+run = "node scripts/gate-failed.mjs"
+
 [tasks.restart-resilience]
 description = "SIGKILL mid-stage, restart, resume against the built service"
 depends = ["build"]
