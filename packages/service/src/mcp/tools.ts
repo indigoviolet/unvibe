@@ -104,10 +104,30 @@ const PIN_CONTEXT: McpToolDef = {
   },
 };
 
+const GET_ITEM: McpToolDef = {
+  name: "get_item",
+  description:
+    "Return one review item as its current content: a card (card:), a " +
+    "block (card:<card>#<block>), a page (page:), a thread (ann:), a " +
+    "thread reply (ann:<thread>#r<n>), or a description paragraph " +
+    "(desc:). Output starts with the item ID and kind, then its parent " +
+    "chain and child IDs for walking the tree, then the current text. " +
+    "Deleted replies are hidden — fetching one fails.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Item ID, e.g. card:central, card:central#b2, page:root, ann:ann_1a2b3c, ann:ann_1a2b3c#r2, desc:d1." },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+};
+
 /** Tools every session gets (PRD §10). */
 export const COMMON_TOOLS: readonly McpToolDef[] = Object.freeze([
   GET_HUNK,
   GET_CODE,
+  GET_ITEM,
   SEARCH_REVIEW,
   RESOLVE,
 ]);
