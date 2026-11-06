@@ -193,13 +193,14 @@ export function buildUnvibeField({
  * optional human notes file rides along so the build ships
  * `release-notes.json` with those entries merged in.
  */
-export function buildReleaseArgs({ version, branch, sourceBranch, sourceCommit, baseBranch, baseCommit, notesFile }) {
+export function buildReleaseArgs({ version, branch, sourceBranch, sourceCommit, baseBranch, baseCommit, notesFile, debug }) {
   const out = ["--version", version, "--branch", branch];
   if (sourceBranch) out.push("--source-branch", sourceBranch);
   if (sourceCommit) out.push("--source-commit", sourceCommit);
   if (baseBranch) out.push("--base-branch", baseBranch);
   if (baseCommit) out.push("--base-commit", baseCommit);
   if (notesFile) out.push("--notes-file", notesFile);
+  if (debug) out.push("--debug");
   return out;
 }
 

@@ -62,6 +62,8 @@ if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
       "  --all     publish every local branch with commits not on main, plus main itself",
       "  --prune   list preview/* refs whose source branch is merged or deleted (dry run)",
       "  --notes-file <file>  publisher notes JSON merged into release-notes.json (#330; see DEVELOPMENT.md)",
+      "  --debug   debug flavour (issue #356): publish as preview/<slug>-debug with the OTel dependencies",
+      "            (the throwaway build runs with UNVIBE_DEBUG_TRACES=1; for --as-is in-place builds set it yourself)",
       "  --push    push published preview/<slug> refs; with --prune, delete the listed refs",
       "            locally and on origin (otherwise only prints the commands)",
       "  refuses a dirty tree for --as-is builds in place; merged builds come",
@@ -72,6 +74,7 @@ if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
   process.exit(0);
 }
 const doPush = rawArgs.includes("--push");
+const debug = rawArgs.includes("--debug");
 const asIs = rawArgs.includes("--as-is");
 const all = rawArgs.includes("--all");
 const prune = rawArgs.includes("--prune");
@@ -96,7 +99,7 @@ if (notesFile && !existsSync(notesFile)) {
 }
 const branchArg = positionalArgs.find((a) => !a.startsWith("-")) ?? null;
 for (const a of positionalArgs) {
-  if (a.startsWith("-") && !["--push", "--as-is", "--all", "--prune"].includes(a)) {
+  if (a.startsWith("-") && !["--push", "--as-is", "--all", "--prune", "--debug"].includes(a)) {
     console.error(`preview: unknown flag ${JSON.stringify(a)} (see --help)`);
     process.exit(2);
   }
@@ -181,14 +184,19 @@ function trustWorktree(dir) {
 }
 
 /** Build + release inside `dir`, then record the local orphan ref. Shared by merged and as-is flows. */
-function buildAndRelease({ dir, ref, releaseArgs, label }) {
-  const install = sh("npm", ["install"], dir, { stdio: "inherit", timeout: 600_000 });
+function buildAndRelease({ dir, ref, releaseArgs, label, debugBuild }) {
+  // Debug flavour (issue #356): the throwaway build runs with the trace
+  // SDK enabled so the published tree can record. (--as-is in-place
+  // builds reuse the caller's environment: set UNVIBE_DEBUG_TRACES=1
+  // there when publishing --debug by hand.)
+  const buildEnv = debugBuild ? { ...process.env, UNVIBE_DEBUG_TRACES: "1" } : undefined;
+  const install = sh("npm", ["install"], dir, { stdio: "inherit", timeout: 600_000, ...(buildEnv ? { env: buildEnv } : {}) });
   if (install.status !== 0) throwErr(`${label}: npm install failed — nothing published`);
   for (const buildArgs of [
     ["run", "build", "--workspaces", "--if-present"],
     ["run", "build", "--workspace", "@unvibe/web", "--if-present"],
   ]) {
-    const b = sh("npm", buildArgs, dir, { stdio: "inherit", timeout: 600_000 });
+    const b = sh("npm", buildArgs, dir, { stdio: "inherit", timeout: 600_000, ...(buildEnv ? { env: buildEnv } : {}) });
     if (b.status !== 0) throwErr(`${label}: build failed (npm ${buildArgs.join(" ")}) — nothing published`);
   }
   const rel = sh("node", [path.join(dir, "scripts", "release.mjs"), ...releaseArgs], dir, {
@@ -234,8 +242,10 @@ function publishMerged(branch) {
   if (!sourceSha) return { branch, ok: false, error: `no local branch ${JSON.stringify(branch)}` };
   const mainSha = branchSha(BASE);
   if (!mainSha) return { branch, ok: false, error: `no local branch ${JSON.stringify(BASE)} — cannot merge` };
-  const slug = branchSlug(branch);
+  let slug = branchSlug(branch);
   if (!slug) return { branch, ok: false, error: `branch ${JSON.stringify(branch)} has no usable slug` };
+  // Debug flavour (issue #356): the published ref gains a `-debug` suffix.
+  if (debug) slug = `${slug}-debug`;
 
   const dir = mkdtempSync(path.join(tmpdir(), "unvibe-preview-"));
   let added = false;
@@ -277,8 +287,10 @@ function publishMerged(branch) {
         baseBranch: BASE,
         baseCommit: mainSha,
         notesFile,
+        debug,
       }),
       label,
+      debugBuild: debug,
     });
     pushOrPrint(slug, ref, version, label);
     return { branch, ok: true, version, ref };
@@ -297,8 +309,9 @@ function publishAsIs(branch, worktreeDir) {
   const label = `preview:${branch}`;
   const sourceSha = branchSha(branch);
   if (!sourceSha) return { branch, ok: false, error: `no local branch ${JSON.stringify(branch)}` };
-  const slug = branchSlug(branch);
+  let slug = branchSlug(branch);
   if (!slug) return { branch, ok: false, error: `branch ${JSON.stringify(branch)} has no usable slug` };
+  if (debug) slug = `${slug}-debug`;
 
   let dir = worktreeDir;
   let added = false;
@@ -332,8 +345,9 @@ function publishAsIs(branch, worktreeDir) {
     buildAndRelease({
       dir,
       ref,
-      releaseArgs: buildReleaseArgs({ version, branch: ref, sourceBranch: branch, sourceCommit: sourceSha, notesFile }),
+      releaseArgs: buildReleaseArgs({ version, branch: ref, sourceBranch: branch, sourceCommit: sourceSha, notesFile, debug }),
       label,
+      debugBuild: debug,
     });
     pushOrPrint(slug, ref, version, label);
     return { branch, ok: true, version, ref };
