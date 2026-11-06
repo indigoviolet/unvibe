@@ -29,15 +29,30 @@ export function fence(text: string, info = "text"): string {
   return `${fence}${info}\n${text}\n${fence}`;
 }
 
-/** Parsed view of a session-manager base key (`reviewId|version|guideRevision|provider|model`). */
+/** Parsed view of a session-manager base key (`reviewId|version|guideRevision|provider|model`, plus effort/access; persona bases append the persona id). */
 export function parseBaseKey(baseKey: string): {
   version: string;
   guideRevision: string;
   provider: string;
   model: string;
+  /** Present on persona bases (issue #359). */
+  personaId?: string;
 } {
-  const [, version = "?", guideRevision = "?", provider = "?", ...modelRest] = baseKey.split("|");
-  return { version, guideRevision, provider, model: modelRest.join("|") || "?" };
+  const parts = baseKey.split("|");
+  const [, version = "?", guideRevision = "?", provider = "?", ...modelRest] = parts;
+  // Main keys carry effort/access after the model; persona bases append
+  // one more part. Only treat an 8th part as a persona id — shorter keys
+  // keep the old behaviour byte-identical.
+  let personaId: string | undefined;
+  if (parts.length >= 8) personaId = modelRest.pop();
+  const out: { version: string; guideRevision: string; provider: string; model: string; personaId?: string } = {
+    version,
+    guideRevision,
+    provider,
+    model: modelRest.join("|") || "?",
+  };
+  if (personaId !== undefined) out.personaId = personaId;
+  return out;
 }
 
 // --- base ------------------------------------------------------------------
@@ -82,7 +97,7 @@ export function buildBaseMarkdown(input: BaseSectionInput): string {
       out.push(
         `### Base \`${s.baseKey}\``,
         "",
-        `- version: \`${parsed.version}\` · guide revision: \`${parsed.guideRevision}\` · provider/model: \`${parsed.provider}/${parsed.model}\``,
+        `- version: \`${parsed.version}\` · guide revision: \`${parsed.guideRevision}\` · provider/model: \`${parsed.provider}/${parsed.model}\`${parsed.personaId ? ` · persona: \`${parsed.personaId}\`` : ""}`,
         `- base tokens: ${s.baseTokens}`,
         `- appended since build: ${s.appendedTokens}`,
         `- superseded: ${(s.supersededRatio * 100).toFixed(1)}%`,

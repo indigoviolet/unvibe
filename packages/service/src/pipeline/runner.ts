@@ -494,6 +494,8 @@ export class Pipeline {
           model,
           access: postureFor(settings),
           effort,
+          // Issue #359: probe the persona's own base, never the main one.
+          personaId: o.persona?.id,
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -1557,6 +1559,9 @@ export class Pipeline {
       model: role.model,
       access: postureFor(settings),
       effort: role.effort,
+      // Issue #359: the persona's own base, never the main one — a
+      // same-model persona forking main's L0 base would lose its lens.
+      personaId: persona?.id,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1684,6 +1689,7 @@ export class Pipeline {
             model: role.model,
             access: postureFor(effective),
             effort: role.effort,
+            personaId: persona?.id,
           },
           forked.viaFork,
         );
@@ -1726,6 +1732,8 @@ export class Pipeline {
         model: role.model,
         access: postureFor(effective),
         effort: role.effort,
+        // Issue #359: the persona's own base, never the main one.
+        personaId: persona?.id,
       },
       cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
@@ -1741,6 +1749,8 @@ export class Pipeline {
       model: role.model,
       access: postureFor(effective),
       effort: role.effort,
+      // Issue #359: the persona's own base, never the main one.
+      personaId: persona?.id,
     };
     const runner = this.opts.runner;
     if (typeof runner.fork === "function") {
