@@ -1,0 +1,126 @@
+/**
+ * Debug section units (#356, `VITE_MOCK=1`): the recording switch saves
+ * the setting and arms the browser SDK, size/capped status renders, Clear
+ * runs through the inline confirm, and both exports download a file.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Settings, TraceStatusResponse } from "@unvibe/shared";
+import { api } from "../api/client.js";
+import { DebugSection } from "./DebugSection.js";
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+const settings: Settings = {
+  uiTheme: "default",
+  main: { provider: "claude", model: "mock-main", effort: "" },
+  small: { provider: "claude", model: "mock-small", effort: "" },
+  personas: [],
+  sessionsPerProvider: 4, inlineBudgetTokens: 40000, rebuildSupersededRatio: 0.2,
+  rebuildAppendedTokens: 10000, logBatchTokens: 2000, cacheLifetimeMs: 300000,
+  idleExitMinutes: 10, versionPickerEnabled: false, fullAccess: false,
+  fullAccessAcknowledgedAt: null, autoGoDeeper: true, recordTraces: false,
+  extensionActiveRepoIds: null,
+  extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
+};
+
+const idle: TraceStatusResponse = { recording: false, spans: 0, bytes: 0, capped: false };
+
+/** jsdom has no PointerEvent; Base UI's Switch constructs one on click. */
+function stubPointerEvent(): void {
+  const w = window as unknown as Record<string, unknown>;
+  if (typeof w["PointerEvent"] !== "function") {
+    w["PointerEvent"] = class extends MouseEvent {
+      constructor(type: string, init?: MouseEventInit) {
+        super(type, init);
+      }
+    };
+  }
+}
+
+function mockUrls(): string[] {
+  const urls: string[] = [];
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: vi.fn((blob: Blob) => {
+      urls.push(blob.type);
+      return "blob:mock";
+    }),
+    revokeObjectURL: vi.fn(),
+  });
+  return urls;
+}
+
+describe("DebugSection", () => {
+  it("switch saves recordTraces and reports the state", async () => {
+    stubPointerEvent();
+    vi.spyOn(api, "traceStatus").mockResolvedValue(idle);
+    const save = vi.spyOn(api, "saveSettings").mockImplementation(async (body) => ({ ...settings, ...body }));
+    const onSaved = vi.fn();
+    const { rerender } = render(<DebugSection settings={settings} onSaved={onSaved} />);
+    await waitFor(() => expect(screen.getByTestId("trace-state")).toHaveTextContent("Off"));
+    fireEvent.click(screen.getByLabelText("Record performance traces"));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ recordTraces: true }));
+    expect(onSaved).toHaveBeenCalled();
+    rerender(<DebugSection settings={{ ...settings, recordTraces: true }} onSaved={onSaved} />);
+    expect(screen.getByTestId("trace-state")).toHaveTextContent("Recording");
+    vi.unstubAllGlobals();
+  });
+
+  it("shows size, recording state and the cap notice", async () => {
+    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 42, bytes: 2048, capped: true });
+    render(<DebugSection settings={{ ...settings, recordTraces: true }} onSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("trace-size")).toHaveTextContent("42 spans"));
+    expect(screen.getByTestId("trace-size")).toHaveTextContent("2.0 KB");
+    expect(screen.getByTestId("trace-size")).toHaveTextContent("recording");
+    expect(screen.getByRole("alert")).toHaveTextContent("256");
+  });
+
+  it(" Clear runs through the inline confirm and reports", async () => {
+    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 7, bytes: 512, capped: false });
+    const clear = vi.spyOn(api, "traceClear").mockResolvedValue({ recording: true, spans: 0, bytes: 0, capped: false });
+    render(<DebugSection settings={settings} onSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Clear traces" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Clear traces" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clear traces" }));
+    await waitFor(() => expect(clear).toHaveBeenCalled());
+    expect(await screen.findByText("Cleared the recorded traces.")).toBeInTheDocument();
+  });
+
+  it("exports download files with span/review counts", async () => {
+    mockUrls();
+    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 1, bytes: 128, capped: false });
+    vi.spyOn(api, "statsExport").mockResolvedValue({
+      schemaVersion: 2 as const, reviews: [], jobs: [],
+      totals: { reviews: 0, jobs: 0, failures: 0, repairs: 0, tokens: { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 } },
+    });
+    vi.spyOn(api, "traceExport").mockResolvedValue({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              scope: { name: "unvibe" },
+              spans: [{ traceId: "a".repeat(32), spanId: "b".repeat(16), name: "x", startTimeUnixNano: "1", endTimeUnixNano: "2" }],
+            },
+          ],
+        },
+      ],
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      render(<DebugSection settings={settings} onSaved={() => {}} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Export statistics" }));
+      expect(await screen.findByText("Exported 0 reviews and 0 jobs.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Export traces" }));
+      expect(await screen.findByText(/Exported 1 span as OTLP JSON/)).toBeInTheDocument();
+      expect(click).toHaveBeenCalledTimes(2);
+    } finally {
+      click.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});

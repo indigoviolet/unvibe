@@ -30,7 +30,7 @@ function settingsWith(fullAccess: boolean): Settings {
     uiTheme: "default",
   versionPickerEnabled: false,
     fullAccess,
-    autoGoDeeper: true,
+    autoGoDeeper: true, recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: fullAccess ? 123 : null,

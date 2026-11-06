@@ -74,6 +74,8 @@ import type {
   UpdateSwitchResponse,
   ViewerResponse,
   StatsExport,
+  TraceExport,
+  TraceStatusResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -470,6 +472,12 @@ const realApi = {
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
   /** #323: anonymized stats export (Settings → Debug). */
   statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
+  /** #356: trace recording status/size (Settings → Debug). */
+  traceStatus: (): Promise<TraceStatusResponse> => get("/api/traces/status"),
+  /** #356: export everything recorded so far (OTLP JSON, Jaeger/Perfetto-openable). */
+  traceExport: (): Promise<TraceExport> => get("/api/traces/export"),
+  /** #356: empty the local trace store (recording continues when on). */
+  traceClear: (): Promise<TraceStatusResponse> => post("/api/traces/clear", {}),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
   updateNotes: (ref: string): Promise<UpdateNotesResponse> =>

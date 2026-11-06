@@ -1003,6 +1003,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
   autoGoDeeper: true,
+  recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };
@@ -4289,11 +4290,26 @@ export const mockApi = {
   statsExport: async () => {
     await wait(50);
     return {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       reviews: [],
       jobs: [],
       totals: { reviews: 0, jobs: 0, failures: 0, repairs: 0, tokens: { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 } },
     };
+  },
+
+  traceStatus: async () => {
+    await wait(50);
+    return { recording: getMockSettings().recordTraces === true, spans: 0, bytes: 0, capped: false };
+  },
+
+  traceExport: async () => {
+    await wait(50);
+    return { resourceSpans: [] };
+  },
+
+  traceClear: async () => {
+    await wait(50);
+    return { recording: getMockSettings().recordTraces === true, spans: 0, bytes: 0, capped: false };
   },
 
   reload: async () => {
