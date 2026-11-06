@@ -59,7 +59,7 @@ import { FakeAgentRunner } from "./agent/fake.js";
 import { verifyCheckoutAfterJob } from "./fullaccess/verify.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
-import { TraceRecorder, setActiveRecorder } from "./traces/index.js";
+import type { TraceRecorder } from "./traces/recorder.js";
 
 export interface AppContext {
   db: DatabaseSync;
@@ -79,8 +79,12 @@ export interface AppContext {
   sharedctx: SharedContextService;
   /** Version-picker backend (issue #36 step 2 seam; fake under `UNVIBE_UPDATER_BACKEND=fake`). */
   updater: Updater;
-  /** Opt-in performance traces (issue #356); enabled from settings. */
-  traces: TraceRecorder;
+  /**
+   * Opt-in performance traces (issue #356; null in lean builds and in
+   * tests that do not wire tracing). Loaded by the composition root
+   * through `traces/loader.ts`, never constructed here.
+   */
+  traces: TraceRecorder | null;
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
@@ -101,6 +105,8 @@ export interface BuildAppOptions {
   settings?: SettingsStore;
   mcp?: McpRegistry;
   updater?: Updater;
+  /** Opt-in performance traces (issue #356); null stays null (lean builds, most tests). */
+  traces?: TraceRecorder | null;
   /** SERVICE_VERSION (server.ts); feeds the real Updater + build identity. */
   serviceVersion?: string;
 }
@@ -285,12 +291,7 @@ export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
 
 export function buildApp(opts: BuildAppOptions): AppContext {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
-  // Opt-in performance traces (issue #356): the recorder is always
-  // present, but records nothing until `Settings.recordTraces` turns it
-  // on. Deep seams (job queue, command runner, SQLite) reach it through
-  // the module-global active recorder.
-  const traces = new TraceRecorder(dataDir);
-  setActiveRecorder(traces);
+  const traces = opts.traces ?? null;
   // Tests never hit real GitHub or real agents (issue #119): under vitest
   // an app built without explicit fakes gets inert substitutes instead of
   // silently falling back to the production ones. Explicitly injected
@@ -310,11 +311,6 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   const repos = new RepoStore(opts.db);
   const reviews = new ReviewStore(opts.db, bus);
   const settings = opts.settings ?? new SettingsStore(opts.db);
-  try {
-    if (settings.get().recordTraces) traces.setEnabled(true);
-  } catch {
-    // Unreadable settings (fresh/corrupt DB): recording stays off.
-  }
   const jobStore = new JobStore(opts.db);
   const jobs =
     opts.jobs ??

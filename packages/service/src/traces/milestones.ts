@@ -6,7 +6,7 @@
  */
 import type { ReviewEvent } from "@unvibe/shared";
 import type { EventBus } from "../events.js";
-import { traceSpan } from "./recorder.js";
+import { traceSpan } from "./tracing.js";
 
 /** Run `fn` under an `ingest` span for the review being created. */
 export async function traceIngest<T>(reviewId: string, fn: () => Promise<T>): Promise<T> {

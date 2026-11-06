@@ -68,8 +68,11 @@ export interface RouteDeps {
   onDataFormatReset?: () => void;
   /** SERVICE_VERSION, set by `server.ts` for build identity in update routes. */
   serviceVersion?: string;
-  /** Opt-in performance traces (issue #356); absent in unwired tests. */
-  traces?: TraceRecorder;
+  /**
+   * Opt-in performance traces (issue #356); absent in unwired tests,
+   * null in lean builds (no OTel) and tests that do not wire tracing.
+   */
+  traces?: TraceRecorder | null;
   /**
    * Native folder picker overrides (#26): platform + env for the
    * `POST /api/repos/pick-folder` dialog. Production omits both (real

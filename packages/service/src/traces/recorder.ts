@@ -21,7 +21,7 @@
  * than deleting older data.
  */
 import fs from "node:fs";
-import { context, propagation, SpanKind, type Span } from "@opentelemetry/api";
+import { context, propagation, trace, SpanKind, type Span } from "@opentelemetry/api";
 import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
@@ -37,48 +37,19 @@ import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify";
 import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
 import { FsInstrumentation } from "@opentelemetry/instrumentation-fs";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import type { FastifyInstance } from "fastify";
 import type { OtlpSpan, TraceExport, TraceStatusResponse } from "@unvibe/shared";
-import { ensureTracesDir, spansFile } from "./paths.js";
-import { scrubExportedSpan } from "./scrub.js";
-
-/** Safety cap: stop recording past this many stored bytes (no deletion). */
-export const TRACE_SAFETY_CAP_BYTES = 256 * 1024 * 1024;
+import { ensureTracesDir, spansFile, TRACE_SAFETY_CAP_BYTES } from "./paths.js";
+import { isRoutePattern, scrubExportedSpan } from "./scrub.js";
+import {
+  NOOP_SPAN,
+  type BrowserSpanBatch,
+  type SpanHandle,
+  type SpanParent,
+} from "./tracing.js";
 
 /** How often the store size is re-checked while recording (every N spans). */
 const SIZE_CHECK_EVERY = 64;
-
-const NOOP_HANDLE: SpanHandle = {
-  setAttribute() {},
-  rename() {},
-  end() {},
-};
-
-/** Live span: set attributes, then end it. Values are stored RAW. */
-export interface SpanHandle {
-  setAttribute(key: string, value: string | number | boolean): void;
-  rename(name: string): void;
-  end(extra?: Record<string, string | number | boolean>): void;
-}
-
-/** Parent linkage for a new span (W3C ids, e.g. from the browser). */
-export interface SpanParent {
-  traceId: string;
-  spanId: string;
-}
-
-/** Raw browser batch entry (validated, stored as-is; scrubbed on export). */
-export interface BrowserSpanBatch {
-  spans: {
-    kind: string;
-    traceId: string;
-    spanId: string;
-    parentSpanId?: string;
-    name?: string;
-    startMs?: number;
-    durationMs?: number;
-    attributes?: Record<string, string | number | boolean>;
-  }[];
-}
 
 /** Span processor: serialize finished spans to the JSONL store. */
 class FileSpanProcessor implements SpanProcessor {
@@ -233,7 +204,7 @@ export class TraceRecorder {
     parent?: SpanParent,
     kind: SpanKind = SpanKind.INTERNAL,
   ): SpanHandle {
-    if (!this.enabled) return NOOP_HANDLE;
+    if (!this.enabled) return NOOP_SPAN;
     const tracer = sharedTracerProvider().getTracer("unvibe", "0.0.15");
     let ctx = context.active();
     if (parent && HEX32.test(parent.traceId) && HEX16.test(parent.spanId)) {
@@ -383,6 +354,28 @@ export class TraceRecorder {
   }
 }
 
+/**
+ * Stamp the route pattern onto the auto HTTP span (the export scrubber
+ * renames from it; the raw URL/query stay hashed). No-op while
+ * recording is off. Registered from `server.ts` via the loader.
+ */
+export function attachRouteHook(
+  app: FastifyInstance,
+  getRecorder: () => TraceRecorder | null,
+): void {
+  app.addHook("preHandler", async (req) => {
+    try {
+      if (!getRecorder()?.enabled) return;
+      const pattern = req.routeOptions?.url;
+      if (typeof pattern === "string" && isRoutePattern(pattern)) {
+        trace.getSpan(context.active())?.setAttribute("http.route", pattern);
+      }
+    } catch {
+      // Tracing never breaks requests.
+    }
+  });
+}
+
 class LiveSpan implements SpanHandle {
   constructor(private readonly span: Span) {}
   setAttribute(key: string, value: string | number | boolean): void {
@@ -480,33 +473,4 @@ function countStoredSpans(dataDir: string): number {
   }
 }
 
-/**
- * Module-global active recorder (mirrors `telemetry/sentry.ts`'s active
- * reporter): seams deep in the tree record through here without threading
- * a dependency through every constructor. Null in tests and when the app
- * never wired one — every seam treats that as "off".
- */
-let active: TraceRecorder | null = null;
-
-export function setActiveRecorder(recorder: TraceRecorder | null): void {
-  active = recorder;
-}
-
-export function getActiveRecorder(): TraceRecorder | null {
-  return active;
-}
-
-/**
- * Start a manual span on the active recorder (RAW; scrubbed on export),
- * or a no-op when recording is off/unwired. Names should already be
- * operation-shaped; attributes may be raw.
- */
-export function traceSpan(
-  name: string,
-  attrs: Record<string, string | number | boolean> = {},
-  parent?: SpanParent,
-  kind: SpanKind = SpanKind.INTERNAL,
-): SpanHandle {
-  return active?.startSpan(name, attrs, parent, kind) ?? NOOP_HANDLE;
-}
 

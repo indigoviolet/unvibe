@@ -42,10 +42,8 @@ import type { ModelCatalog } from "./settings/index.js";
 import type { SettingsStore } from "./settings/index.js";
 import type { Updater } from "./update/index.js";
 import type { UpdateHooks } from "./routes/deps.js";
-import { context, trace } from "@opentelemetry/api";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
-import { isRoutePattern } from "./traces/index.js";
-import { getActiveRecorder } from "./traces/index.js";
+import { attachRouteHook, loadTraceRecorder } from "./traces/loader.js";
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
@@ -189,12 +187,19 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     });
   }
 
+  // Opt-in performance traces (issue #356, debug flavour): the recorder
+  // loads only when the OTel packages are installed (dynamic import +
+  // try/catch in `traces/loader.ts`); lean builds get null and every
+  // trace route answers 501 "not available in this build".
+  const traces = await loadTraceRecorder(dataDir);
+
   // Unified composition root (M3): builds jobs/settings/sessions/mcp/
   // pipeline with recovery. Explicit overrides (tests) win over defaults
   // and are wired into the pipeline itself.
   const ctx: UnifiedContext = buildApp({
     db,
     dataDir,
+    ...(traces ? { traces } : {}),
     ...(opts.runner ? { runner: opts.runner } : {}),
     ...(opts.agents ? { agents: opts.agents } : {}),
     ...(opts.promptsDir ? { promptsDir: opts.promptsDir } : {}),
@@ -371,21 +376,18 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     serviceVersion: SERVICE_VERSION,
     ...(opts.baseRunner ? {} : { baseRunner: ctx.updateRunner }),
   };
-  // Opt-in traces (#356): stamp the route pattern onto the auto HTTP
-  // span (its name/URL are raw). Attr-only and gated on recording, so
-  // the off path costs one boolean check; the export scrubber renames
-  // from this pattern and drops the raw URL/query.
-  app.addHook("preHandler", async (req) => {
+  // The Debug switch takes effect at boot: recording starts only when
+  // the setting is already on (the settings PUT path flips it live).
+  if (traces) {
     try {
-      if (!getActiveRecorder()?.enabled) return;
-      const pattern = req.routeOptions?.url;
-      if (typeof pattern === "string" && isRoutePattern(pattern)) {
-        trace.getSpan(context.active())?.setAttribute("http.route", pattern);
-      }
+      if (ctx.settings.get().recordTraces) traces.setEnabled(true);
     } catch {
-      // Tracing never breaks requests.
+      // Unreadable settings (fresh/corrupt DB): recording stays off.
     }
-  });
+    // Route-pattern stamp for the auto HTTP spans (loader no-ops
+    // without a recorder; never breaks requests).
+    await attachRouteHook(app, () => traces);
+  }
 
   await registerRoutes(app, ctx, routeDeps);
 

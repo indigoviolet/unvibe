@@ -5,11 +5,11 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { TraceRecorder } from "../traces/recorder.js";
-import type { BrowserSpanBatch } from "../traces/recorder.js";
+import type { BrowserSpanBatch } from "../traces/tracing.js";
 import type { RouteDeps } from "./deps.js";
 
 export interface TracesRouteDeps extends RouteDeps {
-  traces?: TraceRecorder;
+  traces?: TraceRecorder | null;
 }
 
 export async function registerTraces(app: FastifyInstance, deps: TracesRouteDeps = {}): Promise<void> {

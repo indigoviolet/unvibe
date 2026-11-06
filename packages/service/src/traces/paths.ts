@@ -2,6 +2,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
+/** Safety cap: stop recording past this many stored bytes (no deletion). */
+export const TRACE_SAFETY_CAP_BYTES = 256 * 1024 * 1024;
+
 /** `<dataDir>/traces/` — created on first write, never rotated. */
 export function tracesDir(dataDir: string): string {
   return path.join(dataDir, "traces");

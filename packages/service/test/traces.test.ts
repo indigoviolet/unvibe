@@ -7,7 +7,8 @@
  * against the exported file.
  */
 // Prelude first (as in production): hooks install before fastify loads.
-import "../src/traces/bootstrap.js";
+import { ensureTracingSetup } from "../src/traces/loader.js";
+await ensureTracingSetup();
 import { describe, expect, it, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -20,14 +21,14 @@ import { SettingsStore } from "../src/settings/store.js";
 import { createApp } from "../src/server.js";
 import {
   TRACE_SAFETY_CAP_BYTES,
-  TraceRecorder,
-  setActiveRecorder,
+  setActiveTracer,
   traceSpan,
 } from "../src/traces/index.js";
+import { TraceRecorder } from "../src/traces/recorder.js";
 import { spansFile } from "../src/traces/paths.js";
 
 afterEach(() => {
-  setActiveRecorder(null);
+  setActiveTracer(null);
 });
 
 function tempDir(): string {
@@ -94,8 +95,8 @@ describe("traces (#356)", () => {
     const { app } = await createApp("tok-traces-auto", { db, dataDir: dir });
     try {
       // Enable through the app's own recorder: real socket traffic below.
-      const { getActiveRecorder } = await import("../src/traces/index.js");
-      getActiveRecorder()?.setEnabled(true);
+      const { getActiveTracer } = await import("../src/traces/index.js");
+      getActiveTracer()?.setEnabled(true);
       const port = 48741;
       await app.listen({ port, host: "127.0.0.1" });
       try {
@@ -106,7 +107,7 @@ describe("traces (#356)", () => {
       }
       const raw = readStore(dir);
       expect(raw).toContain("tok-traces-auto");
-      const rec = getActiveRecorder()!;
+      const rec = getActiveTracer()!;
       const text = JSON.stringify(rec.exportOtlp());
       expect(text).not.toContain("tok-traces-auto");
       expect(text).not.toContain("?token=");
@@ -118,7 +119,7 @@ describe("traces (#356)", () => {
       expect(exportedNames(dir, rec)).toContain("fetch GET");
     } finally {
       db.close();
-      setActiveRecorder(null);
+      setActiveTracer(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -127,7 +128,7 @@ describe("traces (#356)", () => {
     const dir = tempDir();
     try {
       const rec = new TraceRecorder(dir);
-      setActiveRecorder(rec);
+      setActiveTracer(rec);
       rec.setEnabled(true);
       const require = createRequire(import.meta.url);
       const fastify = require("fastify")();
@@ -148,7 +149,7 @@ describe("traces (#356)", () => {
       // Ports stay (numbers); hosts/URLs hash; no query, no user agent.
       expect(JSON.stringify(server)).not.toMatch(/127\.0\.0\.1|user_agent|status_text/);
     } finally {
-      setActiveRecorder(null);
+      setActiveTracer(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -202,7 +203,7 @@ describe("traces (#356)", () => {
     ];
     try {
       const rec = new TraceRecorder(dir);
-      setActiveRecorder(rec);
+      setActiveTracer(rec);
       rec.setEnabled(true);
       // Manual seams with canaries in ids, names, argv, SQL text.
       traceSpan("job ask", {
@@ -254,7 +255,7 @@ describe("traces (#356)", () => {
       expect(text).toContain("document-load");
       expect(text).not.toContain("DROP TABLE");
     } finally {
-      setActiveRecorder(null);
+      setActiveTracer(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -263,7 +264,7 @@ describe("traces (#356)", () => {
     const dir = tempDir();
     try {
       const rec = new TraceRecorder(dir);
-      setActiveRecorder(rec);
+      setActiveTracer(rec);
       const quiet = new JobQueue();
       quiet.enqueue({
         reviewId: "rv-quiet", kind: "reader", provider: "claude", model: "m", effort: "", priority: 1,
@@ -290,7 +291,7 @@ describe("traces (#356)", () => {
       expect(names).toContain("sqlite select");
       expect(JSON.stringify(rec.exportOtlp())).not.toContain("rv-seam");
     } finally {
-      setActiveRecorder(null);
+      setActiveTracer(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -343,7 +344,7 @@ describe("traces (#356)", () => {
     } finally {
       await app.close();
       db.close();
-      setActiveRecorder(null);
+      setActiveTracer(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

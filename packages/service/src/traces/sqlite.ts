@@ -6,7 +6,7 @@
  * (`TracedDatabaseSync`); when recording is off every call is a direct
  * passthrough with no span, no allocation beyond the prepare itself.
  */
-import { getActiveRecorder, traceSpan } from "./recorder.js";
+import { getActiveTracer, traceSpan } from "./tracing.js";
 import { isSafeToken } from "./scrub.js";
 
 const OP = /^\s*(select|insert|update|delete|pragma|create|drop|with|savepoint|release|rollback|begin|commit)\b/i;
@@ -23,8 +23,7 @@ export function parseSqlOperation(sql: string): { op: string; table?: string } {
 
 /** Wrap a prepared statement's executing methods with spans. */
 export function traceStatement<T extends object>(stmt: T, sql: string): T {
-  const recorder = getActiveRecorder();
-  if (!recorder || !recorder.enabled) return stmt;
+  if (!getActiveTracer()) return stmt;
   const { op, table } = parseSqlOperation(sql);
   const name = `sqlite ${op}`;
   const attrs: Record<string, string> = table !== undefined ? { "sqlite.table": table } : {};
