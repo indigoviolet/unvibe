@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { Settings, UpdateChannel } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { VersionSection } from "./VersionSection.js";

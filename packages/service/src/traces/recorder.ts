@@ -26,7 +26,6 @@ import { createRequire } from "node:module";
 import type { Span } from "@opentelemetry/api";
 import type {
   BasicTracerProvider,
-  SamplingDecision,
   Sampler,
   SamplingResult,
   ReadableSpan,
