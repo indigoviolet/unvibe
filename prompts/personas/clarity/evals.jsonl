@@ -1,0 +1,5 @@
+{"input":"The validation of the payload is performed by `parseRequest` before the invocation of `dispatch`.","expect":"Use parseRequest as subject; preserve call order and identifiers."}
+{"input":"If the cache entry is missing, the handler may fetch the value from the database.","expect":"Retain may; do not assert that fetching always occurs."}
+{"input":"The token is encrypted before it is persisted.","expect":"Unchanged is acceptable; do not invent encrypting actor."}
+{"input":"`Reader` calls `Parser` after it resets its state.","expect":"Do not resolve ambiguous pronoun without evidence."}
+{"input":"The worker retries the batch, but only after every document has failed.","expect":"Preserve only-after-every-document-fails condition exactly."}
