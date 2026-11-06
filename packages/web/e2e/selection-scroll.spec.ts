@@ -22,7 +22,7 @@ test("an app-initiated scroll just after selection keeps the toolbar; a later sc
   page,
 }) => {
   await gotoReview(page);
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   const bar = page.locator("#selbar");
   await expect(bar).toBeVisible();
   // App-initiated scroll immediately after the bar shows: it stays.

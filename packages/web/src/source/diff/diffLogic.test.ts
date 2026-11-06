@@ -7,7 +7,9 @@ import {
   buildFileTree,
   filterFiles,
   groupHunks,
+  hiddenRunLabel,
   hunkOverlaps,
+  hunkPlotVisible,
   pairSplitRows,
   parseDiffRef,
   shouldHideHunk,
@@ -127,6 +129,30 @@ describe("filterFiles", () => {
   it("hides fully reviewed files when asked", () => {
     expect(filterFiles(files, { query: "", cats: new Set(["source", "tests"]), hideReviewed: true, reviewedCount: reviewed })).toHaveLength(1);
   });
+  it("Since-B filter keeps only files with a hunk in the delta (#351)", () => {
+    const base = { query: "", cats: new Set(["source", "tests"]), hideReviewed: false, reviewedCount: reviewed };
+    const all = new Set(["h:src-a-py:a1", "h:test-b-py:b1"]);
+    expect(filterFiles(files, { ...base, plot: { sinceBaseline: true }, sinceIds: all })).toHaveLength(2);
+    expect(
+      filterFiles(files, { ...base, plot: { sinceBaseline: true }, sinceIds: new Set(["h:src-a-py:a1"]) }),
+    ).toEqual([expect.objectContaining({ path: "src/a.py" })]);
+    expect(filterFiles(files, { ...base, plot: {}, sinceIds: new Set(["h:src-a-py:a1"]) })).toHaveLength(1);
+  });
+  it("hunkPlotVisible combines the Since-B set with the plotline filter (#351)", () => {
+    const ha = hunk({ contentHash: "a1" });
+    const hb = hunk({ contentHash: "b1" });
+    const st = (hash: string) => (hash === "a1" ? { plotline: "unfold" } : undefined);
+    expect(hunkPlotVisible(ha, "src-a-py", { plot: { plotline: "unfold" }, hunkStateOf: st })).toBe(true);
+    expect(hunkPlotVisible(hb, "test-b-py", { plot: { plotline: "unfold" }, hunkStateOf: st })).toBe(false);
+    expect(
+      hunkPlotVisible(ha, "src-a-py", {
+        plot: { sinceBaseline: true },
+        sinceIds: new Set(["h:test-b-py:b1"]),
+        hunkStateOf: st,
+      }),
+    ).toBe(false);
+    expect(hunkPlotVisible(hb, "test-b-py", { sinceIds: new Set(["h:test-b-py:b1"]) })).toBe(true);
+  });
 });
 
 describe("shouldHideHunk", () => {
@@ -151,6 +177,18 @@ describe("shouldHideHunk", () => {
     expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: true })).toBe(false);
     expect(shouldHideHunk(hidden, { level: "needs-attention", score: "mechanical", unhidden: false })).toBe(true);
   });
+  it("re-applies the level from scratch with no remembered overrides (#342)", () => {
+    // A transient expand shows the hunk now ...
+    expect(shouldHideHunk(hidden, { level: "substantive", score: "mechanical", unhidden: true })).toBe(false);
+    // ... but the next level decision starts clean: the same hunk with
+    // no transient expand hides again, and "all" shows everything.
+    expect(shouldHideHunk(hidden, { level: "substantive", score: "mechanical", unhidden: false })).toBe(true);
+    expect(shouldHideHunk(hidden, { level: "all", unhidden: false })).toBe(false);
+    // Visibility is a pure function of the decision: repeated calls agree.
+    expect(shouldHideHunk(hidden, { level: "uninteresting", unhidden: false })).toBe(
+      shouldHideHunk(hidden, { level: "uninteresting", unhidden: false }),
+    );
+  });
 });
 
 describe("parseDiffRef", () => {
@@ -165,6 +203,22 @@ describe("parseDiffRef", () => {
     expect(parseDiffRef("diff:")).toBeNull();
     expect(parseDiffRef("diff:conn:0")).toBeNull();
     expect(parseDiffRef("diff:conn:9-2")).toBeNull();
+  });
+});
+
+describe("hiddenRunLabel (#342)", () => {
+  it("labels single and grouped runs by range only", () => {
+    const f = file("src/a.py", [hunk(), hunk(), hunk(), hunk()]);
+    expect(hiddenRunLabel(f, [1])).toBe("Hunk 2");
+    expect(hiddenRunLabel(f, [0, 1])).toBe("Hunks 1–2");
+  });
+  it("carries no size, no score words and no 'hidden'", () => {
+    const f = file("src/a.py", [hunk(), hunk(), hunk()]);
+    for (const label of [hiddenRunLabel(f, [0]), hiddenRunLabel(f, [0, 2])]) {
+      expect(label).not.toMatch(/hidden/i);
+      expect(label).not.toMatch(/[+-]\d/);
+      expect(label).not.toMatch(/mechanical|routine|substantive|needs attention/i);
+    }
   });
 });
 

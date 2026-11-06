@@ -34,6 +34,10 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   // Base pack (SessionManager.getBase): the pipeline prefixes it with an
   // explicit "reply with exactly `ready`" instruction; answer "ready" (M3).
   { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
+  // Issue #351: the update pass is titled `# Update pass`. First, because
+  // the prompt also names the critic and hunks below, which would match
+  // their own hints before the update-pass recording existed.
+  { re: /^# update pass/im, kind: "update-pass" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },
@@ -45,7 +49,6 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   // `ask` first: the merged first-turn prompt carries both words (#136).
   { re: /\bask\b|question|thread/i, kind: "ask" },
   { re: /\bexplain\b/i, kind: "explain" },
-  { re: /second opinion/i, kind: "second-opinion" },
 ];
 
 export function guessReplayKind(prompt: string): string | null {
@@ -119,9 +122,9 @@ export function replayPlaceholderText(resolved: ResolvedRecording, prompt: strin
   const hint = prompt.trim().split("\n")[0]?.slice(0, 80) ?? "";
   return (
     `[replay placeholder: no ${resolved.kind} recording matched this prompt. ` +
-    `To see a canned reply, use an explain/ask prompt mentioning obs-fold, HTTPHeaderDict, ` +
-    `CRLF, regex, Set-Cookie, OWS, RFC 9112, Requests, bare LF, order, identity, cost, ` +
-    `tests, or forwarding — or a replay-kind:/replay-key: marker. First line was: "${hint}"]\n\n` +
+    `To see a canned reply, use an explain/ask prompt mentioning obs-fold, Set-Cookie, ` +
+    `HTTP headers, regex, message rewrite, plotline, changelog, Requests, order, bare LF, ` +
+    `duplicates, cost, tests, or unfolding scope — or a replay-kind:/replay-key: marker. First line was: "${hint}"]\n\n` +
     "```json\n{\"placeholder\": true}\n```\n"
   );
 }
@@ -184,15 +187,6 @@ export function extractReplayKey(kind: string, prompt: string): string | null {
     case "critic":
       // #215: one critic recording carries all findings; no per-finding key.
       return null;
-    case "second-opinion": {
-      // Keys are `<card-or-finding-id>:<mode>` (e.g. `f-lf:blind`,
-      // `central:check`). Match the most specific one present.
-      const m = lower.match(/\b(f-lf|f-perf|central|problem|g-flow|g-design|g-regex|g-check|flf-ev|flf-as|fpf-ev|fpf-as)[-:](blind|check)\b/);
-      if (m) return `${m[1]}:${m[2]}`;
-      if (lower.includes("blind")) return "blind";
-      if (lower.includes("check this claim") || lower.includes("check")) return "check";
-      return null;
-    }
     default:
       return null;
   }

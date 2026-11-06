@@ -75,9 +75,13 @@ test.describe("J11 settings combos", () => {
     // Full access: acknowledge, marker shows on a review, turn off, marker goes.
     await page.getByRole("tab", { name: "Access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Read-only", { timeout: 15_000 });
-    await page.getByRole("button", { name: "Turn on full access…" }).click();
-    await expect(page.locator('[data-testid="access-warning"]')).toBeVisible();
-    await page.getByRole("button", { name: "I understand, turn on full access" }).click();
+    await page.getByRole("button", { name: "Turn on full access" }).click();
+    // #346: the shared inline confirm with one short line for what it
+    // means (the full warning is the tooltip, not a paragraph).
+    const warning = page.locator('[data-testid="access-warning"]');
+    await expect(warning).toContainText("Confirm full access");
+    await expect(warning).toContainText("can run shell commands, git and gh as you");
+    await page.getByRole("button", { name: "Confirm full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Full access is on", { timeout: 15_000 });
     // #235: the marker shows on the front page only, not in the review bar.
     await page.goto(`${svc.origin}/?token=${svc.token}`);
@@ -156,18 +160,20 @@ test.describe("J11 settings combos", () => {
     const row = section.locator('[data-testid^="repo-"]', { hasText: path.basename(repo2Dir) }).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: `Remove local/${path.basename(repo2Dir)}` }).click();
-    await row.getByRole("button", { name: "Remove", exact: true }).click();
+    // #346: the shared inline confirm ("Confirm remove repo" ✓ ✕).
+    await row.getByRole("button", { name: "Confirm remove repo" }).click();
     await expect(row).toHaveCount(0, { timeout: 15_000 });
     expect(existsSync(path.join(repo2Dir, ".git"))).toBe(true);
 
     // Data reset: removes the review, keeps settings and repos.
+    // #346: the shared inline confirm ("Confirm reset data" ✓ ✕).
     await page.getByRole("tab", { name: "Data" }).click();
-    await page.getByRole("button", { name: "Reset data…" }).click();
+    await page.getByRole("button", { name: "Reset data" }).click();
     // Moved from settings.spec.ts (#258): Cancel first — nothing is removed.
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByText(/Removed \d+ reviews?\./)).toHaveCount(0);
-    await page.getByRole("button", { name: "Reset data…" }).click();
-    await page.getByRole("button", { name: "Reset", exact: true }).click();
+    await page.getByRole("button", { name: "Reset data" }).click();
+    await page.getByRole("button", { name: "Confirm reset data" }).click();
     await expect(page.getByText(/Removed \d+ reviews?\./)).toBeVisible({ timeout: 30_000 });
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });

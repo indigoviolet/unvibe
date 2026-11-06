@@ -72,6 +72,13 @@ export interface NewThreadRequest {
   /** Prefilled composer text (a Comment from an agent answer quotes the selection). */
   initialText?: string;
   /**
+   * Issue #349 step 2: the selection sits on a persona's version of a
+   * card — Explain/Ask run as that persona. `personaCardId` is the guide
+   * card the version belongs to.
+   */
+  personaId?: string;
+  personaCardId?: string;
+  /**
    * Issue #166: the selection's character offsets within its host's text,
    * recorded at the moment of selection. Attached only when the request
    * anchor is the selection's own host (never for a remapped comment
@@ -108,11 +115,9 @@ export function isRevealedElement(el: HTMLElement): boolean {
 /**
  * Element whose plain text the selection's offsets are recorded against
  * (issue #166): the same element placement later searches, so the text
- * models match. Null where no selection host applies (second-opinion
- * reasoning, gutter-only hits).
+ * models match. Null where no selection host applies (gutter-only hits).
  */
 export function selectionScopeElement(el: HTMLElement): Element | null {
-  if (el.closest("[data-so]")) return null;
   // Issue #214: offsets record within the comment text itself.
   const commentScope = el.closest("[data-comment]");
   if (commentScope) return commentScope as Element;
@@ -193,10 +198,6 @@ export function codeRangeForSelection(sel: Selection): { path: string; commit: s
 }
 
 export function resolveSelectionHost(el: HTMLElement): SelectionHost | null {
-  // Second-opinion reasoning is attached content, not a host (#116): its
-  // blocks live on the result, not on any card or answer, so the
-  // service has no block to anchor to. No toolbar there.
-  if (el.closest("[data-so]")) return null;
   // #81: a selection in a file tab anchors to the cited file at its
   // commit. The line comes from the row the selection starts in; the
   // caller widens it to the touched range.
@@ -376,6 +377,14 @@ interface Pending {
    * Absent outside the diff (prose has no lines to open).
    */
   diffRange?: DiffRange;
+  /**
+   * Issue #349 step 2: the selection sits on a persona's version of a
+   * card — Explain/Ask run as that persona (`personaCardId` is the guide
+   * card the version belongs to). Absent on guide text and in threads
+   * (a thread already knows its persona).
+   */
+  personaId?: string;
+  personaCardId?: string;
 }
 
 /**
@@ -551,21 +560,30 @@ export function SelectionToolbar() {
   pendingRef.current = pending;
   const shownAt = useRef(0);
   // Issue #134: the repo behind this review (owner/name for the GitHub
-  // link). Local checkouts (`owner: "local"`), the demo and unknown repos
-  // have no GitHub file view, so the action hides there.
+  // link). Local checkouts (`owner: "local"`) and unknown repos have no
+  // GitHub file view, so the action hides there. The demo resolves to the
+  // real urllib3/urllib3 repo (issue #341), so its line links work too.
+  // The summary carries the demo's repo id (`demo`); the snapshot carries
+  // the fixture's repo path — prefer the summary.
   const [githubRepo, setGithubRepo] = useState<{ owner: string; name: string } | null>(null);
   useEffect(() => {
-    const repoId = snapshot?.review.repoId;
-    if (!repoId || repoId === "demo") {
+    const snapshotId = snapshot?.review.id;
+    const fallbackId = snapshot?.review.repoId;
+    if (!snapshotId || !fallbackId) {
       setGithubRepo(null);
       return;
     }
     let cancelled = false;
     api
-      .repos()
-      .then((r) => {
+      .reviews()
+      .then(
+        (rs) => rs.reviews.find((r) => r.id === snapshotId)?.repoId ?? fallbackId,
+        () => fallbackId,
+      )
+      .then((repoId: string) => api.repos().then((r) => ({ repoId, repos: r.repos })))
+      .then(({ repoId, repos }) => {
         if (cancelled) return;
-        const found = r.repos.find((x) => x.id === repoId);
+        const found = repos.find((x) => x.id === repoId);
         setGithubRepo(found && found.owner !== "local" ? { owner: found.owner, name: found.name } : null);
       })
       .catch(() => {
@@ -574,7 +592,7 @@ export function SelectionToolbar() {
     return () => {
       cancelled = true;
     };
-  }, [snapshot?.review.repoId]);
+  }, [snapshot?.review.id, snapshot?.review.repoId]);
 
   useEffect(() => {
     const bar = (): HTMLElement | null => barRef.current;
@@ -673,6 +691,11 @@ export function SelectionToolbar() {
         // scroll grace in onScroll reads this, so a scroll landing before
         // React commits `pending` still counts as in-grace.
         shownAt.current = Date.now();
+        // Issue #349 step 2: a selection on a persona's version carries the
+        // persona (the variant container marks `data-persona` + `data-card`).
+        const personaEl = (anchorEl as HTMLElement).closest?.("[data-persona]") as HTMLElement | null;
+        const selPersonaId = personaEl?.dataset.persona ?? "";
+        const selPersonaCardId = personaEl?.dataset.card ?? "";
         setPending({
           quote,
           anchor:
@@ -683,6 +706,9 @@ export function SelectionToolbar() {
                 : host.anchor,
           ...(inThreadId ? { threadId: inThreadId, ...(inReplyId ? { sourceReplyId: inReplyId } : {}) } : {}),
           ...(offsets ? { offsets } : {}),
+          ...(selPersonaId && selPersonaCardId && !inThreadId
+            ? { personaId: selPersonaId, personaCardId: selPersonaCardId }
+            : {}),
           revealed: isRevealedElement(elementOf(anchorNode) ?? document.body),
           ...(commentAnchor ? { commentAnchor } : {}),
           ...(inGhThread && host.anchor.where === "diff-line" ? { commentAnchor: host.anchor } : {}),
@@ -823,6 +849,9 @@ export function SelectionToolbar() {
         ...(current.threadId ? { threadId: current.threadId } : { anchor: current.anchor }),
         ...(current.sourceReplyId ? { sourceReplyId: current.sourceReplyId } : {}),
         ...(current.offsets && !current.threadId ? { offsets: current.offsets } : {}),
+        // Issue #349 step 2: a selection on a persona's version is
+        // explained by that persona (threads already know theirs).
+        ...(!current.threadId && current.personaId ? { personaId: current.personaId } : {}),
       } as import("@unvibe/shared").ReviewAction,
       { toast: false },
     )
@@ -886,6 +915,11 @@ export function SelectionToolbar() {
       quote: current.quote,
       kind,
       ...(current.offsets ? { offsets: current.offsets } : {}),
+      // Issue #349 step 2: Ask on a persona's version is answered by
+      // that persona (comments never carry a persona).
+      ...(kind === "ask" && current.personaId && current.personaCardId
+        ? { personaId: current.personaId, personaCardId: current.personaCardId }
+        : {}),
     });
   };
 

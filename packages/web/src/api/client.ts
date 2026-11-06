@@ -40,6 +40,8 @@ import type {
   ResumeReviewResponse,
   RemoveRepoResponse,
   ResetDataResponse,
+  SetSinceBaselineRequest,
+  SetSinceBaselineResponse,
   DataFormatResetResponse,
   DataFormatGoBackResponse,
   DataFormatStatusResponse,
@@ -360,6 +362,15 @@ const realApi = {
   /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
   resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
   update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
+  /** Issue #351: pick the baseline B (earlier version or commit sha) the next update explains from. */
+  setSinceBaseline: (id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/since-baseline`, body),
+  /** Issue #351 step 2: clear a picked baseline (back to the default B). */
+  clearSinceBaseline: (id: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(id)}/since-baseline`, { method: "DELETE" }),
+  /** Issue #351 step 2: the reviewer's own latest GitHub review on this PR, or null. */
+  priorGithubReview: (id: string): Promise<import("@unvibe/shared").GetPriorGithubReviewResponse> =>
+    get(`/api/reviews/${encodeURIComponent(id)}/prior-github-review`),
   action: (id: string, action: ReviewAction): Promise<ActionResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/actions`, action),
 

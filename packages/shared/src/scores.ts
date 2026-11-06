@@ -18,7 +18,6 @@
  *   reader leaves out read as "other" without storing anything.
  */
 import { parseId } from "./ids.js";
-import { truncateAtWordBoundary } from "./content/hunk.js";
 
 /** Ordered interestingness levels, least to most interesting. */
 export const HUNK_SCORE_LEVELS = ["mechanical", "routine", "substantive", "needs-attention"] as const;
@@ -105,6 +104,12 @@ export const PLOTLINE_OTHER_ID = "other";
 export interface Plotline {
   /** Short kebab-case id, unique within the review. */
   id: string;
+  /**
+   * Issue #351: true when the update pass created this plotline for a
+   * genuinely new thread of work since the baseline — the row reads
+   * "new since B".
+   */
+  newSinceBaseline?: boolean;
   /** Short display name. */
   name: string;
   /** One line: what this step adds to the progression (issue #197). */
@@ -144,8 +149,48 @@ function slugify(text: string): string {
   return slug === "" ? "plotline" : slug;
 }
 
+/**
+ * Safety cap for stored plotline names (issue #353): generous enough
+ * to keep any real name whole — the reader builds names from the
+ * code's own identifiers, so a hard 40-character cut could drop most
+ * of the name. Shortening happens on screen with CSS, never here.
+ */
+export const MAX_PLOTLINE_NAME = 120;
+
+/**
+ * Safety cap for stored plotline descriptions (issue #353): larger
+ * than the old 140, same no-cut-inside-a-token rule as names.
+ */
+export const MAX_PLOTLINE_DESCRIPTION = 280;
+
+/**
+ * Collapse whitespace and apply a generous safety cap that never cuts
+ * inside a token (issue #353) and never appends an ellipsis: when a
+ * cut is needed, cut at the last whitespace before the cap; when a
+ * single token runs past the cap, keep the whole token.
+ */
 function cleanLine(text: string, max: number): string {
-  return truncateAtWordBoundary(text.replace(/\s+/g, " ").trim(), max);
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace <= 0) return flat;
+  return cut.slice(0, lastSpace);
+}
+
+/**
+ * Repair a display name that is just the kebab-case id echoed back
+ * (the model wrote `"id": "obs-fold-unfolding", "name":
+ * "obs-fold-unfolding"`). A display name is plain words, never a slug,
+ * so split the slug into words and capitalize the first. Idempotent:
+ * a proper name slugifies to something else and passes through, and a
+ * proper name that slugifies to the id (e.g. "Retry logic" from
+ * "retry-logic") humanizes back to itself.
+ */
+function humanizeSlug(slug: string): string {
+  const words = slug.split("-").filter((w) => w !== "");
+  if (words.length === 0) return "";
+  return words.map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
 /**
@@ -169,18 +214,21 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
   for (const raw of input) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
     const rec = raw as Record<string, unknown>;
-    const name = typeof rec["name"] === "string" ? cleanLine(rec["name"], 40) : "";
+    const name = typeof rec["name"] === "string" ? cleanLine(rec["name"], MAX_PLOTLINE_NAME) : "";
     if (name === "") continue;
     if (plotlines.length >= MAX_PLOTLINES) {
       extraPlotlines += 1;
       continue;
     }
     const wantId = typeof rec["id"] === "string" && rec["id"].trim() !== "" ? slugify(rec["id"]) : slugify(name);
+    // The name must not be the kebab-case id echoed back: repair it
+    // into a display name rather than store (or drop) a slug.
+    const displayName = slugify(name) === wantId ? humanizeSlug(wantId) : name;
     let id = wantId;
     for (let n = 2; seenIds.has(id); n++) id = `${wantId}-${n}`;
     seenIds.add(id);
     const description =
-      typeof rec["description"] === "string" ? cleanLine(rec["description"], 140) : "";
+      typeof rec["description"] === "string" ? cleanLine(rec["description"], MAX_PLOTLINE_DESCRIPTION) : "";
     const buildsOnRaw = typeof rec["buildsOn"] === "string" && rec["buildsOn"].trim() !== "" ? slugify(rec["buildsOn"]) : undefined;
     const hunks = Array.isArray(rec["hunks"]) ? rec["hunks"] : [];
     for (const h of hunks) {
@@ -198,7 +246,7 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
       }
       assignment[canonical] = id;
     }
-    plotlines.push({ id, name, description, ...(buildsOnRaw !== undefined ? { buildsOn: buildsOnRaw } : {}) });
+    plotlines.push({ id, name: displayName, description, ...(buildsOnRaw !== undefined ? { buildsOn: buildsOnRaw } : {}) });
   }
   // `buildsOn` must name another plotline in the same list (landing
   // order means it should be an earlier one, but any known id is kept);
@@ -220,10 +268,12 @@ export function normalizePlotlines(input: unknown, known: ReadonlySet<string>): 
  * - `routine`: also hides `mechanical` hunks.
  * - `substantive`: shows only `substantive` and `needs-attention`.
  * - `needs-attention`: shows only `needs-attention`.
- * Individually unhidden hunks stay visible at every level, and a
- * hunk with no score yet is never hidden by its score. Guide-cited
- * hunks hide like any other (owner decision, #325); clicking their
- * citation reveals them through the diff's per-hunk unhide.
+ * A transient per-hunk expand (clicking a hidden row or its citation,
+ * issue #342) shows that hunk until the next level change or reload;
+ * choosing a level always re-applies it from scratch. A hunk with no
+ * score yet is never hidden by its score. Guide-cited hunks hide like
+ * any other (owner decision, #325); clicking their citation reveals
+ * them through the transient expand.
  */
 export const HIDE_LEVELS = ["all", "uninteresting", "routine", "substantive", "needs-attention"] as const;
 export type HideLevel = (typeof HIDE_LEVELS)[number];
@@ -326,8 +376,9 @@ export function shouldHideAtLevel(
   level: HideLevel,
   opts: { unhidden?: boolean } = {},
 ): boolean {
-  // Only the user's own reveal exempts a hunk; guide citations do
-  // not (owner decision, #325) — clicking a citation reveals instead.
+  // Only a transient UI expand exempts a hunk (issue #342: cleared on
+  // level change, never persisted); guide citations do not exempt it
+  // (owner decision, #325) — clicking a citation expands instead.
   if (opts.unhidden) return false;
   return hideCategoryForLevel(hunk, level) !== null;
 }
@@ -392,6 +443,12 @@ export function formatHideLevelStats(stats: HideLevelStats): string {
 export interface DiffFilter {
   /** Plotline id, or "other" for unassigned hunks. Absent = all. */
   plotline?: string;
+  /**
+   * Issue #351: true shows only hunks changed or added since the
+   * baseline (the snapshot's `sinceHunks`); composes with the plotline
+   * filter and every other filter.
+   */
+  sinceBaseline?: boolean;
 }
 
 /**

@@ -94,8 +94,8 @@ test.describe("J15 multi-turn thread", () => {
     // Access-mode change in between: turn full access on, then keep talking.
     await page.goto(`${svc.origin}/settings?token=${svc.token}`);
     await page.getByRole("tab", { name: "Access" }).click();
-    await page.getByRole("button", { name: "Turn on full access…" }).click();
-    await page.getByRole("button", { name: "I understand, turn on full access" }).click();
+    await page.getByRole("button", { name: "Turn on full access" }).click();
+    await page.getByRole("button", { name: "Confirm full access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Full access is on", { timeout: 15_000 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(thread).toBeVisible({ timeout: 60_000 });
@@ -109,7 +109,8 @@ test.describe("J15 multi-turn thread", () => {
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: the re-recorded central card has no "fast path" text.
+    await selectText(page, "#C-central", "matches optional whitespace");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator("#C-central .ithread[data-pending-thread]");
     await expect(composer).toBeVisible();
@@ -125,10 +126,14 @@ test.describe("J15 multi-turn thread", () => {
     await box.fill("never mind");
     await thread.getByRole("button", { name: "Clear" }).click();
     await expect(box).toHaveValue("");
-    await box.fill("And a bare LF?");
+    // Issue #341: ask the recorded identity question. Follow-up prompts
+    // resolve through the thread's card context (the central card carries
+    // the identity quote), so the replayed follow-up answers about the
+    // shared message object.
+    await box.fill("Is the rewritten message the same object downstream code already holds, or a copy?");
     await thread.getByRole("button", { name: "Reply" }).last().click();
     await expect(box).toHaveValue("", { timeout: 5000 });
-    await expect(thread.locator("[data-reply]").nth(1)).toContainText("bare LF", { timeout: 30_000 });
+    await expect(thread.locator("[data-reply]").nth(1)).toContainText("same object", { timeout: 30_000 });
     await expect(box).toHaveValue("");
 
     await page.reload();
@@ -137,7 +142,7 @@ test.describe("J15 multi-turn thread", () => {
       hasText: "Does the fast path still catch a fold",
     });
     await expect(again.first()).toBeVisible({ timeout: 30_000 });
-    await expect(again.locator("[data-reply]").nth(1)).toContainText("bare LF", { timeout: 30_000 });
+    await expect(again.locator("[data-reply]").nth(1)).toContainText("same object", { timeout: 30_000 });
     await expect(again.locator('textarea[aria-label="Reply"]')).toHaveValue("");
   });
 });

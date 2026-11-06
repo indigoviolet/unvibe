@@ -17,6 +17,7 @@ import { resolveD2Bin, meetsD2MinVersion } from "../diagrams/bins.js";
 import { probeD2Version, renderD2Theme, D2_THEME_DARK, D2_THEME_LIGHT } from "../diagrams/render.js";
 import { postProcessSvg, type CitationMap } from "../diagrams/sanitize.js";
 import type { DiagramBlock } from "@unvibe/shared";
+import { defaultPromptsDir, hashPromptsDir } from "./prompts-hash.js";
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(name);
@@ -49,6 +50,18 @@ function collectDiagrams(snapshot: { pages: { cards: { blocks: unknown[] }[] }[]
   });
 }
 
+/** Diagram recording files from the manifest (replaces the old hardcoded pair). */
+function manifestEntriesRecordings(dir: string): string[] {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) as {
+      recordings?: { kind?: string; file?: string }[];
+    };
+    return (manifest.recordings ?? []).filter((e) => e.kind === "diagram" && typeof e.file === "string").map((e) => e.file as string);
+  } catch {
+    return [];
+  }
+}
+
 try {
   const { snapshot, counts } = buildSnapshot(fixturesDir);
   fs.writeFileSync(out, JSON.stringify(snapshot, null, 2) + "\n");
@@ -58,6 +71,27 @@ try {
       `${counts.length} recordings, ${cites} citations, 0 unverified → ${out}`,
   );
 
+  // Issue #341: prompt-hash drift warning (never a failure). The fixture
+  // recordings are only valid for the prompts that produced them.
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(fixturesDir, "manifest.json"), "utf8")) as {
+      promptHash?: string;
+    };
+    if (typeof manifest.promptHash === "string") {
+      const current = hashPromptsDir(defaultPromptsDir(import.meta.url));
+      if (current !== manifest.promptHash) {
+        console.warn(
+          `[fixture-drift] prompts changed since the demo was recorded (manifest ${manifest.promptHash}, now ${current}). ` +
+            `Re-record the fixture (issue #341) before trusting the demo.`,
+        );
+      } else {
+        console.log(`promptHash: matches manifest (${manifest.promptHash.slice(0, 19)}…)`);
+      }
+    }
+  } catch {
+    // hash check is advisory; a broken manifest fails the build above, not here
+  }
+
   // --- pre-render fixture diagrams (needs real d2) ----------------------
   // Snapshot-embedded diagrams (go-deeper flow card) plus the on-demand
   // diagram recordings (fold/path via the replay runner): all must have
@@ -65,7 +99,7 @@ try {
   const diagrams = collectDiagrams(snapshot);
   {
     const { parseReply } = await import("@unvibe/shared");
-    for (const file of ["diagram-fold.md", "diagram-path.md"]) {
+    for (const file of manifestEntriesRecordings(fixturesDir)) {
       try {
         const text = fs.readFileSync(path.join(fixturesDir, "recordings", file), "utf8");
         for (const block of parseReply(text).blocks) {

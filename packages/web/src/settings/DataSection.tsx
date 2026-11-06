@@ -3,28 +3,23 @@
  * from this machine. Settings and repositories stay; nothing changes on
  * GitHub. Confirmed inline, like Remove on the start page.
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api, friendlyError } from "../api/client.js";
+import { InlineConfirm } from "../ui/index.js";
 
 export function DataSection(): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<number | null>(null);
 
-  const reset = async (): Promise<void> => {
+  const reset = useCallback(async (): Promise<void> => {
     setBusy(true);
-    setError(null);
     try {
       const res = await api.resetData();
       setRemoved(res.reviewsRemoved);
-      setConfirming(false);
-    } catch (err) {
-      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
 
   return (
     <section aria-label="Data">
@@ -33,38 +28,24 @@ export function DataSection(): React.JSX.Element {
         submitted and the working copies Unvibe made for it. Settings and repos stay. Nothing changes on GitHub.
       </p>
       <div className="frow" style={{ gap: 8 }}>
-        {confirming ? (
-          <>
-            <span className="hint">Remove all reviews? This cannot be undone.</span>
-            <button className="ui-btn" data-variant="primary" type="button" disabled={busy} onClick={() => void reset()}>
-              {busy ? "Resetting…" : "Reset"}
-            </button>
-            <button className="ui-btn" data-variant="secondary" type="button" disabled={busy} onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            className="ui-btn" data-variant="secondary"
-            type="button"
-            onClick={() => {
-              setRemoved(null);
-              setError(null);
-              setConfirming(true);
-            }}
-          >
-            Reset data…
-          </button>
-        )}
+        {/* #346: the shared inline confirm (was Reset/Cancel buttons). */}
+        <InlineConfirm
+          action="Reset data"
+          confirmAction="reset data"
+          runningLabel="Resetting…"
+          size="md"
+          danger
+          placement="stack"
+          disabled={busy}
+          onConfirm={reset}
+          formatError={friendlyError}
+          detail="Remove all reviews? This cannot be undone."
+          announce="Remove all reviews? This cannot be undone. Confirm reset data, or cancel."
+        />
       </div>
       {removed !== null ? (
         <p className="hint" role="status">
           Removed {removed} {removed === 1 ? "review" : "reviews"}.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="err" role="alert">
-          Couldn&apos;t reset: {error}
         </p>
       ) : null}
     </section>

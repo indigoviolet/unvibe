@@ -2,7 +2,8 @@
  * Icon set copied from prototype.html (same names, same 16x16 stroke paths).
  * `gear` and `bug` are additions in the same stroke style (the prototype
  * has no settings/debug icons), as are `person` (author avatar for the
- * reviewer; the agent avatar reuses `spark`), `refresh`, `home` and the
+ * reviewer; the agent avatar reuses `spark`), `refresh`, `home`, `redo`
+ * (#345) and the
  * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out),
  * `eyeOff`, and `doc` (a page with a folded corner for the documents
  * screen) are additions in the same stroke style. #224 adds the PR
@@ -29,6 +30,14 @@ const PATHS: Record<string, JSX.Element> = {
     <>
       <path d="M5.5 3.5L2.5 6.5l3 3" />
       <path d="M2.5 6.5H10a3.5 3.5 0 010 7H7.5" />
+    </>
+  ),
+  // #345: re-do is the horizontal mirror of undo (start the guide over
+  // from the same change), for the review bar's Re-do guide button.
+  redo: (
+    <>
+      <path d="M10.5 3.5l3 3-3 3" />
+      <path d="M13.5 6.5H6a3.5 3.5 0 000 7h2.5" />
     </>
   ),
   bulb: (<path d="M6 13.5h4M6.3 11.2h3.4M8 2.2a4 4 0 00-2.5 7.1v1.9h5V9.3A4 4 0 008 2.2z" />),

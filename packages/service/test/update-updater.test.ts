@@ -25,6 +25,7 @@ import {
   writeSwitchOutcome,
 } from "../src/update/state.js";
 import { fakeBuildInfo, resolveBuildInfo } from "../src/update/build-info.js";
+import { DATA_FORMAT } from "@unvibe/shared";
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-update-"));
@@ -249,7 +250,7 @@ describe("build identity", () => {
       baseCommit: null,
       commit: "y",
       builtAt: "2026-10-12T00:00:00.000Z",
-      dataFormat: 1,
+      dataFormat: DATA_FORMAT,
     });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Served-icon wiring (issue #299): the favicon set linked from the app
+ * Served-icon wiring (issues #299, #355): the favicon set linked from the app
  * shell must be servable without a token (tab/subwindow icon requests
  * carry no token), and every icon-ish allowlist entry must match a real
  * file in packages/web/public. Fast: asserts on the exported set + the
@@ -17,18 +17,18 @@ const publicRoot = path.resolve(serviceRoot, "..", "web", "public");
 const webIndex = path.resolve(serviceRoot, "..", "web", "index.html");
 
 describe("served icons", () => {
-  it("allowlist contains the favicon set (SVG + 32px + apple-touch)", () => {
-    for (const p of ["/icon.svg", "/icon-32.png", "/apple-touch-icon.png"]) {
+  it("allowlist contains the favicon set (SVG + 32px + apple-touch + ico)", () => {
+    for (const p of ["/icon.svg", "/icon-32.png", "/apple-touch-icon.png", "/favicon.ico"]) {
       expect(PUBLIC_STATIC_EXACT.has(p), p).toBe(true);
     }
   });
 
   it("every linked icon in the allowlist has a real file in web/public", () => {
-    // /favicon.ico is deliberately excluded: it is allowlisted for the
-    // browser's default request (pre-existing), not linked from the shell.
+    // /favicon.ico is allowlisted for the browser's default request AND
+    // linked from the shell (sizes="any"), so it is covered here too.
     const missing: string[] = [];
     for (const p of PUBLIC_STATIC_EXACT) {
-      if (!p.startsWith("/icon") && !p.startsWith("/apple-touch")) continue;
+      if (!p.startsWith("/icon") && !p.startsWith("/apple-touch") && p !== "/favicon.ico") continue;
       if (!fs.existsSync(path.join(publicRoot, p.slice(1)))) missing.push(p);
     }
     expect(missing, "allowlisted icons with no file").toEqual([]);

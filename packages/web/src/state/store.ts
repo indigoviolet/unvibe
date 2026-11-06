@@ -41,8 +41,8 @@ export type InFlightKind =
   | "ask"
   | "reply"
   | "retry"
-  | "second_opinion"
   | "concept"
+  | "persona"
   | "update";
 
 export interface InFlightAction {

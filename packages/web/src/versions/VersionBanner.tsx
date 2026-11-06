@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { updateKey } from "../guide/inflight.js";
+import { SinceBaselineError, SinceBaselinePicker } from "../guide/SinceBaselinePicker.js";
 import { useReview } from "../state/store.js";
 import { versionCountsText } from "./versionUtils.js";
 
@@ -134,21 +135,22 @@ export function VersionBanner({
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
-      <span className="hint">
-        New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
-        {versionCountsText(counts)} hunks)
+      <span className="dbar-group dbar-group-summary">
+        <span className="hint">
+          New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
+          {versionCountsText(counts)} hunks)
+        </span>
+        {counts.rangeDiff.trim() !== "" ? (
+          <details>
+            <summary className="hint" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+              range-diff
+            </summary>
+            <pre className="code" data-testid="range-diff">
+              {counts.rangeDiff}
+            </pre>
+          </details>
+        ) : null}
       </span>
-      <span className="sp" />
-      {counts.rangeDiff.trim() !== "" ? (
-        <details>
-          <summary className="hint" style={{ cursor: "pointer" }}>
-            range-diff
-          </summary>
-          <pre className="code" data-testid="range-diff">
-            {counts.rangeDiff}
-          </pre>
-        </details>
-      ) : null}
       {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
       {updating ? (
         <span className="hint" data-testid="update-progress" aria-live="polite" role="status">
@@ -160,12 +162,27 @@ export function VersionBanner({
           Updating…
         </span>
       ) : (
-        <button className="x" type="button" onClick={() => void startUpdate()}>
-          Update
-        </button>
+        <span className="dbar-group">
+          <BaselinePick reviewId={reviewId} />
+          <button className="x" type="button" onClick={() => void startUpdate()}>
+            Update
+          </button>
+        </span>
       )}
+      <SinceBaselineError />
     </div>
   );
+}
+
+/**
+ * Baseline picker inside the stale banner (issue #351): B for the next
+ * update pass. Hidden while an update runs and when the review has a
+ * single version (the picker itself returns null there).
+ */
+function BaselinePick({ reviewId }: { reviewId: string }): React.JSX.Element | null {
+  const review = useReview((s) => s.snapshot?.review);
+  if (!review) return null;
+  return <SinceBaselinePicker reviewId={reviewId} review={review} />;
 }
 
 function updateError(err: unknown): string {

@@ -57,7 +57,7 @@ async function seenFlags(page: Page): Promise<Record<string, boolean>> {
 test("explain from a selection shows a working expansion immediately, then fills", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   await page.locator('#selbar [data-act="explain"]').click();
   // The expansion arrives with a plain working state carrying a fixed
   // label (the mock fill lands ~700 ms later); a placeholder covers the
@@ -75,11 +75,11 @@ test("explain from a selection shows a working expansion immediately, then fills
 test("follow-up click disables the chip and shows the answer working state", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
-  const follow = page.locator("#C-g-flow .follow button").first();
+  const follow = page.locator("#C-g-alt .follow button").first();
   await follow.click();
   // The answer thread arrives with a plain working state (mock fill:
   // ~700 ms), and at no point renders streamed text.
-  const exp = page.locator("#C-g-flow section.ithread[data-thread]").first();
+  const exp = page.locator("#C-g-alt section.ithread[data-thread]").first();
   await expect(exp).toBeVisible({ timeout: 5000 });
   await expect(exp.locator(".working").first()).toHaveText("Writing answer", { timeout: 5000 });
   await expect(exp).toContainText("Mock explanation", { timeout: 8000 });
@@ -88,22 +88,6 @@ test("follow-up click disables the chip and shows the answer working state", asy
   expect(seen.stream).not.toBe(true);
 });
 
-test("second opinion shows dots on its control plus a card working state", async ({ page }) => {
-  await gotoReview(page);
-  await armObserver(page);
-  // Issue #167: the demo seeds an open pinned thread under C-problem that
-  // overlays the controls below it — close it first, as a reader would.
-  await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
-  await page.locator("#C-central [data-so-ctl] button").first().click();
-  // The control itself goes busy and the card shows where the verdict lands.
-  await expect(page.locator('#C-central [data-so-ctl] button[aria-busy="true"]')).toBeVisible({
-    timeout: 5000,
-  });
-  await expect(page.locator("#C-central > .working").first()).toHaveText(
-    "Getting a second opinion…",
-    { timeout: 5000 },
-  );
-  const seen = await seenFlags(page);
-  expect(seen.busy).toBe(true);
-  expect(seen.stream).not.toBe(true);
-});
+// Issue #349: the second-opinion action and its control are gone, so the
+// "dots on its control" scene has no subject anymore. The busy/streaming
+// flags are still covered by the explain/ask/depth scenes above.

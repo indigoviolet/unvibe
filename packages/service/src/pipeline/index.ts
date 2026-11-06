@@ -6,7 +6,7 @@
  *   `summarizeHunk`, `fillGoDeeper`, `startReview` / `resumeReview`, and
  *   `updateRunner` (UpdateBaseRunner for the versions module).
  * - Demo ingest — repo-less fixture review running the same code path.
- * - Actions dispatcher — all interaction kinds plus second_opinion.
+ * - Actions dispatcher — all interaction kinds.
  */
 export { Pipeline, type PipelineOptions } from "./runner.js";
 export type { RunInForkOptions, RunInForkResult, RunSmallOptions, RunSmallResult } from "./types.js";
@@ -24,4 +24,3 @@ export { closeAction, deleteAction } from "./actions/close.js";
 export { promoteAction } from "./actions/promote.js";
 export { followupAction } from "./actions/followup.js";
 export { conceptAction } from "./actions/concept.js";
-export { removeSecondOpinionAction, secondOpinionAction } from "./actions/second_opinion.js";

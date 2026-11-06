@@ -36,7 +36,14 @@ test.describe("J247 start dots and review pill agree", () => {
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j247-data-"));
-    svc = await startService(dataDir, { agent: "replay", label: "j247" });
+    // Paced replay: the unpaced pipeline drains before the first poll
+    // lands, so the sampling loop below can never observe live jobs.
+    // The delay only spaces word chunks; matching stays deterministic.
+    svc = await startService(dataDir, {
+      agent: "replay",
+      label: "j247",
+      extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50" },
+    });
     // Serialize the pipeline so queued jobs exist long enough to cancel.
     const put = await apiJson(svc, "PUT", "/api/settings", { sessionsPerProvider: 1 });
     if (put.status !== 200) throw new Error(`settings update failed: ${put.status}`);

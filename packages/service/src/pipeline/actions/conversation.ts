@@ -26,7 +26,7 @@
  * extended by turns.
  */
 import { randomBytes } from "node:crypto";
-import type { ActionAnchor, Anchor, Thread, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
+import type { ActionAnchor, Anchor, Persona, Thread, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
 import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
@@ -48,6 +48,7 @@ import { probeConversationSessionFor } from "./ask-probe.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
 import { newCardForTurn } from "./events.js";
 import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
+import { personaCardForAnchor, personaFor, personaVariantBlockText, personaVariantPromptText, variantFor } from "./persona.js";
 
 /** Fresh answer id (`ans_<12 hex>`, assigned by the app). */
 export function newTurnId(): string {
@@ -271,6 +272,15 @@ export interface ConversationTurnOptions {
   /** User question text (L4 message + echo-strip candidate). */
   message: string;
   /**
+   * Issue #349 step 2: answer as this persona (its model and lens),
+   * continuing its own session for the card. `personaCardId` is the
+   * guide card the version belongs to; the prompt carries the variant's
+   * text instead of the guide's.
+   */
+  persona?: import("@unvibe/shared").Persona;
+  /** Guide card id the persona version belongs to (with `persona`). */
+  personaCardId?: string;
+  /**
    * Stored turns rendered as "conversation so far", sent instead of the
    * empty thread when the session was rebuilt (restart, idle close) and
    * the agent never saw the earlier turns. Only with template `ask`.
@@ -340,6 +350,19 @@ export async function runConversationTurn(
       ? { message: opts.message }
       : await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message });
   if (opts.transcript !== undefined) variables.thread = opts.transcript;
+  // Issue #349 step 2: on a persona's version the prompt carries the
+  // variant's text (its own blocks), not the guide's.
+  if (opts.persona && opts.personaCardId) {
+    try {
+      variables.card = personaVariantPromptText(latest, opts.personaCardId, opts.persona.id);
+      const blockText = personaVariantBlockText(latest, opts.personaCardId, opts.persona.id, opts.anchor);
+      if (blockText !== null && variables.anchor && typeof variables.anchor === "object") {
+        (variables.anchor as { block: string }).block = blockText;
+      }
+    } catch {
+      // No variant (deleted mid-flight): the guide text stands.
+    }
+  }
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: opts.replayKind } : undefined;
   // Connection retry (#51): a continued turn that observably hits a dead
@@ -350,10 +373,19 @@ export async function runConversationTurn(
   // (`threadTextFor` renders comment messages, not turns).
   const retryOwner = opts.continueSessionId ? latest.annotations.find((a) => a.id === annotationId) : undefined;
   const retryVariables = retryOwner
-    ? await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message }).then((vars) => ({
-        ...vars,
-        thread: turnsTextFor(retryOwner),
-      }))
+    ? await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message }).then((vars) => {
+        if (opts.persona && opts.personaCardId) {
+          try {
+            vars.card = personaVariantPromptText(latest, opts.personaCardId, opts.persona.id);
+          } catch {
+            // No variant (deleted mid-flight): the guide text stands.
+          }
+        }
+        return {
+          ...vars,
+          thread: turnsTextFor(retryOwner),
+        };
+      })
     : undefined;
 
   const done = pipeline.runInFork({
@@ -362,6 +394,7 @@ export async function runConversationTurn(
     template: opts.template,
     variables,
     priority: JOB_PRIORITY.userRequested,
+    ...(opts.persona ? { persona: opts.persona } : {}),
     dedupeKey: key,
     annotationId,
     // Persistent conversation: the next turn's change list resumes from
@@ -601,6 +634,8 @@ export interface ExplainRequest {
   threadId?: string;
   /** Reply the selection came from; gets the in-thread link to the new reply. */
   sourceReplyId?: string;
+  /** Issue #349 step 2: open on a persona's version (answered by that persona). */
+  personaId?: string;
 }
 
 export interface AskRequest {
@@ -613,6 +648,25 @@ export interface AskRequest {
   threadId?: string;
   /** Reply the selection came from; gets the in-thread link to the new reply. */
   sourceReplyId?: string;
+  /** Issue #349 step 2: open on a persona's version (answered by that persona). */
+  personaId?: string;
+}
+
+/**
+ * Issue #349 step 2: the persona owning a thread (its model and lens
+ * answer every turn), resolved from the thread's stored persona. The
+ * persona's card is `thread.personaCardId`. Null when the thread is a
+ * guide thread (or the persona was deleted since).
+ */
+export function personaForThread(
+  ctx: Pick<ActionContext, "settings">,
+  thread: Pick<Thread, "personaId"> | undefined,
+): Persona | null {
+  const personaId = thread?.personaId;
+  if (!personaId || !ctx.settings) return null;
+  const found = ctx.settings.get().personas?.find((p) => p.id === personaId) ?? null;
+  if (!found || !found.enabled) return null;
+  return found;
 }
 
 /** New reply id alias (replies use `ans_…`). */
@@ -672,12 +726,18 @@ async function appendInThreadReply(
   const ann = live.annotations.find((a) => a.id === threadId)!;
   const probe = await probeConversationSessionFor(ctx, ann);
   const isLive = probe.continueSessionId !== undefined && !probe.rebuilt;
+  // Issue #349 step 2: threads opened on a persona's version stay on
+  // that persona (its model and lens), in its own session for the card.
+  const threadPersona = personaForThread(ctx, ann);
   const res = await runConversationTurn(ctx, threadId, replyId, {
     anchor: ann.anchor,
     template: isLive ? "ask_turn" : "ask",
     message,
     ...(probe.transcript !== undefined && !isLive ? { transcript: probe.transcript } : {}),
     ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    ...(threadPersona && ann.personaCardId
+      ? { persona: threadPersona, personaCardId: ann.personaCardId }
+      : {}),
     skipDedupe: true,
     echoCandidates: questionEchoCandidates(quote, message),
     replayKind: replayKind ?? (kind === "explain" ? "explain" : "ask"),
@@ -720,8 +780,19 @@ export async function explainAction(
       ? { startOffset: req.offsets.start, endOffset: req.offsets.end }
       : {}),
   });
+  // Issue #349 step 2: a persona Explain opens on that persona's version
+  // of the card (answered by the persona). Guide threads keep today's
+  // keys so the two never dedupe against each other.
+  const persona = req.personaId ? personaFor(ctx, req.personaId) : undefined;
+  const personaCardId = req.personaId ? personaCardForAnchor(before, anchor) : null;
+  if (req.personaId) {
+    if (!persona || !personaCardId) throw new Error(`persona ${req.personaId} cannot answer here`);
+    if (!variantFor(before, personaCardId, req.personaId)) {
+      throw new Error(`persona ${req.personaId} has not run on card ${personaCardId} yet`);
+    }
+  }
   const key = {
-    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}`,
+    anchor: `${persona ? `persona:${req.personaId}:` : ""}${anchorKey(normalized)}:${req.quote.slice(0, 80)}`,
     requestKind: "explain",
     baseVersion: baseVersionOf(before),
   };
@@ -749,6 +820,7 @@ export async function explainAction(
       (a.type === "thread" || a.type === "link") &&
       a.anchor.quotedText === req.quote &&
       anchorSameHost(a.anchor, anchor) &&
+      (a.personaId ?? null) === (req.personaId ?? null) &&
       a.anchor.version === before.version.n &&
       !a.error &&
       !(a.replies ?? []).some((t) => t.error) &&
@@ -767,11 +839,21 @@ export async function explainAction(
 
   // Immediately visible working state.
   const { annotationId, replyId } = await createConversationCard(ctx, anchor, null, "Thinking", "explain");
+  if (persona && personaCardId) {
+    await reviews.mutate(reviewId, (draft) => {
+      const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+      if (found) {
+        found.personaId = persona.id;
+        found.personaCardId = personaCardId;
+      }
+    });
+  }
 
   const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor,
     template: "ask",
     message: DEFAULT_QUESTION,
+    ...(persona && personaCardId ? { persona, personaCardId } : {}),
     dedupeKey: key,
     echoCandidates: questionEchoCandidates(req.quote, DEFAULT_QUESTION),
     replayKind: "explain",
@@ -816,11 +898,22 @@ export async function askAction(
       ? { startOffset: req.offsets.start, endOffset: req.offsets.end }
       : {}),
   });
+  // Issue #349 step 2: a persona Ask opens on that persona's version
+  // of the card (answered by the persona). Guide threads keep today's
+  // keys so the two never dedupe against each other.
+  const persona = req.personaId ? personaFor(ctx, req.personaId) : undefined;
+  const personaCardId = req.personaId ? personaCardForAnchor(before, anchor) : null;
+  if (req.personaId) {
+    if (!persona || !personaCardId) throw new Error(`persona ${req.personaId} cannot answer here`);
+    if (!variantFor(before, personaCardId, req.personaId)) {
+      throw new Error(`persona ${req.personaId} has not run on card ${personaCardId} yet`);
+    }
+  }
   // PRD §12 key (#10): the question itself is part of the identity — two
   // different messages on the same anchor must not share a job/result.
   const messageKey = req.message.trim().slice(0, 120);
   const key = {
-    anchor: `${anchorKey(normalized)}:${req.quote.slice(0, 80)}:${messageKey}`,
+    anchor: `${persona ? `persona:${req.personaId}:` : ""}${anchorKey(normalized)}:${req.quote.slice(0, 80)}:${messageKey}`,
     requestKind: "ask",
     baseVersion: baseVersionOf(before),
   };
@@ -847,6 +940,7 @@ export async function askAction(
     if (a.type !== "thread" && a.type !== "link") return false;
     if (a.anchor.quotedText !== req.quote) return false;
     if (!anchorSameHost(a.anchor, anchor)) return false;
+    if ((a.personaId ?? null) !== (req.personaId ?? null)) return false;
     if (a.anchor.version !== before.version.n) return false;
     if (a.error || (a.replies ?? []).some((t) => t.error)) return false;
     const first = (a.replies ?? [])[0];
@@ -866,11 +960,21 @@ export async function askAction(
   // Card with the reader's question as its first turn (guide cards start
   // open in place, like Explain).
   const { annotationId, replyId } = await createConversationCard(ctx, anchor, req.message, "Thinking");
+  if (persona && personaCardId) {
+    await reviews.mutate(reviewId, (draft) => {
+      const found = (draft.annotations as unknown as Thread[]).find((a) => a.id === annotationId);
+      if (found) {
+        found.personaId = persona.id;
+        found.personaCardId = personaCardId;
+      }
+    });
+  }
 
   const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor,
     template: "ask",
     message: req.message,
+    ...(persona && personaCardId ? { persona, personaCardId } : {}),
     dedupeKey: key,
     echoCandidates: questionEchoCandidates(req.quote, req.message),
     replayKind: "ask",
@@ -911,12 +1015,17 @@ export async function replyAction(
   });
   const probe = await probeConversationSessionFor(ctx, card);
   const live = probe.continueSessionId !== undefined && !probe.rebuilt;
+  // Issue #349 step 2: a persona thread's reply stays on that persona.
+  const threadPersona = personaForThread(ctx, card);
   const res = await runConversationTurn(ctx, annotationId, replyId, {
     anchor: card.anchor,
     template: live ? "ask_turn" : "ask",
     message,
     ...(probe.transcript !== undefined && !live ? { transcript: probe.transcript } : {}),
     ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+    ...(threadPersona && card.personaCardId
+      ? { persona: threadPersona, personaCardId: card.personaCardId }
+      : {}),
     skipDedupe: true,
     echoCandidates: [card.anchor.quotedText, message],
     replayKind: "ask",
@@ -958,10 +1067,15 @@ export async function retryAction(
   const isLatest = last.id === replies[replies.length - 1].id;
   const live = probe.continueSessionId !== undefined && !firstTurn && !probe.rebuilt && isLatest;
   const message = last.question ?? DEFAULT_QUESTION;
+  // Issue #349 step 2: a persona thread's retry stays on that persona.
+  const retryPersona = personaForThread(ctx, found);
   const res = await runConversationTurn(ctx, annotationId, last.id, {
     anchor: found.anchor,
     template: firstTurn ? "ask" : live ? "ask_turn" : "ask",
     message,
+    ...(retryPersona && found.personaCardId
+      ? { persona: retryPersona, personaCardId: found.personaCardId }
+      : {}),
     ...(probe.transcript !== undefined && !live && !firstTurn ? { transcript: probe.transcript } : {}),
     ...(probe.continueSessionId && (live || probe.rebuilt) ? { continueSessionId: probe.continueSessionId } : {}),
     skipDedupe: true,

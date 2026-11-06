@@ -1,12 +1,11 @@
 /**
  * Actions dispatcher (M4/M6): one file per action kind.
  *
- * `generate` (Go deeper) and every interaction kind route here, plus
- * `second_opinion` via the isolated `secondopinion/` module (own base,
- * blind/check modes). Each action goes through `ReviewStore.mutate` so
- * the UI gets patches; each agent call runs at user-requested priority
- * with (anchor, kind, depth, base version) dedupe and citation validation
- * via the `runInFork` seam.
+ * `generate` (Go deeper) and every interaction kind route here. Each
+ * action goes through `ReviewStore.mutate` so the UI gets patches; each
+ * agent call runs at user-requested priority with (anchor, kind, depth,
+ * base version) dedupe and citation validation via the `runInFork` seam.
+ * (Issue #349 step 2 adds persona card runs here.)
  */
 import type { FastifyReply } from "fastify";
 import type { ActionResponse, ReviewAction } from "@unvibe/shared";
@@ -19,6 +18,7 @@ import type { ReviewStore } from "../../state/store.js";
 import type { Pipeline } from "../runner.js";
 import { generateAction } from "./generate.js";
 import { askAction, explainAction, hunkCardAction, replyAction, retryAction } from "./conversation.js";
+import { personaAction } from "./persona.js";
 import { collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
@@ -28,7 +28,6 @@ import { examplesAction } from "./examples.js";
 import { followupAction } from "./followup.js";
 import { noteAction } from "./note.js";
 import { promoteAction } from "./promote.js";
-import { removeSecondOpinionAction, secondOpinionAction } from "./second_opinion.js";
 import { undoAction } from "./undo.js";
 import type { ActionContext } from "./common.js";
 import { errorCodeFor, errorCodeOf, sendError } from "../../errors.js";
@@ -106,7 +105,6 @@ export async function dispatchAction(
         action.kind === "examples" ||
         action.kind === "diagram" ||
         action.kind === "generate" ||
-        action.kind === "second_opinion" ||
         action.kind === "concept")
     ) {
       return bad(reply, "that doesn't apply to a document — Explain, Ask and Comment work on its text instead");
@@ -134,12 +132,16 @@ export async function dispatchAction(
         need(ctx);
         if (typeof action.quote !== "string") return bad(reply, "quote is required");
         if (!action.threadId && !action.anchor) return bad(reply, "quote and anchor are required");
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
         const res = await explainAction(ctx, {
           quote: action.quote,
           ...(action.anchor ? { anchor: action.anchor } : {}),
           ...(action.threadId ? { threadId: action.threadId } : {}),
           ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+          ...(action.personaId ? { personaId: action.personaId } : {}),
         });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
@@ -153,6 +155,9 @@ export async function dispatchAction(
           return bad(reply, "quote and message are required");
         }
         if (!action.threadId && !action.anchor) return bad(reply, "quote, anchor and message are required");
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
         const res = await askAction(ctx, {
           quote: action.quote,
           ...(action.anchor ? { anchor: action.anchor } : {}),
@@ -160,6 +165,7 @@ export async function dispatchAction(
           ...(action.sourceReplyId ? { sourceReplyId: action.sourceReplyId } : {}),
           message: action.message,
           ...(action.offsets !== undefined ? { offsets: action.offsets } : {}),
+          ...(action.personaId ? { personaId: action.personaId } : {}),
         });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, replyId: res.replyId, turnId: res.replyId };
         if (res.jobId) out.jobId = res.jobId;
@@ -203,7 +209,12 @@ export async function dispatchAction(
         if (action.direction !== "simpler" && action.direction !== "deeper") {
           return bad(reply, "direction must be simpler or deeper");
         }
-        const res = await depthAction(ctx, action.cardId, action.direction);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await depthAction(ctx, action.cardId, action.direction, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -217,7 +228,12 @@ export async function dispatchAction(
       case "examples": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await examplesAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await examplesAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -227,7 +243,12 @@ export async function dispatchAction(
       case "diagram": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await diagramAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await diagramAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
@@ -237,7 +258,12 @@ export async function dispatchAction(
       case "undo": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        const res = await undoAction(ctx, action.cardId);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await undoAction(ctx, action.cardId, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         return { accepted: true, cardId: res.cardId } satisfies ActionResponse;
       }
       case "collapse": {
@@ -271,25 +297,8 @@ export async function dispatchAction(
       case "delete": {
         need(ctx);
         if (typeof action.targetId !== "string") return bad(reply, "targetId is required");
-        // Second-opinion removal travels over the generic `delete` action:
-        // targetId `second-opinion:<cardId>:<mode>` or a stored `so-…`
-        // opinion id. All other targets are annotation ids (M4).
-        const target = action.targetId;
-        const soMatch = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
-        if (soMatch) {
-          try {
-            if (soMatch[1].startsWith("so-")) {
-              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, "", undefined, soMatch[1]);
-            } else {
-              const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-              await removeSecondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, cardId, mode as "blind" | "check");
-            }
-            return { accepted: true } satisfies ActionResponse;
-          } catch (err) {
-            return sendCaught(reply, err);
-          }
-        }
-        const res = await deleteAction(ctx, target);
+        // All delete targets are annotation ids (M4).
+        const res = await deleteAction(ctx, action.targetId);
         return { accepted: true, annotationId: res.targetId } satisfies ActionResponse;
       }
       case "followup": {
@@ -297,7 +306,12 @@ export async function dispatchAction(
         if (typeof action.cardId !== "string" || typeof action.blockId !== "string" || !Number.isSafeInteger(action.index)) {
           return bad(reply, "cardId, blockId and index are required");
         }
-        const res = await followupAction(ctx, action.cardId, action.blockId, action.index);
+        if (action.personaId !== undefined && typeof action.personaId !== "string") {
+          return bad(reply, "personaId must be a string");
+        }
+        const res = await followupAction(ctx, action.cardId, action.blockId, action.index, {
+          ...(action.personaId ? { personaId: action.personaId } : {}),
+        });
         const out: ActionResponse = { accepted: true, annotationId: res.annotationId, cardId: action.cardId };
         if (res.replyId) out.replyId = res.replyId;
         if (res.jobId) out.jobId = res.jobId;
@@ -315,18 +329,17 @@ export async function dispatchAction(
         if (res.reused) out.reused = true;
         return out;
       }
-      case "second_opinion": {
+      case "persona": {
         need(ctx);
-        if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        if (action.mode !== "blind" && action.mode !== "check") {
-          return bad(reply, "mode must be blind or check");
+        if (typeof action.cardId !== "string" || typeof action.personaId !== "string") {
+          return bad(reply, "cardId and personaId are required");
         }
         try {
-          const res = await secondOpinionAction(ctx.pipeline, ctx.jobs, ctx.reviews, ctx.reviewId, action.cardId, action.mode);
-          const out: ActionResponse = { accepted: true };
+          const res = await personaAction(ctx, action.cardId, action.personaId);
+          const out: ActionResponse = { accepted: true, cardId: res.cardId };
           if (res.jobId) out.jobId = res.jobId;
-          if (res.reused) out.reused = true;
-          return out satisfies ActionResponse;
+          if (res.deduplicated) out.deduplicated = true;
+          return out;
         } catch (err) {
           return sendCaught(reply, err);
         }

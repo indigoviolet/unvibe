@@ -38,11 +38,7 @@ import { filterChangeList } from "../src/context/index.js";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
 import { expandAll, guideRevisionForSnapshot, toPromptSnapshot } from "../src/routes/prompts.js";
 import { SessionManager } from "../src/sessions/manager.js";
-import {
-  assertSecondOpinionIsolated,
-  assertSmallPromptIsolated,
-  buildIsolatedSecondOpinionPrompt,
-} from "../src/sharedctx/isolation.js";
+import { assertNoLeak, assertSmallPromptIsolated } from "../src/sharedctx/isolation.js";
 import { applyConsolidation, processContribute } from "../src/sharedctx/contributions.js";
 import { planGrowth } from "../src/sharedctx/growth.js";
 import { logEntryForEvent } from "../src/sharedctx/taxonomy.js";
@@ -844,29 +840,20 @@ describe("isolation (PRD §12)", () => {
     { label: "uncited pin", text: "UNCITED-PIN-PROBE secret helper body" },
   ];
 
-  it("second-opinion contexts never include L2, L3, contributions or uncited pins", () => {
-    const text = buildIsolatedSecondOpinionPrompt({
-      instructions: "L0 instructions",
-      sourceText: "L1 source",
-      codeExcerpts: [
-        { id: "code:a.py:1-2@s", text: "CITED-CODE-PROBE normalized = True" },
-        { id: "code:b.py:9-9@s", text: "UNCITED-PIN-PROBE secret helper body" },
-      ],
-      citedIds: ["code:a.py:1-2@s"],
-    });
-    expect(text).toContain("CITED-CODE-PROBE");
+  it("the leak guard fails when log/contribution text is present", () => {
+    const text = "L0 instructions\nL1 source";
     // The guard passes on the isolated text…
-    expect(() => assertSecondOpinionIsolated(text, probes)).not.toThrow();
+    expect(() => assertNoLeak(text, probes, "persona prompt")).not.toThrow();
     // …and fails when log/contribution text is present (the test can fail).
     expect(() =>
-      assertSecondOpinionIsolated(`${text}\nLOG-PROBE settled-thread summary line`, probes),
+      assertNoLeak(`${text}\nLOG-PROBE settled-thread summary line`, probes, "persona prompt"),
     ).toThrow(/leaks log/);
     expect(() =>
-      assertSecondOpinionIsolated(`${text}\nCONTRIBUTION-PROBE reads the original message`, probes),
+      assertNoLeak(`${text}\nCONTRIBUTION-PROBE reads the original message`, probes, "persona prompt"),
     ).toThrow(/leaks contribution/);
   });
 
-  it("expanded second-opinion prompts carry no L2/L3/contribution text", () => {
+  it("expanded persona-card prompts carry no L2/L3/contribution text", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const snap = toPromptSnapshot({
       review: { id: "r", repoId: "rp", branch: "b", versions: [], currentVersion: 1, createdAt: 1 },
@@ -916,10 +903,12 @@ describe("isolation (PRD §12)", () => {
       ingest: { status: "ready" },
     });
     const expanded = expandAll(lib, snap);
-    for (const name of ["second_opinion_blind", "second_opinion_check"]) {
-      const prompt = expanded.find((e) => e.name === name)!.expanded;
-      expect(() => assertSecondOpinionIsolated(prompt, probes), name).not.toThrow();
-    }
+    const prompt = expanded.find((e) => e.name === "persona_card")!.expanded;
+    // The card task carries the guide's version of the card by design —
+    // but no findings, contributions, log lines or uncited pins.
+    expect(prompt).toContain("GUIDE-PROBE");
+    const cardProbes = probes.filter((p) => p.label !== "guide");
+    expect(() => assertNoLeak(prompt, cardProbes, "persona-card prompt")).not.toThrow();
     // Sanity: the probes do exist elsewhere (L2/L3), so the test is not vacuous.
     const base = expanded.find((e) => e.name === "base_pack")!.expanded;
     expect(base).toContain("GUIDE-PROBE");

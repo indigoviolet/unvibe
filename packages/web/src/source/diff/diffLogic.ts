@@ -87,7 +87,7 @@ export type HunkGroup = { type: "show"; index: number } | { type: "hidden"; indi
 
 /**
  * Group consecutive hidden hunks into runs (prototype `hunksHtml`): each run
- * renders as one thin "Hunks i–j hidden" row; everything else renders alone.
+ * renders as one thin collapsed row; everything else renders alone.
  */
 export function groupHunks(
   hunks: Hunk[],
@@ -154,9 +154,19 @@ export interface FileFilter {
    */
   plot?: DiffFilter;
   hunkStateOf?: (contentHash: string) => { score?: HunkScoreLevel; plotline?: string } | undefined;
+  /**
+   * Issue #351: new-side `h:` IDs changed or added since the baseline.
+   * Present only while the Since-B filter is on; a hunk passes only
+   * when it is in the set.
+   */
+  sinceIds?: ReadonlySet<string>;
 }
 
 /** Prototype `visibleFiles`: category chips + name filter + hide-reviewed. */
+export function hunkVisibleId(fileKey: string, contentHash: string): string {
+  return `h:${fileKey}:${contentHash}`;
+}
+
 export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile[] {
   const q = filter.query.toLowerCase();
   return files.filter(
@@ -164,12 +174,20 @@ export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile
       filter.cats.has(f.category) &&
       f.path.toLowerCase().includes(q) &&
       !(filter.hideReviewed && filter.reviewedCount(f) === f.hunks.length) &&
-      (!filter.plot || f.hunks.some((h) => hunkPlotVisible(h, filter))),
+      (!filter.plot || f.hunks.some((h) => hunkPlotVisible(h, f.fileKey, filter))),
   );
 }
 
-/** True when a hunk passes the plotline filter (absent = all pass). */
-export function hunkPlotVisible(hunk: Hunk, filter: Pick<FileFilter, "plot" | "hunkStateOf">): boolean {
+/**
+ * True when a hunk passes the plotline + Since-B filters (absent = all
+ * pass). `fileKey` builds the `h:` id for the Since-B membership check.
+ */
+export function hunkPlotVisible(
+  hunk: Hunk,
+  fileKey: string,
+  filter: Pick<FileFilter, "plot" | "hunkStateOf" | "sinceIds">,
+): boolean {
+  if (filter.sinceIds && !filter.sinceIds.has(hunkVisibleId(fileKey, hunk.contentHash))) return false;
   if (!filter.plot || filter.plot.plotline === undefined) return true;
   const st = filter.hunkStateOf?.(hunk.contentHash);
   return hunkMatchesFilter(st?.plotline, filter.plot);
@@ -207,11 +225,10 @@ export function hunkLabel(file: ReviewFile, index: number): string {
   return index === -1 ? "" : `Hunk ${index + 1} of ${total}`;
 }
 
-export function hiddenRunLabel(file: ReviewFile, indices: number[]): string {
-  const total = file.hunks.length;
+export function hiddenRunLabel(_file: ReviewFile, indices: number[]): string {
   return indices.length === 1
-    ? `Hunk ${indices[0] + 1} of ${total}`
-    : `Hunks ${indices[0] + 1}–${indices[indices.length - 1] + 1} of ${total}`;
+    ? `Hunk ${indices[0] + 1}`
+    : `Hunks ${indices[0] + 1}–${indices[indices.length - 1] + 1}`;
 }
 
 // --- reveal refs ---------------------------------------------------------------
@@ -252,7 +269,11 @@ export interface HideDecision {
   level: HideLevel;
   /** The hunk's score, when its pass has landed. */
   score?: HunkScoreLevel;
-  /** User clicked "show" on this hunk's hidden row (transient, per session). */
+  /**
+   * Issue #342: the hunk's hidden row was expanded or its citation
+   * clicked (transient UI state only — cleared on level change and
+   * never persisted, so reload re-collapses it).
+   */
   unhidden: boolean;
 }
 

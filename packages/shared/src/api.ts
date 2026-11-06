@@ -16,6 +16,7 @@ import type {
   ExistingReviewComment,
   FileState,
   HunkState,
+  PrConversationRemark,
   PrReviewDecision,
   PrState,
   Reply,
@@ -35,6 +36,7 @@ import type {
 } from "./entities.js";
 import type { DiffFilter, HideLevel, Plotline, ReviewCommit } from "./scores.js";
 import type { PanelThread, WebContent } from "./webdoc.js";
+import type { Persona } from "./personas.js";
 
 /** Health is the only unauthenticated route. */
 export interface HealthResponse {
@@ -599,6 +601,40 @@ interface ReviewSnapshotBase {
    */
   existingComments?: ExistingReviewComment[];
   /**
+   * Issue #351: read-only cache of PR conversation (issue-comment)
+   * remarks, refreshed with the existing-comments ingest on PR reviews
+   * (best effort). The update pass matches them to the delta by time.
+   */
+  prConversation?: PrConversationRemark[];
+  /**
+   * Issue #351: baseline B of "focus since B" — an earlier version (the
+   * version last opened by default; the picker may set any earlier one)
+   * or any commit sha (a PR commit, or the `commit_id` of the reviewer's
+   * own latest GitHub review — the no-review-yet path, step 2). The next
+   * update pass explains from it; a fresh guide run does too when it is
+   * set before the reader runs.
+   */
+  sinceBaseline?: import("./versions.js").SinceBaseline;
+  /**
+   * Issue #351: new-side `h:` IDs changed or added since B, by
+   * hunk-content comparison (rebase-proof). Drives the Since-B diff
+   * filter and the plotline `+N since B` markers.
+   */
+  sinceHunks?: import("./versions.js").SinceHunks;
+  /**
+   * Issue #351: the dated Since-B section at the top of the guide,
+   * written by the last update pass — or by the guide run itself on the
+   * no-review-yet path (replaced, never revised in place).
+   */
+  sinceSection?: import("./versions.js").SinceSection;
+  /**
+   * Issue #351 step 2: the last commit-baseline recompute that failed
+   * (refresh with an unfetchable B keeps the previous `sinceHunks` and
+   * records why here). Cleared on the next successful recompute.
+   * Version baselines never set this.
+   */
+  sinceError?: string;
+  /**
    * Issue #194: timed non-agent steps of the most recent refresh that
    * created a version (fetch, range diff, building, remapping). Shown on
    * the Debug page; absent until a refresh moves the head.
@@ -757,7 +793,7 @@ export interface ApiErrorBody {
 export type ReadinessStatus = "ok" | "warning" | "error";
 
 export interface ReadinessCheck {
-  /** e.g. "git" | "gh" | "agent:main" | "agent:small" | "agent:second-opinion" | "agents-distinct". */
+  /** e.g. "git" | "gh" | "agent:main" | "agent:small". */
   id: string;
   label: string;
   status: ReadinessStatus;
@@ -805,6 +841,53 @@ export interface UpdateReviewResponse {
   toVersion: number;
 }
 
+/**
+ * Issue #351: `POST /api/reviews/:id/since-baseline` — pick the baseline
+ * B the next update pass (or the still-pending guide run) explains from:
+ * any earlier version, or any commit sha (a PR commit, or the
+ * `commit_id` of the reviewer's own latest GitHub review). "Since" is
+ * hunk-content comparison against the head diff, never git ancestry, so
+ * a rebased or force-pushed B works the same.
+ */
+export type SetSinceBaselineRequest =
+  | {
+      /** Earlier version number: 1 ≤ version < currentVersion. */
+      version: number;
+    }
+  | {
+      /** Commit sha: must be fetchable (locally or from the remote). */
+      sha: string;
+    };
+
+/** The stored baseline plus the recomputed since-hunk count. */
+export interface SetSinceBaselineResponse {
+  ok: true;
+  baseline: import("./versions.js").SinceBaseline;
+  changedHunks: number;
+  newHunks: number;
+}
+
+/**
+ * Issue #351 step 2: `GET /api/reviews/:id/prior-github-review` — the
+ * reviewer's own latest GitHub review on this PR (read-only `gh api`,
+ * filtered to the authenticated user's login; other users' reviews are
+ * ignored), or null when there is none, the review is not a PR review,
+ * or GitHub cannot be reached. Best effort: every failure answers null,
+ * never an error.
+ */
+export interface PriorGithubReview {
+  /** The `commit_id` the user reviewed. */
+  sha: string;
+  /** When the user submitted that review (ISO), if GitHub gave one. */
+  submittedAt?: string;
+  /** The authenticated user's login. */
+  author: string;
+}
+
+export interface GetPriorGithubReviewResponse {
+  review: PriorGithubReview | null;
+}
+
 // --- actions -------------------------------------------------------------
 /**
  * POST /api/reviews/:id/actions. One discriminated union so the service can
@@ -817,26 +900,33 @@ export type ReviewAction =
    * selected text (`quote`, optionally from `sourceReplyId`) becomes a
    * hyperlink to the new reply (`linkTo`).
    */
-  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  | { kind: "explain"; quote: string; anchor: ActionAnchor; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string; personaId?: string }
   /**
    * Issue #273: Ask starts a new thread anchored on content, or —
    * with `threadId` — appends an Ask reply inside that thread.
+   *
+   * Issue #349 step 2: `personaId` opens the thread on a persona's
+   * version of the card (answered by that persona). Threads already
+   * carrying a persona keep it for later turns without resending.
    */
-  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string }
+  | { kind: "ask"; quote: string; anchor?: ActionAnchor; message: string; offsets?: SelectionOffsets; threadId?: string; sourceReplyId?: string; personaId?: string }
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
-   * `ans_…` id. Depth, examples, diagram, undo and second opinion act on
-   * that unit's own blocks/level/undo stack, so a reply rewrites alone.
+   * `ans_…` id. Depth, examples, diagram and undo act on that unit's
+   * own blocks/level/undo stack, so a reply rewrites alone.
+   *
+   * Issue #349 step 2: `personaId` selects a persona's version of a
+   * page card (its own blocks/level/undo stack and its own session).
+   * Absent means the Guide version.
    */
-  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper" }
-  | { kind: "examples"; cardId: string }
-  | { kind: "diagram"; cardId: string }
-  | { kind: "undo"; cardId: string }
+  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper"; personaId?: string }
+  | { kind: "examples"; cardId: string; personaId?: string }
+  | { kind: "diagram"; cardId: string; personaId?: string }
+  | { kind: "undo"; cardId: string; personaId?: string }
   /** `cardId` is a page-card id or a thread id. */
   | { kind: "collapse"; cardId: string; collapsed: boolean }
   | { kind: "generate"; cardId: string }
-  | { kind: "second_opinion"; cardId: string; mode: "blind" | "check" }
   | { kind: "promote"; annotationId: string }
   | { kind: "close"; annotationId: string }
   | { kind: "delete"; targetId: string }
@@ -854,8 +944,11 @@ export type ReviewAction =
    * anchored on that block, quoting the suggestion label; on a thread
    * reply the suggestion is sent as the next agent reply in the same
    * thread.
+   *
+   * Issue #349 step 2: `personaId` selects a persona's version of a
+   * page card. Absent means the Guide version.
    */
-  | { kind: "followup"; cardId: string; blockId: string; index: number }
+  | { kind: "followup"; cardId: string; blockId: string; index: number; personaId?: string }
   /**
    * Follow-up user message on a thread, answered as an Ask reply on the
    * thread's session (`Thread.sessionId`) instead of forking again.
@@ -869,7 +962,12 @@ export type ReviewAction =
    * M4: write a concept page on first open (`ensureConceptPage`). The
    * page shows a working state while its job fills it.
    */
-  | { kind: "concept"; slug: string };
+  | { kind: "concept"; slug: string }
+  /**
+   * Issue #349 step 2: run a persona on a page card. The output is a
+   * normal card stored as a variant of that card, keyed by persona.
+   */
+  | { kind: "persona"; cardId: string; personaId: string };
 
 export type ActionAnchor =
   /**
@@ -1092,6 +1190,11 @@ export interface SummarizeHunkResponse {
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
+  /**
+   * Issue #351: true shows only hunks changed or added since the
+   * baseline; false and null both clear it back to all hunks.
+   */
+  sinceBaseline?: boolean | null;
 }
 
 /**
@@ -1353,7 +1456,12 @@ export interface Settings {
   uiTheme: UiThemeId;
   main: ModelPick;
   small: ModelPick;
-  secondOpinion: ModelPick;
+  /**
+   * Persona definitions (issue #349): the built-in Second opinion plus
+   * any custom personas. Managed through Settings → Personas (add, edit,
+   * delete); the colour is auto-assigned at creation.
+   */
+  personas: Persona[];
   /** Max concurrent sessions per provider (default 16, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */
@@ -1871,6 +1979,17 @@ export interface ReleaseNotes {
   dataResetNeeded: boolean;
   generatedAt: string;
   items: ReleaseNotesItem[];
+}
+
+/**
+ * The `whatChanged` text worth showing beside the one-liner, or null
+ * when it merely repeats the summary (its first line became the
+ * summary). Shown only when it adds more than the first line. Pure.
+ */
+export function whatChangedToShow(item: Pick<ReleaseNotesItem, "summary" | "whatChanged">): string | null {
+  const wc = item.whatChanged?.trim() ?? "";
+  if (!wc) return null;
+  return wc !== item.summary.trim() ? wc : null;
 }
 
 /** `GET /api/update/notes?ref=<channel>` — a channel's newest notes, fetched on view open only. */

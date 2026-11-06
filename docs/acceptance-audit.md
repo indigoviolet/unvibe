@@ -496,6 +496,14 @@ needed (that deviation is closed, not added).
 - Hover timing (~0.2 s), close on scroll/Escape/blur/resize/pointer-leave,
   hover-ignore-until-move — met (`e2e/guide.spec.ts` popover timing +
   close cases, `floating/Tooltip/Toast.test.tsx`).
+- Demo fixture content (issue #341 re-record on Claude Sonnet 5.5):
+  the re-recorded reader carries no card/concept cross-link tokens and
+  no ask answer starts with a list, so those mechanisms have no demo
+  instance — J263's card-link half and J273's list-first scene were
+  removed (the #331 fallback stays covered by the prose/list branch in
+  J273's reply-chrome test), and J1's concept test fires the `concept`
+  action directly (concept pages are titled with their slug). Glossary
+  links, citations, and footnote chips are unaffected.
 
 ### §4.6 Selecting text — all met
 
@@ -791,8 +799,8 @@ needed (that deviation is closed, not added).
   (walk shows finding-linked content; `pipeline/apply.ts`
   criticApply). (The read-dim is gone with the read state, #136.)
 - Finding page label + rust-border Evidence/Assessment cards — met
-  (`reply-format.md`, demo snapshot has `f-lf`/`f-perf` with 2 cards each —
-  ran).
+  (`reply-format.md`, demo snapshot has `f-critic`/`f-critic-2` with 2 cards each —
+  ran; #341 re-record).
 - Suggested comments (“Agent · suggested comment”, not in the Outbox, linked
   from finding page, no separate card) — met (walk screenshot shows two
   suggested comments; `comments/threads.ts` `suggested: true, post: false`).
@@ -1175,7 +1183,8 @@ needed (that deviation is closed, not added).
   collapsible with a sticky summary (Base open, the rest closed;
   Expand/Collapse all on Prompts + Shared context; open state survives tab
   switches, job updates and contribution deletes).
-- Re-do guide on the Debug page (issue #115): `POST /api/reviews/:id/redo`
+- Re-do guide in the review top bar (issue #115, moved from the Debug
+  page under #345): `POST /api/reviews/:id/redo`
   deletes + re-creates through the existing paths (shared create helper)
   and answers 202 with the new review's loading snapshot; the page
   navigates to it. New id (same as delete + create); running jobs
@@ -1184,7 +1193,7 @@ needed (that deviation is closed, not added).
   Confirmation states what delete + create discards. Open decisions for
   the owner: keep the new id vs keep the old one, and keep vs discard
   user comments/notes (default = delete semantics). Evidence:
-  `service/test/reviews-redo.test.ts`, `RedoGuideSection.test.tsx`,
+  `service/test/reviews-redo.test.ts`, `ReviewBar.test.tsx`,
   `e2e/debug-redo.spec.ts`, PRD §4.14 + §14.1.
 
 ### §4.15 Conventions — all met
@@ -1491,8 +1500,8 @@ needed (that deviation is closed, not added).
 3. Base build — met (`ensureBase`).
 4. Parallel forks (critic ×1, #215: one job carrying 1-3 findings with
    evidence/assessment/confidence + suggested comments; concept pages
-   written on demand only, #216) — met (demo `f-lf`/`f-perf` from the one
-   combined critic recording — ran).
+   written on demand only, #216) — met (demo `f-critic`/`f-critic-2` from the one
+   combined critic recording — ran; #341 re-record).
 5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
    — met (demo 8 summaries — ran from global install).
    (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
@@ -3423,6 +3432,29 @@ hunk coverage) is reported for a separate issue, not fixed here.
   mount returns "ready" (`text,usage,done`; input 90 net, 10 cached
   read, 5 output). The live re-run still needs the owner's go.
 
+## Addendum: #348 (pi runner: reader turns go silent after tool calls; branch `fix/348-pi-tool-stall`)
+
+- **#348:** a live reader-like turn (12 concurrent review-tool calls)
+  completed in ~10s for ~$0.0008 and did not reproduce the silence, so
+  the fix is defensive at every layer of the hang chain (any stuck MCP
+  call, unclosed SSE stream, or silent provider previously waited out
+  the 10-minute `waitForCount` before failing).
+- Extension (`pi/extension.ts`): every MCP bridge call shares one
+  deadline (`UNVIBE_PI_TOOL_TIMEOUT_MS`, default 60s — loopback calls
+  measure ~15-30ms), covering both the fetch and the SSE body read; a
+  bridge `execute` never rejects anymore but returns an `isError` tool
+  result, like the read-only `read`/`ls` replacements. Env-gated
+  per-call log (`UNVIBE_PI_TOOL_LOG`: tool, start, end, size, error).
+- Runner (`pi/pi-runner.ts`): the per-turn wait is now a silence
+  watchdog (`noEventTimeoutMs`, default 120s — worst observed
+  inter-event gap ~2.3s, any event resets it) that fails the turn with
+  `pi stopped sending events for Ns [after tool "name"] (last event:
+  type)` instead of the silent 10-minute wait.
+- Tests: `pi-extension.test.ts` (real generated source against a stub
+  MCP mount: normal, JSON-RPC error, hanging call, log line);
+  `pi-runner.test.ts` gains the silence shapes (`startHang` fake-pi
+  step) plus the unaffected normal path. Full gates not yet run.
+
 ## Addendum: #297 (branch `feat/297-pr-list-more`)
 
 - **#297 (start-page PR paging + author search; §4.2):** the start
@@ -3740,3 +3772,324 @@ hunk coverage) is reported for a separate issue, not fixed here.
   unknown origin refused on both worker endpoints) with frame
   `packages/web/test-results/open-confirm.png` (git-ignored), inspected.
   Full gates not yet run.
+
+## Addendum: #346 (branch `feat/346-inline-confirm`)
+
+- **One shared inline confirm:** `InlineConfirm` in
+  `packages/web/src/ui/index.tsx` (styles in `ui.css`) owns the
+  idle → confirming → running → confirmed / error machine. The
+  action button expands in place into a dark pill ("Confirm
+  <action>" + ✓ + ✕, right-anchored overlay so neighbours never
+  shift), focus moves to ✓, then a green-✓ "Confirmed" flash before
+  the result takes over. Escape, ✕, outside click or ~4.5 s without
+  interaction cancels (focus returns when it was inside); a rejected
+  action stays inline with `role="alert"` until the user retries or
+  cancels. The group carries "Confirm <action>: confirm or cancel"
+  on a polite live region; `danger` keeps a warn-coloured edge;
+  idle is overridable (`idleRender`) for the toolbar icon button.
+  Converted: Reviews/Documents remove (was the `confirm-pop`
+  popover, now removed with its CSS), Settings → Data reset, the
+  data-format Reset, repo remove (sticky refusal now the pill
+  error), and the top-bar Re-do guide (#345's interim Re-do/Cancel
+  swap, via `idleRender`; what-is-lost copy in the accessible
+  name). Not converted, with reasons: Version switch/update
+  confirm + blocked-jobs panel and full-access enable (more than a
+  yes/no — format warning/export/refusal list, long warning
+  acknowledgement); thread/comment delete, Reset demo and draft
+  discard (no popout today; adding confirms is out of scope). No
+  `window.confirm` anywhere.
+- Evidence: `src/ui/InlineConfirm.test.tsx` (10 tests incl.
+  StrictMode double-mount, timeout reset, sticky error), updated
+  `ReviewBar.test.tsx` + `GuideLoading.test.tsx`, new real-service
+  journey `e2e/journeys/j346-inline-confirm.spec.ts` (review +
+  document remove through the pill, Escape/outside cancel, API
+  cross-checks), reworked J14 (re-do through the pill) and J225a
+  (pill-in-row geometry), mock `start.spec.ts` / `settings.spec.ts`
+  / `debug-redo.spec.ts`, tour frames `start-remove-idle`,
+  `start-remove-confirm`, `start-remove-confirmed` and
+  `redo-topbar`, `redo-confirm`, `redo-result` at 1440 light/dark
+  (inspected). Full gates not yet run.
+
+## Addendum: #346 follow-up — Version Switch and Full access use the inline confirm (branch `fix/346-switch-fullaccess-confirm`)
+
+- **Version Switch/Update** is the shared `InlineConfirm`
+  (`placement="stack"`): idle "Switch"/"Update" expands to "Confirm
+  switch"/"Confirm update" ✓ ✕, then "Switching…"/"Updating…"
+  while the restart wait runs detached and the bottom status takes
+  over. The restart/backups note moved to the button tooltip and the
+  pill's accessible name. A format-changing target gets one short
+  warn line under its row ("Needs a data reset (format X → Y)",
+  real from/to formats) with an "Export N drafts" action only when
+  unposted drafts exist — the paragraph, the "No unposted drafts"
+  sentence and the "Then Confirm…" sentence are gone. Blocked-jobs
+  handling is unchanged (the refusal panel with "Switch anyway" +
+  Cancel replaces the pill), as are rollback and the bottom reason
+  text.
+- **Full access enable** is the shared `InlineConfirm`
+  (`placement="stack"`, `danger`): "Confirm full access" ✓ ✕ with
+  one short visible line ("The review helper can run shell
+  commands, git and gh as you, and reach the web."); the full
+  `FULL_ACCESS_WARNING` lives in the tooltip and the pill's
+  accessible description. Turning off stays a direct button (the
+  safe direction, error below).
+- Not converted, with reasons: thread/comment delete, Reset demo,
+  draft discard (still no popout — adding confirms stays out of
+  scope); job Cancel (time-sensitive); Submit review (own preview
+  dialog, posts through the Submit path); OpenConfirmPage Start
+  review (the page itself is the confirm); Personas edit-cancel,
+  PR clone-offer dismiss, BlockedPanel Switch anyway/Cancel (a
+  refusal panel, not a generic confirm); DataFormatNotice Go back,
+  Access turn-off (safe directions, data untouched / access
+  reduced). No `window.confirm` anywhere.
+- Evidence: reworked mock `e2e/update-picker.spec.ts` (inline
+  confirm incl. Escape cancel, blocked flow, rollback, warn line
+  with/without drafts), new J5 "version data-format warn line"
+  journey (real service, one short line + no Export without
+  drafts), reworked J11 full-access + repo/data-reset steps through
+  the pills, updated disabled `VersionSection`/`AccessSection`
+  unit tests, tour frames `version-row-idle`,
+  `version-row-reset-warn`, `version-row-confirm`,
+  `full-access-confirm` at 1440 light/dark (inspected). Full gates
+  not yet run.
+
+## Addendum: #349 step 1 — Personas model, Settings UI, prompt composition (branch `feat/349-personas-step1`)
+
+- **Persona model:** `Persona` in `packages/shared/src/personas.ts`
+  (id, name, provider + model, required lens, optional card
+  instruction, enabled, auto colour). Colour comes from the fixed
+  `PERSONA_COLORS` sequence in creation order (`nextPersonaColor`
+  hands out the first unused one); never user-picked, no icons —
+  the AI avatar is recoloured wherever the persona speaks (step 2).
+  Definitions live in `Settings.personas`, seeded with the built-in
+  Second opinion (codex/gpt-6.1-sol; lens + card instruction carry
+  today's "check" behaviour verbatim in the new vocabulary). After
+  seeding it is ordinary data: editable and deletable like any
+  other persona.
+- **Settings → Personas:** new section + tab (`PersonasSection.tsx`,
+  after Models) following the #328 `Field` row layout (label left,
+  control right, help + status under the label): name, provider +
+  model (per-provider list, adapter errors inline), lens, optional
+  card instruction, enabled. Add/edit PUT the whole list; delete
+  goes through the shared #346 `InlineConfirm` (`placement="stack"`,
+  in the row like the repo remove). The model pickers stay
+  main/small only; persona models are validated like roles on save
+  (never persist a model no adapter offers).
+- **Prompt composition (owner decision 2026-11-03):** L0 base
+  instructions (shared, unchanged) + persona lens (system prompt,
+  every task) + shared task template. New `prompts/persona_card.md`
+  (tier `persona`): "here is the guide's version of this card;
+  write your version"; the persona's card instruction overrides the
+  default, empty means the default. `buildPersonaCardPrompt` in
+  `packages/service/src/prompts/personas.ts` composes system + turn.
+- **Second-opinion special-casing removed:** the `secondOpinion`
+  model role (store/defaults/effective/routes/readiness), the
+  blind/check prompts + `SecondOpinionMode`, `SecondOpinionResult`
+  + verdict, the `secondopinion/` base session, the card/finding
+  controls and result blocks, the MCP `second-opinion` role (all
+  sessions share one tool surface now), the `agents-distinct`
+  readiness check, the `second_opinion` action + `second-opinion`
+  job kind, `test:live:second-opinion` + script, and the 3
+  fixture recordings + manifest entries.
+- **Data format 1 → 2:** `Settings` gains `personas`, loses the
+  `secondOpinion` role; stored guide content loses
+  `secondOpinions`. Stamped on fresh data; e2e seeds stamp via the
+  shared constant.
+- Evidence: `packages/shared/test/personas.test.ts` (validation +
+  colours), `packages/service/test/personas-349.test.ts`
+  (composition for built-in + custom, settings CRUD routes), new
+  real-service journey `e2e/journeys/j349-personas.spec.ts`
+  (built-in present, add/edit/delete with the Escape path, API
+  cross-checks; no persona run — step 2), reworked J2 (finding +
+  card flows gone), tour frames `personas-1440-light`,
+  `personas-1440-dark`, `personas-delete-confirm` (inspected).
+  Full gates not yet run.
+
+## Addendum: #349 step 2 — Personas run on cards (branch `feat/349-personas-step2`)
+
+- **Persona run:** the card toolbar gains a persona picker (the old
+  second-opinion bubbles icon; portal menu with colour dot + name).
+  Choosing one sends `persona` (cardId + personaId) through
+  `runInFork` with the persona: base L0 + lens in the system prompt
+  below it (never the instructions), `persona_card` task + the
+  persona's card instruction, on the persona's provider/model —
+  forking that provider's base session (or the shared fresh-session
+  fallback), never the main one. Button shows dots while running.
+- **Variants:** output is a normal card stored as `Card.variants`
+  keyed by persona (own blocks/level/revision/undo stack, its own
+  `sessionId`, run state): same citation validation as cards with
+  the one repair turn inside `runInFork`, plus inline-diagram
+  finalize + one repair. Usable content with unverified citations
+  stores with the normal red-text marks; a result with nothing
+  usable (or a thrown run) is a visible error on the variant
+  (banner + Retry re-runs the persona action), never a silent store.
+  Tabs appear only when a variant exists (Guide + one per persona,
+  orphan variants kept with fallback name/colour); the active tab is
+  UI state, the active persona colour borders the card (inset ring)
+  and recolours the agent avatar on its threads (name in the label).
+- **Conversations on a variant** (depth simpler/deeper, Explain, Ask,
+  replies incl. retry, follow-up, examples, diagram, undo) carry
+  `personaId`: they run under that persona (its model + lens, its
+  own session for the card — variant session continued for
+  rewrites, thread sessions for replies, persona-base forks for
+  first Ask/Explain turns), with the prompt carrying the variant's
+  text. Threads store `personaId` + `personaCardId`; each version
+  tab shows only its own threads/composers (block ids are shared).
+- **Data format stays 2:** `variants` (cards) and `personaId` /
+  `personaCardId` (threads) are new optional maps/fields; older
+  stored data reads as Guide-only with no conversion. Step 1's
+  removal-driven bump is unaffected.
+- Evidence: `packages/shared/test/persona-variants-349.test.ts`
+  (variant storage/selection/tab visibility), new
+  `packages/service/test/persona-variants-349.test.ts` (fake
+  runner: variant stored on persona provider/model with the lens in
+  the system prompt, single repair turn then store, lone
+  unverified citation stored with marks, Ask on the variant
+  answered by the same persona, depth on the variant rewrites the
+  variant not the guide), new real-service replay journey
+  `e2e/journeys/j349b-personas-variants.spec.ts` (dropdown, tabs,
+  persona-tab depth-stepper dots, persona-tab Ask with thread +
+  avatar assertions), `CardView.test.tsx` persona-tabs + mock
+  persona-action tests, new `persona-central-second-opinion.md`
+  fixture recording + manifest entry, tour frames
+  `persona-dropdown-1440-light`, `persona-version-1440-light` /
+  `-dark` (inspected). Full gates not yet run.
+
+## Addendum: #351 step 1 — Since-B baseline, explain-and-append update, Since-B filter (branch `feat/351-since-b-step1`)
+
+Step 2 (commit baselines, no-review-yet path, arbitrary-commit picker)
+is not built; the data shapes leave room for it (`SinceBaseline` is a
+one-variant union today).
+
+- **Baseline B:** stored per review (`ReviewSnapshot.sinceBaseline`,
+  `{ kind: "version"; version }`), defaulting to the version last
+  opened (the refresh's `fromVersion`) and recomputed on every refresh
+  from the stored version diffs by hunk-content comparison — never git
+  ancestry, so a rebased B works. `POST
+  /api/reviews/:id/since-baseline` picks any earlier version (400
+  outside `1..currentVersion-1`, 404 when its files are missing); the
+  `sinceHunks` set (`added` + `changed` new-side `h:` ids) is
+  recomputed there too. A version select lives in the stale banner
+  (pre-update) and in the Since-B section header (post-update).
+- **Update pass, explain and append:** `prompts/update_pass.md` now
+  takes `{{since_context}}` (B identity, the commits touching since
+  hunks with their messages, the existing review comments matched by
+  file + line + between-B-and-head time, local threads on overlapping
+  anchors, PR conversation remarks in the window). The agent writes
+  Since-B cards (what/why/feedback, cited into the new hunks),
+  `addenda` (appended with `add-v<to>-<i>` ids, version/baseline/at
+  stamped; old blocks untouched, card leaves the stale set),
+  `plotlineAssignments` (unknown plotlines stay "other") and
+  `newPlotlines` (stored with `newSinceBaseline: true`), plus
+  `baseline`/`sinceHunks` echoes. Revised cards, rechecked findings,
+  new findings, hunk summaries and stale clearing work as before; no
+  extra agent calls. The PR conversation is fetched read-only beside
+  the existing-comments ingest (best effort, capped, kept on failure).
+- **Guide UI:** the dated collapsible Since-B section tops the root
+  page (`SinceSection.tsx`), cards render through `CardView`, addenda
+  render as `Updated since v1 · date` blocks at the card's end (the
+  agent is told never to repeat that header inside the body, and the
+  renderer strips a leading `Updated since vN:` defensively), each
+  since card and addendum ends with a visible `Answers: <comment
+  excerpt> ↗` link (`SinceAnswers.tsx`, resolved service-side to
+  `SinceFeedbackLink`: review URL, `#thread-…` anchor, or commit
+  text), plotline rows show a `+N since v1` pill (counted from
+  `sinceHunks`) or, on new rows only, a matching `new since v1` pill,
+  and the diff toolbar gains a single Since-B toggle that shows its
+  on-state and hidden count (`Since v1 · N hidden`, hunk-granular)
+  composing with every other filter (`sinceIds` through
+  `filterFiles`/`hunkPlotVisible`/`FileSection`). Every user-facing
+  string names the actual baseline (`Since v1`, never `B`). The
+  toolbar wraps cleanly at 960 (one row at 1440), matching the
+  prototype's `flex-wrap: wrap`.
+- **Data format 2 → 3:** cards gain dated `addenda` with resolved
+  `answers` (`AnswerRef` `{ kind, id }` pointers, resolved at read
+  time, unknown ids dropped); the snapshot gains `sinceBaseline` /
+  `sinceHunks` / `sinceSection` (and `prConversation`). Stamped as
+  `user_version` on fresh data; e2e seeds stamp via the shared
+  constant; old data takes the reset notice.
+- Evidence: `packages/service/test/versions-since-b.test.ts` (fake
+  runner + stub-free branch repos: refresh defaults B, update writes
+  section + addendum with old prose byte-for-byte, feedback matching
+  by file/line/time with unrelated and out-of-window remarks excluded,
+  answers resolution incl. dropped unknowns, plotline `+N`/`new`
+  markers, filter route, pure rebase case),
+  `packages/shared/test/replay-match.test.ts` (update-pass kind hint),
+  `diffLogic.test.ts` Since-B filter cases, `SinceAnswers.test.tsx`
+  (prefix strip, link rendering), new real-service replay journey
+  `e2e/journeys/j351-since-b.spec.ts` (refresh → Update → section
+  collapse/expand, addendum, plotline markers, filter on/off,
+  reviewed carryover), `update-pass.md` replay fixture + manifest
+  entry, tour scenes
+  `since-{expanded,collapsed,addendum,plotlines,filter,feedback}-{1440,960}-{light,dark}`
+  in `/tmp/351-frames/` (all 24 inspected zoomed: no
+  overlaps/clipping, styling matches the prototype variables).
+  Full gates not yet run.
+
+## Addendum: #351 step 2 — commit baselines, no-review-yet offer (branch `feat/351-since-b-step2`)
+
+- **Baseline B is a union:** `SinceBaseline` is now
+  `{ kind: "version"; version } | { kind: "commit"; sha }`
+  (`packages/shared/src/versions.ts`: `isCommitSha`,
+  `shortBaselineSha`, `sinceBaselineLabel`). Snapshot `sinceBaseline`
+  and card `addenda[].baseline` are the union; every user-facing
+  string names the real baseline (`Since v2`, `Since a1b2c3d`, never
+  `B`).
+- **Commit B:** computed by hunk-content comparison between the diff
+  at B (`base...B` via `diffFilesAtCommit`/`ensureCommitFetchable`,
+  parsed by `buildFilesFromDiffText`) and the head diff — never git
+  ancestry, so rebased/force-pushed B works. An unfetchable B fails
+  loudly: the picker route returns 502 naming the short sha, refresh
+  keeps the previous hunks and records `sinceError`, and the UI shows
+  an unfetchable notice with a clear-baseline action.
+- **No-review-yet offer:** `GET
+  /api/reviews/:id/prior-github-review` returns the authenticated
+  user's latest review (`commit_id` + date) via read-only `gh api`,
+  ignoring other users' reviews and commit-less entries; every
+  failure degrades to null. A one-line offer with a checkbox
+  (`PriorReviewOffer`, on guide loading/building/idle states, hidden
+  once cards exist) sets/clears the commit baseline without starting
+  a run. Accepting changes the existing guide run's prompt context
+  (`reviewed_context` in `prompts/reader.md`) and output — the
+  reader writes the normal guide plus the Since section with
+  feedback links in the same single run (no extra agent call or
+  job); plotline `+N since` markers and the Since filter work as in
+  step 1.
+- **Picker:** `SinceBaselinePicker` groups Versions, Commits (PR
+  commits from the existing ingest), and — when not already a
+  commit — "Your last GitHub review (`abc1234`, date)".
+- **Data format 3 → 4:** the baseline union is a stored-shape
+  change; no compat. Stamped as `user_version` on fresh data;
+  `j311-data-reset` expectations updated to 4.
+- Evidence: `packages/service/test/versions-since-commit.test.ts`
+  (commit baseline, rebased-B case, no-review path with stubbed
+  reviews incl. ignored other-user entries, exactly one guide run
+  writing guide + Since section, unfetchable-B error with persisted
+  `sinceError` cleared on the next baseline change),
+  `e2e/journeys/j352-since-commit.spec.ts` (stubbed prior review →
+  accept offer → Since section + markers), `j351-since-b.spec.ts`
+  gains a commit-picker test, `versions-since-b` /
+  `snapshot` / `data-format` / `prompts` specs pass, tour scenes
+  `since-commit-*`, `since-offer-*` and `since-unfetchable-picker-*`
+  in `/tmp/351s2-frames/` (40 frames: offer, offer-checked,
+  picker-groups, commit-picker, commit-section, commit-plotlines,
+  commit-addendum, commit-filter, unfetchable under the offer,
+  unfetchable next to the picker × 1440/960 × light/dark; step-1
+  `since-B` scenes still pass). Targeted suites + typecheck + lint
+  verified in session. `PageView.plotlines.test.tsx` needs
+  `VITE_MOCK=1` (13/13 with it; the 7 failures without it reproduce
+  on clean main-rc, unrelated). Full gates not yet run.
+- Review fixes (supervisor frame review): the offer is a normal
+  labelled checkbox (box first, vertically centred, text click
+  toggles via `<label>`); a failed pick stores `sinceError`
+  (`unfetchableCommitMessage`: "Couldn't find commit … here or on
+  the remote (it may have been force-pushed away). Pick another
+  baseline."), rendered verbatim as a full-width warning-tone block
+  *below* the controls row (banner and section header) and under
+  the offer line, until the baseline changes — no toast for this
+  case; seed text fixed ("Rework beta and add gamma", "The
+  follow-up rework" — no `B`, no tour-seed jargon); the stale banner
+  always stacks (summary + nowrap range-diff on its own full-width
+  line, picker + Update left-aligned below) via `.dbar-group` /
+  `.dbar-group-summary`. Tour asserts range-diff is one line high
+  with no clipped overflow, and both pickers keep their trigger
+  width ±2px with and without the error.

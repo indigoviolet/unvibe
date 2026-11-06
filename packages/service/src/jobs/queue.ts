@@ -113,7 +113,7 @@ export interface EnqueueOptions {
   accessMode?: AccessMode;
   /**
    * Card the job works on, when card-scoped (depth/examples/diagram/
-   * generate/concept/second-opinion). Carried on the job itself (so
+   * generate/concept). Carried on the job itself (so
    * snapshots, WS events and the debug views can match it) as well as on
    * the entry (for `text` events).
    */
@@ -147,6 +147,13 @@ export interface QueueOptions {
    * job: throws are caught and reported. Skipped for cancelled jobs.
    */
   afterRun?: (job: Job) => Promise<void> | void;
+  /**
+   * Issue #354: true when a review's rows are gone (deleted mid-run).
+   * The service wires this to the review store. Jobs whose review
+   * vanished stop quietly: no save, no event, no throw — at most one
+   * debug line when they settle.
+   */
+  isReviewGone?: (reviewId: string) => boolean;
 }
 
 interface Entry {
@@ -224,6 +231,7 @@ export class JobQueue {
   private readonly persist: JobPersistence | null;
   private readonly getAccessMode: () => AccessMode | undefined;
   private readonly afterRun: (job: Job) => Promise<void> | void;
+  private readonly isReviewGone: (reviewId: string) => boolean;
   private drainWaiters: Array<() => void> = [];
 
   constructor(opts: QueueOptions = {}) {
@@ -237,6 +245,7 @@ export class JobQueue {
     this.persist = opts.persist ?? null;
     this.getAccessMode = opts.getAccessMode ?? (() => undefined);
     this.afterRun = opts.afterRun ?? (() => {});
+    this.isReviewGone = opts.isReviewGone ?? (() => false);
   }
 
   // -- enqueue --------------------------------------------------------
@@ -297,8 +306,11 @@ export class JobQueue {
     };
     // #221: persist before registering in memory. If the store throws,
     // the error surfaces to the caller and no orphan entry (queued,
-    // 0 attempts, never runnable) is left in entries/dedupe.
-    this.save(entry);
+    // 0 attempts, never runnable) is left in entries/dedupe. This is
+    // deliberately the raw (throwing) save: enqueue answers the caller,
+    // so a store failure is a 500, not a silent drop (#276). Every other
+    // save goes through the guarded `save`, which contains #354 crashes.
+    this.saveRaw(entry);
     this.entries.set(job.id, entry);
     if (scopedKey) this.dedupe.set(scopedKey, job.id);
     this.emit(entry);
@@ -415,8 +427,8 @@ export class JobQueue {
    * this, finished jobs linger in memory after their rows are deleted, so
    * the jobs endpoint keeps listing a deleted review's jobs. Dedupe keys
    * go too, so a re-opened review starts clean. Callers cancel live jobs
-   * first; a detached run settling afterwards still saves once
-   * (pre-existing cancel-then-settle race, unchanged).
+   * first; a detached run settling afterwards stops quietly (#354: the
+   * gone-review check in `settle` skips the save, so no FK error).
    */
   dropReview(reviewId: string): void {
     for (const [id, entry] of this.entries) {
@@ -655,7 +667,44 @@ export class JobQueue {
     return stripped === "" ? undefined : stripped;
   }
 
+  /**
+   * Issue #354: `pump` runs this fire-and-forget (`void`), so an escape
+   * is an unhandled rejection and exits the service process — the reported
+   * crash was a FOREIGN KEY throw out of `settle` taking this path. The
+   * inner state machine guards its own store writes; this wrapper is the
+   * general backstop for the unforeseen: it logs and marks the job failed
+   * in memory where it can, and never rejects.
+   */
   private async execute(entry: Entry): Promise<void> {
+    try {
+      await this.executeInner(entry);
+    } catch (err) {
+      try {
+        if (!isTerminal(entry.job.state)) {
+          entry.job.state = "error";
+          entry.job.error = err instanceof Error ? err.message : String(err);
+        }
+      } catch {
+        // In-memory bookkeeping must not throw.
+      }
+      console.warn(
+        `JobQueue: job ${entry.job.id} failed outside its state machine: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      reportError(err, { jobId: entry.job.id, kind: entry.job.kind, hook: "execute" });
+      try {
+        this.pump();
+      } catch {
+        // Already logged above; the queue must stay usable.
+      }
+      try {
+        this.checkDrain();
+      } catch {
+        // Already logged above.
+      }
+    }
+  }
+
+  private async executeInner(entry: Entry): Promise<void> {
     const job = entry.job;
     job.state = "running";
     job.attempts = (job.attempts ?? 0) + 1;
@@ -734,6 +783,11 @@ export class JobQueue {
       this.settle(entry, controller, "cancelled");
       return;
     }
+    if (this.reviewGone(entry)) {
+      // #354: deleted while backing off — stop quietly (settle logs).
+      this.settle(entry, controller, "cancelled");
+      return;
+    }
     job.state = "queued";
     job.nextRetryAt = undefined;
     this.save(entry);
@@ -755,10 +809,26 @@ export class JobQueue {
       entry.job.replySnapshot = entry.replyText;
     }
     if (isTerminal(state)) this.forgetDedupe(entry);
-    this.save(entry);
-    this.emit(entry);
+    if (this.reviewGone(entry)) {
+      // #354: the review was deleted mid-run — stop quietly. No save
+      // (the rows are gone: persisting would throw FOREIGN KEY) and no
+      // event; at most this one debug line, then pump + drain as usual.
+      console.debug(`JobQueue: job ${entry.job.id} settled ${state} after its review was deleted; dropping`);
+    } else {
+      this.save(entry);
+      this.emit(entry);
+    }
     this.pump();
     this.checkDrain();
+  }
+
+  /** #354: whether the entry's review rows are gone (never throws). */
+  private reviewGone(entry: Entry): boolean {
+    try {
+      return this.isReviewGone(entry.reviewId);
+    } catch {
+      return false;
+    }
   }
 
   private makeContext(entry: Entry, controller: AbortController): JobContext {
@@ -932,16 +1002,52 @@ export class JobQueue {
     if (this.dedupe.get(scoped) === entry.job.id) this.dedupe.delete(scoped);
   }
 
-  private save(entry: Entry): void {
+  /**
+   * Raw persist used only by `enqueue` (#221): a store failure there
+   * answers the caller (a 500), so it must throw (#276).
+   */
+  private saveRaw(entry: Entry): void {
     this.persist?.save(copy(entry.job));
   }
 
+  /**
+   * Issue #354: every other persist goes through here. A store throw
+   * inside a job must never take the service down — `settle` runs on a
+   * fire-and-forget promise, where a throw is an unhandled rejection and
+   * exits the process. So this skips vanished reviews silently and
+   * contains any other store error to a log line; the in-memory state
+   * above already holds.
+   */
+  private save(entry: Entry): void {
+    if (this.reviewGone(entry)) return;
+    try {
+      this.persist?.save(copy(entry.job));
+    } catch (err) {
+      console.warn(
+        `JobQueue: persisting job ${entry.job.id} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      reportError(err, { jobId: entry.job.id, kind: entry.job.kind, hook: "persist" });
+    }
+  }
+
+  /**
+   * Issue #354: event delivery is best-effort for the same reason —
+   * never throws out of a job.
+   */
   private emit(entry: Entry): void {
-    // Turn records ride the per-job output endpoint (#207), never the
-    // event stream: they are far too large for every state change.
-    const job = copy(entry.job);
-    delete job.turnRecords;
-    this.onEvent(entry.reviewId, { type: "job", job });
+    if (this.reviewGone(entry)) return;
+    try {
+      // Turn records ride the per-job output endpoint (#207), never the
+      // event stream: they are far too large for every state change.
+      const job = copy(entry.job);
+      delete job.turnRecords;
+      this.onEvent(entry.reviewId, { type: "job", job });
+    } catch (err) {
+      console.warn(
+        `JobQueue: emitting job ${entry.job.id} event failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      reportError(err, { jobId: entry.job.id, kind: entry.job.kind, hook: "emit" });
+    }
   }
 
   private isDrained(): boolean {

@@ -25,6 +25,7 @@ import { AccessSection } from "./AccessSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
 import { ModelsSection } from "./ModelsSection.js";
+import { PersonasSection } from "./PersonasSection.js";
 import { PromptsSection } from "./PromptsSection.js";
 import { VersionSection } from "./VersionSection.js";
 import { AppearanceSection } from "./AppearanceSection.js";
@@ -37,6 +38,7 @@ const SETTING_TABS = [
   { id: "appearance", label: "Appearance" },
   { id: "repositories", label: "Repos" },
   { id: "models", label: "Models" },
+  { id: "personas", label: "Personas" },
   { id: "extension", label: "Extension" },
   { id: "access", label: "Access" },
   { id: "environment", label: "Environment" },
@@ -127,6 +129,9 @@ export function SettingsPage(): React.JSX.Element {
       </TabPanel>
       <TabPanel idPrefix="settings" id="models" active={tab === "models"}>
         <ModelsSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
+      <TabPanel idPrefix="settings" id="personas" active={tab === "personas"}>
+        <PersonasSection settings={loaded} onSaved={setSettings} />
       </TabPanel>
       <TabPanel idPrefix="settings" id="extension" active={tab === "extension"}>
         <ExtensionSection settings={loaded} onSaved={setSettings} />

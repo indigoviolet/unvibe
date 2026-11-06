@@ -32,7 +32,6 @@ import { JobQueue } from "../src/jobs/queue.js";
 import { createFakeState, fakeTransportFactory } from "./fake-acp.js";
 import { setupReview, HEAD_SHA } from "./m6-helpers.js";
 import { FakeAgentRunner } from "../src/agent/fake.js";
-import { ensureSecondOpinionBase } from "../src/secondopinion/base.js";
 import { SessionManager } from "../src/sessions/manager.js";
 import { SessionStore } from "../src/sessions/store.js";
 import { createApp } from "../src/server.js";
@@ -653,30 +652,18 @@ describe("pipeline posture (fake runner)", () => {
     }
   });
 
-  it("second-opinion base follows the setting too", async () => {
+  it("no separate second-opinion base remains (issue #349)", async () => {
     const commands = new FakeCommandRunner();
-    const { app, ctx, reviewId } = await setupReview(commands, {});
-    const fake = ctx.agents as FakeAgentRunner;
-    fake.addScript({ match: "ready", events: [{ type: "text", delta: "ready " } as AgentEvent] });
+    const { app, ctx } = await setupReview(commands, {});
     ctx.settings.update({ fullAccess: true, fullAccessAcknowledgedAt: Date.now() });
     try {
-      const { session } = await ensureSecondOpinionBase(
-        {
-          reviews: ctx.reviews,
-          sessions: ctx.sessions,
-          runner: ctx.agents,
-          mcp: ctx.mcp,
-          settings: ctx.settings,
-          dataDir: ctx.dataDir,
-          promptsDir: ctx.promptsDir,
-          mcpBaseUrl: ctx.mcpBaseUrl,
-        },
-        reviewId,
-      );
-      expect(session.id).toBeTruthy();
-      const start = fake.starts[0];
-      expect(start.readOnly).toBe(false);
-      expect(start.systemPrompt).toContain("You may read anything in the repository under review.");
+      // Full access flips the posture for every later session: the proof
+      // is the access-policy text itself — there is no dedicated
+      // second-opinion base module anymore.
+      const { loadTemplatesDirSync } = await import("../src/prompts/index.js");
+      const lib = loadTemplatesDirSync(REPO_PROMPTS);
+      expect(renderSystemPrompt(lib, "full")).toContain("You may read anything");
+      expect(renderSystemPrompt(lib, "lockdown")).not.toContain("You may read anything");
     } finally {
       await app.close();
     }

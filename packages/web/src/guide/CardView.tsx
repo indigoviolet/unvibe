@@ -2,8 +2,7 @@
  * Card rendering (M4 interaction; PRD §4.4 display side + §8 stale state).
  *
  * Collapse chevron first (title row when collapsed); control row (depth
- * stepper with three dots, Use examples, Add diagram, Undo, Second opinion
- * with blind/check switch) wired to
+ * stepper with three dots, Use examples, Add diagram, Undo) wired to
  * `POST /api/reviews/:id/actions`; stale cards
  * show the cited-hunks count with an Update button; "Go deeper"
  * placeholder cards with Generate showing a plain working state. Every
@@ -16,24 +15,27 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { Thread, Card, DepthLevel, Page, Reply } from "@unvibe/shared";
-import { displayCardTitle } from "@unvibe/shared";
-import { Fragment } from "react";
+import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
+import { displayCardTitle, sinceBaselineLabel } from "@unvibe/shared";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
-import { performAction, performInsertAction, performUpdate } from "./actions.js";
+import { performAction, performFollowUp, performInsertAction, performUpdate, personaVariantKey } from "./actions.js";
+import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
+import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
+import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isClosedExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
-import { busyForCard, updateKey } from "./inflight.js";
-import { SecondOpinionBlock, SecondOpinionControl } from "./secondOpinion/index.js";
+import { busyForCard, inflightLabel, updateKey } from "./inflight.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
 
 const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
@@ -87,6 +89,189 @@ function ControlButton({
 }
 
 /**
+ * Card versions for the tab strip (issue #349 step 2): the Guide version
+ * plus one entry per persona variant — including orphans whose persona
+ * was deleted since (fallback name and neutral colour, never dropped).
+ */
+export interface CardVersion {
+  id: string;
+  name: string;
+  color: string;
+  variant: CardVariant | null;
+}
+
+export function cardVersions(card: Card, personas: Persona[]): CardVersion[] {
+  const byId = new Map(personas.map((p) => [p.id, p]));
+  const out: CardVersion[] = [{ id: "guide", name: "Guide", color: "", variant: null }];
+  for (const [personaId, variant] of Object.entries(card.variants ?? {})) {
+    const persona = byId.get(personaId);
+    out.push({
+      id: personaId,
+      name: persona?.name ?? "Persona",
+      color: persona?.color ?? "#999999",
+      variant,
+    });
+  }
+  return out;
+}
+
+/**
+ * Persona picker for a card toolbar (issue #349 step 2). One button with
+ * the second-opinion bubbles icon; the menu lists the enabled personas
+ * (colour dot + name — colour is never the only signal). Choosing one
+ * runs it on the card. Rendered in a portal from the button rect so the
+ * scrolling guide never clips it.
+ */
+function PersonaButton({
+  reviewId,
+  cardId,
+  personas,
+  disabled,
+  busy,
+}: {
+  reviewId: string;
+  cardId: string;
+  personas: Persona[];
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent): void => {
+      const target = e.target as Node;
+      // The menu lives in a portal (outside the button), so option
+      // clicks must not count as outside — else the menu unmounts
+      // before the option's click fires.
+      if (!btnRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  if (personas.length === 0) return null;
+  return (
+    <>
+      <button
+        className="ib"
+        type="button"
+        ref={btnRef}
+        data-persona-menu={cardId}
+        data-tip={busy ? "Working…" : "Run a persona on this card"}
+        aria-label={busy ? "Working…" : "Run a persona on this card"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-busy={busy || undefined}
+        disabled={disabled || busy}
+        onClick={() => {
+          const rect = btnRef.current?.getBoundingClientRect();
+          if (rect) {
+            const width = 240;
+            setPos({
+              top: Math.min(rect.bottom + 4, window.innerHeight - 8),
+              left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+            });
+          }
+          setOpen((v) => !v);
+        }}
+      >
+        {busy ? (
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          <Icon name="second" />
+        )}
+      </button>
+      {open
+        ? createPortal(
+            <div
+              className="fmenu"
+              role="menu"
+              ref={menuRef}
+              style={{ position: "fixed", top: pos.top, left: pos.left, width: 240 }}
+              data-persona-menu-list={cardId}
+            >
+              {personas.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="menuitem"
+                  data-persona-option={p.id}
+                  onClick={() => {
+                    setOpen(false);
+                    runCardAction(reviewId, { kind: "persona", cardId, personaId: p.id });
+                  }}
+                >
+                  <span
+                    className="score-dot"
+                    aria-hidden="true"
+                    style={{ background: p.color }}
+                  />
+                  <span className="lbl">{p.name}</span>
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+/**
+ * Version tab strip (issue #349 step 2): Guide plus one tab per persona
+ * that ran on the card. Shown only when a variant exists. Each persona
+ * tab carries its colour dot (with the name — colour is never the only
+ * signal); the active persona tab underlines in its own colour.
+ */
+function VersionTabs({
+  cardId,
+  versions,
+  active,
+  onSelect,
+}: {
+  cardId: string;
+  versions: CardVersion[];
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  if (versions.length <= 1) return null;
+  return (
+    <div className="tabs" role="tablist" aria-label="Card versions" data-testid={`versions-${cardId}`}>
+      {versions.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={active === v.id}
+          data-version-tab={v.id}
+          onClick={() => onSelect(v.id)}
+          style={v.id !== "guide" && active === v.id ? { borderColor: v.color, color: "inherit" } : undefined}
+        >
+          {v.id !== "guide" ? (
+            <span className="score-dot" aria-hidden="true" style={{ background: v.color, display: "inline-block", marginRight: 6, verticalAlign: "baseline" }} />
+          ) : null}
+          {v.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Plain processing indicator: dots plus a short fixed label. Never
  * streamed agent text, thinking text, or progress strings (issue #46).
  */
@@ -133,17 +318,73 @@ function promotedFillFor(
 
 
 
+/**
+ * Busy state for a persona's version of a card (issue #349 step 2): the
+ * variant tab's own in-flight entry first (it follows the job until it
+ * settles), then the variant's stored working line. The snapshot job
+ * lookup stays out: jobs carry the guide card id, and a Guide-tab job
+ * must never light the variant tab.
+ */
+function variantBusyState(
+  inflight: ReturnType<typeof useReview.getState>["inflight"],
+  cardId: string,
+  personaId: string,
+  variant: CardVariant | null,
+): import("./inflight.js").BusyState | null {
+  const entry = inflight[personaVariantKey(cardId, personaId)];
+  if (entry) {
+    return { kind: entry.kind, label: inflightLabel(entry.kind), rewriting: false };
+  }
+  if (variant?.working) {
+    return { kind: "persona", label: variant.working, rewriting: false };
+  }
+  return null;
+}
+
 export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const jobs = snapshot?.jobs ?? [];
   const annotations = snapshot?.annotations ?? [];
   const inflight = useReview((s) => s.inflight);
   const contributions = snapshot?.contributions ?? [];
-  const busy = busyForCard(inflight, jobs, card.id);
+  // Issue #349 step 2: the card's versions (Guide + persona variants)
+  // and the active tab. The tab is UI state: a persona run never yanks
+  // the reader off the Guide version.
+  const personas = useEnabledPersonas();
+  const versions = cardVersions(card, personas);
+  const [activeVersion, setActiveVersion] = useState("guide");
+  const activeEntry = versions.find((v) => v.id === activeVersion) ?? versions[0];
+  const activePersonaId = activeEntry.id === "guide" ? undefined : activeEntry.id;
+  const activePersona = activePersonaId
+    ? personas.find((p) => p.id === activePersonaId) ?? {
+        id: activePersonaId,
+        name: activeEntry.name,
+        color: activeEntry.color,
+        lens: "",
+        cardInstruction: "",
+        provider: "",
+        model: "",
+        enabled: false,
+      }
+    : undefined;
+  const activeVariant = activeEntry.variant;
+  // Jobs attached to a persona run's in-flight entry belong to the
+  // variant tab — the Guide tab must not light up for them.
+  const personaCoveredJobs = new Set(
+    Object.entries(inflight)
+      .filter(([key, entry]) => key.startsWith(`persona:${card.id}:`) && entry.jobId)
+      .map(([, entry]) => entry.jobId as string),
+  );
+  const guideBusy = busyForCard(
+    inflight,
+    jobs.filter((j) => !personaCoveredJobs.has(j.id)),
+    card.id,
+  );
+  const busy = activePersonaId ? variantBusyState(inflight, card.id, activePersonaId, activeVariant) : guideBusy;
   const busyKind = busy?.kind;
   // A card moved mid-fill (issue #152) resolves its working/error state
   // through the promoting link until its turn settles.
-  const promoted = !busy ? promotedFillFor(annotations, card) : null;
+  const promoted = !busy && !activePersonaId ? promotedFillFor(annotations, card) : null;
 
   if (card.pending) {
     // Issue #84: the title and the one-line description stay visible while
@@ -173,13 +414,21 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     );
   }
 
-  const depthIndex = DEPTH_ORDER.indexOf(card.level);
+  // Issue #349 step 2: the active version's own blocks/level/undo
+  // stack. The Guide version keeps today's path; a persona tab renders
+  // that persona's blocks, and every control below addresses them.
+  const shownBlocks = activeVariant ? activeVariant.blocks : card.blocks;
+  const shownLevel = activeVariant ? activeVariant.level : card.level;
+  const shownUndoDepth = activeVariant ? activeVariant.undoStack.length : card.undoStack.length;
+  const depthIndex = DEPTH_ORDER.indexOf(shownLevel);
   const threadsFor = (blockId: string): Thread[] =>
-    blockThreads(annotations, card.id, blockId);
+    blockThreads(annotations, card.id, blockId).filter(
+      (t) => (t.personaId ?? null) === (activePersonaId ?? null),
+    );
 
   // Issue #252: glossary terms link in card text (first mention per card).
   const glossary = snapshot?.glossary ?? [];
-  const linkedBlocks = linkCardBlocks(card.blocks, glossary, card.level);
+  const linkedBlocks = linkCardBlocks(shownBlocks, glossary, shownLevel);
 
   const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
@@ -193,15 +442,19 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       <Fragment key={block.id}>
         <BlockView
           block={block}
-          level={card.level}
+          level={shownLevel}
           threads={threadsFor(block.id)}
           footnotes={footnotes}
           lookupPage={lookupPage}
           cardId={card.id}
           onOpenPage={onOpenPage}
-          onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+          onFollowUp={(blockId, index) =>
+            activePersonaId
+              ? performFollowUp(reviewId, card.id, blockId, index, activePersonaId)
+              : onFollowUp(card.id, blockId, index)
+          }
         />
-        <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} />
+        <GuideBlockThreads reviewId={reviewId} cardId={card.id} blockId={block.id} personaId={activePersonaId} />
       </Fragment>
     );
   });
@@ -236,7 +489,11 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const depthBusy = busyKind === "depth";
   const examplesBusy = busyKind === "examples";
   const diagramBusy = busyKind === "diagram";
-  const secondOpinionBusy = busyKind === "second_opinion";
+  const personaBusy = busyKind === "persona";
+  // Issue #349 step 2: the active persona tab borders the card in that
+  // persona's colour (an inset ring, so the rounded corners keep their
+  // shape and nothing shifts).
+  const personaRing = activePersona ? { boxShadow: `inset 0 0 0 2px ${activePersona.color}` } : undefined;
   // Issue #49: same display title as the collapsed header and Contents.
   const title = displayCardTitle(card.title, card.blocks);
 
@@ -247,6 +504,11 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       className={busy?.rewriting ? "rewriting" : undefined}
       id={`C-${card.id}`}
       aria-busy={busy ? true : undefined}
+      {...(personaRing ? { style: personaRing } : {})}
+      // Issue #349 step 2: the active version marks the card for the
+      // selection toolbar (Explain/Ask on this text run as the persona).
+      // On the section itself, so block child selectors keep matching.
+      {...(activePersonaId ? { "data-persona": activePersonaId, "data-card": card.id } : {})}
     >
       <CardHeader className="chead">
         <ControlButton
@@ -260,15 +522,25 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
         <div className="ctl">
           <DepthControl
-            level={card.level}
+            level={shownLevel}
             disabled={controlsBusy}
             depthBusy={depthBusy}
             simplerAtLimit={depthIndex <= 0}
             onSimpler={() =>
-              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "simpler" })
+              runCardAction(
+                reviewId,
+                activePersonaId
+                  ? { kind: "depth", cardId: card.id, direction: "simpler", personaId: activePersonaId }
+                  : { kind: "depth", cardId: card.id, direction: "simpler" },
+              )
             }
             onDeeper={() =>
-              runCardAction(reviewId, { kind: "depth", cardId: card.id, direction: "deeper" })
+              runCardAction(
+                reviewId,
+                activePersonaId
+                  ? { kind: "depth", cardId: card.id, direction: "deeper", personaId: activePersonaId }
+                  : { kind: "depth", cardId: card.id, direction: "deeper" },
+              )
             }
           />
           <ControlButton
@@ -276,30 +548,38 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             label="Use examples"
             busy={examplesBusy}
             disabled={controlsBusy}
-            onClick={() => performInsertAction(reviewId, card.id, "examples")}
+            onClick={() => performInsertAction(reviewId, card.id, "examples", activePersonaId)}
           />
           <ControlButton
             icon="diagram"
             label="Add diagram"
             busy={diagramBusy}
             disabled={controlsBusy}
-            onClick={() => performInsertAction(reviewId, card.id, "diagram")}
+            onClick={() => performInsertAction(reviewId, card.id, "diagram", activePersonaId)}
           />
           <ControlButton
             icon="undo"
             label="Undo"
-            disabled={card.undoStack.length === 0 || controlsBusy}
-            onClick={() => runCardAction(reviewId, { kind: "undo", cardId: card.id })}
+            disabled={shownUndoDepth === 0 || controlsBusy}
+            onClick={() =>
+              runCardAction(
+                reviewId,
+                activePersonaId
+                  ? { kind: "undo", cardId: card.id, personaId: activePersonaId }
+                  : { kind: "undo", cardId: card.id },
+              )
+            }
           />
-          <SecondOpinionControl
+          <PersonaButton
             reviewId={reviewId}
-            card={card}
-            page={lookupPage(card.pageId)}
+            cardId={card.id}
+            personas={personas}
             disabled={controlsBusy}
-            busy={secondOpinionBusy}
+            busy={personaBusy}
           />
         </div>
       </CardHeader>
+      <VersionTabs cardId={card.id} versions={versions} active={activeEntry.id} onSelect={setActiveVersion} />
       {card.stale ? (
         <div className="stale" role="status">
           <span>
@@ -337,19 +617,59 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           </Button>
         </div>
       ) : null}
+      {/* Issue #349 step 2: a failed persona run is a visible error on
+          its own version (banner + Retry), never a silent store. */}
+      {!busy && activeVariant?.error ? (
+        <div className="perr" role="alert">
+          <span>{activeVariant.error}</span>
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            data-retry-persona={activePersonaId}
+            onClick={() => {
+              if (activePersonaId) {
+                runCardAction(reviewId, { kind: "persona", cardId: card.id, personaId: activePersonaId });
+              }
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
       {blocks}
-      <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
-      {(card.secondOpinions ?? []).map((so) => (
-        <SecondOpinionBlock
-          key={so.id}
-          reviewId={reviewId}
-          card={card}
-          result={so}
-          lookupPage={lookupPage}
-          onOpenPage={onOpenPage}
-          onFollowUp={(cardId, blockId, index) => onFollowUp(cardId, blockId, index)}
-        />
+      {card.answers && card.answers.length > 0 ? <SinceAnswers answers={card.answers} /> : null}
+      {(card.addenda ?? []).map((a) => (
+        <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since ${sinceBaselineLabel(a.baseline)}`}>
+          <div className="addendum-h">
+            Updated since {sinceBaselineLabel(a.baseline)} · {sinceDate(a.at)}
+          </div>
+          {a.blocks.map((block, bi) => {
+            const shown =
+              bi === 0 && block.type === "paragraph"
+                ? {
+                    ...block,
+                    text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) },
+                  }
+                : block;
+            return (
+              <BlockView
+                key={block.id}
+                block={shown}
+                level="standard"
+                threads={[]}
+                footnotes={[]}
+                lookupPage={lookupPage}
+                cardId={card.id}
+                onOpenPage={onOpenPage}
+                onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
+              />
+            );
+          })}
+          {a.answers && a.answers.length > 0 ? <SinceAnswers answers={a.answers} /> : null}
+        </section>
       ))}
+      <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
     </UiCard>
   );
 }

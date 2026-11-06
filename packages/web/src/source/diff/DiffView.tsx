@@ -17,7 +17,7 @@
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { DiffFilter, HideLevel, Hunk, Plotline, ReviewFile, UpdateHunkRequest } from "@unvibe/shared";
+import type { DiffFilter, HideLevel, Hunk, Plotline, ReviewFile, UpdateDiffFilterRequest, UpdateHunkRequest } from "@unvibe/shared";
 import {
   DEFAULT_HIDE_LEVEL,
   DEFAULT_REVIEW_VIEW_PREFS,
@@ -31,11 +31,13 @@ import {
   hunkCategory,
   hunkMatchesFilter,
   HUNK_PASS_FANOUT_LIMIT,
+  sinceBaselineLabel,
   type HideCategory,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../../components/ErrorBoundary.js";
 import { Icon } from "../../components/Icon.js";
+import { stripCodeSpans } from "../../components/inlineCode.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
 import {
@@ -51,6 +53,8 @@ import {
   buildFileTree,
   filterFiles,
   hunkOverlaps,
+  hunkPlotVisible,
+  hunkVisibleId,
   shouldHideHunk,
   tailPathParts,
   type TreeRow,
@@ -340,10 +344,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   // Issue #325: the hide level is remembered per review in viewPrefs
   // (required in the stored shape; the default here only covers the
-  // not-yet-loaded snapshot).
+  // not-yet-loaded snapshot). Issue #342: choosing a level fully
+  // re-applies it — transient per-hunk expands are discarded, so the
+  // next render is governed by the level alone.
   const hideLevel: HideLevel = snapshot ? snapshot.viewPrefs.hideLevel : DEFAULT_HIDE_LEVEL;
   const setHideLevel = useCallback(
     (level: HideLevel) => {
+      setUnhidden({});
       api.updateView(reviewId, { hideLevel: level }).catch(() => {
         toast("Couldn't save the hide level");
       });
@@ -386,6 +393,37 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [states],
   );
   const plotActive = plotFilter.plotline !== undefined;
+  // Issue #351: the Since-B filter shows only hunks changed or added
+  // since the baseline (snapshot `sinceHunks`, by content comparison).
+  const sinceActive = plotFilter.sinceBaseline === true;
+  const sinceIds = useMemo(() => {
+    if (!sinceActive) return undefined;
+    const ids = new Set<string>();
+    for (const f of snapshot?.files ?? []) {
+      for (const h of f.hunks) {
+        const id = hunkVisibleId(f.fileKey, h.contentHash);
+        if (
+          snapshot?.sinceHunks?.added.includes(id) === true ||
+          snapshot?.sinceHunks?.changed.includes(id) === true
+        ) {
+          ids.add(id);
+        }
+      }
+    }
+    return ids;
+  }, [sinceActive, snapshot]);
+  // Issue #351: hunks the Since-B filter hides (hunk-granular, unlike the
+  // file-granular `hiddenHunks` behind the plotline chip).
+  const sinceHidden = useMemo(() => {
+    if (!sinceIds) return 0;
+    let n = 0;
+    for (const f of snapshot?.files ?? []) {
+      for (const h of f.hunks) {
+        if (!sinceIds.has(hunkVisibleId(f.fileKey, h.contentHash))) n += 1;
+      }
+    }
+    return n;
+  }, [sinceIds, snapshot]);
   const visible = useMemo(
     () =>
       snapshot
@@ -394,11 +432,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             cats,
             hideReviewed: prefs.hideReviewed,
             reviewedCount,
-            ...(plotActive ? { plot: plotFilter } : {}),
+            ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
+            ...(sinceIds ? { sinceIds } : {}),
             hunkStateOf,
           })
         : [],
-    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, plotFilter, hunkStateOf],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, sinceActive, sinceIds, plotFilter, hunkStateOf],
   );
 
   const progress = useMemo(() => {
@@ -453,8 +492,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       // Read-only history: the choice still applies to this view, it just
       // is not remembered with the review.
       if (readOnly) return;
-      const body = {
+      const body: UpdateDiffFilterRequest = {
         ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
+        // Issue #351: false and null both clear the Since-B filter.
+        sinceBaseline: next.sinceBaseline === true ? true : null,
       };
       api.updateDiffFilter(reviewId, body).catch(() => {
         toast("Couldn't save the filter");
@@ -474,6 +515,15 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     },
     [plotFilter, setPlotFilterAndPersist],
   );
+
+  // Issue #351: the Since-B toolbar toggle — clicking it shows only
+  // hunks changed or added since the baseline.
+  const toggleSinceBaseline = useCallback(() => {
+    const next: DiffFilter = { ...plotFilter };
+    if (next.sinceBaseline === true) delete next.sinceBaseline;
+    else next.sinceBaseline = true;
+    setPlotFilterAndPersist(next);
+  }, [plotFilter, setPlotFilterAndPersist]);
   const hiddenHunks = useMemo(() => {
     const shown = visible.reduce((s, f) => s + f.hunks.length, 0);
     return Math.max(0, progress.total - shown);
@@ -529,8 +579,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         for (const h of file.hunks) if (hunkOverlaps(h, target.start as number, end)) next[h.contentHash] = true;
         return next;
       });
-      // Unfold the overlapping hunks so the lines are visible (persisted,
-      // like clicking "show" — the prototype has no persistence to keep).
+      // Unfold the overlapping hunks so the lines are visible (persisted
+      // fold state, like clicking "show" — the hidden-row expand itself
+      // stays transient, issue #342).
       for (const h of file.hunks) {
         if (hunkOverlaps(h, target.start, end) && st.get(h.contentHash)?.folded) {
           api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {});
@@ -650,7 +701,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cats: new Set(prefs.cats),
       hideReviewed: prefs.hideReviewed,
       reviewedCount,
-      ...(plotActive ? { plot: plotFilter } : {}),
+      ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
+      ...(sinceIds ? { sinceIds } : {}),
       hunkStateOf: (hash) => {
         const s = st.get(hash);
         return s ? { score: s.score, plotline: s.plotline } : undefined;
@@ -666,7 +718,16 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         ) {
           return;
         }
-        if (!hunkMatchesFilter(st.get(h.contentHash)?.plotline, plotFilter)) {
+        if (
+          !hunkPlotVisible(h, f.fileKey, {
+            plot: plotFilter,
+            ...(sinceIds ? { sinceIds } : {}),
+            hunkStateOf: (hash) => {
+              const s = st.get(hash);
+              return s ? { score: s.score, plotline: s.plotline } : undefined;
+            },
+          })
+        ) {
           return;
         }
         targets.push({ file: f, hunk: h });
@@ -696,7 +757,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
       );
     }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, actions, plotActive, plotFilter, hideLevel]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, actions, plotActive, sinceActive, sinceIds, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -767,7 +828,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       <div className="dtool">
         {plotFilter.plotline !== undefined ? (
           <span className="fchip" data-filterchip="plotline">
-            Plotline: {plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline} · {hiddenHunks} hidden
+            <span
+              className="fchip-name"
+              title={stripCodeSpans(plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline)}
+            >Plotline: {stripCodeSpans(plotlineNames.get(plotFilter.plotline) ?? plotFilter.plotline)} · {hiddenHunks} hidden</span>
             <button
               type="button"
               aria-label="Clear plotline filter"
@@ -777,6 +841,21 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               ×
             </button>
           </span>
+        ) : null}
+        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline !== undefined && !readOnly ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            aria-pressed={sinceActive}
+            data-filterchip="since"
+            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
+            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
+            onClick={toggleSinceBaseline}
+          >
+            Since {sinceBaselineLabel(snapshot.sinceBaseline)}
+            {sinceActive ? ` · ${sinceHidden} hidden` : ""}
+          </Button>
         ) : null}
         <Button
           variant="secondary"
@@ -845,24 +924,28 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           counts={hideStats.counts}
           onCategory={(cat) => setHideLevel(hideLevelAfterCategoryClick(hideLevel, cat))}
         />
-        <button
-          className="x"
-          type="button"
-          data-tip={foldTip}
-          aria-label="Fold all"
-          onClick={() => void foldAll()}
-        >
-          <Icon name="fold" />
-        </button>
-        <button
-          className="x"
-          type="button"
-          data-tip="Unfold the code"
-          aria-label="Unfold all"
-          onClick={() => void unfoldAll()}
-        >
-          <Icon name="unfold" />
-        </button>
+        {/* Issue #353: the trailing fold pair wraps as a group, so one
+            button never sits alone on a wrapped toolbar line. */}
+        <span className="foldpair">
+          <button
+            className="x"
+            type="button"
+            data-tip={foldTip}
+            aria-label="Fold all"
+            onClick={() => void foldAll()}
+          >
+            <Icon name="fold" />
+          </button>
+          <button
+            className="x"
+            type="button"
+            data-tip="Unfold the code"
+            aria-label="Unfold all"
+            onClick={() => void unfoldAll()}
+          >
+            <Icon name="unfold" />
+          </button>
+        </span>
         <span
           className="rprog"
           role="progressbar"
@@ -994,6 +1077,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}
               plotFilter={plotActive ? plotFilter : undefined}
+              sinceIds={sinceActive ? sinceIds : undefined}
               plotlineNames={plotlineNames}
               onSelectPlotline={togglePlotline}
               isHidden={isHidden}
@@ -1241,7 +1325,7 @@ function FilterMenuButton({
   }, [open ]);
 
   // Close on outside press or Escape, like the other dropdowns
-  // (SecondOpinionControl, CommentsMenu).
+  // (CommentsMenu).
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent): void => {

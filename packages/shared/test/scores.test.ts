@@ -13,6 +13,8 @@ import {
   hideLevelStats,
   hunkCategory,
   hunkMatchesFilter,
+  MAX_PLOTLINE_DESCRIPTION,
+  MAX_PLOTLINE_NAME,
   MAX_PLOTLINES,
   normalizeHideLevel,
   normalizeHunkScore,
@@ -144,6 +146,74 @@ describe("normalizePlotlines", () => {
     );
     expect(got.plotlines[0].name).toBe("Retry logic");
     expect(got.plotlines[0].description).toBe("Line one. Line two.");
+  });
+
+  it("stores a long name with a long identifier whole (#353)", () => {
+    const name = "Add the `some_very_long_table_identifier_xyz` guard for the retry path";
+    expect(name.length).toBeGreaterThan(60);
+    const got = normalizePlotlines([{ id: "add-guard", name, hunks: [] }], KNOWN);
+    expect(got.plotlines[0]?.name).toBe(name);
+  });
+
+  it("caps a very long name at a word boundary, never inside a token (#353)", () => {
+    const name = `${"word ".repeat(30)}tail`;
+    expect(name.length).toBeGreaterThan(MAX_PLOTLINE_NAME);
+    const got = normalizePlotlines([{ id: "many-words", name, hunks: [] }], KNOWN);
+    const stored = got.plotlines[0]?.name ?? "";
+    expect(stored.length).toBeLessThanOrEqual(MAX_PLOTLINE_NAME);
+    expect(stored.endsWith("…")).toBe(false);
+    expect(name.startsWith(stored)).toBe(true);
+    expect(name[stored.length]).toBe(" ");
+  });
+
+  it("keeps a single token longer than the cap whole (#353)", () => {
+    const name = `add_the_${"x".repeat(130)}_guard`;
+    expect(name).not.toContain(" ");
+    expect(name.length).toBeGreaterThan(MAX_PLOTLINE_NAME);
+    const got = normalizePlotlines([{ id: "long-token", name, hunks: [] }], KNOWN);
+    expect(got.plotlines[0]?.name).toBe(name);
+  });
+
+  it("caps a very long description at a word boundary, keeping long tokens (#353)", () => {
+    const description = `Covers the ${"y".repeat(150)}_identifier path and ${"extra detail ".repeat(20)}here`;
+    expect(description.length).toBeGreaterThan(MAX_PLOTLINE_DESCRIPTION);
+    const got = normalizePlotlines(
+      [{ id: "retry", name: "Retry logic", description, hunks: [] }],
+      KNOWN,
+    );
+    const stored = got.plotlines[0]?.description ?? "";
+    expect(stored.length).toBeLessThanOrEqual(MAX_PLOTLINE_DESCRIPTION);
+    expect(stored.endsWith("…")).toBe(false);
+    expect(description.startsWith(stored)).toBe(true);
+    expect(description[stored.length]).toBe(" ");
+  });
+
+  it("repairs a slug-echo name (name is the kebab-case id) into a display name", () => {
+    const got = normalizePlotlines(
+      [
+        {
+          id: "obs-fold-unfolding",
+          name: "obs-fold-unfolding",
+          description: "Unfolds obs-fold response header values.",
+          hunks: ["h:conn:aaa"],
+        },
+      ],
+      KNOWN,
+    );
+    expect(got.plotlines).toHaveLength(1);
+    expect(got.plotlines[0]).toMatchObject({ id: "obs-fold-unfolding", name: "Obs fold unfolding" });
+    expect(got.assignment).toEqual({ "h:conn:aaa": "obs-fold-unfolding" });
+  });
+
+  it("repairs a slug-like name when the id is derived from it", () => {
+    const got = normalizePlotlines([{ name: "retry-logic", hunks: [] }], KNOWN);
+    expect(got.plotlines).toHaveLength(1);
+    expect(got.plotlines[0]).toMatchObject({ id: "retry-logic", name: "Retry logic" });
+  });
+
+  it("leaves a proper display name that happens to slugify near the id alone", () => {
+    const got = normalizePlotlines([{ id: "retry", name: "Retry failed uploads", hunks: [] }], KNOWN);
+    expect(got.plotlines[0]).toMatchObject({ id: "retry", name: "Retry failed uploads" });
   });
 });
 

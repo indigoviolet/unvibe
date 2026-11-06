@@ -82,6 +82,13 @@ declare module "*release-notes-gen-lib.mjs" {
   export function issueUrl(repo: string, number: number): string;
   export function generateReleaseNotes(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   export function renderReleaseBody(notes: Record<string, unknown>, opts?: { branch?: string }): string;
+  export function whatChangedAddsMore(item: { summary?: string; whatChanged?: string }): boolean;
+}
+
+declare module "*extension-version-lib.mjs" {
+  export function isChromeExtensionVersion(v: string | null | undefined): boolean;
+  export function fnv1a32(s: string): number;
+  export function extensionVersion(unvibeVersion: string): { version: string; version_name: string };
 }
 
 declare module "*global-install-lib.mjs" {

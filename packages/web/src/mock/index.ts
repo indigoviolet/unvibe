@@ -48,6 +48,8 @@ import type {
   ReviewSnapshot,
   ReviewsListResponse,
   ReviewSummary,
+  SetSinceBaselineRequest,
+  SetSinceBaselineResponse,
   Settings,
   SwitchOutcome,
   ReleaseNotes,
@@ -64,7 +66,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -77,7 +79,7 @@ import {
   mockSeedD2Block,
   mockUnavailableD2Block,
 } from "./d2diagrams.js";
-import { demoAnswer, demoCardBlocks, demoHunkSummary, isDemoPersistedThread } from "./demo.js";
+import { demoAnswer, demoCardBlocks, demoHunkSummary, demoRealDiagramBlock, isDemoPersistedThread } from "./demo.js";
 import { DEMO_COMMENTS_KEY, DEMO_SUBMIT_DISABLED_REASON, STATIC_DEMO } from "../demo.js";
 
 export const MOCK_MODE: boolean =
@@ -129,7 +131,13 @@ function readJson<T>(key: string, fallback: T): T {
 function getRepos(): Repo[] {
   // Static demo (#334): only the fixture repo under review — the filler
   // `you/demo-lib` detected repo would read as fake on a public page.
-  if (STATIC_DEMO) return SEED_REPOS.filter((r) => !r.detected);
+  // Issue #341: the demo repo row carries the real owner/name (like the
+  // service's DEMO_REPO) so PR and line links point at GitHub.
+  if (STATIC_DEMO)
+    return [
+      ...SEED_REPOS.filter((r) => !r.detected),
+      { id: "demo", owner: "urllib3", name: "urllib3", localPath: "", lastOpened: NOW },
+    ];
   const added = readJson<Repo[]>(ADDED_KEY, []);
   // Fresh-install state for specs (`unvibe.mock.noRepos`): seeds hidden,
   // repos added during the test still listed.
@@ -432,6 +440,20 @@ function demoFindBlock(blockId: string): import("@unvibe/shared").Block | null {
     }
     return null;
   };
+  // Qualified ids name their card (`central#b1`): look there first. Block
+  // ids restart at b1 in every card, so a global short-id scan would
+  // return the wrong card's block (issue #341: the static demo answered
+  // with the problem card's recording for central selections).
+  if (hash >= 0) {
+    const cardId = blockId.slice(0, hash);
+    for (const p of mockPages) {
+      const card = p.cards.find((c) => c.id === cardId);
+      if (card) {
+        const hit = scan(card.blocks as never[]);
+        if (hit) return hit;
+      }
+    }
+  }
   for (const p of mockPages) {
     for (const c of p.cards) {
       const hit = scan(c.blocks as never[]);
@@ -602,6 +624,102 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
   throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
 }
 
+/**
+ * Issue #349 step 2 (mock): a persona's variant of a mock page card.
+ * Created on the first persona run as a clone of the guide blocks (so
+ * tabs appear with real shapes); later runs bump the revision.
+ */
+function ensureMockVariant(
+  card: import("@unvibe/shared").Card,
+  personaId: string,
+): import("@unvibe/shared").CardVariant {
+  if (!card.variants) card.variants = {};
+  const existing = card.variants[personaId];
+  if (existing) return existing;
+  const clone = JSON.parse(JSON.stringify(card.blocks)) as import("@unvibe/shared").Block[];
+  const created: import("@unvibe/shared").CardVariant = {
+    personaId,
+    blocks: clone,
+    level: card.level,
+    revision: 1,
+    undoStack: [],
+    working: null,
+    error: null,
+  };
+  card.variants[personaId] = created;
+  return created;
+}
+
+/** Issue #349 step 2 (mock): depth/examples/diagram/undo on a persona's variant. */
+function mockVariantControl(a: { kind: string; cardId: string; direction?: string }, personaId: string): {
+  accepted: boolean;
+  cardId: string;
+  jobId?: string;
+  reused?: boolean;
+  level?: import("@unvibe/shared").DepthLevel;
+} {
+  const ref = findMockCard(a.cardId);
+  if (!ref || ref.kind !== "page") throw new Error(`unknown card ${a.cardId}`);
+  const card = ref.card;
+  const variant = (card.variants as Record<string, import("@unvibe/shared").CardVariant> | undefined)?.[personaId];
+  if (!variant) throw new Error(`persona ${personaId} has not run on card ${a.cardId} yet`);
+  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
+  const pushVariantUndo = (): void => {
+    (variant.undoStack as { blocks: unknown; level: unknown }[]).push({
+      blocks: JSON.parse(JSON.stringify(variant.blocks)),
+      level: variant.level,
+    });
+  };
+  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
+    const i = ORDER.indexOf(variant.level);
+    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
+    if (!next) {
+      if (
+        a.direction === "deeper" &&
+        !(variant.blocks as { type: string; kind?: string }[]).some(
+          (b) => b.type === "aside" && b.kind === "Underlying principle",
+        )
+      ) {
+        pushVariantUndo();
+        (variant.blocks as unknown[]).push(mockPrincipleAside() as never);
+        variant.revision += 1;
+        emitPages();
+        return { accepted: true, cardId: a.cardId, level: variant.level };
+      }
+      return { accepted: true, cardId: a.cardId, reused: true, level: variant.level };
+    }
+    pushVariantUndo();
+    variant.level = next;
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+  }
+  if (a.kind === "examples" || a.kind === "diagram") {
+    const blocks = variant.blocks as { type: string; kind?: string }[];
+    if (a.kind === "examples" && blocks.some((b) => b.type === "aside" && b.kind === "Example")) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    if (a.kind === "diagram" && blocks.some((b) => b.type === "diagram")) {
+      return { accepted: true, cardId: a.cardId };
+    }
+    pushVariantUndo();
+    (variant.blocks as unknown[]).push((a.kind === "examples" ? mockExampleAside() : mockDiagramAside()) as never);
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId };
+  }
+  if (a.kind === "undo") {
+    const prev = (variant.undoStack as { blocks: never; level: never }[]).pop();
+    if (!prev) return { accepted: true, cardId: a.cardId };
+    (variant.blocks as unknown) = prev.blocks;
+    (variant.level as unknown) = prev.level;
+    variant.revision += 1;
+    emitPages();
+    return { accepted: true, cardId: a.cardId };
+  }
+  throw new Error(`unknown mock card control ${(a as { kind: string }).kind}`);
+}
+
 function readChangesFailures(): string[] {
   try {
     const raw = localStorage.getItem("unvibe.mock.repoChangesFail");
@@ -747,19 +865,23 @@ let mockPages: import("@unvibe/shared").Page[] = JSON.parse(
 ) as import("@unvibe/shared").Page[];
 
 /**
- * Seed mock D2 edge cases into the go-deeper flow card: the fixture's own
- * diagram block (rendered fixture SVGs served by `diagramSvg` below)
- * covers the ok path; the seeds add an unverified-anchor block, an
- * unavailable block (no binary), a failed-compile block (plain fallback
- * + retry, #130) and a multi-line-label block, so mock-mode tests
- * exercise those branches without touching the fixture.
+ * Seed mock D2 cases into the first go-deeper card (issue #341: the
+ * re-recorded reader's pending cards replaced g-flow with g-inplace, and
+ * no page embeds a diagram anymore). The fixture's own recorded
+ * on-demand diagram block (rendered fixture SVGs served by `diagramSvg`
+ * below) covers the ok path; the seeds add an unverified-anchor block,
+ * an unavailable block (no binary), a failed-compile block (plain
+ * fallback + retry, #130) and a multi-line-label block, so mock-mode
+ * tests exercise those branches without touching the fixture.
  */
 function seedMockD2Diagrams(pages: import("@unvibe/shared").Page[]): void {
   const card = pages
     .find((p) => p.id === "root")
-    ?.cards.find((c) => c.id === "g-flow");
+    ?.cards.find((c) => c.id === "g-alt");
   if (!card || card.blocks.some((b) => b.id === "b-mock-d2-edge")) return;
+  const real = demoRealDiagramBlock();
   card.blocks = [
+    ...(real ? [real as never] : []),
     ...card.blocks,
     mockSeedD2Block() as never,
     mockUnavailableD2Block() as never,
@@ -860,14 +982,16 @@ const DEMO_MODEL_CATALOG: Record<string, import("@unvibe/shared").ModelInfo[]> =
 const DEMO_ROLE_PICKS = {
   main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
-  secondOpinion: { provider: "codex", model: "gpt-6.1-sol", effort: "" },
 } as const;
+
+/** Built-in Second opinion persona with the mock model (issue #349). */
+const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
+  personas: [MOCK_BUILT_IN_PERSONA],
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -888,7 +1012,7 @@ function getMockSettings(): Settings {
     // Real service defaults, and stored overrides from mock-mode runs are
     // ignored so a stale localStorage can't leak mock ids into the demo.
     // Saves refuse anyway (read-only banner).
-    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS };
+    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }] };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
 }
@@ -1004,7 +1128,6 @@ function seedJobs(): Job[] {
       "mock-main": DEMO_ROLE_PICKS.main.model,
       "mock-small": DEMO_ROLE_PICKS.small.model,
       "mock-opus": "claude-opus-5-5",
-      "mock-second": DEMO_ROLE_PICKS.secondOpinion.model,
       "mock-mini": "gpt-5.6-terra",
     };
     return jobs.map((j) => ({
@@ -1162,10 +1285,7 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
-  mockSoSeq = 0;
   mockDiffFilter = undefined;
-  for (const p of pendingSecondOpinions) window.clearTimeout(p.timer);
-  pendingSecondOpinions = [];
   try {
     localStorage.removeItem(UPDATE_KEY);
   } catch {
@@ -1262,8 +1382,6 @@ function readMockReadiness(): ReadinessResponse {
       { id: "gh", label: "gh (GitHub CLI)", status: "ok", summary: "gh logged in as you", fix: "", settingsAnchor: "#environment" },
       { id: "agent:main", label: "Main model", status: "ok", summary: STATIC_DEMO ? "claude/claude-opus-5-5 ready" : "claude/mock-main ready", fix: "", settingsAnchor: "#models" },
       { id: "agent:small", label: "Small model", status: "ok", summary: STATIC_DEMO ? "claude/claude-haiku-5-5 ready" : "claude/mock-small ready", fix: "", settingsAnchor: "#models" },
-      { id: "agent:secondOpinion", label: "Second-opinion model", status: "ok", summary: STATIC_DEMO ? "codex/gpt-6.1-sol ready" : "codex/mock-second ready", fix: "", settingsAnchor: "#models" },
-      { id: "agents-distinct", label: "Second opinion independence", status: "ok", summary: "Second opinion differs from main", fix: "", settingsAnchor: "#models" },
     ],
     generatedAt: Date.now(),
     cached: false,
@@ -1523,7 +1641,6 @@ function mirrorMockPromotedTurn(tid: string, replyId: string): void {
     card.level = turn.level;
     card.revision = turn.revision;
     card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
-    if (turn.secondOpinions) card.secondOpinions = JSON.parse(JSON.stringify(turn.secondOpinions));
     emitPages();
     return;
   }
@@ -1609,41 +1726,6 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
   } as unknown as import("@unvibe/shared").Thread);
   emitAnnotations();
   return { id, replyId, blockId };
-}
-
-/**
- * Pending mock second-opinion fills (issue #76): like the service, every
- * run gets its own job id, so a re-run shows its own working state instead
- * of attaching to the previous run's done job. Deleting the opinion drops
- * its fill (a late timer must not resurrect the block) and settles the job
- * cancelled so no working state sticks around.
- */
-let mockSoSeq = 0;
-
-interface PendingSecondOpinion {
-  cardId: string;
-  mode: string;
-  jobId: string;
-  resultId: string;
-  timer: number;
-}
-
-let pendingSecondOpinions: PendingSecondOpinion[] = [];
-
-/** Drop pending mock second-opinion fills matching `predicate` (issue #76). */
-function cancelPendingSecondOpinions(predicate: (p: PendingSecondOpinion) => boolean): void {
-  const dropped = pendingSecondOpinions.filter(predicate);
-  if (dropped.length === 0) return;
-  pendingSecondOpinions = pendingSecondOpinions.filter((p) => !predicate(p));
-  for (const p of dropped) window.clearTimeout(p.timer);
-  let changed = false;
-  mockJobs = mockJobs.map((j) => {
-    if (j.state !== "running" && j.state !== "queued" && j.state !== "backing-off") return j;
-    if (!dropped.some((p) => p.jobId === j.id)) return j;
-    changed = true;
-    return { ...j, state: "cancelled" as const };
-  });
-  if (changed) emitJobs();
 }
 
 /** Emit contributions (accept/dismiss flips status without a refetch). */
@@ -1879,7 +1961,7 @@ function buildMockDiagnostics(): import("@unvibe/shared").DiagnosticsResponse {
       ? DEMO_MODEL_CATALOG
       : {
           claude: [{ id: "mock-main", name: "Mock Main", description: "Mock main model for tests" }],
-          codex: [{ id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" }],
+          codex: [{ id: "mock-second", name: "Mock Second", description: "Mock Codex model for tests" }],
         },
   };
 }
@@ -2018,7 +2100,22 @@ const MOCK_RELEASE_NOTES: Record<string, ReleaseNotes> = {
 
 function mockUpdateChannels(): UpdateChannel[] {
   const { current } = readUpdatePersisted();
-  return MOCK_UPDATE_CHANNELS.map((c) => ({ ...c, current: c.ref === current }));
+  // Test hook (#346 follow-up): `unvibe.mock.update.dataFormat` (an
+  // integer) pretends the preview channels were built with that format,
+  // so the Version picker can show the reset warn line.
+  let override: number | null = null;
+  try {
+    const raw = localStorage.getItem("unvibe.mock.update.dataFormat");
+    const n = raw === null ? NaN : Number(raw);
+    if (Number.isInteger(n)) override = n;
+  } catch {
+    // Non-fatal.
+  }
+  return MOCK_UPDATE_CHANNELS.map((c) => ({
+    ...c,
+    ...(override !== null && c.kind === "preview" ? { dataFormat: override } : {}),
+    current: c.ref === current,
+  }));
 }
 
 function mockUpdateBuild(): UpdateBuildInfo | null {
@@ -2665,8 +2762,32 @@ export const mockApi = {
   },
 
   // #311: mock data always matches this build's format.
-  dataFormat: async () => ({ state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount: 0, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" }),
-  dataFormatOutbox: async () => ({ markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count: 0 }),
+  // Test hooks: `unvibe.mock.update.dataFormat` (an integer) pretends
+  // the preview channels were built with that format, so the Version
+  // picker can show the reset warn line; `unvibe.mock.update.outboxCount`
+  // seeds the Outbox counts for the warn line's Export drafts action.
+  dataFormat: async () => {
+    let outboxCount = 0;
+    try {
+      const raw = localStorage.getItem("unvibe.mock.update.outboxCount");
+      const n = raw === null ? NaN : Number(raw);
+      if (Number.isInteger(n) && n >= 0) outboxCount = n;
+    } catch {
+      // Non-fatal.
+    }
+    return { state: "match" as const, expected: 1, stored: 1, hasData: true, outboxCount, previousRef: null, previousVersion: null, goBackCommand: "unvibe update release" };
+  },
+  dataFormatOutbox: async () => {
+    let count = 0;
+    try {
+      const raw = localStorage.getItem("unvibe.mock.update.outboxCount");
+      const n = raw === null ? NaN : Number(raw);
+      if (Number.isInteger(n) && n >= 0) count = n;
+    } catch {
+      // Non-fatal.
+    }
+    return { markdown: "# Comments on your reviews\n\nNothing in the Outbox.\n", count };
+  },
   resetDataFormat: async () => ({ ok: true as const, movedTo: "(mock) data moved aside" }),
   goBackDataFormat: async () => ({ from: "release", to: "release" }),
 
@@ -2824,6 +2945,31 @@ export const mockApi = {
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },
 
+  // Issue #351: the mock keeps no version history, so any earlier
+  // version number is accepted and reported back unchanged; step 2
+  // accepts commit shas the same way, and clearing answers ok.
+  setSinceBaseline: async (_id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> => {
+    await wait(50);
+    if ("version" in body) {
+      if (!Number.isSafeInteger(body.version) || body.version < 1) {
+        throw new Error("version must be an earlier version");
+      }
+      return { ok: true, baseline: { kind: "version", version: body.version }, changedHunks: 0, newHunks: 0 };
+    }
+    if (!/^[0-9a-f]{4,64}$/i.test(body.sha)) {
+      throw new Error("sha must be a commit sha (4-64 hex chars)");
+    }
+    return { ok: true, baseline: { kind: "commit", sha: body.sha.toLowerCase() }, changedHunks: 0, newHunks: 0 };
+  },
+  clearSinceBaseline: async (): Promise<{ ok: boolean }> => {
+    await wait(50);
+    return { ok: true };
+  },
+  priorGithubReview: async (): Promise<import("@unvibe/shared").GetPriorGithubReviewResponse> => {
+    await wait(50);
+    return { review: null };
+  },
+
   resume: async (): Promise<ResumeReviewResponse> => {
     await wait(50);
     return { resumed: false, jobIds: [], pendingStages: [] };
@@ -2887,134 +3033,8 @@ export const mockApi = {
         })();
       }, 700);
     };
-    // Second opinion (mock): canned verdicts through the patch path so
-    // mock-mode e2e exercises the result block, disagreement styling and
-    // the mode switch without a service. Blind → partly, check →
-    // disagrees (prominent warn styling).
-    if (a.kind === "second_opinion") {
-      const jobId = `mock-so-${a.cardId}-${a.mode}-${++mockSoSeq}`;
-      const verdict = a.mode === "blind" ? "partly" : "disagrees";
-      const missed =
-        a.mode === "blind" ? "A lone CR ending is untested too." : "Set-Cookie comma handling is out of scope.";
-      const soModel = STATIC_DEMO ? DEMO_ROLE_PICKS.secondOpinion.model : "mock-second";
-      const resultId = `so-${a.cardId}-${a.mode}-${soModel}`;
-      const result = {
-        id: resultId,
-        cardId: a.cardId,
-        mode: a.mode,
-        provider: "codex",
-        model: soModel,
-        verdict,
-        reasoning: verdict === "partly" ? "Checked the helper; gap is real but narrow." : "Only CRLF-folded values are rewritten.",
-        blocks: [
-          {
-            type: "paragraph",
-            id: "b-so-1",
-            text: {
-              standard:
-                verdict === "partly"
-                  ? `Partly — the gap is real but narrow. The helper handles the fold.`
-                  : `Disagrees — only CRLF-folded values are rewritten.`,
-            },
-            citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
-          },
-        ],
-        missed,
-        version: 1,
-        createdAt: Date.now(),
-        jobId,
-      };
-      trackMockJob(jobId, "second-opinion", { cardId: a.cardId, provider: "codex", model: soModel });
-      const timer = window.setTimeout(() => {
-        pendingSecondOpinions = pendingSecondOpinions.filter((p) => p.jobId !== jobId);
-        settleMockJob(jobId);
-        // Answers store the result on the turn (survives depth/undo);
-        // page cards store on the card.
-        let storedOnAnswer = false;
-        for (const ann of annotations) {
-          const turn = (ann.replies ?? []).find((t) => t.id === a.cardId);
-          if (!turn) continue;
-          const rest = (turn.secondOpinions ?? []).filter((s) => (s as { mode: string }).mode !== a.mode);
-          turn.secondOpinions = [...rest, { ...result, cardId: turn.id } as never];
-          storedOnAnswer = true;
-        }
-        if (storedOnAnswer) {
-          emitAnnotations();
-          return;
-        }
-        const snap = useReview.getState().snapshot;
-        if (!snap) return;
-        const pages = snap.pages.map((p) => ({
-          ...p,
-          cards: p.cards.map((c) => {
-            if (c.id !== a.cardId) return c;
-            const rest = (c.secondOpinions ?? []).filter((s) => s.mode !== a.mode);
-            return {
-              ...c,
-              secondOpinions: [...rest, { ...result, cardId: c.id } as never],
-            };
-          }),
-        }));
-        mockPages = JSON.parse(JSON.stringify(pages));
-        emitPages();
-      }, 400);
-      pendingSecondOpinions.push({ cardId: a.cardId, mode: a.mode, jobId, resultId, timer });
-      return { accepted: true, jobId };
-    }
     if (a.kind === "delete") {
       const target = (a as { targetId?: string }).targetId ?? "";
-      const m = target.match(/^second-opinion:([^:]+):(blind|check)$/) ?? target.match(/^(so-.*)$/);
-      if (m) {
-        // Drop the pending fill first (issue #76): a late timer must not
-        // resurrect the removed block.
-        if (m[1].startsWith("so-")) {
-          cancelPendingSecondOpinions((p) => p.resultId === m[1]);
-        } else {
-          const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-          cancelPendingSecondOpinions((p) => p.cardId === cardId && p.mode === mode);
-        }
-        // Answer results first (stored on the turn).
-        let removedExp = false;
-        for (const ann of annotations) {
-          for (const turn of ann.replies ?? []) {
-            const before = turn.secondOpinions ?? [];
-            let after = before;
-            if (m[1].startsWith("so-")) {
-              after = before.filter((s) => (s as { id: string }).id !== m[1]);
-            } else {
-              const mm = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-              if (turn.id !== mm[1]) continue;
-              after = before.filter((s) => (s as { mode: string }).mode !== mm[2]);
-            }
-            if (after.length !== before.length) {
-              turn.secondOpinions = after as never;
-              removedExp = true;
-            }
-          }
-        }
-        if (removedExp) {
-          emitAnnotations();
-          return { accepted: true };
-        }
-        const snap = useReview.getState().snapshot;
-        if (!snap) return { accepted: false };
-        const pages = snap.pages.map((p) => ({
-          ...p,
-          cards: p.cards.map((c) => {
-            const before = c.secondOpinions ?? [];
-            if (m[1].startsWith("so-")) {
-              const after = before.filter((s) => s.id !== m[1]);
-              return after.length === before.length ? c : { ...c, secondOpinions: after };
-            }
-            const [, cardId, mode] = target.match(/^second-opinion:([^:]+):(blind|check)$/)!;
-            if (c.id !== cardId) return c;
-            return { ...c, secondOpinions: before.filter((s) => s.mode !== mode) };
-          }),
-        }));
-        mockPages = JSON.parse(JSON.stringify(pages));
-        emitPages();
-        return { accepted: true };
-      }
       // Thread deletion (expansions + threads via the actions route).
       const annIdx = annotations.findIndex((x) => x.id === target);
       if (annIdx >= 0) {
@@ -3106,9 +3126,19 @@ export const mockApi = {
         const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
         const replyId = newTurnId();
         const askJobId = `mock-ask-${id}`;
+        // Issue #349 step 2 (mock): threads opened on a persona's version
+        // carry the persona, like the service.
+        const mockPersonaId = (a as { personaId?: string }).personaId;
+        const mockHostCard =
+          host.kind === "block" && typeof host.blockId === "string" && host.blockId.includes("#")
+            ? host.blockId.split("#")[0]
+            : null;
         annotations.push({
           id,
           type: "thread",
+          ...(typeof mockPersonaId === "string" && mockPersonaId !== "" && mockHostCard
+            ? { personaId: mockPersonaId, personaCardId: mockHostCard }
+            : {}),
           anchor: {
             host: host as import("@unvibe/shared").Thread["anchor"]["host"],
             quotedText: a.quote,
@@ -3282,9 +3312,19 @@ export const mockApi = {
       const id = `ann_mock${Math.floor(Math.random() * 1e9).toString(36)}${Date.now().toString(36)}`;
       const replyId = `ans_mock${Date.now().toString(36)}`;
       const jobId = `mock-explain-${id}`;
+      // Issue #349 step 2 (mock): threads opened on a persona's version
+      // carry the persona, like the service.
+      const mockExplainPersonaId = (a as { personaId?: string }).personaId;
+      const mockExplainHostCard =
+        host.kind === "block" && typeof host.blockId === "string" && host.blockId.includes("#")
+          ? host.blockId.split("#")[0]
+          : null;
       annotations.push({
         id,
         type: "thread",
+        ...(typeof mockExplainPersonaId === "string" && mockExplainPersonaId !== "" && mockExplainHostCard
+          ? { personaId: mockExplainPersonaId, personaCardId: mockExplainHostCard }
+          : {}),
         anchor: {
           host: host as import("@unvibe/shared").Thread["anchor"]["host"],
           quotedText: a.quote,
@@ -3324,8 +3364,25 @@ export const mockApi = {
       return { accepted: true, annotationId: id, replyId, jobId };
     }
     if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
+      const personaId = (a as { personaId?: string }).personaId;
+      if (typeof personaId === "string" && personaId !== "") {
+        const res = mockVariantControl(a as never, personaId);
+        return res as ActionResponse;
+      }
       const res = mockCardControl(a as never);
       return res as ActionResponse;
+    }
+    if (a.kind === "persona") {
+      const cardId = (a as { cardId?: string }).cardId ?? "";
+      const personaId = (a as { personaId?: string }).personaId ?? "";
+      const ref = findMockCard(cardId);
+      if (!ref || ref.kind !== "page") throw new Error(`unknown card ${cardId}`);
+      if (personaId === "") throw new Error("personaId is required");
+      const variant = ensureMockVariant(ref.card as never, personaId);
+      (variant as { revision: number }).revision += 1;
+      emitPages();
+      emitAnnotations();
+      return { accepted: true, cardId } as ActionResponse;
     }
     if (a.kind === "generate") {
       const card = mockPages.flatMap((p) => p.cards).find((c) => c.id === a.cardId);
@@ -3553,7 +3610,6 @@ export const mockApi = {
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
             undoStack: JSON.parse(JSON.stringify(turn.undoStack)),
-            ...(turn.secondOpinions ? { secondOpinions: JSON.parse(JSON.stringify(turn.secondOpinions)) } : {}),
           };
         }),
       });
@@ -3700,16 +3756,24 @@ export const mockApi = {
   },
 
   // Issue #169: mirrors the service PATCH semantics (null clears a field;
-  // unknown plotlines and levels are refused).
+  // unknown plotlines and levels are refused). Issue #351: `sinceBaseline`
+  // joins the filter (true shows only the delta; false and null clear).
   updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
-    const { plotline } = body;
+    const { plotline, sinceBaseline } = body;
     if (plotline !== undefined && plotline !== null) {
       const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
       if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
     }
+    if (sinceBaseline !== undefined && sinceBaseline !== null && typeof sinceBaseline !== "boolean") {
+      throw new Error("sinceBaseline must be a boolean or null");
+    }
     const next: DiffFilter = mockDiffFilter?.plotline ? { plotline: mockDiffFilter.plotline } : {};
+    if (mockDiffFilter?.sinceBaseline === true) next.sinceBaseline = true;
     if (plotline === null) delete next.plotline;
     else if (plotline !== undefined) next.plotline = plotline;
+    if (sinceBaseline === null) delete next.sinceBaseline;
+    else if (sinceBaseline === true) next.sinceBaseline = true;
+    else if (sinceBaseline === false) delete next.sinceBaseline;
     mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
     emitDiffFilter();
     return { ok: true };
@@ -3957,7 +4021,7 @@ export const mockApi = {
             { id: "mock-opus", name: "Mock Opus", description: "Mock opus-class model for tests" },
           ],
           codex: [
-            { id: "mock-second", name: "Mock Second", description: "Mock second-opinion model" },
+            { id: "mock-second", name: "Mock Second", description: "Mock Codex model for tests" },
             { id: "mock-mini", name: "Mock Mini", description: "Mock mini model" },
           ],
           pi: [{ id: "muse-spark-1.3-contributor", name: "Muse Spark", description: "Panel default" }],

@@ -358,6 +358,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
+/* Narrow screens (issue #341): the bar wraps instead of overflowing —
+   identity first, controls below. Desktop keeps the single row. */
+@media (max-width: 560px) {
+  .rbar { flex-wrap: wrap; }
+  .rbar .rid { flex: 1 1 100%; }
+}
 /* Live job count (issue #98): two numbers (running · queued) in the review
    bar's right corner, after Submit so appearing never shifts the title or
    the buttons. Nothing renders when no job is live, so it reserves no
@@ -382,9 +388,15 @@ code { font-family: var(--mono); font-size: .86em; }
 @keyframes jcount-spin { to { --jangle: 360deg; } }
 /* A review shows one bar (the review bar, issue #141), so the grid needs
    two rows like every other screen. */
-.app.with-reviewbar { grid-template-rows: auto minmax(0, 1fr); }
-/* The narrow-window overlay floats below the single review bar. */
+/* A review shows one bar (the review bar, issue #141) plus the demo
+   banner when present (issue #341) — three rows; the empty banner row
+   collapses to zero on non-demo reviews. */
+.app.with-reviewbar { grid-template-rows: auto auto minmax(0, 1fr); }
+.demo-banner { min-height: 0; }
+/* The narrow-window overlay floats below the review bar (and the demo
+   banner when one is showing). */
 .with-reviewbar .col.overlay { top: 41px; }
+.with-reviewbar:has(.demo-banner) .col.overlay { top: 76px; }
 /* Second-opinion mode menu: one icon button in the row, modes in a popover. */
 .so-ctl { display: inline-flex; align-items: center; gap: 0; position: relative; }
 .so-menu { position: absolute; left: 0; top: calc(100% + 4px); min-width: 220px; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-1); z-index: 30; display: flex; flex-direction: column; gap: 2px; }
@@ -406,6 +418,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .col.overlay { position: fixed; top: 50px; bottom: 0; right: 0; width: min(680px, 100vw); z-index: 25; box-shadow: var(--shadow-overlay); }
 @media (max-width: 600px) { .top .pill { display: none; } }
 .hint { font-size: var(--text-hint); color: var(--muted); }
+/* Screen-reader-only text that stays in the accessibility tree (used for
+   confirm copy that has no room in a toolbar row). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* Thread agent failure (M4 ask/reply): warning-tinted box with a Retry button. */
 .perr { margin: 6px 0; padding: 10px 12px; border-radius: var(--radius-8); background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .postchk { font-size: 11.5px; border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; white-space: nowrap; height: 22px; }
@@ -448,8 +463,10 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    narrow panes scroll the bar sideways instead of wrapping (sticky never
    clips, and the Files panel + filter dropdown live outside this bar with
    their own, higher stacking). */
-.dtool { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: calc(var(--diffbar-top, 40px) - 2px); left: 0; z-index: 9; background: var(--surface); border-bottom: var(--border-width) solid var(--line); }
+.dtool { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 12px 8px; overflow-x: auto; position: sticky; top: calc(var(--diffbar-top, 40px) - 2px); left: 0; z-index: 9; background: var(--surface); border-bottom: var(--border-width) solid var(--line); }
 .dtool > * { flex: none; }
+/* Issue #353: the trailing fold/unfold pair wraps as a group, never split. */
+.dtool .foldpair { display: inline-flex; gap: 6px; flex: none; }
 .files { border-bottom: var(--border-width) solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
 .frow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .files input[type="search"] { flex: 1 1 160px; min-width: 0; border: var(--border-width) solid var(--field-border); border-radius: var(--radius-6); padding: 3px 8px; font: 12.5px var(--sans); background: var(--field-surface); color: var(--ink); }
@@ -465,12 +482,6 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    their button, clamped into the viewport), never clipped by the
    toolbar's sideways scroller. */
 .fmenu.portal { z-index: 30; width: 240px; }
-/* Remove-confirm popover (#225): a small dialog anchored to the row's
-   Remove button (positioned from it like the other popovers, clamped
-   into the viewport). A portal overlay, so the row never reflows. */
-.confirm-pop { position: fixed; z-index: 30; background: var(--popover-surface); border: var(--border-width) solid var(--popover-border); border-radius: var(--popover-radius); box-shadow: var(--popover-shadow); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-width: min(280px, calc(100vw - 16px)); }
-.confirm-pop .q { font-size: var(--text-sm); color: var(--text-primary); }
-.confirm-pop .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .dtool .x[aria-pressed="true"] { background: var(--sunk); color: var(--ink); border-color: var(--ink); }
 /* File tree (#227): never a horizontal scrollbar — rows fit the panel,
    names and directory chains truncate, and the change indicators sit in
@@ -534,6 +545,9 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 /* Plotline tag on the hunk header: a neutral chip, reserving colour for
    the score dot. */
 .ptag { font-size: 10.5px; color: var(--muted); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; flex: none; }
+/* Issue #353: names are stored whole; a long name on the hunk header
+   ellipsizes on one line instead, and the full name is in the tooltip. */
+.ptag { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 /* The plotline chip is a selector (#169): a real button; the selected
    one is outlined and filled. Score dots are indicators only (#325). */
 .ptag-pick { cursor: pointer; background: none; font: inherit; font-size: 10.5px; }
@@ -543,13 +557,21 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    legend no longer lives in the file tree). */
 /* The one visible active-filter chip in the pinned actions bar: what is
    filtered, how much it hides, and a clear button. */
-.fchip { display: inline-flex; align-items: center; gap: 6px; border: var(--border-width) solid var(--line); background: var(--sunk); color: var(--ink); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; font-size: 12px; white-space: nowrap; flex: none; }
+.fchip { display: inline-flex; align-items: center; gap: 6px; border: var(--border-width) solid var(--line); background: var(--sunk); color: var(--ink); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; font-size: 12px; white-space: nowrap; flex: none; max-width: 100%; }
+/* Issue #353: the active plotline filter keeps its clear button while a
+   long name ellipsizes on one line; the full name is in the tooltip. */
+.fchip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fchip button { border: 0; background: none; color: var(--muted); width: 20px; height: 20px; border-radius: 50%; padding: 0; font-size: 14px; line-height: 1; cursor: pointer; }
 .fchip button:hover { background: var(--line); color: var(--ink); }
 /* Files rows: the dot is its own button beside the jump button. */
 .fr .fr-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: var(--space-3); border-top: var(--border-width) solid var(--line); }
 .ci:hover { background: var(--sunk); }
+/* #346: an open stack confirm inside a row (repo remove) drops below
+   the name instead of squeezing beside it — the long pill + question
+   would collapse the name column and overlap it — so the row's
+   control cell spans the full width while the confirm is open. */
+.ci > .frow:has(.uic[data-placement="stack"]:not([data-phase="idle"])){grid-column:1 / -1}
 .cj { border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .cj .cw { font: 12.5px var(--sans); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cj .cw .mono{font-family:var(--mono)}
@@ -577,6 +599,18 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 #right .ui-card.desc { margin: 14px 16px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: var(--radius-10); background: var(--surface); }
 .dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
+/* Issue #351: the banner stacks as coherent groups — the summary text
+   with range-diff always on its own full-width line, then the picker
+   with Update left-aligned below — so a narrow pane never strands one
+   control on its own line. */
+.dbar-group { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.dbar-group-summary { flex: 1 1 100%; }
+/* Issue #351 step 2: the persistent unfetchable-baseline message. Its
+   own block below the controls row at every width (block outside a
+   flex container; full-width flex item inside one), in the warning
+   tone — it never runs inline after the offer text or beside the
+   picker. */
+.since-error { display: block; flex: 1 1 100%; margin-top: 4px; color: var(--warn); }
 .desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; padding: 2px 6px; }
 .desc p, .desc li { margin: 6px 0; }
 /* #263: one consistent content inset. Paragraphs, lists and headings share
@@ -772,17 +806,17 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 /* Idle hunk summaries (issue #161) are text only: the paragraph activates
    into its card on click, so it takes a pointer. */
 .fcard > p[data-hunksum] { margin: 0; cursor: pointer; }
-/* Hidden-hunk row (issue #283): the label and the summary flow as one
-   inline paragraph at full width — inline after the label when it fits,
-   continuing on full-width lines below when it doesn't — never a fixed
-   right column. Same 3px/6px padding and 26x24 chevron box as the hunk
-   headers (`.hh`/`.ib`) above, so a single-line row is the same 31px and
-   the `>` glyph centres on the same x as the header chevrons. */
-.hid { display: block; border: 0; border-top: var(--border-width) solid var(--line); background: var(--bg); color: var(--muted); font: 11.5px var(--sans); padding: 3px 6px; text-align: left; }
-.hid:hover { color: var(--ink); }
+/* Hidden-hunk row (issues #283, #342): a collapsed muted band — dashed
+   borders + sunk background + chevron — distinct from the hunk headers
+   (`.hh`/`.ib`) above. Same 3px/6px padding and 26x24 chevron box, so
+   the `>` glyph centres on the same x as the header chevrons. The
+   summary clamps to two lines, never a fixed right column. */
+.hid { display: block; border: 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); background: var(--sunk); color: var(--muted); font: 11.5px var(--sans); padding: 3px 6px; text-align: left; opacity: .85; }
+.hid:hover { color: var(--ink); opacity: 1; }
 .hid .hic { display: inline-grid; place-items: center; width: 26px; height: 24px; vertical-align: middle; margin-right: 6px; }
-.hid .hidl { margin-right: 6px; }
-.hid .hidb { font-style: italic; }
+.hid .score-ind { margin-right: 6px; vertical-align: middle; }
+.hid .hidl { margin-right: 6px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.hid .hidb { font-style: italic; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .hid .hidb code { font-style: normal; font-size: 10.5px; }
 .x[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 /* Reviewed checkboxes (issue #162): native boxes, accent-tinted. */
@@ -840,14 +874,26 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines .ui-row[role="button"] { cursor: pointer; }
 .plotlines .ui-row.sel { background: var(--sunk); }
 /* Titles show in full and all look the same (#242): no truncation,
-   no ellipsis, no underline — long titles wrap. This overrides the
+   no ellipsis, no underline — long titles wrap, except the plotline
+   name itself, which clamps to two lines (#353). This overrides the
    single-line ListRow defaults, which stay for every other list. */
 .plotlines .ui-row-primary { white-space: normal; overflow: visible; text-overflow: clip; }
 .plotlines .ui-row-meta { white-space: normal; overflow: visible; text-overflow: clip; display: flex; flex-direction: column; gap: 2px; }
-.plotlines .plname { font-weight: 600; text-decoration: none; }
-.plotlines .pldesc { color: var(--muted); font-size: 12.5px; }
+/* Issue #353: names are stored whole; the card row shows at most two
+   lines with an ellipsis, and the full name is in the tooltip. */
+.plotlines .plname { font-weight: 600; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* Issue #353: descriptions are stored whole (up to a larger cap) but
+   read as a two-line row like the name; the full text is in the
+   row's tooltip. */
+.plotlines .pldesc { color: var(--muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .plotlines .plbuilds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
 .plotlines .plbuilds-chip { border: 0; background: none; padding: 0; margin: 0; cursor: pointer; font: inherit; }
+/* Issue #353: a builds-on name is another plotline name, so it gets the
+   same one-line ellipsis (its tooltip already names it in full). The
+   chip is a flex item, so it needs min-width: 0 plus max-width: 100%
+   to shrink inside the row — a bare badge cap overflows the card. */
+.plotlines .plbuilds-chip { min-width: 0; max-width: 100%; overflow: hidden; }
+.plotlines .plbuilds-chip .ui-badge { display: inline-block; max-width: min(320px, 100%); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .plotlines .plbuilds-chip:hover .ui-badge { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .divider { font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; margin: 30px 0 4px; }
 /* #274 start groups (Your PRs, Waiting on your review, Recent branches)
@@ -864,10 +910,24 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 /* #274 repo picker as the page title: 24px head font, left-aligned. */
 .repo-title-select { width: auto; height: auto; padding: 4px 8px 4px 0; font: 600 24px/1.2 var(--serif); background: transparent; border-color: transparent; }
 .repo-title-select:hover { border-color: var(--line); }
-/* #274 quiet row actions: Remove shows on row hover or keyboard focus. */
-.ci .rm { opacity: 0; height: 32px; border-color: transparent; transition: opacity .15s; }
-.ci:hover .rm, .ci:focus-within .rm { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .ci .rm { transition: none; } }
+/* #274 quiet row actions: Remove shows on row hover or keyboard focus
+   (#346: the shared inline confirm's idle slot keeps the same reveal;
+   session rows only — repo rows keep their always-visible Remove). */
+.ci[data-testid^="session-"] .uic-idlehold { opacity: 0; transition: opacity .15s; }
+.ci[data-testid^="session-"]:hover .uic-idlehold, .ci[data-testid^="session-"]:focus-within .uic-idlehold { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ci[data-testid^="session-"] .uic-idlehold { transition: none; } }
+/* #352: the Reviews progress line is always exactly one line (long
+   failure text truncates with an ellipsis; the review page carries the
+   full error), so rows never change height between phases. The 4px top
+   margin lives on the line (not the hunks `.pw` span), so text-only
+   phases measure the same as hunks phases. */
+.ci[data-testid^="session-"] .cj > [data-testid="row-progress"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+.ci[data-testid^="session-"] .cj > [data-testid="row-progress"] .pw { margin-top: 0; }
+/* #352: on branch rows (name once, date right) the opening line wraps to
+   its own full-width line under the title, like the column rows (wrap is
+   scoped to the opening row so other rows never reflow). */
+.cj-branch:has(> [data-testid="change-progress"]) { flex-wrap: wrap; }
+.cj-branch > [data-testid="change-progress"] { flex-basis: 100%; order: 3; }
 /* #274 branch rows: the name once (the title), the date right-aligned. */
 .cj-branch { flex-direction: row; align-items: baseline; gap: 12px; }
 .cj-branch .cj-open { flex: 1; min-width: 0; order: 1; }
@@ -1028,6 +1088,14 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .prose code:hover { background: var(--sunk); }
 /* #274 code x-height match instead of .86em. */
 .prose code { font-size: 1em; font-size-adjust: ex-height var(--xh); }
+/* Issue #341: long inline code (call sites in recorded answers) must wrap
+   in narrow panes instead of overflowing the card. `anywhere` (not
+   `break-word`) so flex/grid min-content sizing accounts for the break.
+   Thread replies render bare <p> (no .prose), so scope the rule there too. */
+.prose code,
+.exp-b code {
+  overflow-wrap: anywhere;
+}
 /* #274 same treatment for code in card lists and tables: it is the same
    speckling, and the .86em there leaves multiplied strays (12.04, 14.62). */
 .lst code, .md code { background: transparent; padding: 0; color: var(--accent); border-radius: var(--radius-3); }
@@ -1139,6 +1207,9 @@ mark.anc.on { outline: 2px solid var(--note); }
 .cthr .n { font: 11px var(--mono); color: var(--note); }
 .cthr .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .ithread .mq { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Code-anchored quotes (diff lines, hunks) read upright in the code font
+   so escapes like \r\n stay legible; prose quotes keep the italic sans. */
+.ithread .mq.code { font-style: normal; font-family: var(--mono); }
 /* Read-only GitHub threads (issue #168): same thread chrome, neutral avatar. */
 .av.gh { background: var(--sunk); color: var(--muted); }
 .ghbody > *:first-child { margin-top: 2px; }

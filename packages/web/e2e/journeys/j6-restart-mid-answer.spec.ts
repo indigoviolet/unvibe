@@ -34,7 +34,8 @@ test.describe("J6 restart mid-answer", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: the re-recorded central card has no "fast path" text.
+    await selectText(page, "#C-central", "matches optional whitespace");
     await page.locator('#selbar [data-act="explain"]').click();
     const exp = page.locator('#C-central section.ithread[data-thread]').first();
     await expect(exp).toBeVisible({ timeout: 15_000 });

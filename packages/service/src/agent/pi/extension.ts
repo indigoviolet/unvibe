@@ -58,6 +58,25 @@ export default async function (pi) {
   var cacheKey = process.env.UNVIBE_PI_CACHE_KEY ?? "";
   var readOnly = process.env.UNVIBE_PI_READONLY !== "0";
   var root = process.env.UNVIBE_PI_CWD ?? process.cwd();
+  // Diagnosis log (issue #348): when UNVIBE_PI_TOOL_LOG names a file, every
+  // MCP bridge call appends one JSON line (tool, start, end, result size,
+  // error). Off unless set; never read back, only appended.
+  var toolLog = process.env.UNVIBE_PI_TOOL_LOG ?? "";
+  function logTool(rec) {
+    if (!toolLog) return;
+    try {
+      rec.at = new Date().toISOString();
+      fs.appendFileSync(toolLog, JSON.stringify(rec) + String.fromCharCode(10));
+    } catch (e) {}
+  }
+  // Per-tool-call timeout, ms (issue #348): a stuck MCP call used to hang
+  // the whole turn until pi's own 10-minute timeout. Now the call fails and
+  // the model gets a tool error it can react to (narrower range, skip).
+  // Loopback + local git/disk answers in ms (measured ~15-30ms even with a
+  // dozen concurrent calls), so 60s is generous headroom, not a limit on
+  // legitimate work. Override with UNVIBE_PI_TOOL_TIMEOUT_MS.
+  var toolTimeoutMs = Number(process.env.UNVIBE_PI_TOOL_TIMEOUT_MS ?? "60000");
+  if (!isFinite(toolTimeoutMs) || toolTimeoutMs <= 0) toolTimeoutMs = 60000;
 
   if (cacheKey) {
     pi.on("before_provider_request", function (event) {
@@ -213,19 +232,67 @@ export default async function (pi) {
     if (sessionId) headers["mcp-session-id"] = sessionId;
     // JSON-RPC notifications carry no id; the mount answers 202 with no body.
     var notif = method.slice(0, 14) === "notifications/";
-    var res = await globalThis.fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(notif
-        ? { jsonrpc: "2.0", method: method, ...(params === undefined ? {} : { params: params }) }
-        : { jsonrpc: "2.0", id: 1, method: method, ...(params === undefined ? {} : { params: params }) }),
-    });
-    if (!res.ok) throw new Error("mcp " + method + " -> " + res.status);
+    var toolName = method === "tools/call" && params && typeof params.name === "string" ? params.name : method;
+    var start = Date.now();
+    // The fetch AND the body read share one deadline: a server that answers
+    // headers but never closes its SSE stream must not hang the tool.
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (ctrl) {
+        try { ctrl.abort(); } catch (e2) {}
+      }
+    }, toolTimeoutMs);
+    function bridgeTimeout() { return !!ctrl && ctrl.signal.aborted; }
+    function timeoutError() { return "mcp " + method + " timed out after " + toolTimeoutMs + "ms"; }
+    var res;
+    try {
+      var reqInit = {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(notif
+          ? { jsonrpc: "2.0", method: method, ...(params === undefined ? {} : { params: params }) }
+          : { jsonrpc: "2.0", id: 1, method: method, ...(params === undefined ? {} : { params: params }) }),
+      };
+      if (ctrl) reqInit.signal = ctrl.signal;
+      res = await globalThis.fetch(url, reqInit);
+    } catch (e) {
+      clearTimeout(timer);
+      if (bridgeTimeout()) {
+        logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: timeoutError(), timeoutMs: toolTimeoutMs });
+        throw new Error(timeoutError());
+      }
+      logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: String((e && e.message) || e).slice(0, 500) });
+      throw e;
+    }
+    if (!res.ok) {
+      clearTimeout(timer);
+      logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: "mcp " + method + " -> " + res.status });
+      throw new Error("mcp " + method + " -> " + res.status);
+    }
     var sid = res.headers.get("mcp-session-id") ?? sessionId;
-    var text = await res.text();
-    if (res.status === 202 || text === "") return { sid: sid, result: undefined };
+    var text;
+    try {
+      text = await res.text();
+    } catch (e) {
+      clearTimeout(timer);
+      if (bridgeTimeout()) {
+        logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: timeoutError(), timeoutMs: toolTimeoutMs });
+        throw new Error(timeoutError());
+      }
+      logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: String((e && e.message) || e).slice(0, 500) });
+      throw e;
+    }
+    clearTimeout(timer);
+    if (res.status === 202 || text === "") {
+      logTool({ tool: toolName, start: start, end: Date.now(), ok: true, size: 0 });
+      return { sid: sid, result: undefined };
+    }
     var msg = parseMcpBody(text);
-    if (msg.error) throw new Error("mcp " + method + ": " + (msg.error.message ?? msg.error.code));
+    if (msg.error) {
+      logTool({ tool: toolName, start: start, end: Date.now(), ok: false, error: String("mcp " + method + ": " + (msg.error.message ?? msg.error.code)).slice(0, 500), size: text.length });
+      throw new Error("mcp " + method + ": " + (msg.error.message ?? msg.error.code));
+    }
+    logTool({ tool: toolName, start: start, end: Date.now(), ok: true, size: text.length });
     return { sid: sid, result: msg.result };
   }
 
@@ -256,7 +323,16 @@ export default async function (pi) {
           },
           annotations: { readOnlyHint: true },
           execute: async function (_toolCallId, params) {
-            var called = await mcp(s.url, "tools/call", { name: t.name, arguments: params ?? {} }, toolSid);
+            // Never reject (issue #348): a rejected tool promise left pi
+            // with no tool_execution_end and the turn went silent until the
+            // 10-minute timeout. Every failure comes back as a tool error
+            // the model can react to, like the read/ls replacements above.
+            try {
+              var called = await mcp(s.url, "tools/call", { name: t.name, arguments: params ?? {} }, toolSid);
+            } catch (e) {
+              var emsg = String((e && e.message) || e).slice(0, 500);
+              return { content: [{ type: "text", text: "error: " + emsg }], details: undefined, isError: true };
+            }
             var blocks = (called.result && called.result.content) || [];
             var content = [];
             for (var bi = 0; bi < blocks.length; bi++) {

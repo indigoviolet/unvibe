@@ -7,7 +7,7 @@
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
 
-const BLOCK = "#C-g-flow #B-b1";
+const BLOCK = "#C-g-alt #B-b-demo-diagram-central";
 const DIALOG = '[role="dialog"][aria-label="Expanded diagram"]';
 
 async function gotoReview(page: Page): Promise<void> {
@@ -144,7 +144,7 @@ test("citation hover and click keep working inside the overlay", async ({ page }
   const anchor = page.locator(`${DIALOG} .dg-ov-doc .dg-svg a[data-refs]`).first();
   await hoverFresh(page, anchor);
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
-  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
+  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:647–651");
   const before = page.url();
   await anchor.click();
   expect(page.url()).toBe(before);
@@ -251,7 +251,7 @@ for (const viewport of [
   { width: 800, height: 700 },
 ]) {
   for (const target of [
-    { block: "#B-b1", name: "wide diagram" },
+    { block: "#B-b-demo-diagram-central", name: "wide diagram" },
     { block: "#B-b-mock-d2-edge", name: "small diagram" },
   ]) {
     test(`fit centers the whole ${target.name} at ${viewport.width}x${viewport.height}`, async ({
@@ -259,7 +259,7 @@ for (const viewport of [
     }) => {
       await page.setViewportSize(viewport);
       await gotoReview(page);
-      await page.locator(`#C-g-flow ${target.block} .dg-expand`).click();
+      await page.locator(`#C-g-alt ${target.block} .dg-expand`).click();
       await expect(page.locator(DIALOG)).toBeVisible();
       await expect(page.locator(`${DIALOG} .dg-ov-doc .dg-svg > svg`)).toBeVisible({
         timeout: 15000,

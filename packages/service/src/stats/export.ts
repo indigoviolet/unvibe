@@ -22,7 +22,7 @@ import { JobStore } from "../jobs/store.js";
 
 const JOB_KINDS = new Set([
   "reader", "critic", "hunk-pass", "concept", "ask", "depth", "examples",
-  "diagram", "go-deeper", "second-opinion", "update-pass", "summarize",
+  "diagram", "go-deeper", "update-pass", "summarize",
   "plotline-assign", "consolidate",
 ]);
 const JOB_STATES = new Set(["queued", "running", "backing-off", "done", "error", "cancelled"]);

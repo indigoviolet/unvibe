@@ -306,6 +306,10 @@ run = "UNVIBE_LIVE=1 UNVIBE_ALLOW_LIVE_AGENT=1 node ./scripts/live-submit.mjs"
 description = "Live M3 pipeline smoke on real agents (default pi; token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-pipeline.mjs"
 
+[tasks."test:live:record-demo"]
+description = "Live demo recording with capture (usage: mise run test:live:record-demo -- --cap 5 [--provider claude --model sonnet] [--phase auto]; then --phase blocks for authoring, --phase pilot with --questions <pilot> --full-questions <full>, then --phase ondemand --review <id> --data-dir <dir> --questions <file>; never run by check)"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-record-demo.mjs"
+
 [tasks."test:live:plotlines"]
 description = "Live #169 evaluation: hunk scores + plotlines on the demo and public flask PRs (default pi; token spend, capped; read-only, never posts; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-plotlines-169.mjs"
@@ -313,10 +317,6 @@ run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-plotlines-1
 [tasks."test:live:hunk-cap"]
 description = "Live #210 measurement: hunk-pass wall/run/queue times at sessionsPerProvider caps (usage: mise run test:live:hunk-cap -- --repo-path <checkout> --pr <n> [--caps 4,8,16,32]; default pi; small token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-hunk-cap.mjs"
-
-[tasks."test:live:second-opinion"]
-description = "Live second-opinion check: blind on one finding with real agents (main=Claude, second=Codex; small token spend; never run by check)"
-run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-second-opinion.mjs"
 
 [tasks."test:live:diagram"]
 description = "Live D2 feature run (#286): one ask per lifted feature group per provider through the real pipeline, self-enforced $5 cap (--cap N), report to test-results/ (needs logins, d2; real spend; never run by check)"

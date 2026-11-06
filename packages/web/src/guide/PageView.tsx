@@ -6,10 +6,11 @@
  * before pending cards. Finding pages get the rust-accent `.finding`
  * class.
  */
-import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
 import { api } from "../api/client.js";
+import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
@@ -17,8 +18,10 @@ import { isLiveJobState, useReview } from "../state/store.js";
 import { revealSource } from "../source/reveal.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
-import { contentsModel } from "./guideUtils.js";
+import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
+import { SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
+import { InlineCode, stripCodeSpans } from "../components/inlineCode.js";
 import { inflightLabel } from "./inflight.js";
 import { useReviewIdentity } from "../shell/reviewIdentity.js";
 
@@ -57,12 +60,60 @@ function displayTitle(title: string): string {
 }
 
 /**
+ * Issue #343: one plotline's reviewed checkbox. A real checkbox — only
+ * a checkbox has a native partial state — mirroring the diff's per-file
+ * mark-reviewed box. It sits inside the filter row, so its own clicks
+ * and keys never reach the row's filter action.
+ */
+function PlotlineReviewedBox({
+  checked,
+  partial,
+  disabled,
+  label,
+  plotId,
+  onChange,
+}: {
+  checked: boolean;
+  partial: boolean;
+  disabled: boolean;
+  label: string;
+  plotId: string;
+  onChange: () => void;
+}): ReactNode {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = partial && !checked;
+  }, [partial, checked]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="revbox"
+      checked={checked}
+      disabled={disabled}
+      data-tip={label}
+      aria-label={label}
+      data-plotreviewed={plotId}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onChange={onChange}
+    />
+  );
+}
+
+/**
  * Issue #169: the reader's plotlines on the guide root — a small list
  * between Contents and the cards. Each row jumps to its first hunk in
  * the diff; hunks no plotline claimed read as "Other".
  */
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
+  // Issue #351: the baseline label (`v1` or a short sha) the
+  // `+N`/new markers are relative to. Never the letter "B".
+  const sinceLabel = snapshot?.sinceBaseline ? sinceBaselineLabel(snapshot.sinceBaseline) : null;
+  // Issue #343: older versions are view-only — the checkbox disables
+  // with the usual tooltip, like the diff's other read-only controls.
+  const readOnly = useIsReadOnlyVersion();
   const plotlines: Plotline[] = snapshot?.plotlines ?? [];
   if (plotlines.length === 0) return null;
   const files = snapshot?.files ?? [];
@@ -86,10 +137,58 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
     }
     return n;
   };
+  // Issue #343: reviewed hunks in one plotline (hidden included —
+  // like countOf, this never filters), driving the checkbox state.
+  const reviewedOf = (plotId: string | undefined): number => {
+    let n = 0;
+    for (const f of files) {
+      for (const h of f.hunks) {
+        const s = states.get(h.contentHash);
+        if ((s?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID) && s?.reviewed === true) n += 1;
+      }
+    }
+    return n;
+  };
+  // Issue #343: mark every hunk in the plotline reviewed (and fold
+  // them) or unmark them all — the same per-hunk path as the diff's
+  // per-file mark-all, so one request goes out per hunk.
+  const markPlotline = (plotId: string, target: boolean): void => {
+    if (readOnly) {
+      toast("Viewing an older version · read-only");
+      return;
+    }
+    const hashes: string[] = [];
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === plotId) hashes.push(h.contentHash);
+      }
+    }
+    void Promise.all(
+      hashes.map((hash) => api.updateHunk(reviewId, hash, { reviewed: target, folded: target }).catch(() => {})),
+    ).catch(() => toast("Couldn't save that change"));
+  };
   // #324: denominator is every hunk in the review (hidden included —
   // countOf never filters them), so shares sum to the total.
   const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const otherCount = countOf(undefined);
+  // Issue #351: new-side `h:` IDs in the delta, for the per-row
+  // `+N since B` markers.
+  const sinceIds = (() => {
+    const since = snapshot?.sinceHunks;
+    if (!since) return null;
+    return new Set([...since.added, ...since.changed]);
+  })();
+  const sinceCountOf = (plotId: string | undefined): number => {
+    if (!sinceIds) return 0;
+    let n = 0;
+    for (const f of files) {
+      for (const h of f.hunks) {
+        if (!sinceIds.has(`h:${f.fileKey}:${h.contentHash}`)) continue;
+        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
+      }
+    }
+    return n;
+  };
   const plotlineOf = (id: string | undefined): Plotline | undefined =>
     id === undefined ? undefined : plotlines.find((p) => p.id === id);
   const nameOf = (id: string | undefined): string | undefined => {
@@ -125,7 +224,10 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         buildsOnName: nameOf(p.buildsOn),
         buildsOnRef: buildsOn ? firstRefOf(buildsOn.id) : null,
         count: countOf(p.id),
+        reviewed: reviewedOf(p.id),
         ref: firstRefOf(p.id),
+        sinceN: sinceCountOf(p.id),
+        sinceNew: p.newSinceBaseline === true,
       };
     }),
     ...(otherCount > 0
@@ -138,7 +240,10 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
             buildsOnName: undefined as string | undefined,
             buildsOnRef: null as string | null,
             count: otherCount,
+            reviewed: reviewedOf(undefined),
             ref: firstRefOf(undefined),
+            sinceN: sinceCountOf(undefined),
+            sinceNew: false,
           },
         ]
       : []),
@@ -150,14 +255,14 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         <div
           className="plshare"
           role="img"
-          aria-label={`Hunk shares: ${rows.map((r) => `${r.name} ${r.count} of ${totalHunks}`).join(", ")}`}
+          aria-label={`Hunk shares: ${rows.map((r) => `${stripCodeSpans(r.name)} ${r.count} of ${totalHunks}`).join(", ")}`}
         >
           {rows.map((r, i) => (
             <span
               key={r.id}
               className="plshare-seg"
               data-share={r.id}
-              title={`${r.name}: ${r.count}/${totalHunks}`}
+              title={`${stripCodeSpans(r.name)}: ${r.count}/${totalHunks}`}
               style={{
                 width: `${(r.count / totalHunks) * 100}%`,
                 background: `var(--plseg-${i % 5})`,
@@ -171,6 +276,20 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         {rows.map((r) => {
           const active = snapshot?.diffFilter?.plotline === r.id;
           const clickable = r.ref !== null;
+          // Issue #343: the row-end checkbox marks the whole plotline
+          // reviewed (and folds it) or unmarks it all. Checked when
+          // every hunk is reviewed, partial when some are; disabled
+          // with the usual tooltip when read-only, or when the
+          // plotline has no hunks to mark.
+          const reviewState = plotlineReviewedState(r.reviewed, r.count);
+          const plotChecked = reviewState === "checked";
+          const plotPartial = reviewState === "partial";
+          const plotDisabled = readOnly || r.count === 0;
+          const plotLabel = readOnly
+            ? "Viewing an older version · read-only"
+            : plotChecked
+              ? "Mark plotline unreviewed"
+              : "Mark plotline reviewed";
           return (
             <li key={r.id}>
               <ListRow
@@ -181,7 +300,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       tabIndex: 0,
                       "aria-pressed": active,
                       "data-plotpick": r.id,
-                      "data-tip": active ? "Show all hunks" : `Show only ${r.name}`,
+                      "data-tip": active ? "Show all hunks" : `Show only ${stripCodeSpans(r.name)}`,
                       onClick: () => pick(r.id, r.ref),
                       onKeyDown: (e: KeyboardEvent) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -191,10 +310,19 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       },
                     }
                   : {})}
-                primary={<span className="plname">{r.name}</span>}
+                primary={
+                  // Issue #353: names are stored whole; the row clamps to
+                  // two lines (CSS), code spans render as code, and the
+                  // plain full name is in the tooltip.
+                  <span className="plname" data-tip={stripCodeSpans(r.name)}><InlineCode text={r.name} /></span>
+                }
                 meta={
                   <>
-                    {r.desc ? <span className="pldesc">{r.desc}</span> : null}
+                    {r.desc ? (
+                      <span className="pldesc" data-tip={stripCodeSpans(r.desc)}>
+                        <InlineCode text={r.desc} />
+                      </span>
+                    ) : null}
                     {r.buildsOnId && r.buildsOnName ? (
                       <span className="plbuilds">
                         Builds on{" "}
@@ -202,23 +330,43 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                           type="button"
                           className="plbuilds-chip"
                           data-buildson={r.buildsOnId}
-                          data-tip={`Show only ${r.buildsOnName}`}
-                          aria-label={`Show only ${r.buildsOnName}`}
+                          data-tip={`Show only ${stripCodeSpans(r.buildsOnName)}`}
+                          aria-label={`Show only ${stripCodeSpans(r.buildsOnName)}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             pick(r.buildsOnId as string, r.buildsOnRef);
                           }}
                         >
-                          <Badge tone="outline">{r.buildsOnName}</Badge>
+                          <Badge tone="outline">{stripCodeSpans(r.buildsOnName)}</Badge>
                         </button>
                       </span>
                     ) : null}
                   </>
                 }
                 trailing={
-                  <Badge tone="outline">
-                    {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
-                  </Badge>
+                  <>
+                    <Badge tone="outline">
+                      {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
+                    </Badge>
+                    {sinceLabel !== null && r.sinceN > 0 && !r.sinceNew ? (
+                      <Badge tone="outline" data-since-n={r.id}>
+                        +{r.sinceN} since {sinceLabel}
+                      </Badge>
+                    ) : null}
+                    {sinceLabel !== null && r.sinceNew ? (
+                      <Badge tone="outline" data-since-new={r.id}>
+                        new since {sinceLabel}
+                      </Badge>
+                    ) : null}
+                    <PlotlineReviewedBox
+                      checked={plotChecked}
+                      partial={plotPartial}
+                      disabled={plotDisabled}
+                      label={plotLabel}
+                      plotId={r.id}
+                      onChange={() => markPlotline(r.id, !plotChecked)}
+                    />
+                  </>
                 }
               />
             </li>
@@ -239,6 +387,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
   const rootTitle =
     page.kind === "root" && isDefaultGuideTitle(page.title) ? identityTitle : displayTitle(page.title);
   const allPages = useReview((s) => s.snapshot?.pages);
+  const review = useReview((s) => s.snapshot?.review);
   const jobs = useReview((s) => s.snapshot?.jobs ?? []);
   const inflight = useReview((s) => s.inflight);
   const { cards, links } = contentsModel(page, lookupPage, allPages);
@@ -331,6 +480,9 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
+      {page.kind === "root" && review ? (
+        <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+      ) : null}
       {conceptWorking ? (
         <div className="working" role="status">
           <span className="dots" aria-hidden="true">

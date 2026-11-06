@@ -61,6 +61,25 @@ async function apiJson(origin: string, token: string, method: string, urlPath: s
   return JSON.parse(stdout);
 }
 
+/**
+ * Wait until no review job is live (running/queued/backing-off), so
+ * done-state frames don't show the jobs pill mid-stream. Streaming shots
+ * must NOT call this — their working state is the subject.
+ */
+async function waitForJobsIdle(origin: string, token: string, reviewId: string, timeout = 120_000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const snap = (await apiJson(origin, token, "GET", `/api/reviews/${reviewId}`)) as {
+          jobs?: { state: string }[];
+        };
+        return (snap.jobs ?? []).every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
 let dataDir = "";
 let tourBin = "";
 let tourLog = "";
@@ -870,10 +889,11 @@ test.describe("visual tour passes", () => {
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
-    // #327: the Decisions card's ### sub-headings render as real
-    // sub-headings (h3.subhead), not as serif body paragraphs.
-    for (const label of ["Invariants", "Known uncertainties", "Interfaces"]) {
-      await expect(page.locator("#C-decisions h3.subhead").filter({ hasText: label })).toBeVisible();
+    // Issue #341: the re-recorded Decisions card uses **Bold** section
+    // labels (no ### sub-headings left in the fixture, so #327's h3 path
+    // has no fixture instance) — assert the labels render.
+    for (const label of ["Decisions", "Invariants", "Known uncertainties", "Interfaces with reach"]) {
+      await expect(page.locator("#C-decisions strong").filter({ hasText: label })).toBeVisible();
     }
     await stepChecks(page, "guide-decisions");
     await shot(page, "guide-decisions", suffix, "Decisions and questions");
@@ -883,7 +903,12 @@ test.describe("visual tour passes", () => {
     const beforeIds = (
       (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
     ).annotations.map((a) => a.id);
-    await selectText(page, "#C-problem", "used to let a server continue");
+    // Issue #341: explain a guide sentence with a recorded explain. The
+    // re-recorded fixture records explains on the problem/central cards
+    // only, so select the recorded obs-fold quote on the problem card:
+    // replay matches the quote in the prompt and answers from it.
+    await page.locator("#C-problem").scrollIntoViewIfNeeded();
+    await selectText(page, "#C-problem", "keeps those raw CRLFs inside the HTTPMessage values");
     await page.locator('#selbar [data-act="explain"]').click();
     let seedId: string | null = null;
     await expect
@@ -900,8 +925,9 @@ test.describe("visual tour passes", () => {
     // shows the revealed toolbar, then assert it.
     await seedCard.locator("[data-reply]").first().hover();
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "HTTP/1.1 originally");
+    await shot(page, "guide-pinned", suffix, "three pieces");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
@@ -1010,7 +1036,10 @@ test.describe("visual tour passes", () => {
     const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
     await expect(longCard).toBeVisible({ timeout: 15_000 });
     await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(longCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: no explain pattern matches a diff-anchored prompt, so
+    // replay answers with the first explain entry (the recorded obs-fold
+    // explain); the old plotline text is gone with the re-record.
+    await expect(longCard).toContainText("Why this is a problem.");
     // Frame the whole card in the pane (its footer included), as the
     // reader would scrolling to it, then scroll inside the card.
     await longCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -1019,12 +1048,13 @@ test.describe("visual tour passes", () => {
     await stepChecks(page, "diff-long-mid");
     await shot(page, "diff-long-mid", suffix);
     await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "diff-long-bottom");
-    await shot(page, "diff-long-bottom", suffix, "In short: read first");
+    await shot(page, "diff-long-bottom", suffix, "Where the change shows this behavior.");
     await closeCard(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
@@ -1047,6 +1077,10 @@ test.describe("visual tour passes", () => {
     await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await splitCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    // Park the pointer off the card: scrolling moved card text under the
+    // stationary cursor, and a hovered glossary term's tooltip would paint
+    // over the card during the topmost check below.
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-split");
     await shot(page, "diff-long-split", suffix);
     await closeCard(page, splitCard);
@@ -1075,19 +1109,30 @@ test.describe("visual tour passes", () => {
     const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
     await expect(fileCard).toBeVisible({ timeout: 15_000 });
     await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
-    await expect(fileCard).toContainText("The tests around the helper mirror that split");
+    // Issue #341: the call-site selection resolves like the helper one
+    // above (no explain pattern matches a diff-anchored prompt, so the
+    // recorded obs-fold explain answers).
+    await expect(fileCard).toContainText("Why this is a problem.");
     await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(300);
     await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
+    // Park the pointer off the card before each check below: scrolling
+    // moves card text under the stationary cursor, and a hovered citation
+    // preview would paint over the card during a topmost check (as the
+    // split-view scene above already guards).
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file");
     await shot(page, "diff-long-file", suffix);
     // Two scroll offsets around the file boundary, mid hand-off.
     await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 24; });
     await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file-h1");
     await shot(page, "diff-long-file-h1", suffix);
     await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 48; });
     await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
     await stepChecks(page, "diff-long-file-h2");
     await shot(page, "diff-long-file-h2", suffix);
     await closeCard(page, fileCard);
@@ -1157,7 +1202,7 @@ test.describe("visual tour passes", () => {
     await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
 
     // Split.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await stepChecks(page, "diff-split");
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
@@ -1742,13 +1787,13 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
   async function expectHiddenRow(page: Page, row: Locator, step: string): Promise<void> {
     const rowBox = (await row.boundingBox())!;
     const label = row.locator(".hidl");
-    await expect(label).toContainText(/Hunks? \d+.*hidden/, { timeout: 10_000 });
+    await expect(label).toContainText(/^Hunks? \d+(–\d+)?$/, { timeout: 10_000 });
     const labelBox = (await label.boundingBox())!;
     const topmost = await page.evaluate(({ x, y }) => {
       const hit = document.elementFromPoint(x, y);
       return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
     }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
-    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/hidden\. Show these hunks/);
+    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/collapsed\. Show these hunks/);
     const briefBox = (await row.locator(".hidb").boundingBox())!;
     expect(
       briefBox.width > rowBox.width * 0.5 || briefBox.x <= rowBox.x + 14,
@@ -1779,22 +1824,22 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
       // header (no blank band), label showing.
       const first = page.locator(".dfile").first();
       await first.scrollIntoViewIfNeeded();
-      await expect(first.getByText(/Hunk 1 of 1 hidden/)).toBeVisible({ timeout: 15_000 });
+      await expect(first.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
       await page.mouse.move(20, 400);
       const firstHead = (await first.locator(".dfile-h").boundingBox())!;
       const firstTop = (await first.locator("button.hid").boundingBox())!.y;
       expect(firstTop - (firstHead.y + firstHead.height), "hidden-first: blank band above the row").toBeLessThanOrEqual(2);
       await expectHiddenRow(page, first.locator("button.hid"), "hidden-first");
       await stepChecks(page, "diff-hidden-first");
-      await shot(page, "diff-hidden-first", suffix, "Hunk 1 of 1 hidden");
+      await shot(page, "diff-hidden-first", suffix, "Rewords the four onboarding notes");
       // Mixed file: hidden imports hunk above a shown code hunk.
       const mixed = page.locator('[id="F-src-app.py"]');
-      await mixed.getByText(/Hunk 1 of 2 hidden/).scrollIntoViewIfNeeded();
-      await expect(mixed.getByText(/Hunk 1 of 2 hidden/)).toBeVisible({ timeout: 15_000 });
+      await mixed.getByRole("button", { name: /Hunk 1, collapsed/ }).scrollIntoViewIfNeeded();
+      await expect(mixed.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
       await page.mouse.move(20, 400);
       await expectHiddenRow(page, mixed.locator("button.hid"), "hidden-mixed");
       await stepChecks(page, "diff-hidden-mixed");
-      await shot(page, "diff-hidden-mixed", suffix, "Hunk 1 of 2 hidden");
+      await shot(page, "diff-hidden-mixed", suffix, "Swaps the two stdlib imports");
     });
   }
 });
@@ -1952,7 +1997,7 @@ for (const combo of [
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
     // empty cells and thin scrollbars, Studio's none/auto.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
     const styling = await page.evaluate(() => {
       const empty = document.querySelector("table.diff td.empty");
@@ -2511,16 +2556,30 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.locator('#selbar [data-act="ask"]').click();
     const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
-    await askComposer.locator("textarea").fill("Why does it keep a fast path?");
+    // The question matches the `ask-thread-cookie` recording, which
+    // declares itself degraded: no repair turn, so the frame shows the
+    // recorded answer. Recordings that cite the urllib3 diff fail
+    // validation in a document review, and the repair turn has no
+    // recording (a replay placeholder).
+    const askQuestion = "Which consumer re-emits the raw CRLF?";
+    await askComposer.locator("textarea").fill(askQuestion);
     await askComposer.getByRole("button", { name: "Ask" }).click();
-    const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
+    const askCard = page.locator("#C-document [data-thread]", { hasText: askQuestion });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
-    await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
-    // #336: reply toolbars reveal on hover.
-    await askCard.locator("[data-reply]").first().hover();
-    await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover. Hover the agent answer, not
+    // the question entry above it (which has no toolbar), and only once
+    // the answer has settled and rendered its toolbar.
+    const askAnswer = askCard.locator("[data-reply]:not([data-ask-question])").first();
+    await expect(askAnswer.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    await expect(askAnswer.locator(".ctl")).toBeAttached({ timeout: 60_000 });
+    await expect(askAnswer).toContainText("Requests", { timeout: 60_000 });
+    // The answer is taller than the viewport: frame its top, where the
+    // toolbar floats, and hover there.
+    await askCard.first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await askAnswer.hover({ position: { x: 40, y: 12 } });
+    await expect(askAnswer.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-ask");
-    await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
+    await shot(page, "document-ask", "1440-light", askQuestion);
 
     // A local comment on document text.
     await selectText(page, "#C-document", "Folding runs before parsing");
@@ -2654,10 +2713,14 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-central", "fast path");
+    // Issue #341: explain "three pieces" on the build-up card. No explain
+    // pattern matches a build-up-anchored prompt, so replay answers with
+    // the first explain entry (the recorded obs-fold explain) — still a
+    // real recording while the writing state is captured.
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-buildup", "three pieces");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-central [data-thread]").first();
+    const card = page.locator("#C-buildup [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -2674,6 +2737,7 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
     await card.locator("[data-reply]").first().hover();
     await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
     await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    await waitForJobsIdle(slow.origin, slow.token, rid);
     await checkLayout(page, "guide-writing-done");
     await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
   } finally {
@@ -2712,9 +2776,12 @@ test("visual tour ask retry (#270)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // One fresh Ask card per theme, so the two kill/restart cycles never
     // share turn state.
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") {
         await page.emulateMedia({ colorScheme: "dark" });
@@ -2803,9 +2870,12 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
@@ -2875,9 +2945,12 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
-      ["light", "#C-problem", "folded", "What is line folding?", "Does a cookie header change this?"],
-      ["dark", "#C-central", "fast path", "What is the fast path?", "What about ordering?"],
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
     ] as const) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
@@ -2910,6 +2983,7 @@ test("visual tour ask thread (#293)", async ({ page }) => {
       await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
       await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
       await card.scrollIntoViewIfNeeded().catch(() => {});
+      await waitForJobsIdle(svc.origin, svc.token, rid);
       await checkLayout(page, "ask-thread-done");
       await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
       if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
@@ -3165,12 +3239,14 @@ test.describe("visual tour file tab (#81)", () => {
 });
 
 /**
- * Remove-confirm popover (#225, #234) on the worst-case Reviews row:
- * decision + new commits (open has no icon). Own service (agent-less) with a scratch repo
- * and a fake `gh` whose PR view resolves the branch head at call time,
- * so a commit added after open is picked up by refresh and the row gains
- * its new-commits tag. The popover is asserted not to move the row's title
- * or meta and not to cover them, then cancelled with Escape.
+ * Remove inline confirm (#346, ex #225 popover, #234) on the worst-case
+ * Reviews row: decision + new commits (open has no icon). Own service
+ * (agent-less) with a scratch repo and a fake `gh` whose PR view
+ * resolves the branch head at call time, so a commit added after open
+ * is picked up by refresh and the row gains its new-commits tag. The
+ * pill is asserted not to move the row's title or meta and to overlay
+ * within the row, then cancelled with Escape. Frames: idle,
+ * confirming (kept name `start-remove-confirm`), confirmed flash.
  */
 test.describe("visual tour remove-confirm (#225)", () => {
   let rcRepo = "";
@@ -3256,9 +3332,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 
   for (const combo of [
     { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
   ] as const) {
-    test(`remove-confirm popover on the worst-case row (${combo.name})`, async ({ page }) => {
+    test(`remove inline confirm on the worst-case row (${combo.name})`, async ({ page }) => {
       if (!rcSvc) throw new Error("remove-confirm service not running");
       test.setTimeout(240_000);
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -3285,7 +3362,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // "before" set — the 87px CI flake. Settle first (fonts, then
       // identical snapshots across two animation frames), then measure.
       interface RowBox { x: number; y: number; width: number; height: number }
-      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pop: RowBox | null }> =>
+      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pill: RowBox | null }> =>
         page.evaluate((id: string) => {
           const rect = (el: Element | null): RowBox | null => {
             if (!el) return null;
@@ -3293,12 +3370,12 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
             return { x: r.x, y: r.y, width: r.width, height: r.height };
           };
           const rowEl = document.querySelector(`[data-testid="session-${id}"]`);
-          const popEl = document.querySelector(".confirm-pop");
+          const pillEl = rowEl?.querySelector(".uic-pill") ?? null;
           return {
             row: rect(rowEl),
             title: rect(rowEl?.querySelector(".cx2") ?? null),
             meta: rect(rowEl?.querySelector(".cj > .hint") ?? null),
-            pop: popEl ? rect(popEl) : null,
+            pill: pillEl ? rect(pillEl) : null,
           };
         }, rcReview);
       await page.evaluate(() => document.fonts.ready).catch(() => {});
@@ -3315,19 +3392,22 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
           { timeout: 15_000 },
         )
         .toBe("stable");
+      // Idle state frame (#346: first of the three states).
+      await shot(page, "start-remove-idle", suffix, "Remove");
       // The row keeps its size and the title/meta keep their size and
-      // position relative to it; the popover covers neither. Each side
-      // is one atomic snapshot, so a layout shift can never mix boxes
-      // from two layouts into one comparison.
+      // position relative to it when the button expands in place: the
+      // pill is an overlay anchored to the button's slot, so neighbours
+      // never shift. Each side is one atomic snapshot, so a layout
+      // shift can never mix boxes from two layouts into one comparison.
       const before = await readLayout();
       expect(before.row).not.toBeNull();
       expect(before.title).not.toBeNull();
       expect(before.meta).not.toBeNull();
       await row.getByRole("button", { name: "Remove this review" }).click();
-      const pop = page.locator(".confirm-pop");
-      await expect(pop).toContainText("Remove this review?");
-      await expect(pop.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
-      await expect(pop.getByRole("button", { name: "Cancel" })).toBeVisible();
+      const pill = row.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm remove review");
+      await expect(pill.getByRole("button", { name: "Confirm remove review" })).toBeVisible();
+      await expect(pill.getByRole("button", { name: "Cancel" })).toBeVisible();
       const after = await readLayout();
       const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
       const offsetOf = (
@@ -3339,17 +3419,167 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(sizeOf(after.meta!)).toEqual(sizeOf(before.meta!));
       expect(offsetOf(after.title!, after.row!)).toEqual(offsetOf(before.title!, before.row!));
       expect(offsetOf(after.meta!, after.row!)).toEqual(offsetOf(before.meta!, before.row!));
-      const overlaps = (
-        a: { x: number; y: number; width: number; height: number },
-        b: { x: number; y: number; width: number; height: number },
-      ): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-      expect(overlaps(after.pop!, after.title!)).toBe(false);
-      expect(overlaps(after.pop!, after.meta!)).toBe(false);
+      // The pill overlays within the row: fully inside the row's box.
+      expect(after.pill).not.toBeNull();
+      expect(after.pill!.x).toBeGreaterThanOrEqual(after.row!.x - 1);
+      expect(after.pill!.x + after.pill!.width).toBeLessThanOrEqual(after.row!.x + after.row!.width + 1);
+      expect(after.pill!.y).toBeGreaterThanOrEqual(after.row!.y - 1);
+      expect(after.pill!.y + after.pill!.height).toBeLessThanOrEqual(after.row!.y + after.row!.height + 1);
+      // Let the pill's entry animation settle: capturing mid-fade reads
+      // as a see-through pill with doubled text.
+      await page.waitForTimeout(300);
       await checkLayout(page, "start-remove-confirm");
-      await shot(page, "start-remove-confirm", suffix, "Remove this review?");
+      await shot(page, "start-remove-confirm", suffix, "Confirm remove review");
       await page.keyboard.press("Escape");
-      await expect(pop).toHaveCount(0);
+      await expect(pill).toHaveCount(0);
       await expect(row).toBeVisible();
+    });
+  }
+
+  // The third state (#346): confirming deletes the row, but only after
+  // the "✓ Confirmed" flash. Each scheme gets its own sacrificial
+  // branch review — created here, so the worst-case row above survives
+  // every combo and the tests stay order-independent.
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`remove confirmed flash (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rcSvc, rcRepo, `victim-remove-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${victim}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      await row.getByRole("button", { name: "Confirm remove review" }).click();
+      // The flash is brief (under a second): shot waits for it, then
+      // captures immediately.
+      await shot(page, "start-remove-confirmed", combo.name, "Confirmed");
+      await expect(row).toHaveCount(0);
+    });
+  }
+});
+
+/**
+ * A sacrificial branch review on a tour repo: opening the same source
+ * twice reuses the review (#92/#149), so each victim gets its own
+ * branch — creation never touches the shared scene review. Leaves the
+ * repo back on `feature`.
+ */
+async function createBranchVictim(svc: RunningService, repoDir: string, branch: string): Promise<string> {
+  await journeyGit(repoDir, "checkout", "-b", branch);
+  await journeyGit(repoDir, "checkout", "feature");
+  const repos = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+    repos: { id: string; localPath: string }[];
+  };
+  const repoId = repos.repos.find((r) => r.localPath === repoDir)?.id;
+  if (!repoId) throw new Error(`repo not registered: ${repoDir}`);
+  const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId, branch })) as {
+    review: { id: string };
+  };
+  return created.review.id;
+}
+
+/**
+ * Re-do guide top bar (#345) with the shared inline confirm (#346):
+ * idle icon, confirming pill, and the new review it lands on. Own
+ * agent-less service with a scratch repo; the confirming frame
+ * cancels with Escape so the shared review survives every scheme,
+ * while the result frame re-does a sacrificial review per scheme.
+ */
+test.describe("visual tour re-do guide (#345, #346)", () => {
+  let rdRepo = "";
+  let rdData = "";
+  let rdSvc: RunningService | null = null;
+  let rdReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rdRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-repo-"));
+    await makeScratchRepo(rdRepo);
+    rdData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-data-"));
+    rdSvc = await startService(rdData, { agent: "none" });
+    rdReview = await createJourneyReview(rdSvc, rdRepo);
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${rdReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+  });
+
+  test.afterAll(async () => {
+    await rdSvc?.stop().catch(() => {});
+    rdSvc = null;
+    for (const d of [rdRepo, rdData]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`re-do idle and confirming (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${rdSvc.origin}/review/${rdReview}?token=${rdSvc.token}`);
+      const bar = page.locator("#reviewbar");
+      await expect(bar).toBeVisible({ timeout: 30_000 });
+      const redo = page.getByRole("button", { name: "Re-do guide" });
+      await expect(redo).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-topbar");
+      await shot(page, "redo-topbar", combo.name, "Guide");
+      await redo.click();
+      const pill = bar.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm re-do guide");
+      await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      // Let the pill's entry animation settle before capturing.
+      await page.waitForTimeout(300);
+      await checkLayout(page, "redo-confirm");
+      await shot(page, "redo-confirm", combo.name, "Confirm re-do guide");
+      await page.keyboard.press("Escape");
+      await expect(pill).toHaveCount(0);
+      await expect(bar).toBeVisible();
+    });
+
+    test(`re-do result (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rdSvc, rdRepo, `victim-redo-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rdSvc.origin}/review/${victim}?token=${rdSvc.token}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Re-do guide" }).click();
+      await page.getByRole("button", { name: "Confirm re-do guide" }).click();
+      // The confirm lands on the new review; capture whatever it shows.
+      await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${victim}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-result");
+      await shot(page, "redo-result", combo.name);
     });
   }
 });
@@ -3513,4 +3743,963 @@ test.describe("release notes tour (#330)", () => {
     await checkLayout(page, "version-notes");
     await shot(page, "version-notes", "1440-light", "Earlier release notes");
   });
+});
+
+/**
+ * Version Switch + Full access inline confirms (#346 follow-up): the
+ * Version row idle (releases only), with the one-line reset warn
+ * ("Needs a data reset (format 1 → 2)") once previews show, confirming
+ * ("Confirm switch" ✓ ✕) with the pill settled, and Full access
+ * confirming ("Confirm full access" + one short line). Own
+ * fake-updater service; nothing is ever switched or enabled.
+ */
+test.describe("visual tour version + access confirms (#346)", () => {
+  let vcData = "";
+  let vcSvc: RunningService | null = null;
+  const NOW = Date.now();
+  const iso = (ms: number): string => new Date(ms).toISOString();
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    vcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-vc-data-"));
+    // Start first so the service stamps its fresh DB; staging the fake
+    // channels before the start would read as unstamped data and trip
+    // the data-format notice (#311).
+    vcSvc = await startService(vcData, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+    mkdirSync(path.join(vcData, "update"), { recursive: true });
+    writeFileSync(
+      path.join(vcData, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", version: "0.0.1", commit: "rel0000000000001", builtAt: iso(NOW), dataFormat: 1 },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.1-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 3600_000),
+          dataFormat: 2,
+        },
+      ]),
+    );
+    writeFileSync(path.join(vcData, "update", "current-ref"), "release\n");
+  });
+
+  test.afterAll(async () => {
+    await vcSvc?.stop().catch(() => {});
+    vcSvc = null;
+    rmSync(vcData, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const) {
+    test(`version + access confirms (${combo.name})`, async ({ page }) => {
+      if (!vcSvc) throw new Error("version-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${vcSvc.origin}/settings?tab=version&token=${vcSvc.token}`);
+      await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('[data-testid="update-channel"]')).not.toHaveCount(0, { timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // Idle: releases only, no warn line yet.
+      await checkLayout(page, "version-row-idle");
+      await shot(page, "version-row-idle", suffix, "release");
+      // Previews on: the format-changing row gets its one short warn line.
+      const toggle = page.getByTestId("version-picker-toggle");
+      if (!(await toggle.isChecked())) {
+        await toggle.click();
+        await expect(toggle).toBeChecked({ timeout: 15_000 });
+      }
+      const warn = page.locator('[data-testid="update-data-reset-warning"][data-ref="preview/feat-x"]');
+      await expect(warn).toContainText("Needs a data reset (format 1 → 2)", { timeout: 15_000 });
+      await checkLayout(page, "version-row-reset-warn");
+      await shot(page, "version-row-reset-warn", suffix, "Needs a data reset");
+      // Confirming: the pill, settled (mid-fade reads see-through).
+      const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+      await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+      await expect(feat.getByText("Confirm switch")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "version-row-confirm");
+      await shot(page, "version-row-confirm", suffix, "Confirm switch");
+      await page.keyboard.press("Escape");
+      await expect(feat.getByText("Confirm switch")).toHaveCount(0);
+      // Full access: the inline confirm with its one short line.
+      await page.getByRole("tab", { name: "Access" }).click();
+      await expect(page.getByRole("tabpanel", { name: "Access" })).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Turn on full access" }).click();
+      await expect(page.getByText("Confirm full access")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "full-access-confirm");
+      await shot(page, "full-access-confirm", suffix, "Confirm full access");
+    });
+  }
+});
+
+/**
+ * Since-B tour (#351 step 1): the dated Since-B section, a card addendum,
+ * the plotline `+N since B` / `new since B` markers, and the Since-B diff
+ * filter. The review is the seeded demo snapshot with the update pass's
+ * since state written in (the same shape `applyUpdateResult` stores, with
+ * real demo hunk ids), so every combo renders deterministically.
+ */
+test.describe("since-B tour (#351)", () => {
+  test.describe.configure({ mode: "serial" });
+  // Seeded-demo + synthetic since state: no agents, no refresh, no fixtures.
+  let svc351: RunningService | null = null;
+  let data351 = "";
+  let review351 = "";
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data351 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-351-"));
+    review351 = createSeededDemoReview(data351, "tour-351-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data351, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review351) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-351 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      // A synthetic second version (tour-only, like #325's scores): the
+      // picker needs two versions, so v1 is the recorded merge-base and
+      // v2 the recorded head.
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      // Tour-local resolved feedback links (what `applyUpdateResult`
+      // stores after resolving the agent's pointers): remark excerpts
+      // from the PR under review, linking back to it.
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      const bareLfAnswer = {
+        kind: "comment",
+        label: "@reviewer on src/urllib3/connection.py:651",
+        excerpt: "http.client accepts lines ending in a bare \\n, so a folded header leaves '\\n ' in the value",
+        url: prUrl,
+      };
+      const socketAnswer = {
+        kind: "comment",
+        label: "@reviewer on test/test_connection.py:211",
+        excerpt: "Please add a socket test with bare-LF folds",
+        url: prUrl,
+      };
+      snap.sinceSection = {
+        baseline: { kind: "version", version: 1 },
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-obs-fold",
+            pageId: "since",
+            title: "Obs-fold unfolded",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-351-1",
+                "The follow-up unfolds the remaining obs-fold in request headers. It answers the review remark quoted below.",
+                [changedId],
+              ),
+            ],
+            answers: [bareLfAnswer],
+          },
+          {
+            id: "since-socket-tests",
+            pageId: "since",
+            title: "Socket-level tests",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [para("b-since-351-2", "New socket-level cases pin the unfolded headers.", [addedId])],
+            answers: [socketAnswer],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: { kind: "version", version: 1 },
+          at: now,
+          blocks: [
+            para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
+          ],
+          answers: [bareLfAnswer],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const s of snap.hunkStates) {
+        if (s.contentHash === hashOf(changedId)) s.plotline = "unfold";
+        else if (s.contentHash === hashOf(addedId)) s.plotline = "socket-followups";
+        else if (s.plotline === undefined) s.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review351);
+    } finally {
+      db.close();
+    }
+    svc351 = await startService(data351, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc351?.stop().catch(() => {});
+    svc351 = null;
+    if (data351) rmSync(data351, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ] as const) {
+    const suffix = combo.name;
+    test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc351) throw new Error("tour-351 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // The Since-B filter is stored with the review, so an earlier combo
+      // may have left it on: reset it first to keep every combo's opening
+      // scenes deterministic (the filter scene re-enables it below).
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      {
+        const chip = page.locator('[data-filterchip="since"]');
+        if ((await chip.getAttribute("aria-pressed")) === "true") {
+          await chip.click();
+          await expect(chip).toHaveAttribute("aria-pressed", "false");
+        }
+      }
+
+      // 1. The dated Since-B section, expanded.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await since.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-expanded");
+      // #351 review: the gap between the Since cards must match the
+      // normal guide card rhythm. Differences of rect edges are
+      // scroll-independent; park the mouse first so no tooltip skews
+      // the shot (same before every capture below).
+      await page.mouse.move(20, 20);
+      await shot(page, "since-expanded", suffix, "Obs-fold unfolded");
+      {
+        const gaps = await page.evaluate(() => {
+          const bottom = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().bottom;
+          };
+          const top = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().top;
+          };
+          const sinceBottom = bottom("#page #C-since-obs-fold");
+          const sinceTop = top("#page #C-since-socket-tests");
+          const normalBottom = bottom("#page #C-problem");
+          const normalTop = top("#page #C-central");
+          return {
+            sinceGap: sinceBottom !== null && sinceTop !== null ? sinceTop - sinceBottom : null,
+            normalGap: normalBottom !== null && normalTop !== null ? normalTop - normalBottom : null,
+          };
+        });
+        console.log(`since-gaps ${suffix}: since=${gaps.sinceGap}px normal=${gaps.normalGap}px`);
+        expect(gaps.sinceGap).not.toBeNull();
+        expect(gaps.normalGap).not.toBeNull();
+        expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
+      }
+
+      // 2. Collapsed: the cards fold away.
+      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
+      await stepChecks(page, "since-collapsed");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
+      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
+
+      // 3. The card addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-addendum", suffix, "Updated since v1");
+
+      // 4. The visible feedback link: the remark the delta answers.
+      const firstSince = page.locator("#page #C-since-obs-fold");
+      await firstSince.scrollIntoViewIfNeeded();
+      await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-feedback");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-feedback", suffix, "Answers:");
+
+      // 5. The plotlines card with the new-since marker.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-plotlines", suffix, "new since v1");
+
+      // 5. The diff with the Since-B filter on. The filter is stored
+      // with the review, so an earlier combo may have left it on: reset
+      // it first to keep every combo deterministic.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const sinceChip = page.locator('[data-filterchip="since"]');
+      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
+        await sinceChip.click();
+        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
+      }
+      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
+      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
+      await stepChecks(page, "since-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-filter", suffix, "Since v1");
+    });
+  }
+});
+
+/**
+ * Since-commit tour (#351 step 2): the baseline is a commit, not a
+ * version. Same seeded-demo technique as the step-1 scene (tour-only
+ * synthetic state with real demo hunk ids, so every combo renders
+ * deterministically): the header, addendum, markers and filter chip all
+ * name the real short sha, and the picker lists versions and commits.
+ */
+test.describe("since-commit tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svc352: RunningService | null = null;
+  let data352 = "";
+  let review352 = "";
+  // Tour-seeded commit sha (40 hex): the demo seed carries no commits, so
+  // the baseline commit is tour-local synthetic state like the v1/v2 rows.
+  const commit352 = "a1b2c3d4".repeat(5);
+  const short352 = commit352.slice(0, 8);
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data352 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-352-"));
+    review352 = createSeededDemoReview(data352, "tour-352-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data352, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review352) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-352 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
+      snap.sinceBaseline = { kind: "commit", sha: commit352 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      snap.sinceSection = {
+        baseline: { kind: "commit", sha: commit352 },
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-beta-gamma",
+            pageId: "since",
+            title: "Beta reworked, gamma added",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-352-1",
+                "Beta now returns 22 and the gamma probe is new. It answers the review remark quoted below.",
+                [changedId, addedId],
+              ),
+            ],
+            answers: [
+              {
+                kind: "comment",
+                label: "@reviewer on src/urllib3/connection.py:651",
+                excerpt: "please rework beta against the new gamma probe",
+                url: prUrl,
+              },
+            ],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: { kind: "commit", sha: commit352 },
+          at: now,
+          blocks: [para("b-add-352-1", "Beta reads the new value now.", [changedId])],
+          answers: [],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const st of snap.hunkStates) {
+        if (st.contentHash === hashOf(changedId) || st.contentHash === hashOf(addedId)) st.plotline = "beta-gamma";
+        else if (st.plotline === undefined) st.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review352);
+    } finally {
+      db.close();
+    }
+    svc352 = await startService(data352, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc352?.stop().catch(() => {});
+    svc352 = null;
+    if (data352) rmSync(data352, { recursive: true, force: true });
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ]) {
+    const suffix = combo.name;
+    test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc352) throw new Error("tour-352 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc352.origin}/review/${review352}?token=${svc352.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // 1. The Since section names the short sha, not a version.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await expect(since).toContainText(new RegExp(`Since ${short352} → v2`));
+      await stepChecks(page, "since-commit-section");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-section", suffix, `Since ${short352}`);
+
+      // 2. The addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-addendum", suffix, `Updated since ${short352}`);
+
+      // 3. The plotline marker names the short sha too.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText(`new since ${short352}`)).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-plotlines", suffix, `new since ${short352}`);
+
+      // 4. The diff filter chip.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const chip = page.locator('[data-filterchip="since"]');
+      if ((await chip.getAttribute("aria-pressed")) === "true") {
+        await chip.click();
+        await expect(chip).toHaveAttribute("aria-pressed", "false");
+      }
+      await expect(chip).toContainText(`Since ${short352}`, { timeout: 30_000 });
+      await stepChecks(page, "since-commit-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
+
+      // 5. The picker lists versions and the commit (guide is the
+      // left pane, always present — just scroll back to the section).
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-commit-picker");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-picker", suffix, "Commits");
+      await page.keyboard.press("Escape");
+    });
+  }
+});
+/**
+ * Since-offer tour (#351 step 2): a real PR review with a stubbed prior
+ * GitHub review, served agent-less so the guide never runs and the offer
+ * stays put. The offer line, its checked state, the picker with versions,
+ * commits and the last GitHub review, and the unfetchable-commit toast
+ * are all the real service path (stubbed `gh` in, real git + sqlite).
+ */
+test.describe("since-offer tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svcO: RunningService | null = null;
+  let dataO = "", repoO = "", bareO = "", binO = "", logO = "";
+  let revValid = "", revGone = "", revToast = "";
+  let c1 = "", c1short = "";
+  const gone = "f".repeat(40);
+  const goneShort = gone.slice(0, 8);
+
+  async function shell(cwd: string, ...args: string[]): Promise<string> {
+    const { stdout } = await exec("git", args, { cwd });
+    return stdout.trim();
+  }
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    dataO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-data-"));
+    repoO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-repo-"));
+    bareO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-remote-"));
+    binO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-bin-"));
+    logO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-log-"));
+    const V1 = ["def alpha():", "    return 1", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    const V2 = ["def alpha():", "    return 11", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    await shell(bareO, "init", "--bare", "-b", "main");
+    await shell(repoO, "init", "-b", "main");
+    await shell(repoO, "config", "user.email", "t@example.com");
+    await shell(repoO, "config", "user.name", "T");
+    writeFileSync(path.join(repoO, "src-app.py"), V1);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "base");
+    await shell(repoO, "checkout", "-b", "feature");
+    writeFileSync(path.join(repoO, "src-app.py"), V2);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha");
+    c1 = await shell(repoO, "rev-parse", "HEAD");
+    c1short = c1.slice(0, 8);
+    await shell(repoO, "remote", "add", "origin", "https://github.com/acme/app.git");
+    await shell(repoO, "config", `url.${bareO}.insteadOf`, "https://github.com/acme/app.git");
+    await shell(repoO, "push", "origin", "main", "feature");
+    await shell(repoO, "fetch", "origin");
+    const head = c1;
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(binO, realGitPath());
+    const fakeShell = path.join(binO, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binO}:$PATH"\n`, { mode: 0o755 });
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}` },
+      label: "tour-offer",
+    });
+    const repos = (await apiJson(svcO!.origin, svcO!.token, "POST", "/api/repos", { path: repoO })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repoO);
+    if (!registered) throw new Error("tour offer repo not registered");
+    if (!svcO) throw new Error("tour-offer service did not start");
+    const svc = svcO;
+    const mk = async (pr: number): Promise<string> => {
+      const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: registered.id, pr })) as {
+        review: { id: string };
+      };
+      return created.review.id;
+    };
+    revValid = await mk(78);
+    revGone = await mk(79);
+    revToast = await mk(80);
+    // Agent-less: ingest finishes, the guide never starts. Wait for ready.
+    for (const id of [revValid, revGone, revToast]) {
+      await expect
+        .poll(
+          async () => {
+            const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${id}`)) as {
+              ingest?: { status?: string };
+            };
+            return snap.ingest?.status ?? null;
+          },
+          { timeout: 60_000 },
+        )
+        .toBe("ready");
+    }
+
+    // A second version on the gone-baseline review, so its picker can
+    // show all three groups (versions, commits, last GitHub review):
+    // one more commit, a refresh, then a tour-seeded Since section with
+    // real hunk ids (same technique as the step-1 scene).
+    writeFileSync(path.join(repoO, "src-app.py"), V2.replace("    return 11", "    return 111"));
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha again");
+    await shell(repoO, "push", "origin", "feature");
+    const c3 = await shell(repoO, "rev-parse", "HEAD");
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${c3}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    const refreshed = (await apiJson(svcO!.origin, svcO!.token, "POST", `/api/reviews/${revGone}/refresh`, {})) as {
+      newVersion?: boolean;
+      error?: string;
+    };
+    expect({ newVersion: refreshed.newVersion, error: refreshed.error }).toEqual({
+      newVersion: true,
+      error: undefined,
+    });
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${revGone}`)) as {
+            review?: { currentVersion?: number };
+          };
+          return snap.review?.currentVersion ?? 0;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(2);
+    await svcO!.stop();
+    {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(path.join(dataO, "unvibe.db"));
+      try {
+        const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        if (!row?.snapshot) throw new Error("tour offer review has no snapshot");
+        const snap = JSON.parse(row.snapshot) as {
+          files: { fileKey: string; hunks: { contentHash: string }[] }[];
+          sinceBaseline?: unknown;
+          sinceHunks?: unknown;
+          sinceSection?: unknown;
+          pages?: unknown;
+        };
+        const hid = `h:${snap.files[0].fileKey}:${snap.files[0].hunks[0].contentHash}`;
+        // A minimal root page + card (tour-only, citing a real hunk id):
+        // agent:none never runs the guide, and the section — hence the
+        // picker — only renders on a root page.
+        snap.pages = [
+          {
+            id: "root",
+            kind: "root",
+            title: "Guide",
+            cards: [
+              {
+                id: "problem",
+                pageId: "root",
+                title: "The problem",
+                level: "standard",
+                collapsed: false,
+                revision: 1,
+                undoStack: [],
+                blocks: [
+                  {
+                    type: "paragraph",
+                    id: "b-problem-1",
+                    text: { standard: "Alpha was reworked." },
+                    citations: [{ target: hid }],
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+        snap.sinceBaseline = { kind: "commit", sha: c1 };
+        snap.sinceHunks = { added: [], changed: [hid] };
+        snap.sinceSection = {
+          baseline: { kind: "commit", sha: c1 },
+          headVersion: 2,
+          at: Date.now(),
+          cards: [
+            {
+              id: "since-tour-1",
+              pageId: "since",
+              title: "Alpha reworked again",
+              level: "standard",
+              collapsed: false,
+              revision: 1,
+              undoStack: [],
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b-since-tour-1",
+                  text: { standard: "Alpha returns 111 now." },
+                  citations: [{ target: hid }],
+                },
+              ],
+              answers: [],
+            },
+          ],
+        };
+        const changed = db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), revGone);
+        const back = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        const check = back?.snapshot ? (JSON.parse(back.snapshot) as { sinceSection?: unknown }).sinceSection : undefined;
+        if (changed.changes !== 1 || check === undefined) {
+          throw new Error(`tour offer seed failed (changes=${changed.changes}, section=${check !== undefined})`);
+        }
+      } finally {
+        db.close();
+      }
+    }
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: {
+        SHELL: path.join(binO, "fakeshell"),
+        PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}`,
+      },
+      label: "tour-offer",
+    });
+  });
+  test.afterAll(async () => {
+    await svcO?.stop().catch(() => {});
+    svcO = null;
+    for (const d of [dataO, repoO, bareO, binO, logO]) {
+      if (d) rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  for (const combo of [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+    { name: "960-dark", width: 960, dark: true },
+  ]) {
+    const suffix = combo.name;
+    test(`since offer unchecked and checked (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revValid}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${c1short}`);
+      // Reset for combo determinism: an earlier combo may have left it on.
+      const box = page.getByTestId("prior-review-checkbox");
+      if (await box.getAttribute("aria-checked") === "true") {
+        await box.click();
+        await expect(box).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
+      }
+      await stepChecks(page, "since-offer");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer", suffix, `You reviewed this at ${c1short}`);
+      // The label text toggles the box too (native `label` behaviour).
+      await offer.getByText(`You reviewed this at ${c1short}`).click();
+      await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+      // The range-diff toggle never breaks over lines: one line high
+      // and fully visible (no clipped overflow).
+      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
+      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
+      const rdBox = await rangeDiff.boundingBox();
+      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
+      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
+      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
+      await stepChecks(page, "since-offer-checked");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
+    });
+
+    test(`unfetchable baseline message under the offer (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revToast}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
+      // The banner picker is untouched by the error below it: same
+      // trigger width with and without the message (±2px).
+      const bannerTrigger = page.getByTestId("since-pick").getByRole("combobox");
+      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
+      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await page.getByTestId("prior-review-checkbox").click();
+      // The failure leaves a persistent inline message under the
+      // offer until the baseline changes — and no toast for this case.
+      const inline = page.getByTestId("prior-review-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      // The error sits on its own line below the offer label at every
+      // width — never inline after the offer text.
+      const labelBox = await offer.locator("label").boundingBox();
+      const errBox = await inline.boundingBox();
+      expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
+        (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
+      );
+      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
+    });
+
+    test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      await expect(since).toContainText(new RegExp(`Since ${c1short} → v2`));
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await stepChecks(page, "since-picker-groups");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
+      await expect(page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-picker-groups", suffix, "GitHub reviews");
+      await page.keyboard.press("Escape");
+    });
+
+    test(`unfetchable baseline picked in the picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await expect(pick).toBeVisible({ timeout: 30_000 });
+      // The header picker keeps its size when the error lands below
+      // it: same trigger width with and without the message (±2px).
+      const trigger = pick.getByRole("combobox");
+      const wBefore = (await trigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await pick.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
+      await expect(goneOption).toBeVisible({ timeout: 15_000 });
+      await goneOption.click();
+      // The failed pick leaves the stored baseline alone but records
+      // `sinceError`, shown persistently below the header row.
+      const inline = since.getByTestId("since-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      const wAfter = (await trigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await stepChecks(page, "since-unfetchable-picker");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
+    });
+  }
 });

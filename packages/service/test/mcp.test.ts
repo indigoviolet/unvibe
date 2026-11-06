@@ -209,14 +209,14 @@ describe("tools", () => {
       const res = await client.callTool({ name: "search_review", arguments: { query: "conn" } });
       const text = textOf(res);
       expect(text).toContain("file src/conn.py (1 hunk): h:conn:9f2c");
-      // Second-opinion isolation still holds: description only, no files.
-      const so = await connect(base, registry.issueSession("r1", "s2", "second-opinion"));
+      // Every session searches the full review: cards, files and description.
+      const again = await connect(base, registry.issueSession("r1", "s2", "session"));
       try {
-        expect(textOf(await so.callTool({ name: "search_review", arguments: { query: "conn" } }))).toBe(
-          "no matches",
+        expect(textOf(await again.callTool({ name: "search_review", arguments: { query: "conn" } }))).toContain(
+          "file src/conn.py (1 hunk): h:conn:9f2c",
         );
       } finally {
-        await so.close();
+        await again.close();
       }
     } finally {
       await client.close();

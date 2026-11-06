@@ -1,13 +1,14 @@
 /**
- * M4 interaction over mock mode (PRD §4.3, §4.4, §4.7, §4.9, §4.10, §9.5).
+ * M4 interaction over mock mode (PRD §4.3, §4.4, §4.7, §4.9, §9.5).
  *
  * Covers the behaviours with no journey yet: reply-in-expansion with
  * per-answer controls (1c), card controls with draft survival (2),
- * seeded corrections (4), second opinion on expansions (5), no
- * auto-scroll on fill (6) and header conventions (8).
+ * seeded corrections (4), no auto-scroll on fill (6) and header
+ * conventions (8).
  *
  * (Explain/ask/delete flows, follow-ups with concept pages, and scroll
- * restore now live in J2/J266 against the real service — #258.)
+ * restore now live in J2/J266 against the real service — #258.
+ * Persona card runs arrive in #349 step 2.)
  */
 import { expect, test } from "./network-guard.js";
 import type { Locator, Page } from "@playwright/test";
@@ -44,7 +45,7 @@ async function gotoReview(page: Page): Promise<void> {
 
 test("1c. the reply box answers in the same thread (issue #136)", async ({ page }) => {
   await gotoReview(page);
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   await page.locator('#selbar [data-act="explain"]').click();
   const thread = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
   await expect(thread.locator(".exp-b").first()).toContainText("Mock explanation", { timeout: 8000 });
@@ -70,15 +71,16 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
   // Issue #167: the demo seeds an open pinned thread under C-problem that
   // overlays the controls below it — close it first, as a reader would.
   await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
-  // Depth − is instant (the fixture stores all three levels). The toolbar
-  // reveals on card hover (#274).
-  const prose = card.locator(".prose").first();
-  const before = await prose.innerText();
+  // Depth − / + switch the level at once in mock mode. The #341 recording
+  // stores only the standard text, so read the level pips, not the prose.
+  // The toolbar reveals on card hover (#274).
+  const pipsOn = card.locator("> .chead .ctl .depth .pips i.on");
+  await expect(pipsOn).toHaveCount(2);
   await card.hover();
   await card.locator("> .chead .ctl").getByRole("button", { name: "Simpler" }).click();
-  await expect.poll(() => prose.innerText(), { timeout: 5000 }).not.toBe(before);
+  await expect(pipsOn).toHaveCount(1, { timeout: 5000 });
   await card.locator("> .chead .ctl").getByRole("button", { name: "Deeper" }).click();
-  await expect.poll(() => prose.innerText(), { timeout: 5000 }).toBe(before);
+  await expect(pipsOn).toHaveCount(2, { timeout: 5000 });
   // Use examples inserts once; a second click says nothing more to add.
   await card.locator("> .chead .ctl").getByRole("button", { name: "Use examples" }).click();
   await expect(card.locator(".gen-aside").first()).toBeVisible({ timeout: 5000 });
@@ -96,7 +98,7 @@ test("2. card controls: depth, examples, diagram, undo, collapse; drafts survive
   // Undo is enabled and reverts the diagram; expansions survive it.
   await expect(card.locator("> .chead .ctl").getByRole("button", { name: "Undo" })).toBeEnabled();
   // Draft survival: type a reply, then undo, and the text stays.
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   await page.locator('#selbar [data-act="ask"]').click();
   const composer = page.locator("#C-central .ithread[data-pending-thread] textarea, #C-central .composer textarea").first();
   await composer.fill("draft that must survive");
@@ -125,26 +127,9 @@ test("4. corrections show with accept/dismiss; no shared-context line on the rev
   await expect(page.getByText(/kept \d+ notes? from your conversations/)).toHaveCount(0);
 });
 
-test("5. second opinion works on replies and survives depth", async ({ page }) => {
-  await gotoReview(page);
-  // The fixture seeds an open explain thread on the problem card.
-  const thread = page.locator('#C-problem section.ithread[data-thread]').first();
-  await expect(thread).toBeVisible({ timeout: 5000 });
-  const reply = thread.locator("[data-reply]").first();
-  await clickReplyControl(reply, "Second opinion (check this claim)");
-  await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
-  // Depth on the reply leaves the result attached: wait for the depth
-  // change itself (Undo enables only once the depth action lands — the
-  // block is already visible, so waiting on it would prove nothing), then
-  // check the result survived it.
-  await clickReplyControl(reply, "Simpler");
-  await expect(thread.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 5000 });
-  await expect(thread.locator("[data-so]").first()).toBeVisible({ timeout: 5000 });
-});
-
 test("6. filling never scrolls the page on its own", async ({ page }) => {
   await gotoReview(page);
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   const scroller = page.locator("#page");
   await page.waitForTimeout(200);
   const top = await scroller.evaluate((el) => el.scrollTop);

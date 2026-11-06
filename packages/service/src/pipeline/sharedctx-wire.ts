@@ -14,10 +14,10 @@
  * 3. after the base is (re)built: `noteBaseBuilt` records its size.
  *
  * Failed turns never advance the marker and never store contributions: the
- * next turn retries the same change list. Small-model jobs (`runSmall`) and
- * second-opinion contexts are built by the caller from narrow inputs only —
- * the log, contributions and uncited pins have no channel into them
- * (PRD §12; see `sharedctx/isolation.ts`).
+ * next turn retries the same change list. Small-model jobs (`runSmall`)
+ * are built by the caller from narrow inputs only — the log,
+ * contributions and uncited pins have no channel into them
+ * (see `sharedctx/isolation.ts`).
  */
 import type { LogEntry, ReplyData, ReviewSnapshot } from "@unvibe/shared";
 import { renderMarkdown } from "@unvibe/shared";

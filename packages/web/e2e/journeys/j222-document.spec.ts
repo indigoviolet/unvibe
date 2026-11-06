@@ -171,7 +171,9 @@ test.describe("J222 document review", () => {
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
     // Comment on document text: local, marked for the Outbox (post=true).
-    await selectText(page, "#C-document", "fast path");
+    // Select the full phrase: the replayed Explain answer above also
+    // contains "fast path", so the short text would anchor there.
+    await selectText(page, "#C-document", "fast path for modern responses");
     await page.locator('#selbar [data-act="note"]').click();
     const composer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
@@ -181,8 +183,19 @@ test.describe("J222 document review", () => {
       timeout: 15_000,
     });
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    const annotations = (snap.json as { annotations: { replies?: { kind?: string }[]; post: boolean }[] }).annotations;
-    const comment = annotations.find((a) => (a.replies ?? []).some((r) => r.kind === "comment"));
+    type Reply = { kind?: string; who?: string; suggested?: boolean; blocks?: { text?: { standard?: string } }[] };
+    const annotations = (snap.json as { annotations: { replies?: Reply[]; post: boolean }[] }).annotations;
+    // The replayed Explain answer contributes an open question, offered
+    // as an AI-suggested comment thread (#181): skip suggested threads
+    // and match the user's own comment by its text.
+    const comment = annotations.find((a) =>
+      (a.replies ?? []).some(
+        (r) =>
+          r.kind === "comment" &&
+          !r.suggested &&
+          (r.blocks ?? []).some((b) => b.text?.standard?.includes("Please expand this part.")),
+      ),
+    );
     expect(comment?.post).toBe(true);
 
     // A document answer citing code in the THIRD repo (#81 wiring):

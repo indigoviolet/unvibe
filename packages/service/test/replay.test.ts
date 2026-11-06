@@ -38,21 +38,21 @@ async function collect(
 
 describe("ReplayAgentRunner", () => {
   it("matches explain prompts by quoted text like the prototype KB regexes", async () => {
-    const events = await collect(runner(), "Explain this: quote: what is obs-fold line folding?");
+    const events = await collect(runner(), "Explain this: quote: re.sub tries a match at every offset");
     const text = events
       .filter((e) => e.type === "text")
       .map((e) => (e.type === "text" ? e.delta : ""))
       .join("");
-    expect(text).toContain("RFC 9112 now calls it");
+    expect(text).toContain("a left-to-right scan");
   });
 
   it("matches ask prompts by question text like the prototype ASK regexes", async () => {
-    const events = await collect(runner(), "Ask: does order of duplicate headers survive?");
+    const events = await collect(runner(), "Ask: is the double space here intended?");
     const text = events
       .filter((e) => e.type === "text")
       .map((e) => (e.type === "text" ? e.delta : ""))
       .join("");
-    expect(text).toContain("Order and duplicates are preserved");
+    expect(text).toContain("Each match becomes one space");
   });
 
   it("honours explicit replay-kind/replay-key markers", async () => {
@@ -61,8 +61,8 @@ describe("ReplayAgentRunner", () => {
       file: "hunk-conn-0.md",
       placeholder: false,
     });
-    expect(r.resolve("replay-kind: diagram\nreplay-key: fold")).toMatchObject({
-      file: "diagram-fold.md",
+    expect(r.resolve("replay-kind: diagram\nreplay-key: central")).toMatchObject({
+      file: "diagram-central.md",
       placeholder: false,
     });
   });

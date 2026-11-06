@@ -131,6 +131,8 @@ export interface RepairDiagramsOpts {
   annotationId?: string;
   conversationKey?: string;
   echoCandidates?: string[];
+  /** Issue #349 step 2: run the repair as this persona. */
+  persona?: import("@unvibe/shared").Persona;
 }
 
 /** Marker line of the diagram repair prompt (fake-runner scripts match it). */
@@ -210,6 +212,7 @@ export async function repairDiagrams(
     template: "diagram",
     variables,
     priority: JOB_PRIORITY.userRequested,
+    ...(opts.persona ? { persona: opts.persona } : {}),
     dedupeKey: {
       anchor: opts.dedupeAnchor,
       requestKind: opts.requestKind ?? "diagram-repair",

@@ -29,6 +29,13 @@ export interface ReaderApply {
   cards: { id: string; title: string | null; blocks: Block[] }[];
   pendingCards: { id: string; label: string; why: string }[];
   /**
+   * Issue #351 step 2: the reader's raw Since-B payload on the
+   * no-review-yet path (agent-shaped cards with `answers` pointers,
+   * stored by the caller — resolved links, like the update pass).
+   * Kept only when requested (see `requestedReaderFields`).
+   */
+  sinceSection?: { cards: { id?: string; title?: string | null; blocks: Block[]; answers?: unknown }[] };
+  /**
    * Issue #169: the reader's raw plotline payload (validated against the
    * review's hunk IDs by the caller — unknown IDs dropped, first
    * plotline wins a hunk claimed twice). Kept only when requested (see
@@ -49,7 +56,7 @@ export interface ReaderApply {
  * carrying any other key is ignored for that key (unknown fields were
  * always ignored by the split layer; these are the known ones).
  */
-export const READER_RESULT_FIELDS = ["cardIds", "pendingCards", "plotlines", "glossary"] as const;
+export const READER_RESULT_FIELDS = ["cardIds", "pendingCards", "plotlines", "glossary", "sinceSection"] as const;
 
 /**
  * Issue #252: which optional trailing-JSON fields the prompt requested —
@@ -177,7 +184,23 @@ export function readerApply(
     ...(g.definition !== undefined ? { definition: g.definition } : {}),
     ...(g.citation !== undefined ? { citation: g.citation } : {}),
   }));
-  return { cards, pendingCards, plotlines, glossary };
+  // Issue #351 step 2: the reader's Since-B payload. Cards pass through
+  // raw (with their `answers` pointers); the caller resolves and stores
+  // them like the update pass, only when the run had a commit baseline.
+  type SinceCardRaw = { id?: string; title?: string | null; blocks: Block[]; answers?: unknown };
+  let sinceRaw: { cards: SinceCardRaw[] } | undefined;
+  const sinceValue = requested.has("sinceSection") ? data?.["sinceSection"] : undefined;
+  if (typeof sinceValue === "object" && sinceValue !== null) {
+    const cardsValue = (sinceValue as { cards?: unknown }).cards;
+    if (Array.isArray(cardsValue)) sinceRaw = { cards: cardsValue as SinceCardRaw[] };
+  }
+  return {
+    cards,
+    pendingCards,
+    plotlines,
+    glossary,
+    ...(sinceRaw ? { sinceSection: { cards: sinceRaw.cards } } : {}),
+  };
 }
 
 export interface CriticApply {

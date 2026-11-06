@@ -82,11 +82,16 @@ export async function listAllRepos(ctx: ServiceContext): Promise<Repo[]> {
   return [...remembered, ...detected];
 }
 
-/** Demo repo for the start page (M3): synthetic, needs no checkout. */
+/**
+ * Demo repo for the start page (M3): synthetic, needs no checkout.
+ * Issue #341: the demo is the real public PR urllib3/urllib3#5020, so it
+ * carries the real owner/name — repo#PR and line links point at GitHub.
+ * The `id` stays `"demo"`, which is what keeps posting disabled.
+ */
 export const DEMO_REPO = {
   id: "demo",
-  owner: "demo",
-  name: "urllib3-5020",
+  owner: "urllib3",
+  name: "urllib3",
   localPath: "",
   lastOpened: 0,
   detected: true,

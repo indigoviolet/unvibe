@@ -40,6 +40,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { extensionVersion, isChromeExtensionVersion } from "./extension-version-lib.mjs";
 import { createRunRoot, onExit, removeDir } from "./tmp-guard.mjs";
 import { findRepoByPath, isParserOutline, platformBinaryPackages } from "./global-install-lib.mjs";
 
@@ -134,9 +135,23 @@ function s(secMs) {
  * node_modules anymore.)
  */
 /** Chrome extension (#322): shipped inside the installed package so Settings → Extension points at a folder matching the running version. */
-function checkExtensionFiles(installedPkgDir, label) {
+function checkExtensionFiles(installedPkgDir, label, installedVersion) {
   for (const f of ["extension/manifest.json", "extension/background.js"]) {
     assert(fs.existsSync(path.join(installedPkgDir, f)), `${label}: ships ${f}`);
+  }
+  // Issue #350: the shipped manifest is stamped from the release version at
+  // build time — version_name carries the full Unvibe version, version is
+  // the derived Chrome-valid form.
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(installedPkgDir, "extension/manifest.json"), "utf8"));
+    assert(manifest.version_name === installedVersion, `${label}: extension version_name matches installed ${installedVersion} (got ${JSON.stringify(manifest.version_name)})`);
+    const stamped = installedVersion ? extensionVersion(installedVersion).version : null;
+    assert(
+      typeof manifest.version === "string" && isChromeExtensionVersion(manifest.version) && manifest.version === stamped,
+      `${label}: extension version is the stamped Chrome-valid form ${JSON.stringify(stamped)} (got ${JSON.stringify(manifest.version)})`,
+    );
+  } catch (e) {
+    assert(false, `${label}: installed extension manifest parses and is stamped (${e instanceof Error ? e.message : String(e)})`);
   }
 }
 
@@ -300,9 +315,9 @@ function simpleGet(port, getPath, headers) {
       .get({ host: "127.0.0.1", port, path: getPath, headers }, (res) => {
         let body = "";
         res.on("data", (d) => (body += d));
-        res.on("end", () => resolve({ code: res.statusCode, body }));
+        res.on("end", () => resolve({ code: res.statusCode, body, headers: res.headers ?? {} }));
       })
-      .on("error", () => resolve({ code: 0, body: "" }));
+      .on("error", () => resolve({ code: 0, body: "", headers: {} }));
   });
 }
 
@@ -459,6 +474,12 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
     fs.existsSync(path.join(installedPkg, "packages/service/dist/index.js")),
     `${label}: bin target packages/service/dist/index.js exists in the installed package`,
   );
+  // Issue #355: the browser's default /favicon.ico request must resolve
+  // to a real file in the installed package.
+  assert(
+    fs.existsSync(path.join(installedPkg, "packages/web/dist/favicon.ico")),
+    `${label}: ships packages/web/dist/favicon.ico`,
+  );
   // No lifecycle scripts at all (issue #42): any install script makes
   // npm link a git install to its temporary preparation clone and then
   // delete the clone, leaving the bin dangling.
@@ -493,7 +514,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
 
   checkAdapterBundles(installedPkg, label);
   checkGrammarFiles(installedPkg, label);
-  checkExtensionFiles(installedPkg, label);
+  checkExtensionFiles(installedPkg, label, installedVersion);
   console.log(`${label}: install size ${mb(dirSizeBytes(prefix))} (prefix ${prefix})`);
 
   // Third-party notices (issue #14): the installed package must contain the
@@ -558,12 +579,20 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
   assert(prompts.code === 200 && prompts.body.includes("instructions"), `${label}: prompts resolve from the installed package`);
   const shell = await simpleGet(port, "/start.html");
   assert(shell.code === 200, `${label}: web dist serves from the installed package`);
+  // Issue #355: the browser's default icon request is served without a
+  // token (simpleGet sends no Authorization header) with an icon type.
+  const favicon = await simpleGet(port, "/favicon.ico");
+  assert(favicon.code === 200, `${label}: /favicon.ico serves from the installed package (got ${favicon.code})`);
+  assert(
+    /icon/i.test(String(favicon.headers?.["content-type"] ?? "")),
+    `${label}: /favicon.ico has an icon content type (got ${JSON.stringify(favicon.headers?.["content-type"])})`,
+  );
 
   const readiness = await simpleGet(port, "/api/readiness", { authorization: `Bearer ${token}` });
   assert(readiness.code === 200, `${label}: readiness answers from the installed package`);
   try {
     const checks = JSON.parse(readiness.body)?.checks ?? [];
-    for (const role of ["agent:main", "agent:small", "agent:secondOpinion"]) {
+    for (const role of ["agent:main", "agent:small"]) {
       const c = checks.find((x) => x.id === role);
       assert(!!c && typeof c.summary === "string" && c.summary.length > 0, `${label}: readiness reports ${role}`);
     }

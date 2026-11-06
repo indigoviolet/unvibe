@@ -2,8 +2,8 @@
   "repo": "urllib3/urllib3",
   "pr": 5020,
   "title": "Unfold obsolete folded response headers",
-  "headSha": "bdcc1e493e",
-  "mergeBaseSha": "443cb01be1",
+  "headSha": "00162b2030837429af8f2de8ef07b602d910cbbd",
+  "mergeBaseSha": "6e42ff11a1ba5c1542f38c67ec17238d0b779552",
   "baseRef": "main",
   "fileKeys": {
     "conn": "src/urllib3/connection.py",
@@ -22,7 +22,13 @@
     "d-p2",
     "d-p3",
     "d-p4",
-    "d-p5"
+    "d-p5",
+    "d-p6"
   ],
-  "concepts": []
+  "concepts": [
+    "obs-fold",
+    "_normalize_header_value",
+    "_normalize_header_values",
+    "HTTPHeaderDict"
+  ]
 }

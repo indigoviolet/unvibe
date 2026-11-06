@@ -6,8 +6,12 @@
  * version (name · short commit · built · action) under a
  * Versions/Refresh header, the installed channel marked by its Installed
  * badge, and the last switch outcome at the bottom. Switch asks for
- * confirmation inside the row itself (the
- * service restarts; switching keeps your database and backs it up first).
+ * confirmation through the shared inline confirm (#346: "Confirm
+ * switch" ✓ ✕, then "Switching…"); the restart/backups note lives in
+ * the button's tooltip and the pill's accessible name, never as a
+ * visible paragraph. A target whose data format differs gets one short
+ * warn line under its row ("Needs a data reset (format X → Y)") with an
+ * Export drafts action only when unposted drafts exist.
  *
  * Switching survives the service going away: after the 202 the page polls
  * health + status until the new build reports (then reloads) or the
@@ -25,11 +29,11 @@ import type {
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
-import { compareDataFormat, dataFormatResetWarning } from "@unvibe/shared";
+import { compareDataFormat } from "@unvibe/shared";
 import { downloadOutboxMarkdown } from "../data-format/outboxDownload.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
-import { Badge, Button, Card, Checkbox, ListRow } from "../ui/index.js";
+import { Badge, Button, Card, Checkbox, InlineConfirm, ListRow } from "../ui/index.js";
 import { ReleaseNotesView } from "./ReleaseNotesView.js";
 import { blockedJobLine, channelRowMiddle, channelRowState, isNewerAvailable, outcomeLine, sortVersionsByRecency, timeAgoIso } from "./versionFormat.js";
 
@@ -222,8 +226,63 @@ export function VersionSection({
     [],
   );
 
-  const commitSwitch = useCallback(
-    async (ref: string, force = false) => {
+  /**
+   * The InlineConfirm's work for one row (#346): post the switch, then
+   * let the pill flash "Confirmed" while the restart wait (already
+   * running, detached) takes over the bottom status line. A
+   * running-jobs refusal closes the pill without a flash and shows the
+   * blocked panel instead; any other failure stays inline in the pill
+   * (and in the bottom reason line) via the rejection.
+   */
+  const attemptSwitch = useCallback(
+    async (ref: string) => {
+      const target = channels?.find((c) => c.ref === ref)?.version ?? null;
+      const fromVersion = status?.build?.version ?? healthVersion;
+      const startedAt = new Date().toISOString();
+      setBlocked(null);
+      setSwitchError(null);
+      setDoneNote(null);
+      // #311: the warn line under the row already named the reset for a
+      // format-changing target; say so on the switch so the service
+      // does not refuse it. The service re-checks either way.
+      const targetChannel = channels?.find((c) => c.ref === ref);
+      const acceptDataReset =
+        compareDataFormat(status?.build?.dataFormat ?? 1, targetChannel?.dataFormat) === "changed";
+      try {
+        const res = await api.updateSwitch(ref, undefined, acceptDataReset ? true : undefined);
+        if (res.unchanged) {
+          if (!cancelled.current) {
+            setDoneNote(`Already on the latest build of ${ref}`);
+            void loadStatus();
+          }
+          return;
+        }
+      } catch (err) {
+        if (!cancelled.current) {
+          if (err instanceof UpdateJobsBlockedError) {
+            // The blocked panel takes over: close the pill first so no
+            // "Confirmed" flash covers the handover.
+            setBlocked({ ref, activeJobs: err.activeJobs, jobs: err.jobs });
+            setConfirmRef(null);
+            return;
+          }
+          setSwitchError(friendlyError(err));
+        }
+        throw err;
+      }
+      if (cancelled.current) return;
+      setSwitchingTo(ref);
+      // Detached: the pill flashes "Confirmed" (the switch was accepted)
+      // and closes; this wait owns the bottom status until the reload or
+      // the rollback reason lands.
+      void waitForSwitch(ref, target, fromVersion, startedAt);
+    },
+    [channels, healthVersion, loadStatus, status, waitForSwitch],
+  );
+
+  /** "Switch anyway" from the blocked panel: the forced re-post. */
+  const forceSwitch = useCallback(
+    async (ref: string) => {
       const target = channels?.find((c) => c.ref === ref)?.version ?? null;
       const fromVersion = status?.build?.version ?? healthVersion;
       const startedAt = new Date().toISOString();
@@ -232,36 +291,21 @@ export function VersionSection({
       setSwitchError(null);
       setDoneNote(null);
       setSwitchingTo(ref);
-      // #311: the confirm panel already showed the reset warning for a
-      // format-changing target; say so on the switch so the service
-      // does not refuse it. The service re-checks either way.
       const targetChannel = channels?.find((c) => c.ref === ref);
       const acceptDataReset =
         compareDataFormat(status?.build?.dataFormat ?? 1, targetChannel?.dataFormat) === "changed";
       try {
-        const res = await api.updateSwitch(ref, force ? true : undefined, acceptDataReset ? true : undefined);
-        if (res.unchanged) {
-          if (!cancelled.current) {
-            setSwitchingTo(null);
-            setDoneNote(`Already on the latest build of ${ref}`);
-            void loadStatus();
-          }
-          return;
-        }
+        await api.updateSwitch(ref, true, acceptDataReset ? true : undefined);
       } catch (err) {
         if (!cancelled.current) {
           setSwitchingTo(null);
-          if (err instanceof UpdateJobsBlockedError) {
-            setBlocked({ ref, activeJobs: err.activeJobs, jobs: err.jobs });
-          } else {
-            setSwitchError(friendlyError(err));
-          }
+          setSwitchError(friendlyError(err));
         }
         return;
       }
       await waitForSwitch(ref, target, fromVersion, startedAt);
     },
-    [channels, healthVersion, loadStatus, status, waitForSwitch],
+    [channels, healthVersion, status, waitForSwitch],
   );
 
   // One flat list, newest build first — no per-group blocks, so every
@@ -310,8 +354,8 @@ export function VersionSection({
                   setConfirmRef(null);
                   setBlocked(null);
                 }}
-            onConfirm={(ref) => void commitSwitch(ref)}
-            onForceConfirm={(ref) => void commitSwitch(ref, true)}
+            onConfirm={(ref) => attemptSwitch(ref)}
+            onForceConfirm={(ref) => void forceSwitch(ref)}
             onRefresh={() => void loadChannels(status?.build ?? null, true)}
             refreshing={refreshing}
             notesOpenRef={notesOpenRef}
@@ -390,7 +434,7 @@ function VersionList({
   switchingTo: string | null;
   onSwitch: (ref: string) => void;
   onCancel: () => void;
-  onConfirm: (ref: string) => void;
+  onConfirm: (ref: string) => void | Promise<void>;
   onForceConfirm: (ref: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -456,7 +500,7 @@ function VersionRow({
   switchingTo: string | null;
   onSwitch: (ref: string) => void;
   onCancel: () => void;
-  onConfirm: (ref: string) => void;
+  onConfirm: (ref: string) => void | Promise<void>;
   onForceConfirm: (ref: string) => void;
   notesOpen: boolean;
   channelNote: ReleaseNotes | null | undefined;
@@ -472,6 +516,15 @@ function VersionRow({
   const isBlocked = blocked?.ref === c.ref;
   const verb = newerAvailable ? "update" : "switch";
   const built = c.builtAt ? (timeAgoIso(c.builtAt) ?? c.builtAt) : null;
+  // #311: a target whose data format differs from the installed build
+  // gets one short warn line under its row (with Export drafts only
+  // when unposted drafts exist) — never a paragraph.
+  const formatChanged = compareDataFormat(build?.dataFormat ?? 1, c.dataFormat) === "changed";
+  const restartNote = "The service restarts. Your data is kept and backed up first.";
+  const idleTitle = formatChanged
+    ? `${restartNote} This update needs a data reset (format ${build?.dataFormat ?? 1} → ${c.dataFormat}).`
+    : restartNote;
+  const offerSwitch = !switchingTo && !isBlocked && ((newerAvailable && build && c.current) || !c.current);
   const trailing = (
     <>
       {rowState === "installed" ? (
@@ -481,23 +534,25 @@ function VersionRow({
       ) : switchingTo ? (
         <span className="hint">…</span>
       ) : null}
-      {confirming ? (
-        <>
-          <Button variant="primary" size="sm" type="button" aria-label={`Confirm ${verb} to ${c.ref}`} onClick={() => onConfirm(c.ref)}>
-            Confirm
-          </Button>
-          <Button variant="secondary" size="sm" type="button" aria-label={`Cancel ${verb} to ${c.ref}`} onClick={onCancel}>
-            Cancel
-          </Button>
-        </>
-      ) : newerAvailable && build && c.current && !switchingTo ? (
-        <Button variant="secondary" size="sm" type="button" aria-label={`Update ${c.ref}`} onClick={() => onSwitch(c.ref)}>
-          Update
-        </Button>
-      ) : !c.current && !switchingTo && !isBlocked ? (
-        <Button variant="secondary" size="sm" type="button" aria-label={`Switch to ${c.ref}`} onClick={() => onSwitch(c.ref)}>
-          Switch
-        </Button>
+      {/* #346: the shared inline confirm (was Confirm/Cancel buttons). */}
+      {offerSwitch ? (
+        <InlineConfirm
+          action={verb === "update" ? "Update" : "Switch"}
+          confirmAction={verb}
+          runningLabel={verb === "update" ? "Updating…" : "Switching…"}
+          placement="stack"
+          disabled={switchingTo !== null}
+          open={confirming}
+          onOpenChange={(v) => {
+            if (v) onSwitch(c.ref);
+            else onCancel();
+          }}
+          onConfirm={() => onConfirm(c.ref)}
+          formatError={friendlyError}
+          announce={`Confirm ${verb} to ${c.ref}: ${idleTitle} Or cancel.`}
+          title={idleTitle}
+          idleAriaLabel={`${verb === "update" ? "Update" : "Switch to"} ${c.ref}`}
+        />
       ) : null}
       <Button
         variant="quiet"
@@ -530,9 +585,10 @@ function VersionRow({
         }
         trailing={trailing}
       />
-      {confirming ? (
-        <ConfirmNote channel={c} build={build} verb={verb} />
-      ) : isBlocked && blocked ? (
+      {formatChanged ? (
+        <DataResetWarnLine channelRef={c.ref} from={build?.dataFormat ?? 1} to={c.dataFormat ?? 0} />
+      ) : null}
+      {isBlocked && blocked ? (
         <div className="ver-note">
           <BlockedPanel blocked={blocked} onForceConfirm={onForceConfirm} onCancel={onCancel} />
         </div>
@@ -601,24 +657,16 @@ function BlockedPanel({
 }
 
 /**
- * Switch confirmation (#311): a target whose data format differs gets
- * the reset warning and an Export Outbox first button; anything else
- * keeps the plain restart note.
+ * One short warn line under a format-changing channel's row (#311):
+ * "Needs a data reset (format X → Y)", with an Export drafts action
+ * only when unposted drafts exist. No paragraph, no "then Confirm"
+ * sentence — the switch itself confirms through the row's inline
+ * confirm. The draft count loads async; while unknown (or zero) no
+ * export action shows.
  */
-function ConfirmNote({
-  channel,
-  build,
-  verb,
-}: {
-  channel: UpdateChannel;
-  build: UpdateBuildInfo | null;
-  verb: string;
-}): React.JSX.Element {
+function DataResetWarnLine({ channelRef, from, to }: { channelRef: string; from: number; to: number }): React.JSX.Element {
   const [exported, setExported] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
-  // #311: the Export offer follows the same rule as the reset notice —
-  // only when there are unposted drafts, with their count. Null while
-  // the count is unknown (still loading or unreachable).
   const [draftCount, setDraftCount] = useState<number | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -628,53 +676,44 @@ function ConfirmNote({
         if (!cancelled) setDraftCount(s.outboxCount);
       })
       .catch(() => {
-        // Count unknown: the generic Export button below still works.
+        // Count unknown: no export action, the line still warns.
       });
     return () => {
       cancelled = true;
     };
   }, []);
-  const changed = compareDataFormat(build?.dataFormat ?? 1, channel.dataFormat) === "changed";
-  if (!changed) {
-    return <p className="ver-note warnline">The service restarts. Your data is kept and backed up first.</p>;
-  }
   return (
-    <div className="ver-note" data-testid="update-data-reset-warning">
-      <p className="warnline" style={{ margin: "0 0 6px" }}>
-        {dataFormatResetWarning(build?.dataFormat ?? 1, channel.dataFormat ?? 0)} The service restarts on the
-        new build, which will ask for that reset before it can open.
-      </p>
-      <span className="frow" style={{ gap: 6, alignItems: "center" }}>
-        {draftCount === 0 ? (
-          <span className="hint">No unposted drafts to export.</span>
-        ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          type="button"
-          disabled={exporting}
-          onClick={() => {
-            setExporting(true);
-            void api
-              .dataFormatOutbox()
-              .then((out) => {
-                downloadOutboxMarkdown(out.markdown);
-                setExported(out.count);
-              })
-              .catch(() => setExported(-1))
-              .finally(() => setExporting(false));
-          }}
-        >
-          {exporting ? "Exporting…" : draftCount !== null && draftCount > 0 ? `Export ${draftCount} unposted draft${draftCount === 1 ? "" : "s"}` : "Export Outbox first"}
-        </Button>
-        )}
-        {exported !== null && exported >= 0 ? (
-          <span className="hint">Exported {exported} draft{exported === 1 ? "" : "s"}.</span>
-        ) : exported !== null ? (
-          <span className="hint">Couldn&apos;t export — open the app and copy the Outbox instead.</span>
-        ) : null}
-        <span className="hint">Then Confirm to {verb} anyway, or Cancel.</span>
-      </span>
-    </div>
+    <p className="ver-note warnline" data-testid="update-data-reset-warning" data-ref={channelRef}>
+      Needs a data reset (format {from} → {to})
+      {draftCount !== null && draftCount > 0 ? (
+        <>
+          {" · "}
+          <Button
+            variant="quiet"
+            size="sm"
+            type="button"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              void api
+                .dataFormatOutbox()
+                .then((out) => {
+                  downloadOutboxMarkdown(out.markdown);
+                  setExported(out.count);
+                })
+                .catch(() => setExported(-1))
+                .finally(() => setExporting(false));
+            }}
+          >
+            {exporting ? "Exporting…" : `Export ${draftCount} draft${draftCount === 1 ? "" : "s"}`}
+          </Button>
+        </>
+      ) : null}
+      {exported !== null && exported >= 0 ? (
+        <span className="hint"> · Exported {exported} draft{exported === 1 ? "" : "s"}.</span>
+      ) : exported !== null ? (
+        <span className="hint"> · Couldn&apos;t export — open the app and copy the Outbox instead.</span>
+      ) : null}
+    </p>
   );
 }

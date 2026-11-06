@@ -30,7 +30,9 @@
  *   `{text, cached?}` streams text (usage splits cache reads like pi),
  *   `{call, args}` performs a real MCP `tools/call` against
  *   `UNVIBE_PI_MCP_SERVERS` and emits tool start/end, `{hang}` stalls until
- *   `abort`, `{history}` replies `history:<n>` with the message count.
+ *   `abort`, `{startHang: <tool>}` emits a tool start with no end then
+ *   stalls (issue #348 silence shape), `{history}` replies `history:<n>`
+ *   with the message count.
  * - `replay`: `UNVIBE_FAKE_PI_FIXTURES` points at `fixtures/urllib3-5020`;
  *   prompts resolve to recording texts by the same marker/keyword rules as
  *   the replay runner (base pack → `ready`).
@@ -570,6 +572,16 @@ async function runPrompt(message) {
         send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
         send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "partial " } });
         // Stall until abort (or stdin close).
+        while (!aborted) await new Promise((r) => setTimeout(r, 50));
+        break;
+      }
+      if (step.startHang !== undefined) {
+        // Issue #348: emit a tool start, then stall with no end — the turn
+        // goes silent with a tool pending until abort (or stdin close).
+        const toolCallId = `call_${++toolSeq}|fc_${toolSeq}`;
+        send({ type: "message_start", message: assistantStart() });
+        send({ type: "message_update", usage: zeroUsage(), assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: toolCallId, toolName: step.startHang } });
+        send({ type: "tool_execution_start", toolCallId, toolName: step.startHang, args: {} });
         while (!aborted) await new Promise((r) => setTimeout(r, 50));
         break;
       }

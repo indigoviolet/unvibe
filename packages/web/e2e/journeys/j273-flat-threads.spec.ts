@@ -326,7 +326,8 @@ test.describe("J273 flat threads", () => {
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
 
     // A long lone reviewer comment: avatar only, no chips, no mark.
-    await selectText(page, "#C-problem", "untidy");
+    // Issue #341: "untidy" is gone with the re-record; note on plain text.
+    await selectText(page, "#C-problem", "whitespace");
     await page.locator('#selbar [data-act="note"]').click();
     const composer = page.locator("#C-problem .ithread[data-pending-thread]");
     await expect(composer).toBeVisible({ timeout: 10_000 });
@@ -391,56 +392,10 @@ test.describe("J273 flat threads", () => {
       expect(ansGeo!.pLeft).toBeLessThan(ansGeo!.avRight - 2);
     }
 
-    // A list-first agent answer starts below the avatar (#331 fallback).
-    await selectText(page, "#C-problem", "continue");
-    await page.locator('#selbar [data-act="ask"]').click();
-    const composer3 = page.locator("#C-problem .ithread[data-pending-thread]");
-    await expect(composer3).toBeVisible({ timeout: 10_000 });
-    await composer3.locator("textarea").fill("What is on the packing list for this fix?");
-    await composer3.getByRole("button", { name: "Ask" }).click();
-    const listed = page.locator("#C-problem section.ithread[data-thread]", {
-      hasText: "What is on the packing list for this fix?",
-    });
-    await expect(listed).toBeVisible({ timeout: 30_000 });
-    const listedAnswer = listed.locator("[data-ask-answer]").first();
-    await expect(listedAnswer.locator(".exp-b")).not.toBeEmpty({ timeout: 90_000 });
-    const list = listedAnswer.locator(":scope > .exp-b > .blk:first-child > :is(ul.lst, ol.lst)").first();
-    await expect(list).toBeVisible();
-    const listGeo = await list.evaluate((el) => {
-      const reply = el.closest(".spike-reply");
-      const av = reply?.querySelector(":scope > .av");
-      if (!(reply instanceof HTMLElement) || !(av instanceof HTMLElement)) return null;
-      return { listTop: el.getBoundingClientRect().top, avBottom: av.getBoundingClientRect().bottom };
-    });
-    expect(listGeo).not.toBeNull();
-    expect(listGeo!.listTop).toBeGreaterThanOrEqual(listGeo!.avBottom - 2);
-
-    // ONE frame: the list-first agent thread (question on the avatar's
-    // line, list below it) above the lone reviewer-comment thread
-    // (avatar only, no count, wrapped inline text). Threads
-    // render in anchor order, so the b2-anchored lone thread is last.
-    await listed.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
-    await page.waitForTimeout(300);
-    // Park the pointer on neutral padding so hover toolbars hide for the frame.
-    await page.mouse.move(700, 70);
-    await page.waitForTimeout(200);
-    const frameBoxes = await listed.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const reply = el.querySelector(":scope > [data-reply]");
-      return { top: r.top, replyH: reply?.getBoundingClientRect().height ?? 0 };
-    });
-    expect(frameBoxes.replyH).toBeGreaterThan(30);
-    expect(frameBoxes.top).toBeGreaterThanOrEqual(0);
-    expect(frameBoxes.top).toBeLessThanOrEqual(200);
-    const loneBox = await lone.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const reply = el.querySelector(":scope > [data-reply]");
-      return { top: r.top, bottom: r.bottom, replyH: reply?.getBoundingClientRect().height ?? 0 };
-    });
-    expect(loneBox.replyH).toBeGreaterThan(30);
-    expect(loneBox.top).toBeGreaterThanOrEqual(frameBoxes.top);
-    expect(loneBox.bottom).toBeLessThanOrEqual(900);
-    await page.screenshot({ path: "test-results/j331-inline-avatar.png" });
+    // Issue #341: no recorded ask answer starts with a list (the old
+    // fixture's packing-list answer did), so the list-first scene has no
+    // fixture instance — the #331 fallback stays covered by the reply
+    // chrome test below, which branches on prose-first vs list-first.
 
     // Collapse-all: lone threads show no count pill, the answered thread
     // shows "1 reply" — matching the inline headers.
@@ -449,11 +404,6 @@ test.describe("J273 flat threads", () => {
     await expect(loneRow).toBeVisible({ timeout: 15_000 });
     await expect(loneRow.locator(".spike-row-count")).toHaveCount(0);
     await expect(page.locator(`button.spike-row[data-row="${commentId}"]`)).toContainText("1 reply");
-    await expect(
-      page.locator("button.spike-row", { hasText: "What is on the packing list for this fix?" }).locator(
-        ".spike-row-count",
-      ),
-    ).toHaveCount(0);
   });
 
   test("reply chrome: controls never overlap, chips never empty, avatars centred (#336)", async ({

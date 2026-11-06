@@ -142,6 +142,27 @@ export function demoHunkSummary(fileKey: string, index: number): string | null {
   return parseHunkReply(raw).summary ?? null;
 }
 
+/**
+ * The fixture's real on-demand diagram block (issue #341: no page embeds
+ * a diagram anymore, so the mock seeds this recorded block for the
+ * ok-path render test). Same matcher and canonicalization as every
+ * other mock fill — no canned source.
+ */
+export function demoRealDiagramBlock(): Block | null {
+  const resolved = resolveRecording(
+    entries,
+    (f) => texts.has(f),
+    "replay-kind: diagram\nreplay-key: central",
+  );
+  if (!resolved.file) return null;
+  const raw = texts.get(resolved.file);
+  if (!raw) return null;
+  const dg = parseReply(raw).blocks.find((b) => b.type === "diagram");
+  if (!dg) return null;
+  const [fixed] = canonicalizeBlocks([dg]);
+  return { ...fixed, id: "b-demo-diagram-central" };
+}
+
 /** Demo go-deeper/concept fill: the recording's blocks, or null. */
 export function demoCardBlocks(
   kind: "go-deeper" | "concept-page",

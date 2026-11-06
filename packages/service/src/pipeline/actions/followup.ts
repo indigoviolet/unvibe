@@ -11,27 +11,36 @@
  *   stays, like a question typed in the reply box.
  */
 import type { WritableDraft } from "immer";
-import type { Block, FollowUpBlock, ReviewSnapshot } from "@unvibe/shared";
+import { isCardVariant, type Block, type FollowUpBlock, type ReviewSnapshot } from "@unvibe/shared";
 import {
   baseVersionOf,
   findActiveJob,
   getSnapshotOrThrow,
   type ActionContext,
 } from "./common.js";
-import { pushConversationTurn, createConversationCard, runConversationTurn } from "./conversation.js";
+import { personaForThread, pushConversationTurn, createConversationCard, runConversationTurn } from "./conversation.js";
 import { probeConversationSessionFor } from "./ask-probe.js";
+import { personaFor, variantFor } from "./persona.js";
 
 export async function followupAction(
   ctx: ActionContext,
   cardId: string,
   blockId: string,
   index: number,
+  opts?: { personaId?: string },
 ): Promise<{ annotationId: string; replyId?: string; jobId?: string; deduplicated?: boolean }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
+  // Issue #349 step 2: a persona follow-up answers from that persona's
+  // version of the card (its model and lens).
+  const persona = opts?.personaId ? personaFor(ctx, opts.personaId) : undefined;
+  const personaId = opts?.personaId;
 
-  // Locate the follow-up block + item (page cards and conversation answers).
-  const located = findFollowUp(snapshot, cardId, blockId);
+  // Locate the follow-up block + item (page cards — or a persona's
+  // version of one — and conversation answers).
+  const located = personaId && persona
+    ? findVariantFollowUp(snapshot, cardId, personaId, blockId)
+    : findFollowUp(snapshot, cardId, blockId);
   if (!located) throw new Error(`unknown follow-up block ${blockId} on card ${cardId}`);
   if (!Number.isSafeInteger(index) || index < 0 || index >= located.block.items.length) {
     throw new Error(`unknown follow-up ${index} on block ${blockId}`);
@@ -41,7 +50,7 @@ export async function followupAction(
   const quote = item.label;
 
   const key = {
-    anchor: `followup:${cardId}:${blockId}:${index}`,
+    anchor: `${personaId ? `persona:${personaId}:` : ""}followup:${cardId}:${blockId}:${index}`,
     requestKind: "followup",
     baseVersion: baseVersionOf(snapshot),
   };
@@ -61,12 +70,17 @@ export async function followupAction(
     const replyId = await pushConversationTurn(ctx, annotationId, message, "Writing answer");
     const probe = await probeConversationSessionFor(ctx, card);
     const live = probe.continueSessionId !== undefined && !probe.rebuilt;
+    // Threads opened on a persona's version stay on that persona.
+    const threadPersona = personaForThread(ctx, card);
     const res = await runConversationTurn(ctx, annotationId, replyId, {
       anchor: card.anchor,
       template: live ? "ask_turn" : "ask",
       message,
       ...(probe.transcript !== undefined && !live ? { transcript: probe.transcript } : {}),
       ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
+      ...(threadPersona && card.personaCardId
+        ? { persona: threadPersona, personaCardId: card.personaCardId }
+        : {}),
       dedupeKey: key,
       echoCandidates: [quote, message],
       replayKind: "ask",
@@ -89,11 +103,25 @@ export async function followupAction(
     version: snapshot.version.n,
   };
 
-  // Consume the suggestion + create the answer card (working state).
+  // Consume the suggestion + create the answer card (working state). A
+  // persona follow-up consumes the variant's item; the guide keeps its
+  // own copy.
   await reviews.mutate(reviewId, (draft) => {
-    removeFollowUpItem(draft, holder.cardId, blockId, index);
+    if (personaId) removeVariantFollowUpItem(draft, holder.cardId, personaId, blockId, index);
+    else removeFollowUpItem(draft, holder.cardId, blockId, index);
   });
   const { annotationId, replyId } = await createConversationCard(ctx, anchor, message, "Writing answer");
+  if (persona && personaId) {
+    await reviews.mutate(reviewId, (draft) => {
+      const found = (draft.annotations as unknown as import("@unvibe/shared").Thread[]).find(
+        (a) => a.id === annotationId,
+      );
+      if (found) {
+        found.personaId = persona.id;
+        found.personaCardId = holder.cardId;
+      }
+    });
+  }
 
   const live = getSnapshotOrThrow(reviews, reviewId);
   const ann = live.annotations.find((a) => a.id === annotationId)!;
@@ -101,6 +129,7 @@ export async function followupAction(
     anchor: ann.anchor,
     template: "ask",
     message,
+    ...(persona && personaId ? { persona, personaCardId: holder.cardId } : {}),
     dedupeKey: key,
     // Issue #50: the card header shows the suggestion label; the
     // question is the label (or its pre-baked ask text).
@@ -110,6 +139,47 @@ export async function followupAction(
     workingLabel: "Writing answer",
   });
   return { annotationId, replyId, ...res };
+}
+
+/**
+ * Issue #349 step 2: locate a follow-up suggestion on a persona's
+ * version of a page card. Guide blocks are never consulted: the variant
+ * carries its own follow-ups.
+ */
+function findVariantFollowUp(
+  snapshot: ReviewSnapshot,
+  cardId: string,
+  personaId: string,
+  blockId: string,
+): { block: FollowUpBlock; holder: FollowUpHolder } | null {
+  const variant = variantFor(snapshot, cardId, personaId);
+  if (!variant) return null;
+  for (const b of variant.blocks) {
+    if (b.type === "follow-up" && (b.id === blockId || b.id === shortId(blockId))) {
+      return { block: b as FollowUpBlock, holder: { kind: "page-card", cardId } };
+    }
+  }
+  return null;
+}
+
+function removeVariantFollowUpItem(
+  draft: WritableDraft<ReviewSnapshot>,
+  cardId: string,
+  personaId: string,
+  blockId: string,
+  index: number,
+): void {
+  const target = (draft.pages ?? [])
+    .flatMap((p) => p.cards ?? [])
+    .find((c) => c.id === cardId);
+  const variant = target?.variants?.[personaId];
+  if (!target || !variant || !isCardVariant(variant)) return;
+  for (const b of variant.blocks) {
+    if (b.type === "follow-up" && (b.id === blockId || shortId(b.id) === shortId(blockId))) {
+      (b as FollowUpBlock).items.splice(index, 1);
+      return;
+    }
+  }
 }
 
 type FollowUpHolder =

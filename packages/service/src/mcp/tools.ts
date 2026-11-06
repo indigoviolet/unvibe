@@ -59,8 +59,7 @@ const SEARCH_REVIEW: McpToolDef = {
     "contributions, the PR description paragraphs, and changed file paths. " +
     "Returns matching items with IDs (description hits are desc: IDs). " +
     "A query matching a file path returns one file hit per file with its " +
-    "hunk IDs; map any path to all its hunk IDs with `resolve`. " +
-    "The second-opinion role searches only the description.",
+    "hunk IDs; map any path to all its hunk IDs with `resolve`. ",
   inputSchema: {
     type: "object",
     properties: {
@@ -76,8 +75,7 @@ const RESOLVE: McpToolDef = {
   description:
     "Map a natural-language location description (file path, line " +
     "numbers, quoted code, card title, description text) to candidate IDs " +
-    "in this review (h:, card: and desc: IDs). The second-opinion role " +
-    "gets h: and desc: IDs only, never card: IDs.",
+    "in this review (h:, card: and desc: IDs).",
   inputSchema: {
     type: "object",
     properties: {

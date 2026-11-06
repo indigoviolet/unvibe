@@ -2,7 +2,7 @@
  * Release-notes renderer (#330): plain text plus links only. Issue text
  * is never injected as HTML — every string renders as a React text node.
  */
-import type { ReleaseNotes } from "@unvibe/shared";
+import { whatChangedToShow, type ReleaseNotes } from "@unvibe/shared";
 
 export function ReleaseNotesView({ notes }: { notes: ReleaseNotes }): React.JSX.Element {
   return (
@@ -20,10 +20,10 @@ export function ReleaseNotesView({ notes }: { notes: ReleaseNotes }): React.JSX.
               #{item.number}
             </a>{" "}
             <span>{item.summary}</span>
-            {item.whatChanged ? (
+            {whatChangedToShow(item) ? (
               <div>
                 <span className="hint">What changed: </span>
-                <span>{item.whatChanged}</span>
+                <span>{whatChangedToShow(item)}</span>
               </div>
             ) : null}
             {item.whatToTry ? (

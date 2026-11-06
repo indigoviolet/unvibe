@@ -5,7 +5,6 @@
  * per-review folders); web renders them. Nested shapes are stored as JSON
  * columns where noted in the service's migration 001.
  */
-import type { SecondOpinionMode } from "./prompts.js";
 import type { HideLevel, HunkScoreLevel } from "./scores.js";
 
 /** A local checkout / GitHub repo the user can open reviews from. */
@@ -229,10 +228,10 @@ export interface Page {
 export type DepthLevel = "simple" | "standard" | "deep";
 
 /**
- * Issue #273: what depth, examples, diagram, undo and second opinion act
- * on — a page card's body or one reply of a thread. Every unit carries
- * its own `ans_…`/card id so none of those contracts change shape when
- * the unit is a reply.
+ * Issue #273: what depth, examples, diagram and undo act on — a page
+ * card's body or one reply of a thread. Every unit carries its own
+ * `ans_…`/card id so none of those contracts change shape when the unit
+ * is a reply. (Issue #349 step 2 adds per-persona card variants here.)
  */
 export interface ContentBody {
   /** Page-card id, or `ans_<12 hex>` for a thread reply. */
@@ -243,13 +242,74 @@ export interface ContentBody {
   revision: number;
   /** Undo stack of block snapshots (depth/examples/diagram changes). */
   undoStack: CardSnapshot[];
+}
+
+/**
+ * Issue #349 step 2: one persona's version of a card. A normal card body
+ * (same blocks, citations, validation): stored as a variant of the guide
+ * card, keyed by persona id. The title stays the guide card's; the
+ * variant carries its own blocks/level/revision/undo stack plus its run
+ * state (`working`/`error`/`jobId`) and its own agent session for that
+ * card. Conversations on this version (depth, Explain, Ask, replies,
+ * examples) run under the same persona and continue on `sessionId`.
+ */
+export interface CardVariant {
+  /** Persona id this variant belongs to (key of `Card.variants`). */
+  personaId: string;
+  blocks: Block[];
+  level: DepthLevel;
+  /** Bumped on every accepted rewrite; references always mean latest. */
+  revision: number;
+  /** Undo stack of block snapshots (depth/examples/diagram changes). */
+  undoStack: CardSnapshot[];
   /**
-   * Second-opinion results attached to this unit, not part of its
-   * revisable content. Depth changes and undo operate on `blocks` /
-   * `level` / `undoStack` only, so these survive both. Keep one per
-   * mode+model; re-running replaces the matching entry.
+   * This variant's own agent session (created by the persona card run),
+   * continued by every later turn on the variant. Absent until the run
+   * settles.
    */
-  secondOpinions?: SecondOpinionResult[];
+  sessionId?: string;
+  /** Progress line while this variant's job runs (immediately visible working state). */
+  working?: string | null;
+  /** Retryable failure text (visible error state + retry path, PRD §4.8). */
+  error?: string | null;
+  /** Active job filling or rewriting this variant, when one is running. */
+  jobId?: string;
+}
+
+/** True when the value is a stored persona card variant. Pure. */
+export function isCardVariant(v: unknown): v is CardVariant {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o["personaId"] === "string" &&
+    Array.isArray(o["blocks"]) &&
+    (o["level"] === "simple" || o["level"] === "standard" || o["level"] === "deep") &&
+    typeof o["revision"] === "number" &&
+    Array.isArray(o["undoStack"])
+  );
+}
+
+/** Persona variants of a card, in persona-definition order. Pure. */
+export function cardVariantList(
+  card: Pick<Card, "variants">,
+  personas: { id: string }[],
+): { personaId: string; variant: CardVariant }[] {
+  const out: { personaId: string; variant: CardVariant }[] = [];
+  for (const p of personas) {
+    const v = card.variants?.[p.id];
+    if (v) out.push({ personaId: p.id, variant: v });
+  }
+  return out;
+}
+
+/**
+ * True when the card shows a version tab strip (more than one version).
+ * Counts every stored variant — including orphans whose persona was
+ * deleted since (the UI keeps their tab with a fallback name/colour,
+ * never drops them). Pure.
+ */
+export function cardHasVersions(card: Pick<Card, "variants">): boolean {
+  return Object.keys(card.variants ?? {}).length > 0;
 }
 
 /** One card on a page. IDs stay stable across revisions (PRD §7.2). */
@@ -258,6 +318,11 @@ export interface Card extends ContentBody {
   /** Null when the reply carried no title; the UI shows the shared fallback (`content/titles.ts`, issue #49). */
   title: string | null;
   collapsed: boolean;
+  /**
+   * Issue #349 step 2: persona versions of this card, keyed by persona
+   * id. Absent/empty means the Guide version is the only one (no tabs).
+   */
+  variants?: Record<string, CardVariant>;
   /** Placeholder ("Go deeper") cards that still need generation. */
   pending?: PendingCard;
   /**
@@ -274,55 +339,17 @@ export interface Card extends ContentBody {
   stale?: boolean;
   staleChangedHunks?: number;
   staleHunks?: string[];
-}
-
-/**
- * M6 second opinion (PRD §4.10, §12).
- *
- * Additive-only: new entity carried on `ContentBody.secondOpinions`
- * (a page card or one conversation answer). The
- * reasoning body is stored as validated `Block[]` so citation markers
- * behave like all others (hover preview, click reveals). `missed` is the
- * trailing-JSON "anything the card missed" string. `SecondOpinionMode`
- * lives in `prompts.ts` (re-exported through the barrel); this module
- * imports it for the result shape without re-defining it.
- */
-export type SecondOpinionVerdict = "agrees" | "partly" | "disagrees";
-
-export interface SecondOpinionResult {
-  /** Stable id: `so-<cardId>-<mode>-<provider>-<model>` (slugified). */
-  id: string;
-  cardId: string;
-  mode: SecondOpinionMode;
-  /** Second-opinion model that produced this result (label in the UI). */
-  provider: string;
-  model: string;
   /**
-   * Thinking level the run used (issue #172), "" for the adapter default.
-   * Part of the reuse identity: a changed effort re-runs.
+   * Issue #351: dated "Updated since B" blocks appended by the update
+   * pass, in write order. The card's own blocks stay unchanged.
    */
-  effort: string;
-  verdict: SecondOpinionVerdict;
-  /** Reasoning text from the trailing JSON (plain text fallback). */
-  reasoning: string;
-  /** Validated reasoning blocks (citation markers render like all others). */
-  blocks: Block[];
-  /** Anything the card missed (trailing-JSON `missed`). */
-  missed?: string;
-  /** Review version the run executed against (dedupe + staleness). */
-  version: number;
-  createdAt: number;
-  /** Job that produced this result (for usage / prompt-snapshot links). */
-  jobId?: string;
-}
-
-/** Dedupe identity for a second-opinion request (PRD §12). */
-export interface SecondOpinionDedupe {
-  cardId: string;
-  mode: SecondOpinionMode;
-  provider: string;
-  model: string;
-  version: number;
+  addenda?: import("./versions.js").CardAddendum[];
+  /**
+   * Issue #351: resolved feedback links ("Answers: … ↗") stored by the
+   * update pass on Since-B cards. The agent writes `{ kind, id }`
+   * pointers; the service resolves them and drops unknown ids.
+   */
+  answers?: import("./versions.js").SinceFeedbackLink[];
 }
 
 /** A single undo entry: block list + depth level. No redo (PRD §4.4). */
@@ -584,6 +611,16 @@ export interface Thread {
    * restart the session is rebuilt from the stored agent replies.
    */
   sessionId?: string;
+  /**
+   * Issue #349 step 2: when this thread was opened on a persona's
+   * version of a card, the persona that owns it (its model and lens
+   * answer every turn, continuing that persona's session for the card).
+   * `personaCardId` is the guide card the version belongs to. Absent on
+   * guide-version threads.
+   */
+  personaId?: string;
+  /** Guide card id the persona version belongs to (with `personaId`). */
+  personaCardId?: string;
   /**
    * M4: progress line while an agent job works on this thread
    * (explain fill, ask reply). Cleared when the job settles.
@@ -928,6 +965,19 @@ export interface ReviewDescription {
  * renderer (raw HTML from GitHub never reaches the DOM); `replyTo` groups
  * replies under their root (`in_reply_to_id`).
  */
+/**
+ * Issue #351: one PR conversation (issue-comment) remark, fetched
+ * read-only with the existing-comments ingest and kept for the update
+ * pass's feedback matching. Capped (count and body length) at fetch.
+ */
+export interface PrConversationRemark {
+  id: number;
+  author?: string;
+  body: string;
+  createdAt?: string;
+  htmlUrl?: string;
+}
+
 export interface ExistingReviewComment {
   id: number;
   path?: string;
@@ -979,11 +1029,11 @@ export type JobKind =
   | "examples"
   | "diagram"
   | "go-deeper"
-  | "second-opinion"
   | "update-pass"
   | "summarize"
   | "plotline-assign"
-  | "consolidate";
+  | "consolidate"
+  | "persona";
 
 export type JobState = "queued" | "running" | "backing-off" | "done" | "error" | "cancelled";
 

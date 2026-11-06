@@ -19,13 +19,27 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  Block,
+  CardAddendumDraft,
   FindingVerdict,
   Job,
+  Plotline,
   ReviewSnapshot,
+  SinceFeedbackRef,
+  SinceHunks,
   TokenUsage,
   UpdatePassResult,
 } from "@unvibe/shared";
-import { JOB_PRIORITY } from "@unvibe/shared";
+import { isSinceBaseline, JOB_PRIORITY } from "@unvibe/shared";
+import {
+  buildSinceSectionCards,
+  formatSinceContext,
+  isSinceFeedbackRef,
+  normalizeAgentSinceCards,
+  resolveSinceAnswers,
+  resolveSinceBaseline,
+  type SinceCardDraftWithRefs,
+} from "./since.js";
 import {
   charTokenEstimator,
   countCodePoints,
@@ -83,7 +97,7 @@ export function formatChangedHunk(
   return `### [[h:${fileKey}:${contentHash}]] ${filePath}\n${header}\n${rows}`;
 }
 
-/** Build the three `update_pass` variables from the current snapshot. */
+/** Build the `update_pass` variables from the current snapshot. */
 export function buildUpdateVariables(
   snapshot: ReviewSnapshot,
   opts: { capTokens?: number } = {},
@@ -91,9 +105,17 @@ export function buildUpdateVariables(
   changed_hunks: string;
   stale_cards: string;
   findings: string;
+  since_context: string;
 } {
   const status = snapshot.versionStatus;
-  const changedNew = new Set(status?.changedNewIds ?? []);
+  // Issue #351: the update pass explains B..head, not just the latest
+  // refresh. `sinceHunks` (written on refresh and on baseline picks, by
+  // hunk-content comparison) is the B..head set; without it fall back to
+  // the refresh's latest-version set as before.
+  const since = snapshot.sinceHunks;
+  const changedNew = new Set(
+    since ? [...since.added, ...since.changed] : (status?.changedNewIds ?? []),
+  );
   const chunks: string[] = [];
   for (const f of snapshot.files) {
     for (const h of f.hunks) {
@@ -101,9 +123,9 @@ export function buildUpdateVariables(
       const isChanged = changedNew.size === 0 ? (h as { stale?: boolean }).stale === true : changedNew.has(id);
       // When there is no versionStatus (fresh review), list nothing: the
       // update pass only runs after a refresh created a new version.
-      if (status && (changedNew.has(id) || isChanged)) {
+      if ((status || since) && (changedNew.has(id) || isChanged)) {
         chunks.push(formatChangedHunk(f.fileKey, f.path, h.contentHash, h.header, h.lines));
-      } else if (!status) {
+      } else if (!status && !since) {
         continue;
       }
     }
@@ -145,6 +167,10 @@ export function buildUpdateVariables(
     changed_hunks: capChangedHunks(chunks, changedCap(staleCards, findings, opts.capTokens)),
     stale_cards: staleCards.length > 0 ? staleCards.join("\n") : "(no stale cards)",
     findings: findings.length > 0 ? findings.join("\n") : "(no findings to recheck)",
+    since_context:
+      since && (status || since.added.length > 0 || since.changed.length > 0)
+        ? formatSinceContext(snapshot, since)
+        : "(no baseline yet)",
   };
 }
 
@@ -202,14 +228,18 @@ function capChangedHunks(chunks: string[], capTokens: number): string {
   return kept.length > 0 ? [...kept, notice(omitted)].join("\n\n") : notice(omitted);
 }
 
-/** Render `prompts/update_pass.md` with the three variables. Pure I/O: reads one file. */
-export function renderUpdatePrompt(promptsDir: string, vars: { changed_hunks: string; stale_cards: string; findings: string }): string {
+/** Render `prompts/update_pass.md` with the update-pass variables. Pure I/O: reads one file. */
+export function renderUpdatePrompt(
+  promptsDir: string,
+  vars: { changed_hunks: string; stale_cards: string; findings: string; since_context?: string },
+): string {
   const raw = fs.readFileSync(path.join(promptsDir, "update_pass.md"), "utf8");
   const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
   return body
     .replace("{{changed_hunks}}", vars.changed_hunks)
     .replace("{{stale_cards}}", vars.stale_cards)
-    .replace("{{findings}}", vars.findings);
+    .replace("{{findings}}", vars.findings)
+    .replace("{{since_context}}", vars.since_context ?? "(no baseline yet)");
 }
 
 export function resolveUpdatePromptsDir(explicit?: string): string | null {
@@ -259,20 +289,100 @@ export class JsonBlockReplyParser implements UpdateReplyParser {
         throw new Error(`the agent's reply was not in the expected format: bad finding verdict ${JSON.stringify(v)}`);
       }
     }
+    // Issue #351: explain-and-append fields. Malformed entries are
+    // dropped, never applied half-way; verdicts above stay strict.
+    // Step 2: the baseline may be a version or a commit sha.
+    const baseline = isSinceBaseline(json["baseline"]) ? (json["baseline"] as UpdatePassResult["baseline"]) : undefined;
+    const sinceHunks = normalizeSinceHunks(json["sinceHunks"]);
+    const sinceCards = normalizeAgentSinceCards(json["sinceSection"]);
+    const addenda = normalizeAddenda(json["addenda"]);
+    const plotlineAssignments = normalizePlotlineAssignments(json["plotlineAssignments"]);
+    const newPlotlines = normalizeNewPlotlines(json["newPlotlines"]);
     return {
       revisedCards,
       recheckedFindings,
       newFindings,
       hunkSummaries,
       ...(droppedPins !== undefined ? { droppedPins } : {}),
+      ...(baseline !== undefined ? { baseline } : {}),
+      ...(sinceHunks !== undefined ? { sinceHunks } : {}),
+      ...(sinceCards !== undefined ? { sinceSection: { cards: sinceCards } } : {}),
+      ...(addenda !== undefined ? { addenda } : {}),
+      ...(plotlineAssignments !== undefined ? { plotlineAssignments } : {}),
+      ...(newPlotlines !== undefined ? { newPlotlines } : {}),
     };
   }
 }
 
+/** String arrays only; anything else is dropped. Pure. */
+function stringArray(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  if (!v.every((e) => typeof e === "string")) return null;
+  return [...v];
+}
+
+function normalizeSinceHunks(v: unknown): SinceHunks | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== "object" || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  const added = stringArray(o["added"]) ?? [];
+  const changed = stringArray(o["changed"]) ?? [];
+  if (!Array.isArray(o["added"]) || !Array.isArray(o["changed"])) return undefined;
+  return { added, changed };
+}
+
+function normalizeAddenda(v: unknown): CardAddendumDraft[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: CardAddendumDraft[] = [];
+  for (const e of v) {
+    if (typeof e !== "object" || e === null) continue;
+    const o = e as Record<string, unknown>;
+    if (typeof o["cardId"] !== "string" || !Array.isArray(o["blocks"])) continue;
+    out.push({
+      cardId: o["cardId"],
+      blocks: o["blocks"] as Block[],
+      ...(Array.isArray(o["answers"]) ? { answers: normalizeRefs(o["answers"]) } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** Agent-written feedback pointers; malformed entries are dropped. Pure. */
+function normalizeRefs(v: unknown): SinceFeedbackRef[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(isSinceFeedbackRef).map((r) => ({ kind: r.kind, id: r.id }));
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizePlotlineAssignments(v: unknown): Record<string, string> | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== "object" || v === null) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof k === "string" && typeof val === "string" && k.length > 0 && val.length > 0) out[k] = val;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function normalizeNewPlotlines(v: unknown): Plotline[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(
+    (p): p is Plotline =>
+      typeof p === "object" &&
+      p !== null &&
+      typeof (p as Record<string, unknown>)["id"] === "string" &&
+      typeof (p as Record<string, unknown>)["name"] === "string",
+  );
+  return out.length > 0 ? out : undefined;
+}
+
 /**
- * Apply an update-pass result in one mutate: revised cards (new revisions,
- * stale cleared), rechecked findings, new finding pages, regenerated hunk
- * summaries, and `versionStatus.stale` cleared.
+ * Apply an update-pass result in one mutate (issue #351: explain and
+ * append): the dated Since-B section (replaced, never revised), dated
+ * addenda appended to affected cards (old text unchanged), plotline
+ * assignments for new hunks plus genuinely new plotlines (marked
+ * `newSinceBaseline`), then as before revised cards, rechecked findings,
+ * new findings, hunk summaries, and `versionStatus.stale` cleared.
  */
 export async function applyUpdateResult(
   reviews: ReviewStore,
@@ -280,6 +390,11 @@ export async function applyUpdateResult(
   result: UpdatePassResult,
 ): Promise<void> {
   await reviews.mutate(reviewId, (draft) => {
+    const toVersion = draft.review.currentVersion;
+    // Step 2: the baseline is the union — a version or a commit sha.
+    const baselineV =
+      result.baseline && isSinceBaseline(result.baseline) ? result.baseline : resolveSinceBaseline(draft);
+    const now = Date.now();
     for (const rev of result.revisedCards) {
       for (const page of draft.pages) {
         const card = page.cards.find((c) => c.id === rev.cardId);
@@ -326,6 +441,63 @@ export async function applyUpdateResult(
         draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: false, summary });
       }
     }
+    // Issue #351: append, don't rewrite. An addendum answers the delta for
+    // its card, so the card leaves the stale set — while its old blocks
+    // stay byte-for-byte as they were.
+    for (const a of result.addenda ?? []) {
+      for (const page of draft.pages) {
+        const card = page.cards.find((c) => c.id === a.cardId);
+        if (!card) continue;
+        const addenda = (card.addenda ?? []) as NonNullable<typeof card.addenda>;
+        const answers = resolveSinceAnswers(draft, a.answers);
+        addenda.push({
+          id: `add-v${toVersion}-${addenda.length + 1}`,
+          version: toVersion,
+          baseline: baselineV,
+          at: now,
+          blocks: a.blocks as typeof addenda[number]["blocks"],
+          ...(answers.length > 0 ? { answers } : {}),
+        });
+        card.addenda = addenda;
+        card.stale = false;
+        delete card.staleChangedHunks;
+        delete card.staleHunks;
+      }
+    }
+    // The Since-B section is replaced whole on every pass, never revised.
+    // Step 2: card storage is shared with the guide run (`since.ts`).
+    if (result.sinceSection && result.sinceSection.cards.length > 0) {
+      const cards = buildSinceSectionCards(draft, result.sinceSection.cards as SinceCardDraftWithRefs[]);
+      draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
+    }
+    // New plotline threads first, so assignments below can target them.
+    // Unknown assignment targets stay "other" (never invented ids).
+    if (result.newPlotlines && result.newPlotlines.length > 0) {
+      const known = new Set((draft.plotlines ?? []).map((p) => p.id));
+      for (const p of result.newPlotlines) {
+        if (known.has(p.id)) continue;
+        known.add(p.id);
+        draft.plotlines = [...(draft.plotlines ?? []), { ...p, newSinceBaseline: true }];
+      }
+    }
+    if (result.plotlineAssignments) {
+      const known = new Set((draft.plotlines ?? []).map((p) => p.id));
+      for (const [hash, plotlineId] of Object.entries(result.plotlineAssignments)) {
+        if (!known.has(plotlineId)) continue;
+        const state = draft.hunkStates.find((s) => s.contentHash === hash);
+        if (state) {
+          state.plotline = plotlineId;
+        } else {
+          draft.hunkStates.push({ contentHash: hash, folded: false, reviewed: false, plotline: plotlineId });
+        }
+      }
+    }
+    if (result.sinceHunks) {
+      const clean = (ids: unknown): string[] =>
+        Array.isArray(ids) ? ids.filter((e): e is string => typeof e === "string") : [];
+      draft.sinceHunks = { added: clean(result.sinceHunks.added), changed: clean(result.sinceHunks.changed) };
+    }
+    draft.sinceBaseline = baselineV;
     if (draft.versionStatus) draft.versionStatus = { ...draft.versionStatus, stale: false };
     const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
     draft.logTail.push({
@@ -336,6 +508,9 @@ export async function applyUpdateResult(
         rechecked: result.recheckedFindings.length,
         newFindings: result.newFindings.length,
         summaries: Object.keys(result.hunkSummaries).length,
+        sinceAdded: result.sinceHunks?.added.length ?? 0,
+        sinceChanged: result.sinceHunks?.changed.length ?? 0,
+        addenda: result.addenda?.length ?? 0,
       },
       scope: { scope: "global" },
     });

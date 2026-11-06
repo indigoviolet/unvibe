@@ -20,7 +20,7 @@ afterEach(() => {
 const SETTINGS: Settings = {
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  secondOpinion: { provider: "codex", model: "mock-second", effort: "" },
+  personas: [],
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -178,7 +178,8 @@ describe("VersionSection switch anyway", () => {
     await screen.findByText("preview/feat-x");
     const feat = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
     fireEvent.click(feat.querySelector("button")!);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm switch to preview/feat-x" }));
+    // #346: the shared inline confirm ("Confirm switch" ✓ ✕).
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm switch" }));
 
     // Inline on the row: which jobs, what switching does, both actions.
     const panel = await screen.findByTestId("update-blocked");
@@ -187,10 +188,10 @@ describe("VersionSection switch anyway", () => {
     expect(panel).toHaveTextContent("stay with this channel");
     expect(panel).toHaveTextContent("switch back to resume or retry them");
     expect(screen.getByTestId("update-blocked-jobs")).toHaveTextContent("explain · demo · running");
-    expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", undefined);
+    expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", undefined, undefined);
 
     fireEvent.click(screen.getByRole("button", { name: "Switch anyway" }));
-    await waitFor(() => expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", true));
+    await waitFor(() => expect(updateSwitch).toHaveBeenCalledWith("preview/feat-x", true, undefined));
     // Forced switch committed: the page waits out the restart, then reloads.
     await waitFor(() => expect(reload).toHaveBeenCalled());
   });
@@ -207,7 +208,7 @@ describe("VersionSection switch anyway", () => {
     await screen.findByText("preview/feat-x");
     const feat = document.querySelector('[data-testid="update-channel"][data-ref="preview/feat-x"]')!;
     fireEvent.click(feat.querySelector("button")!);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm switch to preview/feat-x" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm switch" }));
     await screen.findByTestId("update-blocked");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel switch to preview/feat-x" }));

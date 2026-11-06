@@ -101,7 +101,7 @@ test.skip("mark reviewed advances the hunks-reviewed progress", async ({ page })
 test("hide uninteresting collapses runs to one row per run", async ({ page }) => {
   await scrollDiffToBottom(page);
   await expect(page.locator("button.hid")).toHaveCount(2);
-  await expect(page.getByText(/Hunks 1–2 of 3 hidden · imports/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Hunks 1–2, collapsed/ })).toBeVisible();
   await page.getByRole("button", { name: /Hide level:/ }).click();
   await page.locator('[data-hidecat="uninteresting"]').click();
   await expect(page.locator("button.hid")).toHaveCount(0);
@@ -113,7 +113,7 @@ test("hide uninteresting collapses runs to one row per run", async ({ page }) =>
 test("split view pairs columns and widens a narrow pane", async ({ page }) => {
   const right = page.locator("#right");
   const before = await right.boundingBox();
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   // One table (and colgroup) per hunk: the fixture's first file has two.
   await expect(page.locator(`${connFile} table.diff.split colgroup`)).toHaveCount(2);

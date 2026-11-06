@@ -6,7 +6,7 @@
  * `persona` reserved in the type only), marked by an avatar and an
  * accessible name (no kind badges — #315). Threads render
  * inline under the card (or description block, or diff line) they started
- * from. Controls (depth, principle, second opinion) are per reply.
+ * from. Controls (depth, principle) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
  * and highlights it. "Collapse threads" in the review top bar collapses
  * every thread to one-line rows; expanding a row restores that thread.
@@ -17,6 +17,7 @@ import type { Thread, Block, Reply } from "@unvibe/shared";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
+import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { Icon } from "../components/Icon.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
@@ -25,7 +26,6 @@ import { BlockView } from "../guide/BlockView.js";
 import { DepthControl } from "../guide/DepthControl.js";
 import { linkCardBlocks } from "../guide/glossary.js";
 import { busyForCard, inflightLabel } from "../guide/inflight.js";
-import { SecondOpinionBlock, SecondOpinionControl } from "../guide/secondOpinion/index.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
 import { isReadOnlyVersionNow } from "./readOnly.js";
@@ -215,7 +215,6 @@ function AgentReplyView({
       else toast(`Couldn't retry: ${friendlyError(err)}`);
     });
   };
-  const secondOpinions = reply.secondOpinions ?? [];
   const controlsBusy = direct !== null;
   const busyKind = direct?.kind;
   const depthBusy = busyKind === "depth";
@@ -292,6 +291,13 @@ function AgentReplyView({
   // above; Explain shows the answer only. The accessible name keeps the
   // replies distinguishable for screen readers.
   const agentLabel = reply.kind === "explain" ? "Agent explanation" : "Agent answer";
+  // Issue #349 step 2: the AI avatar is recoloured wherever a persona
+  // speaks — its threads' answers wear the persona colour (with the
+  // name in the accessible label, so colour is never the only signal).
+  const personas = useEnabledPersonas();
+  const replyPersona = thread.personaId ? personas.find((p) => p.id === thread.personaId) : undefined;
+  const avatarStyle = replyPersona ? { background: replyPersona.color, color: "#fff" } : undefined;
+  const avatarLabel = replyPersona ? `${replyPersona.name} (persona)` : "Agent";
   return (
     <div
       className={`spike-reply${askAnswerClass}${flash ? " flash" : ""}`}
@@ -302,7 +308,7 @@ function AgentReplyView({
       role="article"
       aria-label={agentLabel}
     >
-      <span className="av ai" role="img" aria-label="Agent">
+      <span className="av ai" role="img" aria-label={avatarLabel} {...(avatarStyle ? { style: avatarStyle } : {})}>
         <Icon name="spark" />
       </span>
       {/* #274: the toolbar floats at the reply's top-right corner,
@@ -337,13 +343,6 @@ function AgentReplyView({
                 disabled={!undoEnabled || controlsBusy}
                 onClick={() => run({ kind: "undo", cardId: reply.id })}
               />
-              <SecondOpinionControl
-                reviewId={reviewId}
-                card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
-                page={undefined}
-                disabled={!contentReady}
-                busy={busyKind === "second_opinion"}
-              />
             </div>
           )}
       {showWorking && !errorText ? <Working text={workingLabel} /> : null}
@@ -375,17 +374,6 @@ function AgentReplyView({
           ))}
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
-        {secondOpinions.map((so) => (
-          <SecondOpinionBlock
-            key={so.id}
-            reviewId={reviewId}
-            card={{ ...reply, pageId: "", title: reply.question, collapsed: false } as never}
-            result={so}
-            lookupPage={lookupPage as never}
-            onOpenPage={onOpenPage}
-            onFollowUp={onFollowUp}
-          />
-        ))}
     </div>
   );
 }
@@ -665,10 +653,13 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   // CSS: below ~440px of thread width the quote hides entirely
   // (container query), keeping the location.
   const showQuote = (thread.anchor.quotedText ?? "").trim() !== "";
+  // Quotes anchored on code (diff lines, hunks) render upright in the
+  // code font so escapes read literally; prose quotes keep italic sans.
+  const codeQuote = thread.anchor.host.kind === "diff-line" || thread.anchor.host.kind === "hunk";
   return (
     <section className="ithread spike-thread" id={thread.id} data-thread={thread.id} aria-label="Thread">
       <div className="thd">
-        {showQuote ? <span className="mq">“{thread.anchor.quotedText}”</span> : null}
+        {showQuote ? <span className={codeQuote ? "mq code" : "mq"}>“{thread.anchor.quotedText}”</span> : null}
         <span className="hint thd-loc">{headerLabel(snapshot, thread)}</span>
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}

@@ -18,11 +18,16 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    // 49 base recordings (one combined critic recording, #215; no
-    // concept-stubs recording, #216) + 3 second-opinion recordings
-    // (blind ×2, check ×1) + 1 expansion-depth recording (audit #10)
-    // + 1 list-first ask recording (#331).
-    expect(counts).toHaveLength(55);
+    // 69 recordings, all captured live on Claude Sonnet (#341):
+    // reader 1 + critic 1 + hunk 8 + go-deeper 4 + concept-page 4
+    // + depth 25 (12 simple + 12 deep-principle + 1 shared expansion)
+    // + examples 4 + diagram 2 + explain 8 + ask 12 (incl. 2 thread).
+    // No second-opinion recordings (#349); the cost ask was dropped —
+    // Sonnet cited stdlib files outside the review.
+    // + 1 persona recording (#349 step 2: central second-opinion).
+    // Journey-only manifest entries (the #351 update-pass reply) are not
+    // demo content and are skipped by the builder, so the count stays 70.
+    expect(counts).toHaveLength(70);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
@@ -31,7 +36,7 @@ describe("snapshot build", () => {
     ]);
     // #216: no concept pages are seeded; they are written on open.
     expect(snapshot.pages.map((p) => p.id).sort()).toEqual(
-      ["root", "f-lf", "f-perf"].sort(),
+      ["root", "f-critic", "f-critic-2"].sort(),
     );
     const root = snapshot.pages.find((p) => p.id === "root")!;
     expect(root.cards.map((c) => c.id)).toEqual([
@@ -39,13 +44,13 @@ describe("snapshot build", () => {
       "central",
       "buildup",
       "decisions",
-      "g-flow",
-      "g-design",
+      "g-alt",
       "g-regex",
-      "g-check",
+      "g-tests",
+      "g-reach",
     ]);
-    const finding = snapshot.pages.find((p) => p.id === "f-lf")!;
-    expect(finding.confidence).toBe("medium");
+    const finding = snapshot.pages.find((p) => p.id === "f-critic")!;
+    expect(finding.confidence).toBe("high");
     expect(snapshot.annotations.map((a) => a.id).sort()).toEqual(
       ["t-diff", "t-seed", "t-sgperf", "t-sglf", "x-seed"].sort(),
     );
@@ -72,15 +77,13 @@ describe("snapshot build", () => {
         "d-p3": "x",
         "d-p4": "x",
         "d-p5": "x",
+        "d-p6": "x",
       },
       concepts: [
         "obs-fold",
-        "http-headers",
-        "header-injection",
-        "regex-performance",
-        "ows-rws",
-        "set-cookie",
-        "requests-cookies",
+        "_normalize_header_value",
+        "_normalize_header_values",
+        "HTTPHeaderDict",
       ],
     });
     for (const page of snapshot.pages) {
@@ -111,10 +114,11 @@ describe("snapshot build", () => {
         templates: { name: string }[];
         expanded: { name: string; expanded: string }[];
       };
-      expect(body.templates).toHaveLength(17);
-      expect(body.expanded).toHaveLength(17);
-      const blind = body.expanded.find((e) => e.name === "second_opinion_blind")!;
-      expect(blind.expanded).toContain("Folds that end in a bare LF are not unfolded");
+      expect(body.templates).toHaveLength(16);
+      expect(body.expanded).toHaveLength(16);
+      const card = body.expanded.find((e) => e.name === "persona_card")!;
+      expect(card.expanded).toContain("The problem");
+      expect(card.expanded).toContain("[[card:problem]]");
       const reader = body.expanded.find((e) => e.name === "reader")!;
       expect(reader.expanded).toContain("src-urllib3-connection.py");
     } finally {

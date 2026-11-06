@@ -14,7 +14,7 @@
  *
  * Expansion rules (documented for the settings UI):
  * - Base templates (reader, base_pack, critic, hunk_pass, concept_*,
- *   update_pass, consolidate, second_opinion_*) expand against real review
+ *   update_pass, consolidate, persona_card) expand against real review
  *   data: source blurb, diff section (with the same budget fallback the
  *   pipeline uses), pinned code, guide, concepts, hunk summaries, the log.
  * - Turn templates (explain, ask, depth, examples, diagram,
@@ -23,7 +23,7 @@
  *   the anchor quote, thread, card-under-edit and user message.
  * - Caching flags: spans served from a warm base (L0–L3 on a fork) are
  *   `cached`; fresh sessions (reader, hunk pass, consolidate,
- *   second opinions) and every L4 are not.
+ *   persona card) and every L4 are not.
  */
 import type { FastifyInstance } from "fastify";
 import {
@@ -31,7 +31,6 @@ import {
   collectTargets,
   parseId,
   renderMarkdown,
-  tokenizeLinks,
   type Block,
   type PromptExpanded,
   type PromptLayerSpan,
@@ -53,7 +52,6 @@ import {
   formatChangeList,
   formatHunk,
   hunkId,
-  pinnedId,
   type ConceptIndexEntry,
   type ContextFile,
   type FindingInput,
@@ -68,6 +66,7 @@ import {
   type TemplateLibrary,
 } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
+import { DEFAULT_CARD_INSTRUCTION } from "../prompts/personas.js";
 import { accessModeOf, type AccessMode } from "@unvibe/shared";
 import { formatContributionLines } from "../sharedctx/contributions.js";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
@@ -143,8 +142,8 @@ export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
 /**
  * Short content hash of the description the agents see (issue #110): the
  * pending edit when there is one (`currentDescriptionHtml`, issue #96).
- * Part of the base key (via `guideRevisionForSnapshot`) and of the
- * second-opinion base key, so a later edit invalidates the base.
+ * Part of the base key (via `guideRevisionForSnapshot`), so a later edit
+ * invalidates the base.
  */
 export function descriptionRevisionForSnapshot(snap: ReviewSnapshot): string {
   return fnv1aHex(currentDescriptionHtml(snap.description ?? null));
@@ -404,63 +403,17 @@ const PH = {
   direction: "(no placeholder selected)",
   changedHunks: "(no newer version — the update pass lists changed hunks here)",
   staleCards: "(guide is current — affected cards are listed here after a refresh)",
+  // Issue #351: same fallback `buildUpdateVariables` uses when there is
+  // no baseline yet — the preview is placeholder-based by design.
+  sinceContext: "(no baseline yet)",
   citedCode: "(cited excerpts are attached when the action runs)",
   topic: "(select a card or finding)",
-  claim: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
   contributions: "(no contributions yet)",
   plotlines: "(the reader names plotlines when the guide runs)",
   unassignedHunks: "(hunks the reader did not see are listed here after the guide runs)",
   commits: "(the review's commits are listed here when the assign step runs)",
 };
-
-/**
- * Citation IDs (`code:`/`diff:`) mentioned in Markdown, via shared tokens.
- * Used to attach real cited excerpts to the second-opinion expansion.
- */
-function citedCodeIds(markdown: string): string[] {
-  const ids: string[] = [];
-  for (const token of tokenizeLinks(markdown)) {
-    if (/^(code|diff):/.test(token.idText)) ids.push(token.idText);
-  }
-  return ids;
-}
-
-/** Rendered excerpts for the given IDs from reader-pinned code. */
-function excerptsFor(snapshot: PromptReviewSnapshot, ids: string[]): string {
-  // Index by full ID and by short form (PRD §7.2: prompts may drop @sha).
-  const byId = new Map<string, (typeof snapshot.pinnedCode)[number]>();
-  for (const pin of snapshot.pinnedCode) {
-    const full = pinnedId(pin);
-    byId.set(full, pin);
-    const short = full.split("@")[0];
-    if (!byId.has(short)) byId.set(short, pin);
-  }
-  const parts: string[] = [];
-  const seen = new Set<string>();
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const pin = byId.get(id);
-    if (pin) parts.push(`### [[${pinnedId(pin)}]]\n\n${pin.text}\n`);
-  }
-  return parts.length > 0 ? parts.join("\n") : PH.citedCode;
-}
-
-function firstFindingTopic(snapshot: PromptReviewSnapshot): { topic: string; claim: string } {
-  const f = snapshot.findings[0];
-  if (!f) return { topic: PH.topic, claim: PH.claim };
-  return {
-    topic: `${f.title} (${f.confidence}): ${f.summary}`,
-    claim: `${f.title}: ${f.summary}`,
-  };
-}
-
-function firstFindingCitedCode(snapshot: PromptReviewSnapshot): string {
-  const f = snapshot.findings[0];
-  if (!f) return PH.citedCode;
-  return excerptsFor(snapshot, citedCodeIds(`${f.summary}\n${f.markdown}`));
-}
 
 /** Expand every template against the snapshot. Pure given the library. */
 export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, access: AccessMode = "lockdown"): ExpandedPrompt[] {
@@ -517,8 +470,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
   const contributionLines = formatContributionLines(snapshot.contributions ?? []);
   const contributionsText = contributionLines !== "" ? contributionLines : PH.contributions;
 
-  const { topic, claim } = firstFindingTopic(snapshot);
-  const findingCited = firstFindingCitedCode(snapshot);
   const findingsText = snapshot.findings
     .map((f) => `### ${f.title} (${f.confidence}) [[page:${f.pageId}]]\n\n${f.summary}\n`)
     .join("\n");
@@ -548,7 +499,12 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     {
       layer: "L1",
       label: "reader task",
-      text: render("reader", { source: blurb, diff_inline: diff.text, repo_path: "(worktree path)" }),
+      text: render("reader", {
+        source: blurb,
+        diff_inline: diff.text,
+        repo_path: "(worktree path)",
+        reviewed_context: "(No prior-review baseline: explain the whole change; write no Since-B section.)",
+      }),
       cached: false,
     },
   ]);
@@ -594,6 +550,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     changed_hunks: PH.changedHunks,
     stale_cards: PH.staleCards,
     findings: findingsText === "" ? "(no findings)" : findingsText,
+    since_context: PH.sinceContext,
   });
 
   push("hunk_pass", [
@@ -620,23 +577,16 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
       cached: false,
     },
   ]);
-  push("second_opinion_blind", [
+  // Issue #349: the persona card task renders against the first card,
+  // with the card-task default (a persona's own card instruction applies
+  // when it runs).
+  push("persona_card", [
     { layer: "L0", label: "instructions", text: l0, cached: false },
     { layer: "L1", label: "source", text: `${blurb}\n${diff.text}`, cached: false },
     {
       layer: "L4",
-      label: "blind review",
-      text: render("second_opinion_blind", { topic, cited_code: findingCited }),
-      cached: false,
-    },
-  ]);
-  push("second_opinion_check", [
-    { layer: "L0", label: "instructions", text: l0, cached: false },
-    { layer: "L1", label: "source", text: `${blurb}\n${diff.text}`, cached: false },
-    {
-      layer: "L4",
-      label: "claim check",
-      text: render("second_opinion_check", { claim, cited_code: findingCited }),
+      label: "persona card",
+      text: render("persona_card", { card: cardText, card_instruction: DEFAULT_CARD_INSTRUCTION }),
       cached: false,
     },
   ]);

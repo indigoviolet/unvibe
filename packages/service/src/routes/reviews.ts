@@ -25,14 +25,16 @@ import type {
   CreateDocumentRequest,
   CreateReviewRequest,
   CreateReviewResponse,
+  GetPriorGithubReviewResponse,
   RefreshResponse,
   ResetDataResponse,
   ResumeReviewResponse,
   ReviewSnapshot,
+  SetSinceBaselineResponse,
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -47,6 +49,7 @@ import type { RouteDeps } from "./deps.js";
 import { listAllRepos } from "./repos.js";
 import { loadVersionFiles, saveVersionFiles } from "../versions/files.js";
 import { refreshReview } from "../versions/refresh.js";
+import { computeSinceHunks, diffFilesAtCommit, unfetchableCommitMessage } from "../versions/since.js";
 import {
   enqueueUpdatePass,
   JsonBlockReplyParser,
@@ -66,7 +69,7 @@ import {
 } from "../reviews/index.js";
 import { registerExtensionRoutes } from "./extension.js";
 import { hasAnySubmitLease } from "../update/index.js";
-import { fetchExistingComments } from "../submit/index.js";
+import { fetchExistingComments, fetchLatestUserReview, fetchPrConversation } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
 import { isNoneRunner } from "../agent/factory.js";
 
@@ -322,7 +325,8 @@ async function runIngestBackground(
     }
     // Issue #168: existing GitHub comments load with the review (PRs
     // only), best effort — a gh failure leaves the field absent and the
-    // comments menu fetches on open instead.
+    // comments menu fetches on open instead. Issue #351: the PR
+    // conversation rides along for the update pass's feedback matching.
     if (args.pr !== undefined) {
       const repo = ctx.repos.get(repoId);
       if (repo) {
@@ -335,6 +339,16 @@ async function runIngestBackground(
             .catch(() => {});
         } catch {
           // Leave absent; the menu lazy-loads.
+        }
+        try {
+          const conversation = await fetchPrConversation(ctx.runner, repoPath, repo.owner, repo.name, args.pr);
+          await ctx.reviews
+            .mutate(reviewId, (draft) => {
+              draft.prConversation = conversation.map((c) => ({ ...c }));
+            })
+            .catch(() => {});
+        } catch {
+          // Leave absent; the update pass works without it.
         }
       }
     }
@@ -793,7 +807,7 @@ export async function registerReviews(
           .prepare(
             "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
           )
-          .run("demo", "demo", "urllib3-5020", fixturesDir, Date.now());
+          .run("demo", "urllib3", "urllib3", fixturesDir, Date.now());
         writeReviewRows(ctx.db, "demo", { ...ingested, review: snapshot.review });
         saveVersionFiles(ctx.db, reviewId, ingested.version.n, ingested.files);
         ctx.reviews.putSnapshot(reviewId, snapshot);
@@ -987,13 +1001,24 @@ export async function registerReviews(
     }
     // Issue #168: existing GitHub comments reload with the review (PRs
     // only), whether or not new commits arrived — best effort, so a gh
-    // failure keeps the previous list.
+    // failure keeps the previous list. Issue #351: the PR conversation
+    // reloads beside it for the update pass's feedback matching.
     if (row.prNumber !== null && row.prNumber !== undefined) {
       try {
         const comments = await fetchExistingComments(ctx.runner, repo.localPath, repo.owner, repo.name, row.prNumber);
         await ctx.reviews
           .mutate(id, (draft) => {
             draft.existingComments = comments.map((c) => ({ ...c }));
+          })
+          .catch(() => {});
+      } catch {
+        // Keep the previous list.
+      }
+      try {
+        const conversation = await fetchPrConversation(ctx.runner, repo.localPath, repo.owner, repo.name, row.prNumber);
+        await ctx.reviews
+          .mutate(id, (draft) => {
+            draft.prConversation = conversation.map((c) => ({ ...c }));
           })
           .catch(() => {});
       } catch {
@@ -1064,6 +1089,184 @@ export async function registerReviews(
       if (/up to date/.test(msg)) return reply.code(409).send({ error: msg });
       if (/no prompts dir/.test(msg)) return reply.code(500).send({ error: msg });
       return reply.code(500).send({ error: msg });
+    }
+  });
+
+  app.post("/api/reviews/:id/since-baseline", async (req, reply) => {
+    // Issue #351: pick the baseline B the next update pass (or the
+    // still-pending guide run) explains from — any earlier version, or
+    // any commit sha. The since-hunk set is hunk-content comparison
+    // against the head diff — never git ancestry, so a rebased or
+    // force-pushed B works the same. Setting a baseline never starts an
+    // agent run: the pending guide run picks it up, or the next update
+    // explains from it. An unfetchable commit sha fails loudly here.
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { version?: unknown; sha?: unknown };
+    if (typeof body !== "object" || Array.isArray(body)) {
+      return reply.code(400).send({ error: "invalid baseline body" });
+    }
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refusedBaseline = ingestRefusal(snapshot);
+    // Step 2: a commit baseline may be picked while the review is still
+    // opening (the offer lives on the loading screen) — it is stored
+    // without the hunk set and the pending guide run fills it in. Every
+    // other pick needs a ready review.
+    const loadingPick = typeof body.sha === "string" && !isReadySnapshot(snapshot);
+    if (!loadingPick && refusedBaseline) return reply.code(409).send({ error: refusedBaseline });
+    if (isDocumentReview(snapshot)) {
+      return reply.code(409).send({ error: "document reviews have a single version — there is no baseline to pick" });
+    }
+    if (typeof body.sha === "string") {
+      if (!isCommitSha(body.sha)) {
+        return reply.code(400).send({ error: "sha must be a commit sha (4-64 hex chars)" });
+      }
+      const sha = body.sha.toLowerCase();
+      if (loadingPick) {
+        try {
+          await ctx.reviews.mutate(id, (draft) => {
+            draft.sinceBaseline = { kind: "commit", sha };
+            delete draft.sinceHunks;
+            delete draft.sinceError;
+          });
+        } catch (err) {
+          return reply.code(404).send({ error: (err as Error).message });
+        }
+        const response: SetSinceBaselineResponse = {
+          ok: true,
+          baseline: { kind: "commit", sha },
+          changedHunks: 0,
+          newHunks: 0,
+        };
+        return response;
+      }
+      // Commit baselines diff through git, so the checkout must be known
+      // (the version path below needs stored diffs only).
+      const row = readReviewRow(ctx.db, id);
+      if (!row) return reply.code(404).send({ error: "unknown review" });
+      const repo = ctx.repos.get(row.repoId);
+      if (!repo) return reply.code(404).send({ error: "unknown repo" });
+      let bFiles;
+      try {
+        bFiles = await diffFilesAtCommit(ctx.runner, repo.localPath, snapshot.version.mergeBaseSha, sha);
+      } catch (err) {
+        // Step 2: the failed pick leaves the stored baseline alone but
+        // records `sinceError`, so the picker and the offer show a
+        // persistent inline message until the baseline changes.
+        const message = err instanceof Error ? err.message : unfetchableCommitMessage(sha);
+        try {
+          await ctx.reviews.mutate(id, (draft) => {
+            draft.sinceError = message;
+          });
+        } catch {
+          // The review is gone; the 502 below still names the sha.
+        }
+        return reply.code(502).send({ error: message });
+      }
+      const since = computeSinceHunks(bFiles, snapshot.files);
+      try {
+        await ctx.reviews.mutate(id, (draft) => {
+          draft.sinceBaseline = { kind: "commit", sha };
+          draft.sinceHunks = { added: [...since.added], changed: [...since.changed] };
+          delete draft.sinceError;
+        });
+      } catch (err) {
+        return reply.code(404).send({ error: (err as Error).message });
+      }
+      const response: SetSinceBaselineResponse = {
+        ok: true,
+        baseline: { kind: "commit", sha },
+        changedHunks: since.changed.length,
+        newHunks: since.added.length,
+      };
+      return response;
+    }
+    const current = snapshot.review.currentVersion;
+    if (!Number.isSafeInteger(body.version) || (body.version as number) < 1 || (body.version as number) >= current) {
+      return reply
+        .code(400)
+        .send({ error: `version must be an earlier version (1 to ${current - 1})` });
+    }
+    const version = body.version as number;
+    const bFiles = loadVersionFiles(ctx.db, id, version);
+    if (!bFiles) return reply.code(404).send({ error: `no files stored for version ${version}` });
+    const since = computeSinceHunks(bFiles, snapshot.files);
+    try {
+      await ctx.reviews.mutate(id, (draft) => {
+        draft.sinceBaseline = { kind: "version", version };
+        draft.sinceHunks = { added: [...since.added], changed: [...since.changed] };
+        delete draft.sinceError;
+      });
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message });
+    }
+    const response: SetSinceBaselineResponse = {
+      ok: true,
+      baseline: { kind: "version", version },
+      changedHunks: since.changed.length,
+      newHunks: since.added.length,
+    };
+    return response;
+  });
+
+  app.delete("/api/reviews/:id/since-baseline", async (req, reply) => {
+    // Issue #351 step 2: clear a picked baseline (the offer's checkbox
+    // toggled off before the guide run, or back to the default B after
+    // it). The refresh default applies again on the next refresh.
+    const { id } = req.params as { id: string };
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    // Clearing works while opening too (the offer's checkbox toggled off).
+    if (ingestStatusOf(snapshot) !== "loading") {
+      const refusedBaseline = ingestRefusal(snapshot);
+      if (refusedBaseline) return reply.code(409).send({ error: refusedBaseline });
+    }
+    if (isDocumentReview(snapshot)) {
+      return reply.code(409).send({ error: "document reviews have a single version — there is no baseline to pick" });
+    }
+    try {
+      await ctx.reviews.mutate(id, (draft) => {
+        delete draft.sinceBaseline;
+        delete draft.sinceHunks;
+        delete draft.sinceError;
+      });
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message });
+    }
+    return { ok: true as const };
+  });
+
+  app.get("/api/reviews/:id/prior-github-review", async (req, reply) => {
+    // Issue #351 step 2: the reviewer's own latest GitHub review on this
+    // PR (read-only `gh api`, filtered to the authenticated user's login;
+    // other users' reviews are ignored). Best effort: every failure —
+    // branch reviews, the demo, unknown repos, unreachable GitHub — answers
+    // null, never an error, so the open flow simply shows no offer.
+    const { id } = req.params as { id: string };
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    // No ingest gate: the offer lives on the loading screen, and the data
+    // (repo row + read-only `gh api`) never depends on the ingest.
+    const response: GetPriorGithubReviewResponse = { review: null };
+    if (isDocumentReview(snapshot)) return response;
+    const row = readReviewRow(ctx.db, id);
+    if (!row || row.prNumber === null || row.prNumber === undefined) return response;
+    const repo = ctx.repos.get(row.repoId) ?? (await listAllRepos(ctx)).find((r) => r.id === row.repoId);
+    if (!repo) return response;
+    if (repo.owner === undefined || repo.name === undefined) return response;
+    try {
+      const found = await fetchLatestUserReview(ctx.runner, repo.localPath, repo.owner, repo.name, row.prNumber);
+      if (!found) return response;
+      const out: GetPriorGithubReviewResponse = {
+        review: {
+          sha: found.sha,
+          author: found.author,
+          ...(found.submittedAt !== undefined ? { submittedAt: found.submittedAt } : {}),
+        },
+      };
+      return out;
+    } catch {
+      return response;
     }
   });
 

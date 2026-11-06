@@ -58,7 +58,6 @@ describe("inflight labels", () => {
       "ask",
       "reply",
       "retry",
-      "second_opinion",
       "concept",
       "update",
     ] as const) {
@@ -69,13 +68,11 @@ describe("inflight labels", () => {
     expect(inflightLabel("depth")).toBe("Rewriting…");
     expect(inflightLabel("examples")).toBe("Adding examples…");
     expect(inflightLabel("diagram")).toBe("Drawing diagram…");
-    expect(inflightLabel("second_opinion")).toBe("Getting a second opinion…");
   });
 
   test("job kinds map to the same labels, unknown kinds to Working…", () => {
     expect(jobLabel("depth")).toBe("Rewriting…");
     expect(jobLabel("go-deeper")).toBe("Writing…");
-    expect(jobLabel("second-opinion")).toBe("Getting a second opinion…");
     expect(jobLabel("update-pass")).toBe("Updating…");
     expect(jobLabel("reader")).toBe("Working…");
     expect(jobLabel("hunk-pass")).toBe("Working…");

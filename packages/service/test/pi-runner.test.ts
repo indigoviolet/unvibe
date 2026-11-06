@@ -21,6 +21,9 @@
  * - resume after a restart keeps history; cancel settles as cancelled;
  * - read-only spawns `--tools read,ls,…`, full access the wider list;
  * - dead post-restart MCP secrets fail `load` fast (manager rebuilds).
+ * - silence fails fast: a turn with no pi events for the watchdog window
+ *   yields a job error naming the pending tool (issue #348), while normal
+ *   turns are unaffected.
  */
 import Fastify from "fastify";
 import fs from "node:fs";
@@ -553,6 +556,68 @@ describe("pi runner over a fake pi RPC process", () => {
       expect(login.openai.ready).toBe(false);
     } finally {
       delete process.env.UNVIBE_FAKE_PI_AUTH;
+    }
+  });
+
+  it("a silent turn fails with a watchdog error naming the pending tool (#348)", async () => {
+    // The fake emits a tool start then stalls with no end (the #348
+    // silence shape). The watchdog must fail the turn visibly instead of
+    // waiting out the old 10-minute silence.
+    const runner = new PiAgentRunner({
+      binPath: FAKE_PI,
+      sessionDir,
+      env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, UNVIBE_FAKE_PI_VERSION: "9.9.9-fake", UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ startHang: "get_hunk" }]) },
+      noEventTimeoutMs: 500,
+    });
+    try {
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const started = Date.now();
+      const evs = await collect(runner.prompt(s, "stall"));
+      expect(Date.now() - started).toBeLessThan(30000);
+      const tools = evs.filter((e) => e.type === "tool");
+      expect(tools).toEqual([{ type: "tool", name: "get_hunk", status: "start", id: "call_1|fc_1" }]);
+      const err = evs.find((e) => e.type === "error");
+      expect(err?.type === "error" && err.message).toMatch(/pi stopped sending events for 1s after tool "get_hunk" \(last event: tool_execution_start\)/);
+      expect(err?.type === "error" && err.retryable).toBe(true);
+      expect(evs.at(-1)?.type).toBe("error");
+    } finally {
+      await runner.dispose();
+    }
+  });
+
+  it("a silent turn with no tool pending names the last event (#348)", async () => {
+    const runner = new PiAgentRunner({
+      binPath: FAKE_PI,
+      sessionDir,
+      env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, UNVIBE_FAKE_PI_VERSION: "9.9.9-fake", UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ hang: true }]) },
+      noEventTimeoutMs: 500,
+    });
+    try {
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const evs = await collect(runner.prompt(s, "stall"));
+      const err = evs.find((e) => e.type === "error");
+      expect(err?.type === "error" && err.message).toMatch(/pi stopped sending events for 1s \(last event: message_update\)/);
+      expect(err?.type === "error" && err.message).not.toContain("after tool");
+      expect(evs.at(-1)?.type).toBe("error");
+    } finally {
+      await runner.dispose();
+    }
+  });
+
+  it("a normal turn is unaffected by the silence watchdog (#348)", async () => {
+    const runner = new PiAgentRunner({
+      binPath: FAKE_PI,
+      sessionDir,
+      env: { ...process.env, UNVIBE_FAKE_PI_LOG: logFile, UNVIBE_FAKE_PI_VERSION: "9.9.9-fake", UNVIBE_FAKE_PI_SCRIPT: JSON.stringify([{ text: "ok" }]) },
+      noEventTimeoutMs: 500,
+    });
+    try {
+      const s = await runner.start({ provider: "pi", model: "fake-model", cwd: dir, systemPrompt: "SYS", mcpServers: mcpServers() });
+      const evs = await collect(runner.prompt(s, "hi"));
+      expect(textOf(evs)).toBe("ok");
+      expect(evs.at(-1)).toEqual({ type: "done", stopReason: "end_turn" });
+    } finally {
+      await runner.dispose();
     }
   });
 });

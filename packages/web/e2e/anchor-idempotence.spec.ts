@@ -2,7 +2,8 @@
  * Anchor-highlight idempotence (issue #15) over mock mode.
  *
  * The demo snapshot seeds an open explain thread (`x-seed`, quote
- * "raw CRLF") and an open comment thread (`t-seed`, quote "fast path"):
+ * "obs-fold") and an open comment thread (`t-seed`, quote "the original
+ * message"):
  * the expansion highlighter and the thread highlighter are both active
  * on page load, each marking its own kind exactly once. Streaming many
  * no-op annotation patches through the WS-patch path (the same path live
@@ -67,11 +68,11 @@ test("many snapshot patches leave mark depth 1; selection and reply focus surviv
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const data = (node as Text).data;
-      const at = data.indexOf("fast path");
+      const at = data.indexOf("the original message");
       if (at < 0) continue;
       const range = document.createRange();
       range.setStart(node, at);
-      range.setEnd(node, at + "fast path".length);
+      range.setEnd(node, at + "the original message".length);
       const sel = getSelection();
       sel?.removeAllRanges();
       sel?.addRange(range);
@@ -79,14 +80,14 @@ test("many snapshot patches leave mark depth 1; selection and reply focus surviv
     }
     return "";
   });
-  expect(selected).toBe("fast path");
+  expect(selected).toBe("the original message");
   await stream();
   // The hook is synchronous: all patches are in the store when evaluate
   // returns; only the React commit and highlight effects are pending, so
   // wait for the subtree to go quiet instead of a fixed sleep.
   await waitForDomQuiet(page, "#page");
   expect(await markDepth(page)).toBe(1);
-  expect(await page.evaluate(() => getSelection()?.toString() ?? "")).toBe("fast path");
+  expect(await page.evaluate(() => getSelection()?.toString() ?? "")).toBe("the original message");
 
   // Phase B: a focused reply box with a draft (and its cursor) survives
   // patches. (Focusing the box natively drops the phase-A guide selection;

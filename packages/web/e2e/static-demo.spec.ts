@@ -132,8 +132,24 @@ test("the recorded guide opens at /", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
   await expect(page.locator("#C-central")).toBeVisible();
-  await expect(page.locator("#reviewbar")).toContainText("Reset demo");
+  // Issue #341: Reset demo lives in the demo banner, not the top bar.
+  await expect(page.locator('[data-testid="demo-banner"]')).toContainText("Reset demo");
+  await expect(page.locator("#reviewbar")).not.toContainText("Reset demo");
   await page.screenshot({ path: `${SHOTS}/demo-guide.png` });
+  expect(violations).toEqual([]);
+});
+
+test("the top bar fits at 390px with no horizontal scroll", async ({ page }) => {
+  const violations = await sameOriginOnly(page);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await gotoDemo(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(
+    0,
+  );
+  const bar = await page.locator("#reviewbar").boundingBox();
+  expect(bar).not.toBeNull();
+  expect(bar!.x).toBeGreaterThanOrEqual(0);
+  expect(bar!.x + bar!.width).toBeLessThanOrEqual(390);
   expect(violations).toEqual([]);
 });
 
@@ -144,7 +160,9 @@ test("citation hover previews real cited lines", async ({ page }) => {
   await hoverFresh(page, page.locator("#C-central .lk[data-refs]").first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
   await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:");
-  await expect(page.locator("#pop")).toContainText("_normalize_header_value");
+  // Issue #341: the first central citation is the 80-88 regex hunk now
+  // (was the message-rewrite lines), so the popover previews that code.
+  await expect(page.locator("#pop")).toContainText("_OBSOLETE_FOLD_RE");
   expect(violations).toEqual([]);
 });
 
@@ -214,7 +232,8 @@ test("comments persist across reload; Reset demo clears them", async ({ page }) 
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: "Reset demo" }).click();
+  // Reset demo lives only in the demo banner.
+  await page.locator('[data-testid="demo-banner"] button').click();
   await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
     timeout: 30_000,
   });
@@ -244,10 +263,10 @@ test("hunk summaries come from the recordings", async ({ page }) => {
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   const connFile = page.locator('[id="F-src-urllib3-connection.py"]');
   await expect(connFile.locator("table.diff").first()).toBeVisible({ timeout: 15_000 });
-  // The second hunk has no seeded summary: summarizing it writes the
-  // recording's text, not canned copy.
+  // Issue #341: the first hunk carries the seeded one-liner, so the
+  // first Summarize writes the re-recorded conn:1 text.
   await connFile.getByRole("button", { name: "Summarize" }).first().click();
-  await expect(connFile.locator("p[data-hunksum]", { hasText: "getresponse" })).toBeVisible({ timeout: 30_000 });
+  await expect(connFile.locator("p[data-hunksum]", { hasText: "Response headers now pass through" })).toBeVisible({ timeout: 30_000 });
   expect(violations).toEqual([]);
 });
 

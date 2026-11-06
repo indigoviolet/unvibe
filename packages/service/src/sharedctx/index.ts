@@ -9,7 +9,7 @@
  *   dedupe, replaces, per-turn limit) + consolidation merge.
  * - `growth.ts` — batch planning for base growth (~2k tokens from settings).
  * - `rebuild.ts` — rebuild planning (version/guide/cache-expiry/thresholds).
- * - `isolation.ts` — small-model and second-opinion leak asserts.
+ * - `isolation.ts` — small-model leak asserts.
  * - `store.ts` — per-review base observations + conversation cursors.
  * - `service.ts` — the live wiring used by the pipeline and routes.
  */
@@ -43,12 +43,6 @@ export {
 } from "./contributions.js";
 export { forceBatches, planGrowth, renderBatchTurn, type GrowthPlan } from "./growth.js";
 export { planRebuild, resolveThresholds, supersededRatio, type RebuildPlanInput } from "./rebuild.js";
-export {
-  assertNoLeak,
-  assertSecondOpinionIsolated,
-  assertSmallPromptIsolated,
-  buildIsolatedSecondOpinionPrompt,
-  type IsolatedSecondOpinionInput,
-} from "./isolation.js";
+export { assertNoLeak, assertSmallPromptIsolated } from "./isolation.js";
 export { SharedContextStore, toStats, type BaseObservation } from "./store.js";
 export { SharedContextService, codedError, type SharedContextDeps } from "./service.js";

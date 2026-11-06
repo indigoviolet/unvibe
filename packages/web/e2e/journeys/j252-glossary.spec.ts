@@ -45,7 +45,9 @@ test.describe("J252 glossary linking", () => {
     const name = await link.getAttribute("data-glossary");
     expect(name).toBeTruthy();
     await link.hover();
-    await expect(page.locator("#pop")).toContainText("headers view", { timeout: 30_000 });
+    // Issue #341: the re-recorded glossary redefines the terms; the first
+    // central link is obs-fold now ("headers view" is gone).
+    await expect(page.locator("#pop")).toContainText("Obsolete HTTP header line folding", { timeout: 30_000 });
     // Citation button inside the popover reveals the source.
     await expect(page.locator("#pop [data-src]")).toHaveCount(1);
   });
@@ -59,7 +61,8 @@ test.describe("J252 glossary linking", () => {
     await expect(link).toBeVisible({ timeout: 30_000 });
     await link.hover();
     const pop = page.locator("#pop");
-    await expect(pop).toContainText("headers view", { timeout: 30_000 });
+    // Issue #341: see above — first central link is obs-fold now.
+    await expect(pop).toContainText("Obsolete HTTP header line folding", { timeout: 30_000 });
     // Issue #302: a small Glossary label above the term.
     await expect(pop.locator(".pv-label", { hasText: "Glossary" })).toBeVisible();
     // Issue #304: the citation is the compact prose chip (line range),

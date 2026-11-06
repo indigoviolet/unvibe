@@ -30,11 +30,16 @@ interface Props {
   /** Issue #273: Ask inside a thread appends there instead of starting a new one. */
   threadId?: string;
   sourceReplyId?: string;
+  /**
+   * Issue #349 step 2: the composer sits on a persona's version — the
+   * Ask is answered by that persona. Comments never carry a persona.
+   */
+  personaId?: string;
   onDiscard: () => void;
   onCreated: (id: string) => void;
 }
 
-export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, offsets, threadId, sourceReplyId, onDiscard, onCreated }: Props) {
+export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, offsets, threadId, sourceReplyId, personaId, onDiscard, onCreated }: Props) {
   const [text, setText] = useState(initialText ?? "");
   const [sending, setSending] = useState(false);
   // Set once the question/comment is sent: annotation ids already here, so
@@ -77,6 +82,9 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
           ...(threadId ? { threadId } : { anchor }),
           ...(sourceReplyId ? { sourceReplyId } : {}),
           ...(offsets && !threadId ? { offsets } : {}),
+          // Issue #349 step 2: Ask on a persona's version is answered by
+          // that persona (inside a thread it already knows it).
+          ...(!threadId && personaId ? { personaId } : {}),
         } as import("@unvibe/shared").ReviewAction,
         { toast: false },
       )
@@ -110,7 +118,10 @@ export function NewThreadComposer({ reviewId, anchor, quote, kind, initialText, 
   return (
     <div className="ithread" data-pending-thread="true" aria-busy={sending && ask ? true : undefined}>
       <div className="thd">
-        <span className="mq">{quote ? `“${quote}”` : "New comment"}</span>
+        {/* Same rule as the thread header: code-anchored quotes upright mono. */}
+        <span className={anchor.where === "diff-line" || anchor.where === "hunk" ? "mq code" : "mq"}>
+          {quote ? `“${quote}”` : "New comment"}
+        </span>
       </div>
       {sending && ask ? (
         <div className="working" role="status">

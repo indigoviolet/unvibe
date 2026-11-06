@@ -23,7 +23,6 @@ import { TabPanel, Tabs, useQueryTab } from "../tabs/Tabs.js";
 import { ExpandedPrompts } from "./ExpandedPrompts.js";
 import { JobsSection } from "./JobsSection.js";
 import { FullAccessMarker } from "../shell/FullAccessMarker.js";
-import { RedoGuideSection } from "./RedoGuideSection.js";
 import { SharedContext } from "./SharedContext.js";
 import { UnplacedAnchorsSection } from "./UnplacedAnchorsSection.js";
 
@@ -94,7 +93,6 @@ export function DebugPage({ reviewId }: { reviewId: string }): React.JSX.Element
       />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc">
-          <RedoGuideSection reviewId={reviewId} />
           {error ? (
             <p className="err" role="alert">
               Couldn&apos;t load shared context: {error}

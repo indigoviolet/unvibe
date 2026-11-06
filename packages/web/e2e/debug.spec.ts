@@ -33,8 +33,10 @@ test("review bar links to the debug page, which defaults to the Jobs tab", async
   await expect(page.getByRole("tabpanel", { name: "Jobs" })).toBeVisible();
   await expect(page.getByRole("tabpanel", { name: "Prompts" })).toBeHidden();
   await expect(page.getByRole("tabpanel", { name: "Shared context" })).toBeHidden();
-  // The demo review is never offered a re-do (see debug-redo.spec.ts).
-  await expect(page.locator('section[aria-label="Re-do guide"]')).toHaveCount(0);
+  // The demo review is never offered a re-do, and the Debug page no
+  // longer carries one at all (moved to the top bar, see
+  // debug-redo.spec.ts).
+  await expect(page.getByRole("button", { name: "Re-do guide" })).toHaveCount(0);
 });
 
 test("switching tabs shows one panel and replaces the history entry", async ({ page }) => {

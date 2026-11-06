@@ -48,6 +48,19 @@ describe("parseMergeLog + one-liner rule", () => {
     expect(chooseSummary({ title: "", subject: "Merge pull request #1 from feat/x" })).toBe("");
     expect(cleanMergeSubject("Merge branch 'feat/x'")).toBe("");
   });
+
+  it("cleans raw merge subjects: parenthetical text, else merge shell stripped", () => {
+    expect(
+      cleanMergeSubject("Merge feat/323-stats-export into main-rc (#323: anonymized stats export)"),
+    ).toBe("anonymized stats export");
+    expect(cleanMergeSubject("Merge feat/323-stats-export into main-rc")).toBe("");
+    expect(cleanMergeSubject("Merge branch 'feat/x' into main")).toBe("");
+    expect(cleanMergeSubject('Merge branch "feat/x" into main')).toBe("");
+    expect(cleanMergeSubject("Merge pull request #42 from feat/thing")).toBe("");
+    expect(
+      chooseSummary({ title: "", subject: "Merge feat/323-stats-export into main-rc (#323: anonymized stats export)" }),
+    ).toBe("anonymized stats export");
+  });
 });
 
 describe("generateReleaseNotes", () => {
@@ -217,6 +230,18 @@ describe("human notes merge", () => {
     expect(body).toContain("Data reset needed");
     expect(body).toContain("What to try: Try Version.");
     expect(body).toContain("Caveats: Careful.");
+    // Duplicate line (#330 defect): whatChanged equals the summary, so
+    // no separate What changed line is printed.
+    expect(body).not.toContain("What changed:");
+  });
+
+  it("release body shows What changed only when it adds more than the first line", () => {
+    const body = renderReleaseBody(buildReleaseNotes({
+      channel: "release", version: "0.0.2", dataFormat: 1, previousDataFormat: 1,
+      items: [{ number: 330, title: "T", summary: "Ships notes.", url: "https://github.com/indigoviolet/unvibe/issues/330", whatChanged: "Ships notes.\nExtra detail here.", whatToTry: "Try Version." }],
+    }) as never);
+    expect(body).toContain("What changed: Ships notes.");
+    expect(body).toContain("Extra detail here.");
   });
 });
 

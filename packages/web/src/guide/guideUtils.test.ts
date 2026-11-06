@@ -17,6 +17,7 @@ import {
   lookupConceptPage,
   pageIdForLinkTarget,
   pagePreview,
+  plotlineReviewedState,
   splitAnchorBlockId,
 } from "./guideUtils.js";
 
@@ -243,5 +244,25 @@ describe("block citations", () => {
     expect(
       blockCitations({ type: "finding-link", id: "f", pageId: "p", citations: [] }),
     ).toEqual([]);
+  });
+});
+
+describe("plotlineReviewedState", () => {
+  it("is unchecked when nothing is reviewed", () => {
+    expect(plotlineReviewedState(0, 3)).toBe("unchecked");
+  });
+
+  it("is unchecked for an empty plotline", () => {
+    expect(plotlineReviewedState(0, 0)).toBe("unchecked");
+  });
+
+  it("is partial when some hunks are reviewed", () => {
+    expect(plotlineReviewedState(1, 3)).toBe("partial");
+    expect(plotlineReviewedState(2, 3)).toBe("partial");
+  });
+
+  it("is checked when every hunk is reviewed", () => {
+    expect(plotlineReviewedState(3, 3)).toBe("checked");
+    expect(plotlineReviewedState(1, 1)).toBe("checked");
   });
 });

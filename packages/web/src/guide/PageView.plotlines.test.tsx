@@ -166,6 +166,114 @@ describe("PageView plotlines", () => {
     expect(shares.reduce((n, [num]) => n + num, 0)).toBe(total);
   });
 
+  describe("plotline reviewed (#343)", () => {
+    const plotBox = (id: string): HTMLInputElement =>
+      document.querySelector(`[data-plotreviewed="${id}"]`) as HTMLInputElement;
+
+    it("starts unchecked, partial, unchecked across the three rows", async () => {
+      await renderRoot();
+      const unfold = plotBox("unfold");
+      expect(unfold).not.toBeChecked();
+      expect(unfold.indeterminate).toBe(false);
+      expect(unfold).toHaveAttribute("aria-label", "Mark plotline reviewed");
+      const tests = plotBox("unfold-tests");
+      expect(tests).not.toBeChecked();
+      expect(tests.indeterminate).toBe(true);
+      const other = plotBox("other");
+      expect(other).not.toBeChecked();
+      expect(other.indeterminate).toBe(false);
+    });
+
+    it("checking a plotline marks its hunks reviewed and folded without filtering", async () => {
+      await renderRoot();
+      // Drain any reveal an earlier test queued; the check itself queues none.
+      takePendingReveal();
+      await fireEvent.click(plotBox("unfold"));
+      await vi.waitFor(() => {
+        expect(plotBox("unfold")).toBeChecked();
+      });
+      expect(plotBox("unfold")).toHaveAttribute("aria-label", "Mark plotline unreviewed");
+      const snap = useReview.getState().snapshot!;
+      const unfoldHashes = new Set(
+        snap.files
+          .filter((f) => f.path === "src/urllib3/connection.py")
+          .flatMap((f) => f.hunks.map((h) => h.contentHash)),
+      );
+      expect(unfoldHashes.size).toBeGreaterThan(0);
+      for (const s of snap.hunkStates) {
+        if (unfoldHashes.has(s.contentHash)) {
+          expect(s.reviewed).toBe(true);
+          expect(s.folded).toBe(true);
+        }
+      }
+      // The row's filter action is untouched: no filter set, no jump queued.
+      expect(snap.diffFilter?.plotline).toBeUndefined();
+      expect(takePendingReveal()).toBeNull();
+    });
+
+    it("unchecking reverts reviewed and folded", async () => {
+      await renderRoot();
+      await fireEvent.click(plotBox("unfold"));
+      await vi.waitFor(() => {
+        expect(plotBox("unfold")).toBeChecked();
+      });
+      await fireEvent.click(plotBox("unfold"));
+      await vi.waitFor(() => {
+        expect(plotBox("unfold")).not.toBeChecked();
+      });
+      const snap = useReview.getState().snapshot!;
+      for (const s of snap.hunkStates.filter((x) => x.plotline === "unfold")) {
+        expect(s.reviewed).toBe(false);
+        expect(s.folded).toBe(false);
+      }
+    });
+
+    it("unmarking one hunk of a checked plotline shows partial", async () => {
+      await renderRoot();
+      await fireEvent.click(plotBox("unfold"));
+      await vi.waitFor(() => {
+        expect(plotBox("unfold")).toBeChecked();
+      });
+      const snap = useReview.getState().snapshot!;
+      const hash = snap.files.find((f) => f.path === "src/urllib3/connection.py")!.hunks[0]!.contentHash;
+      await mockApi.updateHunk("demo", hash, { reviewed: false, folded: false });
+      await vi.waitFor(() => {
+        expect(plotBox("unfold").indeterminate).toBe(true);
+      });
+      expect(plotBox("unfold")).not.toBeChecked();
+      expect(plotBox("unfold")).toHaveAttribute("aria-label", "Mark plotline reviewed");
+    });
+
+    it("Other marks its unclaimed hunks", async () => {
+      await renderRoot();
+      await fireEvent.click(plotBox("other"));
+      await vi.waitFor(() => {
+        expect(plotBox("other")).toBeChecked();
+      });
+      const snap = useReview.getState().snapshot!;
+      const others = snap.hunkStates.filter((x) => (x.plotline ?? "other") === "other");
+      expect(others.length).toBeGreaterThan(0);
+      for (const s of others) {
+        expect(s.reviewed).toBe(true);
+        expect(s.folded).toBe(true);
+      }
+    });
+
+    it("disables with the read-only tooltip on older versions", async () => {
+      window.history.replaceState({}, "", "/review/demo?version=2");
+      try {
+        await renderRoot();
+        for (const id of ["unfold", "unfold-tests", "other"]) {
+          const box = plotBox(id);
+          expect(box).toBeDisabled();
+          expect(box).toHaveAttribute("aria-label", "Viewing an older version · read-only");
+        }
+      } finally {
+        window.history.replaceState({}, "", "/");
+      }
+    });
+  });
+
   it("stays off finding pages", async () => {
     const snap = await mockApi.review("demo");
     useReview.getState().setSnapshot(snap);

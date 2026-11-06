@@ -81,6 +81,15 @@ export interface PiRunnerOptions {
    * runner never reads credentials from events; callers dumping them
    * must still redact before logging (see pi-live.test.ts). */
   onRpcEvent?: (event: RpcEvent) => void;
+  /**
+   * Silence watchdog per turn, ms (issue #348): when no pi event arrives
+   * for this long, the turn fails with a visible error naming the pending
+   * tool instead of waiting out the old 10-minute silence. Default
+   * 120000: the live reader-like turn's worst inter-event gap was ~2.3s
+   * and any event resets the clock, so 120s only trips on a truly stuck
+   * turn while failing 5x sooner than before.
+   */
+  noEventTimeoutMs?: number;
 }
 
 interface PiSessionRecord {
@@ -371,6 +380,7 @@ export class PiAgentRunner implements AgentRunner {
   private readonly extensionSource: string;
   private readonly modelCacheMs: number;
   private readonly onRpcEvent?: (event: RpcEvent) => void;
+  private readonly noEventTimeoutMs: number;
   private readonly live = new Map<string, PiSessionRecord>();
   private readonly chains = new Map<string, Promise<unknown>>();
   private extensionPath: string | null = null;
@@ -386,6 +396,7 @@ export class PiAgentRunner implements AgentRunner {
     this.extensionSource = opts.extensionSource ?? PI_EXTENSION_SOURCE;
     this.modelCacheMs = opts.modelCacheMs ?? 5 * 60_000;
     this.onRpcEvent = opts.onRpcEvent;
+    this.noEventTimeoutMs = opts.noEventTimeoutMs ?? 120_000;
     // Direct construction with no fake binary would spawn the user's real
     // pi and spend subscription usage (#188): require the live flag eagerly.
     if (!this.binPath) assertLiveAgentAllowed(this.env);
@@ -769,6 +780,10 @@ export class PiAgentRunner implements AgentRunner {
         .join("\n");
     };
     let cursor = from;
+    // Watchdog context (issue #348): tool calls started with no matching
+    // end, plus the last event type, so a silent turn names the stuck call.
+    let lastEventType = "prompt-accepted";
+    const pendingTools: { id: string | undefined; name: string }[] = [];
     try {
       for (;;) {
         const batch = child.since(cursor);
@@ -776,6 +791,7 @@ export class PiAgentRunner implements AgentRunner {
         for (const e of batch) {
           this.onRpcEvent?.(e);
           const type = e["type"] as string;
+          lastEventType = type;
           if (type === "message_start") {
             const message = e["message"] as { role?: string; stopReason?: string; errorMessage?: string } | undefined;
             if (message?.role === "assistant") messageTextSeen = false;
@@ -838,6 +854,10 @@ export class PiAgentRunner implements AgentRunner {
               ...(typeof e["toolCallId"] === "string" ? { id: e["toolCallId"] as string } : {}),
               ...(e["args"] !== undefined ? { detail: truncateDetail(e["args"]) } : {}),
             };
+            pendingTools.push({
+              id: typeof e["toolCallId"] === "string" ? (e["toolCallId"] as string) : undefined,
+              name: String(e["toolName"] ?? "tool"),
+            });
           } else if (type === "tool_execution_end") {
             const result = e["result"] as { content?: { type?: string; text?: string }[] } | undefined;
             const texts = Array.isArray(result?.content)
@@ -851,6 +871,11 @@ export class PiAgentRunner implements AgentRunner {
               ...(e["args"] !== undefined ? { detail: truncateDetail(e["args"]) } : {}),
               ...(texts.length > 0 ? { result: texts.join("\n") } : {}),
             };
+            const endId = typeof e["toolCallId"] === "string" ? (e["toolCallId"] as string) : undefined;
+            const endName = String(e["toolName"] ?? "tool");
+            let endIdx = endId !== undefined ? pendingTools.findIndex((p) => p.id === endId) : -1;
+            if (endIdx < 0) endIdx = pendingTools.map((p) => p.name).lastIndexOf(endName);
+            if (endIdx >= 0) pendingTools.splice(endIdx, 1);
           } else if (type === "extension_error") {
             // Recorded, not yielded yet: the single error goes out at
             // settle time so a turn yields at most one error, then ends.
@@ -866,10 +891,20 @@ export class PiAgentRunner implements AgentRunner {
         }
         if (settled) break;
         try {
-          await child.waitForCount(cursor + 1, 600000);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
-          yield { type: "error", message: `pi turn failed: ${message}${stderrTail(child)}`, retryable: isRetryablePiError(message) };
+          await child.waitForCount(cursor + 1, this.noEventTimeoutMs);
+        } catch {
+          // Silence watchdog (issue #348): no event for N seconds means the
+          // turn is stuck — fail visibly with the pending tool named,
+          // instead of the old silent 10-minute wait. Retryable: a fresh
+          // turn re-runs the tools, each now bounded by its own timeout.
+          const secs = Math.round(this.noEventTimeoutMs / 1000);
+          const pending =
+            pendingTools.length > 0 ? ` after tool "${pendingTools[pendingTools.length - 1].name}"` : "";
+          yield {
+            type: "error",
+            message: `pi stopped sending events for ${secs}s${pending} (last event: ${lastEventType})${stderrTail(child)}`,
+            retryable: true,
+          };
           return;
         }
       }

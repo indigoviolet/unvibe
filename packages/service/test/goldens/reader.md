@@ -121,6 +121,10 @@ invent threads. Mechanical churn that serves no thread (formatting,
 generated files, lock files) goes to "other": leave its hunks out.
 Build plotline names from the code's own names wherever possible (the
 exact identifier, file, setting, flag or term the change itself uses).
+The `name` is a human display name in plain words ("Retry failed
+uploads"), never the kebab-case `id` ("retry-logic"): the `id` is the
+short slug for links, the `name` is what the reader sees in the guide
+and on the diff. A `name` that just repeats the `id` is wrong.
 Once a plotline is named, every card refers to it by that exact name,
 never a synonym, abbreviation or paraphrase.
 
@@ -244,7 +248,7 @@ plotlines and glossary travel in the trailing `json` block, not as cards:
 
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
- "plotlines": [{"id": "retry-logic", "name": "...", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}],
+ "plotlines": [{"id": "retry-logic", "name": "Retry failed uploads", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}],
  "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}]}
 ```
 

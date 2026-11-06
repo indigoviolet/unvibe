@@ -8,6 +8,8 @@
  * conversion is ever attempted.
  */
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   DATA_FORMAT,
   buildOutboxExportMarkdown,
@@ -18,7 +20,7 @@ import {
   type ReviewSnapshot,
 } from "@unvibe/shared";
 import type { DatabaseSync } from "./store/db.js";
-import { dbFilePath, openDatabaseReadOnly } from "./store/index.js";
+import { dbFilePath, openDatabase, openDatabaseReadOnly } from "./store/index.js";
 
 export type { DataFormatStatus };
 
@@ -43,23 +45,19 @@ export function checkDataFormat(dataDir: string, expected: number = DATA_FORMAT)
   let stored: number | null = null;
   let hasData = false;
   if (fs.existsSync(dbFile)) {
+    let read: { hasData: boolean; stored: number | null } | null = null;
     try {
-      const db = openDatabaseReadOnly(dbFile);
-      try {
-        const tables = db
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-          .all() as unknown as { name: string }[];
-        hasData = tables.length > 0;
-        const row = db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
-        const v = typeof row?.user_version === "number" ? row.user_version : 0;
-        stored = v === 0 ? null : v;
-      } finally {
-        db.close();
-      }
+      read = readStamp(openDatabaseReadOnly(dbFile));
     } catch {
-      hasData = true;
-      stored = null;
+      // A service killed mid-transaction leaves a hot rollback journal,
+      // and a read-only connection cannot roll it back ("attempt to
+      // write a readonly database"). That is not old data: read the
+      // stamp from a scratch copy instead, so the stored DB stays
+      // untouched until the check passes.
+      read = readStampFromCopy(dbFile);
     }
+    hasData = read?.hasData ?? true;
+    stored = read?.stored ?? null;
   } else {
     hasData = dirHasData(dataDir);
   }
@@ -70,6 +68,43 @@ export function checkDataFormat(dataDir: string, expected: number = DATA_FORMAT)
     stored,
     hasData: true,
   };
+}
+
+/** Table presence and the `user_version` stamp; closes `db`. */
+function readStamp(db: DatabaseSync): { hasData: boolean; stored: number | null } {
+  try {
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as unknown as { name: string }[];
+    const row = db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
+    const v = typeof row?.user_version === "number" ? row.user_version : 0;
+    return { hasData: tables.length > 0, stored: v === 0 ? null : v };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Read the stamp from a copy of the DB and its hot journal: opening the
+ * copy read-write rolls the interrupted transaction back there, never in
+ * the stored file. Null when even the copy cannot be read (unreadable
+ * data still counts as a mismatch).
+ */
+function readStampFromCopy(dbFile: string): { hasData: boolean; stored: number | null } | null {
+  const journal = `${dbFile}-journal`;
+  if (!fs.existsSync(journal)) return null;
+  let dir: string | null = null;
+  try {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-format-check-"));
+    const copy = path.join(dir, path.basename(dbFile));
+    fs.copyFileSync(dbFile, copy);
+    fs.copyFileSync(journal, `${copy}-journal`);
+    return readStamp(openDatabase(copy));
+  } catch {
+    return null;
+  } finally {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** Stamp a fresh (or matching) database with this build's format. */

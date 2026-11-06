@@ -325,6 +325,17 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         }
       },
       afterRun: (job) => verifyCheckoutAfterJob({ reviews, commands: runner, settings, dataDir }, job.reviewId ?? "", job),
+      // Issue #354: a job settling after its review was deleted stops
+      // quietly (no save, no FOREIGN KEY error). The snapshot row is
+      // removed in the same transaction as the review row, so its
+      // absence means the review is gone; a lookup failure is not.
+      isReviewGone: (reviewId) => {
+        try {
+          return reviews.getSnapshot(reviewId) === null;
+        } catch {
+          return false;
+        }
+      },
     });
   if (!opts.jobs) {
     // Issue #117: hydrate every stored job, not just the open ones, so

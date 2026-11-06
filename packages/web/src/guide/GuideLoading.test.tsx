@@ -58,12 +58,15 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={onOpen}
         />
       </MemoryRouter>,
     );
-    expect(screen.getByText("Fetching…")).toBeInTheDocument();
-    expect(screen.getByText("opening")).toBeInTheDocument();
+    // #352: the phase reads under the title ("Opening · Fetching…"),
+    // never as a right-side pill.
+    expect(screen.getByTestId("row-progress")).toHaveTextContent("Opening · Fetching…");
+    expect(screen.queryByText("opening")).not.toBeInTheDocument();
     // Reopenable from there (open button enabled).
     const btn = screen.getByTestId("session-r1").querySelector("button.cj-open");
     expect(btn).not.toBeNull();
@@ -81,13 +84,50 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={() => {}}
         />
       </MemoryRouter>,
     );
     expect(screen.getByText("Couldn't open this review: the PR wasn't found")).toBeInTheDocument();
-    expect(screen.getByText("couldn't open")).toBeInTheDocument();
+    // #352: no right-side phase pill; the error line carries it.
+    expect(screen.queryByText("couldn't open")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove this review" })).toBeInTheDocument();
+  });
+
+  test("failed row with retrySession offers Retry; without it, no Retry", () => {
+    const s = summary({ ingestStatus: "failed", ingestError: "the PR wasn't found" });
+    const { rerender } = render(
+      <MemoryRouter>
+        <SessionRow
+          s={s}
+          opening={null}
+          deleting={null}
+          confirmDelete={null}
+          setConfirmDelete={() => {}}
+          removeSession={async () => {}}
+          sessionRemoved={() => {}}
+          retrySession={async () => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    rerender(
+      <MemoryRouter>
+        <SessionRow
+          s={s}
+          opening={null}
+          deleting={null}
+          confirmDelete={null}
+          setConfirmDelete={() => {}}
+          removeSession={async () => {}}
+          sessionRemoved={() => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 });
 
@@ -132,12 +172,14 @@ describe("EmptyOpen (#179 empty diff)", () => {
           confirmDelete={null}
           setConfirmDelete={() => {}}
           removeSession={async () => {}}
+          sessionRemoved={() => {}}
           onOpen={() => {}}
         />
       </MemoryRouter>,
     );
     expect(screen.getByText("No changes to review: the diff is empty.")).toBeInTheDocument();
-    expect(screen.getByText("no changes")).toBeInTheDocument();
+    // #352: no right-side phase pill; the message line carries it.
+    expect(screen.queryByText("no changes")).not.toBeInTheDocument();
   });
 });
 

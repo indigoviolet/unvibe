@@ -1,8 +1,8 @@
 /**
  * Thread-polish tour (issues #301, #302, #303, #304, #305): thread rest and
- * focus states, Ask thread with follow-up, comment thread, the new Second
- * opinion and Summarize icons, thread-link vs glossary marks at rest, both
- * previews open, and a cited list — light and dark at 1440, plus 960 light.
+ * focus states, Ask thread with follow-up, comment thread, the Summarize
+ * icon, thread-link vs glossary marks at rest, both previews open, and a
+ * cited list — light and dark at 1440, plus 960 light.
  * Screenshots land in `visual-tour/` for the owner to look at.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -152,7 +152,7 @@ for (const combo of [
     await expect(thread.locator(".spike-reply > .av.ai").first()).toBeVisible();
     await shot(page, "polish-thread-rest", suffix);
 
-    // Hover-revealed reply toolbar with the new Second opinion icon.
+    // Hover-revealed reply toolbar.
     await thread.locator('[data-reply][data-kind="explain"] .exp-b').first().hover();
     await expect(thread.locator(".spike-reply > .ctl").first()).toBeVisible({ timeout: 10_000 });
     await shot(page, "polish-reply-toolbar", suffix);
@@ -180,8 +180,15 @@ for (const combo of [
     await mark.scrollIntoViewIfNeeded();
     await shot(page, "polish-marks-rest", suffix);
 
-    // Glossary preview open (label + compact chip, #302/#304).
-    const gx = page.locator('p.sel[data-polish-para="1"] a.gx[data-glossary]').first();
+    // Glossary preview open (label + compact chip, #302/#304). Hover a
+    // term outside the thread mark: on the #341 recording the quote starts
+    // at the paragraph's first term, and a mark's own preview wins there.
+    await page.evaluate(() => {
+      const terms = [...document.querySelectorAll('p.sel[data-polish-para="1"] a.gx[data-glossary]')];
+      const free = terms.find((a) => !a.closest("mark.anc") && !a.querySelector("mark.anc")) ?? terms[0];
+      free?.setAttribute("data-polish-gx", "1");
+    });
+    const gx = page.locator('p.sel[data-polish-para="1"] a.gx[data-polish-gx="1"]');
     await gx.hover();
     await expect(page.locator("#pop .pv-label", { hasText: "Glossary" })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#pop button.lk[data-src]")).toHaveCount(1);

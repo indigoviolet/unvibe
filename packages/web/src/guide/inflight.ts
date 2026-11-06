@@ -9,7 +9,7 @@
  *
  * Agent-starting kinds (verified against
  * `packages/service/src/pipeline/actions/`): explain, ask, reply, retry,
- * depth, examples, diagram, generate, followup, concept, second_opinion,
+ * depth, examples, diagram, generate, followup, concept,
  * plus the update pass (`POST …/update`). Local-only kinds — collapse,
  * note, promote, close, delete, undo — need nothing.
  */
@@ -37,10 +37,10 @@ export function inflightLabel(kind: InFlightKind): string {
       return "Retrying";
     case "followup":
       return "Writing answer";
-    case "second_opinion":
-      return "Getting a second opinion…";
     case "concept":
       return "Writing the concept page…";
+    case "persona":
+      return "Persona is writing…";
     case "update":
       return "Updating…";
   }
@@ -61,8 +61,8 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("ask");
     case "concept":
       return inflightLabel("concept");
-    case "second-opinion":
-      return inflightLabel("second_opinion");
+    case "persona":
+      return inflightLabel("persona");
     case "update-pass":
       return inflightLabel("update");
     default:
