@@ -1054,7 +1054,7 @@ test.describe("visual tour passes", () => {
     await closeCard(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
@@ -1202,7 +1202,7 @@ test.describe("visual tour passes", () => {
     await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
 
     // Split.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await stepChecks(page, "diff-split");
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
@@ -1997,7 +1997,7 @@ for (const combo of [
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
     // empty cells and thin scrollbars, Studio's none/auto.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
     const styling = await page.evaluate(() => {
       const empty = document.querySelector("table.diff td.empty");

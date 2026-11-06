@@ -259,7 +259,7 @@ test("Files panel opened while scrolled is fully visible, with its dropdown", as
 });
 
 test("bar spans the full pane width in split view and after sideways scrolling", async ({ page }) => {
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   await scrollDiffToBottom(page);
   // Sideways-scroll every file body that can scroll; the bar must not move
@@ -389,7 +389,7 @@ test("hidden-hunk rows scroll under the pinned headers instead of pinning", asyn
 });
 
 test("file and hunk headers pin in split view too", async ({ page }) => {
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   const s = await stack(page);
   await expectPinned(page, `[id="F-${CONN}"]`, s.fileTop + 400, "file", "connection.py");
@@ -475,7 +475,7 @@ test("code columns start at the same x in every hunk of a file", async ({ page }
   // columns up. Checked in unified and split.
   for (const view of ["unified", "split"] as const) {
     if (view === "split") {
-      await page.getByRole("button", { name: "Split" }).click();
+      await page.getByRole("button", { name: "Split", exact: true }).click();
       await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
     }
     const xs = await page.evaluate((key) => {

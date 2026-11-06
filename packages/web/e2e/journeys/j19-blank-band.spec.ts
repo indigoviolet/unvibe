@@ -100,7 +100,7 @@ test.describe("J19 blank band (#202)", () => {
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
 
     // Split view, no filter.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await expect(page.locator("#right table.diff.split").first()).toBeVisible({ timeout: 15_000 });
     await expectFirstHeadersVisible(page, "split, unfiltered");
 
