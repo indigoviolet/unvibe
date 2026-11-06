@@ -16,6 +16,8 @@ interface Reply {
   linkTo?: string;
   blocks: unknown[];
   error?: string | null;
+  /** Issue #364: soft-delete tombstone (epoch ms). */
+  deletedAt?: number;
 }
 
 interface Thread {
@@ -87,7 +89,13 @@ test.describe("J364 thread polish", () => {
     await page.screenshot({ path: `${FRAMES}/turns.png` });
 
     // Ask inside the thread uses the Reply box chip — no second composer.
-    await selectText(page, `#C-problem [data-thread="${threadId}"] [data-reply][data-kind="ask"] .exp-b`, word);
+    // (Select fresh words in the explain turn: the ask turn's words now
+    // carry the in-thread reply link, and selecting a link hides the bar.)
+    const explainBody = thread.locator('[data-reply][data-kind="explain"] .exp-b').first();
+    await expect(explainBody).not.toBeEmpty({ timeout: 60_000 });
+    const word2 = await explainBody.evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{5,}/)?.[0] ?? "");
+    expect(word2).not.toBe("");
+    await selectText(page, `#C-problem [data-thread="${threadId}"] [data-reply][data-kind="explain"] .exp-b`, word2);
     await page.locator('#selbar [data-act="ask"]').click();
     await expect(thread.locator('[data-pending-thread]')).toHaveCount(0);
     const chip = thread.locator('[data-quote-chip]');
@@ -111,37 +119,69 @@ test.describe("J364 thread polish", () => {
     await thread.locator('button[aria-label="Close"]').click();
     await expect(thread).toBeHidden({ timeout: 15_000 });
     await expect(margin).toBeVisible({ timeout: 15_000 });
+    // Like a human: the icon is seen mid-viewport, never half-hidden
+    // under the sticky review bar (a minimal scroll-into-view can park
+    // it there, where no click can ever land).
+    await margin.evaluate((el) => el.scrollIntoView({ block: "center" }));
     await margin.click();
     await expect(thread).toBeVisible({ timeout: 15_000 });
 
-    // The reverse link scrolls to the highlight and flashes it.
+    // The reverse link scrolls to the highlight and flashes it. Agent
+    // threads carry no inline highlight of their own, so the link falls
+    // back to the margin marker's line and flashes that instead.
     const srcLink = thread.locator('[data-src-link]').first();
     await expect(srcLink).toBeVisible();
     await srcLink.click();
-    const mark = page.locator(`#page mark.anc[data-thr="${threadId}"]`).first();
-    await expect(mark).toHaveClass(/flash/, { timeout: 15_000 });
+    await expect(margin).toHaveClass(/flash/, { timeout: 15_000 });
     // Frame 3: the reverse link target mid-flash.
     await page.screenshot({ path: `${FRAMES}/reverse-flash.png` });
 
-    // Per-reply delete: removing an answer removes its question turn;
-    // later turns stay. No confirm appears.
+    // Per-reply delete tombstones the turn (an answer goes with its
+    // question — one stored turn); later turns stay. No confirm appears.
+    const beforeDel = await threads(svc!, reviewId);
+    const explainReply = beforeDel.find((t) => t.id === threadId)!.replies.find((r) => r.kind === "explain")!;
     const turns = thread.locator(':scope > .turn');
     await expect(turns).toHaveCount(3, { timeout: 30_000 });
     const second = turns.nth(1);
     await second.hover();
     await second.getByRole("button", { name: "Delete reply" }).first().click();
     await expect
-      .poll(async () => (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.length ?? 0, {
-        timeout: 30_000,
-      })
-      .toBe(2);
-    await expect(thread.locator(':scope > .turn')).toHaveCount(2, { timeout: 30_000 });
-    // Frame 5: the thread after a reply was deleted.
+      .poll(
+        async () =>
+          (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.find((r) => r.id === explainReply.id)
+            ?.deletedAt ?? 0,
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
+    const tomb = thread.locator(`[data-tombstone="${explainReply.id}"]`);
+    await expect(tomb).toBeVisible({ timeout: 15_000 });
+    await expect(tomb).toContainText(/Reply deleted/);
+    // Frame 5: the tombstone holding its turn's place.
+    await page.screenshot({ path: `${FRAMES}/tombstone.png` });
+
+    // The tombstone survives a reload; Undelete restores the turn exactly.
+    await page.reload();
+    await expect(page.locator(`section.ithread[data-thread="${threadId}"]`)).toBeVisible({ timeout: 30_000 });
+    const tombAfter = page.locator(`[data-tombstone="${explainReply.id}"]`);
+    await expect(tombAfter).toBeVisible({ timeout: 15_000 });
+    await tombAfter.getByRole("button", { name: "Undelete" }).click();
+    await expect
+      .poll(
+        async () =>
+          (await threads(svc!, reviewId)).find((t) => t.id === threadId)?.replies.find((r) => r.id === explainReply.id)
+            ?.deletedAt,
+        { timeout: 30_000 },
+      )
+      .toBeUndefined();
+    await expect(page.locator(`[data-reply="${explainReply.id}"]`)).toBeVisible({ timeout: 15_000 });
+    // Frame 6: the thread after a reply was deleted and restored.
     await page.screenshot({ path: `${FRAMES}/after-delete.png` });
 
-    // Deleting every remaining turn deletes the thread itself.
-    for (let i = 0; i < 2; i++) {
-      const first = thread.locator(':scope > .turn').first();
+    // Deleting every remaining live turn deletes the thread itself.
+    for (let i = 0; i < 3; i++) {
+      const liveTurns = thread.locator(':scope > .turn:not(:has([data-tombstone]))');
+      if ((await liveTurns.count()) === 0) break;
+      const first = liveTurns.first();
       await first.hover();
       await first.getByRole("button", { name: "Delete reply" }).first().click();
     }

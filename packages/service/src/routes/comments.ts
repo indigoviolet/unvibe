@@ -24,6 +24,7 @@ import {
   deleteAnnotation,
   deleteReply,
   replyToThread,
+  undeleteReply,
 } from "../comments/index.js";
 import type { ServiceContext } from "./context.js";
 import { ingestRefusal } from "../reviews/index.js";
@@ -223,6 +224,8 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
     return { ok: true };
   });
 
+  // Issue #364: soft delete — the reply stays as a tombstone (or the
+  // thread goes, when its last live turn is deleted).
   app.delete("/api/reviews/:id/comments/:commentId/replies/:replyId", async (req, reply) => {
     const { id, commentId, replyId } = req.params as { id: string; commentId: string; replyId: string };
     const preDel = reviews.getSnapshot(id);
@@ -237,8 +240,28 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
       if (msg.startsWith("unknown review") || msg.startsWith("unknown comment") || msg.startsWith("unknown reply")) {
         return reply.code(404).send({ error: msg });
       }
-      if (msg.includes("posted content") || msg.includes("still filling")) {
+      if (msg.includes("posted content") || msg.includes("still filling") || msg.includes("already deleted")) {
         return reply.code(409).send({ error: msg });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+    return { ok: true };
+  });
+
+  // Issue #364: restore a tombstoned reply exactly as it was.
+  app.post("/api/reviews/:id/comments/:commentId/replies/:replyId/undelete", async (req, reply) => {
+    const { id, commentId, replyId } = req.params as { id: string; commentId: string; replyId: string };
+    const preUndel = reviews.getSnapshot(id);
+    if (preUndel) {
+      const refused = ingestRefusal(preUndel);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
+    try {
+      await undeleteReply(reviews, id, commentId, replyId);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review") || msg.startsWith("unknown comment") || msg.startsWith("unknown reply")) {
+        return reply.code(404).send({ error: msg });
       }
       return reply.code(400).send({ error: msg });
     }

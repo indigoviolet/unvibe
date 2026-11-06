@@ -85,3 +85,25 @@ describe("description thread labels (finding 22)", () => {
     expect(threadWhereLabel(branchSnap, descThread)).toBe("Commits");
   });
 });
+
+describe("tombstones are excluded (issue #364)", () => {
+  test("threadPostText skips deleted comment replies", () => {
+    const deleted = mkReply("you", "gone");
+    (deleted as { deletedAt?: number }).deletedAt = 5;
+    expect(threadPostText(thread({ replies: [deleted, mkReply("you", "kept")] }))).toBe("kept");
+    expect(threadPostText(thread({ replies: [deleted] }))).toBe("");
+  });
+
+  test("outbox and menu skip threads with only deleted comments", () => {
+    const deleted = mkReply("you", "gone");
+    (deleted as { deletedAt?: number }).deletedAt = 5;
+    const snap = {
+      annotations: [
+        thread({ id: "a", post: true, replies: [deleted, mkReply("you", "kept")] }),
+        thread({ id: "b", post: true, replies: [deleted] }),
+      ],
+    } as unknown as ReviewSnapshot;
+    expect(outboxThreads(snap).map((t) => t.id)).toEqual(["a"]);
+    expect(threadPostText(thread({ id: "b", post: true, replies: [deleted] }))).toBe("");
+  });
+});

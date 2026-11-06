@@ -1691,6 +1691,12 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .spike-thread .turn > .spike-reply { border-top: none; padding-top: 2px; }
 .spike-thread .spike-reply.ask-question { background: var(--accent-soft); border-radius: var(--radius-6); padding: 6px 10px; }
 .spike-thread .spike-reply.ask-question > p { font-weight: 500; }
+/* Issue #364: the deleted-turn tombstone — quiet text with an Undelete
+   action, holding its turn's place until restored or the thread goes. */
+.spike-thread .spike-reply.tombstone { color: var(--muted); font-size: 12.5px; padding: 6px 0; }
+.spike-thread .tombstone-undo { background: none; border: none; padding: 0; font: inherit; font-size: inherit; color: var(--accent); cursor: pointer; }
+.spike-thread .tombstone-undo:hover:not(:disabled) { text-decoration: underline; }
+.spike-thread .tombstone-undo:disabled { color: var(--muted); cursor: default; }
 /* Issue #364: the reverse link under each answer — back to the quoted
    passage (or the margin marker's line), flashing it on arrival. */
 .spike-thread .src-link { background: none; border: none; padding: 2px 0 0; margin: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }

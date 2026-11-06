@@ -14,6 +14,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
+import { isLiveReply } from "@unvibe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
@@ -489,7 +490,10 @@ export function ThreadCollapsedRow({
   thread: Thread;
   onExpand: () => void;
 }) {
-  const first = thread.replies[0];
+  // Issue #364: collapsed rows read off live turns (tombstones show in
+  // the open thread, never their text here).
+  const liveReplies = (thread.replies ?? []).filter(isLiveReply);
+  const first = liveReplies[0];
   // Same headings as the replies themselves (spike), so the row reads
   // quote · question/kind · snippet · count.
   const firstHeading = first
@@ -503,7 +507,7 @@ export function ThreadCollapsedRow({
             ? `Ask · ${first.question.slice(0, 100)}`
             : "Ask"
     : "";
-  const last = thread.replies[thread.replies.length - 1];
+  const last = liveReplies[liveReplies.length - 1];
   const lastText = last
     ? last.blocks
         .map((b) => {
@@ -520,7 +524,8 @@ export function ThreadCollapsedRow({
   const rowQuote = (thread.anchor.quotedText ?? "").trim();
   // Owner decision (#331 follow-up): the count is replies after the first
   // entry — a lone opening comment shows no count, matching the header.
-  const followups = thread.replies.length - 1;
+  // Issue #364: live turns only (tombstones are not replies any more).
+  const followups = liveReplies.length - 1;
   return (
     <button type="button" className="spike-row" data-row={thread.id} onClick={onExpand} aria-label={`Expand thread ${thread.anchor.quotedText}`}>
       {rowQuote !== "" ? <span className="spike-row-q">“{thread.anchor.quotedText}”</span> : null}
@@ -620,12 +625,15 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const replies = thread.replies ?? [];
   const isNew = replies.length === 0;
   const posted = thread.postedAt !== undefined;
+  // Issue #364: counts and toggles read live turns only.
+  const liveReplyCount = replies.filter(isLiveReply).length;
   const successor = successorTarget(thread);
   const suggested = replies.some((r) => r.kind === "comment" && r.suggested === true);
   const suggestedQuestion = replies.some((r) => r.kind === "comment" && r.suggestedQuestion === true);
   // Outbox toggle only when there is something postable: agent-only
   // threads carry no comment replies and Submit skips them.
-  const hasCommentReplies = replies.some((r) => r.kind === "comment");
+  // Issue #364: tombstones are not postable.
+  const hasCommentReplies = replies.some((r) => r.kind === "comment" && isLiveReply(r));
   const commentCards = (snapshot?.annotations ?? []).filter(
     (a) => a.anchor.host.kind === "comment" && a.anchor.host.commentId === thread.id,
   );
@@ -636,14 +644,15 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const threadWorking = (thread.working ?? "") !== "" && thread.working !== null;
   const threadError = thread.error ?? null;
   // Latest failed agent reply: Retry is the single source of truth (#270).
-  const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && r.error);
+  // Issue #364: tombstones never retry (Undelete restores them instead).
+  const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && isLiveReply(r) && r.error);
   // #271: while an answer is pending, the Reply box stays visible and
   // editable with Send disabled ("Wait for the answer").
-  const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
+  const hasPendingAgent = replies.some((r) => r.kind !== "comment" && isLiveReply(r) && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
   // #203: while the first agent answer is still being written (no blocks
   // yet) there is no answer for boxes to act on — show only the header
   // and the writing state.
-  const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && r.blocks.length > 0);
+  const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && isLiveReply(r) && r.blocks.length > 0);
 
   const onRetryThread = (): void => {
     void performAction(reviewId, { kind: "retry", annotationId: thread.id }).catch((err: unknown) => {
@@ -729,10 +738,11 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
         {/* Owner decision (#331 follow-up): the count is replies after the
-            first entry — a lone opening comment shows no count. */}
-        {replies.length > 1 ? (
+            first entry — a lone opening comment shows no count. Issue #364:
+            live turns only. */}
+        {liveReplyCount > 1 ? (
           <span className="count" data-count={thread.id}>
-            {replies.length - 1} {replies.length - 1 === 1 ? "reply" : "replies"}
+            {liveReplyCount - 1} {liveReplyCount - 1 === 1 ? "reply" : "replies"}
           </span>
         ) : null}
         {!isNew && hasCommentReplies ? (
@@ -805,6 +815,39 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             toast(`Couldn't delete the reply: ${friendlyError(err)}`);
           });
         };
+        // Issue #364: a deleted turn stays in place as a tombstone —
+        // same ID and position, restored exactly by Undelete. The
+        // tombstone keeps the reply's id so in-thread links still land.
+        if (!isLiveReply(r)) {
+          return (
+            <div className="turn" data-turn={r.id} key={r.id}>
+              <div
+                className="spike-reply tombstone"
+                id={r.id}
+                data-reply={r.id}
+                data-kind={r.kind}
+                data-tombstone={r.id}
+                role="article"
+                aria-label="Deleted reply"
+              >
+                <span>Reply deleted · </span>
+                <button
+                  type="button"
+                  className="tombstone-undo"
+                  data-undelete={r.id}
+                  disabled={readOnly}
+                  onClick={() => {
+                    api.undeleteReply(reviewId, thread.id, r.id).catch((err: unknown) => {
+                      toast(`Couldn't restore the reply: ${friendlyError(err)}`);
+                    });
+                  }}
+                >
+                  Undelete
+                </button>
+              </div>
+            </div>
+          );
+        }
         if (r.kind === "comment" || r.kind === "persona") {
           return (
             <div className="turn" data-turn={r.id} key={r.id}>

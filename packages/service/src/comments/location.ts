@@ -19,7 +19,7 @@ import type {
   ReviewSnapshot,
   SubmitCommentLocation,
 } from "@unvibe/shared";
-import { githubFileUrl, parseId } from "@unvibe/shared";
+import { githubFileUrl, isLiveReply, parseId } from "@unvibe/shared";
 import { threadPostText } from "./threads.js";
 import { findBlock } from "../interaction/l4.js";
 
@@ -301,13 +301,13 @@ export function locateThreadWithText(snapshot: ReviewSnapshot, thread: Thread, r
  */
 export function locatePendingThreads(snapshot: ReviewSnapshot, repo?: SubmitRepoRef): LocatedComment[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.post && !a.postedAt && a.replies.some((r) => r.kind === "comment"))
+    .filter((a) => a.post && !a.postedAt && a.replies.some((r) => r.kind === "comment" && isLiveReply(r)))
     .map((t) => locateThreadWithText(snapshot, t as Thread, repo));
 }
 
 /** Comments already posted (skipped on retry). */
 export function postedThreadIds(snapshot: ReviewSnapshot): string[] {
   return (snapshot.annotations ?? [])
-    .filter((a) => a.post && a.postedAt && a.replies.some((r) => r.kind === "comment"))
+    .filter((a) => a.post && a.postedAt && a.replies.some((r) => r.kind === "comment" && isLiveReply(r)))
     .map((a) => a.id);
 }

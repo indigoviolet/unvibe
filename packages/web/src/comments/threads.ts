@@ -11,6 +11,7 @@
  *   guide excerpt, or "General PR comment").
  */
 import type { Thread, ReviewSnapshot } from "@unvibe/shared";
+import { isLiveReply } from "@unvibe/shared";
 import { descriptionPaneName } from "../source/description/paneName.js";
 
 function replyText(reply: { blocks?: Array<{ type: string }> }): string {
@@ -28,7 +29,8 @@ function replyText(reply: { blocks?: Array<{ type: string }> }): string {
 
 export function threadPostText(thread: Thread): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
-  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
+  // Issue #364: tombstoned replies never contribute (excluded unless restored).
+  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment" && isLiveReply(r));
   const you = comments.find((r) => r.who === "you" && replyText(r) !== "");
   if (you) return replyText(you);
   const suggested = comments.find((r) => r.suggested && replyText(r) !== "");
@@ -46,7 +48,8 @@ export function isPosted(thread: Thread): boolean {
 export function outboxThreads(snapshot: ReviewSnapshot | null): Thread[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter(
-    (a) => (a.replies ?? []).some((r) => r.kind === "comment") && a.post && !isPosted(a as Thread),
+    (a) =>
+      (a.replies ?? []).some((r) => r.kind === "comment" && isLiveReply(r)) && a.post && !isPosted(a as Thread),
   ) as Thread[];
 }
 
@@ -62,7 +65,7 @@ export function pendingCount(snapshot: ReviewSnapshot | null): number {
 export function listedThreads(snapshot: ReviewSnapshot | null): Thread[] {
   if (!snapshot) return [];
   return (snapshot.annotations ?? []).filter((a) =>
-    (a.replies ?? []).some((r) => r.kind === "comment" && replyText(r) !== ""),
+    (a.replies ?? []).some((r) => r.kind === "comment" && isLiveReply(r) && replyText(r) !== ""),
   ) as Thread[];
 }
 

@@ -20,6 +20,8 @@ export {
   setThreadOpen,
   setThreadPost,
   threadPostText,
+  undeleteReply,
+  undeleteReplyInDraft,
   updateFollowupDraft,
   updateReplyBox,
   updateThreadDraft,

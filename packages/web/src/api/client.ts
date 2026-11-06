@@ -439,11 +439,14 @@ const realApi = {
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
       method: "DELETE",
     }),
-  /** Issue #364: delete one reply (no confirm); the last turn deletes the thread. */
+  /** Issue #364: delete one reply (no confirm); the last live turn deletes the thread. */
   deleteReply: (reviewId: string, commentId: string, replyId: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies/${encodeURIComponent(replyId)}`, {
       method: "DELETE",
     }),
+  /** Issue #364: restore a tombstoned reply exactly as it was. */
+  undeleteReply: (reviewId: string, commentId: string, replyId: string): Promise<{ ok: boolean }> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies/${encodeURIComponent(replyId)}/undelete`, {}),
 
   updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean; changed?: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/description`, {

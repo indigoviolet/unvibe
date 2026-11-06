@@ -448,4 +448,29 @@ describe("ThreadView per-reply delete + quote chip (issue #364)", () => {
     expect(link).not.toBeNull();
     expect(link?.textContent).toMatch(/quoted text/);
   });
+
+  test("a tombstoned turn stays in place with Undelete; counts skip it", () => {
+    const t = askThread();
+    t.replies.push(mkReply("you", "Third"));
+    (t.replies[1] as Reply).deletedAt = 123;
+    const secondId = t.replies[1].id;
+    const undeleteSpy = vi.spyOn(api, "undeleteReply").mockResolvedValue({ ok: true });
+    try {
+      const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
+      // Same turn wrapper and position, tombstone instead of the comment.
+      const turns = container.querySelectorAll(":scope .turn");
+      expect(turns).toHaveLength(3);
+      const tomb = container.querySelector(`[data-tombstone="${secondId}"]`);
+      expect(tomb).not.toBeNull();
+      expect(tomb).toHaveTextContent(/Reply deleted/);
+      // The tombstone keeps the reply id so in-thread links still land.
+      expect(tomb?.getAttribute("id")).toBe(secondId);
+      // Live-turn count only (2 live turns -> "1 reply").
+      expect(container.querySelector(".count")?.textContent).toMatch(/1 reply/);
+      fireEvent.click(screen.getByRole("button", { name: "Undelete" }));
+      expect(undeleteSpy).toHaveBeenCalledWith(REVIEW_ID, t.id, secondId);
+    } finally {
+      undeleteSpy.mockRestore();
+    }
+  });
 });
