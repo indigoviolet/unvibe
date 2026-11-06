@@ -115,8 +115,8 @@ describe("static network guards", () => {
       },
       {
         file: "traces/recorder.ts",
-        patterns: [/@opentelemetry\/instrumentation-fastify/],
-        reason: "OTel Fastify auto-instrumentation import (issue #356; in-process patching of the loopback-only server, no sockets opened here)",
+        patterns: [/fastify/],
+        reason: "OTel Fastify auto-instrumentation (issue #356; in-process patching of the loopback-only server, lazily required so lean builds skip it; no sockets)",
       },
       {
         file: "traces/scrub.ts",
