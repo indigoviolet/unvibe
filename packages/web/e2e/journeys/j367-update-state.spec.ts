@@ -55,6 +55,8 @@ test.describe("J367 update clears every card; banner has one state model", () =>
   test("stale banner offers Update; after Update the banner reads current with no Update and no card banner", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
+    // 1440 light: the default frame set (#362).
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 30_000 });
