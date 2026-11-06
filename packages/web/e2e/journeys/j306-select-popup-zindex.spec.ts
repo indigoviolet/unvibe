@@ -17,6 +17,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../network-guard.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { tourCombos } from "../tour-matrix.js";
 import { apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -196,10 +197,10 @@ test.describe("J306 select popup z-index", () => {
     for (const d of [repoDir, dataDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("selectPopup", [
     { name: "1440-light", dark: false },
     { name: "1440-dark", dark: true },
-  ] as const) {
+  ] as const)) {
     test(`select popups paint above cards (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
       if (!svc) throw new Error("no service");

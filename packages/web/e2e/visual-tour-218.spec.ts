@@ -1,10 +1,9 @@
 /**
  * #218 tour: review toolbars, menus (comments, filters, review via
- * Submit), popovers, the selection toolbar and tooltips — every theme
- * (Default/Studio/Console); the default theme at 1440px and ~960px in
- * light and dark, Studio/Console at 1440px light only (#259 plus #357
- * Q1: one 1440-light frame per non-default theme; dark never changes
- * layout). Demo data only (the bundled fixture + replay
+ * Submit), popovers, the selection toolbar and tooltips — 1440px light
+ * by default, one 1440-light frame per non-default theme (Studio/Console
+ * fonts and variables, the #362 named keeps; dark/960 in the full matrix
+ * only). Demo data only (the bundled fixture + replay
  * agent). Screenshots land in the git-ignored `visual-tour/218/` folder;
  * generic checks assert menus/popovers stay inside the viewport with no
  * page overflow and no overlap with card headers.
@@ -20,6 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { selectText } from "./select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
+import { tourCombos } from "./tour-matrix.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../visual-tour/218", import.meta.url));
@@ -93,15 +93,15 @@ async function checkFloating(page: Page, step: string): Promise<void> {
 }
 
 const COMBOS = [
-  { theme: "default", scheme: "light", width: 1440 },
-  { theme: "default", scheme: "dark", width: 1440 },
-  { theme: "default", scheme: "light", width: 960 },
-  { theme: "default", scheme: "dark", width: 960 },
-  { theme: "studio", scheme: "light", width: 1440 },
-  { theme: "console", scheme: "light", width: 1440 },
-] as const; // Q1 (#357): one 1440-light frame per non-default theme
+  { name: "default-light-1440", theme: "default", scheme: "light", width: 1440 },
+  { name: "default-dark-1440", theme: "default", scheme: "dark", width: 1440 },
+  { name: "default-light-960", theme: "default", scheme: "light", width: 960 },
+  { name: "default-dark-960", theme: "default", scheme: "dark", width: 960 },
+  { name: "studio-light-1440", theme: "studio", scheme: "light", width: 1440 },
+  { name: "console-light-1440", theme: "console", scheme: "light", width: 1440 },
+] as const; // slim (#362): default 1440-light + one 1440-light frame per non-default theme
 
-for (const combo of COMBOS) {
+for (const combo of tourCombos("tour218", COMBOS)) {
   const suffix = `${combo.theme}-${combo.scheme}-${combo.width}`;
   test(`218 tour (${suffix})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");

@@ -190,7 +190,7 @@ test.describe("J353 long plotline names", () => {
     ).toBe(true);
   });
 
-  test("frames: card, hunk chip and filter at 1440 and 960, light and dark", async ({ page }) => {
+  test("frames: card, hunk chip and filter at 1440 and 960, light", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     const shot = (name: string): string => path.join(FRAMES, name);
@@ -210,30 +210,18 @@ test.describe("J353 long plotline names", () => {
 
     // The plotlines card with a long name, one tooltip shown.
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.emulateMedia({ colorScheme: "light" });
     await box.scrollIntoViewIfNeeded();
     await box.locator(".plname").first().hover();
     await expect(page.locator("#tip")).toBeVisible({ timeout: 5_000 });
     await page.screenshot({ path: shot("j353-card-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await box.locator(".plname").first().hover();
-    await expect(page.locator("#tip")).toBeVisible({ timeout: 5_000 });
-    await page.screenshot({ path: shot("j353-card-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await page.setViewportSize({ width: 960, height: 900 });
     await box.scrollIntoViewIfNeeded();
     await box.screenshot({ path: shot("j353-card-960-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await box.screenshot({ path: shot("j353-card-960-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
 
     // The builds-on chip stays inside the row at 960.
     const builds = box.locator(".plbuilds").first();
     await builds.scrollIntoViewIfNeeded();
     await builds.screenshot({ path: shot("j353-buildson-960-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await builds.screenshot({ path: shot("j353-buildson-960-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
 
     // A hunk header chip with the long name. The two-pane header line
     // clips the chip, so show the source pane alone (the
@@ -257,14 +245,8 @@ test.describe("J353 long plotline names", () => {
     await header.scrollIntoViewIfNeeded();
     await page.setViewportSize({ width: 1440, height: 900 });
     await header.screenshot({ path: shot("j353-chip-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await header.screenshot({ path: shot("j353-chip-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await page.setViewportSize({ width: 960, height: 900 });
     await header.screenshot({ path: shot("j353-chip-960-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await header.screenshot({ path: shot("j353-chip-960-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     // Back to two panes for the filter frames.
     await page.getByRole("group", { name: "Panes" }).getByRole("button", { name: "Guide" }).click();
     await expect(box).toBeVisible();
@@ -277,14 +259,8 @@ test.describe("J353 long plotline names", () => {
     const dtool = page.locator(".dtool");
     await expect(dtool).toBeVisible();
     await dtool.screenshot({ path: shot("j353-filter-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await dtool.screenshot({ path: shot("j353-filter-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await page.setViewportSize({ width: 960, height: 900 });
     await dtool.screenshot({ path: shot("j353-filter-960-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await dtool.screenshot({ path: shot("j353-filter-960-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
 
     // The trailing fold pair wraps as a group at both widths: the two
     // buttons always share a line.

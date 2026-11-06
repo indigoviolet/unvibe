@@ -4,13 +4,15 @@
  * Journey: turn recording on in Settings → Debug, open the demo review,
  * export the traces, and check the file has HTTP and job spans with no
  * token leakage. Frames: the Debug section off, on with a size, after
- * Clear, and capped — at 1440/960, light/dark, in /tmp/356-frames/.
+ * Clear, and capped — 1440px light by default (other widths/themes in the
+ * full matrix only), in /tmp/356-frames/.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, truncateSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { tourCombos } from "../tour-matrix.js";
 import { createDemoReview } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -101,7 +103,7 @@ test.describe("J356 debug frames", () => {
     { name: "960-dark", width: 960, dark: true },
   ] as const;
 
-  for (const combo of combos) {
+  for (const combo of tourCombos("traces", combos)) {
     test(`debug frames (${combo.name})`, async ({ page }) => {
       if (!svc) throw new Error("no service");
       test.setTimeout(240_000);
@@ -147,7 +149,7 @@ test.describe("J356 debug frames", () => {
     });
   }
 
-  for (const combo of combos) {
+  for (const combo of tourCombos("traces", combos)) {
     test(`debug capped frame (${combo.name})`, async ({ page }) => {
       test.setTimeout(120_000);
       // Realistic over-cap store: a few real span lines, then sparse
