@@ -127,14 +127,15 @@ for (const combo of COMBOS) {
     await shot("toolbar");
 
     // Selection toolbar over guide text.
-    await selectText(page, "#C-problem", "used to let a server continue");
+    await selectText(page, "#C-problem", "Whitespace before the colon");
     await expect(page.locator("#selbar")).toBeVisible();
     await shot("selbar");
     await page.keyboard.press("Escape");
     await expect(page.locator("#selbar")).toBeHidden();
 
-    // Hover popover on a dotted concept link.
-    const cite = page.locator('#page a.cx[data-link="concept:obs-fold"]').first();
+    // Hover popover on a dotted link: the #341 recording has no concept
+    // links, so a glossary term stands in.
+    const cite = page.locator('#page a.cx[data-link="concept:obs-fold"], #C-problem a.gx[data-glossary]').first();
     if (await cite.count()) {
       await cite.scrollIntoViewIfNeeded();
       await page.waitForTimeout(600);

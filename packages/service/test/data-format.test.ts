@@ -167,3 +167,36 @@ describe("combined Outbox export + doctor line", () => {
     expect(dataFormatDoctorCheck({ state: "none", expected: 1, stored: null, hasData: false }).status).toBe("ok");
   });
 });
+
+describe("data format after a crash mid-transaction", () => {
+  it("reads the stamp past a hot journal without touching the stored DB", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const dataDir = tmp("unvibe-hotjournal-");
+    const dbFile = path.join(dataDir, "unvibe.db");
+    seedDb(dataDir, { stamp: DATA_FORMAT });
+    // A service killed mid-write: a large transaction spills pages into
+    // the DB file, then the process dies before COMMIT, leaving a hot
+    // rollback journal a read-only connection cannot roll back.
+    const script = `
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(${JSON.stringify(dbFile)});
+      db.exec("CREATE TABLE IF NOT EXISTS crash_probe(a)");
+      for (let i = 0; i < 300; i++) db.prepare("INSERT INTO crash_probe VALUES (?)").run("s".repeat(800));
+      db.exec("PRAGMA cache_size = 5");
+      db.exec("BEGIN");
+      for (let i = 0; i < 3000; i++) db.prepare("INSERT INTO crash_probe VALUES (?)").run("y".repeat(800));
+      db.exec("UPDATE crash_probe SET a = 'q' || a");
+      process.kill(process.pid, "SIGKILL");
+    `;
+    const res = spawnSync(process.execPath, ["-e", script]);
+    expect(res.signal).toBe("SIGKILL");
+    expect(fs.existsSync(`${dbFile}-journal`)).toBe(true);
+    const before = fs.readFileSync(`${dbFile}-journal`);
+
+    const status = checkDataFormat(dataDir);
+    expect(status).toMatchObject({ state: "match", stored: DATA_FORMAT, hasData: true });
+    // The stored DB and its journal are left exactly as they were.
+    expect(fs.readFileSync(`${dbFile}-journal`).equals(before)).toBe(true);
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+});

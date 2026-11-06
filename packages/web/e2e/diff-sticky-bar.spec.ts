@@ -7,7 +7,8 @@
  * (`.dhunk-h`) pins while its hunk scrolls, each replaced by the next file or
  * hunk at the boundary. Reveals and file jumps land below the pinned rows;
  * the Files panel and the filter dropdown open fully visible; the bar spans
- * the full pane width sideways and stays one row at narrow widths.
+ * the full pane width sideways and wraps at narrow widths with the fold
+ * pair kept together.
  *
  * Runs against mock mode (no service needed); the Playwright config boots
  * its own Vite server.
@@ -259,7 +260,7 @@ test("Files panel opened while scrolled is fully visible, with its dropdown", as
 });
 
 test("bar spans the full pane width in split view and after sideways scrolling", async ({ page }) => {
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   await scrollDiffToBottom(page);
   // Sideways-scroll every file body that can scroll; the bar must not move
@@ -273,27 +274,28 @@ test("bar spans the full pane width in split view and after sideways scrolling",
   expect(Math.abs(g!.bar.width - g!.pane.width)).toBeLessThan(1.5);
 });
 
-test("bar stays one row at narrow widths, scrolling sideways instead of wrapping", async ({ page }) => {
+test("bar wraps at narrow widths, keeping the fold pair on one row (#351, #353)", async ({ page }) => {
+  // #351 lets the bar wrap at narrow widths; #353 keeps the trailing
+  // Fold all / Unfold all pair together when it wraps.
   const wrap = await page.evaluate(
     () => getComputedStyle(document.querySelector("#right .dtool") as Element).flexWrap,
   );
-  const overflowX = await page.evaluate(
-    () => getComputedStyle(document.querySelector("#right .dtool") as Element).overflowX,
-  );
-  expect(wrap).toBe("nowrap");
-  expect(overflowX).toBe("auto");
-  // Narrow window: the source pane becomes the overlay; the bar is still a
-  // single row spanning it.
+  expect(wrap).toBe("wrap");
+  // Narrow window: the source pane becomes the overlay; the bar still
+  // spans it and sits directly under the tab strip.
   await page.setViewportSize({ width: 700, height: 800 });
   const ok = await page.evaluate((key) => window.__revealSource?.(`diff:${key}:650`), CONN);
   expect(ok).toBe(true);
   await expect(page.locator(`[id="L-${CONN}-650"].hl`)).toBeVisible();
   const g = await geometry(page);
   expect(g).not.toBeNull();
-  // One row of pill buttons (~40px); two wrapped rows would be ~70px.
-  expect(g!.bar.height).toBeLessThan(60);
   expect(Math.abs(g!.bar.width - g!.pane.width)).toBeLessThan(1.5);
   expect(Math.abs(g!.bar.y - (g!.pane.y + g!.stickH))).toBeLessThan(2.5);
+  const pairTops = await page.evaluate(() =>
+    [...document.querySelectorAll("#right .dtool .foldpair > *")].map((el) => Math.round(el.getBoundingClientRect().top)),
+  );
+  expect(pairTops.length).toBe(2);
+  expect(pairTops[0]).toBe(pairTops[1]);
 });
 
 test("file header pins under the bar while its file scrolls, then the next file replaces it", async ({
@@ -466,7 +468,7 @@ test("code columns start at the same x in every hunk of a file", async ({ page }
   // columns up. Checked in unified and split.
   for (const view of ["unified", "split"] as const) {
     if (view === "split") {
-      await page.getByRole("button", { name: "Split" }).click();
+      await page.getByRole("button", { name: "Split", exact: true }).click();
       await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
     }
     const xs = await page.evaluate((key) => {

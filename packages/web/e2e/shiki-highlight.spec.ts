@@ -201,7 +201,7 @@ test("revealSource highlights lines that are also token-highlighted", async ({ p
   // The reveal highlight and the token spans coexist in the same row.
   await expect(row.locator("td.c [class*='shk-']").first()).toBeVisible();
   // Same in split view: paired cells keep their own side's tokens.
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   const splitTable = page.locator(`${connFile} table.diff.split`).first();
   await expect(splitTable).toBeVisible();
   await expect(splitTable.locator("td.c [class*='shk-']").first()).toBeVisible();

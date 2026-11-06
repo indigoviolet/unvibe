@@ -11,6 +11,8 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
 function writeFakeGh(binDir: string, logDir: string, headSha: string): void {
   const body = ["First paragraph of the PR body.", "", "Second paragraph with details."].join("\n");
+  // Issue #351: the service also lists reviews (read-only GET) to offer a
+  // prior-review baseline; only the POST is a submit.
   // Issue #296: one two-comment thread already on GitHub, on a line far
   // from the reviewer's own line-2 thread below (made-up comments only).
   const existing = JSON.stringify([
@@ -48,7 +50,8 @@ EOF
 fi
 if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"author"}'; exit 0; fi
 case "$*" in *pulls/1/comments*) printf '%s\n' '${existing}' > "$LOG/comments.json"; cat "$LOG/comments.json"; exit 0 ;; esac
-case "$*" in *pulls/1/reviews*) cat > "$LOG/review-stdin.json"; echo '{"html_url":"https://example.invalid/pr/1"}'; exit 0 ;; esac
+case "$*" in *"pulls/1/reviews -X POST"*) cat > "$LOG/review-stdin.json"; echo '{"html_url":"https://example.invalid/pr/1"}'; exit 0 ;; esac
+case "$*" in *pulls/1/reviews*) echo '[]'; exit 0 ;; esac
 if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then
   prev=""
   for arg in "$@"; do if [ "$prev" = "--body-file" ]; then cp "$arg" "$LOG/body.md"; fi; prev="$arg"; done
@@ -129,7 +132,7 @@ test.describe("J3 comments and submit", () => {
     expect(posted.comments[0].body).toContain("Why 2 and not 3?");
     expect(readFileSync(path.join(logDir, "body.md"), "utf8")).toContain("Edited by the reviewer.");
     const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
-    expect(calls.match(/pulls\/1\/reviews/g) ?? []).toHaveLength(1);
+    expect(calls.match(/pulls\/1\/reviews -X POST/g) ?? []).toHaveLength(1);
 
     // Immediate second submit posts nothing new.
     await page.locator("#submitSlot [data-submit]").click().catch(() => {});
@@ -139,7 +142,7 @@ test.describe("J3 comments and submit", () => {
       await page.waitForTimeout(1000);
     }
     const calls2 = readFileSync(path.join(logDir, "calls.log"), "utf8");
-    expect(calls2.match(/pulls\/1\/reviews/g) ?? []).toHaveLength(1);
+    expect(calls2.match(/pulls\/1\/reviews -X POST/g) ?? []).toHaveLength(1);
   });
 
   test("new reviews start with existing GitHub comments hidden; the filter toggle shows them (#296)", async ({ page }) => {

@@ -65,7 +65,7 @@ describe("SessionRow ingest markers (#92 Reviews rows)", () => {
     );
     // #352: the phase reads under the title ("Opening · Fetching…"),
     // never as a right-side pill.
-    expect(screen.getByTestId("session-progress")).toHaveTextContent("Opening · Fetching…");
+    expect(screen.getByTestId("row-progress")).toHaveTextContent("Opening · Fetching…");
     expect(screen.queryByText("opening")).not.toBeInTheDocument();
     // Reopenable from there (open button enabled).
     const btn = screen.getByTestId("session-r1").querySelector("button.cj-open");

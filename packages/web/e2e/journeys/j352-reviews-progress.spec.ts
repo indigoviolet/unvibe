@@ -207,7 +207,7 @@ test.describe("J352 reviews-list progress line", () => {
     await page.goto(`${svc.origin}/?token=${svc.token}`);
     const sessionRow = page.locator('[data-testid^="session-"]', { hasText: "Journey test PR" }).first();
     await expect(sessionRow).toBeVisible({ timeout: 30_000 });
-    const progress = sessionRow.getByTestId("session-progress");
+    const progress = sessionRow.getByTestId("row-progress");
     await expect(progress).toContainText(/Opening ·/, { timeout: 30_000 });
     await expect(sessionRow.locator(".prtag")).toHaveCount(0);
     await expect(progress).toHaveAttribute("role", "status");
@@ -235,7 +235,7 @@ test.describe("J352 reviews-list progress line", () => {
     await page.reload();
     const buildingRow = page.locator(`[data-testid="session-${reviewId}"]`);
     await expect(buildingRow).toBeVisible({ timeout: 30_000 });
-    const buildingProgress = buildingRow.getByTestId("session-progress");
+    const buildingProgress = buildingRow.getByTestId("row-progress");
     await expect(buildingProgress).toContainText("hunks reviewed");
     await expect(buildingProgress.locator(".dots")).toHaveCount(1);
     await expect(buildingRow.locator(".prtag")).toHaveCount(0);
@@ -247,7 +247,7 @@ test.describe("J352 reviews-list progress line", () => {
     await page.reload();
     const doneRow = page.locator(`[data-testid="session-${reviewId}"]`);
     await expect(doneRow).toBeVisible({ timeout: 30_000 });
-    const doneProgress = doneRow.getByTestId("session-progress");
+    const doneProgress = doneRow.getByTestId("row-progress");
     await expect(doneProgress).toContainText("hunks reviewed");
     await expect(doneProgress.locator(".dots")).toHaveCount(0);
     await expect(doneRow.locator(".prtag")).toHaveCount(0);
@@ -275,13 +275,13 @@ test.describe("J352 reviews-list progress line", () => {
     await page.reload();
     const failedRow = page.locator(`[data-testid="session-${failedId}"]`);
     await expect(failedRow).toBeVisible({ timeout: 30_000 });
-    const failedProgress = failedRow.getByTestId("session-progress");
+    const failedProgress = failedRow.getByTestId("row-progress");
     await expect(failedProgress).toContainText("Couldn't open this review");
     await expect(failedProgress).toHaveAttribute("role", "status");
     await expect(failedRow.locator(".prtag")).toHaveCount(0);
     // Retry hides until hover or keyboard focus (Remove is covered on the
     // loading row above and by J225).
-    const retrySlot = failedRow.getByTestId("session-retry");
+    const retrySlot = failedRow.getByTestId("row-retry");
     const retry = failedRow.getByRole("button", { name: "Retry" });
     await expect(retrySlot).toHaveCSS("opacity", "0");
     await failedRow.hover();

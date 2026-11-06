@@ -1053,7 +1053,7 @@ test.describe("visual tour passes", () => {
     await closeCard(page, longCard);
 
     // Same long card in split view, scrolled inside its card.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
     await selectText(page, "#right table.diff.split", "_normalize_header_values");
     await page.locator('#selbar [data-act="explain"]').click();
@@ -1201,7 +1201,7 @@ test.describe("visual tour passes", () => {
     await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
 
     // Split.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await stepChecks(page, "diff-split");
     await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
     await page.getByRole("button", { name: "Unified" }).click();
@@ -1995,7 +1995,7 @@ for (const combo of [
     await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
     // Styling-only theme variables (issue #196): Console's hatched
     // empty cells and thin scrollbars, Studio's none/auto.
-    await page.getByRole("button", { name: "Split" }).click();
+    await page.getByRole("button", { name: "Split", exact: true }).click();
     await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
     const styling = await page.evaluate(() => {
       const empty = document.querySelector("table.diff td.empty");
@@ -2550,16 +2550,30 @@ test("visual tour document review (#222)", async ({ page }) => {
     await page.locator('#selbar [data-act="ask"]').click();
     const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
-    await askComposer.locator("textarea").fill("Why does it keep a fast path?");
+    // The question matches the `ask-thread-cookie` recording, which
+    // declares itself degraded: no repair turn, so the frame shows the
+    // recorded answer. Recordings that cite the urllib3 diff fail
+    // validation in a document review, and the repair turn has no
+    // recording (a replay placeholder).
+    const askQuestion = "Which consumer re-emits the raw CRLF?";
+    await askComposer.locator("textarea").fill(askQuestion);
     await askComposer.getByRole("button", { name: "Ask" }).click();
-    const askCard = page.locator("#C-document [data-thread]", { hasText: "Why does it keep a fast path?" });
+    const askCard = page.locator("#C-document [data-thread]", { hasText: askQuestion });
     await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
-    await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
-    // #336: reply toolbars reveal on hover.
-    await askCard.locator("[data-reply]").first().hover();
-    await expect(askCard.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover. Hover the agent answer, not
+    // the question entry above it (which has no toolbar), and only once
+    // the answer has settled and rendered its toolbar.
+    const askAnswer = askCard.locator("[data-reply]:not([data-ask-question])").first();
+    await expect(askAnswer.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    await expect(askAnswer.locator(".ctl")).toBeAttached({ timeout: 60_000 });
+    await expect(askAnswer).toContainText("Requests", { timeout: 60_000 });
+    // The answer is taller than the viewport: frame its top, where the
+    // toolbar floats, and hover there.
+    await askCard.first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await askAnswer.hover({ position: { x: 40, y: 12 } });
+    await expect(askAnswer.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
     await checkLayout(page, "document-ask");
-    await shot(page, "document-ask", "1440-light", "Why does it keep a fast path?");
+    await shot(page, "document-ask", "1440-light", askQuestion);
 
     // A local comment on document text.
     await selectText(page, "#C-document", "Folding runs before parsing");

@@ -62,7 +62,7 @@ for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const)
     const link = page.locator('#C-central a.gx[data-glossary="HTTPHeaderDict"]').first();
     await expect(link).toBeVisible({ timeout: 30_000 });
     await link.hover();
-    await expect(page.locator("#pop")).toContainText("headers view", { timeout: 30_000 });
+    await expect(page.locator("#pop")).toContainText("response header mapping", { timeout: 30_000 });
     await expect(page.locator("#pop [data-src]")).toHaveCount(1);
     await checkLayout(page, "glossary-hover");
     await page.screenshot({ path: path.join(SHOTS, `glossary-hover-${suffix}.png`) });

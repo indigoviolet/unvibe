@@ -149,7 +149,7 @@ test("revealing a gap fully from below leaves no controls at the boundary", asyn
 });
 
 test("split view keeps both sides of revealed lines aligned", async ({ page }) => {
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   const conn = page.locator(connFile);
   await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
   const row = page.locator(`[id="L-${CONN}-76"]`);
