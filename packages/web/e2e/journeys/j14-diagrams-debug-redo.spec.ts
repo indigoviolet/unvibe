@@ -324,6 +324,18 @@ function seedD2Review(dataDir: string): void {
     ],
     render: { hash: D2_LIFTED_HASH, status: "unavailable" },
   } as DiagramBlock);
+  // From d2-diagrams.spec.ts (#357 #130): a block whose source never
+  // compiles, for the failed-compile fallback.
+  card.blocks.push({
+    type: "diagram",
+    id: "b-seed-broken",
+    source: "this is not d2 ::: {",
+    citations: [],
+    render: {
+      hash: diagramHash(canonicalizeD2Source("this is not d2 ::: {"), D2_MIN_VERSION),
+      status: "unavailable",
+    },
+  } as DiagramBlock);
   const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
   try {
     db.exec(
@@ -581,6 +593,15 @@ for (const mode of [
       await expect(page.locator('[id="L-src-urllib3-connection.py-647"].hl')).toBeVisible({
         timeout: 10_000,
       });
+      // From d2-diagrams.spec.ts (#357): keyboard Enter on a cited
+      // shape reveals without changing the URL.
+      await anchor.focus();
+      await expect(anchor).toBeFocused();
+      await page.keyboard.press("Enter");
+      expect(page.url()).toBe(before);
+      await expect(page.locator('[id="L-src-urllib3-connection.py-647"].hl')).toBeVisible({
+        timeout: 10_000,
+      });
     });
 
     test("fresh diagram shows SVG with d2, source fallback without", async ({ page }) => {
@@ -609,6 +630,28 @@ for (const mode of [
         const fallback = page.locator("#B-b-seed-lifted .dg-fallback");
         await expect(fallback).toBeVisible({ timeout: 30_000 });
         await expect(fallback.locator("pre.code")).toContainText("parser");
+      }
+    });
+
+    // From d2-diagrams.spec.ts (#357 #130): a failed compile shows a
+    // plain note with a retry and no zoom controls.
+    test("failed compile shows a plain note with a retry and no zoom controls (#130)", async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await openReview(page, D2_SEED_REVIEW_ID);
+      const fallback = page.locator("#B-b-seed-broken .dg-fallback");
+      await expect(fallback).toBeVisible({ timeout: 30_000 });
+      if (mode.expectBinary) {
+        await expect(fallback).toContainText("Couldn't draw this diagram.");
+        // The raw compiler message never reaches the reader.
+        await expect(fallback).not.toContainText("Diagrams need");
+        // No zoom, Reset or Expand controls under a diagram that did
+        // not render — only the retry.
+        await expect(page.locator("#B-b-seed-broken .dg-bar")).toHaveCount(0);
+        await expect(fallback.getByRole("button", { name: "Retry" })).toBeVisible();
+      } else {
+        await expect(fallback).toContainText("Diagrams need");
       }
     });
 
