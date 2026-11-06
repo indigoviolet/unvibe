@@ -33,6 +33,7 @@ test.describe("J13 hunk summaries", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
+
   test("summary activates as a card, delete removes it, Summarize restores it, Fold all folds", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
@@ -77,6 +78,13 @@ test.describe("J13 hunk summaries", () => {
     const connFile = page.locator(`[id="F-${CONN}"]`);
     await expect(connFile).toBeVisible({ timeout: 60_000 });
     await page.locator('#right [role="tab"]').getByText("Diff").click().catch(() => {});
+    // The previous test leaves hunks folded; expand the first folded
+    // hunk so its summary is selectable (expanding more would remount
+    // bodies under the selection and drop the toolbar).
+    const folded = connFile.getByRole("button", { name: "Show code" }).first();
+    if (await folded.count()) {
+      await folded.click();
+    }
     await expect(connFile.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 60_000 });
     const words = (h: string | null): string =>
       (h ?? "").trim().split(/\s+/).slice(0, 3).join(" ");
@@ -98,6 +106,8 @@ test.describe("J13 hunk summaries", () => {
     await page.locator('#selbar [data-act="explain"]').click();
     const thread = connFile.locator(".dhunk section.ithread[data-thread]", { hasText: summaryText }).first();
     await expect(thread).toBeVisible({ timeout: 30_000 });
+    // Let the answer fill so the pipeline is idle for the tests below.
+    await expect(thread.locator(".exp-b").first()).not.toBeEmpty({ timeout: 90_000 });
 
     // Promoting the hunk keeps its summary plus chip; Explain reopens the page.
     await thread.getByRole("button", { name: "Open as page" }).click();
