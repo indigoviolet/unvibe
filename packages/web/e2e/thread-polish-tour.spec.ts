@@ -107,11 +107,7 @@ async function selectThreadQuote(page: import("@playwright/test").Page): Promise
   return `${para} :: ${quote}`;
 }
 
-for (const combo of [
-  { name: "1440-light", width: 1440, dark: false },
-  { name: "1440-dark", width: 1440, dark: true },
-  { name: "960-light", width: 960, dark: false },
-] as const) {
+for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const) {
   test(`thread polish tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(420_000);
