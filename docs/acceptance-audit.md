@@ -4093,3 +4093,44 @@ one-variant union today).
   `.dbar-group-summary`. Tour asserts range-diff is one line high
   with no clipped overflow, and both pickers keep their trigger
   width ±2px with and without the error.
+
+## Addendum: #359 — Built-in persona Clarity (branch `feat/359-clarity-persona`)
+
+- **Persona:** Clarity, built from the owner's code-explanation-rewriter
+  skill (owner-approved for the public repo). Lens =
+  `prompts/personas/clarity/lens.md` (skill + three references with
+  three Unvibe adaptations edited in: `[[…]]` citation tokens,
+  `:::` containers and code/d2 fences preserved exactly; ambiguity
+  preserved in the rewrite instead of asking a question; card task
+  defines the output, so output-only/ask-for-prose rules dropped).
+  `prompts/personas/clarity/evals.jsonl` keeps the skill's eval cases
+  as a human reference (no prompt test-runner exists). Card
+  instruction: "Rewrite this card's prose following your lens: the
+  same facts, scope, hedges and citations, clearer to an engineer.
+  If the card is already effective, return it unchanged."
+- **Seed:** second built-in in `defaultPersonas` (Second opinion,
+  Clarity), enabled by default, main model by default (the static
+  main fallback `claude` / `claude-opus-5-5`; editable like any
+  persona), colour `PERSONA_COLORS[1]`. The runtime seed copy is
+  inline in `packages/shared/src/personas.ts` (like Second opinion);
+  a service test asserts it matches the prompt file.
+- **Same-model lens fix:** Clarity's default model equals main's, so
+  persona runs shared main's L0 base and the fork silently dropped
+  the lens (Second opinion never hit this: its model differs). Base
+  keys now carry optional `personaId` (main keys byte-identical, 7
+  parts; persona bases append an 8th) — a same-model persona gets
+  its own L0+lens base, forked or fresh-started with the lens. Cost:
+  one extra base build per same-model persona per review.
+- **Data format stays 4:** `Settings.personas` gains a seed entry but
+  the stored shape is unchanged (`Persona` untouched); existing data
+  reads with no conversion, and existing installs keep their seeded
+  list (seed-only, like Second opinion).
+- Evidence: `packages/shared/test/personas.test.ts` (Clarity seed:
+  enabled, main model, card instruction, colour, lens rules),
+  `packages/service/test/personas-349.test.ts` (seed counts),
+  new `packages/service/test/clarity-359.test.ts` (fake runner:
+  seed over HTTP, lens-file sync, composed prompt carries lens +
+  preservation rules + card instruction, Clarity run on a card
+  stores the variant with citations intact on the main model with
+  the lens in the system prompt). Journeys, tour frames and full
+  gates deferred until the v0.0.16 gate is done.

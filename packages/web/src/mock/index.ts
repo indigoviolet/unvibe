@@ -66,7 +66,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, CLARITY_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -987,11 +987,14 @@ const DEMO_ROLE_PICKS = {
 /** Built-in Second opinion persona with the mock model (issue #349). */
 const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
+/** Built-in Clarity persona with the mock model (issue #359). */
+const MOCK_CLARITY_PERSONA = { ...CLARITY_PERSONA, provider: "claude", model: "mock-clarity" };
+
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  personas: [MOCK_BUILT_IN_PERSONA],
+  personas: [MOCK_BUILT_IN_PERSONA, MOCK_CLARITY_PERSONA],
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -1012,7 +1015,7 @@ function getMockSettings(): Settings {
     // Real service defaults, and stored overrides from mock-mode runs are
     // ignored so a stale localStorage can't leak mock ids into the demo.
     // Saves refuse anyway (read-only banner).
-    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }] };
+    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }, { ...CLARITY_PERSONA }] };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
 }
