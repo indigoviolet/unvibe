@@ -52,7 +52,7 @@ export interface McpPageItem {
  * tombstoned replies (#364), whose text is withheld (empty).
  */
 export interface McpReplyItem {
-  seq?: number;
+  seq: number;
   id: string;
   kind: string;
   who: string;
