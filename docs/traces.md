@@ -1,69 +1,95 @@
-# Performance traces (#356)
+# Performance traces (#356, owner decisions 2026-11-06)
 
-Opt-in OpenTelemetry traces for debugging Unvibe itself. Off by default;
-nothing is recorded until Settings → Debug → "Record performance traces"
-is turned on, and turning it off stops recording.
+Opt-in OpenTelemetry traces for debugging Unvibe itself, on the latest
+OTel line. Off by default; nothing is recorded until Settings → Debug →
+"Record performance traces" is turned on, and turning it off stops
+recording.
 
 ## What is recorded
 
-Manual OTel spans only (no auto-instrumentation, no profilers):
+Auto-instrumentation where it exists, manual spans where it does not:
 
-- `http <METHOD> <route-pattern>` — every request; the name uses the
-  Fastify route pattern, never the raw URL (no ids, no `?token=`). The raw
-  pathname is stored hashed (`http.path`) for grouping.
-- `job <kind>` — every queue attempt (kind, provider, model, attempt,
-  review hash, end state); durations come from the span itself.
-- `exec <command>` — every child process (`git`, `gh`, agent CLIs, …):
-  the command **basename** only, never arguments, env or cwd.
-- `sqlite <op>` — every statement execution, by operation name
-  (`select`, `insert`, …) plus the schema table; bound values never
-  reach a span.
-- `ingest`, `refresh`, `open-to-first-card` — the create path, the
-  refresh path, and review-open to first guide card (via the review bus).
-- `browser document-load|fetch|interaction` — the web SDK beacon; fetch
-  spans carry the W3C `traceparent` header so the service HTTP span joins
-  the same trace.
+- **HTTP** (`instrumentation-http`): every request, server and client.
+- **Fastify** (`instrumentation-fastify`): route handlers + middleware
+  (operation names; the `http.route` pattern rides along).
+- **undici** (`instrumentation-undici`): outgoing `fetch`.
+- **fs** (`instrumentation-fs`): file operations (names only, no paths).
+- Manual spans only for the rest: **jobs** (kind, provider, model,
+  attempt, review), **SQLite** (operation + table), **child processes**
+  (`exec`, basename + argv), and the **ingest / refresh /
+  open-to-first-card** milestones.
+- **Browser**: the OTel web SDK with auto-instrumentation for
+  document load, fetch and user interactions, POSTed to the local
+  service and stored with the server spans (trace context propagates
+  via `traceparent`).
 
-## Storage
+A route-pattern hook stamps `http.route` onto the auto HTTP server span
+(the pattern comes from our own route table, never the raw URL).
 
-`<dataDir>/traces/spans.jsonl`: one OTLP/JSON span object per line,
-appended synchronously (crash-safe). Kept for as long as recording is
-on — **no time window, no rotation**. Debug shows the span count and
-byte size, with a Clear button (inline confirm).
+## Raw recording, scrubbed export
 
-Safety cap: **256 MB**. Past it, recording stops itself and Debug shows
-a notice (`capped` in `GET /api/traces/status`); older spans are kept,
-nothing is deleted. Clear the store, then toggle the switch to record
+The local store is RAW: `<dataDir>/traces/spans.jsonl`, one OTLP/JSON
+span object per line — whatever the instrumentations capture (URLs and
+query strings, headers, fs paths, argv, env). No rotation; kept for as
+long as recording is on.
+
+Scrubbing happens in a processor ON EXPORT (`scrubExportedSpan`,
+fresh salt per export, never persisted):
+
+- names: `http METHOD route|other` (server), `fetch METHOD` (client),
+  `fs <op>`, fastify operation prefixes (`request handler`, `middleware`
+  — the `-> plugin` suffix is cut), manual names kept when strict;
+- dropped outright: query strings, headers, user agents, env, argv,
+  cookies/tokens, transport noise, `status.message` (may carry paths);
+- hashed (query stripped first): URLs, paths, hosts, review/session
+  ids — every id-like key, even when it looks like a safe token;
+- kept: methods (allowlist), status codes (numbers), route patterns
+  (validated), enums, safe tokens, schema table names;
+- API span kinds mapped to OTLP spec kinds; ids and times stay
+  (structural).
+
+A canary leak test (`packages/service/test/traces.test.ts`) seeds
+canaries through every seam — review ids, commands + argv, a SQL
+comment and bound value, real HTTP query strings, browser paths — and
+asserts the raw file DID capture them and the EXPORTED file contains
+none (no 6+ character substring anywhere).
+
+## Storage, cap, export
+
+Debug shows the span count and byte size, with a Clear button (inline
+confirm). Safety cap: **256 MB** — past it, recording stops with a
+visible notice (`capped` in `GET /api/traces/status`); older spans are
+kept, nothing is deleted. Clear, then toggle the switch to record
 again.
 
-## Export
-
-Settings → Debug → Export traces, or `GET /api/traces/export`
+Export: Settings → Debug → Export traces, or `GET /api/traces/export`
 (`unvibe-traces.json`): everything recorded so far as **OTLP JSON** —
 the OTel standard. Jaeger accepts OTLP natively; Perfetto converts it
 with `traceconv`. Nothing is uploaded, ever.
 
-## Scrubbing
-
-Same allowlist rule as the #323 stats export (see `docs/stats-export.md`
-and `packages/service/src/traces/scrub.ts`): numbers, fixed enums/safe
-tokens, and salted HMAC hashes (one random salt per process, never
-written anywhere). Review/session/repo ids and any path or file
-reference always hash — even when they look like safe tokens. Span times
-stay (they are the product). A canary leak test
-(`packages/service/test/traces.test.ts`) seeds canaries through every
-seam — review ids, commands, paths, models, browser paths — and fails if
-any 6+ character substring reaches the export.
-
 ## Cost when off
 
-Zero: every seam calls `traceSpan`, which returns a no-op without
-touching the SDK when recording is off — no exporter running, no span
-storage, no file. The browser SDK is idle until the Debug switch arms it.
+A toggle sampler drops every span before recording (no exporter
+running, no span storage), and manual seams return no-ops without
+touching the SDK. Auto-instrumentation patches stay installed but cost
+one sampler check per operation. The browser SDK (including zone.js)
+loads only when the Debug switch arms it.
+
+## Self-tracing
+
+The store's own file IO runs unsampled (`suppressTracing`): without
+it, each append would be captured by the fs instrumentation and
+recurse until the stack overflows and recording silently stops. The
+service entry loads the instrumentation prelude first and `fastify`
+lazily through a real CJS require — hoisted ESM imports and ESM dynamic
+imports both miss require-in-the-middle hooks.
 
 ## Dependencies (pure JS, no native addons)
 
 Service: `@opentelemetry/api`, `@opentelemetry/sdk-trace-base`,
-`@opentelemetry/core` (W3C propagation). Web: `@opentelemetry/api`,
-`@opentelemetry/sdk-trace-web`, `@opentelemetry/sdk-trace-base`
-(types for the beacon exporter).
+`@opentelemetry/core` (+ `context-async-hooks`),
+`@opentelemetry/instrumentation` + `http`, `fastify`, `undici`, `fs`.
+Web: `@opentelemetry/api`, `@opentelemetry/sdk-trace-web`,
+`@opentelemetry/sdk-trace-base` (types), `@opentelemetry/context-zone`,
+`zone.js`, `instrumentation-document-load/fetch/user-interaction`,
+`@opentelemetry/instrumentation`.

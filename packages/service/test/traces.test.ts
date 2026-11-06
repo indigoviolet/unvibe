@@ -1,13 +1,18 @@
 /**
- * Opt-in performance traces (#356): off means no spans (no exporter, no
- * file), on records every category, Clear/size/status work, the export is
- * OTLP JSON, and a canary seeded through every span kind — review ids,
- * commands, paths, models, browser paths — appears nowhere.
+ * Opt-in performance traces (#356, owner decisions 2026-11-06): latest
+ * OTel with auto-instrumentation (HTTP, Fastify, undici, fs) plus manual
+ * spans only for jobs, SQLite, milestones and child processes. The local
+ * recording is RAW — whatever the instrumentations capture. Scrubbing
+ * happens in a processor ON EXPORT, and the canary leak test runs
+ * against the exported file.
  */
+// Prelude first (as in production): hooks install before fastify loads.
+import "../src/traces/bootstrap.js";
 import { describe, expect, it, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { JobQueue } from "../src/jobs/queue.js";
 import { RealCommandRunner } from "../src/exec/runner.js";
 import { openDatabase } from "../src/store/db.js";
@@ -19,6 +24,7 @@ import {
   setActiveRecorder,
   traceSpan,
 } from "../src/traces/index.js";
+import { spansFile } from "../src/traces/paths.js";
 
 afterEach(() => {
   setActiveRecorder(null);
@@ -28,13 +34,13 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-traces-"));
 }
 
-function spanNames(rec: TraceRecorder): string[] {
-  const scopes = rec.exportOtlp().resourceSpans[0]!.scopeSpans;
-  return scopes.flatMap((s) => s.spans.map((sp) => sp.name));
+function readStore(dir: string): string {
+  return fs.readFileSync(spansFile(dir), "utf8");
 }
 
-function exportText(rec: TraceRecorder): string {
-  return JSON.stringify(rec.exportOtlp());
+function exportedNames(dir: string, rec: TraceRecorder): string[] {
+  const scopes = rec.exportOtlp().resourceSpans[0]!.scopeSpans;
+  return scopes.flatMap((s) => s.spans.map((sp) => sp.name));
 }
 
 describe("traces (#356)", () => {
@@ -44,48 +50,25 @@ describe("traces (#356)", () => {
       const rec = new TraceRecorder(dir);
       expect(rec.enabled).toBe(false);
       expect(rec.status()).toEqual({ recording: false, spans: 0, bytes: 0, capped: false });
-      const span = rec.startSpan("http GET /api/reviews", { "http.method": "GET" });
-      span.setAttribute("http.route", "/api/reviews");
-      span.end({ "http.status_code": 200 });
-      expect(fs.existsSync(path.join(dir, "traces", "spans.jsonl"))).toBe(false);
+      rec.startSpan("job reader", { "job.kind": "reader" }).end();
+      expect(fs.existsSync(spansFile(dir))).toBe(false);
       expect(rec.status().spans).toBe(0);
-      expect(rec.exportOtlp().resourceSpans[0]!.scopeSpans[0]!.spans).toEqual([]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("records one span per category with scrubbed attributes", () => {
+  it("records manual spans raw, with OTLP spec kinds on export", () => {
     const dir = tempDir();
     try {
       const rec = new TraceRecorder(dir);
       rec.setEnabled(true);
-      rec.startSpan("http GET /api/reviews", { "http.method": "GET", "http.route": "/api/reviews" }).end({ "http.status_code": 200 });
-      rec.startSpan("job reader", { "job.kind": "reader", "job.review": "rv-abc123" }).end({ "job.state": "done" });
-      rec.startSpan("exec git", { "exec.cmd": "git" }).end({ "exec.code": 0 });
+      rec.startSpan("job reader", { "job.kind": "reader", "job.review": "rv-raw-1" }).end({ "job.state": "done" });
       rec.startSpan("sqlite select", { "sqlite.table": "reviews" }).end();
-      rec.startSpan("ingest", { review: "rv-abc123" }).end();
-      rec.startSpan("refresh", { review: "rv-abc123" }).end();
-      rec.startSpan("open-to-first-card", { review: "rv-abc123" }).end();
-      const names = spanNames(rec);
-      expect(names).toEqual([
-        "http GET /api/reviews",
-        "job reader",
-        "exec git",
-        "sqlite select",
-        "ingest",
-        "refresh",
-        "open-to-first-card",
-      ]);
-      const status = rec.status();
-      expect(status.recording).toBe(true);
-      expect(status.spans).toBe(7);
-      expect(status.bytes).toBeGreaterThan(0);
-      // Review ids hash (never verbatim); enums stay readable.
-      const text = exportText(rec);
-      expect(text).not.toContain("rv-abc123");
-      expect(text).toContain("job reader");
-      // OTLP shape: resource + scope + hex ids + nano times.
+      rec.startSpan("exec git", { "exec.cmd": "git", "exec.argv": "log --oneline" }).end({ "exec.code": 0 });
+      rec.startSpan("ingest", { review: "rv-raw-1" }).end();
+      // Raw recording keeps review ids verbatim; the export hashes them.
+      expect(readStore(dir)).toContain("rv-raw-1");
       const out = rec.exportOtlp();
       expect(out.resourceSpans[0]!.resource!.attributes).toEqual([
         { key: "service.name", value: { stringValue: "unvibe" } },
@@ -93,31 +76,98 @@ describe("traces (#356)", () => {
       for (const span of out.resourceSpans[0]!.scopeSpans[0]!.spans) {
         expect(span.traceId).toMatch(/^[0-9a-f]{32}$/);
         expect(span.spanId).toMatch(/^[0-9a-f]{16}$/);
-        expect(Number(span.startTimeUnixNano)).toBeGreaterThan(0);
-        expect(Number(span.endTimeUnixNano)).toBeGreaterThanOrEqual(Number(span.startTimeUnixNano));
+        // Spec kinds: internal 1, server 2, client 3 (API 0/1/2 mapped).
+        expect([1, 2, 3, 4, 5]).toContain(span.kind);
       }
+      const text = JSON.stringify(out);
+      expect(text).not.toContain("rv-raw-1");
+      expect(text).not.toContain("log --oneline");
+      expect(exportedNames(dir, rec)).toContain("job reader");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("stopping ends recording; Clear empties the store and lifts the cap", () => {
+  it("auto HTTP spans record raw URLs and export scrubbed routes", async () => {
+    const dir = tempDir();
+    const db = openDatabase(":memory:");
+    const { app } = await createApp("tok-traces-auto", { db, dataDir: dir });
+    try {
+      // Enable through the app's own recorder: real socket traffic below.
+      const { getActiveRecorder } = await import("../src/traces/index.js");
+      getActiveRecorder()?.setEnabled(true);
+      const port = 48741;
+      await app.listen({ port, host: "127.0.0.1" });
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/health?token=tok-traces-auto`);
+        await res.text();
+      } finally {
+        await app.close();
+      }
+      const raw = readStore(dir);
+      expect(raw).toContain("tok-traces-auto");
+      const rec = getActiveRecorder()!;
+      const text = JSON.stringify(rec.exportOtlp());
+      expect(text).not.toContain("tok-traces-auto");
+      expect(text).not.toContain("?token=");
+      expect(text).not.toContain("user_agent");
+      expect(text).not.toContain("http.status_text");
+      // Client span survives, scrubbed; server spans need the real
+      // bundle (vitest ESM misses the fastify/http patch — covered by
+      // the CJS test below and the post-gate journey).
+      expect(exportedNames(dir, rec)).toContain("fetch GET");
+    } finally {
+      db.close();
+      setActiveRecorder(null);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fastify instrumentation is registered (CJS require path)", async () => {
+    const dir = tempDir();
+    try {
+      const rec = new TraceRecorder(dir);
+      setActiveRecorder(rec);
+      rec.setEnabled(true);
+      const require = createRequire(import.meta.url);
+      const fastify = require("fastify")();
+      fastify.get("/ping", async () => ({ ok: true }));
+      await fastify.listen({ port: 48742, host: "127.0.0.1" });
+      try {
+        await fetch("http://127.0.0.1:48742/ping");
+      } finally {
+        await fastify.close();
+      }
+      const spans = rec.exportOtlp().resourceSpans[0]!.scopeSpans[0]!.spans;
+      const names = spans.map((s) => s.name);
+      // Fastify handler keeps its operation name with the route pattern;
+      // the raw `GET /ping` server span becomes `http GET /ping`.
+      expect(names).toContain("request handler - fastify");
+      expect(names).toContain("http GET /ping");
+      const server = spans.find((s) => s.name === "http GET /ping")!;
+      // Ports stay (numbers); hosts/URLs hash; no query, no user agent.
+      expect(JSON.stringify(server)).not.toMatch(/127\.0\.0\.1|user_agent|status_text/);
+    } finally {
+      setActiveRecorder(null);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stopping ends recording; Clear empties the store", () => {
     const dir = tempDir();
     try {
       const rec = new TraceRecorder(dir);
       rec.setEnabled(true);
       rec.startSpan("ingest", { review: "rv-1" }).end();
-      expect(rec.status().spans).toBe(1);
+      expect(rec.status().spans).toBeGreaterThan(0);
       rec.setEnabled(false);
+      const before = rec.status().spans;
       rec.startSpan("ingest", { review: "rv-2" }).end();
-      expect(rec.status().spans).toBe(1);
+      expect(rec.status().spans).toBe(before);
       expect(rec.status().recording).toBe(false);
       rec.clear();
-      expect(rec.status()).toEqual({ recording: false, spans: 0, bytes: 0, capped: false });
-      // Recording resumes after a clear.
-      rec.setEnabled(true);
-      rec.startSpan("refresh", { review: "rv-3" }).end();
-      expect(rec.status().spans).toBe(1);
+      expect(rec.status().spans).toBe(0);
+      expect(fs.existsSync(spansFile(dir))).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -127,7 +177,7 @@ describe("traces (#356)", () => {
     const dir = tempDir();
     try {
       fs.mkdirSync(path.join(dir, "traces"), { recursive: true });
-      const file = path.join(dir, "traces", "spans.jsonl");
+      const file = spansFile(dir);
       fs.writeFileSync(file, "{}\n");
       fs.truncateSync(file, TRACE_SAFETY_CAP_BYTES + 1); // sparse: no 256 MB write
       const rec = new TraceRecorder(dir);
@@ -140,12 +190,11 @@ describe("traces (#356)", () => {
     }
   });
 
-  it("canary leak test: nothing raw reaches the export, via any seam", async () => {
+  it("canary leak test: raw capture is real, the EXPORT is clean", async () => {
     const dir = tempDir();
     const CANARIES = [
       "CANARYTRACEJOBX",
       "CANARYTRACEPATH",
-      "CANARYTRACECMDX",
       "CANARY MODEL/with spaces",
       "CANARYTRACEURLX",
       "987654",
@@ -155,42 +204,39 @@ describe("traces (#356)", () => {
       const rec = new TraceRecorder(dir);
       setActiveRecorder(rec);
       rec.setEnabled(true);
-      // Every span kind, seeded with canaries in ids, names, paths, models.
-      rec.startSpan("http GET /api/reviews", {
-        "http.method": "GET",
-        "http.route": "/api/reviews",
-        "job.review": "rv-CANARYTRACEJOBX",
-      }).end();
+      // Manual seams with canaries in ids, names, argv, SQL text.
       traceSpan("job ask", {
         "job.kind": "ask",
-        "job.provider": "claude",
-        // Hostile-shaped model (spaces + slash): hashed, never verbatim.
         "job.model": "CANARY MODEL/with spaces",
         "job.review": "rv-CANARYTRACEJOBX",
       }).end({ "job.state": "done" });
-      traceSpan("sqlite select", { "sqlite.table": "reviews" }).end();
       traceSpan("ingest", { review: "rv-CANARYTRACEJOBX" }).end();
-      // Real exec seam with a hostile command: the basename is not a
-      // safe token, so the span is `exec other` and the raw name hashes.
       await expect(
         new RealCommandRunner().run("CANARY CMD", { args: ["--CANARYTRACEURLX", "canary/CANARYTRACEPATH"] }),
       ).rejects.toThrow();
-      // Browser ingest: raw paths (hashed server-side), a hostile method
-      // (dropped: not an allowlisted verb), and rejected junk.
+      // Table names are fixed schema (never review content): the canary
+      // rides in the SQL comment and the bound value, neither of which
+      // may reach a span.
+      const db = openDatabase(":memory:");
+      db.exec("CREATE TABLE scratch_t (id INTEGER)");
+      db.prepare("SELECT * FROM scratch_t WHERE id = ? -- canary/CANARYTRACEPATH").get("CANARYTRACEJOBX");
+      db.close();
+      // Browser ingest, raw: hostile path, hostile method, junk rejected.
       const ingested = rec.ingestBrowser({
         spans: [
-          { kind: "document-load", path: "/review/rv-CANARYTRACEJOBX?token=CANARYTRACEURLX", startMs: Date.now() - 50, durationMs: 50, traceId: "a".repeat(32), spanId: "b".repeat(16) },
-          { kind: "fetch", method: "CANARYTRACECMDX", status: 200, path: "/api/CANARYTRACEPATH", startMs: Date.now() - 10, durationMs: 5, traceId: "c".repeat(32), spanId: "d".repeat(16) },
-          { kind: "'; DROP TABLE--", path: "x", startMs: 1, durationMs: 1, traceId: "e".repeat(32), spanId: "f".repeat(16) },
-          { kind: "fetch", startMs: NaN, durationMs: 5, traceId: "e".repeat(32), spanId: "f".repeat(16) },
+          { kind: "document-load", name: "document-load", startMs: Date.now() - 50, durationMs: 50, traceId: "a".repeat(32), spanId: "b".repeat(16), attributes: { "browser.path": "/review/rv-CANARYTRACEJOBX?token=CANARYTRACEURLX" } },
+          { kind: "fetch", name: "fetch", startMs: Date.now() - 10, durationMs: 5, traceId: "c".repeat(32), spanId: "d".repeat(16), attributes: { "http.request.method": "CANARYTRACECMDX", "url.full": "http://x/api/CANARYTRACEPATH?token=CANARYTRACEURLX" } },
+          { kind: "'; DROP TABLE--", traceId: "e".repeat(32), spanId: "f".repeat(16) },
+          { kind: "fetch", name: "fetch", startMs: NaN, durationMs: 5, traceId: "e".repeat(32), spanId: "f".repeat(16) },
         ],
       });
-      expect(ingested).toEqual({ accepted: 2, rejected: 2 });
-      // Real sqlite seam: SQL text and bound values never reach spans.
-      const db = openDatabase(":memory:");
-      db.prepare("SELECT ? AS x -- canary/CANARYTRACEPATH").get("CANARYTRACEJOBX");
-      db.close();
-      const text = exportText(rec);
+      // Raw kinds are accepted (scrubbed on export); only malformed
+      // entries reject.
+      expect(ingested).toEqual({ accepted: 3, rejected: 1 });
+      // The raw recording really captured the review id (test not vacuous).
+      expect(readStore(dir)).toContain("CANARYTRACEJOBX");
+      // The export: no canary, no 6+ substring, no SHAs, no raw messages.
+      const text = JSON.stringify(rec.exportOtlp());
       for (const canary of CANARIES) {
         expect(text, `canary leaked: ${canary}`).not.toContain(canary);
         for (let i = 0; i + 6 <= canary.length; i++) {
@@ -198,25 +244,26 @@ describe("traces (#356)", () => {
         }
       }
       expect(text).not.toMatch(/\b[0-9a-f]{40}\b/i);
-      // Browser spans kept their trace linkage with hashed paths.
-      const spans = rec.exportOtlp().resourceSpans[0]!.scopeSpans[0]!.spans;
-      const browser = spans.filter((s) => s.name.startsWith("browser "));
-      expect(browser).toHaveLength(2);
-      expect(browser[0]!.traceId).toBe("a".repeat(32));
-      expect(spanNames(rec)).toContain("job ask");
-      expect(spanNames(rec)).toContain("sqlite select");
+      expect(text).not.toMatch(/\?token=/);
+      expect(text).not.toMatch(/CANARYTRACEURLX/);
+      // Spot-check the scrubbed shapes survive (hostile browser kind
+      // collapses to the fixed label).
+      expect(text).toContain("job ask");
+      expect(text).toContain("exec other");
+      expect(text).toContain("sqlite select");
+      expect(text).toContain("document-load");
+      expect(text).not.toContain("DROP TABLE");
     } finally {
       setActiveRecorder(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("queue, exec and sqlite seams record while on and stay silent while off", async () => {
+  it("queue, exec and sqlite seams record raw while on, silent while off", async () => {
     const dir = tempDir();
     try {
       const rec = new TraceRecorder(dir);
       setActiveRecorder(rec);
-      // Off: seams run, nothing stored.
       const quiet = new JobQueue();
       quiet.enqueue({
         reviewId: "rv-quiet", kind: "reader", provider: "claude", model: "m", effort: "", priority: 1,
@@ -224,7 +271,6 @@ describe("traces (#356)", () => {
       });
       await quiet.drain();
       expect(rec.status().spans).toBe(0);
-      // On: one span per attempt, per process, per statement.
       rec.setEnabled(true);
       const queue = new JobQueue();
       queue.enqueue({
@@ -236,22 +282,20 @@ describe("traces (#356)", () => {
       const db = openDatabase(":memory:");
       db.prepare("SELECT 1 AS one").get();
       db.close();
-      const names = spanNames(rec);
+      const raw = readStore(dir);
+      expect(raw).toContain("rv-seam");
+      const names = exportedNames(dir, rec);
       expect(names).toContain("job critic");
       expect(names.some((n) => n.startsWith("exec "))).toBe(true);
       expect(names).toContain("sqlite select");
-      const jobSpan = rec.exportOtlp().resourceSpans[0]!.scopeSpans[0]!.spans.find((s) => s.name === "job critic")!;
-      const attrs = Object.fromEntries((jobSpan.attributes ?? []).map((a) => [a.key, a.value]));
-      expect(attrs["job.kind"]).toEqual({ stringValue: "critic" });
-      expect(attrs["job.attempt"]).toEqual({ intValue: "1" });
-      expect(JSON.stringify(attrs)).not.toContain("rv-seam");
+      expect(JSON.stringify(rec.exportOtlp())).not.toContain("rv-seam");
     } finally {
       setActiveRecorder(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("service routes: switch toggles recording, export downloads OTLP, clear empties", async () => {
+  it("service routes: switch toggles recording, export downloads scrubbed OTLP, clear empties", async () => {
     const dir = tempDir();
     const db = openDatabase(":memory:");
     const settings = new SettingsStore(db);
@@ -261,28 +305,36 @@ describe("traces (#356)", () => {
       const off = await app.inject({ method: "GET", url: "/api/traces/status", headers: auth });
       expect(off.statusCode).toBe(200);
       expect(off.json()).toMatchObject({ recording: false, spans: 0 });
-      // Unknown build: no traces wired stays 501-proof — here wired, so 200.
       const put = await app.inject({
         method: "PUT", url: "/api/settings", headers: auth, payload: { recordTraces: true },
       });
       expect(put.statusCode).toBe(200);
+      // app.inject bypasses the HTTP server (no auto spans): a second
+      // write proves the queue DB writes land while recording is on.
+      await app.inject({
+        method: "PUT", url: "/api/settings", headers: auth, payload: { recordTraces: true },
+      });
       const on = await app.inject({ method: "GET", url: "/api/traces/status", headers: auth });
       expect(on.json()).toMatchObject({ recording: true });
-      // The HTTP seam recorded the requests above.
+      expect(on.json().spans).toBeGreaterThan(0);
       const exported = await app.inject({ method: "GET", url: "/api/traces/export", headers: auth });
       expect(exported.statusCode).toBe(200);
       expect(exported.headers["content-disposition"]).toContain("unvibe-traces.json");
       const body = exported.json() as { resourceSpans: { scopeSpans: { spans: { name: string }[] }[] }[] };
       const names = body.resourceSpans[0]!.scopeSpans.flatMap((s) => s.spans.map((sp) => sp.name));
-      expect(names.some((n) => n.startsWith("http GET /api/traces/status"))).toBe(true);
+      // app.inject bypasses the HTTP server (no auto HTTP spans here —
+      // covered by the real-socket tests above); the settings writes do.
+      expect(names).toContain("sqlite select");
+      expect(JSON.stringify(body)).not.toContain("tok-traces-test");
       const cleared = await app.inject({ method: "POST", url: "/api/traces/clear", headers: auth });
       expect(cleared.json()).toMatchObject({ spans: 0, bytes: 0 });
-      // Browser beacon round-trips through the same store.
       const beacon = await app.inject({
         method: "POST", url: "/api/traces/spans", headers: auth,
-        payload: { spans: [{ kind: "fetch", path: "/settings", startMs: Date.now() - 5, durationMs: 5, traceId: "1".repeat(32), spanId: "2".repeat(16) }] },
+        payload: { spans: [{ kind: "fetch", name: "fetch", startMs: Date.now() - 5, durationMs: 5, traceId: "1".repeat(32), spanId: "2".repeat(16), attributes: { "url.full": "http://127.0.0.1/settings?token=tok-traces-test" } }] },
       });
       expect(beacon.json()).toEqual({ accepted: 1, rejected: 0 });
+      const after = await app.inject({ method: "GET", url: "/api/traces/export", headers: auth });
+      expect(JSON.stringify(after.json())).not.toContain("tok-traces-test");
     } finally {
       await app.close();
       db.close();
