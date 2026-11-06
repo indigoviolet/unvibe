@@ -527,6 +527,48 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: s
 }
 
 /**
+ * Issue #364: delete one reply inside a thread (no confirm, per the
+ * thread-delete rule in #346). A question and its answer are one turn —
+ * stored as a single reply — so deleting an answer removes its question
+ * with it by construction. Later turns stay. Deleting the last turn
+ * deletes the thread (same cleanup as a whole-thread delete). Posted
+ * content (`postedAt`) is never deletable; a reply that is still filling
+ * is refused so a landing job can never write into a missing turn.
+ */
+export function deleteReplyInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  commentId: string,
+  replyId: string,
+): void {
+  const thread = findThread(draft, commentId);
+  if (thread.postedAt !== undefined) {
+    throw new Error("posted content can't be deleted");
+  }
+  const idx = (thread.replies ?? []).findIndex((r) => r.id === replyId);
+  if (idx < 0) throw new Error(`unknown reply ${replyId}`);
+  const target = thread.replies[idx];
+  if (target.jobId !== undefined || (target.working ?? null) !== null) {
+    throw new Error("that reply is still filling — wait for the answer");
+  }
+  thread.replies.splice(idx, 1);
+  // In-thread links pointing at the deleted reply would dangle: clear them.
+  for (const rest of thread.replies) {
+    if (rest.linkTo === replyId) {
+      delete rest.linkTo;
+      delete rest.linkText;
+    }
+  }
+  // A promoted page mapping for the deleted reply no longer resolves.
+  if (thread.promotedReplies) {
+    thread.promotedReplies = thread.promotedReplies.filter((m) => m.replyId !== replyId);
+    if (thread.promotedReplies.length === 0) delete thread.promotedReplies;
+  }
+  if (thread.replies.length === 0) {
+    deleteInDraft(draft as WritableDraft<ReviewSnapshot>, commentId);
+  }
+}
+
+/**
  * Exact text that will be posted for a thread: the Outbox draft when set,
  * else the first reviewer reply, else the suggested reply (prototype
  * `Comments menu` draft fallback).
@@ -710,5 +752,17 @@ export async function deleteAnnotation(
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
     deleteInDraft(draft, commentId);
+  });
+}
+
+/** Issue #364: delete one reply (no confirm); the last turn deletes the thread. */
+export async function deleteReply(
+  store: ReviewStore,
+  reviewId: string,
+  commentId: string,
+  replyId: string,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    deleteReplyInDraft(draft, commentId, replyId);
   });
 }

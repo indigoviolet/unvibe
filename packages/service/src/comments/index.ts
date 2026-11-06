@@ -8,6 +8,8 @@ export {
   createThreadInDraft,
   deleteAnnotation,
   deleteInDraft,
+  deleteReply,
+  deleteReplyInDraft,
   newAnnotationId,
   replyInDraft,
   replyToThread,

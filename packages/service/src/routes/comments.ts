@@ -22,6 +22,7 @@ import {
   createSuggestedComment,
   createThread,
   deleteAnnotation,
+  deleteReply,
   replyToThread,
 } from "../comments/index.js";
 import type { ServiceContext } from "./context.js";
@@ -216,6 +217,28 @@ export async function registerComments(app: FastifyInstance, ctx?: ServiceContex
       const msg = (err as Error).message;
       if (msg.startsWith("unknown review") || msg.startsWith("unknown comment")) {
         return reply.code(404).send({ error: msg });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+    return { ok: true };
+  });
+
+  app.delete("/api/reviews/:id/comments/:commentId/replies/:replyId", async (req, reply) => {
+    const { id, commentId, replyId } = req.params as { id: string; commentId: string; replyId: string };
+    const preDel = reviews.getSnapshot(id);
+    if (preDel) {
+      const refused = ingestRefusal(preDel);
+      if (refused) return reply.code(409).send({ error: refused });
+    }
+    try {
+      await deleteReply(reviews, id, commentId, replyId);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith("unknown review") || msg.startsWith("unknown comment") || msg.startsWith("unknown reply")) {
+        return reply.code(404).send({ error: msg });
+      }
+      if (msg.includes("posted content") || msg.includes("still filling")) {
+        return reply.code(409).send({ error: msg });
       }
       return reply.code(400).send({ error: msg });
     }
