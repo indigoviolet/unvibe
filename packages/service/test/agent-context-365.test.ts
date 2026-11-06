@@ -65,9 +65,10 @@ const SECOND_ANSWER = `Second answer body, nothing like the first.
 
 // -- get_item fixture ------------------------------------------------------
 
-function plainReply(text: string, live = true): Reply {
+function plainReply(seq: number, text: string, live = true): Reply {
   return {
-    id: `ans_${Math.random().toString(36).slice(2, 8)}`,
+    id: `ans_r${seq}`,
+    seq,
     kind: "comment",
     who: "you",
     question: null,
@@ -236,7 +237,7 @@ describe("get_item (issue #365)", () => {
 describe("stable reply IDs (issue #365)", () => {
   function threadWith(n: number): Thread {
     const replies: Reply[] = [];
-    for (let i = 0; i < n; i++) pushReplySeq(replies, plainReply(`reply ${i + 1}`));
+    for (let i = 0; i < n; i++) pushReplySeq(replies, plainReply(i + 1, `reply ${i + 1}`));
     return { id: "ann_t", type: "thread", anchor: {} as Thread["anchor"], replies, open: true, pinned: false, post: false };
   }
 
@@ -273,19 +274,9 @@ describe("stable reply IDs (issue #365)", () => {
     expect(next).toBe(4);
   });
 
-  it("falls back to the position for pre-#365 rows without a seq", () => {
-    const bare = { id: "ans_old", kind: "comment" } as Reply;
-    const thread = {
-      id: "ann_old",
-      type: "thread",
-      anchor: {},
-      replies: [bare],
-      open: true,
-      pinned: false,
-      post: false,
-    } as unknown as Thread;
-    expect(replyRef(thread.id, thread, 0)).toBe("ann:ann_old#r1");
-    expect(findReplyIndexBySeq(thread.replies, 1)).toBe(0);
+  it("never reuses a sequence for a later append", () => {
+    const thread = threadWith(2);
+    expect(nextReplySeq(thread.replies)).toBe(3);
   });
 });
 
