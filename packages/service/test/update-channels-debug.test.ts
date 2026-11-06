@@ -8,9 +8,11 @@ import {
   formatChannelList,
   inferChannelFromVersion,
   isChannelName,
+  isDebugChannel,
   parseChannelList,
   type InstalledBuild,
 } from "../src/update/channels.js";
+import { isDebugChannel as sharedIsDebugChannel } from "@unvibe/shared";
 import { buildReleaseArgs } from "../../../scripts/preview-lib.mjs";
 
 const INSTALLED: InstalledBuild = {
@@ -27,6 +29,15 @@ const INSTALLED: InstalledBuild = {
 };
 
 describe("debug channels (#356)", () => {
+  it("local predicate matches the canonical shared copy", () => {
+    const cases = [
+      "release", "release-debug", "preview/a", "preview/a-debug",
+      "preview/debug", "debug", "", "preview/", "RELEASE-DEBUG",
+      "preview/x-debug-debug", "release-debugx",
+    ];
+    for (const c of cases) expect(isDebugChannel(c), c).toBe(sharedIsDebugChannel(c));
+  });
+
   it("validates release-debug and preview debug refs, rejects others", () => {
     expect(isChannelName("release")).toBe(true);
     expect(isChannelName("release-debug")).toBe(true);

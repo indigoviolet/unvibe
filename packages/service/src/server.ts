@@ -44,6 +44,7 @@ import type { Updater } from "./update/index.js";
 import type { UpdateHooks } from "./routes/deps.js";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
 import { attachRouteHook, loadTraceRecorder } from "./traces/loader.js";
+import { setExecTraceSink } from "./exec/runner.js";
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
@@ -378,7 +379,10 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   };
   // The Debug switch takes effect at boot: recording starts only when
   // the setting is already on (the settings PUT path flips it live).
+  // The exec seam gets the same recorder (its module must stay OTel-free
+  // for the update helper bundle, so the hook is pushed in, not imported).
   if (traces) {
+    setExecTraceSink(traces);
     try {
       if (ctx.settings.get().recordTraces) traces.setEnabled(true);
     } catch {
