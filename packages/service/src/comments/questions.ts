@@ -189,6 +189,8 @@ export function suggestOpenQuestionsInDraft(
       post: false,
       openQuestion: { contributionId: q.contributionId, itemIndex: q.itemIndex },
     };
+    // Issue #365: first (only) reply in a fresh thread.
+    reply.seq = 1;
     (draft.annotations as unknown as Thread[]).push(thread as Thread);
     created.push(thread);
   }

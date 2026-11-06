@@ -455,6 +455,14 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     },
   ];
 
+  // Issue #365: seed replies carry stable sequences like live-created
+  // ones, so the demo transcript shows the same reply IDs.
+  for (const t of annotations) {
+    t.replies.forEach((r, i) => {
+      if (r.seq === undefined) r.seq = i + 1;
+    });
+  }
+
   // --- hunk states ------------------------------------------------------
   const hunkStates = files.flatMap((f) =>
     f.hunks.map((h) => ({ contentHash: h.contentHash, folded: false, reviewed: false })),
