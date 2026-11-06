@@ -180,6 +180,18 @@ test.describe("J14 diagrams, debug, redo", () => {
       const pill = page.locator("#reviewbar .uic-pill");
       await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
       await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      // Folded from debug-redo.spec.ts (#357): Cancel and Escape close
+      // the confirmation without leaving the review.
+      await pill.getByRole("button", { name: "Cancel" }).click();
+      await expect(pill).toHaveCount(0);
+      await expect(page.url()).toContain(`/review/${id}`);
+      await redo.click();
+      await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
+      await page.keyboard.press("Escape");
+      await expect(pill).toHaveCount(0);
+      await expect(page.url()).toContain(`/review/${id}`);
+      await redo.click();
+      await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
       await pill.getByRole("button", { name: "Confirm re-do guide" }).click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);
       await expect(page.locator("#right")).toBeVisible({ timeout: 60_000 });
