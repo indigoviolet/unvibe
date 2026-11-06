@@ -59,6 +59,7 @@ import { FakeAgentRunner } from "./agent/fake.js";
 import { verifyCheckoutAfterJob } from "./fullaccess/verify.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
+import type { TraceRecorder } from "./traces/recorder.js";
 
 export interface AppContext {
   db: DatabaseSync;
@@ -78,6 +79,12 @@ export interface AppContext {
   sharedctx: SharedContextService;
   /** Version-picker backend (issue #36 step 2 seam; fake under `UNVIBE_UPDATER_BACKEND=fake`). */
   updater: Updater;
+  /**
+   * Opt-in performance traces (issue #356; null in lean builds and in
+   * tests that do not wire tracing). Loaded by the composition root
+   * through `traces/loader.ts`, never constructed here.
+   */
+  traces: TraceRecorder | null;
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
@@ -98,6 +105,8 @@ export interface BuildAppOptions {
   settings?: SettingsStore;
   mcp?: McpRegistry;
   updater?: Updater;
+  /** Opt-in performance traces (issue #356); null stays null (lean builds, most tests). */
+  traces?: TraceRecorder | null;
   /** SERVICE_VERSION (server.ts); feeds the real Updater + build identity. */
   serviceVersion?: string;
 }
@@ -282,6 +291,7 @@ export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
 
 export function buildApp(opts: BuildAppOptions): AppContext {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+  const traces = opts.traces ?? null;
   // Tests never hit real GitHub or real agents (issue #119): under vitest
   // an app built without explicit fakes gets inert substitutes instead of
   // silently falling back to the production ones. Explicitly injected
@@ -463,6 +473,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     reviews,
     jobs,
     settings,
+    traces,
     models,
     mcp,
     sessions,

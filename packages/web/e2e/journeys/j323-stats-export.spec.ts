@@ -40,7 +40,7 @@ test.describe("J323 stats export", () => {
     await download.saveAs(file);
     const text = readFileSync(file, "utf8");
     const body = JSON.parse(text) as { schemaVersion: number; totals: { reviews: number } };
-    expect(body.schemaVersion).toBe(1);
+    expect(body.schemaVersion).toBe(2);
     expect(body.totals.reviews).toBe(0);
     expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
     expect(text).not.toMatch(/\b[0-9a-f]{40}\b/i);

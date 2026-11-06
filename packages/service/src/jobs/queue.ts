@@ -30,6 +30,7 @@ import {
 } from "@unvibe/shared";
 import { computeBackoffDelay } from "./backoff.js";
 import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
+import { isSafeToken, traceSpan } from "../traces/index.js";
 import { isAbortError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "./errors.js";
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
@@ -719,6 +720,17 @@ export class JobQueue {
     this.emit(entry);
 
     const ctx = this.makeContext(entry, controller);
+    // Opt-in performance traces (issue #356): one `job <kind>` span per
+    // attempt. Attributes are enums/safe tokens/hashes only (kind,
+    // provider, model, attempt, review hash); durations derive from the
+    // span itself. A no-op while recording is off.
+    const jobSpan = traceSpan(`job ${isSafeToken(job.kind) ? job.kind : "other"}`, {
+      "job.kind": job.kind,
+      ...(job.provider ? { "job.provider": job.provider } : {}),
+      ...(job.model ? { "job.model": job.model } : {}),
+      "job.attempt": job.attempts ?? 1,
+      ...(job.reviewId ? { "job.review": job.reviewId } : {}),
+    });
     try {
       await entry.run!(ctx);
       if (!controller.signal.aborted) await this.runAfterHook(entry);
@@ -746,6 +758,8 @@ export class JobQueue {
       // too, before the job settles as error.
       await this.runAfterHook(entry);
       this.settle(entry, controller, "error");
+    } finally {
+      jobSpan.end({ "job.state": job.state });
     }
   }
 

@@ -29,7 +29,7 @@ import type {
   UpdateStatusResponse,
 } from "@unvibe/shared";
 import { api, friendlyError, UpdateJobsBlockedError } from "../api/client.js";
-import { compareDataFormat } from "@unvibe/shared";
+import { compareDataFormat, isDebugChannel } from "@unvibe/shared";
 import { downloadOutboxMarkdown } from "../data-format/outboxDownload.js";
 import { noteChannelsForUpdateCheck } from "../shell/updateCheck.js";
 import { putErrors } from "./LimitsSection.js";
@@ -577,6 +577,14 @@ function VersionRow({
             <code className="ver-name" title={c.version ?? c.ref}>
               {c.ref}
             </code>
+            {isDebugChannel(c.ref) ? (
+              <>
+                {" · "}
+                <span data-testid="update-debug">
+                  <Badge tone="warn">debug</Badge>
+                </span>
+              </>
+            ) : null}
             {" · "}
             <span className="ver-sha" title={c.kind === "release" && c.version ? c.version : (c.commit ?? undefined)}>{channelRowMiddle(c)}</span>
             {" · "}

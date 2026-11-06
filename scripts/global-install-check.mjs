@@ -1,9 +1,10 @@
 /*global console process setTimeout clearTimeout Buffer */
 // Global-install check (PRD §14 install path), run as:
 //   mise run check-global-install
-// which first runs `mise run release` (self-contained tree + tarball +
-// local `release` branch), then this script. Every install below is a
-// LITERAL command from the README, with no extra flags:
+// which first runs `mise run release` (lean tree + tarball + local
+// `release` branch) and a debug `mise run release` (debug tree + tarball
+// + local `release-debug` branch), then this script with both flavours.
+// Every install below is a LITERAL command from the README, with no extra flags:
 //
 //   npm install -g github:<org>/unvibe#release      (git ref; git+file://<bare>#<ref> stands in locally)
 //   npm install -g https://…/unvibe-<v>.tgz          (tarball file)
@@ -65,6 +66,22 @@ const RELEASE_REF = flag("--release-ref", process.env.UNVIBE_RELEASE_REF ?? proc
 // Explicit tarball path (the release workflow passes the versioned file);
 // otherwise resolved from UNVIBE_RELEASE_VERSION or package.json.
 const TARBALL_FLAG = flag("--tarball", process.env.UNVIBE_RELEASE_TARBALL ?? null);
+// Debug flavour (issue #356): `--flavours lean,debug` (or
+// UNVIBE_GLOBAL_CHECK_FLAVOURS) additionally installs the debug build —
+// `release-debug` ref + `-debug` tarball — and asserts tracing records
+// there while staying unavailable in lean. Default stays lean-only.
+const FLAVOURS = String(flag("--flavours", process.env.UNVIBE_GLOBAL_CHECK_FLAVOURS ?? "lean"))
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+for (const f of FLAVOURS) {
+  if (f !== "lean" && f !== "debug") {
+    console.error(`global-install-check: unknown flavour ${JSON.stringify(f)} (want lean and/or debug)`);
+    process.exit(2);
+  }
+}
+const DEBUG_RELEASE_REF = flag("--debug-release-ref", process.env.UNVIBE_DEBUG_RELEASE_REF ?? "release-debug");
+const DEBUG_TARBALL_FLAG = flag("--debug-tarball", process.env.UNVIBE_DEBUG_RELEASE_TARBALL ?? null);
 
 let failures = 0;
 function assert(cond, msg) {
@@ -440,7 +457,7 @@ async function checkInstalledOutline({ port, token, label, env }) {
  * start/status/stop outside the repo, prompts + web shell, readiness agent
  * executables, demo pipeline end to end, adapter bundles, size + time.
  */
-async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, dataDir }) {
+async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, dataDir, flavour = "lean" }) {
   const HOME = home;
   const DATA = dataDir;
   fs.mkdirSync(HOME, { recursive: true });
@@ -600,6 +617,36 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
     assert(false, `${label}: readiness body parses`);
   }
 
+  // Debug flavour (issue #356): lean ships no tracing runtime and
+  // reports traces unavailable; debug records, exports scrubbed OTLP.
+  if (flavour === "debug") {
+    assert(
+      fs.existsSync(path.join(installedPkg, "node_modules", "@opentelemetry", "api")),
+      `${label}: debug build ships the OTel runtime`,
+    );
+    const on = await api(port, token, "PUT", "/api/settings", { recordTraces: true });
+    assert(on.code === 200, `${label}: debug build enables recording`);
+    let rec = null;
+    const st = await api(port, token, "GET", "/api/traces/status");
+    try {
+      rec = JSON.parse(st.body);
+    } catch {
+      rec = null;
+    }
+    assert(st.code === 200 && !!rec && rec.recording === true && rec.spans > 0, `${label}: debug build records spans`);
+    const exp = await api(port, token, "GET", "/api/traces/export");
+    assert(exp.code === 200 && (exp.body ?? "").includes("resourceSpans"), `${label}: debug build exports OTLP traces`);
+    assert(!(exp.body ?? "").includes(token), `${label}: debug export carries no token`);
+    await api(port, token, "PUT", "/api/settings", { recordTraces: false });
+  } else {
+    assert(
+      !fs.existsSync(path.join(installedPkg, "node_modules", "@opentelemetry")),
+      `${label}: lean build ships no OTel runtime`,
+    );
+    const st = await api(port, token, "GET", "/api/traces/status");
+    assert(st.code === 501, `${label}: lean build reports traces unavailable (got ${st.code})`);
+  }
+
   const created = await api(port, token, "POST", "/api/reviews", { repoId: "demo" });
   assert(created.code === 201, `${label}: installed copy creates the demo review`);
   let id = null;
@@ -702,8 +749,8 @@ function installLiteral({ npmMajor, installArgs, prefix, label, home, dataDir, p
   return { code: r.status ?? 1, out: (r.stdout ?? "") + (r.stderr ?? ""), ms, cacheDir };
 }
 
-async function phaseTarball(npmMajor, tarballPath, port) {
-  const label = `tarball-npm${npmMajor}`;
+async function phaseTarball(npmMajor, tarballPath, port, flavour = "lean") {
+  const label = flavour === "lean" ? `tarball-npm${npmMajor}` : `tarball-${flavour}-npm${npmMajor}`;
   console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
   const home = path.join(TMP, `home-${label}`);
@@ -723,13 +770,13 @@ async function phaseTarball(npmMajor, tarballPath, port) {
   assert(code === 0, `${label}: npm install -g <tarball> --prefix (exit ${code})`);
   if (code !== 0) return;
   console.log(`${label}: install time ${s(ms)}`);
-  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir });
+  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir, flavour });
   fs.rmSync(PREFIX, { recursive: true, force: true });
 }
 
-async function phaseGit(npmMajor, bareRepo, port) {
-  const label = `git-${RELEASE_REF}-npm${npmMajor}`;
-  console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} (ref ${RELEASE_REF}) ---`);
+async function phaseGit(npmMajor, bareRepo, ref, port, flavour = "lean") {
+  const label = `git-${ref}-npm${npmMajor}`;
+  console.log(`--- ${label}: npm ${npmVersion(npmMajor, process.env)} (ref ${ref}) ---`);
   const PREFIX = path.join(TMP, `prefix-${label}`);
   const home = path.join(TMP, `home-${label}`);
   const dataDir = path.join(TMP, `data-${label}`);
@@ -742,7 +789,7 @@ async function phaseGit(npmMajor, bareRepo, port) {
   // asserts the package is a real dir and the bin target exists.
   const { code, out, ms, cacheDir } = installLiteral({
     npmMajor,
-    installArgs: [`git+file://${bareRepo}#${RELEASE_REF}`],
+    installArgs: [`git+file://${bareRepo}#${ref}`],
     prefix: PREFIX,
     label,
     home,
@@ -750,10 +797,10 @@ async function phaseGit(npmMajor, bareRepo, port) {
     port,
   });
   if (code !== 0) console.error(out.slice(-3000));
-  assert(code === 0, `${label}: npm install -g git+file://<bare>#${RELEASE_REF} --prefix (exit ${code})`);
+  assert(code === 0, `${label}: npm install -g git+file://<bare>#${ref} --prefix (exit ${code})`);
   if (code !== 0) return;
   console.log(`${label}: install time ${s(ms)}`);
-  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir });
+  await verifyInstall({ prefix: PREFIX, port, label, cacheDir, npmOut: out, home, dataDir, flavour });
   fs.rmSync(PREFIX, { recursive: true, force: true });
 }
 
@@ -990,6 +1037,26 @@ const main = async () => {
     encoding: "utf8",
   });
   assert(hasRelease.status === 0, `local release branch exists (${RELEASE_REF}; run \`mise run release\` first)`);
+  // Debug flavour sources (issue #356): resolved but only asserted when
+  // the debug flavour is selected.
+  const debugVersion = wantVersion != null && !wantVersion.endsWith("-debug") ? `${wantVersion}-debug` : wantVersion;
+  const debugTarballPath =
+    DEBUG_TARBALL_FLAG != null
+      ? path.resolve(ROOT, DEBUG_TARBALL_FLAG)
+      : debugVersion != null
+        ? path.join(ROOT, `unvibe-${debugVersion}.tgz`)
+        : null;
+  if (FLAVOURS.includes("debug")) {
+    assert(
+      debugTarballPath != null && fs.existsSync(debugTarballPath),
+      `debug tarball exists (${debugTarballPath ?? "(unknown version)"}; run \`UNVIBE_DEBUG_TRACES=1 mise run build && mise run release -- --debug\` first)`,
+    );
+    const hasDebugRelease = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${DEBUG_RELEASE_REF}`], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    assert(hasDebugRelease.status === 0, `local debug release branch exists (${DEBUG_RELEASE_REF}; run \`mise run release -- --debug\` first)`);
+  }
   if (failures > 0) process.exit(1);
 
   // A local bare clone stands in for github:<org>/unvibe (same mechanism).
@@ -1001,12 +1068,20 @@ const main = async () => {
   let port = PORT;
   for (const npmMajor of NPMS) {
     if (PHASES.includes("tarball")) {
-      await phaseTarball(npmMajor, tarballPath, port);
+      await phaseTarball(npmMajor, tarballPath, port, "lean");
       port += 10;
+      if (FLAVOURS.includes("debug")) {
+        await phaseTarball(npmMajor, debugTarballPath, port, "debug");
+        port += 10;
+      }
     }
     if (PHASES.includes("git")) {
-      await phaseGit(npmMajor, BARE, port);
+      await phaseGit(npmMajor, BARE, RELEASE_REF, port, "lean");
       port += 10;
+      if (FLAVOURS.includes("debug")) {
+        await phaseGit(npmMajor, BARE, DEBUG_RELEASE_REF, port, "debug");
+        port += 10;
+      }
     }
   }
   if (PHASES.includes("tarball")) {

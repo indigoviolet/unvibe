@@ -121,6 +121,10 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     }
     const res = deps.settings.update(patch);
     if (res.errors) return reply.code(400).send({ errors: res.errors });
+    // Issue #356: the Debug recording switch takes effect at once.
+    if (patch["recordTraces"] !== undefined && deps.traces && res.settings) {
+      deps.traces.setEnabled(res.settings.recordTraces === true);
+    }
     return res.settings;
   });
 

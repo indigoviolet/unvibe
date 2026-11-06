@@ -171,7 +171,7 @@ describe("stats export (#323)", () => {
     const out = buildStatsExportFromDb(db);
     const text = JSON.stringify(out);
     assertLeakClean(text);
-    expect(out.schemaVersion).toBe(1);
+    expect(out.schemaVersion).toBe(2);
     expect(out.reviews).toHaveLength(1);
     expect(out.reviews[0]).toMatchObject({ kind: "change", files: 1, hunks: 1, threads: 1, replies: 2, outboxThreads: 1 });
     expect(out.jobs).toHaveLength(1);

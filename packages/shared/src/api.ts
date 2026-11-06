@@ -1506,6 +1506,13 @@ export interface Settings {
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
+  /**
+   * Issue #356: record OpenTelemetry performance traces. Off by default;
+   * nothing is recorded until it is turned on. Spans are kept locally
+   * for as long as recording is on (no rotation) and exportable from
+   * Settings → Debug at any time.
+   */
+  recordTraces: boolean;
   /** Issue #322: repos the extension panel may read. Null = never chosen (service defaults to 3 most recent); [] = none. */
   extensionActiveRepoIds: string[] | null;
   /** Issue #322: model for panel turns. Default muse-spark. */
@@ -1775,6 +1782,28 @@ export interface SharedContextBaseStats {
 }
 
 // --- update channels (issue #36, step 2: version picker) -----------------
+
+/**
+ * A debug flavour of a channel (issue #356): `release-debug`, or
+ * `preview/<slug>-debug` for previews. Debug builds ship the
+ * OpenTelemetry dependencies and can record performance traces; lean
+ * builds cannot. Switching flavours is an ordinary channel switch.
+ */
+export function isDebugChannel(ref: string): boolean {
+  return ref === "release-debug" || (ref.startsWith("preview/") && ref.endsWith("-debug"));
+}
+
+/**
+ * Debug-flavour ref for a channel the user is on (issue #356): lean
+ * `release` installs `release-debug`, lean `preview/x` installs
+ * `preview/x-debug`. Already-debug and unknown channels map to
+ * `release-debug` and themselves respectively.
+ */
+export function debugChannelFor(channel: string | null): string {
+  if (channel !== null && isDebugChannel(channel)) return channel;
+  if (channel !== null && channel.startsWith("preview/")) return `${channel}-debug`;
+  return "release-debug";
+}
 
 /**
  * One installable build: `release` or a `preview/<slug>` published from

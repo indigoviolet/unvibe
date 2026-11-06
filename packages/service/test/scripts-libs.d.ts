@@ -53,6 +53,7 @@ declare module "*preview-lib.mjs" {
     baseBranch?: string | null;
     baseCommit?: string | null;
     notesFile?: string | null;
+    debug?: boolean;
   }): string[];
   export function selectPruneRefs(
     entries: { ref: string; sourceBranch?: string | null }[],

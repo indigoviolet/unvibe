@@ -155,7 +155,7 @@ export function SettingsPage(): React.JSX.Element {
       )}
       {STATIC_DEMO ? null : (
         <TabPanel idPrefix="settings" id="debug" active={tab === "debug"}>
-          <DebugSection />
+          <DebugSection settings={loaded} onSaved={setSettings} />
         </TabPanel>
       )}
       <TabPanel idPrefix="settings" id="data" active={tab === "data"}>

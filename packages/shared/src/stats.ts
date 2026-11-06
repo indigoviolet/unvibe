@@ -54,6 +54,11 @@ export interface StatsReview {
   kind: "change" | "document";
   files: number;
   hunks: number;
+  /**
+   * Issue #356: hunks with no stored summary because the hunk-pass
+   * fan-out cap left them out (0 when the review fits the cap).
+   */
+  skippedHunkSummaries: number;
   addedLines: number;
   removedLines: number;
   guidePages: number;
@@ -101,7 +106,7 @@ export interface StatsJob {
 }
 
 export interface StatsExport {
-  schemaVersion: 1;
+  schemaVersion: 2;
   reviews: StatsReview[];
   jobs: StatsJob[];
   totals: {

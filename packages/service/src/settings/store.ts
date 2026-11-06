@@ -49,6 +49,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fullAccessAcknowledgedAt: null,
   /** Issue #217: go-deeper cards write themselves after the guide. On by default. */
   autoGoDeeper: true,
+  /** Issue #356: record OpenTelemetry performance traces. Off by default. */
+  recordTraces: false,
   /** Issue #322: null = never chosen (service defaults to 3 most recent). */
   extensionActiveRepoIds: null,
   /** Issue #322: panel turns default to muse-spark. */
@@ -131,6 +133,10 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   const autoGoDeeper = patch["autoGoDeeper"];
   if (autoGoDeeper !== undefined && typeof autoGoDeeper !== "boolean") {
     errors.push("autoGoDeeper must be a boolean");
+  }
+  const recordTraces = patch["recordTraces"];
+  if (recordTraces !== undefined && typeof recordTraces !== "boolean") {
+    errors.push("recordTraces must be a boolean");
   }
   const fullAccess = patch["fullAccess"];
   if (fullAccess !== undefined && typeof fullAccess !== "boolean") {

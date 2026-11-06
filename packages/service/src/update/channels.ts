@@ -14,7 +14,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { UpdateChannel } from "@unvibe/shared";
+import { isDebugChannel, type UpdateChannel } from "@unvibe/shared";
 // Subpath import: the update helper bundle must not pull in the shared barrel.
 import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";
@@ -47,9 +47,16 @@ export interface InstalledBuild {
   packagePath: string | null;
 }
 
-/** Valid channel names: `release` or `preview/<slug>`. */
+/**
+ * Valid channel names: `release`, `release-debug`, or `preview/<slug>`
+ * (issue #356: debug flavours end in `-debug`).
+ */
 export function isChannelName(name: string): boolean {
-  return name === "release" || /^preview\/[A-Za-z0-9._-]+$/.test(name);
+  return (
+    name === "release" ||
+    name === "release-debug" ||
+    /^preview\/[A-Za-z0-9._-]+$/.test(name)
+  );
 }
 
 export function isPreviewChannel(channel: string): boolean {
@@ -76,8 +83,9 @@ export function parseChannelList(stdout: string): string[] {
     const name = line.trim();
     if (name && isChannelName(name)) seen.add(name);
   }
+  const rank = (c: string): number => (c === "release" ? 0 : c === "release-debug" ? 1 : 2);
   const out = [...seen];
-  out.sort((a, b) => (a === "release" ? -1 : b === "release" ? 1 : a < b ? -1 : a > b ? 1 : 0));
+  out.sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
   return out;
 }
 
@@ -143,6 +151,7 @@ export function shortCommit(commit: string | null): string {
  */
 export function inferChannelFromVersion(version: string): string | null {
   if (/^\d+\.\d+\.\d+$/.test(version)) return "release";
+  if (/^\d+\.\d+\.\d+-debug$/.test(version)) return "release-debug";
   const m = /^\d+\.\d+\.\d+-preview\.([A-Za-z0-9._-]+)\.[A-Za-z0-9-]+$/.exec(version);
   if (m) {
     const channel = `preview/${m[1]}`;
@@ -388,7 +397,9 @@ export async function listChannels(
 export function formatChannelList(channels: UpdateChannel[], installed: InstalledBuild): string[] {
   const lines = ["Available channels:"];
   for (const c of channels) {
-    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (no build details)"}`;
+    // Issue #356: debug flavours show clearly as debug.
+    const debugTag = isDebugChannel(c.ref) ? " [debug: ships tracing, records performance traces]" : "";
+    let head = `${c.current ? "* " : "  "}${c.ref}${c.current ? ` (installed, ${installed.version})` : c.version ? ` (${c.version})` : " (no build details)"}${debugTag}`;
     if (c.current && c.commit && c.commit !== installed.commit) {
       const built = c.builtAt ? `, built ${c.builtAt.slice(0, 10)}` : "";
       head += ` — newer build available (installed ${shortCommit(installed.commit)} vs ${c.commit.slice(0, 7)}${built})`;
