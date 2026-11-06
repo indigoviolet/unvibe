@@ -113,6 +113,16 @@ describe("static network guards", () => {
         patterns: [/@agentclientprotocol\/sdk/],
         reason: "ACP stdio subprocesses (adapters spawn claude/codex CLIs; no sockets)",
       },
+      {
+        file: "traces/recorder.ts",
+        patterns: [/@opentelemetry\/instrumentation-fastify/],
+        reason: "OTel Fastify auto-instrumentation import (issue #356; in-process patching of the loopback-only server, no sockets opened here)",
+      },
+      {
+        file: "traces/scrub.ts",
+        patterns: [/fastify/],
+        reason: "export scrubber recognizes Fastify auto-instrumentation span-name shapes (issue #356; pure string matching, no network use)",
+      },
     ];
     const NETWORK_RE =
       /node:(http|https|net|tls|dgram|dns)|from ["']ws["']|require\(["']ws["']|@agentclientprotocol\/|fastify|@fastify\/|[^._a-zA-Z]fetch\s*\(/;
