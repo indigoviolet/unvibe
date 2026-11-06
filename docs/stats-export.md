@@ -30,7 +30,11 @@ file with `mise run stats:summary -- <file>` (reads only that file).
   short safe tokens (`[A-Za-z0-9._-]`), else `other`. Tool names follow
   the same rule. Anything unrecognized becomes `other` (fail closed).
 
-## Schema (schemaVersion 1)
+## Schema (schemaVersion 2)
+
+Version 2 adds `reviews[].skippedHunkSummaries`, keeps the `persona`
+job kind instead of folding it to `other`, and records `reads[].lines`
+for `get_code`/`get_hunk` argument shapes (see below).
 
 Top level: `{ schemaVersion, reviews, jobs, totals }`.
 
@@ -42,6 +46,7 @@ Top level: `{ schemaVersion, reviews, jobs, totals }`.
 | `kind` | enum | `change` \| `document` |
 | `files` | number | Files in the current diff |
 | `hunks` | number | Hunks in the current diff |
+| `skippedHunkSummaries` | number | Hunks with no stored summary because the hunk-pass fan-out cap left them out (0 when the review fits the cap; missing summaries there are pending work, not cap skips) |
 | `addedLines` / `removedLines` | number | Changed lines in the current diff |
 | `guidePages` / `guideCards` | number | Guide size |
 | `threads` / `replies` | number | Conversation size |
@@ -54,14 +59,14 @@ Top level: `{ schemaVersion, reviews, jobs, totals }`.
 | Field | Type | Meaning |
 |---|---|---|
 | `id` / `review` / `session` | hash \| null | Salted grouping ids |
-| `kind` | enum | Job kind (`reader`, `ask`, `explain` via `ask`, …) or `other` |
+| `kind` | enum | Job kind (`reader`, `ask`, `explain` via `ask`, `depth`, `examples`, `diagram`, `persona`, …) or `other`. Conversation turns (Ask/Explain replies, follow-ups, depth, examples, diagram and persona runs) are jobs with the same fields |
 | `state` | enum | `queued` \| `running` \| `backing-off` \| `done` \| `error` \| `cancelled` \| `other` |
 | `provider` | enum | `claude` \| `codex` \| `pi` \| `other` |
 | `model` / `effort` | token | Safe-token id, else `other` (`""` effort = adapter default) |
 | `access` | enum \| null | `full` \| `lockdown` when recorded |
 | `tokens` | object \| null | `{ input, cachedRead, cachedWrite, output }` |
 | `toolCounts` | `[{tool, count}]` | Tool calls by tool type |
-| `reads` | `[{file, lines, insideDiff}]` | File reads: salted path hash, lines read when known (else null), diff membership |
+| `reads` | `[{file, lines, insideDiff}]` | File reads: salted path hash, lines read when known (else null), diff membership. `get_code` ranges come from its `path` + `startLine`/`endLine` (or `limit`/`count`) arguments; `get_hunk` reads resolve the hunk id to its file + new-side line span via the review snapshot; `Read path:a-b` details keep the token form |
 | `turns` / `repairTurns` | number | Agent turns; turns labelled repair |
 | `attempts` | number | Queue attempts |
 | `failure` | enum \| null | Failure class for failed jobs (never the message) |
