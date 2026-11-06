@@ -101,4 +101,23 @@ test.describe("J266 scroll restore", () => {
       .poll(() => page.locator("#page").evaluate((el) => el.scrollTop), { timeout: 5000 })
       .toBe(before);
   });
+
+  // From interaction.spec.ts (#357 test 6): filling never scrolls the
+  // page on its own.
+  test("filling never scrolls the page on its own", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    // ("optional whitespace" is card-unique; "fast path" also appears
+    // in seeded thread text, which would route in-thread under #273.)
+    await selectText(page, "#C-central", "optional whitespace");
+    const scroller = page.locator("#page");
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 5000 }).toBeGreaterThanOrEqual(0);
+    const top = await scroller.evaluate((el) => el.scrollTop);
+    await page.locator('#selbar [data-act="explain"]').click();
+    const exp = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
+    await expect(exp.locator(".exp-b").first()).not.toBeEmpty({ timeout: 90_000 });
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(top);
+  });
 });
