@@ -695,6 +695,22 @@ needed (that deviation is closed, not added).
   and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
+- Issue #365 (agent context): a `get_item(id)` MCP tool returns any
+  card, block, page, thread, reply or description paragraph as its
+  current content with its parent chain and child IDs; replies carry
+  stable model-facing IDs (`ann:<thread>#r<seq>`, in the shared ID
+  grammar) stamped at creation and kept across deletes; tombstoned
+  replies (#364 soft delete, `deletedAt` + shared `isLiveReply`)
+  stay out of the transcript and `get_item` until restored, under the
+  same ID. Ask/Explain turns are minimal — quote, exact item ID,
+  offsets, question, plus changed hunk IDs only when the code moved
+  since the turn's version; no card, block, thread-transcript or shared
+  log text rides along (the chip's quote and `sourceReplyId` feed the
+  turn, so no new client fields). Implemented, fake-runner-tested
+  (`agent-context-365.test.ts`, `mcp.test.ts` `get_item` cases,
+  `prompts.test.ts` minimal-turn contract, `glossary-252.test.ts`
+  Ask-minimal update, shared `ids.test.ts` reply IDs); journeys +
+  frames pending the gate.
 
 ### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread; #293: Ask questions render as reviewer entries)
 
