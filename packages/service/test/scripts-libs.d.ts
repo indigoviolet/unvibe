@@ -85,6 +85,33 @@ declare module "*release-notes-gen-lib.mjs" {
   export function whatChangedAddsMore(item: { summary?: string; whatChanged?: string }): boolean;
 }
 
+declare module "*test-affected-lib.mjs" {
+  export const DEFAULT_BASE_BRANCH: string;
+  export const TRIGGER_TABLE: {
+    key: string;
+    title: string;
+    paths: string[];
+    why: string;
+    select: (file: string, text: string) => boolean;
+  }[];
+  export function normalizeRel(p: string): string;
+  export function isSpecFile(file: string): boolean;
+  export function isTopLevelSpec(file: string): boolean;
+  export function usesReplay(text: string): boolean;
+  export function usesSeededDemo(text: string): boolean;
+  export function usesStaticDemo(text: string): boolean;
+  export function usesServiceHarness(text: string): boolean;
+  export function isMockModeSpec(file: string, text: string): boolean;
+  export function usesDataReset(text: string): boolean;
+  export function isVisualTourSpec(file: string): boolean;
+  export function rowMatches(row: { paths: string[] }, changedPath: string): boolean;
+  export function selectTriggerSpecs(
+    changedPaths: string[],
+    catalog: { file: string; text: string }[],
+  ): { file: string; reasons: string[] }[];
+  export function toRunnerPath(file: string): string;
+}
+
 declare module "*extension-version-lib.mjs" {
   export function isChromeExtensionVersion(v: string | null | undefined): boolean;
   export function fnv1a32(s: string): number;
