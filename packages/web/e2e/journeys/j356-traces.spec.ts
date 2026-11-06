@@ -37,6 +37,7 @@ test.describe("J356 traces", () => {
     test.setTimeout(240_000);
     // Recording on through the UI switch (not the API).
     await page.goto(`${svc.origin}/settings?tab=debug&token=${svc.token}`);
+    await page.waitForLoadState("networkidle");
     await page.getByLabel("Record performance traces").click();
     await expect(page.getByTestId("trace-state")).toHaveText("Recording", { timeout: 15_000 });
     // Demo review created (and built by the replay pipeline) while on.
@@ -120,6 +121,9 @@ test.describe("J356 debug frames", () => {
       await page.goto(`${svc.origin}/settings?tab=debug&token=${svc.token}`);
       const state = await page.getByTestId("trace-state").textContent();
       if ((state ?? "").includes("Recording")) {
+        // Let the settings + status probes settle: the switch remounts
+        // when status lands, which detaches a mid-flight click.
+        await page.waitForLoadState("networkidle");
         await page.getByLabel("Record performance traces").click();
         await expect(page.getByTestId("trace-state")).toHaveText("Off", { timeout: 15_000 });
       }
@@ -147,11 +151,13 @@ test.describe("J356 debug frames", () => {
     test(`debug capped frame (${combo.name})`, async ({ page }) => {
       test.setTimeout(120_000);
       // Realistic over-cap store: a few real span lines, then sparse
-      // padding past 256 MB (instant, no 256 MB write). Created before
-      // the service boots so the count is picked up.
+      // padding past 256 MB (instant: no 256 MB write). The service must
+      // boot first: a pre-created traces/ dir reads as unstamped data
+      // and the boot blocks on the data-format gate.
       const cappedDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j356-capped-"));
       let capped: RunningService | null = null;
       try {
+        capped = await startService(cappedDir, { agent: "none" });
         mkdirSync(path.join(cappedDir, "traces"), { recursive: true });
         const file = path.join(cappedDir, "traces", "spans.jsonl");
         const line = (i: number): string =>
@@ -166,11 +172,13 @@ test.describe("J356 debug frames", () => {
           });
         writeFileSync(file, [line(1), line(2), line(3)].join("\n") + "\n");
         truncateSync(file, 256 * 1024 * 1024 + 1);
-        capped = await startService(cappedDir, { agent: "none" });
         await page.setViewportSize({ width: combo.width, height: 900 });
         if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
         await page.evaluate(() => document.fonts?.ready).catch(() => {});
         await page.goto(`${capped.origin}/settings?tab=debug&token=${capped.token}`);
+        // Let the settings + status probes settle: the switch remounts
+        // when status lands, which detaches a mid-flight click.
+        await page.waitForLoadState("networkidle");
         await page.getByLabel("Record performance traces").click();
         await expect(page.getByRole("alert")).toContainText("256", { timeout: 15_000 });
         await expect(page.getByTestId("trace-state")).toHaveText("Paused (size limit)", {

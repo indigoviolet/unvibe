@@ -220,6 +220,11 @@ export class TraceRecorder {
   setEnabled(on: boolean): void {
     if (on) {
       ensureTracesDir(this.dataDir);
+      // Recount: spans may have landed since construction (e.g. a store
+      // restored around the data dir, or the capped test's fixture).
+      // Cheap except near the cap, and toggles are explicit user actions.
+      this.spanCount = countStoredSpans(this.dataDir);
+      this.spansSinceCheck = 0;
       sharedTracerProvider();
       if (currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES) {
         // Over the cap: stay off with a visible notice (status.capped).
@@ -526,7 +531,9 @@ function countStoredSpans(dataDir: string): number {
   try {
     const text = fs.readFileSync(spansFile(dataDir), "utf8");
     let n = 0;
-    for (const line of text.split("\n")) if (line.trim()) n++;
+    // NUL bytes only occur in sparse padding past a torn tail (real
+    // span lines never contain a raw NUL: JSON escapes it).
+    for (const line of text.split("\n")) if (line.trim() && !line.includes("\0")) n++;
     return n;
   } catch {
     return 0;
