@@ -503,8 +503,6 @@ export class Pipeline {
           model,
           access: postureFor(settings),
           effort,
-          // Issue #359: probe the persona's own base, never the main one.
-          personaId: o.persona?.id,
         }),
       )?.logSeq ?? 0;
     const variables = changeListVariable(this.wireDeps(), o.reviewId, o.template, o.variables, {
@@ -522,6 +520,10 @@ export class Pipeline {
     }
     const template = this.render(o.template, variables);
     let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
+    // Issue #359 (owner decision, option B): same-model personas fork
+    // main's shared base, so the lens travels at the start of every
+    // persona turn's prompt — uniformly, whatever the persona's model.
+    if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -555,8 +557,10 @@ export class Pipeline {
             ctx.setPromptSnapshot(snapshotText);
             // #122: the base builds here, inside the job — after the job id
             // went out. forkFor ensures the same base again (a live-cache hit).
-            // Issue #349 step 2: persona turns ensure and fork the
-            // persona's own base (its provider/model), never the main one.
+            // Issue #349 step 2: persona turns ensure and fork the base
+            // for their provider/model — main's base when the persona
+            // follows the main model (issue #359, option B: the lens
+            // travels at the start of the turn prompt instead).
             const base = o.persona
               ? await this.ensureBaseForRole(o.reviewId, o.persona)
               : await this.ensureBase(o.reviewId);
@@ -726,6 +730,9 @@ export class Pipeline {
                   this.render(o.retryTemplate, retryVars),
                   o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
                 );
+                // Issue #359 (owner decision, option B): the retry is a
+                // persona turn too, so it carries the lens the same way.
+                if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
                 snapshotText = `${snapshotText}\n\n--- retry turn ---\n${prompt}`;
               }
               continue;
@@ -1568,9 +1575,6 @@ export class Pipeline {
       model: role.model,
       access: postureFor(settings),
       effort: role.effort,
-      // Issue #359: the persona's own base, never the main one — a
-      // same-model persona forking main's L0 base would lose its lens.
-      personaId: persona?.id,
     };
     const mcp = this.opts.mcp.issueSession(reviewId, `base-${reviewId}`, "session");
     const mcpServers = [{ name: "unvibe", url: `${this.mcpBaseUrl}${mcp.path}` }];
@@ -1698,7 +1702,6 @@ export class Pipeline {
             model: role.model,
             access: postureFor(effective),
             effort: role.effort,
-            personaId: persona?.id,
           },
           forked.viaFork,
         );
@@ -1741,8 +1744,6 @@ export class Pipeline {
         model: role.model,
         access: postureFor(effective),
         effort: role.effort,
-        // Issue #359: the persona's own base, never the main one.
-        personaId: persona?.id,
       },
       cwd: this.sessionCwd(reviewId),
       systemPrompt: instructions,
@@ -1758,8 +1759,6 @@ export class Pipeline {
       model: role.model,
       access: postureFor(effective),
       effort: role.effort,
-      // Issue #359: the persona's own base, never the main one.
-      personaId: persona?.id,
     };
     const runner = this.opts.runner;
     if (typeof runner.fork === "function") {

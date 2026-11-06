@@ -6,7 +6,9 @@
  *    and rules. Shared, unchanged.
  * 2. **Persona lens** (required): who the persona is and what it looks
  *    for. Applied to every task the persona performs — it travels in the
- *    system prompt, below the base instructions.
+ *    system prompt, below the base instructions, and (issue #359,
+ *    option B) at the start of every persona turn's prompt, so
+ *    same-model personas forking main's shared base still see it.
  * 3. **Task template** (shared, from `prompts/`, the same templates the
  *    main guide uses): the card task is the new `persona_card.md`
  *    ("here is the guide's version of this card; write your version");

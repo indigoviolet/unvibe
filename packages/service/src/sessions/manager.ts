@@ -52,21 +52,10 @@ export interface BaseKey {
   access: AccessMode;
   /** Thinking level ("": adapter default). */
   effort: string;
-  /**
-   * Issue #359: the persona whose lens the base carries (its L0 + lens
-   * system prompt). Absent for the main base. A persona on the same
-   * provider/model as main gets its own base — forking main's L0 base
-   * would silently drop the lens.
-   */
-  personaId?: string;
 }
 
 export function baseKeyString(key: BaseKey): string {
-  const parts = [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort, key.access];
-  // Main keys stay 7 parts (every existing parser and test); persona
-  // bases append the persona id as an 8th part.
-  if (key.personaId) parts.push(key.personaId);
-  return parts.join("|");
+  return [key.reviewId, key.reviewVersion, key.guideRevision, key.provider, key.model, key.effort, key.access].join("|");
 }
 
 /** Review id of a base key string (its first component). */

@@ -4119,15 +4119,16 @@ one-variant union today).
   runtime seed copy is inline in `packages/shared/src/personas.ts`
   (like Second opinion); a service test asserts it matches the
   prompt file.
-- **Same-model lens fix:** Clarity's resolved model equals main's, so
-  persona runs shared main's L0 base and the fork silently dropped
-  the lens (Second opinion never hit this: its model differs). Base
-  keys now carry optional `personaId` (main keys byte-identical, 7
-  parts; persona bases append an 8th) — a same-model persona gets
-  its own L0+lens base, forked or fresh-started with the lens. Cost:
-  one extra base build the first time a same-model persona runs on a
-  review (never at open); the lens-in-the-turn alternative would cost
-  lens tokens on every turn and contradict the system-prompt decision.
+- **Same-model lens (owner decision, option B):** Clarity's resolved
+  model equals main's, so persona turns fork main's shared L0 base.
+  The lens travels at the start of every persona turn's prompt
+  (`runInFork`: card, explain, ask, depth, examples, diagram —
+  uniformly, whatever the persona's model), not in a separate base.
+  Cost: no extra base build (never at open, never on first run);
+  the lens tokens ride each persona turn instead — cheaper than a
+  base build for the odd run, and the only correct shape under the
+  system-prompt-lens decision, which a per-persona base would have
+  kept but at one extra base build per same-model persona.
 - **Data format 4 → 5:** `Persona` gains required `followMain`; older
   stored persona rows (no flag) need a reset.
 - Evidence: `packages/shared/test/personas.test.ts` (Clarity seed:
@@ -4137,7 +4138,9 @@ one-variant union today).
   seed over HTTP, lens-file sync, offered-check exemption for a
   main-following stored pick, composed prompt carries lens +
   preservation rules + card instruction, Clarity run stores the
-  variant with citations intact on the main model with the lens in
-  the system prompt, and follows main when the main model changes).
+  variant with citations intact on the main model, follows main when
+  the main model changes, and every turn kind (card, explain, ask,
+  depth, examples) carries the lens for both a same-model and a
+  different-model persona with no extra base).
   Journeys, tour frames and full gates deferred until the v0.0.16
   gate is done.

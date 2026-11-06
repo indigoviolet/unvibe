@@ -216,59 +216,189 @@ describe("Clarity seed and prompt composition", () => {
   });
 });
 
-describe("Clarity card run (fake runner)", () => {
-  async function openDemo(agents: FakeAgentRunner, main?: { provider: string; model: string }): Promise<{ app: Awaited<ReturnType<typeof createApp>>["app"]; ctx: Awaited<ReturnType<typeof createApp>>["ctx"]; id: string }> {
-    const { app, ctx } = await createApp("tok", { agents });
-    const created = await app.inject({
+describe("lens in every persona turn (option B)", () => {
+  const ASK_REPLY = `The persona's answer about the fold.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+  const DEPTH_SIMPLE = `A simpler variant line.\n\n\`\`\`json\n{"depth": {"level": "simple"}}\n\`\`\`\n`;
+  const EXAMPLES_REPLY = `::: example\n\`\`\`\nexample one\n\`\`\`\n:::\n\n\`\`\`json\n{}\n\`\`\`\n`;
+  const REPAIRED = `The persona's rewritten version.\n\n\`\`\`json\n{}\n\`\`\`\n`;
+
+  function lensAgents(): FakeAgentRunner {
+    return new FakeAgentRunner([
+      { match: "reply with exactly", events: textEvents("ready") },
+      { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+      // Safety net below the repair threshold tests: any repair turn
+      // still resolves (citations in the scripted replies verify, so it
+      // never runs).
+      { match: "could not be verified", events: textEvents(REPAIRED) },
+      { match: "# Persona card", events: textEvents(CLARITY_REWRITE) },
+      { match: "# Ask", events: textEvents(ASK_REPLY) },
+      { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
+      { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
+    ]);
+  }
+
+  async function runCard(agents: FakeAgentRunner): Promise<{ app: Awaited<ReturnType<typeof createApp>>["app"]; ctx: Awaited<ReturnType<typeof createApp>>["ctx"]; id: string }> {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const { app, ctx, id } = await openDemo(agents);
+    const res = await app.inject({
       method: "POST",
-      url: "/api/reviews",
+      url: `/api/reviews/${id}/actions`,
       headers: { authorization: "Bearer tok" },
-      payload: { repoId: "demo" },
+      payload: { kind: "persona", cardId: "problem", personaId: "clarity" },
     } as never);
-    expect(created.statusCode).toBe(201);
-    const id = (created.json() as ReviewSnapshot).review.id;
-    if (main) {
-      const patched = await app.inject({
-        method: "PUT",
-        url: "/api/settings",
-        headers: { authorization: "Bearer tok" },
-        payload: { main: { ...main, effort: "" } },
-      } as never);
-      expect(patched.statusCode).toBe(200);
-    }
-    await waitFor(
-      () =>
-        !!ctx.reviews
-          .getSnapshot(id)
-          ?.pages.find((p) => p.id === "root")
-          ?.cards.find((c) => c.id === "problem")?.blocks.length,
-    );
+    expect(res.statusCode).toBe(200);
+    const jobId = (res.json() as { jobId?: string }).jobId;
+    if (jobId) expect(await waitForJob(ctx, jobId)).toBe("done");
+    await waitFor(() => {
+      const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
+      const variant = card?.variants?.["clarity"];
+      return !!variant && variant.blocks.length > 0 && !variant.working;
+    });
     return { app, ctx, id };
   }
 
-  async function waitFor(check: () => boolean, timeoutMs = 30000, intervalMs = 50): Promise<void> {
-    const start = Date.now();
-    for (;;) {
-      if (check()) return;
-      if (Date.now() - start > timeoutMs) throw new Error("waitFor: timed out");
-      await new Promise((r) => setTimeout(r, intervalMs));
+  async function runJob(
+    app: Awaited<ReturnType<typeof createApp>>["app"],
+    ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+    id: string,
+    body: unknown,
+  ): Promise<void> {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/reviews/${id}/actions`,
+      headers: { authorization: "Bearer tok" },
+      payload: body,
+    } as never);
+    expect(res.statusCode).toBe(200);
+    const jobId = (res.json() as { jobId?: string }).jobId;
+    if (jobId) expect(await waitForJob(ctx, jobId)).toBe("done");
+  }
+
+  /** Every recorded turn prompt carrying `marker` starts with the lens. */
+  function expectLensInTurns(agents: FakeAgentRunner, marker: string, lensHead: string): void {
+    const turns = agents.prompts.filter((p) => p.text.includes(marker));
+    expect(turns.length).toBeGreaterThan(0);
+    for (const t of turns) {
+      expect(t.text.startsWith(`# Persona lens\n\n${lensHead}`)).toBe(true);
     }
   }
 
-  async function waitForJob(c: Awaited<ReturnType<typeof createApp>>["ctx"], jid: string, timeoutMs = 60000): Promise<string> {
-    let state = "";
-    await waitFor(
-      () => {
-        const j = c.jobs.get(jid);
-        if (!j) return false;
-        state = j.state;
-        return state === "done" || state === "error" || state === "cancelled";
-      },
-      timeoutMs,
-    );
-    return state;
-  }
+  it("same-model persona (Clarity): card, explain, ask, depth and examples turns carry the lens; one base", { timeout: 180000 }, async () => {
+    const agents = lensAgents();
+    const { app, ctx, id } = await runCard(agents);
+    try {
+      await runJob(app, ctx, id, {
+        kind: "explain",
+        quote: "The problem paragraph.",
+        anchor: { where: "block", blockId: "problem#b1" },
+        personaId: "clarity",
+      });
+      await runJob(app, ctx, id, {
+        kind: "ask",
+        quote: "The problem paragraph.",
+        anchor: { where: "block", blockId: "problem#b1" },
+        message: "Why this fold?",
+        personaId: "clarity",
+      });
+      await runJob(app, ctx, id, { kind: "depth", cardId: "problem", direction: "simpler", personaId: "clarity" });
+      await runJob(app, ctx, id, { kind: "examples", cardId: "problem", personaId: "clarity" });
+      const lensHead = "You are Clarity";
+      for (const marker of ["# Persona card", "# Ask", "# Depth rewrite", "# Examples"]) {
+        expectLensInTurns(agents, marker, lensHead);
+      }
+      // No extra base: Clarity shares main's base (same provider/model).
+      expect(ctx.sessions.baseKeys()).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
 
+  it("different-model persona (Second opinion): card and ask turns carry the lens; own base as before", { timeout: 180000 }, async () => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const agents = lensAgents();
+    const { app, ctx, id } = await openDemo(agents);
+    try {
+      await runJob(app, ctx, id, { kind: "persona", cardId: "problem", personaId: "second-opinion" });
+      await waitFor(() => {
+        const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
+        const variant = card?.variants?.["second-opinion"];
+        return !!variant && variant.blocks.length > 0 && !variant.working;
+      });
+      await runJob(app, ctx, id, {
+        kind: "ask",
+        quote: "The problem paragraph.",
+        anchor: { where: "block", blockId: "problem#b1" },
+        message: "Why this fold?",
+        personaId: "second-opinion",
+      });
+      // Second opinion's replies reuse the seeded check behaviour.
+      const variant = ctx.reviews.getSnapshot(id)!.pages.flatMap((p) => p.cards).find((c) => c.id === "problem")!.variants!["second-opinion"];
+      expect(variant.error ?? null).toBeNull();
+      const lensHead = "You are a second reader";
+      for (const marker of ["# Persona card", "# Ask"]) {
+        expectLensInTurns(agents, marker, lensHead);
+      }
+      // A different model keeps its own base (pre-existing #349
+      // behaviour): main's plus the persona's.
+      expect(ctx.sessions.baseKeys()).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
+});
+async function openDemo(agents: FakeAgentRunner, main?: { provider: string; model: string }): Promise<{ app: Awaited<ReturnType<typeof createApp>>["app"]; ctx: Awaited<ReturnType<typeof createApp>>["ctx"]; id: string }> {
+  const { app, ctx } = await createApp("tok", { agents });
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/reviews",
+    headers: { authorization: "Bearer tok" },
+    payload: { repoId: "demo" },
+  } as never);
+  expect(created.statusCode).toBe(201);
+  const id = (created.json() as ReviewSnapshot).review.id;
+  if (main) {
+    const patched = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: { authorization: "Bearer tok" },
+      payload: { main: { ...main, effort: "" } },
+    } as never);
+    expect(patched.statusCode).toBe(200);
+  }
+  await waitFor(
+    () =>
+      !!ctx.reviews
+        .getSnapshot(id)
+        ?.pages.find((p) => p.id === "root")
+        ?.cards.find((c) => c.id === "problem")?.blocks.length,
+  );
+  return { app, ctx, id };
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 30000, intervalMs = 50): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    if (check()) return;
+    if (Date.now() - start > timeoutMs) throw new Error("waitFor: timed out");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+async function waitForJob(c: Awaited<ReturnType<typeof createApp>>["ctx"], jid: string, timeoutMs = 60000): Promise<string> {
+  let state = "";
+  await waitFor(
+    () => {
+      const j = c.jobs.get(jid);
+      if (!j) return false;
+      state = j.state;
+      return state === "done" || state === "error" || state === "cancelled";
+    },
+    timeoutMs,
+  );
+  return state;
+}
+
+describe("Clarity card run (fake runner)", () => {
   it("runs on the main model and stores the variant with citations intact", { timeout: 120000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = clarityAgents();
@@ -298,12 +428,15 @@ describe("Clarity card run (fake runner)", () => {
       // The rewrite kept the guide's citation token intact.
       expect(JSON.stringify(variant.blocks)).toContain("card:problem");
       expect(JSON.stringify(variant.blocks)).toContain("rewritten for clarity");
-      // The run reached the runner on the main model with the lens.
+      // The run reached the runner on the main model with the lens at
+      // the start of the turn (option B: the shared base stays L0).
       const starts = agents.starts.filter(
         (s) => s.provider === "claude" && s.model === "claude-opus-5-5",
       );
       expect(starts.length).toBeGreaterThan(0);
-      expect(starts.some((s) => s.systemPrompt.includes("You are Clarity"))).toBe(true);
+      const turns = agents.prompts.filter((p) => p.text.includes("# Persona card"));
+      expect(turns.length).toBeGreaterThan(0);
+      expect(turns.every((t) => t.text.startsWith("# Persona lens\n\nYou are Clarity"))).toBe(true);
     } finally {
       await app.close();
     }
@@ -335,12 +468,15 @@ describe("Clarity card run (fake runner)", () => {
       });
       const card = ctx.reviews.getSnapshot(id)!.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
       expect(card.variants!["clarity"].error ?? null).toBeNull();
-      // The run followed main to sonnet — not the stored opus fallback.
+      // The run followed main to sonnet — not the stored opus fallback —
+      // with the lens at the start of the turn.
       const followed = agents.starts.filter(
         (s) => s.provider === "claude" && s.model === "claude-sonnet-5-5",
       );
       expect(followed.length).toBeGreaterThan(0);
-      expect(followed.some((s) => s.systemPrompt.includes("You are Clarity"))).toBe(true);
+      const turns = agents.prompts.filter((p) => p.text.includes("# Persona card"));
+      expect(turns.length).toBeGreaterThan(0);
+      expect(turns.every((t) => t.text.startsWith("# Persona lens\n\nYou are Clarity"))).toBe(true);
     } finally {
       await app.close();
     }
