@@ -87,6 +87,15 @@ test.describe("J247 start dots and review pill agree", () => {
     if (!svc) throw new Error("no service");
     const reviewId = await createDemo();
 
+    // From progress-signs.spec.ts (#357, issues #98/#144): while the
+    // pipeline is live the bar shows the job count and links to Debug.
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    const count = page.locator("#reviewbar").getByRole("link", { name: /running, .* queued/ });
+    await expect(count).toBeVisible({ timeout: 90_000 });
+    await expect(count).toHaveAttribute("href", `/review/${reviewId}/debug`);
+    await count.click();
+    await expect(page).toHaveURL(`/review/${reviewId}/debug`);
+
     // Sample the agreement from creation until the pipeline drains: the
     // list says running exactly when the snapshot carries live jobs.
     // Snapshot and list are two separate API calls, so a job finishing
