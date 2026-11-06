@@ -695,6 +695,20 @@ needed (that deviation is closed, not added).
   and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
+- Issue #364 (thread polish): every reply deletes on its own with no
+  confirm (an answer goes with its question — one stored turn; later
+  turns stay; the last turn deletes the thread; posted content and
+  filling replies refuse); every anchored thread shows a comment icon
+  in the margin (on its highlight's first line, else its paragraph's
+  first line; diff lines keep their gutter icons), clicking it opens
+  and scrolls to the thread; each answer carries an “↑ quoted text”
+  reverse link that scrolls to the passage and flashes it (margin
+  marker's line as fallback); turns read as tinted full-width question
+  bands with ~24px + divider between turns only; Ask inside a thread
+  uses the thread's own Reply box with a removable quote chip (no
+  second composer) — implemented, unit-tested
+  (`threads-delete-reply.test.ts`, `ThreadView.test.tsx` #364 cases,
+  `revealAnchor.test.ts`); journey J364 + frames pending the gate.
 
 ### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread; #293: Ask questions render as reviewer entries)
 
