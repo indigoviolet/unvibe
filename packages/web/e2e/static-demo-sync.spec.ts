@@ -196,12 +196,17 @@ test("an on-demand hunk summary matches between the static demo and the replay s
     // Delete the first idle summary, then restore it on demand: both sides
     // rewrite it from the same hunk recording (the seeded idle text and
     // the service's hunk-pass text are not comparable directly).
-    await connFile.locator("p[data-hunksum]").first().click();
-    const card = connFile.locator(".dhunk [data-thread]").first();
+    // Scope every step to the first hunk: after the delete, a bare
+    // `p[data-hunksum]` first() would match the next hunk's summary and
+    // pass at once (the race CI hit on a slow runner).
+    const hunk = connFile.locator(".dhunk").first();
+    const idle = hunk.locator("p[data-hunksum]");
+    await idle.click();
+    const card = hunk.locator("[data-thread]").first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.getByRole("button", { name: "Delete" }).click();
-    await connFile.getByRole("button", { name: "Summarize" }).first().click();
-    const idle = connFile.locator("p[data-hunksum]").first();
+    await expect(idle).toHaveCount(0, { timeout: 30_000 });
+    await hunk.getByRole("button", { name: "Summarize" }).click();
     await expect(idle).toBeVisible({ timeout: 90_000 });
     summaries.push(norm(await idle.innerText()));
   }
