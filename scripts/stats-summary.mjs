@@ -13,8 +13,8 @@ if (!file) {
   process.exit(2);
 }
 const data = JSON.parse(fs.readFileSync(file, "utf8"));
-if (data.schemaVersion !== 1 || !Array.isArray(data.reviews) || !Array.isArray(data.jobs)) {
-  console.error("not a v1 stats export");
+if ((data.schemaVersion !== 1 && data.schemaVersion !== 2) || !Array.isArray(data.reviews) || !Array.isArray(data.jobs)) {
+  console.error("not a v1/v2 stats export");
   process.exit(2);
 }
 const jobs = data.jobs;
