@@ -20,8 +20,10 @@
  * - 5: personas gain required `followMain` (#359): Clarity runs on the
  *   main model at run time; older stored persona rows (no flag) need a
  *   reset.
+ * - 6: replies gain required `seq` (stable per-thread sequence, #365):
+ *   stored rows without one need a reset.
  */
-export const DATA_FORMAT = 5;
+export const DATA_FORMAT = 6;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

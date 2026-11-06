@@ -579,10 +579,9 @@ export interface Reply extends ContentBody {
    * Issue #365: stable per-thread sequence (1-based, assigned at
    * creation, never reused). The model-facing reply ID is
    * `ann:<threadId>#r<seq>` — stable across re-renders and deletes,
-   * unlike the position. Absent on rows written before #365; display
-   * helpers fall back to the position.
+   * unlike the position. Required: DATA_FORMAT 6.
    */
-  seq?: number;
+  seq: number;
   /**
    * Issue #364: soft-delete tombstone (epoch ms). A tombstoned reply
    * is hidden from the UI, the agent transcript and `get_item`, and
@@ -602,15 +601,14 @@ export function isLiveReply(r: Pick<Reply, "deletedAt">): boolean {
 }
 
 /**
- * Issue #365: the stable per-thread sequence of a reply at `index` in
- * `thread.replies`: the stored `seq`, else the position (pre-#365 rows).
+ * Issue #365: the stable per-thread sequence of a reply at `index`.
+ * Required on every reply (DATA_FORMAT 6): no position fallback.
  */
 export function replySeq(
   thread: Pick<Thread, "replies">,
   index: number,
 ): number {
-  const stored = thread.replies[index]?.seq;
-  return typeof stored === "number" && Number.isSafeInteger(stored) && stored >= 1 ? stored : index + 1;
+  return thread.replies[index]!.seq;
 }
 
 /**
@@ -623,29 +621,23 @@ export function replyRef(threadId: string, thread: Pick<Thread, "replies">, inde
 
 /**
  * Issue #365: next stable per-thread reply sequence. One past the
- * highest stored `seq`, and past the legacy length so a first stamped
- * append can never collide with position-fallback rows. Never reused:
- * deletes leave gaps by design.
+ * highest stored `seq`. Never reused: deletes leave gaps by design.
  */
-export function nextReplySeq(replies: readonly { seq?: number }[]): number {
+export function nextReplySeq(replies: readonly { seq: number }[]): number {
   let max = 0;
   for (const r of replies) {
-    if (typeof r.seq === "number" && Number.isSafeInteger(r.seq) && r.seq > max) max = r.seq;
+    if (Number.isSafeInteger(r.seq) && r.seq > max) max = r.seq;
   }
-  return Math.max(max + 1, replies.length + 1);
+  return Math.max(max + 1, 1);
 }
 
 /**
  * Issue #365: locate a reply by its stable sequence `n` (the `r<n>` in
- * `ann:<thread>#r<n>`). Matches the stored `seq` first, else the
- * position (pre-#365 rows). Returns the index, or -1.
+ * `ann:<thread>#r<n>`). No position fallback: every reply carries its
+ * `seq` (DATA_FORMAT 6). Returns the index, or -1.
  */
-export function findReplyIndexBySeq(replies: readonly { seq?: number }[], n: number): number {
-  const direct = replies.findIndex((r) => r.seq === n);
-  if (direct >= 0) return direct;
-  const legacy = n - 1;
-  if (legacy >= 0 && legacy < replies.length && replies[legacy]?.seq === undefined) return legacy;
-  return -1;
+export function findReplyIndexBySeq(replies: readonly { seq: number }[], n: number): number {
+  return replies.findIndex((r) => r.seq === n);
 }
 
 /** A thread anchored once, with flat replies. Issue #273. */
