@@ -127,6 +127,39 @@ test.describe("J5 settings and versions", () => {
     expect(status.status).toBe(200);
   });
 
+  // From settings.spec.ts (#357): tab navigation, deep links, legacy
+  // #section links, and unsaved edits surviving tab switches.
+  test("tabs switch, ?tab= deep links land, #section links redirect, edits survive tab switches", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/settings?token=${svc.token}`);
+    const tabs = page.getByRole("tablist", { name: "Settings sections" });
+    await expect(tabs).toBeVisible({ timeout: 30_000 });
+    await expect(tabs.getByRole("tab", { name: "Repos" })).toHaveAttribute("aria-selected", "true");
+    await tabs.getByRole("tab", { name: "Models" }).click();
+    await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
+    // ?tab= deep link survives reload.
+    await page.goto(`${svc.origin}/settings?tab=limits&token=${svc.token}`);
+    await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#limit-sessionsPerProvider")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "Limits" })).toHaveAttribute("aria-selected", "true");
+    // Legacy #section links land on the matching tab.
+    await page.goto(`${svc.origin}/settings?token=${svc.token}#repositories`);
+    await expect(page.getByRole("tab", { name: "Repos" })).toHaveAttribute("aria-selected", "true");
+    await page.goto(`${svc.origin}/settings?token=${svc.token}#environment`);
+    await expect(page.getByRole("tab", { name: "Environment" })).toHaveAttribute("aria-selected", "true");
+    // Unsaved edits survive a tab switch.
+    await page.getByRole("tab", { name: "Limits" }).click();
+    await page.locator("#limit-sessionsPerProvider").fill("9");
+    await page.getByRole("tab", { name: "Models" }).click();
+    await expect(page.getByRole("tabpanel", { name: "Models" })).toBeVisible();
+    await page.getByRole("tab", { name: "Limits" }).click();
+    await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("9");
+  });
+
   test.describe("update icon (#231)", () => {
     const NOW = Date.now();
     const iso = (ms: number): string => new Date(ms).toISOString();
