@@ -22,7 +22,7 @@ test("open as page mid-fill keeps filling the page; anchor links at once", async
   // Hold every turn fill so the answer is still being written below.
   await page.evaluate(() => localStorage.setItem("unvibe.mock.turnFillHold", "1"));
   try {
-    await selectText(page, "#C-central", "fast path");
+    await selectText(page, "#C-central", "matches optional whitespace");
     await page.locator('#selbar [data-act="explain"]').click();
     const thread = page.locator('#C-central section.ithread[data-thread]:has([data-reply][data-kind="explain"])').first();
     await expect(thread).toBeVisible({ timeout: 5000 });
@@ -46,7 +46,7 @@ test("open as page mid-fill keeps filling the page; anchor links at once", async
     await expect(page.locator("#C-central")).toBeVisible();
     const link = page.locator("#C-central a.cx.pg").first();
     await expect(link).toBeVisible({ timeout: 5000 });
-    await expect(link).toContainText("fast path");
+    await expect(link).toContainText("matches optional whitespace");
   } finally {
     await page.evaluate(() => localStorage.removeItem("unvibe.mock.turnFillHold"));
   }

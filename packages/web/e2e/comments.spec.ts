@@ -52,12 +52,16 @@ test("toolbar Comment creates a quiet thread marked for the PR", async ({ page }
   await expect(thread).toHaveCount(0);
 });
 
-test("GitHub action links diff lines at the review commit; hidden on the demo", async ({ page }) => {
-  // Demo review: selections offer no GitHub action (no GitHub file view).
+test("GitHub action links diff lines at the review commit, the demo included", async ({ page }) => {
+  // Demo review: it resolves to the real urllib3/urllib3 repo (#341), so a
+  // diff selection links out to GitHub's file view too.
   await gotoReview(page);
   await selectText(page, "#right table.diff", "_OBSOLETE_FOLD_RE");
   await expect(page.locator("#selbar")).toBeVisible();
-  await expect(page.locator('#selbar [data-act="github"]')).toHaveCount(0);
+  await expect(page.locator('#selbar [data-act="github"]')).toHaveAttribute(
+    "href",
+    /^https:\/\/github\.com\/urllib3\/urllib3\/blob\/[0-9a-f]+\/.+#L\d+/,
+  );
   await page.keyboard.press("Escape");
 
   // A GitHub-backed review: the action links the selected lines at the
@@ -146,6 +150,13 @@ test("AI-suggested comments carry no reply box; selecting text asks in the threa
   await gotoReview(page);
   await page.locator('#right [role="tab"]').getByText("Diff").click();
   // The seeded suggestion on the diff (agent text, not yet for the PR).
+  // The #341 recording folds its hunk; reveal the line to unfold it.
+  const revealed = await page.evaluate(() =>
+    (window as unknown as { __revealSource?: (ref: string) => boolean }).__revealSource?.(
+      "diff:test-test_connection.py:220",
+    ),
+  );
+  expect(revealed).toBe(true);
   const sug = page.locator("#t-sgperf");
   await expect(sug).toBeVisible({ timeout: 15000 });
   // No reply box on the suggestion — a reply could never be answered.
@@ -153,7 +164,7 @@ test("AI-suggested comments carry no reply box; selecting text asks in the threa
   // Issue #301 removed "Ask about this": selecting in the suggestion
   // summons the toolbar, anchored to the comment, and Ask opens the
   // composer inside the thread — the Ask reply lands in the same thread.
-  await selectText(page, "#t-sgperf", "Suggested");
+  await selectText(page, "#t-sgperf", "two spaces");
   await expect(page.locator("#selbar")).toBeVisible();
   await page.locator('#selbar [data-act="ask"]').click();
   // Exactly one composer: inside the thread (no duplicate on the line).

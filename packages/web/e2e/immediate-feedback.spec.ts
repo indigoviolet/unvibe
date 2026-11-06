@@ -57,7 +57,7 @@ async function seenFlags(page: Page): Promise<Record<string, boolean>> {
 test("explain from a selection shows a working expansion immediately, then fills", async ({ page }) => {
   await gotoReview(page);
   await armObserver(page);
-  await selectText(page, "#C-central", "fast path");
+  await selectText(page, "#C-central", "matches optional whitespace");
   await page.locator('#selbar [data-act="explain"]').click();
   // The expansion arrives with a plain working state carrying a fixed
   // label (the mock fill lands ~700 ms later); a placeholder covers the
