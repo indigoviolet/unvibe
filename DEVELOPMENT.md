@@ -49,7 +49,7 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
 | `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
-| `visual-tour` | Visual tour against the real built service (demo + replay agent): screenshots in `packages/web/visual-tour/` (git-ignored), generic viewport/stacking/overflow checks at 1440px and ~900px in light and dark | `build` (auto) + browsers |
+| `visual-tour` | Visual tour against the real built service (demo + replay agent): screenshots in `packages/web/visual-tour/` (git-ignored), generic viewport/stacking/overflow checks — default 1440px light Default theme; dark, other themes and 960px only for the named keeps in `packages/web/e2e/tour-matrix.ts` (full matrix on demand via `UNVIBE_TOUR_MATRIX=full`) | `build` (auto) + browsers |
 | `e2e` | Linux shell end-to-end (setup --no-login, handler, reuse, idle exit, uninstall, in temp HOME/port; the login unit's contents + enable commands are pinned by `setup.test.ts`, not here) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
@@ -246,6 +246,7 @@ Rules:
 | `UNVIBE_TEST_WORKERS` | `min(8, cores-1)` | Cap on vitest workers. |
 | `UNVIBE_E2E_WORKERS` | `min(4, cores/2)` | Cap on Playwright workers (`=8` when the machine is known to be free). |
 | `UNVIBE_E2E_CPU_THROTTLE` | unset | CDP CPU-throttling rate for test pages (e.g. `=4` to mimic the slower CI runner when reproducing timing races); no-op when unset. |
+| `UNVIBE_TOUR_MATRIX` | slim | `full` runs the full theme/width matrix (every tour combo and journey variant); default runs the slim set (1440px light Default plus the `tour-matrix.ts` named keeps). Never set in `check`, `test:slow`, `gate` or `test:affected`. |
 | `UNVIBE_UPDATER_BACKEND` | live (not wired) | `fake` selects the test-only update backend: channels from `<dataDir>/update/fake-channels.json` (else a built-in seed), installed ref in `<dataDir>/update/current-ref`. Never touches npm, git or the network. |
 | `UNVIBE_UPDATE_FAKE_FAIL` | — | Fake failure injection for switch drills: `install:<ref>` (install throws) or `health:<ref>` (install "succeeds" without advancing, so the new build never reports the target version). Test-only. |
 | `UNVIBE_UPDATE_EXIT_WAIT_MS` / `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS` / `UNVIBE_UPDATE_POLL_MS` / `UNVIBE_UPDATE_STOP_WAIT_MS` | `30000` / `120000` / `500` / `10000` | Detached-helper timeout overrides. Test-only. |
