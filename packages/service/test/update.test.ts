@@ -375,7 +375,7 @@ describe("readInstalledBuild", () => {
     });
     expect(readInstalledBuild(scriptPath, "fallback")).toEqual({
       version: "0.0.1-preview.feat-x.abc1234",
-      dataFormat: 2,
+      dataFormat: DATA_FORMAT,
       channel: "preview/feat-x",
       sourceBranch: "feat/x",
       sourceCommit: null,
@@ -405,7 +405,7 @@ describe("readInstalledBuild", () => {
     });
     expect(readInstalledBuild(scriptPath, "fallback")).toEqual({
       version: "0.0.1-preview.feat-x.abc1234",
-      dataFormat: 2,
+      dataFormat: DATA_FORMAT,
       channel: "preview/feat-x",
       sourceBranch: "feat/x",
       sourceCommit: "aaa111122223333",
@@ -471,7 +471,7 @@ describe("readInstalledBuild", () => {
 
     expect(readInstalledBuild(undefined, "fallback")).toEqual({
       version: "fallback",
-      dataFormat: 2,
+      dataFormat: DATA_FORMAT,
       channel: null,
       sourceBranch: null,
       sourceCommit: null,

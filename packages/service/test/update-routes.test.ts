@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UpdateChannel, UpdateStatusResponse } from "@unvibe/shared";
+import { DATA_FORMAT } from "@unvibe/shared";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
 import { createApp, SERVICE_VERSION } from "../src/server.js";
@@ -180,7 +181,7 @@ describe("update status", () => {
       expect(body.pending).toBeNull();
       expect(body.outcome).toBeNull();
       // Installed build identity comes from the installed package.
-      expect(body.build).toEqual({ version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, dataFormat: 2 });
+      expect(body.build).toEqual({ version: "0.0.1", channel: "release", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, dataFormat: DATA_FORMAT });
     } finally {
       await h.close();
     }
