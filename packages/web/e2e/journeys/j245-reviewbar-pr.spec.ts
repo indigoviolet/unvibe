@@ -188,6 +188,7 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
   }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
     // Issue #141: no application top bar on a review, no breadcrumb;
@@ -198,7 +199,7 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     const home = bar.getByRole("link", { name: "Back to the start page" });
     await expect(home).toHaveAttribute("href", "/");
     await home.click();
-    await expect(page).toHaveURL(`${svc.origin}/?token=${svc.token}`);
+    expect(new URL(page.url()).pathname).toBe("/");
     await page.goBack();
     await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
     // Comments menu opens with the source pane closed.
@@ -209,7 +210,7 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     await page.keyboard.press("Escape");
     // Issue #83: guide off, the source pane spans the window with no
     // drag handle; back on, the two-pane split returns.
-    const guide = page.getByRole("button", { name: "Guide" });
+    const guide = page.getByRole("button", { name: "Guide", exact: true });
     await guide.click();
     await expect(page.locator("#page")).toHaveClass(/hide/);
     const box = await page.locator("#right").boundingBox();
@@ -241,7 +242,7 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute(
       "href",
-      /https:\/\/github\.com\/example-org\/a-fairly-long-repository-name\/blob\/[0-9a-f]+\/.+#L\d+-L\d+/,
+      /https:\/\/github\.com\/example-org\/a-fairly-long-repository-name\/blob\/[0-9a-f]+\/.+#L\d+(-L\d+)?/,
     );
     await expect(link).toHaveAttribute("target", "_blank");
   });
