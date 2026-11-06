@@ -27,6 +27,26 @@ function webMetaPlugin(): Plugin {
 }
 
 // Dev: the service runs on 127.0.0.1:4517 (UNVIBE_PORT); proxy API + WS there.
+const tracesOn = process.env.UNVIBE_DEBUG_TRACES === "1";
+
+// Lean builds (issue #356, debug flavour) alias every OTel package to a
+// stub so no tracing code ships; debug builds bundle the real SDK.
+const tracesAlias = tracesOn
+  ? {}
+  : Object.fromEntries(
+      [
+        "@opentelemetry/api",
+        "@opentelemetry/sdk-trace-base",
+        "@opentelemetry/sdk-trace-web",
+        "@opentelemetry/context-zone",
+        "@opentelemetry/instrumentation",
+        "@opentelemetry/instrumentation-document-load",
+        "@opentelemetry/instrumentation-fetch",
+        "@opentelemetry/instrumentation-user-interaction",
+        "zone.js",
+      ].map((name) => [name, new URL("./src/traces/stub.ts", import.meta.url).pathname]),
+    );
+
 export default defineConfig(({ command, mode }) => ({
   plugins: [react(), webMetaPlugin()],
   define: {
@@ -35,6 +55,12 @@ export default defineConfig(({ command, mode }) => ({
     __SENTRY_DSN__: JSON.stringify(
       command === "serve" && mode !== "test" ? (process.env.SENTRY_DSN_REACT ?? "") : "",
     ),
+    // Debug flavour (issue #356): the browser SDK loads only in debug
+    // builds; lean builds show the install notice instead of recording.
+    __UNVIBE_TRACES__: JSON.stringify(tracesOn),
+  },
+  resolve: {
+    alias: tracesAlias,
   },
   server: {
     port: 5173,

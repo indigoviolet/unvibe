@@ -12,10 +12,27 @@
  * Nothing is uploaded, ever.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Settings, TraceStatusResponse } from "@unvibe/shared";
+import { debugChannelFor, type Settings, type TraceStatusResponse } from "@unvibe/shared";
 import { api, friendlyError, getToken } from "../api/client.js";
 import { InlineConfirm, Switch } from "../ui/index.js";
-import { setTraceRecording } from "../traces/beacon.js";
+import { isTraceBuild, setTraceRecording } from "../traces/beacon.js";
+
+/**
+ * Lean-build notice (issue #356, debug flavour): tracing is unavailable
+ * without the OTel dependencies. Names the matching debug install for
+ * the channel this build was installed from.
+ */
+function DebugInstallNotice({ channel }: { channel: string | null }): React.JSX.Element {
+  const ref = debugChannelFor(channel);
+  return (
+    <p className="hint" role="note">
+      Performance traces aren&apos;t available in this build — the normal install stays lean (no
+      tracing libraries). Nothing is recorded. To record traces, install the debug build:
+      <br />
+      <code>npm install -g github:indigoviolet/unvibe#{ref}</code>
+    </p>
+  );
+}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
@@ -50,20 +67,52 @@ export function DebugSection({
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceNote, setTraceNote] = useState<string | null>(null);
   const [status, setStatus] = useState<TraceStatusResponse | null>(null);
+  // Unavailable builds (issue #356, debug flavour) ship no tracing:
+  // the section names the matching debug install instead of recording.
+  // Lean builds know at build time; anything else learns from a 501
+  // on the status probe (a debug web app never pairs with lower).
+  const [traceBuild] = useState(() => isTraceBuild());
+  const [unsupported, setUnsupported] = useState(false);
+  const [channel, setChannel] = useState<string | null | undefined>(undefined);
+  const unavailable = !traceBuild || unsupported;
 
   const recording = settings?.recordTraces === true;
 
   const refreshStatus = useCallback(async (): Promise<void> => {
     try {
       setStatus(await api.traceStatus());
-    } catch {
+    } catch (err) {
       setStatus(null);
+      // A 501 means no trace routes: this is a lean build (or a
+      // mismatched install) — show the install notice instead. Match
+      // the raw error: friendlyError strips the status code.
+      const raw = err instanceof Error ? err.message : String(err);
+      if (/\b501\b/.test(raw)) setUnsupported(true);
     }
   }, []);
 
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  // Installed channel for the debug install command, resolved once the
+  // section knows tracing is unavailable. Failures keep the null-channel
+  // fallback (the release-debug command).
+  useEffect(() => {
+    if (!unavailable || channel !== undefined) return;
+    let cancelled = false;
+    api
+      .updateStatus()
+      .then((s) => {
+        if (!cancelled) setChannel(s.build?.channel ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setChannel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [unavailable, channel]);
 
   // Arm the browser SDK on arrival when the switch is already on (fresh
   // page load with recording enabled), and whenever the switch flips.
@@ -178,14 +227,23 @@ export function DebugSection({
       </section>
       <section aria-label="Performance traces">
         <h2>Performance traces</h2>
-        <p className="hint">
-          Record OpenTelemetry spans for this machine only: HTTP requests, jobs, child processes,
-          SQLite operations, ingest, refresh and the review-open-to-first-card time, plus the
-          browser&apos;s document load, fetches and interactions. The local file is raw; the
-          export holds only numbers, enums and salted hashes — no code, paths, tokens or
-          prompt text. Nothing is uploaded, ever.
-        </p>
-        {settings === undefined ? null : (
+        {unavailable ? (
+          // Lean build (issue #356, debug flavour): no tracing libraries
+          // shipped, so nothing can record. Name the matching debug
+          // build for this install's channel.
+          channel === undefined ? null : (
+            <DebugInstallNotice channel={channel} />
+          )
+        ) : (
+          <p className="hint">
+            Record OpenTelemetry spans for this machine only: HTTP requests, jobs, child processes,
+            SQLite operations, ingest, refresh and the review-open-to-first-card time, plus the
+            browser&apos;s document load, fetches and interactions. The local file is raw; the
+            export holds only numbers, enums and salted hashes — no code, paths, tokens or
+            prompt text. Nothing is uploaded, ever.
+          </p>
+        )}
+        {!unavailable && settings !== undefined && (
           <div className="frow" style={{ gap: 8, alignItems: "center" }}>
             <Switch
               checked={recording}
@@ -197,18 +255,19 @@ export function DebugSection({
             </span>
           </div>
         )}
-        {status !== null && (status.recording || status.spans > 0 || status.capped) ? (
+        {!unavailable && status !== null && (status.recording || status.spans > 0 || status.capped) ? (
           <p className="hint" role="status" data-testid="trace-size">
             {status.spans} {status.spans === 1 ? "span" : "spans"} · {formatBytes(status.bytes)}
             {status.recording ? " · recording" : " · paused"}
           </p>
         ) : null}
-        {status?.capped ? (
+        {!unavailable && status?.capped ? (
           <p className="err" role="alert">
             Recording stopped at the 256&nbsp;MB safety limit — older spans are kept, nothing was
             deleted. Clear to record again.
           </p>
         ) : null}
+        {!unavailable ? (
         <div className="frow" style={{ gap: 8 }}>
           <button
             className="ui-btn"
@@ -239,7 +298,8 @@ export function DebugSection({
             announce="Delete every recorded span? Confirm clear traces, or cancel."
           />
         </div>
-        {traceNote ? (
+        ) : null}
+        {!unavailable && traceNote ? (
           <p className="hint" role="status">
             {traceNote}
           </p>

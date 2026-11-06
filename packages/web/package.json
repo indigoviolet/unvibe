@@ -7,13 +7,13 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "VITE_MOCK=1 vitest run",
+    "test": "VITE_MOCK=1 UNVIBE_DEBUG_TRACES=1 vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint src test e2e",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.json --noEmit",
-    "test:fast": "VITE_MOCK=1 UNVIBE_TEST_SUITE=fast vitest run",
-    "test:slow": "VITE_MOCK=1 UNVIBE_TEST_SUITE=slow vitest run"
+    "test:fast": "VITE_MOCK=1 UNVIBE_DEBUG_TRACES=1 UNVIBE_TEST_SUITE=fast vitest run",
+    "test:slow": "VITE_MOCK=1 UNVIBE_DEBUG_TRACES=1 UNVIBE_TEST_SUITE=slow vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

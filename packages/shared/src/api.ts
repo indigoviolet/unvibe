@@ -1792,6 +1792,18 @@ export function isDebugChannel(ref: string): boolean {
 }
 
 /**
+ * Debug-flavour ref for a channel the user is on (issue #356): lean
+ * `release` installs `release-debug`, lean `preview/x` installs
+ * `preview/x-debug`. Already-debug and unknown channels map to
+ * `release-debug` and themselves respectively.
+ */
+export function debugChannelFor(channel: string | null): string {
+  if (channel !== null && isDebugChannel(channel)) return channel;
+  if (channel !== null && channel.startsWith("preview/")) return `${channel}-debug`;
+  return "release-debug";
+}
+
+/**
  * One installable build: `release` or a `preview/<slug>` published from
  * an in-flight branch (candidates go out as `preview/main-rc`). Served
  * by `GET /api/update/channels`; `current` marks the installed one.

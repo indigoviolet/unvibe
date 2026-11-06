@@ -6,9 +6,21 @@
  *
  * Everything OTel loads LAZILY inside `setTraceRecording(true)` — plain
  * `zone.js` included — so the normal app never evaluates it. Idle until
- * the Debug switch arms it. Best-effort throughout: tracing never breaks
- * the app.
+ * the Debug switch arms it. In lean builds (`__UNVIBE_TRACES__` false)
+ * enabling is a no-op and the Debug section shows the install notice
+ * instead. Best-effort throughout: tracing never breaks the app.
  */
+declare const __UNVIBE_TRACES__: boolean;
+
+/** False in lean builds (no OTel shipped): the Debug section explains how to get tracing. */
+export function isTraceBuild(): boolean {
+  try {
+    return __UNVIBE_TRACES__ === true;
+  } catch {
+    return false;
+  }
+}
+
 import type { Attributes } from "@opentelemetry/api";
 import type { ReadableSpan, Sampler, SpanExporter } from "@opentelemetry/sdk-trace-base";
 
@@ -179,6 +191,12 @@ async function loadOtel(): Promise<boolean> {
  */
 export function setTraceRecording(on: boolean, nextToken?: string): void {
   if (nextToken !== undefined) token = nextToken;
+  if (!isTraceBuild()) {
+    // Lean build: nothing to load; the Debug section shows the
+    // install notice instead of recording.
+    enabled = false;
+    return;
+  }
   if (!on) {
     enabled = false;
     if (flushTimer !== null) {

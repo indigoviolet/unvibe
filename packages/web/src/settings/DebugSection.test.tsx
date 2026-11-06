@@ -90,6 +90,20 @@ describe("DebugSection", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Export traces" })).toBeDisabled());
   });
 
+  it("lean build shows the matching debug install command", async () => {
+    vi.spyOn(api, "traceStatus").mockRejectedValue(new Error("GET /api/traces/status: 501 no traces"));
+    vi.spyOn(api, "updateStatus").mockResolvedValue({
+      enabled: true,
+      build: { version: "0.0.15", channel: "preview/feat-x", sourceBranch: null, sourceCommit: null, baseBranch: null, baseCommit: null, commit: null, builtAt: null, dataFormat: 1 },
+      pending: null,
+      outcome: null,
+    });
+    render(<DebugSection settings={settings} onSaved={() => {}} />);
+    expect(await screen.findByText(/aren't available in this build/)).toBeInTheDocument();
+    expect(screen.getByText("npm install -g github:indigoviolet/unvibe#preview/feat-x-debug")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Record performance traces")).not.toBeInTheDocument();
+  });
+
   it(" Clear runs through the inline confirm and reports", async () => {
     vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 7, bytes: 512, capped: false });
     const clear = vi.spyOn(api, "traceClear").mockResolvedValue({ recording: true, spans: 0, bytes: 0, capped: false });
