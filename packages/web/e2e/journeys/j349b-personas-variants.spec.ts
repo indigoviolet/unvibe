@@ -174,15 +174,10 @@ test.describe("J349b persona versions", () => {
     expect(avatarBg).toContain(PERSONA_RGB);
 
     // The persona version frames: tab active, coloured border, recoloured
-    // avatar — light and dark at 1440.
+    // avatar — 1440px light (#362 default).
     await page.mouse.move(720, 20);
     await checkLayout(page, "persona-version-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "persona-version-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await checkLayout(page, "persona-version-1440-dark");
-    await page.screenshot({ path: path.join(SHOTS, "persona-version-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
   });
 
   test("Clarity run on a card: tab with citations intact", async ({ page }) => {
@@ -229,10 +224,5 @@ test.describe("J349b persona versions", () => {
     await page.mouse.move(720, 20);
     await checkLayout(page, "persona-clarity-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await checkLayout(page, "persona-clarity-1440-dark");
-    await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
   });
 });

@@ -113,6 +113,8 @@ export const SLIM_SCENES: Record<string, readonly string[]> = {
   prListMore: ["1440-light"],
   selectPopup: ["1440-light"],
   traces: ["1440-light"],
+  demoBanner: ["1440"],
+  demoBannerStatic: ["1440"],
   // Inline-assert sites with no combo loop: the slim widths asserted there.
   reviewBarBadge: ["1440-light", "960-light"],
   plotlines: ["1440-light", "960-light"],

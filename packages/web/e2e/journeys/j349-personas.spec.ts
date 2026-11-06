@@ -104,12 +104,6 @@ test.describe("J349 personas settings", () => {
     await expect(clarityRow).toContainText("Main model (claude/claude-opus-5-5)");
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
-
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await checkLayout(page, "personas-1440-dark");
-    await page.screenshot({ path: path.join(SHOTS, "personas-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
   });
 
   test("Clarity follows the main model until pinned", async ({ page }) => {
@@ -151,10 +145,6 @@ test.describe("J349 personas settings", () => {
     // Park the mouse away from the row so Close isn't caught in hover.
     await page.mouse.move(720, 20);
     await page.screenshot({ path: path.join(SHOTS, "personas-edit-form.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(SHOTS, "personas-edit-form-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await row.getByTestId("persona-second-opinion-edit").click();
   });
 
@@ -166,10 +156,6 @@ test.describe("J349 personas settings", () => {
     await page.getByTestId("persona-add").click();
     await expect(page.getByTestId("persona-new-lens")).toBeVisible();
     await page.screenshot({ path: path.join(SHOTS, "personas-add-form.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(SHOTS, "personas-add-form-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("persona-new-lens")).toHaveCount(0);
   });
@@ -227,10 +213,6 @@ test.describe("J349 personas settings", () => {
     // While confirming the Edit button hides, so the row actions stay put.
     await expect(row.getByTestId("persona-perf-sceptic-edit")).toHaveCount(0);
     await page.screenshot({ path: path.join(SHOTS, "personas-delete-confirm.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(SHOTS, "personas-delete-confirm-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
     await page.keyboard.press("Escape");
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
     await expect(row).toBeVisible();

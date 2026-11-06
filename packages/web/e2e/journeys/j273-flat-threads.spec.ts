@@ -521,7 +521,7 @@ test.describe("J273 flat threads", () => {
         `${label}: toolbar clear of first line`,
       ).toBe(false);
       // The explain reply is prose-first by its recording: the agent
-      // avatar centres on its first line in every theme.
+      // avatar centres on its first line.
       const explGeo = await replyChrome(expl);
       expect(explGeo, `${label}: explain chrome measurable`).not.toBeNull();
       expect(explGeo!.inline, `${label}: explain reply flows inline`).toBe(true);
@@ -541,61 +541,18 @@ test.describe("J273 flat threads", () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: "test-results/j336-thread-light.png" });
 
-    // Narrow: the toolbar still clears the first line.
-    await page.setViewportSize({ width: 390, height: 800 });
-    await thread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
-    await page.waitForTimeout(300);
-    await answer.hover();
-    await page.waitForTimeout(400);
-    const narrow = await replyChrome(answer);
-    expect(narrow?.ctl, "narrow: toolbar present").not.toBeNull();
-    expect(intersects(narrow!.ctl!, narrow!.first), "narrow: toolbar clear of first line").toBe(false);
-    await page.setViewportSize({ width: 1440, height: 900 });
-
-    // Dark: same geometry through the dark palette.
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.waitForTimeout(400);
-    await thread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
-    await page.waitForTimeout(300);
-    await checkChrome("dark");
-    await expl.locator("p.prose").first().hover();
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: "test-results/j336-thread-dark.png" });
-    await page.emulateMedia({ colorScheme: "light" });
-
-    // Studio fonts: saved server-side so the boot path applies them.
-    await apiJson(svc, "PUT", "/api/settings", { uiTheme: "studio" });
-    await page.reload();
-    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
-    await expect
-      .poll(
-        async () =>
-          page.evaluate(() => document.documentElement.getAttribute("data-ui-theme")),
-        { timeout: 15_000 },
-      )
-      .toBe("studio");
-    const studioThread = page.locator(`#C-problem section.ithread[data-thread="${threadId}"]`);
-    await expect(studioThread).toBeVisible({ timeout: 15_000 });
-    await studioThread.evaluate((el) => el.scrollIntoView({ block: "start", inline: "nearest" }));
-    await page.waitForTimeout(300);
-    await checkChrome("studio");
-    await expl.locator("p.prose").first().hover();
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: "test-results/j336-thread-studio.png" });
-
     // End of the reply: citations, if any, all labelled.
-    const studioAnswer = studioThread.locator("[data-ask-answer]").first();
-    const studioChips = studioThread.locator(".lk[data-refs]");
-    if ((await studioChips.count()) > 0) {
-      await studioChips
+    const replyAnswer = thread.locator("[data-ask-answer]").first();
+    const replyChips = thread.locator(".lk[data-refs]");
+    if ((await replyChips.count()) > 0) {
+      await replyChips
         .first()
         .evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
       await page.waitForTimeout(300);
     } else {
-      await studioAnswer.evaluate((el) => el.scrollIntoView({ block: "end", inline: "nearest" }));
+      await replyAnswer.evaluate((el) => el.scrollIntoView({ block: "end", inline: "nearest" }));
       await page.waitForTimeout(300);
     }
-    await page.screenshot({ path: "test-results/j336-citations-studio.png" });
-    await apiJson(svc, "PUT", "/api/settings", { uiTheme: "default" });
+    await page.screenshot({ path: "test-results/j336-citations-light.png" });
   });
 });

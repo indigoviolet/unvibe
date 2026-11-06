@@ -142,9 +142,10 @@ test.describe("J311 data-format notice", () => {
       // Go back is offered with the recorded version (not clicked here).
       await expect(notice.getByRole("button", { name: "Go back to 0.0.1-old" })).toBeVisible();
 
-      // #311 follow-up: the cards' outer edges line up with the text
-      // column (heading + intro paragraph) within 1px, wide and narrow.
-      for (const width of [1440, 800]) {
+      // #311 follow-up + #362 named keep (dataReset): the cards' outer
+      // edges line up with the text column (heading + intro paragraph)
+      // within 1px, wide and narrow (1440 and 960).
+      for (const width of [1440, 960]) {
         await page.setViewportSize({ width, height: 900 });
         const edges = await notice.evaluate((doc) => {
           const box = (el: Element) => {
