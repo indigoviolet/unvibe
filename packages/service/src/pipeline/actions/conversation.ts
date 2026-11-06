@@ -29,7 +29,15 @@ import { randomBytes } from "node:crypto";
 import type { ActionAnchor, Anchor, Persona, Thread, Block, Job, Reply, ReviewSnapshot } from "@unvibe/shared";
 import { JOB_PRIORITY, dedupeBlockIds, parseBlocks } from "@unvibe/shared";
 import { buildAnchor, newAnnotationId } from "../../comments/threads.js";
-import { excerptQuote, mirrorPromotedAnswer, recordInteraction, turnsTextFor } from "../../interaction/index.js";
+import { nextReplySeq } from "@unvibe/shared";
+import {
+  excerptQuote,
+  itemIdForAnchor,
+  mirrorPromotedAnswer,
+  recordInteraction,
+  replyRefForId,
+  turnsTextFor,
+} from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import {
   anchorKey,
@@ -38,7 +46,7 @@ import {
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
-  l4VariablesWithRevealed,
+  minimalTurnVariables,
   normalizeBlockAnchor,
   suppressFillError,
   type ActionContext,
@@ -48,7 +56,7 @@ import { probeConversationSessionFor } from "./ask-probe.js";
 import { aliasCanonicalizer, remapAliasTargets } from "./validate-apply.js";
 import { newCardForTurn } from "./events.js";
 import { finalizeFresh, repairDiagrams } from "./diagram-finalize.js";
-import { personaCardForAnchor, personaFor, personaVariantBlockText, personaVariantPromptText, variantFor } from "./persona.js";
+import { personaCardForAnchor, personaFor, variantFor } from "./persona.js";
 
 /** Fresh answer id (`ans_<12 hex>`, assigned by the app). */
 export function newTurnId(): string {
@@ -140,6 +148,7 @@ export async function ensureHunkCard(
   if (blocks.length === 0) throw new Error(`hunk ${fileKey}:${contentHash} summary produced no content`);
   const turn: Reply = {
     id: replyId,
+    seq: 1,
     kind: "explain",
     who: "agent",
     question: null,
@@ -201,6 +210,7 @@ export async function createConversationCard(
   const replyId = newTurnId();
   const turn: Reply = {
     id: replyId,
+    seq: 1,
     kind,
     who: "agent",
     question,
@@ -243,8 +253,12 @@ export async function pushConversationTurn(
     if (last?.error) {
       throw new Error(`this conversation has a failed turn; retry it first`);
     }
+    // Issue #365: the stable per-thread sequence is stamped at creation
+    // and never reused, so `ann:<thread>#r<seq>` survives deletes.
+    const seq = nextReplySeq((found.replies ?? []) as Reply[]);
     (found.replies ?? []).push({
       id: replyId,
+      seq,
       kind,
       who: "agent",
       question,
@@ -264,13 +278,27 @@ export async function pushConversationTurn(
 export interface ConversationTurnOptions {
   anchor: Anchor;
   /**
-   * `ask` for first turns (both questions) and rebuilt sessions;
-   * `ask_turn` for later turns on a live session (change list +
-   * question only — no resend of the anchor, card and history).
+   * `ask` for first turns (both questions) and rebuilt sessions
+   * (with the stored turns as the transcript); `ask_turn` for later
+   * turns on a live session. Both are minimal (issue #365): the quote,
+   * the item ID, the offsets, the question and changed hunks — no
+   * card, block, thread-transcript or shared-log text.
    */
   template: "ask" | "ask_turn";
   /** User question text (L4 message + echo-strip candidate). */
   message: string;
+  /**
+   * Issue #365: in-thread turns quote the chip's selected text, not
+   * the thread anchor's. First turns always use the anchor quote.
+   */
+  quoteOverride?: string;
+  /**
+   * Issue #365: in-thread turns address the source reply
+   * (`ann:<thread>#r<seq>`), not the thread anchor's item.
+   */
+  itemIdOverride?: string;
+  /** Issue #365: the chip's recorded offsets win over the anchor's. */
+  offsetsOverride?: { start: number; end: number };
   /**
    * Issue #349 step 2: answer as this persona (its model and lens),
    * continuing its own session for the card. `personaCardId` is the
@@ -342,27 +370,25 @@ export async function runConversationTurn(
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
-  // Later turns on a live session send only what is new (the change
-  // list rides `change_list` via the shared-context wire inside
-  // `runInFork`); every other turn sends the full first-turn prompt.
-  const variables =
-    opts.template === "ask_turn"
-      ? { message: opts.message }
-      : await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message });
-  if (opts.transcript !== undefined) variables.thread = opts.transcript;
-  // Issue #349 step 2: on a persona's version the prompt carries the
-  // variant's text (its own blocks), not the guide's.
-  if (opts.persona && opts.personaCardId) {
-    try {
-      variables.card = personaVariantPromptText(latest, opts.personaCardId, opts.persona.id);
-      const blockText = personaVariantBlockText(latest, opts.personaCardId, opts.persona.id, opts.anchor);
-      if (blockText !== null && variables.anchor && typeof variables.anchor === "object") {
-        (variables.anchor as { block: string }).block = blockText;
-      }
-    } catch {
-      // No variant (deleted mid-flight): the guide text stands.
-    }
-  }
+  // Issue #365: minimal turns. Every turn carries the quote, the exact
+  // item ID, the offsets and the question, plus changed hunk IDs only
+  // when the code moved since the anchor version. `ask_turn` (live
+  // sessions) carries no transcript — the session holds the history.
+  // `ask` carries the stored turns only when the caller passes them
+  // (rebuilt sessions, which never saw the earlier turns); first turns
+  // send "(none)". Card, block, thread and shared-log text never ride
+  // along: the model fetches what it needs with `get_item` + code tools.
+  const minimalInput = {
+    message: opts.message,
+    ...(opts.quoteOverride !== undefined ? { quoteOverride: opts.quoteOverride } : {}),
+    ...(opts.itemIdOverride !== undefined ? { itemIdOverride: opts.itemIdOverride } : {}),
+    ...(opts.offsetsOverride !== undefined ? { offsetsOverride: opts.offsetsOverride } : {}),
+  };
+  const variables = minimalTurnVariables(
+    latest,
+    opts.anchor,
+    opts.template === "ask_turn" ? minimalInput : { ...minimalInput, threadText: opts.transcript ?? "(none)" },
+  );
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: opts.replayKind } : undefined;
   // Connection retry (#51): a continued turn that observably hits a dead
@@ -372,19 +398,13 @@ export async function runConversationTurn(
   // a fresh fork already. The transcript is the stored turns as text
   // (`threadTextFor` renders comment messages, not turns).
   const retryOwner = opts.continueSessionId ? latest.annotations.find((a) => a.id === annotationId) : undefined;
+  // The retry is a full first-turn prompt: minimal variables plus the
+  // stored turns (which the short follow-up prompt assumes as live
+  // history). Tombstoned turns stay out of the transcript.
   const retryVariables = retryOwner
-    ? await l4VariablesWithRevealed(ctx, latest, opts.anchor, { message: opts.message }).then((vars) => {
-        if (opts.persona && opts.personaCardId) {
-          try {
-            vars.card = personaVariantPromptText(latest, opts.personaCardId, opts.persona.id);
-          } catch {
-            // No variant (deleted mid-flight): the guide text stands.
-          }
-        }
-        return {
-          ...vars,
-          thread: turnsTextFor(retryOwner),
-        };
+    ? minimalTurnVariables(latest, opts.anchor, {
+        ...minimalInput,
+        threadText: turnsTextFor(retryOwner),
       })
     : undefined;
 
@@ -699,6 +719,8 @@ async function appendInThreadReply(
   workingLabel?: string,
   replayKind?: "ask" | "explain",
   cardLabel?: string,
+  /** Issue #365: the chip's recorded offsets travel on the turn. */
+  offsets?: { start: number; end: number },
 ): Promise<{ annotationId: string; replyId: string; jobId?: string; deduplicated?: boolean }> {
   const { reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
@@ -724,6 +746,12 @@ async function appendInThreadReply(
   }
   const live = getSnapshotOrThrow(reviews, reviewId);
   const ann = live.annotations.find((a) => a.id === threadId)!;
+  // Issue #365: in-thread turns address the source reply exactly
+  // (`ann:<thread>#r<seq>`); without a chip they address the anchor.
+  // An unknown source reply (deleted mid-flight) falls back to the anchor.
+  const itemId = sourceReplyId
+    ? (replyRefForId(ann, sourceReplyId) ?? itemIdForAnchor(live, ann.anchor))
+    : itemIdForAnchor(live, ann.anchor);
   const probe = await probeConversationSessionFor(ctx, ann);
   const isLive = probe.continueSessionId !== undefined && !probe.rebuilt;
   // Issue #349 step 2: threads opened on a persona's version stay on
@@ -733,6 +761,9 @@ async function appendInThreadReply(
     anchor: ann.anchor,
     template: isLive ? "ask_turn" : "ask",
     message,
+    quoteOverride: quote,
+    itemIdOverride: itemId,
+    ...(offsets ? { offsetsOverride: offsets } : {}),
     ...(probe.transcript !== undefined && !isLive ? { transcript: probe.transcript } : {}),
     ...(probe.continueSessionId ? { continueSessionId: probe.continueSessionId } : {}),
     ...(threadPersona && ann.personaCardId
@@ -756,7 +787,7 @@ export async function explainAction(
   if (typeof req.quote !== "string") throw new Error("quote is required");
   // Issue #273: inside a thread, Explain appends a reply there (never a nested box).
   if (req.threadId) {
-    return appendInThreadReply(ctx, req.threadId, "explain", req.quote, DEFAULT_QUESTION, req.quote, req.sourceReplyId, "Thinking", "explain", `Explain: ${excerptQuote(req.quote)}`);
+    return appendInThreadReply(ctx, req.threadId, "explain", req.quote, DEFAULT_QUESTION, req.quote, req.sourceReplyId, "Thinking", "explain", `Explain: ${excerptQuote(req.quote)}`, req.offsets);
   }
   if (!req.anchor) throw new Error("anchor is required");
   // Issue #138: a hunk anchor activates the hunk's idle summary into a
@@ -875,7 +906,7 @@ export async function askAction(
   if (typeof req.quote !== "string") throw new Error("quote is required");
   // Issue #273: inside a thread, Ask appends a reply there (never a nested box).
   if (req.threadId) {
-    return appendInThreadReply(ctx, req.threadId, "ask", req.message, req.message, req.quote, req.sourceReplyId, "Writing answer", "ask", req.message);
+    return appendInThreadReply(ctx, req.threadId, "ask", req.message, req.message, req.quote, req.sourceReplyId, "Writing answer", "ask", req.message, req.offsets);
   }
   if (!req.anchor) throw new Error("anchor is required");
   // Issue #138: a hunk anchor activates the hunk's idle summary into a

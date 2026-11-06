@@ -83,7 +83,7 @@ function defaultLinkLabel(id: ParsedId): string {
     case "card":
       return id.blockId ? `${id.cardId}#${id.blockId}` : id.cardId;
     case "ann":
-      return id.id;
+      return id.reply === undefined ? id.id : `${id.id}#r${id.reply}`;
     default:
       return "";
   }

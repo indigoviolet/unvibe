@@ -26,8 +26,9 @@ const REVIEW: McpReviewData = {
       text: " context foo\n-old line\n+new line",
     },
   ],
-  cards: [{ id: "c-central", title: "Central change", text: "retries with backoff in src/conn.py" }],
-  annotations: [{ id: "a1", type: "thread", anchorSummary: "src/conn.py:148", text: "why backoff?" }],
+  cards: [{ id: "c-central", title: "Central change", text: "retries with backoff in src/conn.py", pageId: "root", blocks: [{ id: "b1", type: "paragraph", text: "retries with backoff in src/conn.py" }] }],
+  pages: [{ id: "root", title: "Guide", kind: "root", cardIds: ["c-central"] }],
+  annotations: [{ id: "a1", type: "thread", anchorSummary: "src/conn.py:148", anchorItemId: "diff:conn:148", text: "why backoff?", replies: [] }],
   contributions: [{ id: "k1", sourceSession: "s1", text: "fact: backoff is exponential" }],
   description: [{ id: "d1", text: "this PR adds backoff" }],
 };
@@ -94,6 +95,7 @@ describe("tool surface", () => {
       expect(tools.tools.map((t) => t.name)).toEqual([
         "get_hunk",
         "get_code",
+        "get_item",
         "search_review",
         "resolve",
         "pin_context",
@@ -107,6 +109,7 @@ describe("tool surface", () => {
       expect(tools.tools.map((t) => t.name)).toEqual([
         "get_hunk",
         "get_code",
+        "get_item",
         "search_review",
         "resolve",
       ]);

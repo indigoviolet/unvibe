@@ -16,7 +16,15 @@ import type { Pipeline } from "../runner.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
 import type { SharedContextService } from "../../sharedctx/service.js";
-import { findBlock, l4Variables, mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
+import {
+  changedHunksForTurn,
+  findBlock,
+  itemIdForAnchor,
+  l4Variables,
+  mirrorPromotedAnswer,
+  offsetsTextFor,
+  recordInteraction,
+} from "../../interaction/index.js";
 
 export { JOB_PRIORITY };
 export { recordInteraction };
@@ -134,6 +142,45 @@ export async function revealedBlockText(ctx: ActionContext, anchor: Anchor): Pro
   } catch {
     return null;
   }
+}
+
+/**
+ * Issue #365: minimal Ask/Explain turn variables. Every turn carries
+ * the quote, the exact item ID, the offsets and the question, plus
+ * changed hunk IDs only when the code moved since the anchor version.
+ * No card, block, thread-transcript or shared-log text: the model
+ * fetches what it needs with `get_item` and the code tools.
+ * `threadText` (the turn's own transcript, tombstones excluded) rides
+ * only on rebuilt sessions, which never saw the earlier turns.
+ */
+export interface MinimalTurnInput {
+  message: string;
+  /** Issue #365: the chip's quote wins over the anchor's in-thread. */
+  quoteOverride?: string;
+  /** Own-thread transcript for rebuilt sessions; else "(none)". */
+  threadText?: string;
+  /** In-thread turns address the source reply, not the anchor. */
+  itemIdOverride?: string;
+  /** The chip's recorded offsets win over the anchor's. */
+  offsetsOverride?: { start: number; end: number };
+}
+
+export function minimalTurnVariables(
+  snapshot: ReviewSnapshot,
+  anchor: Anchor,
+  input: MinimalTurnInput,
+): Record<string, unknown> {
+  const changed = changedHunksForTurn(snapshot, anchor);
+  return {
+    // The full selection travels verbatim: unlike the old prompt there
+    // is no host block below to hold a truncated tail.
+    quote: input.quoteOverride ?? anchor.quotedText,
+    item_id: input.itemIdOverride ?? itemIdForAnchor(snapshot, anchor),
+    offsets: offsetsTextFor(anchor, input.offsetsOverride),
+    ...(input.threadText !== undefined ? { thread: input.threadText } : {}),
+    changed_hunks: changed.length > 0 ? changed.join("\n") : "(no changes)",
+    message: input.message,
+  };
 }
 
 /**

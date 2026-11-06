@@ -31,7 +31,7 @@ import {
   ListToolsRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { parseId } from "@unvibe/shared";
+import { findReplyIndexBySeq, parseId } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/runner.js";
 import type { McpReviewData, PinRecord, ReviewReader } from "./read.js";
 import { readCodeSlice } from "./read.js";
@@ -376,6 +376,8 @@ export class McpRegistry {
     switch (name) {
       case "get_hunk":
         return textResult(await this.getHunk(state, String(args["id"] ?? "")));
+      case "get_item":
+        return textResult(await this.getItem(state, String(args["id"] ?? "")));
       case "get_code":
         return textResult(
           await this.getCode(
@@ -410,6 +412,150 @@ export class McpRegistry {
     const review = await this.opts.reader.getReview(state.reviewId);
     if (!review) throw new Error(`unknown review: ${state.reviewId}`);
     return review;
+  }
+
+  // -- get_item (issue #365) --------------------------------------------------
+
+  /**
+   * One review item as its current content, with its parent chain and
+   * child IDs. Kinds: card (`card:<id>`), block (`card:<id>#<block>`),
+   * page (`page:<id>`), thread (`ann:<id>`), reply (`ann:<id>#r<n>` or
+   * the stored `ans_…` id), description paragraph (`desc:<id>`).
+   * Tombstoned replies (#364) are hidden: fetching one fails, and they
+   * never appear in a thread's children.
+   */
+  private async getItem(state: SessionState, id: string): Promise<string> {
+    const parsed = parseId(id);
+    if (!parsed) throw new Error(`invalid item id: ${id}`);
+    const review = await this.loadReview(state);
+    switch (parsed.kind) {
+      case "card":
+        return parsed.blockId === undefined
+          ? this.cardItem(review, parsed.cardId)
+          : this.blockItem(review, parsed.cardId, parsed.blockId);
+      case "page":
+        return this.pageItem(review, parsed.pageId);
+      case "ann":
+        return parsed.reply === undefined
+          ? this.threadItem(review, parsed.id)
+          : this.replyItem(review, parsed.id, parsed.reply);
+      case "desc":
+        return this.descriptionItem(review, parsed.paragraph);
+      default:
+        throw new Error(`get_item does not serve ${parsed.kind}: IDs — use get_hunk/get_code for code`);
+    }
+  }
+
+  private cardItem(review: McpReviewData, cardId: string): string {
+    const card = review.cards.find((c) => c.id === cardId);
+    if (!card) throw new Error(`unknown card: ${cardId}`);
+    const page = review.pages.find((p) => p.id === card.pageId);
+    const head = [
+      `card:${card.id}`,
+      `kind: card`,
+      ...(card.title ? [`title: ${card.title}`] : []),
+      `parent: page:${card.pageId}${page ? ` (${page.title})` : ""}`,
+      `children: ${card.blocks.length > 0 ? card.blocks.map((b) => `card:${card.id}#${b.id}`).join(", ") : "(none)"}`,
+      "",
+    ];
+    const body = card.blocks.map((b) => `[card:${card.id}#${b.id}] (${b.type})\n${b.text}`).join("\n\n");
+    return [...head, body].join("\n");
+  }
+
+  private blockItem(review: McpReviewData, cardId: string, blockId: string): string {
+    const card = review.cards.find((c) => c.id === cardId);
+    const block = card?.blocks.find((b) => b.id === blockId);
+    if (!card || !block) throw new Error(`unknown block: card:${cardId}#${blockId}`);
+    const page = review.pages.find((p) => p.id === card.pageId);
+    return [
+      `card:${card.id}#${block.id}`,
+      `kind: block`,
+      `parents: page:${card.pageId}${page ? ` (${page.title})` : ""}, card:${card.id}${card.title ? ` (${card.title})` : ""}`,
+      `children: (none)`,
+      "",
+      `[${block.type}]`,
+      block.text,
+    ].join("\n");
+  }
+
+  private pageItem(review: McpReviewData, pageId: string): string {
+    const page = review.pages.find((p) => p.id === pageId);
+    if (!page) throw new Error(`unknown page: ${pageId}`);
+    const unknown = page.cardIds.filter((cid) => !review.cards.some((c) => c.id === cid));
+    if (unknown.length > 0) throw new Error(`unknown card: ${unknown[0]}`);
+    return [
+      `page:${page.id}`,
+      `kind: page`,
+      `title: ${page.title}`,
+      `parent: (none)`,
+      `children: ${page.cardIds.length > 0 ? page.cardIds.map((cid) => `card:${cid}`).join(", ") : "(none)"}`,
+      "",
+      ...page.cardIds.flatMap((cid) => {
+        const card = review.cards.find((c) => c.id === cid)!;
+        return [`### card:${cid}${card.title ? ` — ${card.title}` : ""}`, card.text];
+      }),
+    ].join("\n");
+  }
+
+  private threadItem(review: McpReviewData, threadId: string): string {
+    const ann = review.annotations.find((a) => a.id === threadId);
+    if (!ann) {
+      // A stored `ans_…` reply id addresses its thread's item instead.
+      const owner = review.annotations.find((a) => a.replies.some((r) => r.id === threadId));
+      if (owner) return this.threadItem(review, owner.id);
+      throw new Error(`unknown thread: ${threadId}`);
+    }
+    const live = ann.replies.filter((r) => r.live);
+    const parent = ann.anchorItemId ? `\nparent: ${ann.anchorItemId}` : "";
+    const head = [
+      `ann:${ann.id}`,
+      `kind: thread`,
+      `anchor: ${ann.anchorSummary || "(no quote)"}${parent}`,
+      `children: ${live.length > 0 ? live.map((r) => `ann:${ann.id}#r${typeof r.seq === "number" ? r.seq : ann.replies.indexOf(r) + 1}`).join(", ") : "(none)"}`,
+      "",
+    ];
+    const body = live.map((r) => {
+      const ref = `ann:${ann.id}#r${typeof r.seq === "number" ? r.seq : ann.replies.indexOf(r) + 1}`;
+      const heading = r.kind === "comment"
+        ? `${r.who === "you" ? "Reader" : "Agent"}:`
+        : `${r.question === null ? "Explain this." : r.question}`;
+      return `[[${ref}]] ${heading}\n${r.text}`;
+    });
+    return [...head, ...body].join("\n");
+  }
+
+  private replyItem(review: McpReviewData, threadId: string, n: number): string {
+    const ann = review.annotations.find((a) => a.id === threadId);
+    if (!ann) throw new Error(`unknown thread: ${threadId}`);
+    const idx = findReplyIndexBySeq(ann.replies, n);
+    const item = idx >= 0 ? ann.replies[idx] : undefined;
+    if (!item) throw new Error(`unknown reply: ann:${threadId}#r${n}`);
+    if (!item.live) throw new Error(`that reply was deleted`);
+    const heading = item.kind === "comment"
+      ? `${item.who === "you" ? "Reader" : "Agent"}:`
+      : `${item.question === null ? "Explain this." : item.question}`;
+    return [
+      `ann:${threadId}#r${n}`,
+      `kind: reply`,
+      `parent: ann:${threadId}`,
+      `children: (none)`,
+      "",
+      heading,
+      item.text,
+    ].join("\n");
+  }
+
+  private descriptionItem(review: McpReviewData, paragraph: string): string {
+    const found = review.description.find((d) => d.id === paragraph);
+    if (!found) throw new Error(`unknown description paragraph: ${paragraph}`);
+    return [
+      `desc:${found.id}`,
+      `kind: description`,
+      `parent: (none)`,
+      `children: (none)`,
+      "",
+      found.text,
+    ].join("\n");
   }
 
   // -- tools --------------------------------------------------------------

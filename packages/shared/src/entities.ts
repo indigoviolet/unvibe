@@ -575,6 +575,77 @@ export interface Reply extends ContentBody {
   error?: string | null;
   /** Active job filling or rewriting this reply, when one is running. */
   jobId?: string;
+  /**
+   * Issue #365: stable per-thread sequence (1-based, assigned at
+   * creation, never reused). The model-facing reply ID is
+   * `ann:<threadId>#r<seq>` — stable across re-renders and deletes,
+   * unlike the position. Absent on rows written before #365; display
+   * helpers fall back to the position.
+   */
+  seq?: number;
+  /**
+   * Issue #364: soft-delete tombstone (epoch ms). A tombstoned reply
+   * is hidden from the UI, the agent transcript and `get_item`, and
+   * clearing the flag restores it under the same ID. Never set on
+   * posted content.
+   */
+  deletedAt?: number;
+}
+
+/**
+ * Issue #365: true when the reply is visible — no tombstone flag.
+ * The single place that knows the #364 field name: transcript
+ * builders, `get_item` and prompts filter through this.
+ */
+export function isLiveReply(r: Pick<Reply, "deletedAt">): boolean {
+  return r.deletedAt === undefined || r.deletedAt === null;
+}
+
+/**
+ * Issue #365: the stable per-thread sequence of a reply at `index` in
+ * `thread.replies`: the stored `seq`, else the position (pre-#365 rows).
+ */
+export function replySeq(
+  thread: Pick<Thread, "replies">,
+  index: number,
+): number {
+  const stored = thread.replies[index]?.seq;
+  return typeof stored === "number" && Number.isSafeInteger(stored) && stored >= 1 ? stored : index + 1;
+}
+
+/**
+ * Issue #365: the model-facing ID of a reply at `index` in the thread:
+ * `ann:<threadId>#r<seq>`. Stable across re-renders and deletes.
+ */
+export function replyRef(threadId: string, thread: Pick<Thread, "replies">, index: number): string {
+  return `ann:${threadId}#r${replySeq(thread, index)}`;
+}
+
+/**
+ * Issue #365: next stable per-thread reply sequence. One past the
+ * highest stored `seq`, and past the legacy length so a first stamped
+ * append can never collide with position-fallback rows. Never reused:
+ * deletes leave gaps by design.
+ */
+export function nextReplySeq(replies: readonly { seq?: number }[]): number {
+  let max = 0;
+  for (const r of replies) {
+    if (typeof r.seq === "number" && Number.isSafeInteger(r.seq) && r.seq > max) max = r.seq;
+  }
+  return Math.max(max + 1, replies.length + 1);
+}
+
+/**
+ * Issue #365: locate a reply by its stable sequence `n` (the `r<n>` in
+ * `ann:<thread>#r<n>`). Matches the stored `seq` first, else the
+ * position (pre-#365 rows). Returns the index, or -1.
+ */
+export function findReplyIndexBySeq(replies: readonly { seq?: number }[], n: number): number {
+  const direct = replies.findIndex((r) => r.seq === n);
+  if (direct >= 0) return direct;
+  const legacy = n - 1;
+  if (legacy >= 0 && legacy < replies.length && replies[legacy]?.seq === undefined) return legacy;
+  return -1;
 }
 
 /** A thread anchored once, with flat replies. Issue #273. */

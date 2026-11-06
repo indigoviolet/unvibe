@@ -366,6 +366,7 @@ export function suggestedAnnotation(
     pinned: false,
     replies: [{
       id: replyId,
+      seq: 1,
       kind: "comment",
       who: "agent",
       question: null,

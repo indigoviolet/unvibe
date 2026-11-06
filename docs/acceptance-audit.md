@@ -696,9 +696,12 @@ needed (that deviation is closed, not added).
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
 - Issue #364 (thread polish): every reply deletes on its own with no
-  confirm (an answer goes with its question — one stored turn; later
-  turns stay; the last turn deletes the thread; posted content and
-  filling replies refuse); every anchored thread shows a comment icon
+  confirm, as a tombstone (an answer goes with its question — one
+  stored turn; later turns stay; deleting the last live turn deletes
+  the thread; posted content and filling replies refuse; Undelete
+  restores the turn exactly under the same ID — stored `deletedAt` +
+  shared `isLiveReply`, DATA_FORMAT 6 via #365); every anchored thread
+  shows a comment icon
   in the margin (on its highlight's first line, else its paragraph's
   first line; diff lines keep their gutter icons), clicking it opens
   and scrolls to the thread; each answer carries an “↑ quoted text”
@@ -709,6 +712,22 @@ needed (that deviation is closed, not added).
   second composer) — implemented, unit-tested
   (`threads-delete-reply.test.ts`, `ThreadView.test.tsx` #364 cases,
   `revealAnchor.test.ts`); journey J364 + frames pending the gate.
+- Issue #365 (agent context): a `get_item(id)` MCP tool returns any
+  card, block, page, thread, reply or description paragraph as its
+  current content with its parent chain and child IDs; replies carry
+  stable model-facing IDs (`ann:<thread>#r<seq>`, in the shared ID
+  grammar) stamped at creation and kept across deletes; tombstoned
+  replies (#364 soft delete, `deletedAt` + shared `isLiveReply`)
+  stay out of the transcript and `get_item` until restored, under the
+  same ID. Ask/Explain turns are minimal — quote, exact item ID,
+  offsets, question, plus changed hunk IDs only when the code moved
+  since the turn's version; no card, block, thread-transcript or shared
+  log text rides along (the chip's quote and `sourceReplyId` feed the
+  turn, so no new client fields). Implemented, fake-runner-tested
+  (`agent-context-365.test.ts`, `mcp.test.ts` `get_item` cases,
+  `prompts.test.ts` minimal-turn contract, `glossary-252.test.ts`
+  Ask-minimal update, shared `ids.test.ts` reply IDs); journeys +
+  frames pending the gate.
 
 ### §4.8 Comments — all met (#273: comments are `kind: "comment"` replies in the thread; #293: Ask questions render as reviewer entries)
 
