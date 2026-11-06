@@ -134,6 +134,8 @@ export function traceparentOf(header: unknown): SpanParent | undefined {
   return { traceId, spanId };
 }
 
+let propagatorInstalled = false;
+
 export class TraceRecorder {
   private provider: BasicTracerProvider | null = null;
   private recording = false;
@@ -143,7 +145,11 @@ export class TraceRecorder {
   private spanCount = 0;
 
   constructor(private readonly dataDir: string) {
-    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+    // One global propagator per process: repeats log a warning.
+    if (!propagatorInstalled) {
+      propagatorInstalled = true;
+      propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+    }
     this.spanCount = countStoredSpans(dataDir);
   }
 
