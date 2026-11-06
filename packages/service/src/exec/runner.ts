@@ -5,6 +5,8 @@
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
+import { isSafeToken, traceSpan } from "../traces/index.js";
 
 export interface RunOptions {
   args: string[];
@@ -27,46 +29,60 @@ export interface CommandRunner {
 /** Real implementation: spawn and collect stdio. */
 export class RealCommandRunner implements CommandRunner {
   async run(cmd: string, opts: RunOptions): Promise<RunResult> {
-    // A missing cwd surfaces from spawn as a bare ENOENT, which reads as
-    // "command not found". Say which directory is gone (usually a moved or
-    // deleted checkout) before spawning.
-    if (opts.cwd !== undefined) {
-      try {
-        const st = fs.statSync(opts.cwd);
-        if (!st.isDirectory()) throw new Error(`not a directory: ${opts.cwd}`);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException)?.code === "ENOENT" || /not a directory/.test((err as Error).message)) {
-          throw new Error(
-            `cannot run ${cmd}: directory not found: ${opts.cwd} (was the repo moved or deleted? Remove it in Settings → Repos and add it again)`,
-          );
-        }
-        throw err;
-      }
-    }
-    return new Promise((resolve, reject) => {
-      const child = spawn(cmd, opts.args, {
-        cwd: opts.cwd,
-        env: { ...process.env, ...opts.env },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
-      child.on("error", reject);
-      const timer =
-        opts.timeoutMs !== undefined
-          ? setTimeout(() => child.kill("SIGKILL"), opts.timeoutMs)
-          : undefined;
-      if (opts.stdin !== undefined) {
-        child.stdin.write(opts.stdin);
-        child.stdin.end();
-      }
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        resolve({ stdout, stderr, code: code ?? 1 });
-      });
+    // Opt-in performance traces (issue #356): one `exec <command>` span
+    // per child process. The command basename only — never arguments, env
+    // or cwd (review paths, tokens). A no-op while recording is off.
+    const base = path.basename(cmd);
+    const span = traceSpan(`exec ${isSafeToken(base) ? base : "other"}`, {
+      "exec.cmd": base,
     });
+    try {
+      // A missing cwd surfaces from spawn as a bare ENOENT, which reads as
+      // "command not found". Say which directory is gone (usually a moved or
+      // deleted checkout) before spawning.
+      if (opts.cwd !== undefined) {
+        try {
+          const st = fs.statSync(opts.cwd);
+          if (!st.isDirectory()) throw new Error(`not a directory: ${opts.cwd}`);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException)?.code === "ENOENT" || /not a directory/.test((err as Error).message)) {
+            throw new Error(
+              `cannot run ${cmd}: directory not found: ${opts.cwd} (was the repo moved or deleted? Remove it in Settings → Repos and add it again)`,
+            );
+          }
+          throw err;
+        }
+      }
+      const result = await new Promise<RunResult>((resolve, reject) => {
+        const child = spawn(cmd, opts.args, {
+          cwd: opts.cwd,
+          env: { ...process.env, ...opts.env },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+        child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+        child.on("error", reject);
+        const timer =
+          opts.timeoutMs !== undefined
+            ? setTimeout(() => child.kill("SIGKILL"), opts.timeoutMs)
+            : undefined;
+        if (opts.stdin !== undefined) {
+          child.stdin.write(opts.stdin);
+          child.stdin.end();
+        }
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolve({ stdout, stderr, code: code ?? 1 });
+        });
+      });
+      span.end({ "exec.code": result.code });
+      return result;
+    } catch (err) {
+      span.end();
+      throw err;
+    }
   }
 }
 

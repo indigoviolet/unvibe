@@ -42,6 +42,8 @@ import type { SettingsStore } from "./settings/index.js";
 import type { Updater } from "./update/index.js";
 import type { UpdateHooks } from "./routes/deps.js";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
+import { SpanKind } from "@opentelemetry/api";
+import { isRoutePattern, traceSpan, traceparentOf, type SpanHandle } from "./traces/index.js";
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
@@ -272,6 +274,41 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
       }
       reply.code(401).send({ error: "missing or invalid token" });
     }
+  });
+
+  // Opt-in performance traces (issue #356): one `http` span per request.
+  // The name uses the route pattern (`req.routeOptions.url`), never the
+  // raw URL (ids, tokens in `?token=`); query and headers are never
+  // recorded. A no-op handle while recording is off (zero cost).
+  const httpSpans = new WeakMap<object, SpanHandle>();
+  app.addHook("onRequest", async (req) => {
+    const parent = traceparentOf(req.headers["traceparent"]);
+    // The raw pathname is stored hashed (`http.path`); the readable
+    // name/route use the route pattern only when it is one of ours.
+    const span = traceSpan(
+      "http",
+      { "http.method": req.method, "http.path": urlPathname(req.url) },
+      parent ?? undefined,
+      SpanKind.SERVER,
+    );
+    httpSpans.set(req, span);
+  });
+  app.addHook("preHandler", async (req) => {
+    const span = httpSpans.get(req);
+    if (!span) return;
+    const pattern = req.routeOptions?.url;
+    if (typeof pattern === "string" && isRoutePattern(pattern)) {
+      span.rename(`http ${req.method} ${pattern}`);
+      span.setAttribute("http.route", pattern);
+    } else {
+      span.rename(`http ${req.method}`);
+    }
+  });
+  app.addHook("onResponse", async (req, reply) => {
+    const span = httpSpans.get(req);
+    if (!span) return;
+    httpSpans.delete(req);
+    span.end({ "http.status_code": reply.statusCode });
   });
 
   // Dev-only error reporting (issue #29): server faults, not 4xx replies.
