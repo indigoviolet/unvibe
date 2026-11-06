@@ -7,10 +7,11 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { Reply, Thread, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
+import { NEW_THREAD_EVENT } from "../floating/SelectionToolbar.js";
 import { useReview } from "../state/store.js";
 import { ThreadView } from "./ThreadView.js";
 
@@ -366,5 +367,85 @@ describe("ThreadView suggested comments (issue #163)", () => {
     const second = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={prose} /></MemoryRouter>);
     expect(second.container.querySelector(".mq")).not.toBeNull();
     expect(second.container.querySelector(".mq")).not.toHaveClass("code");
+  });
+});
+
+describe("ThreadView per-reply delete + quote chip (issue #364)", () => {
+  function askThread(): Thread {
+    return thread({
+      replies: [
+        {
+          id: "ans_ask1",
+          kind: "ask",
+          who: "agent",
+          question: "What does this do?",
+          blocks: [{ type: "paragraph", id: "b1", text: { standard: "It folds lines." }, citations: [] }],
+          level: "standard",
+          revision: 1,
+          undoStack: [],
+        } as Reply,
+        mkReply("you", "Thanks"),
+      ],
+    });
+  }
+
+  test("every reply has a delete control; deleting calls deleteReply with no confirm", async () => {
+    const t = askThread();
+    const delSpy = vi.spyOn(api, "deleteReply").mockResolvedValue({ ok: true });
+    try {
+      render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
+      // Question entry + answer + comment reply: three delete controls.
+      const dels = screen.getAllByRole("button", { name: "Delete reply" });
+      expect(dels).toHaveLength(3);
+      fireEvent.click(dels[0]);
+      expect(delSpy).toHaveBeenCalledWith(REVIEW_ID, t.id, "ans_ask1");
+    } finally {
+      delSpy.mockRestore();
+    }
+  });
+
+  test("Ask inside a thread shows its quote as a chip in the Reply box; removing drops it", () => {
+    const t = askThread();
+    render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
+    expect(screen.queryByText("selected words", { exact: false })).toBeNull();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(NEW_THREAD_EVENT, {
+        detail: { threadId: t.id, quote: "selected words", kind: "ask", anchor: { where: "block", blockId: "central#b1" } },
+        }),
+      );
+    });
+    expect(screen.getByText("selected words", { exact: false })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove quote" }));
+    expect(screen.queryByText("selected words", { exact: false })).toBeNull();
+  });
+
+  test("sending with a quote chip asks in-thread; without it replies", async () => {
+    const t = askThread();
+    const actionSpy = vi.spyOn(api, "action").mockResolvedValue({ accepted: true } as never);
+    try {
+      render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
+      window.dispatchEvent(
+        new CustomEvent(NEW_THREAD_EVENT, {
+          detail: { threadId: t.id, quote: "selected words", kind: "ask", anchor: { where: "block", blockId: "central#b1" } },
+        }),
+      );
+      fireEvent.change(screen.getByLabelText("Reply"), { target: { value: "my question" } });
+      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+      expect(actionSpy).toHaveBeenCalledWith(
+        REVIEW_ID,
+        expect.objectContaining({ kind: "ask", threadId: t.id, quote: "selected words", message: "my question" }),
+      );
+    } finally {
+      actionSpy.mockRestore();
+    }
+  });
+
+  test("each answer carries a reverse link to its quoted passage", () => {
+    const t = askThread();
+    const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
+    const link = container.querySelector('[data-src-link="ans_ask1"]');
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toMatch(/quoted text/);
   });
 });
