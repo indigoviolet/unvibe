@@ -207,8 +207,9 @@ test.describe("J14 diagrams, debug, redo", () => {
 // with `d2` available and with `UNVIBE_D2_BIN=/nonexistent` — seeded
 // light + dark SVG serving, on-demand render vs 409, theme switching,
 // hover previews, click-to-reveal, and the pipeline-emitted block. (The
-// DISABLED(#119) keyboard-Enter test is not copied: the mock-mode
-// d2-diagrams.spec.ts covers SVG-link activation.)
+// DISABLED(#119) keyboard-Enter test is not copied from the service
+// spec: it lives in the seeded-diagram journey test below, folded from
+// d2-diagrams.spec.ts in #357.)
 const D2_FIXTURE_DIR = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
 const D2_SEED_REVIEW_ID = "d2-seed";
 // Issue #341: the re-recorded on-demand diagram (diagram-central).

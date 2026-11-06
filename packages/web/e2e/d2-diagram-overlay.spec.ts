@@ -32,8 +32,7 @@ function overlayTransform(page: Page): Promise<string> {
 }
 
 /**
- * Hover an anchor deterministically (copied from `d2-diagrams.spec.ts`:
- * Playwright's `hover()` may scroll with the pointer already over the
+ * Hover an anchor deterministically (Playwright's `hover()` may scroll with the pointer already over the
  * target, and a scroll with a stationary pointer must NOT open the
  * popover). Waits for scroll quiet, then aims at the anchor's own line
  * boxes until the cursor verifiably lands on it.
