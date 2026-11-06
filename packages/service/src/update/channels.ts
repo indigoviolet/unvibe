@@ -14,7 +14,20 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { isDebugChannel, type UpdateChannel } from "@unvibe/shared";
+import type { UpdateChannel } from "@unvibe/shared";
+
+/**
+ * Debug flavour of a channel (issue #356): `release-debug`, or
+ * `preview/<slug>-debug` for previews. Duplicated from
+ * `@unvibe/shared/channels` (the canonical home): this file ships
+ * inside the self-contained update-helper bundle, which cannot import
+ * the shared barrel (see the helper-bundle containment test). Parity
+ * with the canonical copy is asserted in
+ * `test/update-channels-debug.test.ts`.
+ */
+export function isDebugChannel(ref: string): boolean {
+  return ref === "release-debug" || (ref.startsWith("preview/") && ref.endsWith("-debug"));
+}
 // Subpath import: the update helper bundle must not pull in the shared barrel.
 import { DATA_FORMAT } from "@unvibe/shared/data-format";
 import type { CommandRunner } from "../exec/index.js";

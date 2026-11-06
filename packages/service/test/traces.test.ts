@@ -24,11 +24,13 @@ import {
   setActiveTracer,
   traceSpan,
 } from "../src/traces/index.js";
+import { setExecTraceSink } from "../src/exec/runner.js";
 import { TraceRecorder } from "../src/traces/recorder.js";
 import { spansFile } from "../src/traces/paths.js";
 
 afterEach(() => {
   setActiveTracer(null);
+  setExecTraceSink(null);
 });
 
 function tempDir(): string {
@@ -119,6 +121,7 @@ describe("traces (#356)", () => {
     } finally {
       db.close();
       setActiveTracer(null);
+    setExecTraceSink(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -128,6 +131,7 @@ describe("traces (#356)", () => {
     try {
       const rec = new TraceRecorder(dir);
       setActiveTracer(rec);
+      setExecTraceSink(rec);
       rec.setEnabled(true);
       const require = createRequire(import.meta.url);
       const fastify = require("fastify")();
@@ -149,6 +153,7 @@ describe("traces (#356)", () => {
       expect(JSON.stringify(server)).not.toMatch(/127\.0\.0\.1|user_agent|status_text/);
     } finally {
       setActiveTracer(null);
+    setExecTraceSink(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -203,6 +208,7 @@ describe("traces (#356)", () => {
     try {
       const rec = new TraceRecorder(dir);
       setActiveTracer(rec);
+      setExecTraceSink(rec);
       rec.setEnabled(true);
       // Manual seams with canaries in ids, names, argv, SQL text.
       traceSpan("job ask", {
@@ -255,6 +261,7 @@ describe("traces (#356)", () => {
       expect(text).not.toContain("DROP TABLE");
     } finally {
       setActiveTracer(null);
+    setExecTraceSink(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -264,6 +271,7 @@ describe("traces (#356)", () => {
     try {
       const rec = new TraceRecorder(dir);
       setActiveTracer(rec);
+      setExecTraceSink(rec);
       const quiet = new JobQueue();
       quiet.enqueue({
         reviewId: "rv-quiet", kind: "reader", provider: "claude", model: "m", effort: "", priority: 1,
@@ -291,6 +299,7 @@ describe("traces (#356)", () => {
       expect(JSON.stringify(rec.exportOtlp())).not.toContain("rv-seam");
     } finally {
       setActiveTracer(null);
+    setExecTraceSink(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -344,6 +353,7 @@ describe("traces (#356)", () => {
       await app.close();
       db.close();
       setActiveTracer(null);
+    setExecTraceSink(null);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

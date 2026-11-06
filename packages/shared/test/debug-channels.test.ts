@@ -2,7 +2,7 @@
  * Debug-channel helpers shared by service and web (issue #356).
  */
 import { describe, expect, it } from "vitest";
-import { debugChannelFor, isDebugChannel } from "../src/api.js";
+import { debugChannelFor, isDebugChannel } from "../src/channels.js";
 
 describe("debug channels (shared)", () => {
   it("recognises debug refs", () => {

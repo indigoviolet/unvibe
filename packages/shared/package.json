@@ -12,6 +12,10 @@
     "./data-format": {
       "types": "./dist/data-format.d.ts",
       "default": "./dist/data-format.js"
+    },
+    "./channels": {
+      "types": "./dist/channels.d.ts",
+      "default": "./dist/channels.js"
     }
   },
   "scripts": {
