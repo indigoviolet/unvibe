@@ -27,15 +27,32 @@ export const PERSONA_COLORS = [
   "#4D7C0F",
 ] as const;
 
-/** One persona definition, stored in settings. */
+/**
+ * One persona definition, stored in settings.
+ *
+ * Who the persona runs as (issue #359): an explicit provider/model,
+ * or the main model at run time. Stored as a required boolean (not a
+ * magic model string) so old rows without it are a shape change — see
+ * DATA_FORMAT 5. When true, `provider`/`model` below are the last
+ * explicit pick: the seed for a fresh persona, the display fallback,
+ * and the starting point if the owner pins a specific model.
+ */
 export interface Persona {
   /** Stable id: slug of the name at creation (`second-opinion` for the built-in). */
   id: string;
   /** Display name (required, non-empty). */
   name: string;
-  /** Agent provider id (e.g. `claude`, `codex`, `pi`). */
+  /** True = run on `settings.main` (provider + model) at run time. */
+  followMain: boolean;
+  /**
+   * Agent provider id (e.g. `claude`, `codex`, `pi`). Required,
+   * non-empty — the last explicit pick when `followMain` is true.
+   */
   provider: string;
-  /** Model id on that provider (required, non-empty). */
+  /**
+   * Model id on that provider (required, non-empty) — the last explicit
+   * pick when `followMain` is true.
+   */
   model: string;
   /**
    * Who the persona is and what it looks for (required, non-empty).
@@ -69,6 +86,7 @@ export const CLARITY_PERSONA_ID = "clarity";
 export const SECOND_OPINION_PERSONA: Persona = {
   id: BUILT_IN_PERSONA_ID,
   name: "Second opinion",
+  followMain: false,
   provider: "codex",
   model: "gpt-6.1-sol",
   lens: "You are a second reader: an independent reviewer who has not seen the rest of the guide, other findings, or any discussion. You read the guide's version of a card and the cited code, and judge the claims against the code. The guide's claims are hypotheses, not conclusions — verify each part against the cited code, and check the tests too when a claim is about behaviour. Push back plainly where the code shows otherwise, quoting the lines; add what is missing that the code shows. Every claim you make carries its citation.",
@@ -92,14 +110,15 @@ export const SECOND_OPINION_PERSONA: Persona = {
  * dropped. After seeding it is an ordinary entry: editable and
  * deletable like any other persona.
  *
- * Model is the static main fallback (`claude` / `claude-opus-5-5`, the
- * same ids `DEFAULT_SETTINGS.main` seeds in the service): the live main
- * default cannot be known at seed time, and the owner edits the model
- * like any other persona field.
+ * Model follows the main model at run time (`followMain: true`): the
+ * `provider`/`model` below are the static main fallback — the display
+ * seed and the starting point if the owner pins a specific model — not
+ * a pinned default.
  */
 export const CLARITY_PERSONA: Persona = {
   id: CLARITY_PERSONA_ID,
   name: "Clarity",
+  followMain: true,
   provider: "claude",
   model: "claude-opus-5-5",
   lens: `You are Clarity: a rewriter of technical explanations. You take the card's prose and rewrite it so an engineer can understand the mechanism accurately with less effort. Your input is always the card; your output is the card body, in the shape the card task defines. Do not perform a code review, grade the prose, or list findings.
@@ -235,6 +254,9 @@ export function validatePersona(p: unknown): string[] {
     errors.push("persona name must be a non-empty string");
   } else if (o["name"].length > 80) {
     errors.push("persona name must be at most 80 characters");
+  }
+  if (typeof o["followMain"] !== "boolean") {
+    errors.push("persona followMain must be a boolean (true = run on the main model)");
   }
   if (typeof o["provider"] !== "string" || (o["provider"] as string).trim() === "") {
     errors.push("persona provider must be a non-empty string");

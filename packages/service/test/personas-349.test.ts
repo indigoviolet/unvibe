@@ -35,6 +35,7 @@ const CARD = "### The central change [[card:c-central]]\n\nFolds that end in a b
 const CUSTOM: Persona = {
   id: "perf-sceptic",
   name: "Performance sceptic",
+  followMain: false,
   provider: "claude",
   model: "claude-opus-5-5",
   lens: "You are a performance sceptic: you read every card asking what it costs at scale.",

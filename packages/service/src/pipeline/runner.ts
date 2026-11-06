@@ -440,7 +440,8 @@ export class Pipeline {
   /**
    * Issue #349 step 2: the agent role for a turn — the persona's
    * provider/model (effort is the adapter default: personas name no
-   * effort) or the main guide role. The job stamp, the base key and the
+   * effort), the main pick for a persona with `followMain` (issue
+   * #359), or the main guide role. The job stamp, the base key and the
    * fork all use this, so the runner reaches the persona's model.
    */
   private roleFor(settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>, persona?: Persona): {
@@ -448,7 +449,15 @@ export class Pipeline {
     model: string;
     effort: string;
   } {
-    if (persona) return { provider: persona.provider, model: persona.model, effort: "" };
+    if (persona) {
+      // Issue #359: a persona following the main model runs on the
+      // effective main pick (live-resolved like every other main
+      // consumer); effort stays the adapter default, like all personas.
+      if (persona.followMain) {
+        return { provider: settings.main.provider, model: settings.main.model, effort: "" };
+      }
+      return { provider: persona.provider, model: persona.model, effort: "" };
+    }
     return { provider: settings.main.provider, model: settings.main.model, effort: settings.main.effort };
   }
 

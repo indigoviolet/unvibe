@@ -1458,7 +1458,9 @@ export interface Settings {
   small: ModelPick;
   /**
    * Persona definitions (issue #349): the built-in Second opinion and
-   * Clarity personas plus any custom personas. Managed through Settings → Personas (add, edit,
+   * Clarity personas plus any custom personas. A persona with
+   * `followMain` runs on the main model at run time (issue #359).
+   * Managed through Settings → Personas (add, edit,
    * delete); the colour is auto-assigned at creation.
    */
   personas: Persona[];

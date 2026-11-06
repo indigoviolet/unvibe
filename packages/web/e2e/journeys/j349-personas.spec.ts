@@ -27,6 +27,7 @@ const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 interface PersonaBody {
   id: string;
   name: string;
+  followMain: boolean;
   provider: string;
   model: string;
   lens: string;
@@ -142,6 +143,7 @@ test.describe("J349 personas settings", () => {
     const custom = {
       id: "perf-sceptic",
       name: "Performance sceptic",
+      followMain: false,
       provider: "claude",
       model: "claude-opus-5-5",
       lens: "You are a performance sceptic: you read every card asking what it costs at scale.",

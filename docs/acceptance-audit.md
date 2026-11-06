@@ -4109,28 +4109,35 @@ one-variant union today).
   same facts, scope, hedges and citations, clearer to an engineer.
   If the card is already effective, return it unchanged."
 - **Seed:** second built-in in `defaultPersonas` (Second opinion,
-  Clarity), enabled by default, main model by default (the static
-  main fallback `claude` / `claude-opus-5-5`; editable like any
-  persona), colour `PERSONA_COLORS[1]`. The runtime seed copy is
-  inline in `packages/shared/src/personas.ts` (like Second opinion);
-  a service test asserts it matches the prompt file.
-- **Same-model lens fix:** Clarity's default model equals main's, so
+  Clarity), enabled by default. Clarity follows the main model at run
+  time (`followMain: true`, required boolean on `Persona`): the stored
+  `provider`/`model` is the static main fallback — display seed and
+  starting point for pinning — not what runs. Settings → Personas
+  shows "Main model (current)" with a checkbox to pin a specific
+  model (unchecked = explicit pick, validated like a role; a
+  main-following stored pick is exempt from the offered check). The
+  runtime seed copy is inline in `packages/shared/src/personas.ts`
+  (like Second opinion); a service test asserts it matches the
+  prompt file.
+- **Same-model lens fix:** Clarity's resolved model equals main's, so
   persona runs shared main's L0 base and the fork silently dropped
   the lens (Second opinion never hit this: its model differs). Base
   keys now carry optional `personaId` (main keys byte-identical, 7
   parts; persona bases append an 8th) — a same-model persona gets
   its own L0+lens base, forked or fresh-started with the lens. Cost:
-  one extra base build per same-model persona per review.
-- **Data format stays 4:** `Settings.personas` gains a seed entry but
-  the stored shape is unchanged (`Persona` untouched); existing data
-  reads with no conversion, and existing installs keep their seeded
-  list (seed-only, like Second opinion).
+  one extra base build the first time a same-model persona runs on a
+  review (never at open); the lens-in-the-turn alternative would cost
+  lens tokens on every turn and contradict the system-prompt decision.
+- **Data format 4 → 5:** `Persona` gains required `followMain`; older
+  stored persona rows (no flag) need a reset.
 - Evidence: `packages/shared/test/personas.test.ts` (Clarity seed:
-  enabled, main model, card instruction, colour, lens rules),
+  enabled, follows main, card instruction, colour, lens rules),
   `packages/service/test/personas-349.test.ts` (seed counts),
   new `packages/service/test/clarity-359.test.ts` (fake runner:
-  seed over HTTP, lens-file sync, composed prompt carries lens +
-  preservation rules + card instruction, Clarity run on a card
-  stores the variant with citations intact on the main model with
-  the lens in the system prompt). Journeys, tour frames and full
-  gates deferred until the v0.0.16 gate is done.
+  seed over HTTP, lens-file sync, offered-check exemption for a
+  main-following stored pick, composed prompt carries lens +
+  preservation rules + card instruction, Clarity run stores the
+  variant with citations intact on the main model with the lens in
+  the system prompt, and follows main when the main model changes).
+  Journeys, tour frames and full gates deferred until the v0.0.16
+  gate is done.

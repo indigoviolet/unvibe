@@ -362,6 +362,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         color: activeEntry.color,
         lens: "",
         cardInstruction: "",
+        followMain: false,
         provider: "",
         model: "",
         enabled: false,

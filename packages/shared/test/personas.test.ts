@@ -22,6 +22,7 @@ function valid(over: Partial<Persona> = {}): Persona {
   return {
     id: "perf-sceptic",
     name: "Performance sceptic",
+    followMain: false,
     provider: "codex",
     model: "gpt-6.1-sol",
     lens: "You are a performance sceptic.",
@@ -53,6 +54,10 @@ describe("validatePersona", () => {
     expect(validatePersona(valid({ enabled: "yes" as unknown as boolean }))).toContain(
       "persona enabled must be a boolean",
     );
+    expect(validatePersona(valid({ followMain: "yes" as unknown as boolean })))
+      .toContain("persona followMain must be a boolean (true = run on the main model)");
+    expect(validatePersona(valid({ followMain: undefined as unknown as boolean })))
+      .toContain("persona followMain must be a boolean (true = run on the main model)");
     expect(validatePersona(valid({ color: "#ff0000" }))[0]).toMatch(/persona color must be one of/);
   });
 
@@ -103,8 +108,9 @@ describe("slugifyPersonaName", () => {
 });
 
 describe("built-in Second opinion", () => {
-  it("is seeded with the check behaviour in lens + card instruction", () => {
+  it("is seeded with an explicit model", () => {
     expect(SECOND_OPINION_PERSONA.id).toBe(BUILT_IN_PERSONA_ID);
+    expect(SECOND_OPINION_PERSONA.followMain).toBe(false);
     expect(SECOND_OPINION_PERSONA.enabled).toBe(true);
     expect(SECOND_OPINION_PERSONA.lens).toContain("second reader");
     expect(SECOND_OPINION_PERSONA.lens).toContain("hypotheses, not conclusions");
@@ -124,12 +130,14 @@ describe("built-in Second opinion", () => {
 });
 
 describe("built-in Clarity", () => {
-  it("is seeded enabled on the main model with the card-rewrite instruction", () => {
+  it("is seeded enabled, following the main model", () => {
     expect(CLARITY_PERSONA.id).toBe(CLARITY_PERSONA_ID);
     expect(CLARITY_PERSONA.id).toBe("clarity");
     expect(CLARITY_PERSONA.name).toBe("Clarity");
     expect(CLARITY_PERSONA.enabled).toBe(true);
-    // The static main fallback (mirrors DEFAULT_SETTINGS.main): editable.
+    // Follows the main model at run time; the stored pick is the
+    // static main fallback (display seed, starting point for pinning).
+    expect(CLARITY_PERSONA.followMain).toBe(true);
     expect(CLARITY_PERSONA.provider).toBe("claude");
     expect(CLARITY_PERSONA.model).toBe("claude-opus-5-5");
     expect(CLARITY_PERSONA.cardInstruction).toBe(

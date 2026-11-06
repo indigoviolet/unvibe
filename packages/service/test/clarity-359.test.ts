@@ -103,7 +103,7 @@ describe("Clarity seed and prompt composition", () => {
     });
   }
 
-  it("fresh settings seed Clarity enabled on the main model", async () => {
+  it("fresh settings seed Clarity following the main model", async () => {
     const { app } = await makeApp();
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
@@ -113,6 +113,8 @@ describe("Clarity seed and prompt composition", () => {
       expect(clarity).toBeDefined();
       expect(clarity).toMatchObject({
         name: "Clarity",
+        followMain: true,
+        // Stored last-explicit pick (display seed, not what runs).
         provider: "claude",
         model: "claude-opus-5-5",
         enabled: true,
@@ -157,10 +159,65 @@ describe("Clarity seed and prompt composition", () => {
     expect(prompt.turn).not.toContain(DEFAULT_CARD_INSTRUCTION);
     expect(prompt.cardInstruction).toBe(CLARITY_PERSONA.cardInstruction);
   });
+  it("a main-following stored pick that no adapter offers still saves", async () => {
+    const { app } = await makeApp();
+    try {
+      const seed = (await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } }).then((r) => r.json())) as Settings;
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: { authorization: "Bearer tok" },
+        payload: {
+          personas: [
+            ...seed.personas,
+            {
+              id: "mime",
+              name: "Mime",
+              followMain: true,
+              provider: "claude",
+              model: "opus-9",
+              lens: "You are a mime.",
+              cardInstruction: "",
+              enabled: true,
+              color: PERSONA_COLORS[2],
+            },
+          ],
+        },
+      });
+      // Exempt from the offered check: the stored pick is not what runs.
+      expect(res.statusCode).toBe(200);
+      // The same pick pinned is rejected.
+      const pinned = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: { authorization: "Bearer tok" },
+        payload: {
+          personas: [
+            ...seed.personas,
+            {
+              id: "mime",
+              name: "Mime",
+              followMain: false,
+              provider: "claude",
+              model: "opus-9",
+              lens: "You are a mime.",
+              cardInstruction: "",
+              enabled: true,
+              color: PERSONA_COLORS[2],
+            },
+          ],
+        },
+      });
+      expect(pinned.statusCode).toBe(400);
+      expect(JSON.stringify(pinned.json())).toContain("not offered");
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("Clarity card run (fake runner)", () => {
-  async function openDemo(agents: FakeAgentRunner): Promise<{ app: Awaited<ReturnType<typeof createApp>>["app"]; ctx: Awaited<ReturnType<typeof createApp>>["ctx"]; id: string }> {
+  async function openDemo(agents: FakeAgentRunner, main?: { provider: string; model: string }): Promise<{ app: Awaited<ReturnType<typeof createApp>>["app"]; ctx: Awaited<ReturnType<typeof createApp>>["ctx"]; id: string }> {
     const { app, ctx } = await createApp("tok", { agents });
     const created = await app.inject({
       method: "POST",
@@ -170,6 +227,15 @@ describe("Clarity card run (fake runner)", () => {
     } as never);
     expect(created.statusCode).toBe(201);
     const id = (created.json() as ReviewSnapshot).review.id;
+    if (main) {
+      const patched = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: { authorization: "Bearer tok" },
+        payload: { main: { ...main, effort: "" } },
+      } as never);
+      expect(patched.statusCode).toBe(200);
+    }
     await waitFor(
       () =>
         !!ctx.reviews
@@ -238,6 +304,43 @@ describe("Clarity card run (fake runner)", () => {
       );
       expect(starts.length).toBeGreaterThan(0);
       expect(starts.some((s) => s.systemPrompt.includes("You are Clarity"))).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("follows the main model when it changes (not the stored pick)", { timeout: 120000 }, async () => {
+    process.env.UNVIBE_REPO_ROOTS = "";
+    const agents = clarityAgents();
+    // No models catalog in this app: the PUT skips the offered check
+    // and the stored pick stands as the effective main.
+    const { app, ctx, id } = await openDemo(agents, { provider: "claude", model: "claude-sonnet-5-5" });
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${id}/actions`,
+        headers: { authorization: "Bearer tok" },
+        payload: { kind: "persona", cardId: "central", personaId: "clarity" },
+      } as never);
+      expect(res.statusCode).toBe(200);
+      const jobId = (res.json() as { jobId?: string }).jobId;
+      if (jobId) {
+        const state = await waitForJob(ctx, jobId);
+        expect(state).toBe("done");
+      }
+      await waitFor(() => {
+        const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "central");
+        const variant = card?.variants?.["clarity"];
+        return !!variant && variant.blocks.length > 0 && !variant.working;
+      });
+      const card = ctx.reviews.getSnapshot(id)!.pages.flatMap((p) => p.cards).find((c) => c.id === "central")!;
+      expect(card.variants!["clarity"].error ?? null).toBeNull();
+      // The run followed main to sonnet — not the stored opus fallback.
+      const followed = agents.starts.filter(
+        (s) => s.provider === "claude" && s.model === "claude-sonnet-5-5",
+      );
+      expect(followed.length).toBeGreaterThan(0);
+      expect(followed.some((s) => s.systemPrompt.includes("You are Clarity"))).toBe(true);
     } finally {
       await app.close();
     }
