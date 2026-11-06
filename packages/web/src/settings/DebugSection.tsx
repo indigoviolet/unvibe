@@ -179,11 +179,11 @@ export function DebugSection({
       <section aria-label="Performance traces">
         <h2>Performance traces</h2>
         <p className="hint">
-          Record OpenTelemetry spans for this machine only: HTTP requests, jobs, child processes
-          (command name, never arguments), SQLite operations, ingest, refresh and the
-          review-open-to-first-card time, plus the browser&apos;s document load, fetches and
-          interactions. Attributes are numbers, enums and salted hashes — no code, paths,
-          tokens or prompt text. Nothing is uploaded, ever.
+          Record OpenTelemetry spans for this machine only: HTTP requests, jobs, child processes,
+          SQLite operations, ingest, refresh and the review-open-to-first-card time, plus the
+          browser&apos;s document load, fetches and interactions. The local file is raw; the
+          export holds only numbers, enums and salted hashes — no code, paths, tokens or
+          prompt text. Nothing is uploaded, ever.
         </p>
         {settings === undefined ? null : (
           <div className="frow" style={{ gap: 8, alignItems: "center" }}>
@@ -192,7 +192,9 @@ export function DebugSection({
               onChange={(v) => void toggleRecording(v)}
               ariaLabel="Record performance traces"
             />
-            <span data-testid="trace-state">{recording ? "Recording" : "Off"}</span>
+            <span data-testid="trace-state">
+              {!recording ? "Off" : status?.capped ? "Paused (size limit)" : "Recording"}
+            </span>
           </div>
         )}
         {status !== null && (status.recording || status.spans > 0 || status.capped) ? (

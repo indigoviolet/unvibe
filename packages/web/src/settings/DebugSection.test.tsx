@@ -72,11 +72,12 @@ describe("DebugSection", () => {
   });
 
   it("shows size, recording state and the cap notice", async () => {
-    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 42, bytes: 2048, capped: true });
+    vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: false, spans: 42, bytes: 2048, capped: true });
     render(<DebugSection settings={{ ...settings, recordTraces: true }} onSaved={() => {}} />);
     await waitFor(() => expect(screen.getByTestId("trace-size")).toHaveTextContent("42 spans"));
     expect(screen.getByTestId("trace-size")).toHaveTextContent("2.0 KB");
-    expect(screen.getByTestId("trace-size")).toHaveTextContent("recording");
+    expect(screen.getByTestId("trace-size")).toHaveTextContent("paused");
+    expect(screen.getByTestId("trace-state")).toHaveTextContent("Paused (size limit)");
     expect(screen.getByRole("alert")).toHaveTextContent("256");
   });
 
