@@ -229,8 +229,8 @@ test("concept page renders the example aside", async ({ page }) => {
   await expect(page.locator("#page .gen-aside")).toContainText("urllib3 now returns", { timeout: 15_000 });
 });
 
-test("narrow width keeps controls reachable by hover or focus (#274)", async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 900 });
+test("controls stay reachable by hover or focus (#274)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await gotoReview(page);
   // The toolbar lives in the heading row and reveals on hover or focus.
   // The problem card seeds a conversation underneath; scope to the card's

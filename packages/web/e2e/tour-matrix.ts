@@ -86,6 +86,11 @@ export const NAMED_KEEPS: readonly NamedKeep[] = [
     combos: ["960-light"],
     reason: "actions bar wraps at narrow widths keeping the fold pair on one row (moved from 700px, #351/#353)",
   },
+  {
+    scene: "reviewbarNarrow",
+    combos: ["960-light"],
+    reason: "review bar with the boxed PR link never overflows the narrow desktop window (moved from 800px, #245)",
+  },
 ];
 
 /**
@@ -113,6 +118,10 @@ export const SLIM_SCENES: Record<string, readonly string[]> = {
   prListMore: ["1440-light"],
   selectPopup: ["1440-light"],
   traces: ["1440-light"],
+  hiddenRows: ["1440-light"],
+  reviewbarPr: ["default-light"],
+  reviewbarNarrow: ["1440-light", "960-light"],
+  docBar: ["default-light"],
   demoBanner: ["1440"],
   demoBannerStatic: ["1440"],
   // Inline-assert sites with no combo loop: the slim widths asserted there.
