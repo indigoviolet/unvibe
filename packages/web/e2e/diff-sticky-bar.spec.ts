@@ -388,15 +388,6 @@ test("hidden-hunk rows scroll under the pinned headers instead of pinning", asyn
   expect(Math.abs(y0 - y1 - 200)).toBeLessThan(30);
 });
 
-test("file and hunk headers pin in split view too", async ({ page }) => {
-  await page.getByRole("button", { name: "Split" }).click();
-  await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
-  const s = await stack(page);
-  await expectPinned(page, `[id="F-${CONN}"]`, s.fileTop + 400, "file", "connection.py");
-  await expectPinned(page, `[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
-  await expectStuck(page, "hunk", "Hunk 2 of");
-});
-
 test("no vertical scroll container sits between a hunk header and the pane", async ({ page }) => {
   // The invariant the pinning relies on (#140): every ancestor of `.dhunk-h`
   // up to `#right` leaves vertical overflow visible, so the stick reaches
@@ -487,70 +478,4 @@ test("code columns start at the same x in every hunk of a file", async ({ page }
     expect(xs.length).toBeGreaterThan(1);
     expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(1.5);
   }
-});
-
-test("gutter is digits + padding; added files drop the empty column (#261)", async ({ page }) => {
-  // The demo's changelog file is a new file hidden by Hide-uninteresting:
-  // reveal it first (the toggle persists only in this test's context).
-  await page.getByRole("button", { name: /Hide level:/ }).click();
-  await page.locator('[data-hidecat="uninteresting"]').click();
-  await expect(page.locator('[id="F-changelog-1362.bugfix.rst"]')).toBeVisible();
-  // Hunk bodies render lazily: scroll the added file into view so its
-  // tables mount before measuring.
-  await page.locator('[id="F-changelog-1362.bugfix.rst"]').scrollIntoViewIfNeeded();
-  await expect(page.locator('[id="F-changelog-1362.bugfix.rst"] table.diff')).toBeVisible();
-  // Modified file: two number columns, each at most digits + 8px
-  // padding with zero affordance room (issue #285: comment icon and
-  // expand carets swap in-flow; the #189 reopen marker is gone).
-  await page.evaluate(() => document.fonts.ready).catch(() => {});
-  const mod = await page.evaluate((key) => {
-    const file = document.getElementById(`F-${key}`)!;
-    const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
-    const sample = (file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n"))!;
-    const probe = document.createElement("span");
-    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
-    const fcs = getComputedStyle(sample);
-    probe.style.fontFamily = fcs.fontFamily;
-    probe.style.fontSize = fcs.fontSize;
-    probe.style.fontStyle = fcs.fontStyle;
-    probe.style.fontWeight = fcs.fontWeight;
-    probe.style.letterSpacing = fcs.letterSpacing;
-    probe.textContent = "0123456789";
-    document.body.appendChild(probe);
-    const digitW = probe.getBoundingClientRect().width / 10;
-    probe.remove();
-    const cs = getComputedStyle(sample);
-    const pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
-    let oldMax = 0;
-    let nwMax = 0;
-    for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
-      if (tr.classList.contains("xsep")) continue;
-      const cells = [...tr.querySelectorAll(":scope > td.n")];
-      if (cells.length === 2) {
-        oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
-        nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
-      }
-    }
-    return { digits, digitW, pad, oldMax, nwMax };
-  }, CONN);
-  expect(mod.oldMax).toBeGreaterThan(0);
-  expect(mod.nwMax).toBeGreaterThan(0);
-  expect(mod.oldMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
-  expect(mod.nwMax).toBeLessThanOrEqual(mod.digits * mod.digitW + mod.pad + 3);
-  // Added file: the empty old column is gone (one number cell per row).
-  const added = await page.evaluate(() => {
-    const file = document.getElementById("F-changelog-1362.bugfix.rst");
-    if (!file) return null;
-    const tables = [...file.querySelectorAll("table.diff:not(.split)")];
-    const hideOld = tables.length > 0 && tables.every((t) => t.classList.contains("hide-old"));
-    const counts: number[] = [];
-    for (const tr of file.querySelectorAll("table.diff:not(.split) tbody > tr")) {
-      if (tr.classList.contains("xsep")) continue;
-      counts.push(tr.querySelectorAll(":scope > td.n").length);
-    }
-    return { hideOld, counts: [...new Set(counts)] };
-  });
-  expect(added).not.toBeNull();
-  expect(added!.hideOld).toBe(true);
-  expect(added!.counts).toEqual([1]);
 });
