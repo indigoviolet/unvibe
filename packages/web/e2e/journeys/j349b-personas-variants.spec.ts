@@ -1,12 +1,14 @@
 /**
- * J349b (#349 step 2): personas run on cards against the real service
- * (replay runner — scripted, no live spend).
+ * J349b (#349 step 2, #359 Clarity): personas run on cards against the
+ * real service (replay runner — scripted, no live spend).
  *
  * Choosing the built-in Second opinion on the central card stores its
  * version as a tab; switching to the persona tab shows its own text
  * under its own colour border; Asking on that text is answered by the
  * same persona (the thread carries it, the agent avatar wears its
- * colour). Frames land in `visual-tour/` for the owner to look at.
+ * colour). Choosing the built-in Clarity stores its own tab with the
+ * rewrite's citations intact. Frames land in `visual-tour/` for the
+ * owner to look at.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -23,6 +25,8 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 const PERSONA_ID = "second-opinion";
 const PERSONA_RGB = "14, 124, 134";
+const CLARITY_ID = "clarity";
+const CLARITY_RGB = "194, 65, 12";
 
 interface VariantBody {
   personaId: string;
@@ -178,6 +182,57 @@ test.describe("J349b persona versions", () => {
     await page.waitForTimeout(400);
     await checkLayout(page, "persona-version-1440-dark");
     await page.screenshot({ path: path.join(SHOTS, "persona-version-1440-dark.png") });
+    await page.emulateMedia({ colorScheme: "light" });
+  });
+
+  test("Clarity run on a card: tab with citations intact", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+
+    // The persona menu lists Clarity beside Second opinion.
+    const menuButton = page.locator('#C-central [data-persona-menu="central"]');
+    await expect(menuButton).toBeVisible({ timeout: 15_000 });
+    await menuButton.click();
+    const menu = page.locator('[data-persona-menu-list="central"]');
+    await expect(menu).toBeVisible();
+    await expect(menu.locator(`[data-persona-option="${CLARITY_ID}"]`)).toContainText("Clarity");
+    await menu.locator(`[data-persona-option="${CLARITY_ID}"]`).click();
+
+    // Guide + Second opinion + Clarity tabs; Clarity stores revision 1
+    // with no error.
+    const tabs = page.locator('[data-testid="versions-central"]');
+    await expect(tabs).toBeVisible({ timeout: 60_000 });
+    {
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        const variants = await centralVariants(svc, reviewId);
+        if (variants[CLARITY_ID]?.blocks.length) break;
+        if (Date.now() > deadline) throw new Error("clarity variant never stored");
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    const stored = (await centralVariants(svc, reviewId))[CLARITY_ID];
+    expect(stored.revision).toBe(1);
+    expect(stored.error ?? null).toBeNull();
+    expect(JSON.stringify(stored.blocks)).toContain("src-urllib3-connection");
+
+    // The Clarity tab shows the rewrite under its own colour border.
+    await tabs.locator(`[data-version-tab="${CLARITY_ID}"]`).click();
+    await expect(tabs.locator(`[data-version-tab="${CLARITY_ID}"]`)).toContainText("Clarity");
+    const card = page.locator("#C-central");
+    await expect(card).toContainText("reads more directly", { timeout: 15_000 });
+    const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(ring).toContain(CLARITY_RGB);
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "persona-clarity-1440-light");
+    await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(400);
+    await checkLayout(page, "persona-clarity-1440-dark");
+    await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
   });
 });

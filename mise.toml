@@ -346,6 +346,10 @@ run = "npm run build --workspace @unvibe/shared && UNVIBE_PI_LIVE=1 UNVIBE_ALLOW
 description = "Live panel check (#322 part 2): pi + muse-spark answers fixture questions across active repos, pilot first, $0.25 cap (never run by check)"
 run = "UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-panel-322.mjs"
 
+[tasks."test:live:persona-359"]
+description = "Live #359 lens check: one persona card turn on pi/muse-spark through the real pipeline (main's shared base, lens at the start of the turn), $0.10 cap, bundled demo only (never run by check)"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-persona-359.mjs"
+
 [tasks."demo:large:build"]
 description = "Live large-demo build (#309): pi + muse-spark over one owner-picked public PR, $1 cap, saves the cache (token spend, capped; never run by check)"
 run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/demo-large-build.mjs"

@@ -4106,3 +4106,70 @@ one-variant union today).
   `.dbar-group-summary`. Tour asserts range-diff is one line high
   with no clipped overflow, and both pickers keep their trigger
   width ±2px with and without the error.
+
+## Addendum: #359 — Built-in persona Clarity (branch `feat/359-clarity-persona`)
+
+- **Persona:** Clarity, built from the owner's code-explanation-rewriter
+  skill (owner-approved for the public repo). Lens =
+  `prompts/personas/clarity/lens.md` (skill + three references with
+  three Unvibe adaptations edited in: `[[…]]` citation tokens,
+  `:::` containers and code/d2 fences preserved exactly; ambiguity
+  preserved in the rewrite instead of asking a question; card task
+  defines the output, so output-only/ask-for-prose rules dropped).
+  `prompts/personas/clarity/evals.jsonl` keeps the skill's eval cases
+  as a human reference (no prompt test-runner exists). Card
+  instruction: "Rewrite this card's prose following your lens: the
+  same facts, scope, hedges and citations, clearer to an engineer.
+  If the card is already effective, return it unchanged."
+- **Seed:** second built-in in `defaultPersonas` (Second opinion,
+  Clarity), enabled by default. Clarity follows the main model at run
+  time (`followMain: true`, required boolean on `Persona`): the stored
+  `provider`/`model` is the static main fallback — display seed and
+  starting point for pinning — not what runs. Settings → Personas
+  shows "Main model (current)" with a checkbox to pin a specific
+  model (unchecked = explicit pick, validated like a role; a
+  main-following stored pick is exempt from the offered check). The
+  runtime seed copy is inline in `packages/shared/src/personas.ts`
+  (like Second opinion); a service test asserts it matches the
+  prompt file.
+- **Same-model lens (owner decision, option B):** Clarity's resolved
+  model equals main's, so persona turns fork main's shared L0 base.
+  The lens travels at the start of every persona turn's prompt
+  (`runInFork`: card, explain, ask, depth, examples, diagram —
+  uniformly, whatever the persona's model), not in a separate base.
+  Cost: no extra base build (never at open, never on first run);
+  the lens tokens ride each persona turn instead — cheaper than a
+  base build for the odd run, and the only correct shape under the
+  system-prompt-lens decision, which a per-persona base would have
+  kept but at one extra base build per same-model persona.
+- **Data format 4 → 5:** `Persona` gains required `followMain`; older
+  stored persona rows (no flag) need a reset.
+- Live check (owner-approved, $0.10 cap): `mise run
+  test:live:persona-359` runs one persona card turn on pi +
+  muse-spark-1.3-contributor through the real pipeline (main's
+  shared base, lens at the start of the turn). 2026-11-06: spend
+  $0.0056 of $0.10 (32k in / 160k cached-read / 34k cached-write /
+  10.5k out at catalogue rates), variant revision 1 with no error,
+  and the single stored paragraph ends with the lens's CLARITY-OK
+  marker — the model followed the turn lens. First attempt hit a
+  transient fork hiccup (no model spend, $0.0018 reader-only); the
+  fresh-session fallback's static MCP URL 404s by design, so any
+  fork failure on the probing pi runner is hard — pre-existing gap,
+  flagged separately.
+- Evidence: `packages/shared/test/personas.test.ts` (Clarity seed:
+  enabled, follows main, card instruction, colour, lens rules),
+  `packages/service/test/personas-349.test.ts` (seed counts),
+  j349 (built-ins seeded incl. followMain, pin/unpin UI) and j349b
+  (Clarity run stores its tab with citations intact),
+  new `packages/service/test/clarity-359.test.ts` (fake runner:
+  seed over HTTP, lens-file sync, offered-check exemption for a
+  main-following stored pick, composed prompt carries lens +
+  preservation rules + card instruction, Clarity run stores the
+  variant with citations intact on the main model, follows main when
+  the main model changes, and every turn kind (card, explain, ask,
+  depth, examples) carries the lens for both a same-model and a
+  different-model persona with no extra base).
+  Journeys: j349 (Clarity listed, follow-main UI) and j349b (Clarity
+  run stores its tab with citations intact) pass; frames in
+  /tmp/359-frames/ (Settings + menu + tab strip, 1440/960 x
+  light/dark) inspected.

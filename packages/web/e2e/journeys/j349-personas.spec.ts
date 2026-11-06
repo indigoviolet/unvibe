@@ -27,6 +27,7 @@ const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 interface PersonaBody {
   id: string;
   name: string;
+  followMain: boolean;
   provider: string;
   model: string;
   lens: string;
@@ -67,19 +68,28 @@ test.describe("J349 personas settings", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("built-in Second opinion is seeded and listed", async ({ page }) => {
+  test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    expect(list).toHaveLength(1);
+    expect(list).toHaveLength(2);
     expect(list[0]).toMatchObject({
       id: "second-opinion",
       name: "Second opinion",
+      followMain: false,
       provider: "codex",
       model: "gpt-6.1-sol",
       enabled: true,
     });
     expect(list[0].lens).toContain("second reader");
     expect(list[0].cardInstruction).toContain("check its claims against the code");
+    // Issue #359: Clarity follows the main model at run time.
+    expect(list[1]).toMatchObject({
+      id: "clarity",
+      name: "Clarity",
+      followMain: true,
+      enabled: true,
+    });
+    expect(list[1].lens).toContain("You are Clarity");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -88,6 +98,10 @@ test.describe("J349 personas settings", () => {
     await expect(row).toContainText("Second opinion");
     await expect(row).toContainText("codex/gpt-6.1-sol");
     await expect(row.getByTestId("persona-second-opinion-swatch")).toBeVisible();
+    const clarityRow = page.getByTestId("persona-clarity");
+    await expect(clarityRow).toBeVisible();
+    await expect(clarityRow).toContainText("Clarity");
+    await expect(clarityRow).toContainText("Main model (claude/claude-opus-5-5)");
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
 
@@ -96,6 +110,34 @@ test.describe("J349 personas settings", () => {
     await checkLayout(page, "personas-1440-dark");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
+  });
+
+  test("Clarity follows the main model until pinned", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    const row = page.getByTestId("persona-clarity");
+    await expect(row).toBeVisible();
+    await row.getByTestId("persona-clarity-edit").click();
+    await expect(page.getByTestId("persona-clarity-lens")).toBeVisible();
+    // Seeded following main: the box is checked, the pin fields hide.
+    await expect(page.getByTestId("persona-clarity-follow-main")).toBeChecked();
+    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
+    await expect(page.getByTestId("persona-clarity-model")).toHaveCount(0);
+    // Uncheck: the provider/model pickers come back (no CLIs on PATH,
+    // so the model list shows the adapter error — the saved pick below
+    // still applies). Re-check and save: still following main.
+    await page.getByTestId("persona-clarity-follow-main").click();
+    await expect(page.getByTestId("persona-clarity-provider")).toBeVisible();
+    await page.getByTestId("persona-clarity-follow-main").click();
+    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
+    await page.getByTestId("persona-clarity-save").click();
+    await expect(page.getByTestId("persona-clarity-lens")).toHaveCount(0);
+    const list = await personas(svc);
+    const clarity = list.find((p) => p.id === "clarity");
+    expect(clarity?.followMain).toBe(true);
+    await expect(row).toContainText("Main model (claude/claude-opus-5-5)");
   });
 
   test("edit form frame", async ({ page }) => {
@@ -142,6 +184,7 @@ test.describe("J349 personas settings", () => {
     const custom = {
       id: "perf-sceptic",
       name: "Performance sceptic",
+      followMain: false,
       provider: "claude",
       model: "claude-opus-5-5",
       lens: "You are a performance sceptic: you read every card asking what it costs at scale.",
@@ -152,7 +195,7 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(2);
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
@@ -191,10 +234,10 @@ test.describe("J349 personas settings", () => {
     await page.keyboard.press("Escape");
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
     await expect(row).toBeVisible();
-    // Confirm: the row goes and the API forgets it.
+    // Confirm: the row goes and the API forgets it (both built-ins stay).
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["second-opinion"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
   });
 });

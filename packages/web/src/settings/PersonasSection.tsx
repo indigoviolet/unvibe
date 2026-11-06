@@ -6,6 +6,9 @@
  *
  * The built-in Second opinion arrives seeded in fresh settings and is an
  * ordinary entry afterwards — editable and deletable like any other.
+ * The built-in Clarity (issue #359) follows the main model
+ * (`followMain`); the form shows that as "Main model" with the option
+ * to pin a specific one.
  * Every change PUTs the whole list through `saveSettings`, like every
  * other settings section.
  */
@@ -80,8 +83,9 @@ export function PersonasSection({
   return (
     <section aria-label="Personas" id="personas" style={{ scrollMarginTop: 12 }} data-testid="personas-section">
       <p className="hint">
-        Reviewer voices that can take on a card. Each names its model and lens; the colour is assigned
-        automatically. Second opinion is built in — edit or delete it like any other persona.
+        Reviewer voices that can take on a card. Each runs on its model — or on the main model —
+        with its lens; the colour is assigned automatically. Second opinion and Clarity are
+        built in — edit or delete them like any other persona.
       </p>
       {error ? (
         <p className="err" role="alert">
@@ -120,7 +124,9 @@ export function PersonasSection({
                   )}
                 </div>
                 <div className="hint">
-                  {p.provider}/{p.model}
+                  {p.followMain
+                    ? `Main model (${settings.main.provider}/${settings.main.model})`
+                    : `${p.provider}/${p.model}`}
                 </div>
               </div>
               <div className="frow" style={{ gap: 4, alignItems: "center" }}>
@@ -163,6 +169,7 @@ export function PersonasSection({
                 key={p.id}
                 initial={p}
                 providers={providers}
+                mainPick={settings.main}
                 submitLabel="Save"
                 testIdPrefix={`persona-${p.id}`}
                 onCancel={() => setEditingId(null)}
@@ -185,6 +192,7 @@ export function PersonasSection({
           <PersonaForm
             initial={null}
             providers={providers}
+            mainPick={settings.main}
             submitLabel="Add persona"
             testIdPrefix="persona-new"
             onCancel={() => setEditingId(null)}
@@ -223,6 +231,7 @@ export function PersonasSection({
 function PersonaForm({
   initial,
   providers,
+  mainPick,
   submitLabel,
   testIdPrefix,
   onCancel,
@@ -231,12 +240,15 @@ function PersonaForm({
   /** Edited persona, or null for a new one (id + colour assigned on save). */
   initial: Persona | null;
   providers: string[];
+  /** Current main pick: what a main-following persona runs on. */
+  mainPick: { provider: string; model: string };
   submitLabel: string;
   testIdPrefix: string;
   onCancel: () => void;
   onSave: (draft: Persona) => Promise<void>;
 }): React.JSX.Element {
   const [name, setName] = useState(initial?.name ?? "");
+  const [followMain, setFollowMain] = useState(initial?.followMain ?? false);
   const [provider, setProvider] = useState(initial?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(initial?.model ?? "");
   const [lens, setLens] = useState(initial?.lens ?? "");
@@ -273,7 +285,7 @@ function PersonaForm({
       setFormError("Name is required.");
       return;
     }
-    if (model.trim() === "") {
+    if (!followMain && model.trim() === "") {
       setFormError("Pick a model for this persona.");
       return;
     }
@@ -287,8 +299,12 @@ function PersonaForm({
       await onSave({
         id: initial?.id ?? "",
         name: name.trim(),
-        provider,
-        model,
+        followMain,
+        // A main-following persona stores the current main pick as its
+        // last explicit one (the starting point if a model is pinned
+        // later); it is not what runs.
+        provider: followMain ? mainPick.provider : provider,
+        model: followMain ? mainPick.model : model,
         lens,
         cardInstruction,
         enabled,
@@ -314,6 +330,26 @@ function PersonaForm({
           style={{ width: 360, maxWidth: "100%" }}
         />
       </Field>
+      <Field label="Model source" htmlFor={`${testIdPrefix}-follow-main`}>
+        <div className="frow" style={{ gap: 6, alignItems: "center" }}>
+          <Checkbox
+            id={`${testIdPrefix}-follow-main`}
+            testId={`${testIdPrefix}-follow-main`}
+            ariaLabel="Use main model"
+            checked={followMain}
+            onChange={setFollowMain}
+          />
+          <span className="hint">
+            Use main model (currently {mainPick.provider}/{mainPick.model})
+          </span>
+        </div>
+      </Field>
+      {followMain ? (
+        <p className="hint" style={{ margin: 0 }}>
+          Runs on the main model at run time; pin a specific model below by turning this off.
+        </p>
+      ) : (
+        <>
       <Field label="Provider" htmlFor={`${testIdPrefix}-provider`}>
         <Select
           id={`${testIdPrefix}-provider`}
@@ -346,6 +382,8 @@ function PersonaForm({
           />
         )}
       </Field>
+        </>
+      )}
       <Field
         label="Lens"
         htmlFor={`${testIdPrefix}-lens`}

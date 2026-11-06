@@ -5,6 +5,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_PERSONA_ID,
+  CLARITY_PERSONA,
+  CLARITY_PERSONA_ID,
   PERSONA_COLORS,
   SECOND_OPINION_PERSONA,
   defaultPersonas,
@@ -20,6 +22,7 @@ function valid(over: Partial<Persona> = {}): Persona {
   return {
     id: "perf-sceptic",
     name: "Performance sceptic",
+    followMain: false,
     provider: "codex",
     model: "gpt-6.1-sol",
     lens: "You are a performance sceptic.",
@@ -51,6 +54,10 @@ describe("validatePersona", () => {
     expect(validatePersona(valid({ enabled: "yes" as unknown as boolean }))).toContain(
       "persona enabled must be a boolean",
     );
+    expect(validatePersona(valid({ followMain: "yes" as unknown as boolean })))
+      .toContain("persona followMain must be a boolean (true = run on the main model)");
+    expect(validatePersona(valid({ followMain: undefined as unknown as boolean })))
+      .toContain("persona followMain must be a boolean (true = run on the main model)");
     expect(validatePersona(valid({ color: "#ff0000" }))[0]).toMatch(/persona color must be one of/);
   });
 
@@ -101,8 +108,9 @@ describe("slugifyPersonaName", () => {
 });
 
 describe("built-in Second opinion", () => {
-  it("is seeded with the check behaviour in lens + card instruction", () => {
+  it("is seeded with an explicit model", () => {
     expect(SECOND_OPINION_PERSONA.id).toBe(BUILT_IN_PERSONA_ID);
+    expect(SECOND_OPINION_PERSONA.followMain).toBe(false);
     expect(SECOND_OPINION_PERSONA.enabled).toBe(true);
     expect(SECOND_OPINION_PERSONA.lens).toContain("second reader");
     expect(SECOND_OPINION_PERSONA.lens).toContain("hypotheses, not conclusions");
@@ -114,8 +122,40 @@ describe("built-in Second opinion", () => {
   it("defaultPersonas returns a fresh seed list", () => {
     const a = defaultPersonas();
     const b = defaultPersonas();
-    expect(a).toEqual([SECOND_OPINION_PERSONA]);
+    expect(a).toEqual([SECOND_OPINION_PERSONA, CLARITY_PERSONA]);
     expect(a).not.toBe(b);
     expect(a[0]).not.toBe(SECOND_OPINION_PERSONA);
+    expect(a[1]).not.toBe(CLARITY_PERSONA);
+  });
+});
+
+describe("built-in Clarity", () => {
+  it("is seeded enabled, following the main model", () => {
+    expect(CLARITY_PERSONA.id).toBe(CLARITY_PERSONA_ID);
+    expect(CLARITY_PERSONA.id).toBe("clarity");
+    expect(CLARITY_PERSONA.name).toBe("Clarity");
+    expect(CLARITY_PERSONA.enabled).toBe(true);
+    // Follows the main model at run time; the stored pick is the
+    // static main fallback (display seed, starting point for pinning).
+    expect(CLARITY_PERSONA.followMain).toBe(true);
+    expect(CLARITY_PERSONA.provider).toBe("claude");
+    expect(CLARITY_PERSONA.model).toBe("claude-opus-5-5");
+    expect(CLARITY_PERSONA.cardInstruction).toBe(
+      "Rewrite this card's prose following your lens: the same facts, scope, hedges and citations, clearer to an engineer. If the card is already effective, return it unchanged.",
+    );
+    expect(CLARITY_PERSONA.color).toBe(PERSONA_COLORS[1]);
+    expect(validatePersona(CLARITY_PERSONA)).toEqual([]);
+  });
+
+  it("lens preserves citations, containers and fences and keeps ambiguity", () => {
+    expect(CLARITY_PERSONA.lens).toContain("[[diff:…]]");
+    expect(CLARITY_PERSONA.lens).toContain("[[code:…]]");
+    expect(CLARITY_PERSONA.lens).toContain("[[concept:…|…]]");
+    expect(CLARITY_PERSONA.lens).toContain("`:::` container");
+    expect(CLARITY_PERSONA.lens).toContain("d2 fences");
+    expect(CLARITY_PERSONA.lens).toContain("preserve the ambiguity");
+    expect(CLARITY_PERSONA.lens).not.toContain("ask one narrow question");
+    expect(CLARITY_PERSONA.lens).not.toContain("Output only the rewritten text");
+    expect(CLARITY_PERSONA.lens).not.toContain("ask for it");
   });
 });
