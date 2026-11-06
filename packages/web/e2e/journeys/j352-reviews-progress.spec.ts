@@ -176,11 +176,15 @@ test.describe("J352 reviews-list progress line", () => {
     // Title offset inside its own row: content above the list (readiness
     // banners that load late on slow runners) can move the whole row, which
     // is not a row jump.
-    const titleOffset = async (): Promise<number> => {
-      const [row, title] = await Promise.all([prRow.boundingBox(), prRow.locator(".cx2").first().boundingBox()]);
-      if (!row || !title) throw new Error("no row or title box");
-      return title.y - row.y;
-    };
+    // Both rects in one synchronous read: two separate boundingBox() calls
+    // can straddle a late banner and differ by its height (CI hit 67.5px).
+    const titleOffset = (): Promise<number> =>
+      prRow.evaluate((row) => {
+        const title = row.querySelector(".cx2");
+        if (!title) throw new Error("no title in row");
+        return title.getBoundingClientRect().top - row.getBoundingClientRect().top;
+      });
+    await page.waitForLoadState("networkidle");
     const idleTitleOffset = await titleOffset();
     let releasePost!: () => void;
     const postGate = new Promise<void>((resolve) => {
