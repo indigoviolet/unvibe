@@ -2,7 +2,7 @@
  * Thread-polish tour (issues #301, #302, #303, #304, #305): thread rest and
  * focus states, Ask thread with follow-up, comment thread, the Summarize
  * icon, thread-link vs glossary marks at rest, both previews open, and a
- * cited list — light and dark at 1440, plus 960 light.
+ * cited list — 1440px light (#362 default).
  * Screenshots land in `visual-tour/` for the owner to look at.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";

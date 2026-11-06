@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { tourCombos } from "../tour-matrix.js";
 import { selectText } from "../select-text.js";
 import { apiJson, git, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
 
@@ -286,14 +287,15 @@ test.describe("J222 document review", () => {
     await expect(page.locator("[data-outbox-md]")).toContainText("Please expand this part.");
     await page.keyboard.press("Escape");
 
-    // #254: tour frames of the document review's bar (Default, Studio and
-    // Console) with layout checks. The bar keeps #245's one height and
+    // #254: tour frames of the document review's bar (1440 light by
+    // default; studio/console-dark in the full matrix only) with layout
+    // checks. The bar keeps #245's one height and
     // centre line with the icon + name.
-    for (const combo of [
-      { theme: "default", scheme: "light", dark: false },
-      { theme: "studio", scheme: "light", dark: false },
-      { theme: "console", scheme: "dark", dark: true },
-    ] as const) {
+    for (const combo of tourCombos("docBar", [
+      { name: "default-light", theme: "default", scheme: "light", dark: false },
+      { name: "studio-light", theme: "studio", scheme: "light", dark: false },
+      { name: "console-dark", theme: "console", scheme: "dark", dark: true },
+    ] as const)) {
       await page.setViewportSize({ width: 1440, height: 900 });
       if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
       else await page.emulateMedia({ colorScheme: "light" });

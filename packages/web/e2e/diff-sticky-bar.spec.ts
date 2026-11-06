@@ -275,15 +275,16 @@ test("bar spans the full pane width in split view and after sideways scrolling",
 });
 
 test("bar wraps at narrow widths, keeping the fold pair on one row (#351, #353)", async ({ page }) => {
-  // #351 lets the bar wrap at narrow widths; #353 keeps the trailing
-  // Fold all / Unfold all pair together when it wraps.
+  // #362 named keep (diffStickyBar): the actions bar wraps at narrow
+  // widths, keeping the trailing Fold all / Unfold all pair together.
+  // #351 lets the bar wrap at narrow widths; #353 keeps the pair together.
   const wrap = await page.evaluate(
     () => getComputedStyle(document.querySelector("#right .dtool") as Element).flexWrap,
   );
   expect(wrap).toBe("wrap");
-  // Narrow window: the source pane becomes the overlay; the bar still
+  // Narrow desktop (960): the source pane becomes the overlay; the bar still
   // spans it and sits directly under the tab strip.
-  await page.setViewportSize({ width: 700, height: 800 });
+  await page.setViewportSize({ width: 960, height: 800 });
   const ok = await page.evaluate((key) => window.__revealSource?.(`diff:${key}:650`), CONN);
   expect(ok).toBe(true);
   await expect(page.locator(`[id="L-${CONN}-650"].hl`)).toBeVisible();

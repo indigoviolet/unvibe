@@ -1,6 +1,7 @@
 /**
  * J245 (#245): the review bar on a PR review with the boxed GitHub link
- * and a status icon inside it — one frame per theme, kept for review.
+ * and a status icon inside it — one frame at 1440 light (#362 default;
+ * studio and console-dark in the full matrix only).
  *
  * Fake `gh` reports OPEN + APPROVED (open has no state icon, so the bar
  * shows the single Approved icon inside the link box). The scratch repo
@@ -20,6 +21,7 @@ import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
 import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { tourCombos } from "../tour-matrix.js";
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -80,11 +82,11 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     for (const d of [repoDir, dataDir, logDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
-    { theme: "studio", scheme: "light", dark: false },
-    { theme: "default", scheme: "light", dark: false },
-    { theme: "console", scheme: "dark", dark: true },
-  ] as const) {
+  for (const combo of tourCombos("reviewbarPr", [
+    { name: "studio-light", theme: "studio", scheme: "light", dark: false },
+    { name: "default-light", theme: "default", scheme: "light", dark: false },
+    { name: "console-dark", theme: "console", scheme: "dark", dark: true },
+  ] as const)) {
     test(`PR bar with icon inside the link (${combo.theme} ${combo.scheme}, #245)`, async ({ page }) => {
       test.setTimeout(240_000);
       if (!svc) throw new Error("no service");
@@ -182,8 +184,8 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
 
   // Folded from review-bar.spec.ts (#357): one bar with a working home
   // control (#141), comments menu with the source pane closed, guide
-  // toggle spanning the source (#83), and no overflow at 800px.
-  test("one bar, home, comments with source closed, guide toggle, fits at 800", async ({
+  // toggle spanning the source (#83), and no overflow at narrow desktop.
+  test("one bar, home, comments with source closed, guide toggle, fits at 960", async ({
     page,
   }) => {
     test.setTimeout(240_000);
@@ -220,8 +222,8 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     await expect(page.locator("#page")).not.toHaveClass(/hide/);
     await expect(page.locator("#right")).not.toHaveClass(/hide/);
     await expect(page.locator("#handle")).toBeVisible();
-    // Narrow window: the bar never overflows.
-    await page.setViewportSize({ width: 800, height: 600 });
+    // Narrow desktop (#362 named keep): the bar never overflows.
+    await page.setViewportSize({ width: 960, height: 600 });
     const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await checkLayout(page, "reviewbar-pr-narrow");

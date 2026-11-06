@@ -3,7 +3,7 @@
  *
  * Two frames — a guide card holding a python block (seeded into the
  * demo review's problem card) and a document review with a python block
- * plus an unknown-language block — at 1440px and ~960px, light and dark.
+ * plus an unknown-language block — at 1440px light (#362 default).
  * Each frame waits for the token spans, runs `checkLayout`, and
  * screenshots for the owner. Requires `mise run build` first.
  * Run via `mise run visual-tour -- e2e/visual-tour-255.spec.ts`

@@ -37,7 +37,6 @@ test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const EXTENSION_DIR = fileURLToPath(new URL("../../../extension", import.meta.url));
 const SHOT = fileURLToPath(new URL("../test-results/extension-button.png", import.meta.url));
 const SHOT_CONFIRM_1440 = fileURLToPath(new URL("../test-results/open-confirm-1440.png", import.meta.url));
-const SHOT_CONFIRM_960 = fileURLToPath(new URL("../test-results/open-confirm-960.png", import.meta.url));
 const OWNER = "acme";
 const NAME = "app";
 const PR_NUMBER = 7;
@@ -231,11 +230,9 @@ test.describe("extension PR button (#322)", () => {
     await expect(page.getByRole("button", { name: "Start review" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Unvibe" })).toBeVisible();
-    // Frames for owner review: 1440 and 960, light (the context default).
+    // Frame for owner review: 1440 light (#362 default; no 960).
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: SHOT_CONFIRM_1440 });
-    await page.setViewportSize({ width: 960, height: 900 });
-    await page.screenshot({ path: SHOT_CONFIRM_960 });
     expect(JSON.stringify((await apiJson(svc, "GET", "/api/repos")).json)).toBe(
       JSON.stringify((reposBefore as { json: unknown }).json),
     );
@@ -359,15 +356,6 @@ test.describe("extension PR button (#322)", () => {
       await page.locator(".pr-conversation-header").screenshot({
         path: path.join(shotsDir, "extension-333-conversation-light.png"),
       });
-      // Same header, dark theme.
-      await page.emulateMedia({ colorScheme: "dark" });
-      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
-        "rgb(56, 48, 158)",
-      );
-      await page.locator(".pr-conversation-header").screenshot({
-        path: path.join(shotsDir, "extension-333-conversation-dark.png"),
-      });
-      await page.emulateMedia({ colorScheme: "light" });
 
       // Turbo-style morph drops the data attribute: the ARIA/structure
       // hooks still land the same single button in the header actions.

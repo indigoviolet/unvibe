@@ -5,7 +5,8 @@
  * are PATCHed onto the hidden hunks (what the hunk pass would write) so the
  * summary-flow geometry is exercised deterministically.
  *
- * Asserts, at 960px and 1440px in light and dark:
+ * Asserts, at 1440px light (#362 default; dark and 960 in the full
+ * matrix only):
  * - every hidden row shows its label, the first file's included (the label
  *   used to paint under the opaque `.dband` backing: present in the DOM,
  *   topmost at its centre);
@@ -22,6 +23,7 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { tourCombos } from "../tour-matrix.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { apiJson, createScratchReview, git } from "./journey-helpers.js";
@@ -157,12 +159,12 @@ test.describe("J283 hidden-hunk rows", () => {
     expect(rowTop - (fileHeaderBox.y + fileHeaderBox.height), `${step}: blank band above the first hidden row`).toBeLessThanOrEqual(2);
   }
 
-  for (const combo of [
+  for (const combo of tourCombos("hiddenRows", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
     { name: "960-dark", width: 960, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`hidden rows read as one flowing row (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
       if (!svc) throw new Error("no service");

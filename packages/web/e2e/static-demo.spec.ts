@@ -10,7 +10,8 @@
  * are read-only — all with no request beyond the static origin. Debug,
  * Version and Doctor stay hidden: no Settings tabs or routes for the
  * first two, no per-review debug page, no Doctor route or link. Plus the
- * demo banner geometry (own row at both widths, both demos) and the sync
+ * demo banner geometry (own row at 1440, both demos; 960 in the full
+ * matrix) and the sync
  * check (static build shows the same content as the real service in
  * replay mode) — merged from demo-banner.spec.ts and
  * static-demo-sync.spec.ts (#357 Q6).
@@ -28,6 +29,7 @@ import { selectText } from "./select-text.js";
 import { apiJson } from "./journeys/journey-helpers.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { startStaticServer, type StaticServer } from "./static-server.js";
+import { tourCombos } from "./tour-matrix.js";
 
 const DEMO_DIST = fileURLToPath(new URL("../dist-demo", import.meta.url));
 const SHOTS = fileURLToPath(new URL("../test-results", import.meta.url));
@@ -144,20 +146,6 @@ test("the recorded guide opens at /", async ({ page }) => {
   await expect(page.locator('[data-testid="demo-banner"]')).toContainText("Reset demo");
   await expect(page.locator("#reviewbar")).not.toContainText("Reset demo");
   await page.screenshot({ path: `${SHOTS}/demo-guide.png` });
-  expect(violations).toEqual([]);
-});
-
-test("the top bar fits at 390px with no horizontal scroll", async ({ page }) => {
-  const violations = await sameOriginOnly(page);
-  await page.setViewportSize({ width: 390, height: 700 });
-  await gotoDemo(page);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(
-    0,
-  );
-  const bar = await page.locator("#reviewbar").boundingBox();
-  expect(bar).not.toBeNull();
-  expect(bar!.x).toBeGreaterThanOrEqual(0);
-  expect(bar!.x + bar!.width).toBeLessThanOrEqual(390);
   expect(violations).toEqual([]);
 });
 
@@ -370,7 +358,7 @@ test("bundle stays reasonable (size report)", async () => {
  * Demo banner geometry (issue #341 follow-up; merged from
  * demo-banner.spec.ts): the banner must be a full, readable slim strip
  * that takes its own row in the layout — never overlapped by the
- * guide/source panes — in both demos and both widths.
+ * guide/source panes — in both demos (1440px; 960 in the full matrix).
  */
 async function expectFullBanner(page: Page): Promise<void> {
   const banner = page.locator('[data-testid="demo-banner"]');
@@ -396,9 +384,12 @@ async function expectFullBanner(page: Page): Promise<void> {
 }
 
 test.describe("demo banner takes its own row", () => {
-  for (const width of [1440, 960]) {
-    test(`in-app demo at ${width}px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
+  for (const combo of tourCombos("demoBanner", [
+    { name: "1440", width: 1440 },
+    { name: "960", width: 960 },
+  ])) {
+    test(`in-app demo at ${combo.width}px`, async ({ page }) => {
+      await page.setViewportSize({ width: combo.width, height: 900 });
       await page.goto("/review/demo");
       await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
         timeout: 30000,
@@ -409,9 +400,12 @@ test.describe("demo banner takes its own row", () => {
 });
 
 test.describe("demo banner on the static demo", () => {
-  for (const width of [1440, 960]) {
-    test(`static demo at ${width}px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
+  for (const combo of tourCombos("demoBannerStatic", [
+    { name: "1440", width: 1440 },
+    { name: "960", width: 960 },
+  ])) {
+    test(`static demo at ${combo.width}px`, async ({ page }) => {
+      await page.setViewportSize({ width: combo.width, height: 900 });
       await page.goto(`${origin()}/#/review/demo`);
       await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", {
         timeout: 30000,

@@ -10,6 +10,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { checkLayout } from "../layout-check.js";
+import { tourCombos } from "../tour-matrix.js";
 import { apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -159,12 +160,12 @@ test.describe("J225 start-page PR list", () => {
     for (const d of [repoDir, dataDir, logDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("startPrList", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
     { name: "960-dark", width: 960, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`pr lists read and share the column edge (${combo.name})`, async ({ page }) => {
       test.setTimeout(180_000);
       if (!svc) throw new Error("no service");

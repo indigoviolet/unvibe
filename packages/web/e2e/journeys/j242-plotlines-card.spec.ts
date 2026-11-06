@@ -186,9 +186,6 @@ test.describe("J242 plotlines card", () => {
     await box.scrollIntoViewIfNeeded();
     const shots = fileURLToPath(new URL("../../visual-tour", import.meta.url));
     await box.screenshot({ path: path.join(shots, "j343-plotlines-mixed-1440-light.png") });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await box.screenshot({ path: path.join(shots, "j343-plotlines-mixed-1440-dark.png") });
-    await page.emulateMedia({ colorScheme: "light" });
 
     // Clicking the partial row completes the marking instead, like the
     // diff's per-file box.

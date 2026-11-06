@@ -1,12 +1,14 @@
 /**
  * Visual tour against the REAL built service (owner: real testing
- * wherever possible). One spec, four passes (1440px and ~900px, light
- * and dark): the guide with a pinned card, a card opened from inside
- * a pinned card in the guide and in the diff, the diff in unified
- * and split, a deep-anchored card, every toolbar/file-tree menu, the
- * comments menu, every Settings tab, and the start page (Open-a-PR
- * row, PR list, Reviews list). Screenshots land in the
- * git-ignored `visual-tour/` folder for the owner to look at.
+ * wherever possible). Default matrix (#362): every scene runs once at
+ * 1440px, light, Default theme — dark, the non-default themes and 960px
+ * only for the NAMED_KEEPS in `tour-matrix.ts`, full matrix on demand
+ * via `UNVIBE_TOUR_MATRIX=full`. Scenes: the guide with a pinned card, a
+ * card opened from inside a pinned card in the guide and in the diff,
+ * the diff in unified and split, a deep-anchored card, every
+ * toolbar/file-tree menu, the comments menu, every Settings tab, and
+ * the start page (Open-a-PR row, PR list, Reviews list). Screenshots land
+ * in the git-ignored `visual-tour/` folder for the owner to look at.
  *
  * At every step, generic checks (no per-feature asserts), including
  * the #225 layout check (`layout-check.ts`) on every scene:
@@ -39,6 +41,7 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
 import { cpuThrottleFromEnv } from "./cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
 import { checkLayout } from "./layout-check.js";
+import { fullMatrix, tourCombos } from "./tour-matrix.js";
 import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
@@ -849,18 +852,18 @@ async function stepChecks(page: Page, step: string): Promise<void> {
   await checkMenus(page, step);
 }
 
-// The four passes share one service review, and every pass creates
+// The passes share one service review, and every pass creates
 // threads with the same quotes plus a global collapse-all toggle: run
 // them serially so one pass never fills, selects inside, collapses or
 // outboxes another pass's threads mid-shot.
 test.describe("visual tour passes", () => {
   test.describe.configure({ mode: "serial" });
 
-  for (const combo of [
+  for (const combo of tourCombos("main", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-  ] as const) {
+  ] as const)) {
   test(`visual tour (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(240_000);
@@ -1207,8 +1210,8 @@ test.describe("visual tour passes", () => {
     await page.getByRole("button", { name: "Unified" }).click();
 
     // Issue #285 gutter tour: a modified file and an added file in the
-    // narrow pane (the 960 combos run the guide beside the diff, so the
-    // diff pane is narrow with the source pane open), before and after a
+    // narrow pane (the named 960 keeps run the guide beside the diff, so
+    // the diff pane is narrow with the source pane open), before and after a
     // sideways scroll (the sticky gutter must hold). This review is
     // no-content, so it renders no expand controls — the hover and EOF
     // frames live in the dedicated #285 scene below. Each frame runs the
@@ -1407,7 +1410,7 @@ test.describe("visual tour passes", () => {
         // #328 standard settings row: help under the label on the
         // left, control alone on the right top-aligned with the
         // label, one number width, unit beside the field, hairlines
-        // between rows. Runs at 1440 and 960 in every pass.
+        // between rows. Runs at 1440 in every pass.
         const rows = await page.locator('section[aria-label="Limits"] .ui-field').evaluateAll((els) =>
           els.map((el) => {
             const rect = (n: Element | null): { x: number; y: number; w: number; right: number; bottom: number } | null => {
@@ -1596,7 +1599,7 @@ test.describe("visual tour diff expansion up (#265)", () => {
 
 /**
  * Gutter E2 frames (issue #285): the tight two-column gutter at rest
- * and on hover, plus the EOF case — light and dark at 1440px. Own
+ * and on hover, plus the EOF case — 1440px light by default (dark in the
  * scratch repo and agent-none service: the main tour review is
  * no-content, so it renders no expand controls (the J285 journey
  * asserts the same behaviour against the real service). The repo is the
@@ -1639,10 +1642,10 @@ test.describe("visual tour gutter E2 (#285)", () => {
     for (const d of [dirE2, dataE2]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("gutterE2", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`visual tour gutter E2 (#285, ${combo.name})`, async ({ page }) => {
       if (!svcE2) throw new Error("gutter E2 service not running");
       test.setTimeout(240_000);
@@ -1686,7 +1689,7 @@ test.describe("visual tour gutter E2 (#285)", () => {
 
 /**
  * Hidden-hunk rows (issue #283): a hidden-only first file and a mixed
- * file, at 1440px and 960px in light and dark. Own scratch repo and
+ * file, at 1440px light by default (960/dark in the full matrix only). Own scratch repo and
  * agent-none service (the main tour review has no hidden-only first
  * file): docs-only change first, then an imports hunk hidden beside a
  * shown code hunk, with long summaries PATCHed on (what the hunk pass
@@ -1804,11 +1807,11 @@ test.describe("visual tour hidden-hunk rows (#283)", () => {
     expect(Math.abs(hicBox.width - headerBox.width), `${step}: chevron width`).toBeLessThanOrEqual(1);
   }
 
-  for (const combo of [
+  for (const combo of tourCombos("hiddenHunk", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-  ] as const) {
+  ] as const)) {
     test(`visual tour hidden-hunk rows (#283, ${combo.name})`, async ({ page }) => {
       if (!svc283) throw new Error("hidden-hunk service not running");
       test.setTimeout(240_000);
@@ -1920,16 +1923,15 @@ test.describe("visual tour hide-level selector (#325)", () => {
 
 // Studio and Console themes (issues #196/#164): one scene set per
 
-// Studio and Console themes (issues #196/#164): one scene set per
-// theme in light and dark at 1440px, applied before first paint
-// through the boot script's localStorage mirror. The default theme's
-// scenes are the four passes above.
-for (const combo of [
+// Studio and Console themes (issues #196/#164): one 1440-light scene set
+// per theme (the #362 named keeps: Studio fonts, Console variables).
+// The default theme's scenes are the main passes above.
+for (const combo of tourCombos("theme", [
   { theme: "studio", name: "studio-1440-light", dark: false },
   { theme: "studio", name: "studio-1440-dark", dark: true },
   { theme: "console", name: "console-1440-light", dark: false },
   { theme: "console", name: "console-1440-dark", dark: true },
-] as const) {
+] as const)) {
   test(`visual tour theme (${combo.name})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(120_000);
@@ -2022,17 +2024,16 @@ for (const combo of [
   });
 }
 
-// Issue #281 (variant A Watermark): the start screen in Studio, light
-// and dark, at 1440 and 960 (the default theme's start scenes run in the
-// four main passes above). One frame per combo: the wordmark top-bar
-// logo plus the faint centred ball behind the lists. Resets the theme
-// to default, like the theme loop above.
-for (const combo of [
-  { width: 1440, dark: false },
-  { width: 1440, dark: true },
-  { width: 960, dark: false },
-] as const) {
-  const suffix = `studio-${combo.width}-${combo.dark ? "dark" : "light"}`;
+// Issue #281 (variant A Watermark): the start screen in Studio at
+// 1440px light by default (dark/960 in the full matrix only). One frame
+// per combo: the wordmark top-bar logo plus the faint centred ball behind
+// the lists. Resets the theme to default, like the theme loop above.
+for (const combo of tourCombos("startStudio", [
+  { name: "studio-1440-light", width: 1440, dark: false },
+  { name: "studio-1440-dark", width: 1440, dark: true },
+  { name: "studio-960-light", width: 960, dark: false },
+] as const)) {
+  const suffix = combo.name;
   test(`visual tour start studio (${suffix})`, async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(120_000);
@@ -2218,15 +2219,16 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 
 // Issue #259: non-default themes keep one representative width. The
 // loading scenes below assert label alignment and pane padding — not
-// narrow-layout behaviour — so the keeper is the widest (1440px).
-// Narrow-viewport coverage stays via the default theme's 960px passes.
-  for (const combo of [
-    { theme: "default", width: 1440, dark: false },
-    { theme: "default", width: 1440, dark: true },
-    { theme: "default", width: 960, dark: false },
-    { theme: "studio", width: 1440, dark: false },
-    { theme: "console", width: 1440, dark: false },
-  ] as const) {
+// narrow-layout or theme behaviour — so the slim keeper is the default
+// theme at the widest (1440px); Studio/Console/dark/960 run in the full
+// matrix only.
+  for (const combo of tourCombos("preparing", [
+    { name: "default-1440-light", theme: "default", width: 1440, dark: false },
+    { name: "default-1440-dark", theme: "default", width: 1440, dark: true },
+    { name: "default-960-light", theme: "default", width: 960, dark: false },
+    { name: "studio-1440-light", theme: "studio", width: 1440, dark: false },
+    { name: "console-1440-light", theme: "console", width: 1440, dark: false },
+  ] as const)) {
     const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
     test(`visual tour review preparing (${suffix})`, async ({ page }) => {
       if (!svc232) throw new Error("preparing service not running");
@@ -2768,15 +2770,15 @@ test("visual tour ask retry (#270)", async ({ page }) => {
       )
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
-    // One fresh Ask card per theme, so the two kill/restart cycles never
-    // share turn state.
+    // One fresh Ask card per theme in the full matrix (light only by
+    // default, so the kill/restart cycle never shares turn state).
     // Issue #341: selections and questions match the re-recorded ask
     // recordings (quote- or message-start), so the frames show real
     // answers instead of the kind fallback.
     for (const [theme, host, sel, first, followUp] of [
       ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
       ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
-    ] as const) {
+    ].filter(([t]) => t === "light" || fullMatrix())) {
       if (theme === "dark") {
         await page.emulateMedia({ colorScheme: "dark" });
         // Slow the stream again (the light cycle restarted fast): the
@@ -2838,7 +2840,8 @@ test("visual tour ask retry (#270)", async ({ page }) => {
 
 // Issue #271: while a follow-up answer is pending, the reply box stays
 // visible and editable (Send disabled with the reason as its tooltip)
-// and the indicator carries the plain label. One frame per theme: the
+// and the indicator carries the plain label. One frame per theme in the
+// full matrix (light only by default): the
 // pending turn with a typed draft in the box.
 test("visual tour ask pending draft (#271)", async ({ page }) => {
   test.setTimeout(420_000);
@@ -2870,7 +2873,7 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
     for (const [theme, host, sel, first, followUp] of [
       ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
       ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
-    ] as const) {
+    ].filter(([t]) => t === "light" || fullMatrix())) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
       await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
@@ -2914,7 +2917,8 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
 
 // Issue #293: an Ask thread with one follow-up — the reviewer's question
 // shows as a comment with the answer as the reply under it. One frame
-// while the follow-up streams and one when done, in light and dark.
+// while the follow-up streams and one when done, light by default (dark in
+// the full matrix).
 test("visual tour ask thread (#293)", async ({ page }) => {
   test.setTimeout(420_000);
   const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ask293-"));
@@ -2945,7 +2949,7 @@ test("visual tour ask thread (#293)", async ({ page }) => {
     for (const [theme, host, sel, first, followUp] of [
       ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
       ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
-    ] as const) {
+    ].filter(([t]) => t === "light" || fullMatrix())) {
       if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
       await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
       await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
@@ -3178,11 +3182,11 @@ test.describe("visual tour file tab (#81)", () => {
     rmSync(ftLog, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("fileTab", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-  ] as const) {
+  ] as const)) {
     test(`visual tour file tab (${combo.name})`, async ({ page }) => {
       if (!ftSvc) throw new Error("file-tab service not running");
       test.setTimeout(240_000);
@@ -3323,11 +3327,11 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     for (const d of [rcRepo, rcData, rcBin, rcLog]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("removeConfirm", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
     { name: "960-light", width: 960, dark: false },
-  ] as const) {
+  ] as const)) {
     test(`remove inline confirm on the worst-case row (${combo.name})`, async ({ page }) => {
       if (!rcSvc) throw new Error("remove-confirm service not running");
       test.setTimeout(240_000);
@@ -3433,10 +3437,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
   // the "✓ Confirmed" flash. Each scheme gets its own sacrificial
   // branch review — created here, so the worst-case row above survives
   // every combo and the tests stay order-independent.
-  for (const combo of [
+  for (const combo of tourCombos("removeFlash", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`remove confirmed flash (${combo.name})`, async ({ page }) => {
       if (!rcSvc) throw new Error("remove-confirm service not running");
       test.setTimeout(240_000);
@@ -3521,10 +3525,10 @@ test.describe("visual tour re-do guide (#345, #346)", () => {
     for (const d of [rdRepo, rdData]) rmSync(d, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("redo", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`re-do idle and confirming (${combo.name})`, async ({ page }) => {
       if (!rdSvc) throw new Error("re-do service not running");
       test.setTimeout(240_000);
@@ -3578,8 +3582,8 @@ test.describe("visual tour re-do guide (#345, #346)", () => {
 });
 
 /**
- * #311: the data-format reset notice, light and dark at 1440px and
- * 800px. Its own
+ * #311: the data-format reset notice, 1440px light and dark plus 960px
+ * light (the narrow keep: card/text-column 1px edge match). Its own
  * service on a seeded old-format data dir (a DB with no format stamp);
  * the notice is the whole page, so one frame per scheme is the scene.
  */
@@ -3653,11 +3657,11 @@ test.describe("data reset notice tour (#311)", () => {
     rmSync(noticeDataDir, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("dataReset", [
     { name: "1440-light", dark: false, width: 1440 },
     { name: "1440-dark", dark: true, width: 1440 },
-    { name: "800-light", dark: false, width: 800 },
-  ] as const) {
+    { name: "960-light", dark: false, width: 960 },
+  ] as const)) {
     test(`data reset notice (${combo.name})`, async ({ page }) => {
       if (!noticeSvc) throw new Error("notice service not running");
       test.setTimeout(120_000);
@@ -3782,10 +3786,10 @@ test.describe("visual tour version + access confirms (#346)", () => {
     rmSync(vcData, { recursive: true, force: true });
   });
 
-  for (const combo of [
+  for (const combo of tourCombos("versionAccess", [
     { name: "1440-light", width: 1440, dark: false },
     { name: "1440-dark", width: 1440, dark: true },
-  ] as const) {
+  ] as const)) {
     test(`version + access confirms (${combo.name})`, async ({ page }) => {
       if (!vcSvc) throw new Error("version-confirm service not running");
       test.setTimeout(240_000);
@@ -3983,7 +3987,10 @@ test.describe("since-B tour (#351)", () => {
     if (data351) rmSync(data351, { recursive: true, force: true });
   });
 
-  for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const) {
+  for (const combo of tourCombos("sinceB", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
     const suffix = combo.name;
     test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -4228,7 +4235,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
     if (data352) rmSync(data352, { recursive: true, force: true });
   });
 
-  for (const combo of [{ name: "1440-light", width: 1440, dark: false }]) {
+  for (const combo of tourCombos("sinceCommit", [{ name: "1440-light", width: 1440, dark: false }])) {
     const suffix = combo.name;
     test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -4550,7 +4557,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     }
   });
 
-  for (const combo of [{ name: "1440-light", width: 1440, dark: false }]) {
+  for (const combo of tourCombos("sinceOffer", [{ name: "1440-light", width: 1440, dark: false }])) {
     const suffix = combo.name;
     test(`since offer unchecked and checked (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");

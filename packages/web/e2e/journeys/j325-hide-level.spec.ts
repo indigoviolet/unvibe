@@ -196,12 +196,6 @@ test.describe("J325 hide-level selector", () => {
     await expect(selector).toContainText("Hiding 8");
     await expect(selector).toHaveAttribute("data-eye", "off");
 
-    // Frame: 1440 dark with hidden rows.
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.locator("button.hid").first().scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "test-results/j342-hidden-1440-dark.png" });
-    await page.emulateMedia({ colorScheme: "light" });
-
     // Clicking a citation to a hidden hunk still reveals it temporarily.
     await page.locator('.lk[data-refs="diff:src-urllib3-connection.py:80-88"]').first().click();
     await expect(page.locator(`[data-hunk="${CONN}:0"]`)).toBeVisible({ timeout: 15_000 });
