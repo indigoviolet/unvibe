@@ -499,8 +499,6 @@ test.describe("static-demo sync", () => {
     });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
     await expandAll();
-    const svcOrigin = syncSvc.origin;
-    const svcToken = syncSvc.token;
     await expect
       .poll(
         async () => {
