@@ -10,7 +10,7 @@
  * case). Repos are added in Settings, not here.
  */
 import { test, expect } from "./network-guard.js";
-import { openPopup, pickOption } from "./select.js";
+import { openPopup, pickOption, expectTriggerText } from "./select.js";
 
 async function gotoStart(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/");
@@ -417,4 +417,126 @@ test("fresh install: paste a PR URL, clone, repo selected, PR opens", async ({ p
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
   await expect(page.getByLabel("Repo", { exact: true })).toContainText("acme/app (cloned)");
   await expect(page.locator('[data-testid="no-repos"]')).toHaveCount(0);
+});
+
+// Merged from start-lists.spec.ts (#357 B4): PR lists in mock mode.
+// (The review-bar PR label link lives in J245 against the real service.)
+test("review requests split into direct and team, newest first", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.getByText("Requested of you", { exact: true })).toBeVisible();
+  await expect(page.getByText("Requested of your team")).toBeVisible();
+  await expect(page.getByText("Docs: clarify retry wording")).toHaveCount(1);
+  await expect(page.locator(".ci", { hasText: "Docs: clarify retry wording" })).not.toContainText("via docs");
+  const newer = await page.getByText("Docs: clarify retry wording").boundingBox();
+  const older = await page.getByText("Pool: reuse connections across redirects").boundingBox();
+  expect(newer?.y).toBeLessThan(older?.y ?? 0);
+  await expect(page.locator(".ci", { hasText: "Pool: reuse connections across redirects" })).toContainText("2h ago");
+  await expect(page.locator(".ci", { hasText: "CI: pin the lint action" })).not.toContainText("via core");
+});
+
+test("recency filter hides older rows in both groups and persists", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.getByText("CI: pin the lint action")).toBeVisible();
+  await pickOption(page, "Updated within", "Last day");
+  await expect(page.getByText("CI: pin the lint action")).toHaveCount(0);
+  await expect(page.locator('[data-testid="requested-team-empty"]')).toContainText(
+    "No PRs updated in the last day.",
+  );
+  await expect(page.getByText("Pool: reuse connections across redirects")).toBeVisible();
+  await pickOption(page, "Updated within", "All");
+  await expect(page.getByText("CI: pin the lint action")).toBeVisible();
+  await pickOption(page, "Updated within", "Last 2 weeks");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expectTriggerText(page, "Updated within", "Last 2 weeks");
+  await expect(page.getByText("Changelog: backfill old entries")).toHaveCount(0);
+});
+
+test("PR rows show the diff size without the file count, and omit it when unknown", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  const row = page.locator(".ci", { hasText: "Pool: reuse connections across redirects" });
+  await expect(row).toContainText("+545");
+  await expect(row).not.toContainText("files");
+  const unsized = page.locator(".ci", { hasText: "Changelog: backfill old entries" });
+  await expect(unsized).not.toContainText("+");
+  await expect(unsized).not.toContainText("files");
+});
+
+test("the PR label links to GitHub without opening the review", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  const link = page.getByRole("link", { name: "Open PR #5018 on GitHub" });
+  await expect(link).toHaveAttribute("href", "https://github.com/urllib3/urllib3/pull/5018");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noreferrer");
+  expect(await link.evaluate((el) => el.closest("button"))).toBeNull();
+});
+
+test("branches filter by last commit and show ages, Reviews stays unfiltered (#131)", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.locator(".ci", { hasText: "experiment/lazy-headers" })).toContainText("3d ago");
+  await pickOption(page, "Updated within", "Last day");
+  await expect(page.getByText("experiment/lazy-headers")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "fix-obs-fold", exact: true })).toBeVisible();
+  await expect(
+    page.locator('div[aria-label="Reviews"]').getByText("Unfold obsolete folded response header values"),
+  ).toBeVisible();
+});
+
+// Merged from start-block.spec.ts (#357 B4): filtered-lists block (#148).
+test("PR and branch lists form one block with the filter and refresh in its heading row", async ({
+  page,
+}) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  const block = page.getByTestId("pr-block");
+  await expect(block).toBeVisible();
+  await expect(block.getByRole("heading", { name: "PRs and branches" })).toBeVisible();
+  await expect(block.getByLabel("Updated within", { exact: true })).toBeVisible();
+  await expect(block.getByText("Updated within", { exact: true })).toHaveCount(0);
+  await expect(block.getByRole("heading", { name: "Reviews" })).toHaveCount(0);
+  const refresh = block.getByTestId("lists-refresh");
+  await expect(refresh).toHaveAttribute("title", /^Updated /);
+  await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("title", /refreshing/);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(refresh).toHaveAttribute("title", /^Updated /);
+});
+
+test("the recency filter empties lists inside the block with a way back", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  const block = page.getByTestId("pr-block");
+  await pickOption(page, "Updated within", "Last day");
+  await expect(block.getByTestId("requested-team-empty")).toContainText("No PRs updated in the last day.");
+  await block.getByTestId("requested-team-empty").getByRole("button", { name: "Show all" }).click();
+  await expectTriggerText(page, "Updated within", "All");
+  await expect(page.getByText("CI: pin the lint action")).toBeVisible();
+});
+
+// Merged from start-kept.spec.ts (#357 B4): kept lists (#90).
+test("reload shows kept rows before the changes request completes, then updates", async ({ page }) => {
+  await gotoStart(page);
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /^Updated /);
+  await expect(page.getByText("Unfold obsolete folded response header values").first()).toBeVisible();
+  await page.evaluate(() => localStorage.setItem("unvibe.mock.repoChangesHold", "1"));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(
+    page.getByText("Unfold obsolete folded response header values").first(),
+  ).toBeVisible();
+  await expect(page.locator('[data-testid="repo-lists-loading"]')).toHaveCount(0);
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /refreshing/);
+  await page.evaluate(() => localStorage.removeItem("unvibe.mock.repoChangesHold"));
+  await expect(page.getByText("Your PRs")).toBeVisible();
+  await expect(page.getByTestId("lists-refresh")).toHaveAttribute("title", /^Updated /);
+  await expect(
+    page.getByText("Unfold obsolete folded response header values").first(),
+  ).toBeVisible();
 });
