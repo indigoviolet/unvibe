@@ -111,6 +111,22 @@ test.describe("J266 scroll restore", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     // ("optional whitespace" is card-unique; "fast path" also appears
     // in seeded thread text, which would route in-thread under #273.)
+    // A previous test may have threaded this exact quote (same hazard):
+    // delete those threads through the API first (threads are comments)
+    // so the selection summons the toolbar.
+    {
+      const snapRes = await apiJson(svc!, "GET", `/api/reviews/${reviewId}`);
+      const anns = (
+        (snapRes.json as { annotations?: { id: string; anchor?: { quotedText?: string } }[] }).annotations ?? []
+      );
+      const seeded = new Set(["x-seed", "t-seed", "t-sglf", "t-sgperf", "t-diff"]);
+      for (const a of anns) {
+        if (!seeded.has(a.id) && (a.anchor?.quotedText ?? "").includes("optional whitespace")) {
+          const del = await apiJson(svc!, "DELETE", `/api/reviews/${reviewId}/comments/${a.id}`);
+          expect(del.status, `delete thread ${a.id}`).toBe(200);
+        }
+      }
+    }
     await selectText(page, "#C-central", "optional whitespace");
     const scroller = page.locator("#page");
     await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 5000 }).toBeGreaterThanOrEqual(0);
