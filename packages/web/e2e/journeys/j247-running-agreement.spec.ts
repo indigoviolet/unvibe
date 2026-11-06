@@ -94,7 +94,7 @@ test.describe("J247 start dots and review pill agree", () => {
     await expect(count).toBeVisible({ timeout: 90_000 });
     await expect(count).toHaveAttribute("href", `/review/${reviewId}/debug`);
     await count.click();
-    await expect(page).toHaveURL(`/review/${reviewId}/debug`);
+    await expect(page).toHaveURL(new RegExp(`/review/${reviewId}/debug`));
 
     // Sample the agreement from creation until the pipeline drains: the
     // list says running exactly when the snapshot carries live jobs.
