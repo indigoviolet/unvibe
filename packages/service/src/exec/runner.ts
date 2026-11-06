@@ -29,12 +29,13 @@ export interface CommandRunner {
 /** Real implementation: spawn and collect stdio. */
 export class RealCommandRunner implements CommandRunner {
   async run(cmd: string, opts: RunOptions): Promise<RunResult> {
-    // Opt-in performance traces (issue #356): one `exec <command>` span
-    // per child process. The command basename only — never arguments, env
-    // or cwd (review paths, tokens). A no-op while recording is off.
+    // Opt-in performance traces (issue #356): one `exec` span per child
+    // process. The raw recording may contain the full argv; the export
+    // scrubber keeps the command basename only. A no-op while off.
     const base = path.basename(cmd);
     const span = traceSpan(`exec ${isSafeToken(base) ? base : "other"}`, {
-      "exec.cmd": base,
+      "exec.cmd": cmd,
+      "exec.argv": opts.args.join(" ").slice(0, 4000),
     });
     try {
       // A missing cwd surfaces from spawn as a bare ENOENT, which reads as

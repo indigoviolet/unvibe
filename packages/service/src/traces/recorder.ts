@@ -1,29 +1,45 @@
 /**
  * Opt-in performance-trace recorder (issue #356).
  *
- * OpenTelemetry only: spans are created through the OTel JS SDK
- * (`BasicTracerProvider` from `@opentelemetry/sdk-trace-base`, ids and
- * W3C trace-context propagation from `@opentelemetry/api`/`core`) and
- * stored as OTLP/JSON span objects, one per line, in
- * `<dataDir>/traces/spans.jsonl`. No profilers, no auto-instrumentation
- * packages: every seam (HTTP, jobs, child processes, SQLite, milestones)
- * records manual spans through this recorder, so attributes are
- * scrub-by-construction (see `scrub.ts`) instead of captured-then-stripped.
+ * OpenTelemetry only: spans come from the OTel JS SDK plus
+ * auto-instrumentations for HTTP, Fastify, undici (fetch) and `fs`
+ * (`registerInstrumentations`), with manual spans only where no
+ * instrumentation exists — jobs, SQLite, the ingest/refresh/
+ * open-to-first-card milestones, and child processes (no child_process
+ * instrumentation exists). Stored spans are RAW: whatever the
+ * instrumentations capture (URLs, query strings, headers, args, fs
+ * paths, argv, env) is written as-is to `<dataDir>/traces/spans.jsonl`.
+ * Scrubbing happens in a processor ON EXPORT (see `scrub.ts`:
+ * `scrubExportedSpan`), and the canary leak test runs against the
+ * exported file.
  *
- * Off by default. While off there is no exporter running and no span
- * storage — `startSpan` returns a no-op handle without touching the SDK,
- * so the cost is one boolean check. Storage is kept for as long as
- * recording is on: no time window, no rotation. A 256 MB safety cap
+ * Off by default. While off a toggle sampler drops every span before
+ * recording (no exporter running, no span storage), and manual seams
+ * return no-ops without touching the SDK. Storage is kept for as long
+ * as recording is on: no time window, no rotation. A 256 MB safety cap
  * stops recording with a visible notice (`capped` in the status) rather
  * than deleting older data.
  */
 import fs from "node:fs";
 import { context, propagation, SpanKind, type Span } from "@opentelemetry/api";
-import { W3CTraceContextPropagator } from "@opentelemetry/core";
-import { BasicTracerProvider, type ReadableSpan, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import {
+  BasicTracerProvider,
+  SamplingDecision,
+  type Sampler,
+  type SamplingResult,
+  type ReadableSpan,
+  type SpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify";
+import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
+import { FsInstrumentation } from "@opentelemetry/instrumentation-fs";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import type { OtlpSpan, TraceExport, TraceStatusResponse } from "@unvibe/shared";
 import { ensureTracesDir, spansFile } from "./paths.js";
-import { makeTraceHasher, scrubAttribute } from "./scrub.js";
+import { scrubExportedSpan } from "./scrub.js";
 
 /** Safety cap: stop recording past this many stored bytes (no deletion). */
 export const TRACE_SAFETY_CAP_BYTES = 256 * 1024 * 1024;
@@ -37,10 +53,9 @@ const NOOP_HANDLE: SpanHandle = {
   end() {},
 };
 
-/** Live span: set scrubbed attributes, then end it. */
+/** Live span: set attributes, then end it. Values are stored RAW. */
 export interface SpanHandle {
   setAttribute(key: string, value: string | number | boolean): void;
-  /** Replace the span name (must stay scrubbed: operation + safe tokens). */
   rename(name: string): void;
   end(extra?: Record<string, string | number | boolean>): void;
 }
@@ -51,24 +66,17 @@ export interface SpanParent {
   spanId: string;
 }
 
-/** Browser batch entry (see the web `traceBeacon`: server scrubs here). */
+/** Raw browser batch entry (validated, stored as-is; scrubbed on export). */
 export interface BrowserSpanBatch {
   spans: {
-    /** "document-load" | "fetch" | "interaction" — anything else rejected. */
     kind: string;
-    /** Page path or fetch pathname (hashed server-side, never stored). */
-    path?: string;
-    /** HTTP method for fetch spans (kept only as a safe token). */
-    method?: string;
-    /** HTTP status for fetch spans. */
-    status?: number;
-    /** Client-relative start (ms) and duration (ms). */
-    startMs: number;
-    durationMs: number;
-    /** W3C ids from the browser SDK; regenerated when malformed. */
-    traceId?: string;
-    spanId?: string;
+    traceId: string;
+    spanId: string;
     parentSpanId?: string;
+    name?: string;
+    startMs?: number;
+    durationMs?: number;
+    attributes?: Record<string, string | number | boolean>;
   }[];
 }
 
@@ -91,98 +99,133 @@ const HEX16 = /^[0-9a-f]{16}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
 
 /**
- * Module-global recorder (mirrors `telemetry/sentry.ts`'s active
- * reporter): seams deep in the tree (job queue, command runner, SQLite
- * wrapper) record through here without threading a dependency through
- * every constructor. Null in tests and when the app never wired one —
- * every seam treats that as "off".
+ * One shared SDK per process (production has one recorder; tests swap
+ * targets): toggling recording flips the sampler, never the plumbing.
+ * Auto-instrumentations register once against the shared provider, so
+ * recorder churn in tests cannot double-patch modules.
  */
-let active: TraceRecorder | null = null;
-
-export function setActiveRecorder(recorder: TraceRecorder | null): void {
-  active = recorder;
-}
-
-export function getActiveRecorder(): TraceRecorder | null {
-  return active;
-}
-
-/**
- * Start a span on the active recorder, or a no-op when recording is
- * off/unwired. Names must already be scrubbed; attributes are scrubbed
- * by the recorder.
- */
-export function traceSpan(
-  name: string,
-  attrs: Record<string, string | number | boolean> = {},
-  parent?: SpanParent,
-  kind: SpanKind = SpanKind.INTERNAL,
-): SpanHandle {
-  return active?.startSpan(name, attrs, parent, kind) ?? NOOP_HANDLE;
-}
-
-/**
- * Parse an incoming W3C `traceparent` header into a span parent.
- * Malformed values yield undefined (a root span), never a throw.
- */
-export function traceparentOf(header: unknown): SpanParent | undefined {
-  if (typeof header !== "string") return undefined;
-  const parts = header.split("-");
-  if (parts.length < 4 || parts[0] !== "00") return undefined;
-  const [, traceId, spanId] = parts;
-  if (!traceId || !HEX32.test(traceId) || !spanId || !HEX16.test(spanId)) return undefined;
-  return { traceId, spanId };
-}
-
+let sharedProvider: BasicTracerProvider | null = null;
+let autoInstrumented = false;
+let recordingOn = false;
+let activeTarget: TraceRecorder | null = null;
 let propagatorInstalled = false;
 
-export class TraceRecorder {
-  private provider: BasicTracerProvider | null = null;
-  private recording = false;
-  private hitCap = false;
-  private readonly hash = makeTraceHasher();
-  private spansSinceCheck = 0;
-  private spanCount = 0;
+class ToggleSampler implements Sampler {
+  shouldSample(): SamplingResult {
+    return {
+      decision: recordingOn ? SamplingDecision.RECORD_AND_SAMPLED : SamplingDecision.NOT_RECORD,
+    };
+  }
+  toString(): string {
+    return "ToggleSampler";
+  }
+}
 
-  constructor(private readonly dataDir: string) {
-    // One global propagator per process: repeats log a warning.
+/**
+ * Build the shared provider and register auto-instrumentations (HTTP,
+ * Fastify, undici, fs). Idempotent: one provider and one registration
+ * per process, so recorder churn in tests cannot double-patch modules.
+ * Called at entry prelude time (see `bootstrap.ts`) so load-time hooks
+ * install before the instrumented modules load; also called lazily from
+ * `setEnabled` for contexts that never import the prelude (tests).
+ */
+let contextManagerInstalled = false;
+
+export function ensureTracingSetup(): BasicTracerProvider {
+  // Real async context (the API default is a no-op manager, under which
+  // `context.with()` cannot propagate — suppression and trace parenting
+  // silently stop working). The global *tracer* provider stays untouched.
+  if (!contextManagerInstalled) {
+    contextManagerInstalled = true;
+    context.setGlobalContextManager(new AsyncLocalStorageContextManager());
+  }
+  return sharedTracerProvider();
+}
+
+function sharedTracerProvider(): BasicTracerProvider {
+  if (!sharedProvider) {
     if (!propagatorInstalled) {
       propagatorInstalled = true;
       propagation.setGlobalPropagator(new W3CTraceContextPropagator());
     }
+    sharedProvider = new BasicTracerProvider({
+      sampler: new ToggleSampler(),
+      spanProcessors: [new FileSpanProcessor((span) => activeTarget?.storeRawSpan(span))],
+    });
+  }
+  if (!autoInstrumented) {
+    autoInstrumented = true;
+    registerInstrumentations({
+      tracerProvider: sharedProvider,
+      instrumentations: [
+        new HttpInstrumentation(),
+        new FastifyInstrumentation(),
+        new UndiciInstrumentation(),
+        new FsInstrumentation(),
+      ],
+    });
+  }
+  return sharedProvider;
+}
+
+export class TraceRecorder {
+  private spansSinceCheck = 0;
+  private spanCount = 0;
+
+  constructor(private readonly dataDir: string) {
     this.spanCount = countStoredSpans(dataDir);
   }
 
   get enabled(): boolean {
-    return this.recording;
+    return recordingOn && activeTarget === this;
   }
 
   get capped(): boolean {
-    return this.hitCap;
+    try {
+      return currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES;
+    } catch {
+      return false;
+    }
   }
 
   /** Start recording (Debug switch on). Idempotent. */
   setEnabled(on: boolean): void {
-    if (on === this.recording) return;
     if (on) {
       ensureTracesDir(this.dataDir);
-      this.provider = new BasicTracerProvider();
-      this.provider.addSpanProcessor(new FileSpanProcessor((s) => this.store(s)));
-      this.recording = true;
-      this.hitCap = currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES;
-      if (this.hitCap) this.recording = false;
+      sharedTracerProvider();
+      if (currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES) {
+        // Over the cap: stay off with a visible notice (status.capped).
+        if (activeTarget === this) {
+          activeTarget = null;
+          recordingOn = false;
+        }
+        return;
+      }
+      this.activate();
     } else {
-      this.recording = false;
-      const p = this.provider;
-      this.provider = null;
-      void p?.shutdown().catch(() => {});
+      this.deactivate();
+    }
+  }
+
+  /** Become the process-wide recording target (module-global by design). */
+  private activate(): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- the active target IS this recorder
+    activeTarget = this;
+    recordingOn = true;
+  }
+
+  /** Release the process-wide target when it is this recorder. */
+  private deactivate(): void {
+    if (activeTarget === this) {
+      activeTarget = null;
+      recordingOn = false;
     }
   }
 
   /**
-   * Start a span. The name must already be scrubbed (operation + safe
-   * tokens only); attributes are scrubbed here. Returns a no-op when
-   * recording is off, without touching the SDK.
+   * Start a manual span (jobs, SQLite, milestones, child processes).
+   * Attributes are stored RAW; the export scrubber anonymizes. Returns
+   * a no-op when recording is off, without touching the SDK.
    */
   startSpan(
     name: string,
@@ -190,69 +233,79 @@ export class TraceRecorder {
     parent?: SpanParent,
     kind: SpanKind = SpanKind.INTERNAL,
   ): SpanHandle {
-    const provider = this.provider;
-    if (!this.recording || !provider) return NOOP_HANDLE;
-    const tracer = provider.getTracer("unvibe", "0.0.15");
+    if (!this.enabled) return NOOP_HANDLE;
+    const tracer = sharedTracerProvider().getTracer("unvibe", "0.0.15");
     let ctx = context.active();
     if (parent && HEX32.test(parent.traceId) && HEX16.test(parent.spanId)) {
       const extracted = propagation.extract(ctx, { traceparent: `00-${parent.traceId}-${parent.spanId}-01` });
       ctx = extracted ?? ctx;
     }
     const span = tracer.startSpan(name, { kind }, ctx);
-    for (const [k, v] of Object.entries(attrs)) {
-      span.setAttribute(k, scrubAttribute(this.hash, k, v));
-    }
-    return new LiveSpan(this, span);
+    for (const [k, v] of Object.entries(attrs)) span.setAttribute(k, v);
+    return new LiveSpan(span);
   }
 
   /**
-   * Store one finished SDK span as an OTLP/JSON line. Stops recording
-   * (with `capped`) past the safety cap instead of deleting anything.
+   * Append one finished span (SDK or browser) to this recorder's store.
+   * The write runs unsampled (`suppressTracing`): without it the store's
+   * own file IO would be captured by the fs instrumentation and recurse
+   * until the stack overflows and recording silently stops.
    */
-  private store(span: ReadableSpan): void {
-    if (!this.recording) return;
-    if (this.spansSinceCheck++ % SIZE_CHECK_EVERY === 0 && currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES) {
-      this.hitCap = true;
-      this.setEnabled(false);
+  storeRawSpan(span: ReadableSpan): void {
+    if (!recordingOn || activeTarget !== this) return;
+    if (this.spansSinceCheck++ % SIZE_CHECK_EVERY === 0 && this.cappedNow()) {
+      activeTarget = null;
+      recordingOn = false;
       return;
     }
-    const otlp = toOtlp(span);
     try {
-      fs.appendFileSync(spansFile(this.dataDir), `${JSON.stringify(otlp)}\n`, "utf8");
+      const line = `${JSON.stringify(toOtlp(span))}\n`;
+      context.with(suppressTracing(context.active()), () => {
+        fs.appendFileSync(spansFile(this.dataDir), line, "utf8");
+      });
       this.spanCount++;
     } catch {
       // A full disk stops recording rather than crashing the service.
-      this.hitCap = true;
-      this.setEnabled(false);
+      activeTarget = null;
+      recordingOn = false;
+    }
+  }
+
+  /** Size check without feeding the check itself back into the store. */
+  private cappedNow(): boolean {
+    try {
+      return context.with(suppressTracing(context.active()), () => currentBytes(this.dataDir))
+        >= TRACE_SAFETY_CAP_BYTES;
+    } catch {
+      return false;
     }
   }
 
   /**
-   * Ingest browser spans (POSTed by the web SDK beacon). The browser
-   * sends timing + opaque path/method under its own W3C ids; the server
-   * stores them with scrubbed attributes, keeping the browser's trace
-   * ids so one trace links browser and service spans (the service HTTP
-   * span joins as a child via the `traceparent` header). The service
-   * runs on the same machine as the browser, so client epoch-millis
-   * anchor directly. Malformed entries are rejected, never stored.
+   * Ingest browser spans (POSTed by the web SDK beacon). Entries are
+   * validated for shape and stored RAW under the browser's trace ids;
+   * the export scrubber anonymizes. Malformed entries are rejected.
    */
   ingestBrowser(batch: BrowserSpanBatch): { accepted: number; rejected: number } {
-    if (!this.recording) return { accepted: 0, rejected: batch.spans?.length ?? 0 };
+    if (!this.enabled) return { accepted: 0, rejected: batch.spans?.length ?? 0 };
     let accepted = 0;
     let rejected = 0;
     for (const entry of batch.spans ?? []) {
-      const otlp = scrubBrowserSpan(this.hash, entry);
+      const otlp = toBrowserOtlp(entry);
       if (!otlp) {
         rejected++;
         continue;
       }
       try {
-        fs.appendFileSync(spansFile(this.dataDir), `${JSON.stringify(otlp)}\n`, "utf8");
+        const line = `${JSON.stringify(otlp)}\n`;
+        context.with(suppressTracing(context.active()), () => {
+          fs.appendFileSync(spansFile(this.dataDir), line, "utf8");
+        });
         this.spanCount++;
         accepted++;
       } catch {
-        this.hitCap = true;
-        this.setEnabled(false);
+        activeTarget = null;
+        recordingOn = false;
         rejected++;
       }
     }
@@ -260,39 +313,58 @@ export class TraceRecorder {
   }
 
   status(): TraceStatusResponse {
+    const enabled = this.enabled;
     return {
-      recording: this.recording,
+      recording: enabled,
       spans: this.spanCount,
-      bytes: currentBytes(this.dataDir),
-      capped: this.hitCap,
+      bytes: this.unsampledBytes(),
+      capped: !enabled && this.capped,
     };
   }
 
+  /** Store size without capturing the check itself as a span. */
+  private unsampledBytes(): number {
+    try {
+      return context.with(suppressTracing(context.active()), () => currentBytes(this.dataDir));
+    } catch {
+      return 0;
+    }
+  }
+
   /**
-   * Empty the store (Debug → Clear). Keeps recording on when it is on,
-   * and lifts the safety cap so toggling the switch records again.
+   * Empty the store (Debug → Clear). Keeps recording on when it is on;
+   * the cap re-evaluates from the emptied store.
    */
   clear(): void {
     try {
-      fs.rmSync(spansFile(this.dataDir), { force: true });
+      context.with(suppressTracing(context.active()), () => {
+        fs.rmSync(spansFile(this.dataDir), { force: true });
+      });
     } catch {
       // Missing file clears to the same empty state.
     }
     this.spanCount = 0;
     this.spansSinceCheck = 0;
-    this.hitCap = currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES;
   }
 
-  /** Everything recorded so far, as OTLP JSON (Jaeger/Perfetto-openable). */
+  /**
+   * Everything recorded so far, scrubbed for handoff (Jaeger/Perfetto).
+   * The local file stays raw; only the export is anonymized.
+   */
   exportOtlp(): TraceExport {
     const spans: OtlpSpan[] = [];
+    let text = "";
     try {
-      const text = fs.readFileSync(spansFile(this.dataDir), "utf8");
+      text = context.with(suppressTracing(context.active()), () =>
+        fs.readFileSync(spansFile(this.dataDir), "utf8"),
+      );
       for (const line of text.split("\n")) {
         if (!line.trim()) continue;
         try {
           const parsed = JSON.parse(line) as OtlpSpan;
-          if (typeof parsed.traceId === "string" && typeof parsed.spanId === "string") spans.push(parsed);
+          if (typeof parsed.traceId === "string" && typeof parsed.spanId === "string") {
+            spans.push(scrubExportedSpan(parsed));
+          }
         } catch {
           // A torn last line (crash mid-append) is skipped, not fatal.
         }
@@ -312,59 +384,45 @@ export class TraceRecorder {
 }
 
 class LiveSpan implements SpanHandle {
-  constructor(
-    private readonly recorder: TraceRecorder,
-    private readonly span: Span,
-  ) {}
+  constructor(private readonly span: Span) {}
   setAttribute(key: string, value: string | number | boolean): void {
-    this.span.setAttribute(key, scrubAttribute(this.recorder["hash"], key, value));
+    this.span.setAttribute(key, value);
   }
   rename(name: string): void {
     this.span.updateName(name);
   }
   end(extra: Record<string, string | number | boolean> = {}): void {
-    for (const [k, v] of Object.entries(extra)) {
-      this.span.setAttribute(k, scrubAttribute(this.recorder["hash"], k, v));
-    }
+    for (const [k, v] of Object.entries(extra)) this.span.setAttribute(k, v);
     this.span.end();
   }
 }
 
-/** HTTP methods worth recording; anything else is dropped, never stored. */
-const KNOWN_METHODS = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]);
-
-/** Validate + scrub one browser batch entry into a storable OTLP span. */
-function scrubBrowserSpan(
-  hash: (kind: string, value: string) => string,
-  entry: BrowserSpanBatch["spans"][number],
-): OtlpSpan | null {
-  if (entry.kind !== "document-load" && entry.kind !== "fetch" && entry.kind !== "interaction") return null;
+/** Validate one browser batch entry into a storable RAW OTLP span. */
+function toBrowserOtlp(entry: BrowserSpanBatch["spans"][number]): OtlpSpan | null {
+  if (typeof entry.kind !== "string" || entry.kind === "") return null;
   if (!entry.traceId || !HEX32.test(entry.traceId) || !entry.spanId || !HEX16.test(entry.spanId)) return null;
-  if (!Number.isFinite(entry.startMs) || !Number.isFinite(entry.durationMs)) return null;
-  if (entry.durationMs < 0 || entry.durationMs > 3_600_000) return null;
-  const startNs = Math.round(entry.startMs * 1e6);
+  const startMs = entry.startMs ?? Date.now();
+  const durationMs = entry.durationMs ?? 0;
+  if (!Number.isFinite(startMs) || !Number.isFinite(durationMs)) return null;
+  if (durationMs < 0 || durationMs > 3_600_000) return null;
+  const startNs = Math.round(startMs * 1e6);
   if (!Number.isFinite(startNs) || startNs <= 0) return null;
-  const attributes: OtlpSpan["attributes"] = [];
-  // Method is an allowlist enum: a safe-token-shaped hostile value must
-  // not be stored verbatim (a free-text method is dropped, not hashed —
-  // a hash of it would still group attacker-chosen values).
-  if (typeof entry.method === "string" && KNOWN_METHODS.has(entry.method.toUpperCase())) {
-    attributes.push({ key: "http.method", value: { stringValue: entry.method.toUpperCase() } });
-  }
-  if (entry.status !== undefined && Number.isFinite(entry.status)) {
-    attributes.push({ key: "http.status_code", value: { intValue: String(Math.round(entry.status)) } });
-  }
-  if (entry.path !== undefined) {
-    const hashed = scrubAttribute(hash, "browser.path", entry.path);
-    attributes.push({ key: "browser.path", value: { stringValue: String(hashed) } });
-  }
+  const attributes = Object.entries(entry.attributes ?? {}).map(([key, value]) => ({
+    key,
+    value:
+      typeof value === "number" && Number.isFinite(value)
+        ? Number.isInteger(value)
+          ? { intValue: String(value) }
+          : { doubleValue: value }
+        : { stringValue: String(value) },
+  }));
   const out: OtlpSpan = {
     traceId: entry.traceId,
     spanId: entry.spanId,
-    name: `browser ${entry.kind}`,
-    kind: 1,
+    name: entry.name ?? `browser ${entry.kind}`,
+    kind: 0,
     startTimeUnixNano: String(startNs),
-    endTimeUnixNano: String(startNs + Math.round(entry.durationMs * 1e6)),
+    endTimeUnixNano: String(startNs + Math.round(durationMs * 1e6)),
     attributes,
   };
   if (entry.parentSpanId && HEX16.test(entry.parentSpanId)) out.parentSpanId = entry.parentSpanId;
@@ -380,7 +438,9 @@ function toOtlp(span: ReadableSpan): OtlpSpan {
         ? Number.isInteger(value)
           ? { intValue: String(value) }
           : { doubleValue: value }
-        : { stringValue: String(value) },
+        : Array.isArray(value)
+          ? { stringValue: value.map(String).join(",") }
+          : { stringValue: String(value) },
   }));
   const out: OtlpSpan = {
     traceId: ctx.traceId,
@@ -391,7 +451,7 @@ function toOtlp(span: ReadableSpan): OtlpSpan {
     endTimeUnixNano: String(Math.round(span.endTime[0] * 1e9 + span.endTime[1] / 1e6)),
     attributes,
   };
-  const parentId = span.parentSpanId;
+  const parentId = span.parentSpanContext?.spanId;
   if (typeof parentId === "string" && HEX16.test(parentId) && parentId !== "0000000000000000") {
     out.parentSpanId = parentId;
   }
@@ -419,3 +479,34 @@ function countStoredSpans(dataDir: string): number {
     return 0;
   }
 }
+
+/**
+ * Module-global active recorder (mirrors `telemetry/sentry.ts`'s active
+ * reporter): seams deep in the tree record through here without threading
+ * a dependency through every constructor. Null in tests and when the app
+ * never wired one — every seam treats that as "off".
+ */
+let active: TraceRecorder | null = null;
+
+export function setActiveRecorder(recorder: TraceRecorder | null): void {
+  active = recorder;
+}
+
+export function getActiveRecorder(): TraceRecorder | null {
+  return active;
+}
+
+/**
+ * Start a manual span on the active recorder (RAW; scrubbed on export),
+ * or a no-op when recording is off/unwired. Names should already be
+ * operation-shaped; attributes may be raw.
+ */
+export function traceSpan(
+  name: string,
+  attrs: Record<string, string | number | boolean> = {},
+  parent?: SpanParent,
+  kind: SpanKind = SpanKind.INTERNAL,
+): SpanHandle {
+  return active?.startSpan(name, attrs, parent, kind) ?? NOOP_HANDLE;
+}
+

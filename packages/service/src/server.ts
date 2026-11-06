@@ -13,12 +13,13 @@
  */
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { AgentRunner } from "@unvibe/shared";
 import {
   PINNED_EXTENSION_ID,
@@ -41,9 +42,10 @@ import type { ModelCatalog } from "./settings/index.js";
 import type { SettingsStore } from "./settings/index.js";
 import type { Updater } from "./update/index.js";
 import type { UpdateHooks } from "./routes/deps.js";
+import { context, trace } from "@opentelemetry/api";
 import { registerRoutes, type ReviewsRouteDeps, type RouteDeps } from "./routes/index.js";
-import { SpanKind } from "@opentelemetry/api";
-import { isRoutePattern, traceSpan, traceparentOf, type SpanHandle } from "./traces/index.js";
+import { isRoutePattern } from "./traces/index.js";
+import { getActiveRecorder } from "./traces/index.js";
 import { buildApp, type AppContext as UnifiedContext } from "./app.js";
 import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
@@ -156,6 +158,17 @@ function webDistDir(): string {
 }
 
 export async function createApp(token: string, opts: CreateAppOptions = {}): Promise<AppContext> {
+  // Lazy fastify through a real CJS require (issue #356): the tracing
+  // prelude installs require hooks up front, and only `Module._load`
+  // fires them — an ESM `import` (even a lazy dynamic one) does not.
+  // So fastify (CJS, external) must load here, after setup, not via any
+  // static import (esbuild hoists those above the prelude). The same
+  // late require is what lets the fs instrumentation see the `fs`
+  // module. Everything else fastify-adjacent stays static.
+  const cjsRequire = createRequire(import.meta.url);
+  const { default: Fastify } = cjsRequire("fastify") as {
+    default: (opts: { logger: boolean }) => FastifyInstance;
+  };
   const app = Fastify({ logger: false });
 
   const db = opts.db ?? openDatabase(":memory:");
@@ -276,41 +289,6 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     }
   });
 
-  // Opt-in performance traces (issue #356): one `http` span per request.
-  // The name uses the route pattern (`req.routeOptions.url`), never the
-  // raw URL (ids, tokens in `?token=`); query and headers are never
-  // recorded. A no-op handle while recording is off (zero cost).
-  const httpSpans = new WeakMap<object, SpanHandle>();
-  app.addHook("onRequest", async (req) => {
-    const parent = traceparentOf(req.headers["traceparent"]);
-    // The raw pathname is stored hashed (`http.path`); the readable
-    // name/route use the route pattern only when it is one of ours.
-    const span = traceSpan(
-      "http",
-      { "http.method": req.method, "http.path": urlPathname(req.url) },
-      parent ?? undefined,
-      SpanKind.SERVER,
-    );
-    httpSpans.set(req, span);
-  });
-  app.addHook("preHandler", async (req) => {
-    const span = httpSpans.get(req);
-    if (!span) return;
-    const pattern = req.routeOptions?.url;
-    if (typeof pattern === "string" && isRoutePattern(pattern)) {
-      span.rename(`http ${req.method} ${pattern}`);
-      span.setAttribute("http.route", pattern);
-    } else {
-      span.rename(`http ${req.method}`);
-    }
-  });
-  app.addHook("onResponse", async (req, reply) => {
-    const span = httpSpans.get(req);
-    if (!span) return;
-    httpSpans.delete(req);
-    span.end({ "http.status_code": reply.statusCode });
-  });
-
   // Dev-only error reporting (issue #29): server faults, not 4xx replies.
   // A no-op unless Sentry is on.
   app.addHook("onError", async (req, _reply, err) => {
@@ -393,6 +371,22 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
     serviceVersion: SERVICE_VERSION,
     ...(opts.baseRunner ? {} : { baseRunner: ctx.updateRunner }),
   };
+  // Opt-in traces (#356): stamp the route pattern onto the auto HTTP
+  // span (its name/URL are raw). Attr-only and gated on recording, so
+  // the off path costs one boolean check; the export scrubber renames
+  // from this pattern and drops the raw URL/query.
+  app.addHook("preHandler", async (req) => {
+    try {
+      if (!getActiveRecorder()?.enabled) return;
+      const pattern = req.routeOptions?.url;
+      if (typeof pattern === "string" && isRoutePattern(pattern)) {
+        trace.getSpan(context.active())?.setAttribute("http.route", pattern);
+      }
+    } catch {
+      // Tracing never breaks requests.
+    }
+  });
+
   await registerRoutes(app, ctx, routeDeps);
 
   // Static web app with SPA fallback. The Vite build emits dist/index.html
