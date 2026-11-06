@@ -144,7 +144,7 @@ test("citation hover and click keep working inside the overlay", async ({ page }
   const anchor = page.locator(`${DIALOG} .dg-ov-doc .dg-svg a[data-refs]`).first();
   await hoverFresh(page, anchor);
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
-  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
+  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:647–651");
   const before = page.url();
   await anchor.click();
   expect(page.url()).toBe(before);
