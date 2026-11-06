@@ -1504,6 +1504,13 @@ export interface Settings {
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
+  /**
+   * Issue #356: record OpenTelemetry performance traces. Off by default;
+   * nothing is recorded until it is turned on. Spans are kept locally
+   * for as long as recording is on (no rotation) and exportable from
+   * Settings → Debug at any time.
+   */
+  recordTraces: boolean;
   /** Issue #322: repos the extension panel may read. Null = never chosen (service defaults to 3 most recent); [] = none. */
   extensionActiveRepoIds: string[] | null;
   /** Issue #322: model for panel turns. Default muse-spark. */
