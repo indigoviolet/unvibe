@@ -1783,27 +1783,10 @@ export interface SharedContextBaseStats {
 
 // --- update channels (issue #36, step 2: version picker) -----------------
 
-/**
- * A debug flavour of a channel (issue #356): `release-debug`, or
- * `preview/<slug>-debug` for previews. Debug builds ship the
- * OpenTelemetry dependencies and can record performance traces; lean
- * builds cannot. Switching flavours is an ordinary channel switch.
- */
-export function isDebugChannel(ref: string): boolean {
-  return ref === "release-debug" || (ref.startsWith("preview/") && ref.endsWith("-debug"));
-}
-
-/**
- * Debug-flavour ref for a channel the user is on (issue #356): lean
- * `release` installs `release-debug`, lean `preview/x` installs
- * `preview/x-debug`. Already-debug and unknown channels map to
- * `release-debug` and themselves respectively.
- */
-export function debugChannelFor(channel: string | null): string {
-  if (channel !== null && isDebugChannel(channel)) return channel;
-  if (channel !== null && channel.startsWith("preview/")) return `${channel}-debug`;
-  return "release-debug";
-}
+// Debug-channel helpers live in `./channels.js` (imported from there):
+// the update switch helper must stay bundlable without the shared
+// barrel (see the helper-bundle containment test).
+export { debugChannelFor, isDebugChannel } from "./channels.js";
 
 /**
  * One installable build: `release` or a `preview/<slug>` published from

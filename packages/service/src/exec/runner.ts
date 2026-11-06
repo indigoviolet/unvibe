@@ -6,7 +6,33 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { isSafeToken, traceSpan } from "../traces/index.js";
+/**
+ * Tracing seam (issue #356) without the OTel dependency: the update
+ * helper bundles this file (see the helper-bundle containment test),
+ * so it must import nothing beyond node builtins. The service fills in
+ * the real backend at startup via `setExecTraceSink`; without it every
+ * span is a no-op and recording costs one null check.
+ */
+export interface ExecSpan {
+  end(extra?: Record<string, string | number | boolean>): void;
+}
+
+export interface ExecTraceSink {
+  startSpan(name: string, attrs: Record<string, string | number | boolean>): ExecSpan;
+}
+
+const NOOP_SPAN: ExecSpan = {
+  end() {},
+};
+
+let activeSink: ExecTraceSink | null = null;
+
+/** Filled in by the service composition root; null keeps tracing off. */
+export function setExecTraceSink(sink: ExecTraceSink | null): void {
+  activeSink = sink;
+}
+
+const SAFE_COMMAND = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface RunOptions {
   args: string[];
@@ -33,10 +59,12 @@ export class RealCommandRunner implements CommandRunner {
     // process. The raw recording may contain the full argv; the export
     // scrubber keeps the command basename only. A no-op while off.
     const base = path.basename(cmd);
-    const span = traceSpan(`exec ${isSafeToken(base) ? base : "other"}`, {
-      "exec.cmd": cmd,
-      "exec.argv": opts.args.join(" ").slice(0, 4000),
-    });
+    const span = activeSink
+      ? activeSink.startSpan(`exec ${SAFE_COMMAND.test(base) ? base : "other"}`, {
+          "exec.cmd": cmd,
+          "exec.argv": opts.args.join(" ").slice(0, 4000),
+        })
+      : NOOP_SPAN;
     try {
       // A missing cwd surfaces from spawn as a bare ENOENT, which reads as
       // "command not found". Say which directory is gone (usually a moved or
