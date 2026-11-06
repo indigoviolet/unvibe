@@ -298,4 +298,26 @@ test.describe("J353 long plotline names", () => {
       expect(tops[0]).toBe(tops[1]);
     }
   });
+
+  // From score-plotline.spec.ts (#357 Q5): hunk scores and the Files-list
+  // exclusion (#184). Chip filtering, the plotlines box and hide-level
+  // live in J242/J4/J325 against the real service.
+  test("hunk headers carry score dots; Files list has no dots or legend (#184)", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator(".dhunk-h .score-dot").first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show file list" }).click();
+    await expect(page.locator(".flist .score-dot")).toHaveCount(0);
+    await expect(page.locator(".legend")).toHaveCount(0);
+    // The level lives on the hunk dot's tooltip; the dot is an
+    // indicator, not a filter button.
+    const dot = page.locator('.dhunk-h .score-ind[data-score="substantive"]').first();
+    await expect(dot).toHaveAttribute("data-tip", "Substantive");
+    await expect(page.locator("[data-scorepick]")).toHaveCount(0);
+  });
 });
