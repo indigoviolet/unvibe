@@ -93,14 +93,14 @@ sources = ["package.json", "package-lock.json", "tsconfig.base.json", "packages/
 outputs = ["packages/web/dist-demo", "packages/web/dist-demo/index.html"]
 
 [tasks."demo:test"]
-description = "Static demo behaviour on a static file server (issue #334): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, size budget"
+description = "Static demo behaviour on a static file server (issue #334 + #357 Q6): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, hidden debug/doctor, banner geometry, sync check, size budget"
 depends = ["demo:build"]
 run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts"
 
 [tasks."demo:sync"]
-description = "Static demo sync check (issue #334): key screens compared between the static build and the real service in replay mode (joins the slow suite: needs a build + browser, like the other e2e)"
+description = "Static demo sync check only (issue #334): -g subset of the merged static-demo spec comparing the static build with the real service in replay mode"
 depends = ["build", "demo:build"]
-run = "npx --workspace @unvibe/web playwright test e2e/static-demo-sync.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts -g \"static-demo sync\""
 
 [tasks."build:shared"]
 description = "Build @unvibe/shared"
