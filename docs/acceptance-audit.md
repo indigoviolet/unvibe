@@ -4131,9 +4131,23 @@ one-variant union today).
   kept but at one extra base build per same-model persona.
 - **Data format 4 → 5:** `Persona` gains required `followMain`; older
   stored persona rows (no flag) need a reset.
+- Live check (owner-approved, $0.10 cap): `mise run
+  test:live:persona-359` runs one persona card turn on pi +
+  muse-spark-1.3-contributor through the real pipeline (main's
+  shared base, lens at the start of the turn). 2026-11-06: spend
+  $0.0056 of $0.10 (32k in / 160k cached-read / 34k cached-write /
+  10.5k out at catalogue rates), variant revision 1 with no error,
+  and the single stored paragraph ends with the lens's CLARITY-OK
+  marker — the model followed the turn lens. First attempt hit a
+  transient fork hiccup (no model spend, $0.0018 reader-only); the
+  fresh-session fallback's static MCP URL 404s by design, so any
+  fork failure on the probing pi runner is hard — pre-existing gap,
+  flagged separately.
 - Evidence: `packages/shared/test/personas.test.ts` (Clarity seed:
   enabled, follows main, card instruction, colour, lens rules),
   `packages/service/test/personas-349.test.ts` (seed counts),
+  j349 (built-ins seeded incl. followMain, pin/unpin UI) and j349b
+  (Clarity run stores its tab with citations intact),
   new `packages/service/test/clarity-359.test.ts` (fake runner:
   seed over HTTP, lens-file sync, offered-check exemption for a
   main-following stored pick, composed prompt carries lens +
@@ -4142,5 +4156,7 @@ one-variant union today).
   the main model changes, and every turn kind (card, explain, ask,
   depth, examples) carries the lens for both a same-model and a
   different-model persona with no extra base).
-  Journeys, tour frames and full gates deferred until the v0.0.16
-  gate is done.
+  Journeys: j349 (Clarity listed, follow-main UI) and j349b (Clarity
+  run stores its tab with citations intact) pass; frames in
+  /tmp/359-frames/ (Settings + menu + tab strip, 1440/960 x
+  light/dark) inspected.

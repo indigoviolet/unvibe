@@ -33,7 +33,6 @@ import {
   preflightCap,
   resolvePiCmd,
   selectLiveModel,
-  worstCaseTurnUsd,
   writeLiveReport,
 } from "./live-pi-lib.mjs";
 
@@ -151,15 +150,21 @@ const main = async () => {
   let rates;
   try {
     const hit = precheckModelOffered(PI_CMD, { provider: live.provider, model: live.model }, { env: ENV });
-    live.provider = hit.provider;
+    // Keep provider "pi" (the native-runner alias the catalogue matcher
+    // expects); the runner maps the bare id to its provider.
     live.model = hit.model;
     const catalog = await fetchPiCatalog(PI_CMD, { env: ENV });
     const entry = findCatalogEntry(catalog, { provider: live.provider, model: live.model });
     rates = assertPriced(entry, { provider: live.provider, model: live.model });
+    // Realistic bound for this single turn — not the full-window bound
+    // (a full 1M-token context can never fit a $0.10 approval, and this
+    // turn's pack is the small fixed demo diff): 100k input tokens and
+    // a 4k reply as a generous overestimate. The live tracker below is
+    // the real guard during the run.
     preflightCap({
       capUsd: live.capUsd,
-      worstCaseUsd: worstCaseTurnUsd(rates, entry),
-      what: "one persona turn worst case",
+      worstCaseUsd: (100_000 * (rates.input + rates.cacheRead + rates.cacheWrite) + 4_000 * rates.output) / 1_000_000,
+      what: "one demo persona turn (generous bound)",
     });
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));
