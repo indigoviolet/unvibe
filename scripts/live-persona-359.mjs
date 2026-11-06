@@ -1,4 +1,4 @@
-/*global console process setTimeout clearTimeout*/
+/*global console process setTimeout Buffer*/
 // Live #359 lens check, run as:
 //   mise run test:live:persona-359 -- --cap 0.10 [--provider pi] [--model muse-spark-1.3-contributor]
 //
