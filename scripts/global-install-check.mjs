@@ -315,9 +315,9 @@ function simpleGet(port, getPath, headers) {
       .get({ host: "127.0.0.1", port, path: getPath, headers }, (res) => {
         let body = "";
         res.on("data", (d) => (body += d));
-        res.on("end", () => resolve({ code: res.statusCode, body }));
+        res.on("end", () => resolve({ code: res.statusCode, body, headers: res.headers ?? {} }));
       })
-      .on("error", () => resolve({ code: 0, body: "" }));
+      .on("error", () => resolve({ code: 0, body: "", headers: {} }));
   });
 }
 
@@ -474,6 +474,12 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
     fs.existsSync(path.join(installedPkg, "packages/service/dist/index.js")),
     `${label}: bin target packages/service/dist/index.js exists in the installed package`,
   );
+  // Issue #355: the browser's default /favicon.ico request must resolve
+  // to a real file in the installed package.
+  assert(
+    fs.existsSync(path.join(installedPkg, "packages/web/dist/favicon.ico")),
+    `${label}: ships packages/web/dist/favicon.ico`,
+  );
   // No lifecycle scripts at all (issue #42): any install script makes
   // npm link a git install to its temporary preparation clone and then
   // delete the clone, leaving the bin dangling.
@@ -573,6 +579,14 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
   assert(prompts.code === 200 && prompts.body.includes("instructions"), `${label}: prompts resolve from the installed package`);
   const shell = await simpleGet(port, "/start.html");
   assert(shell.code === 200, `${label}: web dist serves from the installed package`);
+  // Issue #355: the browser's default icon request is served without a
+  // token (simpleGet sends no Authorization header) with an icon type.
+  const favicon = await simpleGet(port, "/favicon.ico");
+  assert(favicon.code === 200, `${label}: /favicon.ico serves from the installed package (got ${favicon.code})`);
+  assert(
+    /icon/i.test(String(favicon.headers?.["content-type"] ?? "")),
+    `${label}: /favicon.ico has an icon content type (got ${JSON.stringify(favicon.headers?.["content-type"])})`,
+  );
 
   const readiness = await simpleGet(port, "/api/readiness", { authorization: `Bearer ${token}` });
   assert(readiness.code === 200, `${label}: readiness answers from the installed package`);
