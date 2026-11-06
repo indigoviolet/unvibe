@@ -76,6 +76,10 @@ description = "Real-service journeys J1-J7 plus the visual tour (#188): one spec
 depends = ["build"]
 run = "npx --workspace @unvibe/web playwright test e2e/journeys/ e2e/visual-tour.spec.ts"
 
+[tasks."test:e2e:debug"]
+description = "Debug-flavour e2e (issue #356): build with tracing and run the debug-only j356 journey + frames (skipped everywhere else)"
+run = "UNVIBE_DEBUG_TRACES=1 mise run --force build && UNVIBE_TEST_DEBUG_TRACES=1 npx --workspace @unvibe/web playwright test e2e/journeys/j356-traces-debug.spec.ts"
+
 [tasks."visual-tour"]
 description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
 depends = ["build"]

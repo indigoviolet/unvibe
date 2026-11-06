@@ -51,12 +51,18 @@ function isRecorderModule(mod: unknown): mod is RecorderModule {
   );
 }
 
-/** Resolve (and cache, for the default importer) the recorder module. */
+/**
+ * Resolve (and cache, for the default importer) the recorder module.
+ * `UNVIBE_DISABLE_TRACING=1` forces the lean path even with OTel
+ * installed (escape hatch + lets the lean e2e cover the unavailable
+ * UI against a dev checkout).
+ */
 async function recorderModule(importer: RecorderImporter = defaultImporter): Promise<RecorderModule | null> {
   const useCache = importer === defaultImporter;
   if (useCache && cached !== undefined) return cached;
-  // Lean install: OTel is absent, so do not even load the recorder.
-  if (useCache && !otelPresent()) {
+  // Lean install (or explicit opt-out): OTel is absent, so do not even
+  // load the recorder.
+  if (useCache && (process.env.UNVIBE_DISABLE_TRACING === "1" || !otelPresent())) {
     cached = null;
     return null;
   }
