@@ -92,11 +92,10 @@ describe("traces (#356)", () => {
   it("auto HTTP spans record raw URLs and export scrubbed routes", async () => {
     const dir = tempDir();
     const db = openDatabase(":memory:");
-    const { app } = await createApp("tok-traces-auto", { db, dataDir: dir });
+    const { app, ctx } = await createApp("tok-traces-auto", { db, dataDir: dir });
     try {
       // Enable through the app's own recorder: real socket traffic below.
-      const { getActiveTracer } = await import("../src/traces/index.js");
-      getActiveTracer()?.setEnabled(true);
+      ctx.traces?.setEnabled(true);
       const port = 48741;
       await app.listen({ port, host: "127.0.0.1" });
       try {
@@ -107,7 +106,7 @@ describe("traces (#356)", () => {
       }
       const raw = readStore(dir);
       expect(raw).toContain("tok-traces-auto");
-      const rec = getActiveTracer()!;
+      const rec = ctx.traces!;
       const text = JSON.stringify(rec.exportOtlp());
       expect(text).not.toContain("tok-traces-auto");
       expect(text).not.toContain("?token=");
