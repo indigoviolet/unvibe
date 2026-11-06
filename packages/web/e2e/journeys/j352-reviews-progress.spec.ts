@@ -173,8 +173,15 @@ test.describe("J352 reviews-list progress line", () => {
     // Opening: hold the create POST in flight; the PR row names the phase
     // under its title — no pill on the right — and the title never moves.
     const prRow = page.locator(".ci", { hasText: "Journey test PR" }).first();
-    const idleTitleBox = await prRow.locator(".cx2").first().boundingBox();
-    if (!idleTitleBox) throw new Error("no idle title box");
+    // Title offset inside its own row: content above the list (readiness
+    // banners that load late on slow runners) can move the whole row, which
+    // is not a row jump.
+    const titleOffset = async (): Promise<number> => {
+      const [row, title] = await Promise.all([prRow.boundingBox(), prRow.locator(".cx2").first().boundingBox()]);
+      if (!row || !title) throw new Error("no row or title box");
+      return title.y - row.y;
+    };
+    const idleTitleOffset = await titleOffset();
     let releasePost!: () => void;
     const postGate = new Promise<void>((resolve) => {
       releasePost = resolve;
@@ -191,9 +198,7 @@ test.describe("J352 reviews-list progress line", () => {
     const opening = prRow.getByTestId("change-progress");
     await expect(opening).toContainText("Opening…", { timeout: 10_000 });
     await expect(opening).toHaveAttribute("role", "status");
-    const openingTitleBox = await prRow.locator(".cx2").first().boundingBox();
-    if (!openingTitleBox) throw new Error("no opening title box");
-    expect(Math.abs(openingTitleBox.y - idleTitleBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await titleOffset()) - idleTitleOffset)).toBeLessThanOrEqual(1);
     await expect(prRow.locator(".prtag")).toHaveCount(0);
     const posted = page.waitForResponse(
       (r) => r.request().method() === "POST" && r.url().includes("/api/reviews"),
