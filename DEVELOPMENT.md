@@ -38,9 +38,11 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:slow:unit` | Slow vitest files (`*.slow.test.*`: need a build) | `build` (auto) |
 | `test:slow` | Slow suite: `test:slow:unit`, then Playwright (`test:e2e`) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `test` | Every automated test that needs no login (`test:fast`, then `test:slow`) | as above |
+| `test:affected` | Pre-fold check (#358): full `check`, then Playwright on the import-graph-affected specs (`--only-changed` vs the merge base) plus the trigger-table specs; `--dry-run` prints the choice, `--base <ref>` overrides the base | `build` (auto) + browsers |
 | `typecheck:tests` | tsc over each workspace's tests (service `src` + `test`; shared `test`; web `src` incl. tests); blocking since issue #127 | — |
 | `check` | Fast suite: `lint` + `typecheck` + `typecheck:tests` in parallel, then `test:fast`; must pass from a clean tree with no `dist/` | — |
 | `gate` | Pre-merge gate: `check`, `build`, `test:slow`, `build-freshness`, shell e2e, `restart-resilience`, d2 seed check, `check-global-install`, one after another | everything (one full run at a time, see below) |
+| `gate:failed` | Re-run only what failed (#358): Playwright `--last-failed`; vitest has no last-failed state (re-run files by name) | browsers |
 | `restart-resilience` | SIGKILL mid-stage, restart, resume against the built service | `build` (auto) |
 | `start` | Run the built service | `build` (auto) |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
@@ -222,7 +224,9 @@ Rules:
   ```
   (`mise run test:e2e -- e2e/<spec>` from the root narrows the same way
   but rebuilds first.)
-- Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `check` plus the Playwright specs for the touched flows before a preview (**not** the full gate); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
+- Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `mise run test:affected` (not a hand-picked list) before reporting and before each fold into `main-rc`, and say which tests ran ("affected tests run (list); full gates not yet run"); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
+- Affected-test selection (`mise run test:affected`, issue #358): the base is the merge base with `main-rc` (`--base <ref>` overrides). Playwright's `--only-changed=<base>` follows the runner-side import graph (a changed spec, or a spec importing a changed file). What the graph cannot see comes from the trigger table in `scripts/test-affected-lib.mjs`: `fixtures/` (fs reads, the mock bundle's `snapshot.json?raw`, `dist-demo`) pulls the demo/static/mock/replay specs; `packages/shared/src/data-format.ts` pulls the data-reset specs (specs import the dist path, never src); `prompts/` (plus replay-match/prompts) pulls the replay specs (recordings match by prompt markers); `packages/web/src/styles/` + `packages/web/src/ui/` pull the visual tour; `packages/web/src/mock/` pulls the mock-mode specs. The task prints the changed files and the chosen specs with reasons before running anything (`--dry-run` prints only). It runs `mise run check` in full, then the needed builds once, then the two Playwright invocations (import-graph set, then trigger set: positional specs AND with `--only-changed`, so they must stay separate).
+- Fixing a red gate (issue #358): fix, then re-run **only** what failed (`mise run gate:failed` — Playwright `--last-failed`; re-run failed vitest files by name, vitest keeps no last-failed state) until green, then **one** final full `mise run gate` before merging — not a full re-run per fix.
 
 ## Environment variables
 
