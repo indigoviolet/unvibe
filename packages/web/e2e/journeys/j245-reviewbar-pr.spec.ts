@@ -18,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
@@ -223,5 +224,25 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     const overflow = await page.locator("#reviewbar").evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await checkLayout(page, "reviewbar-pr-narrow");
+  });
+
+  // From comments.spec.ts (#357): the GitHub action links selected diff
+  // lines at the review commit in a new tab.
+  test("GitHub action links diff lines at the review commit", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?nohl=1&token=${svc.token}`);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, "#right table.diff", "return 2");
+    await expect(page.locator("#selbar")).toBeVisible({ timeout: 10_000 });
+    const link = page.locator('#selbar [data-act="github"]');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute(
+      "href",
+      /https:\/\/github\.com\/example-org\/a-fairly-long-repository-name\/blob\/[0-9a-f]+\/.+#L\d+-L\d+/,
+    );
+    await expect(link).toHaveAttribute("target", "_blank");
   });
 });

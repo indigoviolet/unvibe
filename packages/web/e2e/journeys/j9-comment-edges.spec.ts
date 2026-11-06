@@ -455,4 +455,28 @@ test.describe("J262 comment marker is a toggle (#262)", () => {
     }
     await expect(dMarker).toHaveAttribute("data-tip", "Hide comments");
   });
+
+  // From comments.spec.ts (#357): a reply draft survives unrelated
+  // re-renders; Discard removes it without posting.
+  test("draft survives re-renders; Discard clears without posting", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 60_000 });
+    await page.locator(`[id="L-${appKey}-2"] td.n.new`).click();
+    const slot = page.locator(`[id="F-${appKey}"] .ithread[data-pending-thread]`);
+    await expect(slot).toBeVisible();
+    await slot.locator("textarea").fill("keep me");
+    // An unrelated change elsewhere re-renders the panes (Hide
+    // uninteresting toggles prefs without folding the open hunk).
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="uninteresting"]').click();
+    await expect(slot.locator("textarea")).toHaveValue("keep me");
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="uninteresting"]').click();
+    await expect(slot.locator("textarea")).toHaveValue("keep me");
+    // Discard on a new thread removes it without posting.
+    await slot.getByRole("button", { name: "Discard" }).click();
+    await expect(slot).toHaveCount(0);
+  });
 });

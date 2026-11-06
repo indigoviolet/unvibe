@@ -227,6 +227,44 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(mark).toHaveCount(0, { timeout: 15_000 });
   });
 
+  // From comments.spec.ts (#357): an Ask thread and a comment share one
+  // diff line — both render side by side, neither hides the other.
+  test("an Ask thread and a comment share one diff line", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    // Plain first paint (?nohl=1) keeps code text in whole nodes so the
+    // single-range selection helper works on diff code.
+    await page.goto(`${svc.origin}/review/${reviewId}?nohl=1&token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    const snap = (await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { files: { fileKey: string; path: string }[] };
+    const conn = (snap.files ?? []).find((f) => f.path.includes("conn")) ?? (snap.files ?? [])[0];
+    const file = `[id="F-${conn.fileKey}"]`;
+    await expect(page.locator(`${file} table.diff`).first()).toBeVisible({ timeout: 15_000 });
+    await selectText(page, `${file} table.diff`, "_OBSOLETE_FOLD_RE");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const composer = page.locator(`${file} .ithread[data-pending-thread]`);
+    await expect(composer).toBeVisible({ timeout: 10_000 });
+    await composer.locator("textarea").fill("Why here?");
+    await composer.getByRole("button", { name: "Ask" }).click();
+    const thread = page.locator(`${file} section.ithread[data-thread]`, { hasText: "Why here?" });
+    await expect(thread).toBeVisible({ timeout: 30_000 });
+    await expect(thread.locator(".exp-b").first()).not.toBeEmpty({ timeout: 90_000 });
+    // A Comment on the same selection: both threads render side by
+    // side under the line — neither hides the other.
+    await selectText(page, `${file} table.diff`, "_OBSOLETE_FOLD_RE");
+    await page.locator('#selbar [data-act="note"]').click();
+    const noteComposer = page.locator(`${file} .ithread[data-pending-thread]`);
+    await expect(noteComposer).toBeVisible({ timeout: 10_000 });
+    await noteComposer.locator("textarea").fill("A note here.");
+    await noteComposer.getByRole("button", { name: "Save" }).click();
+    const note = page.locator(`${file} .ithread[data-thread]`, { hasText: "A note here." });
+    await expect(note).toBeVisible({ timeout: 30_000 });
+    await expect(thread).toBeVisible();
+    await expect(thread.locator('[data-reply][data-kind="ask"]')).toHaveCount(1);
+    await expect(note.locator('[data-reply][data-kind="comment"]')).toHaveCount(1);
+  });
+
   // Merged from ask-service.spec.ts (#256): the Ask answer arrives as
   // blocks with citation markers through the streamed patch path (never
   // the old 60 s waiting fallback, never raw thread HTML), and streamed

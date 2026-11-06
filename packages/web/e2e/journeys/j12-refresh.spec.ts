@@ -100,6 +100,11 @@ test.describe("J12 refresh with new commits", () => {
     await expect(page.locator("#version-pick")).toContainText("v1");
     await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
     await expect(page.getByText("read-only", { exact: false }).first()).toBeVisible();
+    // From comments.spec.ts (#357): on the older version diff line
+    // clicks refuse with a toast and open no composer.
+    await page.locator(`${appFile} td.n.new`).first().click();
+    await expect(page.locator("#toast")).toContainText(/read-only/i, { timeout: 5_000 });
+    await expect(page.locator(`${appFile} .ithread[data-pending-thread]`)).toHaveCount(0);
 
     // Choosing the current version (annotated in the dropdown) is the way
     // back; the banner returns, and Update reports plainly without the

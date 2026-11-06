@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createDemoReview } from "./journey-helpers.js";
 
@@ -82,6 +83,22 @@ test.describe("J10 suggested comments and questions", () => {
     await expect(thread).toBeVisible({ timeout: 60_000 });
     expect(await thread.textContent()).toContain(sugText.slice(0, 20));
     await expect(thread.locator("textarea")).toHaveCount(0);
+
+    // From comments.spec.ts (#357): issue #301 — selecting in the
+    // suggestion summons the toolbar and Ask opens the composer inside
+    // the thread; the Ask reply lands in the same thread.
+    const askWord = sugText.split(/\s+/).find((w) => w.length > 5) ?? sugText.slice(0, 12);
+    await selectText(page, `.ithread[data-thread="${sugHit.a.id}"]`, askWord);
+    await expect(page.locator("#selbar")).toBeVisible();
+    await page.locator('#selbar [data-act="ask"]').click();
+    await expect(page.locator('#right .ithread[data-pending-thread]')).toHaveCount(1);
+    const askComposer = thread.locator(".ithread[data-pending-thread]");
+    await expect(askComposer).toBeVisible({ timeout: 10_000 });
+    await askComposer.locator("textarea").fill("Why this suggestion?");
+    await askComposer.getByRole("button", { name: "Ask" }).click();
+    const askReply = thread.locator('[data-reply][data-kind="ask"]');
+    await expect(askReply).toBeVisible({ timeout: 30_000 });
+    await expect(askReply.locator(".exp-b")).not.toBeEmpty({ timeout: 90_000 });
 
     // Accept: mark it for the PR.
     const markBtn = thread.getByRole("button", { name: "Add to Outbox" });
