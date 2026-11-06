@@ -58,6 +58,21 @@ describe("trace loader (#356)", () => {
     }
   });
 
+  it("UNVIBE_DISABLE_TRACING=1 forces the lean path without touching OTel", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-loader-"));
+    const old = process.env.UNVIBE_DISABLE_TRACING;
+    process.env.UNVIBE_DISABLE_TRACING = "1";
+    try {
+      await expect(loadTraceRecorder(dir)).resolves.toBeNull();
+      await expect(ensureTracingSetup()).resolves.toBe(false);
+      expect(getActiveTracer()).toBeNull();
+    } finally {
+      if (old === undefined) delete process.env.UNVIBE_DISABLE_TRACING;
+      else process.env.UNVIBE_DISABLE_TRACING = old;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("recorder loading returns null when the module lacks the API", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-loader-"));
     try {

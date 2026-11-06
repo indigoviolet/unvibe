@@ -7,7 +7,10 @@
  * packages. This module itself imports nothing but the pure seam
  * surface and `fastify` types (erased).
  */
+import fs from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { setActiveTracer, type TraceBackend } from "./tracing.js";
 import type { TraceRecorder } from "./recorder.js";
@@ -24,9 +27,42 @@ type RecorderModule = typeof import("./recorder.js");
  * directly and this is just a fast path.)
  */
 function otelPresent(): boolean {
-  // Resolve the entry point, not package.json: several OTel packages
-  // restrict subpath exports, so ./package.json does not resolve.
   try {
+    // Our own install must be *able* to depend on OTel (debug flavour).
+    // Checking this first makes lean installs immune to stray copies
+    // reachable through NODE_PATH, shared global prefixes, or hoisting
+    // quirks: no resolver environment can flip a lean build to recording.
+    // A dev checkout (workspaces root) always qualifies: its node_modules
+    // carry OTel for tests and local runs.
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    let allowByPackage = false;
+    for (;;) {
+      const candidate = path.join(dir, "package.json");
+      try {
+        const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as {
+          name?: unknown;
+          workspaces?: unknown;
+          dependencies?: unknown;
+        };
+        if (pkg?.name === "unvibe") {
+          if (Array.isArray(pkg.workspaces)) {
+            allowByPackage = true;
+          } else {
+            const deps = pkg.dependencies as Record<string, unknown> | undefined;
+            allowByPackage = !!deps && typeof deps["@opentelemetry/api"] === "string";
+          }
+          break;
+        }
+      } catch {
+        // Not a readable package.json: keep walking up.
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) return false;
+      dir = parent;
+    }
+    if (!allowByPackage) return false;
+    // Resolve the entry point, not package.json: several OTel packages
+    // restrict subpath exports, so ./package.json does not resolve.
     createRequire(import.meta.url).resolve("@opentelemetry/api");
     return true;
   } catch {
@@ -86,6 +122,8 @@ async function recorderModule(importer: RecorderImporter = defaultImporter): Pro
 export async function ensureTracingSetup(
   importer: RecorderImporter = defaultImporter,
 ): Promise<boolean> {
+  // Explicit opt-out (lean e2e, broken installs): never touch OTel.
+  if (process.env.UNVIBE_DISABLE_TRACING === "1" && importer === defaultImporter) return false;
   const mod = await recorderModule(importer);
   if (!mod) return false;
   try {
@@ -104,6 +142,8 @@ export async function loadTraceRecorder(
   dataDir: string,
   importer: RecorderImporter = defaultImporter,
 ): Promise<TraceRecorder | null> {
+  // Explicit opt-out (lean e2e, broken installs): never touch OTel.
+  if (process.env.UNVIBE_DISABLE_TRACING === "1" && importer === defaultImporter) return null;
   const mod = await recorderModule(importer);
   if (!mod) return null;
   try {

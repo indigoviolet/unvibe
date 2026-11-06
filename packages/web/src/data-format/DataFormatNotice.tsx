@@ -187,7 +187,7 @@ export function DataFormatNotice({ status }: { status: DataFormatStatusResponse 
           <Card variant="plain" style={{ padding: "12px 16px", marginTop: 12 }}>
             <p style={{ marginTop: 0 }}>
               <b>Reset</b> moves your whole data folder aside to a dated copy next to it. Nothing is deleted —
-              the copy stays on disk until you remove it by hand — and Unvibe then starts fresh and empty.
+              the copy stays on disk until you remove it by hand — and Unvibe then starts fresh and empty. Recorded performance traces are kept: they live next to the data folder and are not moved.
             </p>
             {movedTo ? (
               <p className="hint" role="status">

@@ -92,6 +92,7 @@ function cleanup(dataDir: string): void {
     if (e.startsWith(`${path.basename(dataDir)}.bak-`)) rmSync(path.join(parent, e), { recursive: true, force: true });
   }
   rmSync(dataDir, { recursive: true, force: true });
+  rmSync(`${dataDir}-traces`, { recursive: true, force: true });
 }
 
 function asideDirs(dataDir: string): string[] {
@@ -175,6 +176,9 @@ test.describe("J311 data-format notice", () => {
       expect(md).toContain("Unposted draft text");
       expect(md).toContain("src/app.py:2");
       await expect(notice).toContainText("Exported 1 draft");
+
+      // Reset keeps the locally recorded performance traces (#356).
+      await expect(notice).toContainText("Recorded performance traces are kept");
 
       // Reset: confirm, then the same service comes back fresh.
       await notice.getByRole("button", { name: "Reset and start fresh" }).click();

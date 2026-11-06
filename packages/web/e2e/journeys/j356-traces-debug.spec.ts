@@ -40,7 +40,11 @@ test.describe("J356 debug traces", () => {
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    if (dataDir) {
+      rmSync(dataDir, { recursive: true, force: true });
+      // The sibling trace store lives outside the data dir.
+      rmSync(`${dataDir}-traces`, { recursive: true, force: true });
+    }
   });
 
   test("record, open the demo review, export HTTP + job spans", async ({ page }) => {
@@ -107,7 +111,11 @@ test.describe("J356 debug frames", () => {
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    if (dataDir) {
+      rmSync(dataDir, { recursive: true, force: true });
+      // The sibling trace store lives outside the data dir.
+      rmSync(`${dataDir}-traces`, { recursive: true, force: true });
+    }
   });
 
   /** Empty the store through the inline confirm; settle with the pill gone. */
@@ -169,15 +177,14 @@ test.describe("J356 debug frames", () => {
     test(`debug capped frame (${combo.name})`, async ({ page }) => {
       test.setTimeout(120_000);
       // Realistic over-cap store: a few real span lines, then sparse
-      // padding past 256 MB (instant: no 256 MB write). The service must
-      // boot first: a pre-created traces/ dir reads as unstamped data
-      // and the boot blocks on the data-format gate.
+      // padding past 256 MB (instant: no 256 MB write). The store lives
+      // next to the data dir, so pre-creating it is safe: unlike the old
+      // in-dir layout it never trips the data-format "has data" gate.
       const cappedDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j356-capped-"));
       let capped: RunningService | null = null;
       try {
-        capped = await startService(cappedDir, { agent: "none" });
-        mkdirSync(path.join(cappedDir, "traces"), { recursive: true });
-        const file = path.join(cappedDir, "traces", "spans.jsonl");
+        mkdirSync(`${cappedDir}-traces`, { recursive: true });
+        const file = `${cappedDir}-traces/spans.jsonl`;
         const line = (i: number): string =>
           JSON.stringify({
             traceId: "a".repeat(32),
@@ -190,6 +197,7 @@ test.describe("J356 debug frames", () => {
           });
         writeFileSync(file, [line(1), line(2), line(3)].join("\n") + "\n");
         truncateSync(file, 256 * 1024 * 1024 + 1);
+        capped = await startService(cappedDir, { agent: "none" });
         await page.setViewportSize({ width: combo.width, height: 900 });
         if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
         await page.evaluate(() => document.fonts?.ready).catch(() => {});
@@ -212,6 +220,7 @@ test.describe("J356 debug frames", () => {
       } finally {
         await capped?.stop().catch(() => {});
         rmSync(cappedDir, { recursive: true, force: true });
+        rmSync(`${cappedDir}-traces`, { recursive: true, force: true });
       }
     });
   }

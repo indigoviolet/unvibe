@@ -16,6 +16,7 @@ export const RESET_DATA_USAGE = [
   "  --yes   confirm without a prompt",
   "",
   "The data directory is moved to a dated sibling (never deleted).",
+  "Recorded performance traces are kept: they live next to the data dir and are not moved.",
   "Export unposted Outbox drafts from the app first — they are part of",
   "the moved data and the fresh start will not show them.",
   "Stop the service first (`unvibe stop`).",
@@ -75,6 +76,7 @@ export async function runResetDataFlow(deps: ResetDataDeps): Promise<ResetDataOu
     lines: [
       `moved your data to ${movedTo}`,
       "nothing was deleted — that copy stays on disk; remove it by hand when you no longer need it.",
+    "recorded performance traces were kept (they live next to the data dir).",
       "run `unvibe start` to start fresh.",
     ],
   };

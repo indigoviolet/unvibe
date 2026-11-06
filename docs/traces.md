@@ -56,6 +56,13 @@ none (no 6+ character substring anywhere).
 
 ## Storage, cap, export
 
+The store lives in `<dataDir>-traces` — a sibling of the data dir,
+not inside it. `unvibe reset-data` and the reset notice move only the
+data dir aside, so traces survive resets (and version switches, which
+keep the data dir) until the user presses Clear. One store per data
+dir: parallel services, worktrees and test runs never share a file
+or a size cap.
+
 Debug shows the span count and byte size, with a Clear button (inline
 confirm). Safety cap: **256 MB** — past it, recording stops with a
 visible notice (`capped` in `GET /api/traces/status`); older spans are

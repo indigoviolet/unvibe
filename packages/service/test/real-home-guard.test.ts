@@ -122,6 +122,20 @@ describe("real-home guard (#313)", () => {
     expect(loadConfig({ UNVIBE_TEST: "1", UNVIBE_DATA_DIR: scratchHome() }).dataDir).not.toBe(real);
   });
 
+  it("refuses a traces dir under the real home and accepts a scratch one (#356)", () => {
+    const real = realDataDir(TEST_ENV);
+    const before = meta(real);
+    expect(() => assertNotRealHomeForWrite({ tracesDir: `${real}-traces` }, TEST_ENV)).toThrow(
+      /traces dir/,
+    );
+    expect(meta(real)).toEqual(before);
+    const scratch = scratchHome();
+    expect(() =>
+      assertNotRealHomeForWrite({ dataDir: scratch, tracesDir: `${scratch}-traces` }, TEST_ENV),
+    ).not.toThrow();
+    fs.rmSync(scratch, { recursive: true, force: true });
+  });
+
   it("refuses a switch drill whose data dir is the real data dir, before backup/install", async () => {
     const real = realDataDir(TEST_ENV);
     const before = meta(real);

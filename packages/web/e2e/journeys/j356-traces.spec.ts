@@ -38,7 +38,11 @@ test.describe("J356 traces unavailable without OTel", () => {
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    if (dataDir) {
+      rmSync(dataDir, { recursive: true, force: true });
+      // The sibling trace store lives outside the data dir.
+      rmSync(`${dataDir}-traces`, { recursive: true, force: true });
+    }
   });
 
   test("Debug names the matching debug install instead of recording", async ({ page }) => {
