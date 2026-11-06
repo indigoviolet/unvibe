@@ -125,15 +125,15 @@ test.describe("J349b persona versions", () => {
     await expect(card.locator(".prose, .lst").first()).not.toHaveText(variantTextBefore, { timeout: 15_000 });
     // Back on Guide: the variant rewrite left it untouched.
     await tabs.locator('[data-version-tab="guide"]').click();
-    await expect(card.locator(".prose, .lst").first()).toContainText("unfolds header values right after", {
+    await expect(card.locator(".prose, .lst").first()).toContainText("unfolds every obs-fold right after parsing", {
       timeout: 15_000,
     });
     await tabs.locator(`[data-version-tab="${PERSONA_ID}"]`).click();
-    await expect(card).toContainText("Normalize the source", { timeout: 15_000 });
+    await expect(card).toContainText("CRLF is the framing delimiter", { timeout: 15_000 });
 
     // Ask on the persona's text: the thread belongs to the persona and
     // the agent avatar wears its colour.
-    await selectText(page, "#C-central", "attacker-controlled");
+    await selectText(page, "#C-central", "framing delimiter");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator('#C-central .ithread[data-pending-thread]');
     await expect(composer).toBeVisible({ timeout: 10_000 });

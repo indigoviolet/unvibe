@@ -921,8 +921,8 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
    full error), so rows never change height between phases. The 4px top
    margin lives on the line (not the hunks `.pw` span), so text-only
    phases measure the same as hunks phases. */
-.ci[data-testid^="session-"] .cj > [data-testid="session-progress"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
-.ci[data-testid^="session-"] .cj > [data-testid="session-progress"] .pw { margin-top: 0; }
+.ci[data-testid^="session-"] .cj > [data-testid="row-progress"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+.ci[data-testid^="session-"] .cj > [data-testid="row-progress"] .pw { margin-top: 0; }
 /* #352: on branch rows (name once, date right) the opening line wraps to
    its own full-width line under the title, like the column rows (wrap is
    scoped to the opening row so other rows never reflow). */

@@ -82,8 +82,9 @@ test("reviews list follows the selected repo; demo row always shows", async ({ p
   await expect(demo).toContainText("#5020");
   await expect(demo).toContainText("hunks reviewed");
   // A finished guide shows no state text and no working indicator (#225).
+  // Its under-title progress line is itself a role=status line (#352).
   await expect(demo).not.toContainText("Guide ready");
-  await expect(demo.getByRole("status")).toHaveCount(0);
+  await expect(demo.getByRole("status", { name: "Working" })).toHaveCount(0);
 
   const old = page.locator('[data-testid="session-r-old"]');
   await expect(old).toContainText("Fix retry backoff on 429s");

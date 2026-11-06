@@ -1971,7 +1971,7 @@ export function SessionRow({
             building, failed, done) in the same muted style. The right side
             keeps only status icons and hover/focus actions, never a phase
             pill, so the row never reflows between phases. */}
-        <span className="hint" role="status" data-testid="session-progress">
+        <span className="hint" role="status" data-testid="row-progress">
           {s.ingestStatus === "loading" ? (
             <>
               Opening · {ingestStepLabel(s.ingestStep)} <ProcessingDots />
@@ -2020,7 +2020,7 @@ export function SessionRow({
           <StackBadge info={stackInfo} currentNumber={s.prNumber} onOpenPr={onOpenStackPr} />
         ) : null}
         {s.ingestStatus === "failed" && retrySession ? (
-          <span className="uic-idlehold" data-testid="session-retry">
+          <span className="uic-idlehold" data-testid="row-retry">
             <Button
               variant="secondary"
               size="sm"

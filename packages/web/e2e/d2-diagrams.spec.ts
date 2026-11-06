@@ -89,7 +89,7 @@ test("D2 diagram renders in light with caption and citation anchors", async ({ p
   await expect(anchors).toHaveCount(8);
   await expect(anchors.first()).toHaveAttribute(
     "data-src",
-    "diff:src-urllib3-connection.py:650-651",
+    "diff:src-urllib3-connection.py:647-651",
   );
   // The served light render carries the light palette.
   await expect(page.locator(`${FLOW} .dg-svg`)).toContainText("HTTPMessage", { timeout: 5000 });
@@ -124,7 +124,7 @@ test("hover on a cited shape shows the code preview", async ({ page }) => {
   await expect(page.locator(`${FLOW} .dg-svg > svg`)).toBeVisible({ timeout: 15000 });
   await hoverFresh(page, page.locator(`${FLOW} .dg-svg a[data-refs]`).first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
-  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:650");
+  await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:647–651");
   await expect(page.locator("#pop .cite .snip").first()).not.toBeEmpty();
 });
 

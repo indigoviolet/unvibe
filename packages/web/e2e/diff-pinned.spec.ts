@@ -22,7 +22,7 @@ async function gotoDiff(page: Page): Promise<void> {
 for (const mode of ["unified", "split"] as const) {
   test(`pinned thread opens inline under its anchored row (${mode})`, async ({ page }) => {
     await gotoDiff(page);
-    if (mode === "split") await page.getByRole("button", { name: "Split" }).click();
+    if (mode === "split") await page.getByRole("button", { name: "Split", exact: true }).click();
     const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
     await selectText(page, scope, 'msg["fold-mixed-repeated"]');
     await page.locator('#selbar [data-act="explain"]').click();

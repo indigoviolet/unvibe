@@ -1,5 +1,6 @@
 /**
- * Guide e2e against mock mode (the generated urllib3#5020 snapshot):
+ * Guide e2e against mock mode (the generated urllib3#5020 snapshot, plus
+ * the two mock-only concept links `src/mock/guide.ts` adds to it):
  * hover-preview timing + dismissal rules, scroll-then-no-hover, citation
  * hover previews, navigation + trail + back, findings, description tab,
  * D2 diagrams.
@@ -172,7 +173,7 @@ test("citation hover previews real cited lines", async ({ page }) => {
   await hoverFresh(page, page.locator("#C-central .lk[data-refs]").first());
   await expect(page.locator("#pop")).toBeVisible({ timeout: 3000 });
   await expect(page.locator("#pop .cite .loc").first()).toContainText("connection.py:");
-  await expect(page.locator("#pop")).toContainText("_normalize_header_value");
+  await expect(page.locator("#pop")).toContainText("_OBSOLETE_FOLD_RE");
 });
 
 test("navigation, trail and browser back", async ({ page }) => {
@@ -212,11 +213,11 @@ test("finding page carries its label and evidence", async ({ page }) => {
   // Issue #341: no guide card links findings anymore, so open the bare-LF
   // finding page directly.
   await gotoReview(page);
-  await page.goto("/review/demo/page/f-critic");
-  await expect(page).toHaveURL(/page\/f-critic/);
+  await page.goto("/review/demo/page/f-critic-2");
+  await expect(page).toHaveURL(/page\/f-critic-2/);
   await expect(page.locator("#page .eyebrow")).toContainText("Agent finding · medium confidence");
   await expect(page.locator("#page .doc")).toHaveClass(/finding/);
-  await expect(page.locator("#page .doc")).toContainText("Bare-LF folds bypass unfolding");
+  await expect(page.locator("#page .doc")).toContainText("Bare-LF folds are not unfolded");
   await expect(page.locator("#page .doc")).toContainText("Evidence");
 });
 

@@ -113,7 +113,7 @@ test("hide uninteresting collapses runs to one row per run", async ({ page }) =>
 test("split view pairs columns and widens a narrow pane", async ({ page }) => {
   const right = page.locator("#right");
   const before = await right.boundingBox();
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(`${connFile} table.diff.split`).first()).toBeVisible();
   // One table (and colgroup) per hunk: the fixture's first file has two.
   await expect(page.locator(`${connFile} table.diff.split colgroup`)).toHaveCount(2);

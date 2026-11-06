@@ -180,8 +180,15 @@ for (const combo of [
     await mark.scrollIntoViewIfNeeded();
     await shot(page, "polish-marks-rest", suffix);
 
-    // Glossary preview open (label + compact chip, #302/#304).
-    const gx = page.locator('p.sel[data-polish-para="1"] a.gx[data-glossary]').first();
+    // Glossary preview open (label + compact chip, #302/#304). Hover a
+    // term outside the thread mark: on the #341 recording the quote starts
+    // at the paragraph's first term, and a mark's own preview wins there.
+    await page.evaluate(() => {
+      const terms = [...document.querySelectorAll('p.sel[data-polish-para="1"] a.gx[data-glossary]')];
+      const free = terms.find((a) => !a.closest("mark.anc") && !a.querySelector("mark.anc")) ?? terms[0];
+      free?.setAttribute("data-polish-gx", "1");
+    });
+    const gx = page.locator('p.sel[data-polish-para="1"] a.gx[data-polish-gx="1"]');
     await gx.hover();
     await expect(page.locator("#pop .pv-label", { hasText: "Glossary" })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#pop button.lk[data-src]")).toHaveCount(1);
