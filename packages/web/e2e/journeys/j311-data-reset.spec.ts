@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService } from "../service-harness.js";
+import { DATA_FORMAT } from "@unvibe/shared";
 import { apiJson } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -109,7 +110,7 @@ test.describe("J311 data-format notice", () => {
       expect(status.status).toBe(200);
       expect(status.json as unknown as Record<string, unknown>).toMatchObject({
         state: "mismatch",
-        expected: 4, // DATA_FORMAT 4 after #351 step 2.
+        expected: DATA_FORMAT,
         stored: null,
         outboxCount: 1,
         previousRef: "preview/old",
@@ -181,7 +182,7 @@ test.describe("J311 data-format notice", () => {
       await expect(page.getByTestId("data-format-notice")).toHaveCount(0);
 
       const after = await apiJson(svc, "GET", "/api/data-format");
-      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: 4, stored: 4 });
+      expect(after.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: DATA_FORMAT, stored: DATA_FORMAT });
 
       // Nothing was deleted: the old DB sits in a dated sibling dir.
       expect(asideDirs(dataDir)).toHaveLength(1);
