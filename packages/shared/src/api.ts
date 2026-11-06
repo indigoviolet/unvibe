@@ -1782,6 +1782,16 @@ export interface SharedContextBaseStats {
 // --- update channels (issue #36, step 2: version picker) -----------------
 
 /**
+ * A debug flavour of a channel (issue #356): `release-debug`, or
+ * `preview/<slug>-debug` for previews. Debug builds ship the
+ * OpenTelemetry dependencies and can record performance traces; lean
+ * builds cannot. Switching flavours is an ordinary channel switch.
+ */
+export function isDebugChannel(ref: string): boolean {
+  return ref === "release-debug" || (ref.startsWith("preview/") && ref.endsWith("-debug"));
+}
+
+/**
  * One installable build: `release` or a `preview/<slug>` published from
  * an in-flight branch (candidates go out as `preview/main-rc`). Served
  * by `GET /api/update/channels`; `current` marks the installed one.
