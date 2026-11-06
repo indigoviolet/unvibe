@@ -7,10 +7,11 @@
  * templates through `runInFork`.
  */
 import type { Thread, Block, ReviewSnapshot } from "@unvibe/shared";
-import { formatGlossaryForPrompt } from "@unvibe/shared";
+import { formatGlossaryForPrompt, isLiveReply, replyRef } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 
-function blockPlainText(block: Block): string {
+/** Plain text of one block (citations dropped; diagrams keep source). */
+export function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
       return block.text.standard;
@@ -353,29 +354,39 @@ export function nearbyAnnotationsText(
   return same
     .slice(0, 5)
     .map((a) => {
-      const body = (a.replies ?? [])
-        .map((t) => {
-          if (t.kind === "comment") {
-            return `${t.who === "you" ? "Reader" : "Agent"}: ${t.blocks.map(blockPlainText).join("\n\n")}`;
-          }
-          return `${t.question === null ? "(the default question)" : `Reader: ${t.question}`}\nAgent: ${t.blocks.map(blockPlainText).join("\n\n")}`;
-        })
-        .join("\n\n");
+      // Issue #365: the transcript the model walks — live replies only,
+      // each headed with its stable reply ID.
+      const body = threadTextFor(a);
       return `Thread [[ann:${a.id}]] on "${excerptQuote(a.anchor.quotedText ?? "")}":\n${body || "(empty)"}`;
     })
     .join("\n\n");
 }
 
-/** Thread replies so far, rendered for the prompt. */
+/**
+ * Issue #365: one reply rendered for the agent transcript. The heading
+ * carries the stable reply ID (`[[ann:<thread>#r<seq>]]`) so the model
+ * can fetch the turn with `get_item` and cite it exactly. Tombstoned
+ * replies (#364) are never in the transcript: null when hidden.
+ */
+export function replyTextFor(thread: Thread, index: number): string | null {
+  const r = (thread.replies ?? [])[index];
+  if (!r || !isLiveReply(r)) return null;
+  const ref = `[[${replyRef(thread.id, thread, index)}]]`;
+  if (r.kind === "comment") {
+    return `${r.who === "you" ? "Reader" : "Agent"} ${ref}: ${r.blocks.map(blockPlainText).join("\n\n")}`;
+  }
+  const q = r.question === null ? "Explain this." : r.question;
+  return `Reader ${ref}: ${q}\nAgent: ${r.blocks.map(blockPlainText).join("\n\n")}`;
+}
+
+/**
+ * Issue #365: thread replies so far, rendered for the prompt — live
+ * replies only, each headed with its stable reply ID.
+ */
 export function threadTextFor(thread: Thread): string {
   if ((thread.replies ?? []).length === 0) return "(none)";
-  return (thread.replies ?? [])
-    .map((r) => {
-      if (r.kind === "comment") return `${r.who === "you" ? "Reader" : "Agent"}: ${r.blocks.map(blockPlainText).join("\n\n")}`;
-      const q = r.question === null ? "Explain this." : r.question;
-      return `Reader: ${q}\nAgent: ${r.blocks.map(blockPlainText).join("\n\n")}`;
-    })
-    .join("\n\n");
+  const lines = (thread.replies ?? []).map((_, i) => replyTextFor(thread, i)).filter((t) => t !== null);
+  return lines.length > 0 ? (lines as string[]).join("\n\n") : "(none)";
 }
 
 /**
@@ -411,6 +422,76 @@ export function l4Variables(
     // Issue #252: Ask turns receive the glossary in their context.
     glossary: formatted === "" ? "(no glossary yet)" : formatted,
   };
+}
+
+/**
+ * Issue #365: the exact item ID a turn is about — what the model
+ * passes to `get_item` (or the code tools) to fetch more. Block hosts
+ * qualify to `card:<card>#<block>`; comment hosts resolve to the
+ * comment's thread (`ann:<commentId>`); everything else maps to its
+ * citation ID in short form.
+ */
+export function itemIdForAnchor(snapshot: ReviewSnapshot, anchor: Thread["anchor"]): string {
+  const host = anchor.host;
+  switch (host.kind) {
+    case "block": {
+      const found = findBlock(snapshot, host.blockId);
+      if (found) return `card:${found.cardId}#${found.block.id}`;
+      return `card:${host.blockId}`;
+    }
+    case "description":
+      return `desc:${host.paragraphId}`;
+    case "diff-line":
+      return host.endLine !== undefined && host.endLine !== host.line
+        ? `diff:${host.fileKey}:${host.line}-${host.endLine}`
+        : `diff:${host.fileKey}:${host.line}`;
+    case "hunk":
+      return `h:${host.fileKey}:${host.contentHash}`;
+    case "comment":
+      return `ann:${host.commentId}`;
+    case "code":
+      return host.endLine !== undefined && host.endLine !== host.line
+        ? `code:${host.path}:${host.line}-${host.endLine}@${host.commit}`
+        : `code:${host.path}:${host.line}@${host.commit}`;
+  }
+}
+
+/**
+ * Issue #365: the stable reply ID inside a thread for a stored reply
+ * id (`ann:<thread>#r<seq>`), or null when the reply is unknown there.
+ * Tombstoned replies resolve like live ones — callers decide visibility.
+ */
+export function replyRefForId(thread: Thread, replyId: string): string | null {
+  const idx = (thread.replies ?? []).findIndex((r) => r.id === replyId);
+  return idx < 0 ? null : replyRef(thread.id, thread, idx);
+}
+
+/**
+ * Issue #365: recorded selection offsets rendered for a turn
+ * (`12–18`), or the explicit placeholder when the selection was never
+ * recorded. An override (the chip's offsets) wins over the anchor's.
+ */
+export function offsetsTextFor(
+  anchor: Thread["anchor"],
+  override?: { start: number; end: number },
+): string {
+  const start = override?.start ?? anchor.startOffset;
+  const end = override?.end ?? anchor.endOffset;
+  if (typeof start !== "number" || typeof end !== "number") return "(no offsets recorded)";
+  return `${start}–${end}`;
+}
+
+/**
+ * Issue #365: hunk IDs changed since the turn's version — the stored
+ * since-baseline delta, shown only when the review moved past the
+ * version the anchor was created against. Empty (same version, or no
+ * recorded delta) means the turn carries no hunk list.
+ */
+export function changedHunksForTurn(snapshot: ReviewSnapshot, anchor: Thread["anchor"]): string[] {
+  if (snapshot.version.n <= anchor.version) return [];
+  const since = snapshot.sinceHunks;
+  if (!since) return [];
+  return [...since.added, ...since.changed];
 }
 
 /**
