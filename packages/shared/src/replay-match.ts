@@ -67,6 +67,42 @@ export function explicitReplayMarker(prompt: string): { kind: string; key: strin
 }
 
 /**
+ * Issue #365: follow-up turns carry no quote — only the message plus
+ * the turn's own reply ID and its thread. When several ask/explain
+ * entries match such a quoteless prompt, prefer a thread-scoped
+ * (`thread-…`) recording: it was written for exactly this in-thread
+ * context. A chip follow-up carries its own quote, so normal
+ * first-match order applies there; prompts without thread/reply
+ * context keep first-match order too, and the kind-only fallback (the
+ * kind's first entry) is unchanged.
+ */
+const THREAD_CONTEXT = /ann:[\w-]+#r\d+|\bin thread \[\[ann:/i;
+const QUOTE_PRESENT = /^> /m;
+
+function preferThreadEntry<T extends { key?: string }>(hits: T[], prompt: string): T {
+  if (hits.length > 1 && THREAD_CONTEXT.test(prompt) && !QUOTE_PRESENT.test(prompt)) {
+    const threaded = hits.find((e) => (e.key ?? "").startsWith("thread-"));
+    if (threaded) return threaded;
+  }
+  return hits[0] as T;
+}
+
+/** Pattern-matched ask/explain entries, in manifest order. */
+function matchAskExplain(
+  entries: ReplayManifestEntry[],
+  hasText: (file: string) => boolean,
+  kind: string,
+  prompt: string,
+): ResolvedRecording | null {
+  const hits = entries.filter(
+    (e) => e.kind === kind && e.pattern && new RegExp(e.pattern, "i").test(prompt) && hasText(e.file),
+  );
+  if (hits.length === 0) return null;
+  const hit = preferThreadEntry(hits, prompt);
+  return { kind, key: hit.key ?? null, file: hit.file, placeholder: false };
+}
+
+/**
  * Which recording (or placeholder) a prompt resolves to. Pure: entries
  * carry the manifest, `hasText` reports which files have loaded text.
  */
@@ -82,12 +118,8 @@ export function resolveRecording(
     // which recording answers, and only an unmatched prompt falls
     // back to the kind's first entry. A keyed marker is exact.
     if (explicit.key === null && (explicit.kind === "explain" || explicit.kind === "ask")) {
-      for (const e of entries) {
-        if (e.kind !== explicit.kind || !e.pattern) continue;
-        if (new RegExp(e.pattern, "i").test(prompt) && hasText(e.file)) {
-          return { kind: explicit.kind, key: e.key ?? null, file: e.file, placeholder: false };
-        }
-      }
+      const hit = matchAskExplain(entries, hasText, explicit.kind, prompt);
+      if (hit) return hit;
     }
     const hit = entries.find(
       (e) => e.kind === explicit.kind && (explicit.key === null || e.key === explicit.key),
@@ -99,12 +131,11 @@ export function resolveRecording(
   }
   const kind = guessReplayKind(prompt);
   if (kind === "explain" || kind === "ask") {
-    for (const e of entries) {
-      if (e.kind !== kind || !e.pattern) continue;
-      if (new RegExp(e.pattern, "i").test(prompt) && hasText(e.file)) {
-        return { kind, key: e.key ?? null, file: e.file, placeholder: false };
-      }
-    }
+    // A follow-up carries its message but no quote; a first turn carries
+    // quote and question. Either way the message (or quote) decides —
+    // with thread-scoped recordings preferred in thread context.
+    const hit = matchAskExplain(entries, hasText, kind, prompt);
+    if (hit) return hit;
     return { kind, key: null, file: null, placeholder: true };
   }
   if (kind) {

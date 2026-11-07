@@ -268,7 +268,7 @@
     {
       "kind": "explain",
       "key": "ows",
-      "pattern": "matches optional whitespace, then CRLF, then req",
+      "pattern": "matches optional whitespace, then CRLF, then req|optional whitespace",
       "file": "explain-ows.md"
     },
     {
@@ -310,7 +310,7 @@
     {
       "kind": "ask",
       "key": "identity",
-      "pattern": "it deletes and re-adds the headers on th|Is the rewritten message the same object",
+      "pattern": "it deletes and re-adds the headers on th|Is the rewritten message the same object|Does the fast path still catch a fold",
       "file": "ask-identity.md"
     },
     {
