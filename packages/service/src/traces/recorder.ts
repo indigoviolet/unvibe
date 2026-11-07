@@ -219,11 +219,6 @@ export class TraceRecorder {
   setEnabled(on: boolean): void {
     if (on) {
       ensureTracesDir(this.dataDir);
-      // Recount: spans may have landed since construction (e.g. a store
-      // restored around the data dir, or the capped test's fixture).
-      // Cheap except near the cap, and toggles are explicit user actions.
-      this.spanCount = countStoredSpans(this.dataDir);
-      this.spansSinceCheck = 0;
       sharedTracerProvider();
       if (currentBytes(this.dataDir) >= TRACE_SAFETY_CAP_BYTES) {
         // Over the cap: stay off with a visible notice (status.capped).

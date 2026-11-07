@@ -24,6 +24,7 @@ import {
   mirrorPromotedAnswer,
   offsetsTextFor,
   recordInteraction,
+  replyRefForId,
 } from "../../interaction/index.js";
 
 export { JOB_PRIORITY };
@@ -178,6 +179,50 @@ export function minimalTurnVariables(
     item_id: input.itemIdOverride ?? itemIdForAnchor(snapshot, anchor),
     offsets: offsetsTextFor(anchor, input.offsetsOverride),
     ...(input.threadText !== undefined ? { thread: input.threadText } : {}),
+    changed_hunks: changed.length > 0 ? changed.join("\n") : "(no changes)",
+    message: input.message,
+  };
+}
+
+/**
+ * Issue #365: minimal `ask_turn` variables for a follow-up on a live
+ * or loaded session (issue #143: only what is new is sent). The
+ * `followup` block carries the turn's own reply ID plus the thread ID
+ * it follows — and, only when the reader selected new text (a quote
+ * chip), the chip's quote, item ID and offsets. Never the thread
+ * anchor's quote: the session already holds it.
+ */
+export interface MinimalFollowupInput {
+  message: string;
+  /** Chip selection (quote, item, offsets) — absent on plain turns. */
+  chip?: { quote: string; itemId: string; offsets?: { start: number; end: number } };
+}
+
+export function minimalFollowupVariables(
+  snapshot: ReviewSnapshot,
+  thread: Thread,
+  replyId: string,
+  anchor: Anchor,
+  input: MinimalFollowupInput,
+): Record<string, unknown> {
+  const ownRef = replyRefForId(thread, replyId) ?? `ann:${thread.id}`;
+  const threadRef = `ann:${thread.id}`;
+  const followup = input.chip
+    ? [
+        `New selection in reply [[${input.chip.itemId}]]:`,
+        "",
+        `> ${input.chip.quote}`,
+        "",
+        `Item: ${input.chip.itemId}`,
+        `Selection offsets: ${offsetsTextFor(anchor, input.chip.offsets)}`,
+        "",
+        `Answer as turn [[${ownRef}]] in thread [[${threadRef}]].`,
+      ].join("\n")
+    : `This is turn [[${ownRef}]] in thread [[${threadRef}]], following the turns above. ` +
+      `The session already holds the selection, the item and the earlier turns — answer only what is new.`;
+  const changed = changedHunksForTurn(snapshot, anchor);
+  return {
+    followup,
     changed_hunks: changed.length > 0 ? changed.join("\n") : "(no changes)",
     message: input.message,
   };

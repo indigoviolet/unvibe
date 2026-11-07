@@ -90,7 +90,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 2 }, quotedText: "y = 2", prefix: "x = 1", suffix: "", position: 2, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "why?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "why?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -169,7 +169,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey: aKey, line: 3 }, quotedText: "z = 9", prefix: "y = 2", suffix: "", position: 3, version: snap2.version.n, hunkHash: aHash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -239,7 +239,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 21 }, quotedText: "tail = 1", prefix: "line20", suffix: "", position: 21, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "tail?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "tail?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
       });
@@ -287,7 +287,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 3 }, quotedText: "z = 3", prefix: "y = 2", suffix: "", position: 3, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         });
       });

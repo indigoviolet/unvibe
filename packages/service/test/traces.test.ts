@@ -181,7 +181,7 @@ describe("traces (#356)", () => {
   it("refuses to start past the safety cap instead of deleting data", () => {
     const dir = tempDir();
     try {
-      fs.mkdirSync(path.join(dir, "traces"), { recursive: true });
+      fs.mkdirSync(path.dirname(spansFile(dir)), { recursive: true });
       const file = spansFile(dir);
       fs.writeFileSync(file, "{}\n");
       fs.truncateSync(file, TRACE_SAFETY_CAP_BYTES + 1); // sparse: no 256 MB write

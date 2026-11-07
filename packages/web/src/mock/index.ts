@@ -1717,6 +1717,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
     replies: [
       {
         id: replyId,
+        seq: 1,
         kind: "explain",
         who: "agent",
         question: null,
@@ -1797,10 +1798,11 @@ function mockPostText(thread: import("@unvibe/shared").Thread): string {
   return first ? mockReplyText(first) : "";
 }
 
-function mockCommentReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
+function mockCommentReply(who: "you" | "agent", text: string, suggested = false, seq = 1): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
     id: `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}`,
+    seq,
     kind: "comment",
     who,
     question: null,
@@ -3166,6 +3168,7 @@ export const mockApi = {
           replies: [
             {
               id: replyId,
+              seq: 1,
               kind: "ask",
               who: "agent",
               question: a.message,
@@ -3350,6 +3353,7 @@ export const mockApi = {
         replies: [
           {
             id: replyId,
+            seq: 1,
             kind: "explain",
             who: "agent",
             question: null,
@@ -3490,7 +3494,7 @@ export const mockApi = {
         post: false,
         working: "Writing answer",
         replies: [
-          { id: replyId, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
@@ -3854,7 +3858,7 @@ export const mockApi = {
   replyComment: async (_id: string, commentId: string, body: { text: string }) => {
     const thread = annotations.find((a) => a.id === commentId);
     if (!thread) throw new Error("unknown comment");
-    thread.replies.push(mockCommentReply("you", body.text));
+    thread.replies.push(mockCommentReply("you", body.text, false, thread.replies.length + 1));
     delete thread.reply;
     thread.open = true;
     emitAnnotations();

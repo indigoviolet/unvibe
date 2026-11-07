@@ -97,7 +97,7 @@ export class StoreReviewReader implements ReviewReader {
         .filter((t) => t !== null)
         .join("\n\n"),
       replies: (a.replies ?? []).map((t) => ({
-        ...(typeof t.seq === "number" ? { seq: t.seq } : {}),
+        seq: t.seq,
         id: t.id,
         kind: t.kind,
         who: t.who,

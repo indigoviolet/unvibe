@@ -20,7 +20,7 @@ const REVIEW_ID = "thread-test";
 function mkReply(who: "you" | "agent", text: string, opts: { suggested?: boolean; suggestedQuestion?: boolean } = {}): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
-    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`, seq: 1,
     kind: "comment",
     who,
     question: null,
@@ -177,7 +177,7 @@ describe("ThreadView ask-about removal (issue #301)", () => {
 describe("Ask thread entries (issue #315)", () => {
   function mkAgent(kind: "ask" | "explain", question: string): Reply {
     return {
-      id: `ans_${kind}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `ans_${kind}_${Math.random().toString(36).slice(2, 6)}`, seq: 1,
       kind,
       who: "agent",
       question,

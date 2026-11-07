@@ -507,19 +507,19 @@ export class McpRegistry {
     }
     const live = ann.replies.filter((r) => r.live);
     const parent = ann.anchorItemId ? `\nparent: ${ann.anchorItemId}` : "";
+    const refOf = (r: (typeof live)[number]): string => `ann:${ann.id}#r${r.seq}`;
     const head = [
       `ann:${ann.id}`,
       `kind: thread`,
       `anchor: ${ann.anchorSummary || "(no quote)"}${parent}`,
-      `children: ${live.length > 0 ? live.map((r) => `ann:${ann.id}#r${typeof r.seq === "number" ? r.seq : ann.replies.indexOf(r) + 1}`).join(", ") : "(none)"}`,
+      `children: ${live.length > 0 ? live.map(refOf).join(", ") : "(none)"}`,
       "",
     ];
     const body = live.map((r) => {
-      const ref = `ann:${ann.id}#r${typeof r.seq === "number" ? r.seq : ann.replies.indexOf(r) + 1}`;
       const heading = r.kind === "comment"
         ? `${r.who === "you" ? "Reader" : "Agent"}:`
         : `${r.question === null ? "Explain this." : r.question}`;
-      return `[[${ref}]] ${heading}\n${r.text}`;
+      return `[[${refOf(r)}]] ${heading}\n${r.text}`;
     });
     return [...head, ...body].join("\n");
   }

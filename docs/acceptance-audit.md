@@ -719,7 +719,8 @@ needed (that deviation is closed, not added).
   grammar) stamped at creation and kept across deletes; tombstoned
   replies (#364 soft delete, `deletedAt` + shared `isLiveReply`)
   stay out of the transcript and `get_item` until restored, under the
-  same ID. Ask/Explain turns are minimal — quote, exact item ID,
+  same ID. Stored `Reply` gains required `seq` (DATA_FORMAT 5 → 6;
+  no other stored shape changes). Ask/Explain turns are minimal — quote, exact item ID,
   offsets, question, plus changed hunk IDs only when the code moved
   since the turn's version; no card, block, thread-transcript or shared
   log text rides along (the chip's quote and `sourceReplyId` feed the

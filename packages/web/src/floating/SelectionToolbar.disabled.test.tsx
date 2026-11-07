@@ -232,7 +232,7 @@ function seedConversationCard(): void {
   const card: Thread = {
     id: "ann_1",
     type: "thread",
-    replies: [{ id: "ans_9", kind: "ask" as const, who: "agent" as const, question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
+    replies: [{ id: "ans_9", seq: 1, kind: "ask" as const, who: "agent" as const, question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
     anchor: {
       host: { kind: "diff-line", fileKey: "conn", line: 91 },
       quotedText: "code",

@@ -22,7 +22,7 @@ const rc = (target: string, unverified = false): ResolvedCitation => ({
 
 function mkReply(text: string): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  return { id: `ans_${Math.random().toString(36).slice(2, 6)}`, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }], level: "standard", revision: 1, undoStack: [] };
+  return { id: `ans_${Math.random().toString(36).slice(2, 6)}`, seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }], level: "standard", revision: 1, undoStack: [] };
 }
 
 describe("BlockMarkers", () => {

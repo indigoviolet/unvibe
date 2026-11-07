@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [quote, item_id, offsets, changed_hunks, message]
+variables: [changed_hunks, followup, message]
 ---
 
 # Ask follow-up
@@ -10,17 +10,9 @@ The reader asked a follow-up question in an ongoing conversation. You
 already hold the review context and everything said so far — answer only
 what is new.
 
-## Selected text
+## Following
 
-> {{quote}}
-
-## Item (fetch it with `get_item` when you need more than the quote)
-
-{{item_id}}
-
-## Selection offsets
-
-{{offsets}}
+{{followup}}
 
 ## Changed hunks since this turn's version
 
@@ -34,14 +26,14 @@ what is new.
 
 - Answer the question asked, directly first, then the supporting detail
   — no longer than the question needs. When the detail serves a contract
-  or invariant, connect the local detail to it. Do not quote the
-  selection or the question back — the app already shows both.
-- This turn carries only the quote, the item ID, the offsets, the
-  question, and changed hunk IDs. Everything else you fetch yourself:
-  `get_item` for cards, blocks, pages, threads, replies and description
-  paragraphs, `get_hunk` for a diff hunk by its `h:` ID, `get_code`
-  for file lines at a commit. Never restate earlier turns from
-  memory of another thread: this session's history is this conversation.
+  or invariant, connect the local detail to it.
+- This turn carries only what is new: the follow-up context above, the
+  question, and changed hunk IDs. The session already holds the
+  selection, the item and the earlier turns — never restate them from
+  memory of another thread. When the follow-up names a new selection,
+  fetch its item with `get_item` (cards, blocks, pages, threads, replies
+  and description paragraphs), `get_hunk` for a diff hunk, `get_code`
+  for file lines, before claiming anything about it.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first.
 - If the question has no answer in the code (maintainer intent, unseen

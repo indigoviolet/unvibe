@@ -563,7 +563,7 @@ A new base is built when any of these happens:
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
 | `concept_page` | Concept pages (on demand) | `{{concept}}`, `{{mentions}}` |
 | `ask` | Conversation first turns, Explain and Ask alike | `{{quote}}`, `{{item_id}}`, `{{offsets}}`, `{{thread}}` (own transcript on rebuilt sessions, else `(none)`), `{{changed_hunks}}`, `{{message}}` |
-| `ask_turn` | Conversation follow-ups on a live session | `{{quote}}`, `{{item_id}}`, `{{offsets}}`, `{{changed_hunks}}`, `{{message}}` |
+| `ask_turn` | Follow-ups on a live or loaded session | `{{followup}}` (own reply ID + thread ID; a chip adds its quote, item ID and offsets), `{{changed_hunks}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |

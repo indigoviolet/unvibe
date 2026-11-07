@@ -77,9 +77,8 @@ export function newReplyId(): string {
  * Issue #365: append a reply with its stable sequence stamped. Every
  * creation path uses this so `ann:<thread>#r<seq>` never shifts.
  */
-export function pushReplySeq(replies: Reply[], reply: Reply): void {
-  reply.seq = nextReplySeq(replies);
-  replies.push(reply);
+export function pushReplySeq(replies: Reply[], reply: Omit<Reply, "seq">): void {
+  replies.push({ ...reply, seq: nextReplySeq(replies) });
 }
 
 function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
@@ -333,8 +332,10 @@ export function buildAnchor(
   };
 }
 
-/** One comment reply carrying plain reviewer text. */
-export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Reply {
+/** One comment reply carrying plain reviewer text. The stable sequence
+ * is stamped by the caller (`pushReplySeq`, or `seq: 1` for a first
+ * reply in a fresh thread). */
+export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Omit<Reply, "seq"> {
   const who = opts?.who ?? "you";
   const html = escapeHtml(text).replace(/\n/g, "<br>");
   const block: Block = {

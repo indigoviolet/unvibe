@@ -39,7 +39,7 @@ const FILES = [{ fileKey: "appkey", path: "src/app.py", hunks: [] }];
 function mkReply(text: string): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   return {
-    id: `ans_${Math.random().toString(36).slice(2, 6)}`,
+    id: `ans_${Math.random().toString(36).slice(2, 6)}`, seq: 1,
     kind: "comment",
     who: "you",
     question: null,
@@ -132,7 +132,7 @@ describe("two tabs", () => {
     thread("t-plain", "Plain review thought"),
     thread("t-outbox", "Outbox thought", { post: true }),
     thread("t-posted", "Posted thought", { post: true, postedAt: 123 }),
-    thread("t-ai", "Suggested tweak", { replies: [{ id: "ans_ai1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Suggested tweak" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] }),
+    thread("t-ai", "Suggested tweak", { replies: [{ id: "ans_ai1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Suggested tweak" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] }),
   ];
 
   it("opening shows the Comments tab; the Outbox lives on its own tab", () => {
