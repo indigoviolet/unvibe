@@ -1,0 +1,87 @@
+{
+  "channel": "preview/main-rc",
+  "version": "0.0.16-preview.main-rc.9662aee",
+  "previousVersion": "0.0.16",
+  "commit": "9662aee3e27a662ef6926a54cbaf324f12bf9445",
+  "previousCommit": "v0.0.16",
+  "dataFormat": 6,
+  "previousDataFormat": 4,
+  "dataResetNeeded": true,
+  "generatedAt": "2026-11-07T10:18:25.075Z",
+  "items": [
+    {
+      "number": 363,
+      "title": "Test reliability: ~12–15 long journeys, a brittleness audit, fix-it-properly rules, screenshots out of the gate",
+      "summary": "The browser test suite is rebuilt as 14 long journeys (start page, opening, reading, threads, submit and Outbox, diff, versions and Since, personas, settings, recovery, documents, extension, static demo, debug): 357 tests in 97 files become 191 in 16, with far fewer service starts. Screenshot capture moved to an on-demand tour (mise run visual-tour), test:affected runs the journeys on one throttled core to catch timing races early, and AGENTS.md has fix-it-properly rules for flaky tests. No change in the app.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/363",
+      "whatChanged": "The browser test suite is rebuilt as 14 long journeys (start page, opening, reading, threads, submit and Outbox, diff, versions and Since, personas, settings, recovery, documents, extension, static demo, debug): 357 tests in 97 files become 191 in 16, with far fewer service starts. Screenshot capture moved to an on-demand tour (mise run visual-tour), test:affected runs the journeys on one throttled core to catch timing races early, and AGENTS.md has fix-it-properly rules for flaky tests. No change in the app."
+    },
+    {
+      "number": 370,
+      "title": "Test services can resolve the real gh via the login-shell PATH (tests reached GitHub read-only)",
+      "summary": "Test-only safety fix: a test-started Unvibe service no longer applies the login shell’s PATH, and refuses to run any gh, git or agent CLI that is not the test harness’s fake. Before, a broken test setup could make a test service call the real gh with your login (read-only). No change in the app you use.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/370",
+      "whatChanged": "Test-only safety fix: a test-started Unvibe service no longer applies the login shell’s PATH, and refuses to run any gh, git or agent CLI that is not the test harness’s fake. Before, a broken test setup could make a test service call the real gh with your login (read-only). No change in the app you use."
+    },
+    {
+      "number": 364,
+      "title": "Threads: delete a reply, never-lost anchor marker + reverse link, clearer turn boundaries, one composer per thread",
+      "summary": "Threads: delete a reply, never-lost anchor marker + reverse link, clearer turn boundaries, one composer per thread",
+      "url": "https://github.com/indigoviolet/unvibe/issues/364"
+    },
+    {
+      "number": 366,
+      "title": "Traces replace the stats export: all stats fields on spans, remove #323 export, stats:summary reads traces",
+      "summary": "Traces replace the stats export: all stats fields on spans, remove #323 export, stats:summary reads traces",
+      "url": "https://github.com/indigoviolet/unvibe/issues/366"
+    },
+    {
+      "number": 367,
+      "title": "Card shows 'N cited hunks changed · Update' after an update pass, but Update says 'already up to date'",
+      "summary": "Card shows 'N cited hunks changed · Update' after an update pass, but Update says 'already up to date'",
+      "url": "https://github.com/indigoviolet/unvibe/issues/367"
+    },
+    {
+      "number": 368,
+      "title": "Hunk header: 'changed since reviewed' badge has no gap after the diff stat",
+      "summary": "Hunk header: 'changed since reviewed' badge has no gap after the diff stat",
+      "url": "https://github.com/indigoviolet/unvibe/issues/368"
+    },
+    {
+      "number": 365,
+      "title": "Agent context: get_item tool to read and walk the review tree; reply IDs; minimal Ask/Explain turns (quote + ID + question)",
+      "summary": "Agent context: get_item tool to read and walk the review tree; reply IDs; minimal Ask/Explain turns (quote + ID + question)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/365"
+    },
+    {
+      "number": 356,
+      "title": "Opt-in local performance traces (OpenTelemetry), exportable anytime; fill the stats-export gaps",
+      "summary": "Opt-in local performance traces (OpenTelemetry), exportable anytime; fill the stats-export gaps",
+      "url": "https://github.com/indigoviolet/unvibe/issues/356"
+    },
+    {
+      "number": 362,
+      "title": "Tests: stop running permutations (themes × widths); no phone widths",
+      "summary": "Tests: stop running permutations (themes × widths); no phone widths",
+      "url": "https://github.com/indigoviolet/unvibe/issues/362"
+    },
+    {
+      "number": 359,
+      "title": "Built-in persona: Clarity (code-explanation rewriter, from the owner's skill)",
+      "summary": "Built-in persona: Clarity (code-explanation rewriter, from the owner's skill)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/359"
+    },
+    {
+      "number": 357,
+      "title": "Test-suite pruning, pass 2: cut redundant and low-value tests, shorten the gate",
+      "summary": "Test-suite pruning, pass 2: cut redundant and low-value tests, shorten the gate",
+      "url": "https://github.com/indigoviolet/unvibe/issues/357"
+    },
+    {
+      "number": 358,
+      "title": "Gate speed: affected-test selection before each fold, and re-run only failed specs while fixing a red gate",
+      "summary": "Gate speed: affected-test selection before each fold, and re-run only failed specs while fixing a red gate",
+      "url": "https://github.com/indigoviolet/unvibe/issues/358"
+    }
+  ]
+}
