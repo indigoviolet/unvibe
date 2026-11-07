@@ -10,6 +10,8 @@ import { Fragment } from "react";
 import type { DocumentBlock } from "@unvibe/shared";
 import { DOCUMENT_CARD_ID } from "@unvibe/shared";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
+import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
+import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
@@ -41,6 +43,7 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const doc = snapshot?.document;
   const annotations = snapshot?.annotations ?? [];
   const contextRepos = snapshot?.contextRepos ?? [];
+  const readOnlyDoc = useIsReadOnlyVersion();
   if (!doc) {
     return (
       <div className="doc">
@@ -49,6 +52,7 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
     );
   }
   const lookupPage = (id: string) => snapshot?.pages.find((p) => p.id === id);
+  // Issue #364: every document thread gets a margin icon (title + body).
   // The title shows once: when the document opens with an H1, that block
   // IS the page title (rendered here, with its block anchor, and skipped
   // in the card below).
@@ -57,6 +61,13 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const titleHtml = titleBlock?.block.type === "paragraph" ? titleBlock.block.text.standard : "";
   return (
     <div className="doc" data-testid="document-view">
+      <ThreadMarginOverlay
+        threads={[
+          ...(titleBlock ? blockThreads(annotations, DOCUMENT_CARD_ID, titleBlock.id) : []),
+          ...doc.blocks.filter((db) => db.id !== titleBlock?.id).flatMap((db) => blockThreads(annotations, DOCUMENT_CARD_ID, db.id)),
+        ]}
+        readOnly={readOnlyDoc}
+      />
       {titleBlock ? (
         <h1 className="title sel" id={`B-${titleBlock.id}`} data-top={titleBlock.id}>
           <RichText html={titleHtml} className="rt" top={titleBlock.id} onOpenPage={onOpenPage} />

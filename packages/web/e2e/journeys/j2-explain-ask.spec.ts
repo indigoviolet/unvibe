@@ -133,7 +133,9 @@ test.describe("J2 explain ask follow-up nested", () => {
     const replyBox = card.locator("textarea").first();
     if ((await replyBox.count()) > 0) {
       await replyBox.fill("Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?");
-      const send = card.getByRole("button", { name: /ask|send|reply/i }).first();
+      // Issue #364: per-reply Delete buttons also match /reply/i — the
+      // send is the Reply box's own button, matched exactly.
+      const send = card.getByRole("button", { name: "Reply", exact: true });
       await send.click();
       await expect(card.locator(".exp-b").last()).not.toBeEmpty({ timeout: 60_000 });
     }
@@ -162,7 +164,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(card).not.toHaveClass(/floating/);
 
     // Delete removes both the card and its mark, across a reload.
-    await card.getByRole("button", { name: "Delete" }).click();
+    await card.getByRole("button", { name: "Delete thread" }).click();
     await expect(card).toHaveCount(0, { timeout: 15_000 });
     await expect(mark).toHaveCount(0, { timeout: 15_000 });
     await page.reload();
@@ -222,7 +224,7 @@ test.describe("J2 explain ask follow-up nested", () => {
     await expect(card).not.toHaveClass(/floating/);
 
     // Delete removes the card and its mark.
-    await card.getByRole("button", { name: "Delete" }).click();
+    await card.getByRole("button", { name: "Delete thread" }).click();
     await expect(card).toHaveCount(0, { timeout: 15_000 });
     await expect(mark).toHaveCount(0, { timeout: 15_000 });
   });

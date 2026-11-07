@@ -226,7 +226,7 @@ for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const)
       .toBeTruthy();
     const hcard = file.locator(`.dhunk [data-thread="${hunkThreadId}"]`);
     await expect(hcard).toBeVisible({ timeout: 15_000 });
-    await hcard.getByRole("button", { name: "Delete" }).click();
+    await hcard.getByRole("button", { name: "Delete thread" }).click();
     await expect(hcard).toHaveCount(0, { timeout: 15_000 });
     // Delete takes the summary with it (J13); the on-demand Summarize
     // button is back on the hunk.

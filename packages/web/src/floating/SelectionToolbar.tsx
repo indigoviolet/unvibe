@@ -878,7 +878,9 @@ export function SelectionToolbar() {
         return;
       }
     }
-    // Issue #273: Ask inside a thread appends there; Comment keeps its remap.
+    // Issue #364: Ask inside a thread uses the thread's own Reply box —
+    // the quote arrives as a removable chip, never a second composer.
+    // Comment keeps its remap below.
     if (kind === "ask" && (current as { threadId?: string }).threadId) {
       const reviewId = useReview.getState().snapshot?.review.id;
       if (!reviewId) {
@@ -887,6 +889,7 @@ export function SelectionToolbar() {
       }
       const tid = (current as { threadId?: string }).threadId as string;
       const src = (current as { sourceReplyId?: string }).sourceReplyId;
+      dismiss();
       requestNewThread({
         anchor: current.anchor,
         quote: current.quote,

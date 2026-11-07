@@ -2897,7 +2897,7 @@ test("visual tour ask pending draft (#271)", async ({ page }) => {
       const draft = card.getByPlaceholder(/Ask a follow-up/);
       await expect(draft).toBeVisible();
       await draft.fill("And then?");
-      const send = card.getByRole("button", { name: "Reply" });
+      const send = card.getByRole("button", { name: "Reply", exact: true });
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
       await card.scrollIntoViewIfNeeded().catch(() => {});

@@ -70,10 +70,14 @@ test("asking inside a pinned thread appends in the same thread (#204)", async ({
   await expect(page.locator(".dhunk .ithread[data-pending-thread]")).toHaveCount(0);
   await selectText(page, '.dhunk section.ithread[data-thread] [data-reply][data-kind="explain"] .exp-b', "Mock explanation");
   await page.locator('#selbar [data-act="ask"]').click();
-  const composer = page.locator(".dhunk .ithread[data-pending-thread]");
-  await expect(composer).toBeVisible();
-  await composer.locator("textarea").fill("Why is this here?");
-  await composer.getByRole("button", { name: "Ask" }).click();
+  // Issue #364: Ask inside a thread uses the thread's own Reply box —
+  // the quote arrives as a removable chip, never a second composer.
+  await expect(page.locator(".dhunk .ithread[data-pending-thread]")).toHaveCount(0);
+  const chip = parent.locator("[data-quote-chip]");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("Mock explanation");
+  await parent.locator('textarea[aria-label="Reply"]').fill("Why is this here?");
+  await parent.getByRole("button", { name: "Reply", exact: true }).click();
   const child = parent.locator('[data-reply][data-kind="ask"]', { hasText: "Why is this here?" });
   await expect(child).toContainText("Mock explanation", { timeout: 8000 });
   await expect(parent).not.toHaveClass(/floating/);

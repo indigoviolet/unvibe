@@ -51,6 +51,12 @@ interface Props {
   allowEmptyDiscard?: boolean;
   /** Issue #273: which server field this box persists to (`reply` or `followupDraft`). */
   persistField?: "reply" | "followupDraft";
+  /**
+   * Issue #364: Ask inside a thread uses this Reply box — the selected
+   * quote rides as a removable chip instead of opening a second composer.
+   */
+  quoteChip?: string | null;
+  onRemoveQuoteChip?: () => void;
 }
 
 export function ReplyBox({
@@ -70,6 +76,8 @@ export function ReplyBox({
   sendDisabled,
   sendDisabledTip,
   persistField,
+  quoteChip,
+  onRemoveQuoteChip,
 }: Props) {
   const field = persistField ?? "reply";
   const [draft, setDraft] = useState(serverReply ?? "");
@@ -204,6 +212,20 @@ export function ReplyBox({
   }
   return (
     <div className="composer">
+      {quoteChip ? (
+        <div className="qchip" data-quote-chip={annotationId}>
+          <span className="qchip-q">“{quoteChip}”</span>
+          <button
+            type="button"
+            className="qchip-x"
+            aria-label="Remove quote"
+            data-tip="Remove quote"
+            onClick={onRemoveQuoteChip}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
       <textarea
         id={`ta-${annotationId}`}
         rows={rows ?? 1}
