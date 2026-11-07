@@ -38,9 +38,14 @@ export function Tooltip(): React.JSX.Element {
       // Floating UI (#201): offset + flip + shift, so the tip never leaves
       // the viewport. Card toolbar tips also avoid the card header: if the
       // flipped/shifted top placement would overlap the header, place below.
+      // Issue #364: margin icons sit left of the prose, often a line or
+      // two under the card header — a top tip would cover that header, so
+      // they ask for rightward placement via `data-tip-place` (flip/shift
+      // still keep the tip inside the viewport).
       void (async () => {
         const middleware = [offset(6), flip({ padding: 4 }), shift({ padding: 4 })];
-        let pos = await computePosition(anchorEl, tip, { placement: "top", middleware });
+        const wanted = (anchorEl as HTMLElement).dataset.tipPlace === "right" ? "right" : "top";
+        let pos = await computePosition(anchorEl, tip, { placement: wanted, middleware });
         if (anchorEl.isConnected && !tip.hidden) {
           const header = anchorEl.closest(".ui-card")?.querySelector(":scope > .exp-h");
           if (header && pos.placement === "top") {

@@ -176,6 +176,7 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
             className="tmargin-btn"
             data-thr-margin={ids}
             data-tip={n > 1 ? `Open ${n} threads` : first.open ? "Scroll to thread" : "Open thread"}
+            data-tip-place="right"
             aria-label={
               n > 1
                 ? `Open ${n} threads, starting with: ${first.anchor.quotedText || "comment"}`
