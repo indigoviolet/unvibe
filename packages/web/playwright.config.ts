@@ -54,7 +54,11 @@ const e2eWorkers = Number(process.env.UNVIBE_E2E_WORKERS) || Math.min(4, Math.ma
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: "**/*.disabled.spec.ts",
+  // The on-demand visual tour lives in `e2e/tour/` (#363): frame capture
+  // never runs in the gate (`check`, `test:slow`, `gate`,
+  // `test:affected`). Run it with `mise run visual-tour`, which uses
+  // `playwright.tour.config.ts`.
+  testIgnore: ["**/*.disabled.spec.ts", "**/tour/**"],
   timeout: 30_000,
   workers: e2eWorkers,
   // The suite takes about 13 min locally and just over 20 min on the GitHub

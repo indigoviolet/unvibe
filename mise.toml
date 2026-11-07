@@ -72,18 +72,18 @@ depends = ["build", "demo:build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
 [tasks.journeys]
-description = "Real-service journeys J1-J7 plus the visual tour (#188): one spec per journey against the built service"
+description = "Real-service journeys L1-L14 against the built service (#363: frames live in the on-demand visual tour, not here)"
 depends = ["build"]
-run = "npx --workspace @unvibe/web playwright test e2e/journeys/ e2e/visual-tour.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/"
 
 [tasks."test:e2e:debug"]
 description = "Debug-flavour e2e (issue #356): build with tracing and run the debug-only j356 journey + frames (skipped everywhere else)"
 run = "UNVIBE_DEBUG_TRACES=1 mise run --force build && UNVIBE_TEST_DEBUG_TRACES=1 npx --workspace @unvibe/web playwright test e2e/journeys/j356-traces-debug.spec.ts"
 
 [tasks."visual-tour"]
-description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
-depends = ["build"]
-run = "npx --workspace @unvibe/web playwright test e2e/visual-tour.spec.ts"
+description = "On-demand visual tour (#363): frame capture in e2e/tour/ against the real built service (demo + replay agent, browser) — never in the gate. Screenshots in packages/web/visual-tour/ (owner reviews every one). UNVIBE_TOUR_MATRIX=full runs the full theme/width matrix"
+depends = ["build", "demo:build"]
+run = "npx --workspace @unvibe/web playwright test -c playwright.tour.config.ts"
 
 [tasks."playwright-install"]
 description = "Install Playwright browsers for e2e tests"
@@ -99,12 +99,12 @@ outputs = ["packages/web/dist-demo", "packages/web/dist-demo/index.html"]
 [tasks."demo:test"]
 description = "Static demo behaviour on a static file server (issue #334 + #357 Q6): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, hidden debug/doctor, banner geometry, sync check, size budget"
 depends = ["demo:build"]
-run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/l13-static-demo.spec.ts"
 
 [tasks."demo:sync"]
 description = "Static demo sync check only (issue #334): -g subset of the merged static-demo spec comparing the static build with the real service in replay mode"
 depends = ["build", "demo:build"]
-run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts -g \"static-demo sync\""
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/l13-static-demo.spec.ts -g \"static-demo sync\""
 
 [tasks."build:shared"]
 description = "Build @unvibe/shared"

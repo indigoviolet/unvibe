@@ -22,9 +22,22 @@ export async function pickOption(page: Page, label: string, option: string | Reg
   const target = openPopup(page).getByRole("option", { name: option });
   // Settle Floating UI first: scrolling the option into view repositions
   // the popup, and clicking mid-reposition can land outside the item
-  // (popup closes with no selection).
+  // (popup closes with no selection). Wait until the option's box stops
+  // moving instead of sleeping a fixed delay (#363 B2).
   await target.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(250);
+  let prev = "";
+  await expect
+    .poll(
+      async () => {
+        const b = await target.boundingBox();
+        const cur = b ? `${b.x},${b.y},${b.width},${b.height}` : "hidden";
+        const settled = prev !== "" && cur !== "hidden" && cur === prev;
+        prev = cur;
+        return settled;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
   await target.click();
 }
 

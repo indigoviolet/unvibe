@@ -96,9 +96,18 @@ export function usesDataReset(text) {
   return DATA_RESET_RE.test(text);
 }
 
-/** Visual-tour spec (screenshots + layout checks the owner reviews). */
+/**
+ * Visual-tour spec (screenshots + layout checks the owner reviews).
+ *
+ * The tour lives in `packages/web/e2e/tour/` (#363, package D): frame
+ * capture never runs in the gate, only on demand via `mise run
+ * visual-tour`. `selectTriggerSpecs` therefore never selects tour specs
+ * — a styles/UI change is verified by re-running the tour by hand, and
+ * the tour files below only document the blind spot in `why` text.
+ */
 export function isVisualTourSpec(file) {
-  return isSpecFile(file) && normalizeRel(file).includes("visual-tour");
+  const f = normalizeRel(file);
+  return isSpecFile(file) && (f.includes("visual-tour") || f.includes("e2e/tour/"));
 }
 
 /**
@@ -178,6 +187,9 @@ export function selectTriggerSpecs(changedPaths, catalog) {
   const out = [];
   for (const { file, text } of catalog) {
     if (!isSpecFile(file)) continue;
+    // The tour is on-demand only (`mise run visual-tour`): never pull
+    // its specs into the affected gate run, whatever changed (#363).
+    if (isVisualTourSpec(file)) continue;
     const reasons = [];
     for (const row of matchedRows) {
       let hit = false;
