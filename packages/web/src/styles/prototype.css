@@ -1716,7 +1716,10 @@ mark.anc.flash { outline: 2px solid var(--accent); outline-offset: 2px; border-r
 #right .ui-card.desc { position: relative; }
 .doc { position: relative; }
 .tmargin { position: absolute; inset: 0 auto 0 0; width: 0; overflow: visible; pointer-events: none; z-index: 3; }
-.tmargin-btn { position: absolute; left: 3px; transform: translateY(-3px); display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; pointer-events: auto; }
+/* Issue #364 follow-up: the icon hangs left of the card edge, clearly
+   outside the text column in every theme (card padding varies 16–22px;
+   the prototype pins its markers outside the block the same way). */
+.tmargin-btn { position: absolute; left: -10px; transform: translateY(-3px); display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; pointer-events: auto; }
 .tmargin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .tmargin-btn .ic { width: 11px; height: 11px; }
 /* Issue #364 follow-up: a bucket of threads on one line shares one icon
