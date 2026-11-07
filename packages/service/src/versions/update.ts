@@ -30,7 +30,7 @@ import type {
   TokenUsage,
   UpdatePassResult,
 } from "@unvibe/shared";
-import { isSinceBaseline, JOB_PRIORITY } from "@unvibe/shared";
+import { isSinceBaseline, isUpdateAvailable, JOB_PRIORITY } from "@unvibe/shared";
 import {
   buildSinceSectionCards,
   formatSinceContext,
@@ -298,6 +298,9 @@ export class JsonBlockReplyParser implements UpdateReplyParser {
     const addenda = normalizeAddenda(json["addenda"]);
     const plotlineAssignments = normalizePlotlineAssignments(json["plotlineAssignments"]);
     const newPlotlines = normalizeNewPlotlines(json["newPlotlines"]);
+    // Issue #367 option A: stale cards the pass checked and found
+    // unaffected. Malformed entries are dropped like the other lists.
+    const unaffectedCards = stringArray(json["unaffectedCards"]) ?? [];
     return {
       revisedCards,
       recheckedFindings,
@@ -310,6 +313,7 @@ export class JsonBlockReplyParser implements UpdateReplyParser {
       ...(addenda !== undefined ? { addenda } : {}),
       ...(plotlineAssignments !== undefined ? { plotlineAssignments } : {}),
       ...(newPlotlines !== undefined ? { newPlotlines } : {}),
+      ...(unaffectedCards.length > 0 ? { unaffectedCards } : {}),
     };
   }
 }
@@ -498,6 +502,30 @@ export async function applyUpdateResult(
       draft.sinceHunks = { added: clean(result.sinceHunks.added), changed: clean(result.sinceHunks.changed) };
     }
     draft.sinceBaseline = baselineV;
+    // Issue #367 option A: the pass saw the whole delta, so every card
+    // leaves the stale set — not just the ones it revised, rechecked or
+    // annotated. A stale card in none of those lists nor `unaffectedCards`
+    // was missed by the pass: still cleared, but logged (no UI change).
+    // Hunks keep their own "changed since reviewed" marks in the diff.
+    const recheckedPages = new Set(result.recheckedFindings.map((r) => r.pageId));
+    const confirmedCards = new Set<string>([
+      ...result.revisedCards.map((r) => r.cardId),
+      ...(result.addenda ?? []).map((a) => a.cardId),
+      ...(result.unaffectedCards ?? []),
+    ]);
+    for (const page of draft.pages) {
+      const pageRechecked = recheckedPages.has(page.id);
+      for (const card of page.cards) {
+        if (card.stale === true && !pageRechecked && !confirmedCards.has(card.id)) {
+          console.warn(
+            `update pass on review ${reviewId} missed stale card ${card.id}; clearing under option A`,
+          );
+        }
+        card.stale = false;
+        delete card.staleChangedHunks;
+        delete card.staleHunks;
+      }
+    }
     if (draft.versionStatus) draft.versionStatus = { ...draft.versionStatus, stale: false };
     const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
     draft.logTail.push({
@@ -528,7 +556,9 @@ export function enqueueUpdatePass(
 ): Job {
   const snapshot = deps.reviews.getSnapshot(opts.reviewId);
   if (!snapshot) throw new Error(`unknown review ${opts.reviewId}`);
-  if (!snapshot.versionStatus?.stale) throw new Error("this review is already up to date");
+  // Issue #367: the one shared predicate — the web UI offers Update
+  // exactly when this does not throw.
+  if (!isUpdateAvailable(snapshot.versionStatus)) throw new Error("this review is already up to date");
 
   const promptsDir = resolveUpdatePromptsDir(deps.promptsDir);
   if (!promptsDir) throw new Error("update pass: no prompts dir (set UNVIBE_PROMPTS_DIR)");

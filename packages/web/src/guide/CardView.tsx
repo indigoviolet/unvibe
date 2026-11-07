@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
-import { displayCardTitle, sinceBaselineLabel } from "@unvibe/shared";
+import { displayCardTitle, isUpdateAvailable, sinceBaselineLabel } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -581,7 +581,10 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       </CardHeader>
       <VersionTabs cardId={card.id} versions={versions} active={activeEntry.id} onSelect={setActiveVersion} />
-      {card.stale ? (
+      {/* Issue #367: the banner shows only while the service would
+          accept an update (shared predicate) — never an Update button
+          that can only fail with "already up to date". */}
+      {card.stale && isUpdateAvailable(snapshot?.versionStatus) ? (
         <div className="stale" role="status">
           <span>
             {card.staleChangedHunks ?? 0} cited{" "}

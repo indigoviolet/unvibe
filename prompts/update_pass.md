@@ -61,6 +61,10 @@ work, no extra sessions: one reply, then the trailing JSON block.
    becomes a new plotline. Name only hunks listed above.
 7. **Pin again.** Pin excerpts the new cards need with `pin_context`,
    and say which old pins no longer apply.
+8. **Confirm every other stale card.** For every stale card listed
+   above that you neither revised nor annotated, list its ID under
+   `unaffectedCards` in the trailing JSON block; that confirms you
+   checked it and found it unaffected by the delta.
 
 ## Rules
 
