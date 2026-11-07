@@ -12,7 +12,7 @@ import { deleteReplyInDraft, threadPostText, undeleteReplyInDraft } from "../src
 
 let n = 0;
 
-function reply(kind: ReplyKind, question: string | null, over: Partial<Reply> = {}): Reply {
+function reply(kind: ReplyKind, question: string | null, over: Omit<Partial<Reply>, "seq"> = {}): Reply {
   n += 1;
   return {
     id: `ans_t${n}`,
