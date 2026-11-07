@@ -46,6 +46,7 @@ import {
   captureJobId,
   findActiveJob,
   getSnapshotOrThrow,
+  minimalFollowupVariables,
   minimalTurnVariables,
   normalizeBlockAnchor,
   suppressFillError,
@@ -279,10 +280,12 @@ export interface ConversationTurnOptions {
   anchor: Anchor;
   /**
    * `ask` for first turns (both questions) and rebuilt sessions
-   * (with the stored turns as the transcript); `ask_turn` for later
-   * turns on a live session. Both are minimal (issue #365): the quote,
-   * the item ID, the offsets, the question and changed hunks — no
-   * card, block, thread-transcript or shared-log text.
+   * (with the stored turns as the transcript); `ask_turn` for
+   * follow-ups on a live or loaded session (issue #143: only what is
+   * new — the turn's own reply ID plus its thread ID, the question
+   * and changed hunks; a quote chip adds its quote, item ID and
+   * offsets). Both are minimal (issue #365): no card, block,
+   * thread-transcript or shared-log text.
    */
   template: "ask" | "ask_turn";
   /** User question text (L4 message + echo-strip candidate). */
@@ -370,13 +373,19 @@ export async function runConversationTurn(
   });
 
   const latest = getSnapshotOrThrow(reviews, reviewId);
-  // Issue #365: minimal turns. Every turn carries the quote, the exact
-  // item ID, the offsets and the question, plus changed hunk IDs only
-  // when the code moved since the anchor version. `ask_turn` (live
-  // sessions) carries no transcript — the session holds the history.
-  // `ask` carries the stored turns only when the caller passes them
-  // (rebuilt sessions, which never saw the earlier turns); first turns
-  // send "(none)". Card, block, thread and shared-log text never ride
+  // Issue #365: minimal turns.
+  // - First turns and rebuilt sessions (`ask`) carry the quote, the
+  //   exact item ID, the offsets and the question, plus changed hunk
+  //   IDs only when the code moved since the anchor version. `ask`
+  //   carries the stored turns only when the caller passes them
+  //   (rebuilt sessions, which never saw the earlier turns); first
+  //   turns send "(none)".
+  // - Follow-ups on a live or loaded session (`ask_turn`, issue #143)
+  //   carry only what is new: the turn's own reply ID plus the thread
+  //   ID it follows, the question, and changed hunks. The anchor quote
+  //   never rides along — the session already holds it — except with
+  //   a quote chip, which carries its own quote, item ID and offsets.
+  // Card, block, thread-transcript or shared-log text never rides
   // along: the model fetches what it needs with `get_item` + code tools.
   const minimalInput = {
     message: opts.message,
@@ -384,11 +393,29 @@ export async function runConversationTurn(
     ...(opts.itemIdOverride !== undefined ? { itemIdOverride: opts.itemIdOverride } : {}),
     ...(opts.offsetsOverride !== undefined ? { offsetsOverride: opts.offsetsOverride } : {}),
   };
-  const variables = minimalTurnVariables(
-    latest,
-    opts.anchor,
-    opts.template === "ask_turn" ? minimalInput : { ...minimalInput, threadText: opts.transcript ?? "(none)" },
-  );
+  let variables: Record<string, unknown>;
+  if (opts.template === "ask_turn") {
+    const thread = latest.annotations.find((a) => a.id === annotationId);
+    if (!thread || (thread.type !== "thread" && thread.type !== "link")) {
+      throw new Error(`unknown conversation ${annotationId}`);
+    }
+    variables = minimalFollowupVariables(latest, thread, replyId, opts.anchor, {
+      message: opts.message,
+      // A chip follow-up resends its own selection (quote, item ID,
+      // offsets); a plain follow-up sends none of those.
+      ...(opts.quoteOverride !== undefined || opts.itemIdOverride !== undefined
+        ? {
+            chip: {
+              quote: opts.quoteOverride ?? opts.anchor.quotedText,
+              itemId: opts.itemIdOverride ?? itemIdForAnchor(latest, opts.anchor),
+              ...(opts.offsetsOverride !== undefined ? { offsets: opts.offsetsOverride } : {}),
+            },
+          }
+        : {}),
+    });
+  } else {
+    variables = minimalTurnVariables(latest, opts.anchor, { ...minimalInput, threadText: opts.transcript ?? "(none)" });
+  }
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: opts.replayKind } : undefined;
   // Connection retry (#51): a continued turn that observably hits a dead

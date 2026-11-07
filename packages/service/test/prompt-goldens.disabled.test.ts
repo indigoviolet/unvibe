@@ -71,9 +71,7 @@ function goldenValues(): Record<string, RenderValues> {
       message: "Does Requests see the raw value?",
     },
     ask_turn: {
-      quote: "obsolete line folding",
-      item_id: "ann:ann_x1#r1",
-      offsets: "(no offsets recorded)",
+      followup: "New selection in reply [[ann:ann_x1#r1]]:\n\n> obsolete line folding\n\nItem: ann:ann_x1#r1\nSelection offsets: (no offsets recorded)\n\nAnswer as turn [[ann:ann_x1#r2]] in thread [[ann:ann_x1]].",
       changed_hunks: "h:conn:h111",
       message: "What about ordering?",
     },
