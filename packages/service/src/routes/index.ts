@@ -24,7 +24,6 @@ import { registerDiagnostics } from "./diagnostics.js";
 import { registerUpdate } from "./update.js";
 import { registerDataFormat } from "./data-format.js";
 import { registerView } from "./view.js";
-import { registerStats } from "./stats.js";
 import { registerTraces } from "./traces.js";
 
 /**
@@ -63,7 +62,6 @@ export async function registerRoutes(
   await registerUpdate(app, ctx, deps);
   await registerDataFormat(app, ctx, deps);
   await registerView(app, ctx);
-  await registerStats(app, ctx);
   await registerTraces(app, full);
   await registerPrompts(app, {
     snapshots: {

@@ -6,6 +6,7 @@
  */
 import type { ReviewEvent } from "@unvibe/shared";
 import type { EventBus } from "../events.js";
+import type { StatsAttrs } from "./stats-spans.js";
 import { traceSpan } from "./tracing.js";
 
 /** Run `fn` under an `ingest` span for the review being created. */
@@ -21,11 +22,25 @@ export async function traceIngest<T>(reviewId: string, fn: () => Promise<T>): Pr
   }
 }
 
-/** Run `fn` under a `refresh` span for the review being refreshed. */
-export async function traceRefresh<T>(reviewId: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * Run `fn` under a `refresh` span for the review being refreshed.
+ * `describe` (issue #366) optionally returns the review's stats-shaped
+ * attributes once the refresh lands; failures there never fail the span.
+ */
+export async function traceRefresh<T>(
+  reviewId: string,
+  fn: () => Promise<T>,
+  describe?: () => StatsAttrs | undefined,
+): Promise<T> {
   const span = traceSpan("refresh", { review: reviewId });
   try {
     const out = await fn();
+    try {
+      const extra = describe?.();
+      if (extra) for (const [k, v] of Object.entries(extra)) span.setAttribute(k, v);
+    } catch {
+      // Attribute shaping never breaks the refresh.
+    }
     span.end();
     return out;
   } catch (err) {

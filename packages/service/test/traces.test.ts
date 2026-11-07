@@ -21,6 +21,7 @@ import { SettingsStore } from "../src/settings/store.js";
 import { createApp } from "../src/server.js";
 import {
   TRACE_SAFETY_CAP_BYTES,
+  reviewAttributes,
   setActiveTracer,
   traceSpan,
 } from "../src/traces/index.js";
@@ -259,6 +260,119 @@ describe("traces (#356)", () => {
       expect(text).toContain("sqlite select");
       expect(text).toContain("document-load");
       expect(text).not.toContain("DROP TABLE");
+    } finally {
+      setActiveTracer(null);
+    setExecTraceSink(null);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stats canary coverage (#323 folded in): review + job text never reaches the export", async () => {
+    const dir = tempDir();
+    const SHA = "0123456789abcdef0123456789abcdef01234567";
+    const CANARIES = [
+      "CANARYTITLEZEBRA",
+      "CANARYCARDTEXTX",
+      "CANARYQUESTIONX",
+      "CANARYDRAFTXXXX",
+      "CANARYPATHFILE",
+      "CANARYBRANCHX",
+      "CANARYOWNERX",
+      "CANARYREPOX",
+      "CANARYLOCALPATH",
+      "CANARYERRORMSGX",
+      "CANARYPROMPTX",
+      "CANARYREPLYX",
+      "CANARYSESSIONX",
+      "CANARYREVIEWID",
+      "987654",
+      SHA,
+    ];
+    try {
+      const rec = new TraceRecorder(dir);
+      setActiveTracer(rec);
+      setExecTraceSink(rec);
+      rec.setEnabled(true);
+      const snapshot = {
+        review: {
+          id: "rv-CANARYREVIEWID", repoId: "repo-CANARYREPOX", branch: "CANARYBRANCHX",
+          prNumber: 987654, currentVersion: 1, createdAt: 1_700_000_000_000,
+          versions: [{ n: 1, headSha: SHA, mergeBaseSha: SHA, baseRef: "CANARYBRANCHX", fetchedAt: 1_700_000_000_000, idMapping: {} }],
+        },
+        version: { n: 1, headSha: SHA, mergeBaseSha: SHA, baseRef: "CANARYBRANCHX", fetchedAt: 1_700_000_000_000, idMapping: {} },
+        files: [{
+          fileKey: "fk1", path: "canary/CANARYPATHFILE.py", category: "source",
+          hunks: [{
+            contentHash: "hcanary", header: "@@ CANARYTITLEZEBRA @@",
+            newStart: 1, newEnd: 3, oldStart: 1, oldEnd: 1, added: 2, removed: 0,
+            lines: [{ kind: "add", newLine: 1, text: "CANARYCARDTEXTX" }],
+          }],
+        }],
+        ingest: { status: "ready" },
+        pages: [{
+          id: "root", kind: "root", title: "CANARYTITLEZEBRA",
+          cards: [{
+            id: "c1", pageId: "root", title: "CANARYTITLEZEBRA", collapsed: false,
+            blocks: [{ type: "paragraph", id: "b1", text: { standard: "CANARYCARDTEXTX" }, citations: [] }],
+            level: "standard", revision: 1, undoStack: [],
+          }],
+        }],
+        annotations: [{
+          type: "thread", id: "t1",
+          anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "CANARYCARDTEXTX", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true, pinned: false, post: true, draft: "CANARYDRAFTXXXX", sessionId: "sess-CANARYSESSIONX",
+          replies: [{
+            id: "ans_1", kind: "ask", who: "agent", question: "CANARYQUESTIONX",
+            blocks: [{ type: "paragraph", id: "b3", text: { standard: "CANARYCARDTEXTX" }, citations: [] }],
+            level: "standard", revision: 1, undoStack: [],
+          }],
+        }],
+        hunkStates: [], fileStates: [],
+        viewPrefs: { showExistingComments: false, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
+        jobs: [], contributions: [], logTail: [], rev: 1,
+      };
+      // The review span carries the size buckets (counts only).
+      traceSpan("refresh", {
+        review: (snapshot as { review: { id: string } }).review.id,
+        ...reviewAttributes(snapshot as never),
+      }).end();
+      // The job span carries the stats fields through the real seam:
+      // canaries ride the prompt, reply, error, session and tool detail.
+      const queue = new JobQueue({
+        getReviewSnapshot: (id) => (id === "rv-CANARYREVIEWID" ? (snapshot as never) : undefined),
+      });
+      queue.enqueue({
+        reviewId: "rv-CANARYREVIEWID", kind: "ask", provider: "claude",
+        model: "claude-opus-test", effort: "high", priority: 1,
+        run: (ctx) => {
+          ctx.setSessionId("sess-CANARYSESSIONX");
+          ctx.setPromptSnapshot("CANARYPROMPTX");
+          ctx.reportUsage({ inputTokens: 100, cachedReadTokens: 40, cachedWriteTokens: 10, outputTokens: 25 });
+          ctx.reportTool("Read", "Read canary/CANARYPATHFILE.py:10-20");
+          ctx.beginTurn("repair");
+          ctx.reportText("CANARYREPLYX");
+          ctx.endTurn();
+          throw new Error("CANARYERRORMSGX blew up in canary/CANARYPATHFILE.py");
+        },
+      });
+      await queue.drain();
+      // The raw recording really captured the review (test not vacuous).
+      expect(readStore(dir)).toContain("CANARYREVIEWID");
+      // The export: no canary, no 6+ substring, no SHAs. (Absolute
+      // wall-clock times stay by design — they are the waterfall — so
+      // the old stats test's epoch-timestamp assertions do not apply.)
+      const text = JSON.stringify(rec.exportOtlp());
+      for (const canary of CANARIES) {
+        expect(text, `canary leaked: ${canary}`).not.toContain(canary);
+        for (let i = 0; i + 6 <= canary.length; i++) {
+          expect(text, `canary substring leaked: ${canary.slice(i, i + 6)}`).not.toContain(canary.slice(i, i + 6));
+        }
+      }
+      expect(text).not.toMatch(/\b[0-9a-f]{40}\b/i);
+      expect(text).not.toContain("canary/");
+      // The scrubbed shapes survive (grouping intact).
+      expect(text).toContain("job ask");
+      expect(text).toContain("refresh");
     } finally {
       setActiveTracer(null);
     setExecTraceSink(null);

@@ -73,7 +73,6 @@ import type {
   UpdateSwitchRequest,
   UpdateSwitchResponse,
   ViewerResponse,
-  StatsExport,
   TraceExport,
   TraceStatusResponse,
 } from "@unvibe/shared";
@@ -478,8 +477,6 @@ const realApi = {
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
-  /** #323: anonymized stats export (Settings → Debug). */
-  statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
   /** #356: trace recording status/size (Settings → Debug). */
   traceStatus: (): Promise<TraceStatusResponse> => get("/api/traces/status"),
   /** #356: export everything recorded so far (OTLP JSON, Jaeger/Perfetto-openable). */

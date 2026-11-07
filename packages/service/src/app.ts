@@ -335,6 +335,16 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         }
       },
       afterRun: (job) => verifyCheckoutAfterJob({ reviews, commands: runner, settings, dataDir }, job.reviewId ?? "", job),
+      // Issue #366: job spans resolve read diff-membership and hunk
+      // ranges against the review snapshot (a lookup failure records
+      // reads without diff membership, never breaks the job).
+      getReviewSnapshot: (reviewId) => {
+        try {
+          return reviews.getSnapshot(reviewId);
+        } catch {
+          return undefined;
+        }
+      },
       // Issue #354: a job settling after its review was deleted stops
       // quietly (no save, no FOREIGN KEY error). The snapshot row is
       // removed in the same transaction as the review row, so its
