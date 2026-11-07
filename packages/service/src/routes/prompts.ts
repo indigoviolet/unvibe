@@ -542,9 +542,7 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     message: PH.message,
   });
   forked("ask_turn", {
-    quote: PH.anchorQuote,
-    item_id: "(the exact item ID is attached when the action runs)",
-    offsets: "(selection offsets are attached when the action runs)",
+    followup: "(which turn this is, in which thread — plus a chip selection when the reader made one)",
     changed_hunks: "(no changes)",
     message: PH.message,
   });

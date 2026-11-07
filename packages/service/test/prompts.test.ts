@@ -222,14 +222,23 @@ describe("repo prompts/ directory", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const ask = lib.get("ask")!;
     const askTurn = lib.get("ask_turn")!;
-    // Exact variable contract: no card, block, thread-transcript,
-    // change_list or glossary rides along anymore.
+    // Exact variable contracts. First turns carry the selection;
+    // follow-ups carry only the follow-up context (own reply ID plus
+    // thread ID, with a chip selection only when the reader made one).
     expect([...ask.variables].sort()).toEqual(["changed_hunks", "item_id", "message", "offsets", "quote", "thread"]);
-    expect([...askTurn.variables].sort()).toEqual(["changed_hunks", "item_id", "message", "offsets", "quote"]);
+    expect([...askTurn.variables].sort()).toEqual(["changed_hunks", "followup", "message"]);
+    // No card, block, thread-transcript, change_list or glossary rides
+    // along on either template anymore.
     for (const t of [ask, askTurn]) {
-      for (const banned of ["anchor.quote", "anchor.block", "card", "thread", "change_list", "glossary"]) {
-        if (t.name === "ask" && banned === "thread") continue;
+      for (const banned of ["anchor.quote", "anchor.block", "card", "change_list", "glossary"]) {
         expect(t.usedVariables, `${t.name} uses ${banned}`).not.toContain(banned);
+      }
+      if (t.name === "ask_turn") {
+        expect(t.usedVariables).not.toContain("thread");
+        expect(t.usedVariables).not.toContain("quote");
+        expect(t.usedVariables).not.toContain("item_id");
+        expect(t.usedVariables).not.toContain("offsets");
+        expect(t.body).not.toContain("## Selected text");
       }
       // The model fetches the tree itself; citation rules stay.
       expect(t.body).toContain("get_item");
@@ -250,9 +259,14 @@ describe("repo prompts/ directory", () => {
     ).not.toThrow();
     expect(() =>
       renderTemplate(askTurn, {
-        quote: "q",
-        item_id: "ann:ann_x#r1",
-        offsets: "(no offsets recorded)",
+        followup: "This is turn [[ann:ann_x#r2]] in thread [[ann:ann_x]].",
+        changed_hunks: "(no changes)",
+        message: "Why?",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      renderTemplate(askTurn, {
+        followup: "New selection in reply [[ann:ann_x#r1]]:\n\n> chip\n\nItem: ann:ann_x#r1",
         changed_hunks: "h:conn:deadbeef",
         message: "Why?",
       }),

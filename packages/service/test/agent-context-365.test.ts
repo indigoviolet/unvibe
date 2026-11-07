@@ -426,6 +426,11 @@ describe("minimal Ask/Explain turns (issue #365)", () => {
       expect(turn).toContain(`ann:${threadId}#r${sourceSeq}`);
       expect(turn).toContain("0–10");
       expect(turn).toContain("What does this imply?");
+      // The chip turn names its own reply ID plus the thread it follows
+      // in, and never the old selected-text section.
+      expect(turn).toContain(`[[ann:${threadId}#r2]]`);
+      expect(turn).toContain(`[[ann:${threadId}]]`);
+      expect(turn).not.toContain("## Selected text");
       // The in-thread link points at the new reply.
       const after = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === threadId)!;
       expect(after.replies.length).toBe(2);
@@ -435,7 +440,7 @@ describe("minimal Ask/Explain turns (issue #365)", () => {
     }
   });
 
-  it("changed hunk IDs ride a follow-up only when the code changed since", async () => {
+  it("changed hunk IDs ride a plain follow-up only when the code changed since", async () => {
     const agents = new FakeAgentRunner([
       { match: "reply with exactly", events: textEvents("ready") },
       { match: "# Reader task", events: textEvents(MINIMAL_READER) },
@@ -453,6 +458,23 @@ describe("minimal Ask/Explain turns (issue #365)", () => {
       await waitForJob(ctx, first.json.jobId as string);
       expect(questionPrompts(agents).at(-1)).toContain("(no changes)");
       const threadId = first.json.annotationId as string;
+
+      // A plain follow-up carries only its own reply ID plus the thread
+      // ID — never the anchor quote or the selected-text section.
+      const plain = await postAction(app, id, {
+        kind: "reply",
+        annotationId: threadId,
+        message: "Plain follow-up?",
+      });
+      expect(plain.status).toBe(200);
+      if (plain.json.jobId) await waitForJob(ctx, plain.json.jobId as string);
+      const plainTurn = questionPrompts(agents).at(-1)!;
+      expect(plainTurn).toContain("# Ask follow-up");
+      expect(plainTurn).toContain(`[[ann:${threadId}#r2]]`);
+      expect(plainTurn).toContain(`[[ann:${threadId}]]`);
+      expect(plainTurn).toContain("Plain follow-up?");
+      expect(plainTurn).not.toContain("## Selected text");
+      expect(plainTurn).not.toContain("same-version quote");
 
       // Newer version with a recorded delta: a follow-up in the same
       // (v1-anchored) thread carries the changed hunk IDs.
