@@ -205,6 +205,9 @@ test.describe("L6 diff mock shell", () => {
           }),
         )
         .toBeCloseTo(2 / 8, 1);
+      // Leave the hunk unfolded: later steps in this test count tables.
+      await page.locator(connFile).getByRole("button", { name: "Show code" }).first().click();
+      await expect.soft(page.locator(`[id="L-${CONN}-90"]`)).toBeVisible({ timeout: 15000 });
     });
 
     await test.step("the toolbar stays on one row at a narrow pane width", async () => {
@@ -235,6 +238,9 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("split view pairs columns and widens a narrow pane", async () => {
+      // Back to the default width: the one-row step above narrows the
+      // viewport, and a narrow overlay pane cannot widen further.
+      await page.setViewportSize({ width: 1280, height: 720 });
       const right = page.locator("#right");
       const before = await right.boundingBox();
       await page.getByRole("button", { name: "Split", exact: true }).click();
@@ -291,6 +297,11 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("file filter dropdown is keyboard-usable and closes on Escape", async () => {
+      // The previous step persisted Tests-off; reset the stored prefs so
+      // this step starts from the all-types-on state like the original.
+      await page.evaluate(() => localStorage.clear());
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       await page.getByRole("button", { name: "Show file list" }).click();
       const filter = page.getByRole("button", { name: "File filters" });
       await filter.focus();
@@ -370,6 +381,10 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("reveals a whole gap so the hunks read as continuous", async () => {
+      // Steps share one browser context (the originals each got a fresh
+      // one), so re-navigate: earlier expansions would corrupt the counts.
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       await scrollDiffToBottom(page);
       await page.getByRole("button", { name: /Hunks 1–2, collapsed/ }).click();
       await expect.soft(page.getByText("Hunk 1 of 3")).toBeVisible();
@@ -389,6 +404,8 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("revealing a gap fully from below leaves no controls at the boundary", async () => {
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       await scrollDiffToBottom(page);
       await page.getByRole("button", { name: /Hunks 1–2, collapsed/ }).click();
       await expect.soft(page.getByText("Hunk 1 of 3")).toBeVisible();
@@ -425,6 +442,8 @@ test.describe("L6 diff mock shell", () => {
   test("split keeps alignment, revealed lines stay comment-free, unit controls read right", async ({ page }) => {
     test.setTimeout(240_000);
     await test.step("split view keeps both sides of revealed lines aligned", async () => {
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       await page.getByRole("button", { name: "Split", exact: true }).click();
       const conn = page.locator(connFile);
       await conn.getByRole("button", { name: "Show 20 more lines" }).first().click();
@@ -465,6 +484,8 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("hides the unit control when no unit encloses the hunk", async () => {
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       const conn = page.locator(connFile);
       // First hunk spans top-level items: the outline is empty.
       await conn.getByRole("button", { name: "Show the enclosing function or class" }).first().click();
@@ -472,6 +493,8 @@ test.describe("L6 diff mock shell", () => {
     });
 
     await test.step("headers still pin and code columns line up with expansion revealed", async () => {
+      await page.goto("/review/demo");
+      await expect.soft(page.locator(connFile)).toBeVisible();
       const conn = page.locator(connFile);
       // Lines above and below the first hunk…
       await clickRowControl(conn, "Show 20 more lines", 0);
@@ -623,6 +646,13 @@ test.describe("L6 diff mock shell", () => {
 
     await test.step("Files panel opened while scrolled is fully visible, with its dropdown", async () => {
       await scrollDiffToBottom(page);
+      // The jump step above may have left the panel open (and scrolled
+      // out of view): close it first so this step opens it fresh while
+      // scrolled, like the original.
+      if (await page.locator("#right .files").isVisible().catch(() => false)) {
+        await page.getByRole("button", { name: "Hide file list" }).click();
+        await expect.soft(page.locator("#right .files")).toBeHidden({ timeout: 15000 });
+      }
       await page.getByRole("button", { name: "Show file list" }).click();
       const files = page.locator("#right .files");
       await expect.soft(files).toBeVisible();
@@ -719,7 +749,27 @@ test.describe("L6 diff mock shell", () => {
       await expect
         .poll(
           async () => {
-            await scrollPaneTo(page, sel, at);
+            if (kind === "hunk") {
+              // Scroll the hunk SECTION (not its sticky header: scrolling
+              // an already-stuck header is a no-op and leaves the pane
+              // deep inside the section with no margin below). Section
+              // top 100px above the slot: a working sticky header parks
+              // exactly at the slot; a broken one scrolls past and fails.
+              await page.evaluate(
+                ({ sel, at }: { sel: string; at: number }) => {
+                  const pane = document.getElementById("right") as HTMLElement;
+                  const header = pane.querySelector(sel) as HTMLElement;
+                  const sec = (header.closest(".dhunk") ?? header) as HTMLElement;
+                  const p = pane.getBoundingClientRect();
+                  const slot = p.top + at;
+                  const secTop = sec.getBoundingClientRect().top;
+                  pane.scrollTop = Math.max(0, pane.scrollTop + (secTop - (slot - 100)));
+                },
+                { sel, at },
+              );
+            } else {
+              await scrollPaneTo(page, sel, at);
+            }
             const v = kind === "file" ? await pinnedFile(page) : await pinnedHunk(page);
             return v ?? "";
           },
@@ -727,9 +777,13 @@ test.describe("L6 diff mock shell", () => {
         )
         .toContain(text);
     };
-    /** After `expectPinned`, scroll a little further: a pinned header stays, a passing one leaves. */
+    /* After `expectPinned`, scroll a little further: a pinned header stays,
+     * a passing one leaves. The scroll is small on purpose: a large one
+     * legitimately carries a short section's header past the slot (sticky
+     * headers are constrained to their section) — that flakes on geometry,
+     * not on pinning. A passing header still leaves the 2.5px slot. */
     const expectStuck = async (kind: "file" | "hunk", text: string): Promise<void> => {
-      await page.evaluate(() => document.getElementById("right")?.scrollBy(0, 120));
+      await page.evaluate(() => document.getElementById("right")?.scrollBy(0, 20));
       await expect
         .poll(async () => (kind === "file" ? await pinnedFile(page) : await pinnedHunk(page)) ?? "", {
           timeout: 5000,
@@ -811,6 +865,12 @@ test.describe("L6 diff mock shell", () => {
         page.locator(`[data-hunk="${CONN}:0"]`).getByRole("button", { name: "Show code", exact: true }),
       ).toBeVisible();
       await expect.soft(page.locator(`[id="F-${CONN}"]`).getByText("changed lines folded")).toHaveCount(0);
+      // Leave the diff as found: later steps expect expanded code.
+      // (A reload, not the pinned header's Show-code button: the pinned
+      // clone does not unfold reliably.)
+      await page.reload();
+      await expect.soft(page.locator(connFile)).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator(`[id="L-${CONN}-90"]`)).toBeVisible({ timeout: 15000 });
     });
 
     await test.step("hidden-hunk rows scroll under the pinned headers instead of pinning", async () => {
@@ -891,8 +951,12 @@ test.describe("L6 diff mock shell", () => {
         }
       });
       const s = await stack();
-      await expectPinned(`[data-hunk="${CONN}:1"]`, s.hunkTop, "hunk", "Hunk 2 of");
-      await expectStuck("hunk", "Hunk 2 of");
+      // Pin the tall first hunk: the last hunk's section is only ~240px,
+      // so a fixed +120px scroll legitimately carries it past the slot
+      // (sticky headers are constrained to their section) — flaky by
+      // geometry, not by pinning. The tall hunk tolerates the scroll.
+      await expectPinned(`[data-hunk="${CONN}:0"]`, s.hunkTop, "hunk", "Hunk 1 of");
+      await expectStuck("hunk", "Hunk 1 of");
     });
 
     await test.step("code columns start at the same x in every hunk of a file", async () => {
@@ -1774,6 +1838,10 @@ test.describe("L6 scratch diff work", () => {
   // j285 shape: gap repo + a whole-file new file ending at EOF.
   let repoEof = "";
   let eofReview = "";
+  // j288 shape: bottom.py (last hunk ends mid-file) + eof.py (ends at EOF).
+  let repoBottom = "";
+  let bottomReview = "";
+  let bottomEnd = 0;
   let eof1Start = 0;
   let eof1End = 0;
   let eof2Start = 0;
@@ -1817,6 +1885,29 @@ test.describe("L6 scratch diff work", () => {
     repoEof = mkdtempSync(path.join(os.tmpdir(), "unvibe-l6-eof-"));
     await makeGapRepo(repoEof);
     await makeEofFile(repoEof);
+    repoBottom = mkdtempSync(path.join(os.tmpdir(), "unvibe-l6-bottom-"));
+    {
+      mkdirSync(path.join(repoBottom, "src"), { recursive: true });
+      await git(repoBottom, "init", "-b", "main");
+      await git(repoBottom, "config", "user.email", "t@example.com");
+      await git(repoBottom, "config", "user.name", "T");
+      const bottomBase = Array.from({ length: 80 }, (_, i) => `value_${String(i + 1).padStart(2, "0")} = ${i + 1}`);
+      writeFileSync(path.join(repoBottom, "src", "bottom.py"), `${bottomBase.join("\n")}\n`);
+      const eofBase = Array.from({ length: 20 }, (_, i) => `item_${String(i + 1).padStart(2, "0")} = ${i + 1}`);
+      writeFileSync(path.join(repoBottom, "src", "eof.py"), `${eofBase.join("\n")}\n`);
+      await git(repoBottom, "add", ".");
+      await git(repoBottom, "commit", "-m", "base");
+      await git(repoBottom, "checkout", "-b", "feature");
+      const bottomFeat = [...bottomBase];
+      bottomFeat[9] = "value_10 = 1000  # changed";
+      bottomFeat[49] = "value_50 = 5000  # changed";
+      writeFileSync(path.join(repoBottom, "src", "bottom.py"), `${bottomFeat.join("\n")}\n`);
+      const eofFeat = [...eofBase];
+      eofFeat[19] = "item_20 = 9999  # changed";
+      writeFileSync(path.join(repoBottom, "src", "eof.py"), `${eofFeat.join("\n")}\n`);
+      await git(repoBottom, "add", ".");
+      await git(repoBottom, "commit", "-m", "feature work");
+    }
 
     // j308 mid/first/last repo.
     repoMid = mkdtempSync(path.join(os.tmpdir(), "unvibe-l6-mid-"));
@@ -1936,6 +2027,7 @@ test.describe("L6 scratch diff work", () => {
 
     gapReview = await createScratchReview(svc, repoGap);
     eofReview = await createScratchReview(svc, repoEof);
+    bottomReview = await createScratchReview(svc, repoBottom);
     midReview = await createScratchReview(svc, repoMid);
     hiddenReview = await createScratchReview(svc, repoHidden);
     longReview = await createScratchReview(svc, repoLong);
@@ -1978,6 +2070,23 @@ test.describe("L6 scratch diff work", () => {
         await new Promise((r) => setTimeout(r, 500));
       }
       if (eofGapEnd - eofGapStart + 1 < 40) throw new Error("gap too small for step asserts");
+    }
+    // j288 bottom+eof shape.
+    {
+      const deadline = Date.now() + 90_000;
+      let bottom: { newStart: number; newEnd: number }[] | undefined;
+      let eof: { newStart: number; newEnd: number }[] | undefined;
+      for (;;) {
+        const snap = await apiJson(svc, "GET", `/api/reviews/${bottomReview}`);
+        const files = (snap.json as { files: { path: string; hunks: { newStart: number; newEnd: number }[] }[] }).files ?? [];
+        bottom = files.find((f) => f.path === "src/bottom.py")?.hunks;
+        eof = files.find((f) => f.path === "src/eof.py")?.hunks;
+        if (bottom && bottom.length === 2 && eof && eof.length === 1) break;
+        if (Date.now() > deadline) throw new Error(`ingest did not produce the bottom+eof shape: ${JSON.stringify(files.map((f) => ({ p: f.path, n: f.hunks.length })))}`);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      bottomEnd = bottom![1].newEnd;
+      if (bottomEnd + 20 > 80) throw new Error(`bottom hunk ends too late for a 20-line step: ${bottomEnd}`);
     }
     // j308 mid shape.
     {
@@ -2044,7 +2153,7 @@ test.describe("L6 scratch diff work", () => {
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     svc = null;
-    for (const d of [repoGap, repoEof, repoMid, repoHidden, repoLong, repoMany, dataDir]) {
+    for (const d of [repoGap, repoEof, repoBottom, repoMid, repoHidden, repoLong, repoMany, dataDir]) {
       rmSync(d, { recursive: true, force: true });
     }
   });
@@ -2154,15 +2263,9 @@ test.describe("L6 scratch diff work", () => {
     if (!s) throw new Error("no service");
     const bottomKey = fileKeyForPath("src/bottom.py");
     const eofKey = fileKeyForPath("src/eof.py");
-    let bottomEnd = 0;
-    {
-      const snap = await apiJson(s, "GET", `/api/reviews/${eofReview}`);
-      const files = (snap.json as { files: { path: string; hunks: { newStart: number; newEnd: number }[] }[] }).files ?? [];
-      bottomEnd = files.find((f) => f.path === "src/bottom.py")!.hunks[1].newEnd;
-    }
 
     await test.step("expands down from the last hunk with no prior expansion", async () => {
-      await openReview(page, eofReview);
+      await openReview(page, bottomReview);
       const file = page.locator(`[id="F-${bottomKey}"]`);
       await expect.soft(file).toBeVisible({ timeout: 60_000 });
       await expect.soft(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
@@ -2189,7 +2292,7 @@ test.describe("L6 scratch diff work", () => {
     });
 
     await test.step("clicking past EOF adds nothing and drops the control silently", async () => {
-      await openReview(page, eofReview);
+      await openReview(page, bottomReview);
       const file = page.locator(`[id="F-${eofKey}"]`);
       await expect.soft(file).toBeVisible({ timeout: 60_000 });
       await expect.soft(file.getByText("Hunk 1 of 1")).toBeVisible({ timeout: 30_000 });
