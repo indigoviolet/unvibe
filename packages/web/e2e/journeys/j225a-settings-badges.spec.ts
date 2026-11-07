@@ -11,6 +11,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { checkLayout } from "../layout-check.js";
+import { measureWithinRow } from "../geometry.js";
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -93,9 +94,12 @@ test.describe("J225a settings, start page and PR badges", () => {
     const limitsCard = limitsPanel.locator(".ui-card").first();
     const sessionsInput = page.locator("#limit-sessionsPerProvider");
     await expect(sessionsInput).toBeVisible({ timeout: 15_000 });
-    const cardBox = await limitsCard.boundingBox();
-    const inputBox = await sessionsInput.boundingBox();
-    expect(inputBox!.width).toBeLessThan((cardBox!.width - 32) / 2);
+    // One synchronous read: two boundingBox() calls can straddle a late
+    // banner and differ by its height (#363 B1).
+    const limitsGeo = await measureWithinRow(limitsCard, "#limit-sessionsPerProvider");
+    expect(limitsGeo.inner["#limit-sessionsPerProvider"]!.width).toBeLessThan(
+      (limitsGeo.row.width - 32) / 2,
+    );
     await expect(limitsCard.getByTestId("auto-go-deeper-toggle")).toHaveRole("checkbox");
     await noPageScroll(page);
 
@@ -263,18 +267,9 @@ test.describe("J225a settings, start page and PR badges", () => {
 
     // The row's title and meta keep their size and position when the
     // button expands in place (#346, overlay placement): the pill
-    // overlays within the row. Boxes are compared relative to the row
-    // so async callouts above the list can't flake the assert; the
-    // pill box is read at the same moment. (Stacked settings confirms
-    // grow instead — asserted in settings.spec.ts.)
-    const rowTitle = staleRow.locator(".cx2");
-    const rowMeta = staleRow.locator(".cj > .hint");
-    const rowBoxBefore = await staleRow.boundingBox();
-    const titleBefore = await rowTitle.boundingBox();
-    const metaBefore = await rowMeta.boundingBox();
-    expect(rowBoxBefore).not.toBeNull();
-    expect(titleBefore).not.toBeNull();
-    expect(metaBefore).not.toBeNull();
+    // overlays within the row. Each triple is one synchronous read so a
+    // late banner above the list can't slip between the rects (#363 B1).
+    const before = await measureWithinRow(staleRow, [".cx2", ".cj > .hint"]);
     await staleRow.getByRole("button", { name: "Remove this review" }).click();
     const pill = staleRow.locator(".uic-pill");
     await expect(pill).toContainText("Confirm remove review");
@@ -282,26 +277,32 @@ test.describe("J225a settings, start page and PR badges", () => {
     const cancelBtn = pill.getByRole("button", { name: "Cancel" });
     await expect(confirmBtn).toBeVisible();
     await expect(cancelBtn).toBeVisible();
-    const rowBoxAfter = await staleRow.boundingBox();
-    const titleAfter = await rowTitle.boundingBox();
-    const metaAfter = await rowMeta.boundingBox();
-    const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
-    const offsetOf = (
-      inner: { x: number; y: number },
-      outer: { x: number; y: number },
-    ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
-    expect(sizeOf(rowBoxAfter!)).toEqual(sizeOf(rowBoxBefore!));
-    expect(sizeOf(titleAfter!)).toEqual(sizeOf(titleBefore!));
-    expect(sizeOf(metaAfter!)).toEqual(sizeOf(metaBefore!));
-    expect(offsetOf(titleAfter!, rowBoxAfter!)).toEqual(offsetOf(titleBefore!, rowBoxBefore!));
-    expect(offsetOf(metaAfter!, rowBoxAfter!)).toEqual(offsetOf(metaBefore!, rowBoxBefore!));
+    const placed = await measureWithinRow(staleRow, [".cx2", ".cj > .hint", ".uic-pill"]);
+    const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({
+      width: b.width,
+      height: b.height,
+    });
+    const offsetOf = (inner: { x: number; y: number }, outer: { x: number; y: number }): { dx: number; dy: number } => ({
+      dx: inner.x - outer.x,
+      dy: inner.y - outer.y,
+    });
+    const rowBefore = before.row;
+    const titleBefore = before.inner[".cx2"]!;
+    const metaBefore = before.inner[".cj > .hint"]!;
+    const rowAfter = placed.row;
+    const titleAfter = placed.inner[".cx2"]!;
+    const metaAfter = placed.inner[".cj > .hint"]!;
+    expect(sizeOf(rowAfter)).toEqual(sizeOf(rowBefore));
+    expect(sizeOf(titleAfter)).toEqual(sizeOf(titleBefore));
+    expect(sizeOf(metaAfter)).toEqual(sizeOf(metaBefore));
+    expect(offsetOf(titleAfter, rowAfter)).toEqual(offsetOf(titleBefore, rowBefore));
+    expect(offsetOf(metaAfter, rowAfter)).toEqual(offsetOf(metaBefore, rowBefore));
     // The pill overlays within the row: fully inside the row's box.
-    const pillBox = await pill.boundingBox();
-    expect(pillBox).not.toBeNull();
-    expect(pillBox!.x).toBeGreaterThanOrEqual(rowBoxAfter!.x - 1);
-    expect(pillBox!.x + pillBox!.width).toBeLessThanOrEqual(rowBoxAfter!.x + rowBoxAfter!.width + 1);
-    expect(pillBox!.y).toBeGreaterThanOrEqual(rowBoxAfter!.y - 1);
-    expect(pillBox!.y + pillBox!.height).toBeLessThanOrEqual(rowBoxAfter!.y + rowBoxAfter!.height + 1);
+    const pillBox = placed.inner[".uic-pill"]!;
+    expect(pillBox.x).toBeGreaterThanOrEqual(rowAfter.x - 1);
+    expect(pillBox.x + pillBox.width).toBeLessThanOrEqual(rowAfter.x + rowAfter.width + 1);
+    expect(pillBox.y).toBeGreaterThanOrEqual(rowAfter.y - 1);
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(rowAfter.y + rowAfter.height + 1);
     await checkLayout(page, "j225a-remove-confirm");
 
     // Escape cancels without touching the row…
