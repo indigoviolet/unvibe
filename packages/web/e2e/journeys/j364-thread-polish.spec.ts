@@ -152,9 +152,10 @@ test.describe("J364 thread polish", () => {
     await expect(srcLink).toBeVisible();
     await srcLink.click();
     await expect(margin).toHaveClass(/flash/, { timeout: 15_000 });
-    // Frame 3: the reverse link target mid-flash. The click's own
-    // smooth scroll already centers it — shoot at once, no extra scroll
-    // (it would race the smooth animation and miss the ~2s flash).
+    // Frame 3: the reverse link target mid-flash. The click's smooth
+    // scroll is still animating, so park the margin instantly (cancelling
+    // it) and shoot at once — well inside the ~2s flash.
+    await margin.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior }));
     await page.screenshot({ path: `${FRAMES}/reverse-flash.png` });
 
     // Per-reply delete tombstones the turn (an answer goes with its
