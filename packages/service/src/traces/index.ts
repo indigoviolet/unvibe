@@ -12,6 +12,7 @@ export {
   traceSpan,
   traceparentOf,
 } from "./tracing.js";
+export { isStatsKey } from "./scrub.js";
 export type { SpanHandle, SpanParent, BrowserSpanBatch, TraceBackend } from "./tracing.js";
 export { tracesDir, spansFile, ensureTracesDir, TRACE_SAFETY_CAP_BYTES } from "./paths.js";
 export {
@@ -22,5 +23,16 @@ export {
   scrubExportedSpan,
 } from "./scrub.js";
 export { traceIngest, traceRefresh, watchOpenToFirstCard, hasGuideCards } from "./milestones.js";
+export {
+  jobStartAttributes,
+  jobEndAttributes,
+  reviewAttributes,
+  extractRawReads,
+  failureClassOf,
+  safeName,
+  JOB_KINDS,
+  JOB_STATES,
+} from "./stats-spans.js";
+export type { StatsAttrs, RawRead, FailureClass } from "./stats-spans.js";
 export { traceStatement, parseSqlOperation } from "./sqlite.js";
 export { ensureTracingSetup, loadTraceRecorder, attachRouteHook } from "./loader.js";

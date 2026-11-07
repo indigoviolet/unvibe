@@ -30,7 +30,8 @@ import {
 } from "@unvibe/shared";
 import { computeBackoffDelay } from "./backoff.js";
 import { MathRandom, RealClock, type Clock, type RandomSource } from "./clock.js";
-import { isSafeToken, traceSpan } from "../traces/index.js";
+import { isSafeToken, jobEndAttributes, jobStartAttributes, traceSpan } from "../traces/index.js";
+import type { ReviewSnapshot } from "@unvibe/shared";
 import { isAbortError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "./errors.js";
 import type { JobPersistence } from "./store.js";
 import { reportError } from "../telemetry/sentry.js";
@@ -155,6 +156,12 @@ export interface QueueOptions {
    * debug line when they settle.
    */
   isReviewGone?: (reviewId: string) => boolean;
+  /**
+   * Issue #366: snapshot for a review's job spans (diff paths for
+   * read membership, hunk spans for `get_hunk` ranges). Absent in
+   * bare queues (tests) — reads then record without diff membership.
+   */
+  getReviewSnapshot?: (reviewId: string) => ReviewSnapshot | null | undefined;
 }
 
 interface Entry {
@@ -233,6 +240,7 @@ export class JobQueue {
   private readonly getAccessMode: () => AccessMode | undefined;
   private readonly afterRun: (job: Job) => Promise<void> | void;
   private readonly isReviewGone: (reviewId: string) => boolean;
+  private readonly getReviewSnapshot: (reviewId: string) => ReviewSnapshot | null | undefined;
   private drainWaiters: Array<() => void> = [];
 
   constructor(opts: QueueOptions = {}) {
@@ -247,6 +255,7 @@ export class JobQueue {
     this.getAccessMode = opts.getAccessMode ?? (() => undefined);
     this.afterRun = opts.afterRun ?? (() => {});
     this.isReviewGone = opts.isReviewGone ?? (() => false);
+    this.getReviewSnapshot = opts.getReviewSnapshot ?? (() => undefined);
   }
 
   // -- enqueue --------------------------------------------------------
@@ -720,16 +729,14 @@ export class JobQueue {
     this.emit(entry);
 
     const ctx = this.makeContext(entry, controller);
-    // Opt-in performance traces (issue #356): one `job <kind>` span per
-    // attempt. Attributes are enums/safe tokens/hashes only (kind,
-    // provider, model, attempt, review hash); durations derive from the
-    // span itself. A no-op while recording is off.
+    // Opt-in performance traces (issues #356, #366): one `job <kind>`
+    // span per attempt. Routing attributes at start (raw ids hash on
+    // export); every former stats field lands at end (see
+    // `jobEndAttributes`). A no-op while recording is off.
     const jobSpan = traceSpan(`job ${isSafeToken(job.kind) ? job.kind : "other"}`, {
-      "job.kind": job.kind,
-      ...(job.provider ? { "job.provider": job.provider } : {}),
-      ...(job.model ? { "job.model": job.model } : {}),
-      "job.attempt": job.attempts ?? 1,
-      ...(job.reviewId ? { "job.review": job.reviewId } : {}),
+      ...jobStartAttributes(job, job.attempts ?? 1),
+      ...(job.sessionId ? { "job.session": job.sessionId } : {}),
+      ...(job.effort !== undefined ? { "job.effort": job.effort } : {}),
     });
     try {
       await entry.run!(ctx);
@@ -759,7 +766,24 @@ export class JobQueue {
       await this.runAfterHook(entry);
       this.settle(entry, controller, "error");
     } finally {
-      jobSpan.end({ "job.state": job.state });
+      // Issue #366: the span carries the job's stats fields. The
+      // snapshot resolves read diff-membership and hunk ranges;
+      // without it (bare queues, deleted reviews) reads record raw.
+      let snapshot: ReviewSnapshot | null | undefined;
+      try {
+        snapshot = job.reviewId ? this.getReviewSnapshot(job.reviewId) : undefined;
+      } catch {
+        snapshot = undefined;
+      }
+      try {
+        jobSpan.end(jobEndAttributes(job, snapshot));
+      } catch {
+        try {
+          jobSpan.end({ "job.state": job.state });
+        } catch {
+          // Tracing never breaks jobs.
+        }
+      }
     }
   }
 
