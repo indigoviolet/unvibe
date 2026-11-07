@@ -21,7 +21,7 @@ import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 
 interface Props {
-  /** Threads to mark (one icon each). */
+  /** Threads to mark (one icon per vertical bucket — see below). */
   threads: Thread[];
   readOnly?: boolean;
 }
@@ -61,6 +61,33 @@ function fallbackTop(scope: Element, thread: Thread): number | null {
     return null;
   }
   return null;
+}
+
+/**
+ * Issue #364 follow-up (found by the 218 tour): threads anchored on the
+ * same line would stack their icons pixel-on-pixel, and no stacked icon
+ * is clickable. Buttons less than one icon apart share a bucket: one
+ * button with a count badge, opening every thread in the bucket. Like
+ * the end-of-block bubble, the count reads the bucket, never the thread.
+ */
+const BUCKET_PX = 20;
+
+interface Bucket {
+  top: number;
+  threads: Thread[];
+}
+
+export function bucketsFor(threads: Thread[], tops: Record<string, number>): Bucket[] {
+  const placed = threads
+    .filter((t) => tops[t.id] !== undefined)
+    .sort((a, b) => (tops[a.id] as number) - (tops[b.id] as number));
+  const out: Bucket[] = [];
+  for (const t of placed) {
+    const last = out[out.length - 1];
+    if (last && (tops[t.id] as number) - last.top < BUCKET_PX) last.threads.push(t);
+    else out.push({ top: tops[t.id] as number, threads: [t] });
+  }
+  return out;
 }
 
 export function ThreadMarginOverlay({ threads, readOnly }: Props) {
@@ -108,40 +135,62 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
     };
   }, [threads]);
 
-  const onOpen = (id: string): void => {
+  const onOpenBucket = (bucket: Bucket): void => {
     const reviewId = useReview.getState().snapshot?.review.id;
     if (!reviewId || readOnly) return;
-    const thread = useReview.getState().snapshot?.annotations.find((a) => a.id === id);
-    if (thread && !thread.open) {
-      api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
+    const snap = useReview.getState().snapshot;
+    const closed = bucket.threads.filter((t) => {
+      const live = snap?.annotations.find((a) => a.id === t.id);
+      return live && !live.open;
+    });
+    for (const t of closed) {
+      api.updateComment(reviewId, t.id, { open: true }).catch((err: unknown) => {
         toast(`Couldn't open the thread: ${friendlyError(err)}`);
       });
     }
-    window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ block: "nearest" });
-    }, thread?.open ? 0 : 120);
+    const first = bucket.threads[0];
+    if (!first) return;
+    const anyClosed = closed.length > 0;
+    window.setTimeout(
+      () => {
+        document.getElementById(first.id)?.scrollIntoView({ block: "nearest" });
+      },
+      anyClosed ? 120 : 0,
+    );
   };
 
   if (threads.length === 0) return null;
   // Buttons appear only once measured, so they never stack at the
   // container's top for a frame before positioning settles.
-  const placed = threads.filter((t) => tops[t.id] !== undefined);
+  const buckets = bucketsFor(threads, tops);
   return (
     <div className="tmargin" ref={hostRef} aria-hidden={false}>
-      {placed.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          className="tmargin-btn"
-          data-thr-margin={t.id}
-          data-tip={t.open ? "Scroll to thread" : "Open thread"}
-          aria-label={t.open ? `Scroll to thread: ${t.anchor.quotedText || "comment"}` : `Open thread: ${t.anchor.quotedText || "comment"}`}
-          style={tops[t.id] !== undefined ? { top: tops[t.id] } : undefined}
-          onClick={() => onOpen(t.id)}
-        >
-          <Icon name="comment" />
-        </button>
-      ))}
+      {buckets.map((b) => {
+        const first = b.threads[0] as Thread;
+        const n = b.threads.length;
+        const ids = b.threads.map((t) => t.id).join(" ");
+        return (
+          <button
+            key={first.id}
+            type="button"
+            className="tmargin-btn"
+            data-thr-margin={ids}
+            data-tip={n > 1 ? `Open ${n} threads` : first.open ? "Scroll to thread" : "Open thread"}
+            aria-label={
+              n > 1
+                ? `Open ${n} threads, starting with: ${first.anchor.quotedText || "comment"}`
+                : first.open
+                  ? `Scroll to thread: ${first.anchor.quotedText || "comment"}`
+                  : `Open thread: ${first.anchor.quotedText || "comment"}`
+            }
+            style={{ top: b.top }}
+            onClick={() => onOpenBucket(b)}
+          >
+            <Icon name="comment" />
+            {n > 1 ? <span className="tmargin-n">{n}</span> : null}
+          </button>
+        );
+      })}
     </div>
   );
 }

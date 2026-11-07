@@ -34,7 +34,7 @@ export function revealThreadAnchor(threadId: string): boolean {
     flash(mark);
     return true;
   }
-  const margin = document.querySelector(`[data-thr-margin="${id}"]`);
+  const margin = document.querySelector(`[data-thr-margin~="${id}"]`);
   if (margin) {
     scroll(margin);
     flash(margin);

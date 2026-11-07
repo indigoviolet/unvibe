@@ -120,7 +120,7 @@ test.describe("J364 thread polish", () => {
 
     // The margin icon sits on the highlight's first line; closing the
     // thread leaves the icon, and clicking it reopens the thread.
-    const margin = page.locator(`[data-thr-margin="${threadId}"]`);
+    const margin = page.locator(`[data-thr-margin~="${threadId}"]`);
     await expect(margin).toBeVisible({ timeout: 15_000 });
     // Frame 2: the margin icon on the highlight.
     await margin.evaluate((el) => el.scrollIntoView({ block: "center" }));

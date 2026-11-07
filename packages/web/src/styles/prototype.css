@@ -1716,6 +1716,9 @@ mark.anc.flash { outline: 2px solid var(--accent); outline-offset: 2px; border-r
 .tmargin-btn { position: absolute; left: 3px; transform: translateY(-3px); display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; pointer-events: auto; }
 .tmargin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .tmargin-btn .ic { width: 11px; height: 11px; }
+/* Issue #364 follow-up: a bucket of threads on one line shares one icon
+   with a count badge (mirrors the end-of-block bubble). */
+.tmargin-btn .tmargin-n { position: absolute; right: -5px; bottom: -5px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--accent); color: var(--text-on-accent); font-size: 10px; line-height: 14px; text-align: center; }
 /* Issue #364: the Reply box's quote chip — Ask inside a thread quotes
    into the thread's own composer instead of opening a second one. */
 .composer .qchip { display: flex; align-items: center; gap: 6px; max-width: 100%; margin-bottom: 6px; padding: 4px 6px 4px 10px; background: var(--accent-soft); border-radius: var(--radius-6); font-size: 12.5px; color: var(--ink); }
