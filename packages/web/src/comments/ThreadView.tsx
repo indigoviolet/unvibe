@@ -909,7 +909,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
+      ) : suggested && !quoteChip ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}
