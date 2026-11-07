@@ -378,6 +378,7 @@ describe("ThreadView per-reply delete + quote chip (issue #364)", () => {
           id: "ans_ask1",
           kind: "ask",
           who: "agent",
+          seq: 1,
           question: "What does this do?",
           blocks: [{ type: "paragraph", id: "b1", text: { standard: "It folds lines." }, citations: [] }],
           level: "standard",
