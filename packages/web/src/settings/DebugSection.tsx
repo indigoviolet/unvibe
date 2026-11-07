@@ -183,14 +183,12 @@ export function DebugSection({
           // Lean build (issue #366): no tracing libraries shipped, so no
           // usage statistics are recorded at all. Name the matching debug
           // build for this install's channel.
+          // The install command itself shows once, under Performance traces.
           channel === undefined ? null : (
-            <>
-              <p className="hint">
-                This build records no usage statistics — the lean install stays lean (no tracing
-                libraries). To collect them, install the debug build:
-              </p>
-              <DebugInstallNotice channel={channel} />
-            </>
+            <p className="hint">
+              This build records no usage statistics. The debug build records them with the
+              performance traces; its install command is under Performance traces below.
+            </p>
           )
         ) : (
           <p className="hint">
