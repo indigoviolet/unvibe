@@ -63,6 +63,16 @@ export interface StartServiceOptions {
   port?: string;
   /** Extra env entries for the child (e.g. the fake-gh SHELL/PATH stub). */
   extraEnv?: Record<string, string | undefined>;
+  /**
+   * Harness fake bin dir (issue #370): the directory holding the fake
+   * `gh`/`git` (+ the fake login shell). Passed through as
+   * `UNVIBE_TEST_BIN_DIR`, so a test service refuses any `gh`/`git`
+   * binary resolving outside it — even when its inherited PATH was
+   * polluted. Prefer the `fakeServiceEnv` helper in journey-helpers
+   * (it sets SHELL/PATH plus this from one dir); this option stays for
+   * specs that build extraEnv by hand.
+   */
+  testBinDir?: string;
   /** Log-file tag. Defaults to the data dir's basename. */
   label?: string;
 }
@@ -97,6 +107,10 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
   // real home is the one captured at harness start.
   env.UNVIBE_TEST = "1";
   env.UNVIBE_REAL_HOME = harnessRealHome();
+  // Issue #370: confine the service's gh/git to the harness fakes.
+  // Explicit option wins; extraEnv passthrough keeps working for specs
+  // that set it by hand.
+  if (opts.testBinDir !== undefined) env.UNVIBE_TEST_BIN_DIR = opts.testBinDir;
   // Update-helper drills (fake updater) must never see the real login
   // unit: give them a scratch HOME unless the spec already set one.
   let harnessHome: string | null = null;
