@@ -189,10 +189,17 @@ export async function probeEffectivePath(
  * Apply the login-shell PATH to this process (before anything spawns
  * git/gh/agent adapters). Returns the detail, or null when nothing
  * changed. Never throws.
+ *
+ * Issue #370: under `UNVIBE_TEST=1` the inherited PATH is kept as-is —
+ * the e2e harness puts its fake `gh`/`git` first, and applying the login
+ * PATH would put the developer's real tools first (a malformed probe
+ * falls through to the real login shell). The macOS login-PATH gotcha
+ * (PRD §14) still applies outside tests.
  */
 export async function applyLoginShellPath(
   opts: { shell?: string; timeoutMs?: number } = {},
 ): Promise<{ before: string; after: string; shell: string } | null> {
+  if (process.env.UNVIBE_TEST === "1") return null;
   const before = process.env.PATH ?? "";
   const found = await probeEffectivePath(opts);
   if (!found || found.effectivePath === before) return null;

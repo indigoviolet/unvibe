@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, git, stampDataFormat } from "./journey-helpers.js";
+import { apiJson, git, realGitPath, stampDataFormat, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -201,6 +201,7 @@ fi
 echo "fake gh: unexpected call: $*" >&2; exit 1
 `;
       writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
+      writeFakeGitOffline(binDir, realGitPath());
       const fakeShell = path.join(binDir, "fakeshell");
       writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binDir}:$PATH"\n`, { mode: 0o755 });
       svc3 = await startService(data3, {

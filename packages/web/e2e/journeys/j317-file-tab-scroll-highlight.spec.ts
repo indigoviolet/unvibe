@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, git, stampDataFormat, writeFakeGh } from "./journey-helpers.js";
+import { apiJson, createScratchReview, git, realGitPath, stampDataFormat, writeFakeGh, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -45,6 +45,7 @@ test.describe("J317 file tab scroll + syntax highlight", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j317-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j317-bin-"));
     writeFakeGh(fakeBin, logDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     writeFileSync(path.join(fakeBin, "fakeshell"), `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j317-data-"));
     svc = await start();

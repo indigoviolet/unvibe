@@ -281,12 +281,14 @@ export function resolvePromptsDirForBundle(): string {
 }
 
 /**
- * True inside the vitest suite (vitest sets both; either one counts).
+ * True inside the vitest suite (vitest sets both; either one counts) and
+ * in every test-spawned service (the e2e harness sets `UNVIBE_TEST=1`,
+ * issue #370 — Playwright services have no VITEST marker).
  * The composition root uses this to refuse the production fallbacks —
  * tests must never silently start real agents or real CLIs (issue #119).
  */
 export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test";
+  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test" || env.UNVIBE_TEST === "1";
 }
 
 export function buildApp(opts: BuildAppOptions): AppContext {
@@ -298,11 +300,21 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   // runners are never replaced. `UNVIBE_AGENT=replay|none` keeps the
   // factory (both are hermetic); only the unset default (real ACP) is
   // replaced with the fake.
+  // Issue #370: the command guard covers every test-spawned service
+  // (vitest or UNVIBE_TEST), but the agent substitution stays a
+  // unit-suite behavior: a test service with UNVIBE_AGENT="" opted into
+  // the live factory on purpose (the pi journey sets
+  // UNVIBE_ALLOW_LIVE_AGENT=1 with a fake pi on PATH), and substituting
+  // the fake would hide the provider.
   const underTest = isTestProcess();
-  const needsTestAgents = underTest && (process.env.UNVIBE_AGENT ?? "") === "";
+  const underUnitTest =
+    process.env.VITEST === "true" || process.env.VITEST === "1" || process.env.NODE_ENV === "test";
+  const needsTestAgents = underUnitTest && (process.env.UNVIBE_AGENT ?? "") === "";
   // Issue #109: the production runner runs the service's own git/gh
   // through their resolved real executables, never a version-manager shim
-  // that would read a review worktree's config. Injected runners (tests,
+  // that would read a review worktree's config. Under test (vitest or
+  // UNVIBE_TEST, issue #370) the guard refuses real gh/agent CLIs and
+  // confines git/gh to the harness fake bin dir. Injected runners (tests,
   // doctor diagnostics) are used exactly as given.
   const runner =
     opts.runner ??

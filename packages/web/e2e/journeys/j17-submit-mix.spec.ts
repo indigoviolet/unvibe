@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, createDemoReview } from "./journey-helpers.js";
+import { apiJson, createDemoReview, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const CONN = "src-urllib3-connection.py";
@@ -67,6 +67,7 @@ test.describe("J17 submit a mix", () => {
     test.setTimeout(300_000);
     // Restart with fake gh first on PATH (login-shell stub, as in J3/J9).
     writeFakeGhAnyPr(fakeBin, logDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, {

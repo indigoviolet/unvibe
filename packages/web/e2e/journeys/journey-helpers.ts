@@ -234,6 +234,40 @@ export function realGitPath(): string {
 }
 
 /**
+ * Shared fake login shell + service env for hermetic e2e services
+ * (issue #370): the shell's probe answer puts `binDir` first, matching
+ * the inherited PATH the harness gives the child, so the service
+ * resolves the harness fakes however it boots. Returns the shell path;
+ * pass the env (with the bin dir the service confines `gh`/`git` to)
+ * via `testBinDir` + `extraEnv`.
+ *
+ * ```ts
+ * fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j99-bin-"));
+ * writeFakeGh(fakeBin, logDir, headSha);
+ * writeFakeGitOffline(fakeBin, realGitPath());
+ * const fakeShell = writeFakeShell(fakeBin);
+ * svc = await startService(dataDir, {
+ *   testBinDir: fakeBin,
+ *   extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
+ * });
+ * ```
+ */
+export function writeFakeShell(binDir: string): string {
+  const fakeShell = path.join(binDir, "fakeshell");
+  writeFileSync(
+    fakeShell,
+    `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binDir}:$PATH"\n`,
+    { mode: 0o755 },
+  );
+  return fakeShell;
+}
+
+/** Inherited PATH for a faked service: `binDir` first, then the real PATH. */
+export function fakeServicePath(binDir: string): string {
+  return `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+/**
  * Fake `git` for hermetic e2e services (AGENTS.md: never hit real
  * GitHub): `ls-remote` — the only network call the service makes, via
  * the GitHub-fetch readiness probe — fails instantly offline, so the
