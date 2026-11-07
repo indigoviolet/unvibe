@@ -30,7 +30,7 @@ import { RealCommandRunner, TestCommandGuard } from "../src/exec/index.js";
 import { openDatabase } from "../src/store/db.js";
 import { migrate } from "../src/store/migrate.js";
 
-const ENV_KEYS = ["PATH", "SHELL", "UNVIBE_TEST", "UNVIBE_TEST_BIN_DIR", "VITEST", "NODE_ENV"] as const;
+const ENV_KEYS = ["PATH", "SHELL", "UNVIBE_TEST", "UNVIBE_TEST_BIN_DIR", "UNVIBE_AGENT", "UNVIBE_ALLOW_LIVE_AGENT", "VITEST", "NODE_ENV"] as const;
 const savedEnv: Record<string, string | undefined> = {};
 for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
 
@@ -71,6 +71,11 @@ function makeFakeAndSentinel(): { fakeBin: string; sentinelBin: string; sentinel
   makeExecutable(fakeBin, "gh", '#!/bin/sh\necho "fake-gh-ok"\n');
   makeExecutable(fakeBin, "git", `#!/bin/sh\nexec "${realGit}" "$@"\n`);
   const sentinelLog = join(sentinelBin, "calls.log");
+  makeExecutable(
+    fakeBin,
+    "pi",
+    '#!/bin/sh\necho "fake-pi 1.4.0"\n',
+  );
   for (const name of ["gh", "git"]) {
     makeExecutable(
       sentinelBin,
@@ -79,6 +84,11 @@ function makeFakeAndSentinel(): { fakeBin: string; sentinelBin: string; sentinel
         (name === "gh" ? 'echo "sentinel-gh: should never run"\n' : `exec "${realGit}" "$@"\n`),
     );
   }
+  makeExecutable(
+    sentinelBin,
+    "pi",
+    `#!/bin/sh\necho "pi $*" >> "${sentinelLog}"\necho "sentinel-pi: should never run"\n`,
+  );
   return { fakeBin, sentinelBin, sentinelLog };
 }
 
@@ -110,6 +120,7 @@ describe("issue #370: test services never resolve the real gh", () => {
     delete process.env.VITEST;
     delete process.env.NODE_ENV;
     process.env.UNVIBE_TEST = "1";
+    process.env.UNVIBE_AGENT = "none";
     expect(isTestProcess()).toBe(true);
     const db = openDatabase(":memory:");
     migrate(db);
@@ -117,7 +128,7 @@ describe("issue #370: test services never resolve the real gh", () => {
     expect(ctx.runner).toBeInstanceOf(TestCommandGuard);
   });
 
-  it("guard runs the fake gh/git and never touches the sentinel", async () => {
+  it("guard runs the fake gh/git/pi and never touches the sentinel", async () => {
     const { fakeBin, sentinelBin, sentinelLog } = makeFakeAndSentinel();
     process.env.UNVIBE_TEST = "1";
     process.env.UNVIBE_TEST_BIN_DIR = fakeBin;
@@ -127,6 +138,23 @@ describe("issue #370: test services never resolve the real gh", () => {
     expect(gh.stdout).toContain("fake-gh-ok");
     const git = await guard.run("git", { args: ["--version"] });
     expect(git.stdout).toMatch(/git version/);
+    // Doctor/version probes of a fake agent CLI run too (j279 pattern).
+    const pi = await guard.run("pi", { args: ["--version"] });
+    expect(pi.stdout).toContain("fake-pi 1.4.0");
+    expect(sentinelCalls(sentinelLog)).toEqual([]);
+  });
+
+  it("guard spans several bin dirs (fake + stub dirs, j279 pattern)", async () => {
+    const { fakeBin, sentinelBin, sentinelLog } = makeFakeAndSentinel();
+    const stubs = mkdtempSync(join(tmpdir(), "unvibe-370-stubs-"));
+    tmpDirs.push(stubs);
+    makeExecutable(stubs, "codex", '#!/bin/sh\necho "stub-codex 0.0.0"\n');
+    process.env.UNVIBE_TEST = "1";
+    process.env.UNVIBE_TEST_BIN_DIR = [fakeBin, stubs].join(":");
+    process.env.PATH = `${fakeBin}:${stubs}:${sentinelBin}:${savedEnv.PATH ?? "/usr/bin:/bin"}`;
+    const guard = new TestCommandGuard(new RealCommandRunner());
+    const codex = await guard.run("codex", { args: ["--version"] });
+    expect(codex.stdout).toContain("stub-codex");
     expect(sentinelCalls(sentinelLog)).toEqual([]);
   });
 
@@ -143,6 +171,9 @@ describe("issue #370: test services never resolve the real gh", () => {
       /outside the harness fake bin dir/,
     );
     await expect(guard.run("git", { args: ["--version"] })).rejects.toThrow(
+      /outside the harness fake bin dir/,
+    );
+    await expect(guard.run("pi", { args: ["--version"] })).rejects.toThrow(
       /outside the harness fake bin dir/,
     );
     expect(sentinelCalls(sentinelLog)).toEqual([]);
