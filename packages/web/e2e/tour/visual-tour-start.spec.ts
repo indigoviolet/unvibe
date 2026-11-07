@@ -193,6 +193,7 @@ test.describe("J228 start-page author filter", () => {
     poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-pool-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-bin-"));
     writeFakeGhAuthorFilter(fakeBin, logDir, poolDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",

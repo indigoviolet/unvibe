@@ -1240,7 +1240,8 @@ test.describe("L3 demo guide reading", () => {
       expect.soft(bg).not.toBe("rgba(0, 0, 0, 0)");
 
       // Hovering previews the thread as pinned: kind badge, AI avatar, reply count.
-      await mark.hover();
+      // B5: hover only after scroll quiet (throttle flake).
+      await hoverFresh(page, mark);
       const pop = page.locator("#pop");
       await expect.soft(pop.locator(".pv-thr")).toBeVisible({ timeout: 15_000 });
       await expect.soft(pop.locator(".pv-thr .kind-ask")).toContainText("ask");
@@ -2399,7 +2400,8 @@ test.describe("L3 scratch file tabs", () => {
       await expect.soft(page.locator("#C-c-missing")).toContainText("Cites a missing file.");
 
       // Hover previews the cited lines at the commit.
-      await page.locator("#C-c-beta .lk[data-refs]").hover();
+      // B5: hover only after scroll quiet (throttle flake).
+      await hoverFresh(page, page.locator("#C-c-beta .lk[data-refs]"));
       await expect.soft(page.locator("#pop")).toContainText("beta = 2", { timeout: 30_000 });
 
       // Click opens the file tab at the cited lines.
@@ -2465,7 +2467,8 @@ test.describe("L3 scratch file tabs", () => {
       await expect.soft(page.locator("#C-c-brackets")).not.toContainText("[[code:");
 
       // Hover previews the cited line.
-      await chip.hover();
+      // B5: hover only after scroll quiet (throttle flake).
+      await hoverFresh(page, chip);
       await expect.soft(page.locator("#pop")).toContainText("Item", { timeout: 30_000 });
 
       // Click opens the file tab at the cited line.

@@ -622,6 +622,7 @@ test.describe("J81 code citations outside the diff", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-bin-"));
     writeFakeGh(fakeBin, logDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-data-"));
     svc = await start();
     reviewId = await createScratchReview(svc, repoDir);

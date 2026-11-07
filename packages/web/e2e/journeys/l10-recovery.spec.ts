@@ -35,7 +35,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { DATA_FORMAT } from "@unvibe/shared";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, createDemoReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createDemoReview, fakeServicePath, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell } from "./journey-helpers.js";
 
 test.beforeEach(async ({ page }) => {
   await cpuThrottleFromEnv(page);
@@ -487,16 +487,14 @@ case "$*" in *pulls/1/comments*) echo '[]'; exit 0 ;; esac
 echo "fake gh: unexpected call: $*" >&2; exit 1
 `;
     writeFileSync(path.join(fakeBin, "gh"), script, { mode: 0o755 });
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, {
-      mode: 0o755,
-    });
+    writeFakeGitOffline(fakeBin, realGitPath());
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "replay",
       label: "l10354",
       extraEnv: {
         SHELL: fakeShell,
-        PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
+        PATH: fakeServicePath(fakeBin),
         // Stretch the replay so the guide is still building when Remove
         // is clicked; the detached jobs then settle after the delete.
         UNVIBE_REPLAY_DELAY_MS: "500",
