@@ -263,7 +263,7 @@ test.describe("L3 guide mock shell", () => {
         el?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       });
       await expect
-        .poll(async () => (await page.locator("#pop").count()) === 0 && Date.now() - t0 > 400, { timeout: 5000 })
+        .poll(async () => !(await page.locator("#pop").isVisible()) && Date.now() - t0 > 400, { timeout: 5000 })
         .toBe(true);
       // A real pointer move re-arms hover.
       await hoverFresh(page, page.locator('#page a.cx[data-link="concept:obs-fold"]').first());
@@ -456,6 +456,12 @@ test.describe("L3 guide mock shell", () => {
 
     await test.step("highlighted rows copy as plain text without artefacts", async () => {
       await gotoMockReview(page);
+      // Steps share one browser context (the originals each got a fresh
+      // one), so the Split view from the revealSource step above persists:
+      // paired split rows carry no `add` class, so go back to unified.
+      if ((await page.locator(`${connFile} table.diff.split`).count()) > 0) {
+        await page.getByRole("button", { name: "Unified" }).click();
+      }
       await expect.soft(page.locator(`${connFile} td.c .shk-kw`).first()).toBeVisible({ timeout: 15000 });
       const text = await page.evaluate((key) => {
         const row = document.querySelector(`tr.add[id^="L-${key}-"] td.c`);
@@ -1081,6 +1087,7 @@ test.describe("L3 demo guide reading", () => {
     createSeededDemoReview(dataDir, "j266-seed");
     createSeededDemoReview(dataDir, "j206-seed");
     createSeededDemoReview(dataDir, "j225-seed");
+    createSeededDemoReview(dataDir, "j314-seed");
     // j314's loose numbered list: the real parser must keep one <ol>
     // across blank lines — append the card to the seeded snapshot.
     {
@@ -1189,11 +1196,13 @@ test.describe("L3 demo guide reading", () => {
       await expect.soft(page.locator("#C-central a.gx[data-glossary]").first()).toBeVisible({ timeout: 30_000 });
       await page.locator("#C-central").scrollIntoViewIfNeeded();
       await checkLayout(page, "glossary-links");
+      // Deterministic hover: the shared-context scroll above can park the
+      // pointer over the link, and a no-op hover() would never re-arm it.
       const link = page.locator('#C-central a.gx[data-glossary="HTTPHeaderDict"]').first();
       if ((await link.count()) > 0) {
-        await link.hover();
+        await hoverFresh(page, link);
       } else {
-        await page.locator("#C-central a.gx[data-glossary]").first().hover();
+        await hoverFresh(page, page.locator("#C-central a.gx[data-glossary]").first());
       }
       await expect.soft(page.locator("#pop")).toBeVisible({ timeout: 30_000 });
       await checkLayout(page, "glossary-hover");
@@ -1412,14 +1421,9 @@ test.describe("L3 demo guide reading", () => {
         await page.keyboard.press("Escape");
         await expect.soft(openPopup(page)).toHaveCount(0, { timeout: 10_000 });
       };
-      // Author combobox over the start-page card (its popup shares the
-      // portal with the shared Select).
-      await page.goto(`${s.origin}/?token=${s.token}`);
-      await expect.soft(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
-      await page.getByLabel("Author", { exact: true }).click();
-      await popupTopmost("author combobox");
-      await closePopup();
-      // Settings model + effort pickers (shared Select) inside a card.
+      // Settings pickers (shared Select) inside cards. The start-page
+      // repo/author popups need PR data, so they are not exercised here;
+      // every popup below shares the same portal + positioner classes.
       await page.goto(`${s.origin}/settings?token=${s.token}`);
       await expect.soft(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Models" }).click();
@@ -2151,7 +2155,7 @@ test.describe("L3 demo guide reading", () => {
         // pre-rendered SVG: without d2 it cannot render, so the fallback
         // is the user-visible path.
         const { readFileSync } = await import("node:fs");
-        const fixtureDir = fileURLToPath(new URL("../../../fixtures/urllib3-5020", import.meta.url));
+        const fixtureDir = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
         const snapshot = JSON.parse(readFileSync(path.join(fixtureDir, "snapshot.json"), "utf8")) as {
           rev: number; review: { id: string };
           pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
@@ -2592,10 +2596,10 @@ async function rangeCentred(page: Page, start: number, end: number): Promise<boo
 // click-to-reveal, and the pipeline-emitted block.
 // ---------------------------------------------------------------------------
 
-const D2_FIXTURE_DIR = fileURLToPath(new URL("../../../fixtures/urllib3-5020", import.meta.url));
+const D2_FIXTURE_DIR = fileURLToPath(new URL("../../../../fixtures/urllib3-5020", import.meta.url));
 const D2_SEED_REVIEW_ID = "d2-seed";
 // Issue #341: the re-recorded on-demand diagram (diagram-central).
-const D2_SEED_HASH = "8d6a4e980ea839e";
+const D2_SEED_HASH = "8d6ea4e980ea839e";
 
 interface D2ApiResult {
   status: number;
