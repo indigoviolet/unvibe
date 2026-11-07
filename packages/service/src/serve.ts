@@ -58,6 +58,8 @@ async function serveGeneration(
   const token = loadOrCreateToken(config.dataDir);
 
   // macOS gotcha (PRD §14): pick up the login-shell PATH so gh/git/agents resolve.
+  // Under UNVIBE_TEST applyLoginShellPath is a no-op (issue #370): the
+  // harness PATH already has the fakes first.
   try {
     await applyLoginShellPath();
   } catch {
