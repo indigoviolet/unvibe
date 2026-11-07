@@ -23,7 +23,7 @@ import { checkLayout } from "../layout-check.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
-import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "../journeys/journey-helpers.js";
+import {apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 test.beforeEach(async ({ page }) => {
@@ -193,11 +193,10 @@ test.describe("J228 start-page author filter", () => {
     poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-pool-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-bin-"));
     writeFakeGhAuthorFilter(fakeBin, logDir, poolDir, headSha);
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
     });
     const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     const list = (repos.json as { repos: { id: string; localPath: string }[] }).repos;
@@ -509,11 +508,10 @@ test.describe("J297 start-page Load more + author search", () => {
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
     writeFakeGhPaging(fakeBin, logDir, poolDir);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
     });
     const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     const list = (repos.json as { repos: { id: string; localPath: string }[] }).repos;
@@ -743,9 +741,8 @@ test.describe("J321 stacked PRs", () => {
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
     writeFakeGh(fakeBin, logDir, repo.headSha);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
-    svc = await startService(dataDir, { agent: "none", extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` } });
+    const fakeShell = writeFakeShell(fakeBin);
+    svc = await startService(dataDir, { agent: "none", extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) } });
     const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     const list = (repos.json as { repos: { id: string; localPath: string }[] }).repos;
     const registered = list.find((r) => r.localPath === repoDir);
@@ -905,11 +902,10 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j245-bin-"));
     writeFakeGhApproved(fakeBin, logDir, repoDir);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
     });
     reviewId = await createScratchReview(svc, repoDir, { pr: PR_NUMBER });
   });

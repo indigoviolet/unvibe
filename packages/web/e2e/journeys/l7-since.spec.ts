@@ -58,7 +58,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { openPopup } from "../select.js";
 import { fileKeyForPath, type ReviewSnapshot } from "@unvibe/shared";
-import { apiJson, createScratchReview, git, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
+import {apiJson, createScratchReview, git, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
 test.use({ channel: "chromium" });
 test.beforeEach(async ({ page }) => {
@@ -305,13 +305,12 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       { mode: 0o755 },
     );
     writeFakeGitOffline(binDir, realGitPath());
-    const fakeShell = path.join(binDir, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binDir}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(binDir);
 
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l7c-data-"));
     svc = await startService(dataDir, {
       agent: "replay",
-      extraEnv: { SHELL: fakeShell, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(binDir) },
       label: "l7sinceoffer",
     });
     const repos = (await apiJson(svc, "POST", "/api/repos", { path: repoDir })).json as {

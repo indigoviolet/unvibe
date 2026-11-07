@@ -15,7 +15,6 @@
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +25,7 @@ import { SERVICE_ENTRY, startService, type RunningService } from "../service-har
 import { tourCombos } from "../tour-matrix.js";
 import { selectText } from "../select-text.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "../journeys/journey-helpers.js";
+import {apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 import { startStaticServer, type StaticServer } from "../static-server.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
@@ -278,16 +277,37 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
 }
 
-async function freeCandidatePort(): Promise<number> {
+/**
+ * Start a service on the first free extension-probe port (#322, #370):
+ * probing only one port races parallel checkouts and TIME_WAIT holds,
+ * so a bind refusal retries the next candidate instead of failing.
+ */
+async function startOnExtensionPort(
+  dataDir: string,
+  extraEnv: Record<string, string | undefined>,
+  label: string,
+  opts: { agent?: "none" | "replay"; testBinDir?: string } = {},
+): Promise<RunningService> {
+  const failures: string[] = [];
   for (const port of CANDIDATE_PORTS) {
-    const free = await new Promise<boolean>((resolve) => {
-      const srv = net.createServer();
-      srv.once("error", () => resolve(false));
-      srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
-    });
-    if (free) return port;
+    try {
+      return await startService(dataDir, {  // eslint-disable-line no-await-in-loop
+        agent: opts.agent ?? "none",
+        port: String(port),
+        ...(opts.testBinDir !== undefined ? { testBinDir: opts.testBinDir } : {}),
+        extraEnv,
+        label,
+      });
+    } catch (e) {
+      // The bind refusal ("already in use") reaches the harness only as
+      // an exit code (stderr, not stdout), so every bind failure retries
+      // the next candidate — but the FIRST error is what throws, with the
+      // attempts listed, so a genuine failure (bad repo, bad env) never
+      // masks itself as "no free port".
+      failures.push(`${port}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  throw new Error("no free extension candidate port (4517-4521)");
+  throw new Error(`no free extension port (${failures.length} attempts): ${failures[0]}`);
 }
 
 async function launchWithExtension(userDataDir: string): Promise<BrowserContext> {
@@ -315,17 +335,12 @@ test.describe("tour extension frames", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tourext-gh-"));
     writeFakeGhExt(fakeBin, logDir, repoDir);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, {
-      mode: 0o755,
-    });
-    const port = await freeCandidatePort();
-    svc = await startService(dataDir, {
-      agent: "none",
-      port: String(port),
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
-      label: "tourext",
-    });
+    const fakeShell = writeFakeShell(fakeBin);
+    svc = await startOnExtensionPort(
+      dataDir,
+      { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
+      "tourext",
+    );
     expect((await apiJson(svc, "POST", "/api/repos", { path: repoDir })).status).toBe(200);
   });
   test.afterAll(async () => {
@@ -411,15 +426,14 @@ test.describe("tour extension frames", () => {
       await makeRepo(panelServiceDir, "acme", "service", "auth.ts", "export function validateToken(t: string) { return t.length > 3; }\n");
       await makeRepo(panelClientDir, "acme", "client", "api.ts", "export async function fetchSession() { return 1; }\n");
       writeFakeGitOffline(panelBin, realGitPath());
-      const panelShell = path.join(panelBin, "fakeshell");
-      writeFileSync(panelShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${panelBin}:$PATH"\n`, { mode: 0o755 });
-      const port = await freeCandidatePort();
-      panelSvc = await startService(panelData, {
-        agent: "none",
-        port: String(port),
-        extraEnv: { SHELL: panelShell, PATH: `${panelBin}${path.delimiter}${process.env.PATH ?? ""}` },
-        label: "tourextpanel",
-      });
+      const panelShell = writeFakeShell(panelBin);
+      // No fake `gh` in this bin dir: confine explicitly (#370).
+      panelSvc = await startOnExtensionPort(
+        panelData,
+        { SHELL: panelShell, PATH: fakeServicePath(panelBin) },
+        "tourextpanel",
+        { testBinDir: panelBin },
+      );
       expect((await apiJson(panelSvc, "POST", "/api/repos", { path: panelServiceDir })).status).toBe(200);
       expect((await apiJson(panelSvc, "POST", "/api/repos", { path: panelClientDir })).status).toBe(200);
       const svc = panelSvc;

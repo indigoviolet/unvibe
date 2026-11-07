@@ -70,7 +70,7 @@ import { checkLayout } from "../layout-check.js";
 import { measureWithinRow } from "../geometry.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
+import {apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
 test.use({ channel: "chromium" });
 test.beforeEach(async ({ page }) => {
@@ -441,11 +441,10 @@ test.describe("L9 settings screens, start rows and PR badges", () => {
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-l9b-bin-"));
     writeFakeGhDecision(fakeBin, logDir, repoDir, repo.headSha);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
       label: "l9badges",
     });
     // A PR review (fake gh: OPEN + CHANGES_REQUESTED) and a branch review (no badges).

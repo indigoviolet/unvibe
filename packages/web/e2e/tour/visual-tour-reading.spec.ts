@@ -12,7 +12,7 @@ import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import { parseBlocks } from "@unvibe/shared";
-import { apiJson, createDemoReview, createScratchReview, createSeededDemoReview, git, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGitOffline } from "../journeys/journey-helpers.js";
+import {apiJson, createDemoReview, createScratchReview, createSeededDemoReview, git, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
@@ -419,11 +419,10 @@ test.describe("J306 select popup z-index", () => {
     await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
     writeFakeGhSelect(fakeBin, poolDir);
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
     });
     const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     const list = (repos.json as { repos: { id: string; localPath: string }[] }).repos;
@@ -589,10 +588,10 @@ test.describe("J81 code citations outside the diff", () => {
 
   // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub).
   async function start(): Promise<RunningService> {
-    const fakeShell = path.join(fakeBin, "fakeshell");
+    const fakeShell = writeFakeShell(fakeBin);
     return startService(dataDir, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
     });
   }
 
@@ -623,7 +622,6 @@ test.describe("J81 code citations outside the diff", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-bin-"));
     writeFakeGh(fakeBin, logDir, headSha);
-    writeFileSync(path.join(fakeBin, "fakeshell"), `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j81-data-"));
     svc = await start();
     reviewId = await createScratchReview(svc, repoDir);

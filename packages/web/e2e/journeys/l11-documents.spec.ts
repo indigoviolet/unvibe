@@ -40,14 +40,13 @@
  * temp dirs fail the per-run temp guard).
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, git, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGitOffline } from "./journey-helpers.js";
+import {apiJson, git, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
 test.use({ channel: "chromium" });
 test.beforeEach(async ({ page }) => {
@@ -61,16 +60,37 @@ const EXTENSION_DIR = fileURLToPath(new URL("../../../../extension", import.meta
 // Ports the extension worker probes (see extension/background.js).
 const CANDIDATE_PORTS = [4517, 4518, 4519, 4520, 4521];
 
-async function freeCandidatePort(): Promise<number> {
+/**
+ * Start a service on the first free extension-probe port (#322, #370):
+ * probing only one port races parallel checkouts and TIME_WAIT holds,
+ * so a bind refusal retries the next candidate instead of failing.
+ */
+async function startOnExtensionPort(
+  dataDir: string,
+  extraEnv: Record<string, string | undefined>,
+  label: string,
+  opts: { agent?: "none" | "replay"; testBinDir?: string } = {},
+): Promise<RunningService> {
+  const failures: string[] = [];
   for (const port of CANDIDATE_PORTS) {
-    const free = await new Promise<boolean>((resolve) => {
-      const srv = net.createServer();
-      srv.once("error", () => resolve(false));
-      srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
-    });
-    if (free) return port;
+    try {
+      return await startService(dataDir, {  // eslint-disable-line no-await-in-loop
+        agent: opts.agent ?? "none",
+        port: String(port),
+        ...(opts.testBinDir !== undefined ? { testBinDir: opts.testBinDir } : {}),
+        extraEnv,
+        label,
+      });
+    } catch (e) {
+      // The bind refusal ("already in use") reaches the harness only as
+      // an exit code (stderr, not stdout), so every bind failure retries
+      // the next candidate — but the FIRST error is what throws, with the
+      // attempts listed, so a genuine failure (bad repo, bad env) never
+      // masks itself as "no free port".
+      failures.push(`${port}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  throw new Error("no free extension candidate port (4517-4521)");
+  throw new Error(`no free extension port (${failures.length} attempts): ${failures[0]}`);
 }
 
 test.describe("L11 document review", () => {
@@ -379,15 +399,15 @@ test.describe("L11 side panel over two repos", () => {
     await makeRepo(clientDir, "acme", "client", "api.ts", "export async function fetchSession() { return 1; }\n");
     const fakeBin = tmp("unvibe-l11panel-bin-");
     writeFakeGitOffline(fakeBin, realGitPath());
-    const fakeShell = path.join(fakeBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
-    const port = await freeCandidatePort();
-    svc = await startService(tmp("unvibe-l11panel-data-"), {
-      agent: "none",
-      port: String(port),
-      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
-      label: "l11panel",
-    });
+    const fakeShell = writeFakeShell(fakeBin);
+    // No fake `gh` in this bin dir (retriever evidence only), so the
+    // `fakeshell` convention cannot auto-detect it: confine explicitly.
+    svc = await startOnExtensionPort(
+      tmp("unvibe-l11panel-data-"),
+      { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
+      "l11panel",
+      { testBinDir: fakeBin },
+    );
     expect((await apiJson(svc, "POST", "/api/repos", { path: serviceDir })).status).toBe(200);
     expect((await apiJson(svc, "POST", "/api/repos", { path: clientDir })).status).toBe(200);
   });

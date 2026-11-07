@@ -42,7 +42,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { checkLayout } from "../layout-check.js";
 import { fullMatrix, tourCombos } from "../tour-matrix.js";
-import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "../journeys/journey-helpers.js";
+import {createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
@@ -102,13 +102,12 @@ test.beforeAll(async () => {
   tourLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-gh-"));
   writeFakeGhTour(tourBin, tourLog);
   writeFakeGitOffline(tourBin, realGitPath());
-  tourShellPath = path.join(tourBin, "fakeshell");
-  writeFileSync(tourShellPath, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${tourBin}:$PATH"\n`, { mode: 0o755 });
+  tourShellPath = writeFakeShell(tourBin);
   svc = await startService(dataDir, {
     agent: "replay",
     extraEnv: {
       SHELL: tourShellPath,
-      PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}`,
+      PATH: fakeServicePath(tourBin),
       // Fake updater so the Settings → Version scene lists channels (#229).
       UNVIBE_UPDATER_BACKEND: "fake",
     },
@@ -2128,11 +2127,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       { mode: 0o755 },
     );
     writeFakeGitOffline(bin232, realGitPath());
-    const fakeShell = path.join(bin232, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${bin232}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(bin232);
     const extraEnv = {
       SHELL: fakeShell,
-      PATH: `${bin232}${path.delimiter}${process.env.PATH ?? ""}`,
+      PATH: fakeServicePath(bin232),
     };
     svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
     // PR review: ingest hangs on the sleeping `gh`, staying loading.
@@ -2652,7 +2650,7 @@ test("visual tour document review (#222)", async ({ page }) => {
     }
     svc = await startService(dataDir, {
       agent: "replay",
-      extraEnv: { SHELL: tourShellPath, PATH: `${tourBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: tourShellPath, PATH: fakeServicePath(tourBin) },
     });
     await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
     const cited = page.locator("#C-document [data-thread]", { hasText: "The widget constant lives in the second repo." });
@@ -3014,10 +3012,10 @@ test.describe("visual tour file tab (#81)", () => {
   // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub): the
   // fake answers `api user` as "author" and records every call.
   async function ftStart(): Promise<RunningService> {
-    const fakeShell = path.join(ftBin, "fakeshell");
+    const fakeShell = writeFakeShell(ftBin);
     return startService(ftData, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${ftBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(ftBin) },
     });
   }
 
@@ -3042,11 +3040,6 @@ test.describe("visual tour file tab (#81)", () => {
     ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
     writeFakeGh(ftBin, ftLog, headOut.trim());
     writeFakeGitOffline(ftBin, realGitPath());
-    writeFileSync(
-      path.join(ftBin, "fakeshell"),
-      `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${ftBin}:$PATH"\n`,
-      { mode: 0o755 },
-    );
     ftData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-data-"));
     ftSvc = await ftStart();
     const repos = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/repos", { path: ftRepo })) as {
@@ -3280,11 +3273,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       { mode: 0o755 },
     );
     writeFakeGitOffline(rcBin, realGitPath());
-    const fakeShell = path.join(rcBin, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${rcBin}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(rcBin);
     rcSvc = await startService(rcData, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${rcBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(rcBin) },
     });
     rcReview = await createJourneyReview(rcSvc, rcRepo, { pr: 1 });
     await expect
@@ -4370,11 +4362,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       { mode: 0o755 },
     );
     writeFakeGitOffline(binO, realGitPath());
-    const fakeShell = path.join(binO, "fakeshell");
-    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${binO}:$PATH"\n`, { mode: 0o755 });
+    const fakeShell = writeFakeShell(binO);
     svcO = await startService(dataO, {
       agent: "none",
-      extraEnv: { SHELL: fakeShell, PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}` },
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(binO) },
       label: "tour-offer",
     });
     const repos = (await apiJson(svcO!.origin, svcO!.token, "POST", "/api/repos", { path: repoO })) as {
@@ -4544,8 +4535,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     svcO = await startService(dataO, {
       agent: "none",
       extraEnv: {
-        SHELL: path.join(binO, "fakeshell"),
-        PATH: `${binO}${path.delimiter}${process.env.PATH ?? ""}`,
+        SHELL: writeFakeShell(binO),
+        PATH: fakeServicePath(binO),
       },
       label: "tour-offer",
     });
