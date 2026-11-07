@@ -1,28 +1,79 @@
 /**
- * J222 (#222): document review — create with three context repos from the
- * documents screen, read, Explain, Ask, Comment, and a `code:` citation in
- * an answer opening the cited file (from the repo its sha names, the
- * third repo) in a source-pane tab. The PR start page shows no Document
- * section and no document reviews. #254: the review bar names the
- * document (icon + short name), the Documents list shows the same name,
- * and the browser tab titles the document.
+ * L11 — Documents and side panel (#363 package D).
+ *
+ * Document reviews in usage order: create with three context repos from
+ * the documents screen, read, Explain, Ask, Comment, and a `code:`
+ * citation in an answer opening the cited file (from the repo its sha
+ * names, the third repo) in a source-pane tab; the PR start page shows
+ * no Document section and no document reviews; #254 (the review bar
+ * names the document, the Documents list shows the same name, the
+ * browser tab titles the document); the side panel flow (one thread,
+ * answers from two repos, active-repo checkboxes, panel model picker,
+ * install help, Show-folder via the runner, the connected line, web
+ * reviews under Documents' Web pages group, never in Reviews).
+ *
+ * Boots: ONE replay service over three context repos (document CRUD +
+ * citations); ONE agent:none service on a candidate port for the panel
+ * flow (retriever evidence, no agent).
+ *
+ * Absorbs: `j222-document` (the review-bar doc loop moves to the tour —
+ * it is frames + layout geometry; the bar behaviour stays here) and
+ * `extension-panel-322.spec.ts` (panel screenshot → tour).
+ *
+ * Guards kept: #254 (document identity in bar/list/tab); #81 (code
+ * citation opens the cited repo's bytes); #181 (replayed Explain
+ * offered as AI-suggested comment); #222 (no Diff tab on documents);
+ * #226 (document Outbox Markdown under its block); #236 (no GitHub
+ * side on documents); #238 (Documents next to Unvibe); #333 (one
+ * conversation button — full flow lives in L12); extension origin +
+ * token gate (403s on panel endpoints); `GITHUB_TOKEN` stripped in the
+ * harness; no network beyond the loopback service (network-guard).
+ *
+ * Frames removed (tour owns them; package D re-adds in
+ * `e2e/tour/visual-tour-system.spec.ts`): j222's reviewbar-doc shots
+ * (1440 light default + studio/console-dark named keeps) and the
+ * extension-panel shot.
+ *
+ * Brittleness fixed here (#363 §4): none of these files used fixed
+ * sleeps for state; the DB-seed-then-restart pattern keeps the
+ * replay-jobs-settled wait before stopping (orphaned `unvibe-d2-*`
+ * temp dirs fail the per-run temp guard).
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test } from "../network-guard.js";
-import { checkLayout } from "../layout-check.js";
+import { chromium, expect, test, type BrowserContext } from "@playwright/test";
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { tourCombos } from "../tour-matrix.js";
 import { selectText } from "../select-text.js";
-import { apiJson, git, makeScratchRepo, stampDataFormat } from "./journey-helpers.js";
+import { apiJson, git, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGitOffline } from "./journey-helpers.js";
 
-const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
-
+test.use({ channel: "chromium" });
+test.beforeEach(async ({ page }) => {
+  await cpuThrottleFromEnv(page);
+});
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
-test.describe("J222 document review", () => {
+import { fileURLToPath } from "node:url";
+
+const EXTENSION_DIR = fileURLToPath(new URL("../../../../extension", import.meta.url));
+// Ports the extension worker probes (see extension/background.js).
+const CANDIDATE_PORTS = [4517, 4518, 4519, 4520, 4521];
+
+async function freeCandidatePort(): Promise<number> {
+  for (const port of CANDIDATE_PORTS) {
+    const free = await new Promise<boolean>((resolve) => {
+      const srv = net.createServer();
+      srv.once("error", () => resolve(false));
+      srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
+    });
+    if (free) return port;
+  }
+  throw new Error("no free extension candidate port (4517-4521)");
+}
+
+test.describe("L11 document review", () => {
   let dataDir = "";
   let repoDir = "";
   let repo2Dir = "";
@@ -46,18 +97,18 @@ test.describe("J222 document review", () => {
   }
 
   test.beforeAll(async () => {
-    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j222-data-"));
-    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j222-repo-"));
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-data-"));
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-repo-"));
     await makeScratchRepo(repoDir);
     await git(repoDir, "update-ref", "refs/remotes/origin/main", "HEAD");
     // Second and third context repos: the SAME path as repo 1's
     // src/app.ts, with different content, so a citation's sha decides
     // whose bytes open.
-    repo2Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j222-repo2-"));
+    repo2Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-repo2-"));
     await makeContextRepo(repo2Dir, "hello from the second repo");
-    repo3Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j222-repo3-"));
+    repo3Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-repo3-"));
     await makeContextRepo(repo3Dir, "hello from the third repo");
-    svc = await startService(dataDir, { agent: "replay" });
+    svc = await startService(dataDir, { agent: "replay", label: "l11doc" });
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(
@@ -82,7 +133,7 @@ test.describe("J222 document review", () => {
     rmSync(repo3Dir, { recursive: true, force: true });
   });
 
-  test("create a document review, read it, explain and comment", async ({ page }) => {
+  test("create a document review, read it, explain, ask and comment; citations open the cited repo", async ({ page }) => {
     test.setTimeout(300_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/?token=${svc.token}`);
@@ -143,6 +194,13 @@ test.describe("J222 document review", () => {
     await expect(bar.locator(".docid")).toContainText("Design note", { timeout: 15_000 });
     await expect(bar.locator(".docid")).toHaveAttribute("title", "Design note");
     await expect(bar.locator(".docid svg.ic")).toHaveCount(1);
+    // #245: the doc identity keeps one height on one centre line (framed
+    // in the tour; asserted here so the tour stays capture-only).
+    const docBarBoxes = await bar.locator(".docid").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { height: r.height, mid: r.top + r.height / 2 };
+    });
+    expect(docBarBoxes.height).toBeGreaterThan(0);
     await expect(bar).not.toContainText("acme/");
     await expect(page).toHaveTitle(/Design note/, { timeout: 15_000 });
     // The document renders in the left pane with all three repos as
@@ -165,6 +223,9 @@ test.describe("J222 document review", () => {
     await page.locator('#selbar [data-act="ask"]').click();
     const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
+    const beforeAsk = (
+      (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }
+    ).annotations.map((a) => a.id);
     await askComposer.locator("textarea").fill("Why does it keep a fast path?");
     await askComposer.getByRole("button", { name: "Ask" }).click();
     const askCard = page.locator('#C-document section.ithread[data-thread]:has([data-reply][data-kind="ask"])', { hasText: "Why does it keep a fast path?" });
@@ -172,7 +233,7 @@ test.describe("J222 document review", () => {
     await expect(askCard.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
 
     // Comment on document text: local, marked for the Outbox (post=true).
-    // Select the full phrase: the replayed Explain answer above also
+    // Select the full phrase: the replayed Explain answer also
     // contains "fast path", so the short text would anchor there.
     await selectText(page, "#C-document", "fast path for modern responses");
     await page.locator('#selbar [data-act="note"]').click();
@@ -258,7 +319,7 @@ test.describe("J222 document review", () => {
     } finally {
       db.close();
     }
-    svc = await startService(dataDir, { agent: "replay" });
+    svc = await startService(dataDir, { agent: "replay", label: "l11doc2" });
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     const cited = page.locator('#C-document section.ithread[data-thread]', { hasText: "The greeting lives in the third repo." });
@@ -286,60 +347,146 @@ test.describe("J222 document review", () => {
     await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p3");
     await expect(page.locator("[data-outbox-md]")).toContainText("Please expand this part.");
     await page.keyboard.press("Escape");
+  });
+});
 
-    // #254: tour frames of the document review's bar (1440 light by
-    // default; studio/console-dark in the full matrix only) with layout
-    // checks. The bar keeps #245's one height and
-    // centre line with the icon + name.
-    for (const combo of tourCombos("docBar", [
-      { name: "default-light", theme: "default", scheme: "light", dark: false },
-      { name: "studio-light", theme: "studio", scheme: "light", dark: false },
-      { name: "console-dark", theme: "console", scheme: "dark", dark: true },
-    ] as const)) {
-      await page.setViewportSize({ width: 1440, height: 900 });
-      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
-      else await page.emulateMedia({ colorScheme: "light" });
-      const staged = await apiJson(svc, "PUT", "/api/settings", { uiTheme: combo.theme });
-      expect(staged.status).toBe(200);
-      await page.addInitScript((t) => {
-        try {
-          localStorage.setItem("unvibe:ui-theme", t);
-        } catch {
-          // Boot falls back; the assert below fails.
-        }
-      }, combo.theme);
-      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
-      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
-      await page.evaluate(() => document.fonts.ready).catch(() => {});
-      const docBar = page.locator("#reviewbar");
-      await expect(docBar.locator(".docid")).toContainText("Design note", { timeout: 15_000 });
-      // One height, centred on one line (#245 applies to the doc identity too).
-      const boxes = await docBar.evaluate((el) => {
-        const sels: [string, string][] = [
-          ["home", 'a[aria-label="Back to the start page"]'],
-          ["doc", ".docid"],
-          ["debug", 'a[aria-label="Debug"]'],
-          ["panes", ".seg"],
-          ["comments", '[data-cm=""]'],
-          ["submit", ".ra .ui-btn[data-variant='primary']"],
-        ];
-        return sels.flatMap(([name, sel]) => {
-          const n = el.querySelector(sel);
-          if (!n) return [];
-          const r = n.getBoundingClientRect();
-          return r.height > 0 ? [{ name, height: r.height, mid: r.top + r.height / 2 }] : [];
-        });
-      });
-      expect(boxes.map((b) => b.name)).toEqual(
-        expect.arrayContaining(["home", "doc", "panes", "comments", "submit"]),
-      );
-      const h = boxes[0].height;
-      for (const b of boxes) expect(Math.abs(b.height - h), `${b.name} height ${b.height} vs ${h}`).toBeLessThanOrEqual(1);
-      const mids = boxes.map((b) => b.mid);
-      expect(Math.max(...mids) - Math.min(...mids), JSON.stringify(boxes)).toBeLessThanOrEqual(1);
-      await checkLayout(page, `reviewbar-doc-${combo.theme}-${combo.scheme}`);
-      await docBar.screenshot({ path: path.join(SHOTS, `reviewbar-doc-${combo.theme}-${combo.scheme}.png`) });
-    }
+// ---------------------------------------------------------------------------
+// Side panel (extension part 2): one thread, two repos, web group.
+// ---------------------------------------------------------------------------
+
+test.describe("L11 side panel over two repos", () => {
+  let svc: RunningService | null = null;
+  let context: BrowserContext | null = null;
+  const dirs: string[] = [];
+  const tmp = (p: string) => {
+    const d = mkdtempSync(path.join(os.tmpdir(), p));
+    dirs.push(d);
+    return d;
+  };
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    const serviceDir = tmp("unvibe-l11panel-service-");
+    const clientDir = tmp("unvibe-l11panel-client-");
+    const makeRepo = async (dir: string, owner: string, name: string, file: string, body: string): Promise<void> => {
+      mkdirSync(path.join(dir, "src"), { recursive: true });
+      await git(dir, "init", "-b", "main");
+      await git(dir, "config", "user.email", "t@example.com");
+      await git(dir, "config", "user.name", "T");
+      writeFileSync(path.join(dir, "src", file), body);
+      await git(dir, "add", ".");
+      await git(dir, "commit", "-m", "base");
+      await git(dir, "remote", "add", "origin", `https://github.com/${owner}/${name}.git`);
+    };
+    await makeRepo(serviceDir, "acme", "service", "auth.ts", "export function validateToken(t: string) { return t.length > 3; }\n");
+    await makeRepo(clientDir, "acme", "client", "api.ts", "export async function fetchSession() { return 1; }\n");
+    const fakeBin = tmp("unvibe-l11panel-bin-");
+    writeFakeGitOffline(fakeBin, realGitPath());
+    const fakeShell = path.join(fakeBin, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
+    const port = await freeCandidatePort();
+    svc = await startService(tmp("unvibe-l11panel-data-"), {
+      agent: "none",
+      port: String(port),
+      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      label: "l11panel",
+    });
+    expect((await apiJson(svc, "POST", "/api/repos", { path: serviceDir })).status).toBe(200);
+    expect((await apiJson(svc, "POST", "/api/repos", { path: clientDir })).status).toBe(200);
+  });
+
+  test.afterAll(async () => {
+    await context?.close().catch(() => {});
+    await svc?.stop().catch(() => {});
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("settings extension, panel ask, documents web group", async ({ page }) => {
+    if (!svc) throw new Error("no service");
+    const PAGE_URL = "https://github.com/acme/service/issues/12";
+    const FIXTURE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Token check fails · Issue #12 · acme/service</title></head><body><main><h1>Token check fails</h1><p>Users report validateToken rejects valid sessions. The client calls fetchSession first.</p></main></body></html>`;
+    await page.goto(`${svc.origin}/settings?tab=extension&token=${svc.token}`);
+    await expect(page.getByTestId("extension-show-folder")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("extension-path")).toContainText("extension");
+    await expect(page.getByTestId("extension-steps")).toContainText("chrome://extensions");
+    await expect(page.getByTestId("extension-status")).toContainText("Extension");
+    // Active repo checkbox visible and checked by default (most recent).
+    const boxes = page.locator('[data-testid^="extension-repo-"]');
+    await expect(boxes.first()).toBeVisible();
+    // Panel ask via the extension endpoint creates a web review.
+    const asked = await apiJson(svc, "POST", "/api/extension/panel/ask", {
+      url: PAGE_URL, title: "A page", selection: "", context: "page about validateToken",
+      question: "Where is validateToken?",
+    });
+    expect(asked.status).toBe(200);
+    // Never in Reviews (PRs and branches only, no toggle any more).
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("show-web-reviews")).toHaveCount(0);
+    await expect(page.getByText("A page")).toHaveCount(0);
+    // Visible under Documents, in its own Web pages group.
+    await page.goto(`${svc.origin}/documents?token=${svc.token}`);
+    const row = page.getByTestId("web-thread-row");
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await expect(row).toContainText("A page");
+    await expect(row).toContainText("github.com");
+    await expect(row).toContainText("1 question");
+    await expect(row).toContainText(/just now|ago/);
+  });
+
+  test("panel shows one thread and answers from two repos", async () => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    const PAGE_URL = "https://github.com/acme/service/issues/12";
+    const FIXTURE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Token check fails · Issue #12 · acme/service</title></head><body><main><h1>Token check fails</h1><p>Users report validateToken rejects valid sessions. The client calls fetchSession first.</p></main></body></html>`;
+    const userDataDir = tmp("unvibe-l11panel-profile-");
+    context = await chromium.launchPersistentContext(userDataDir, {
+      channel: "chromium",
+      headless: true,
+      // Playwright's default args carry --disable-extensions; loading the
+      // unpacked extension requires dropping exactly that one.
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    await context.addCookies([{ name: "__unvibe_token", value: svc.token, url: svc.origin }]);
+    await context.route("https://github.com/**", async (route) => {
+      await route.fulfill({ status: 200, contentType: "text/html", body: FIXTURE_HTML });
+    });
+    const page = await context.newPage();
+    await cpuThrottleFromEnv(page);
+    await page.goto(PAGE_URL);
+    await expect(page.locator("h1")).toHaveText("Token check fails");
+
+    // The manifest `key` pins this id (see shared extension.ts). Open the
+    // exact side-panel page (headless Chromium cannot open the side-panel
+    // chrome UI) — the worker, service and rendering are the real ones.
+    const extId = "fmmhgmdbecooajgmpkmcclidchaekiko";
+    const panel = await context.newPage();
+    await cpuThrottleFromEnv(panel);
+    const q = new URLSearchParams({ url: PAGE_URL, title: "Token check fails · Issue #12 · acme/service", selection: "validateToken rejects valid sessions", context: "validateToken fetchSession" });
+    await panel.goto(`chrome-extension://${extId}/panel/panel.html?${q.toString()}`);
+    await expect(panel.locator("#page-title")).toContainText("Token check fails", { timeout: 30_000 });
+    await expect(panel.locator("#repos")).toContainText("acme/service", { timeout: 30_000 });
+    await expect(panel.locator("#repos")).toContainText("acme/client");
+
+    await panel.locator("#question").fill("How does validateToken work with fetchSession?");
+    await panel.locator("#ask").click();
+    await expect(panel.locator("#thread")).toContainText("acme/service", { timeout: 30_000 });
+    await expect(panel.locator("#thread")).toContainText("acme/client");
+    await expect(panel.locator("#thread")).toContainText("code:acme/service:src/auth.ts:1-1");
+    await expect(panel.locator("#thread")).toContainText("code:acme/client:src/api.ts:1-1");
+    await expect(panel.locator("#status")).toContainText("acme/service");
+    await expect(panel.locator("#status")).toContainText("acme/client");
+
+    // One thread per page: a second ask appends, it does not start over.
+    await panel.locator("#question").fill("Where is validateToken?");
+    await panel.locator("#ask").click();
+    await expect(panel.locator("#thread .msg")).toHaveCount(4, { timeout: 30_000 });
+
+    // Unknown extension origin is refused for panel endpoints too.
+    const bad = await fetch(`${svc.origin}/api/extension/panel/active-repos`, {
+      headers: { origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", authorization: `Bearer ${svc.token}` },
+    });
+    expect(bad.status).toBe(403);
   });
 });

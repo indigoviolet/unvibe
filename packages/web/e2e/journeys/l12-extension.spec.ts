@@ -1,21 +1,39 @@
 /**
- * #322 part 1 + #335: the unpacked Chrome extension on a local GitHub PR
- * fixture.
+ * L12 — Extension button (#363 package D).
  *
- * Real built service (stub `gh`, scratch repo), persistent Chromium with
- * `--load-extension`, and `github.com` routed to a local fixture page that
- * mimics a PR header — never real GitHub. Checks: the button appears;
- * clicking it makes the worker call the create-or-open endpoint itself
- * and lands on the review with no confirm page; a plain `/open?pr=…`
- * link still shows the styled in-app confirm and creates nothing until
- * confirmed; the token cookie drives the worker's lookup, no page request
- * leaves to a non-local origin, and an unknown extension origin is refused
- * by the service.
+ * The unpacked Chrome extension on a local GitHub PR fixture (never
+ * real GitHub): the button appears and clicking it makes the worker
+ * call the create-or-open endpoint itself, landing on the review with
+ * no confirm page; a plain `/open?pr=…` link keeps the styled in-app
+ * confirm and creates nothing until confirmed (targeted CSRF check:
+ * a cross-site link clones/creates nothing; a foreign POST is refused);
+ * the token cookie drives the worker's lookup; no page request leaves
+ * a non-local origin; an unknown extension origin is refused while the
+ * pinned one is not; the Conversation header keeps exactly one button
+ * across Turbo-style tab swaps (#333, brand look intact, fails quietly
+ * with no header and recovers).
  *
- * #333 extends this with the Conversation header (title with the Merge
- * status / Code buttons beside it): a second fixture mimics that shape
- * with structure only, and a second test asserts one button per header
- * shape with no duplicates across Turbo-style tab swaps.
+ * Boots: ONE agent:none service on a candidate port over a scratch repo
+ * (stub `gh` + offline git), plus persistent Chromium contexts with
+ * `--load-extension` for the button and conversation-header flows.
+ *
+ * Absorbs: `extension-322.spec.ts` (both tests) and the button half of
+ * `j322-extension.spec.ts` (the smoke halves live in L11's panel flow).
+ *
+ * Guards kept: #322 (button starts the review, confirm flow intact);
+ * #333 (one conversation button, no duplicates, quiet failure);
+ * extension origin + token gate (403 on unknown origin for pr-status,
+ * open and the create-or-open endpoint; pinned origin allowed);
+ * network privacy (github.com routed locally, no non-local page
+ * request; failures equal []).
+ *
+ * Frames removed (tour owns them; package D re-adds in
+ * `e2e/tour/visual-tour-system.spec.ts`): the button close-up, the
+ * 1440-light open-confirm frame and the conversation-header frame.
+ *
+ * Brittleness fixed here (#363 §4): the `waitForTimeout(800)` no-header
+ * settle (B2 — the removal is a mutation-observer state: poll
+ * `toHaveCount(0)` with a timeout instead of sleeping a fixed window).
  */
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -23,20 +41,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
-import {
-  apiJson,
-  git,
-  makeScratchRepo,
-  realGitPath,
-  writeFakeGitOffline,
-} from "./journeys/journey-helpers.js";
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+test.use({ channel: "chromium" });
 
-const EXTENSION_DIR = fileURLToPath(new URL("../../../extension", import.meta.url));
-const SHOT = fileURLToPath(new URL("../test-results/extension-button.png", import.meta.url));
-const SHOT_CONFIRM_1440 = fileURLToPath(new URL("../test-results/open-confirm-1440.png", import.meta.url));
+const EXTENSION_DIR = fileURLToPath(new URL("../../../../extension", import.meta.url));
 const OWNER = "acme";
 const NAME = "app";
 const PR_NUMBER = 7;
@@ -99,8 +111,7 @@ const CONVERSATION_FIXTURE_HTML = `<!doctype html>
 ${CONVERSATION_BODY}
 </body></html>`;
 
-// Classic Files-tab header body for the in-page tab-swap step (same
-// markup shape as FIXTURE_HTML above).
+// Classic Files-tab header body for the in-page tab-swap step.
 const CLASSIC_SWAP_BODY = `<div class="gh-header">
   <div class="gh-header-show"><h1 class="gh-header-title">Fix the thing <span>#${PR_NUMBER}</span></h1></div>
   <div class="gh-header-actions"><button type="button">Review changes</button> <button type="button">Code</button></div>
@@ -139,7 +150,10 @@ async function freeCandidatePort(): Promise<number> {
   throw new Error("no free extension candidate port (4517-4521)");
 }
 
-test.describe("extension PR button (#322)", () => {
+// The extension flows drive their own contexts; each created page gets the
+// shared throttle hook (one throttled core in `test:affected`, #363 §6).
+
+test.describe("L12 extension PR button", () => {
   let repoDir = "";
   let dataDir = "";
   let logDir = "";
@@ -150,12 +164,12 @@ test.describe("extension PR button (#322)", () => {
 
   test.beforeAll(async () => {
     test.setTimeout(240_000);
-    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-repo-"));
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-repo-"));
     await makeScratchRepo(repoDir);
     await git(repoDir, "remote", "add", "origin", `https://github.com/${OWNER}/${NAME}.git`);
-    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-data-"));
-    logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-gh-"));
-    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-bin-"));
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-data-"));
+    logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-gh-"));
+    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-bin-"));
     writeFakeGh(fakeBin, logDir, repoDir);
     writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
@@ -167,6 +181,7 @@ test.describe("extension PR button (#322)", () => {
       agent: "none",
       port: String(port),
       extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+      label: "l12ext",
     });
     // Known repo, but no review for the PR yet.
     const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
@@ -184,10 +199,11 @@ test.describe("extension PR button (#322)", () => {
   test("button starts the review directly; plain links keep the styled confirm", async () => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
-    userDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext-profile-"));
+    userDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-profile-"));
     context = await chromium.launchPersistentContext(userDataDir, {
       channel: "chromium",
       headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
       args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
     });
     // The token cookie the web app would have set on the service origin.
@@ -199,6 +215,7 @@ test.describe("extension PR button (#322)", () => {
       await route.fulfill({ status: 200, contentType: "text/html", body: FIXTURE_HTML });
     });
     const page = await context.newPage();
+    await cpuThrottleFromEnv(page);
     const pageRequests: string[] = [];
     page.on("request", (r) => pageRequests.push(r.url()));
 
@@ -206,7 +223,6 @@ test.describe("extension PR button (#322)", () => {
     const button = page.locator("#unvibe-review-button");
     await expect(button).toBeVisible({ timeout: 30_000 });
     await expect(button).toHaveText("Review in Unvibe");
-    await page.screenshot({ path: SHOT, clip: { x: 0, y: 0, width: 760, height: 190 } });
 
     // CSRF check: a cross-site link to /open for a NEW repo must not
     // clone or create anything — it only lands on the styled in-app
@@ -230,9 +246,6 @@ test.describe("extension PR button (#322)", () => {
     await expect(page.getByRole("button", { name: "Start review" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Unvibe" })).toBeVisible();
-    // Frame for owner review: 1440 light (#362 default; no 960).
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.screenshot({ path: SHOT_CONFIRM_1440 });
     expect(JSON.stringify((await apiJson(svc, "GET", "/api/repos")).json)).toBe(
       JSON.stringify((reposBefore as { json: unknown }).json),
     );
@@ -320,12 +333,11 @@ test.describe("extension PR button (#322)", () => {
 
   test("conversation header: one button across tab swaps (#333)", async () => {
     test.setTimeout(240_000);
-    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-ext333-profile-"));
-    const shotsDir = fileURLToPath(new URL("../visual-tour", import.meta.url));
-    mkdirSync(shotsDir, { recursive: true });
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-333-profile-"));
     const ctx = await chromium.launchPersistentContext(profileDir, {
       channel: "chromium",
       headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
       args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
     });
     try {
@@ -333,6 +345,7 @@ test.describe("extension PR button (#322)", () => {
         await route.fulfill({ status: 200, contentType: "text/html", body: CONVERSATION_FIXTURE_HTML });
       });
       const page = await ctx.newPage();
+      await cpuThrottleFromEnv(page);
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e)));
       await page.goto(PR_URL);
@@ -353,9 +366,6 @@ test.describe("extension PR button (#322)", () => {
         "rgb(56, 48, 158)",
       );
       expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
-      await page.locator(".pr-conversation-header").screenshot({
-        path: path.join(shotsDir, "extension-333-conversation-light.png"),
-      });
 
       // Turbo-style morph drops the data attribute: the ARIA/structure
       // hooks still land the same single button in the header actions.
@@ -379,11 +389,12 @@ test.describe("extension PR button (#322)", () => {
       expect(await page.locator("#unvibe-review-button").count()).toBe(1);
 
       // No header at all: fails quietly, and recovers when it returns.
+      // The removal rides the content script's mutation observer — poll
+      // for the gone state, never sleep a fixed window (#363 B2).
       await page.evaluate(() => {
         document.body.innerHTML = "<main><p>No header on this tab.</p></main>";
       });
-      await page.waitForTimeout(800);
-      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+      await expect(page.locator("#unvibe-review-button")).toHaveCount(0, { timeout: 15_000 });
       await page.evaluate((body) => {
         document.body.innerHTML = body;
       }, CONVERSATION_BODY);

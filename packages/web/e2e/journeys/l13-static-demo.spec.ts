@@ -1,6 +1,8 @@
 /**
- * Static demo behaviour (issue #334): the `demo:build` output served from
- * a plain static file server, exercised through the real browser.
+ * L13 — Static demo (#363 package D, issue #334 + #357 Q6).
+ *
+ * The `demo:build` output served from a plain static file server,
+ * exercised through the real browser.
  *
  * Covers: the guide opens at `/`, citation hover previews real lines,
  * Explain on a recorded passage replays the recording, Ask with no
@@ -13,28 +15,52 @@
  * demo banner geometry (own row at 1440, both demos; 960 in the full
  * matrix) and the sync
  * check (static build shows the same content as the real service in
- * replay mode) — merged from demo-banner.spec.ts and
- * static-demo-sync.spec.ts (#357 Q6).
+ * replay mode: guide cards, one recorded Explain, one on-demand hunk
+ * summary) — merged from demo-banner.spec.ts and static-demo-sync.spec.ts
+ * (#357 Q6).
  *
  * Needs `mise run demo:build` first (skipped without it); the sync
  * describe additionally needs `mise run build` first.
+ *
+ * Absorbs: `static-demo.spec.ts` in full (including the demo-banner and
+ * static-demo-sync merges).
+ *
+ * Guards kept: #334 (no request beyond the static origin —
+ * `sameOriginOnly` on every test); #341 (Reset demo in the banner, not
+ * the top bar; first central citation is the regex hunk); #339 (Outbox
+ * toggle on the seeded thread); network privacy (static origin only).
+ *
+ * Frames removed (tour owns them; package D re-adds in
+ * `e2e/tour/visual-tour-system.spec.ts`): demo-guide, demo-explain,
+ * demo-install-message, static-demo-t-seed-outbox, demo-settings and
+ * demo-settings-models. No `shot()`/`screenshot` lines remain in the
+ * gate.
+ *
+ * Brittleness fixed here (#363 §4): the file-local `hoverFresh` copy
+ * (B5 — the shared `e2e/hover-fresh.ts` helper); the banner geometry
+ * reads stay scoped single-evaluates (#363 B1).
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "./network-guard.js";
-import type { Locator, Page } from "@playwright/test";
-import { selectText } from "./select-text.js";
-import { apiJson } from "./journeys/journey-helpers.js";
-import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
-import { startStaticServer, type StaticServer } from "./static-server.js";
-import { tourCombos } from "./tour-matrix.js";
+import { expect, test } from "../network-guard.js";
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { hoverFresh } from "../hover-fresh.js";
+import type { Page } from "@playwright/test";
+import { selectText } from "../select-text.js";
+import { apiJson } from "./journey-helpers.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { startStaticServer, type StaticServer } from "../static-server.js";
+import { tourCombos } from "../tour-matrix.js";
 
-const DEMO_DIST = fileURLToPath(new URL("../dist-demo", import.meta.url));
-const SHOTS = fileURLToPath(new URL("../test-results", import.meta.url));
+const DEMO_DIST = fileURLToPath(new URL("../../dist-demo", import.meta.url));
 
 test.skip(!existsSync(DEMO_DIST), "needs `mise run demo:build` first");
+test.use({ channel: "chromium" });
+test.beforeEach(async ({ page }) => {
+  await cpuThrottleFromEnv(page);
+});
 
 let demo: StaticServer | null = null;
 
@@ -82,61 +108,6 @@ async function closeSeedCard(page: Page): Promise<void> {
   await page.locator('#C-problem section.ithread[data-thread]').getByRole("button", { name: "Close" }).first().click();
 }
 
-/**
- * Deterministic hover (copied from `guide.spec.ts`): `hover()` may scroll
- * with the pointer already over the target, which the popover must ignore
- * — so scroll, settle, move the pointer in genuine steps, and verify the
- * cursor landed on the anchor's own line boxes.
- */
-async function hoverFresh(page: Page, locator: Locator): Promise<void> {
-  await page.evaluate(() => {
-    const w = window as unknown as { __lastScrollAt?: number; __scrollHook?: boolean };
-    if (w.__lastScrollAt === undefined) w.__lastScrollAt = 0;
-    if (!w.__scrollHook) {
-      w.__scrollHook = true;
-      document.addEventListener(
-        "scroll",
-        () => {
-          w.__lastScrollAt = Date.now();
-        },
-        true,
-      );
-    }
-  });
-  await locator.scrollIntoViewIfNeeded();
-  await page.evaluate(
-    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-  );
-  await page.waitForFunction(() => Date.now() - ((window as unknown as { __lastScrollAt?: number }).__lastScrollAt ?? 0) > 400, {
-    polling: "raf",
-    timeout: 10_000,
-  });
-  await page.mouse.move(8, 200);
-  const measure = (): Promise<{ x: number; y: number; width: number; height: number }[]> =>
-    locator.evaluate((target) => {
-      const out: { x: number; y: number; width: number; height: number }[] = [];
-      const rs = target.getClientRects();
-      for (let i = 0; i < rs.length; i++) out.push({ x: rs[i].x, y: rs[i].y, width: rs[i].width, height: rs[i].height });
-      return out;
-    });
-  for (let i = 0; i < 4; i++) {
-    const rects = await measure();
-    if (rects.length === 0) throw new Error("anchor has no rects");
-    const r = rects[Math.min(i, rects.length - 1)];
-    const x = r.x + r.width / 2;
-    const y = r.y + r.height / 2;
-    await page.mouse.move(x, y, { steps: 5 });
-    const onAnchor = await locator.evaluate(
-      (target, p: { x: number; y: number }) => {
-        const hit = document.elementFromPoint(p.x, p.y);
-        return !!hit && (hit === target || target.contains(hit));
-      },
-      { x, y },
-    );
-    if (onAnchor) return;
-  }
-  throw new Error("hover missed the anchor after 4 aims (layout still shifting?)");
-}
 
 test("the recorded guide opens at /", async ({ page }) => {
   const violations = await sameOriginOnly(page);
@@ -145,7 +116,6 @@ test("the recorded guide opens at /", async ({ page }) => {
   // Issue #341: Reset demo lives in the demo banner, not the top bar.
   await expect(page.locator('[data-testid="demo-banner"]')).toContainText("Reset demo");
   await expect(page.locator("#reviewbar")).not.toContainText("Reset demo");
-  await page.screenshot({ path: `${SHOTS}/demo-guide.png` });
   expect(violations).toEqual([]);
 });
 
@@ -174,7 +144,6 @@ test("Explain on a recorded passage replays the recording", async ({ page }) => 
   await expect(thread.first()).toContainText(/obs-fold|RFC 9112/i, { timeout: 30_000 });
   await expect(thread.first()).not.toContainText("The demo only has recorded answers");
   await expect(page.locator("#C-central .working")).toHaveCount(0, { timeout: 30_000 });
-  await page.screenshot({ path: `${SHOTS}/demo-explain.png` });
   expect(violations).toEqual([]);
 });
 
@@ -203,7 +172,6 @@ test("Ask with no recording shows the install message", async ({ page }) => {
   const install = card.first().getByRole("link", { name: "Install Unvibe" });
   await expect(install).toHaveAttribute("href", "https://unvibe.xyz/#install");
   await expect(page.locator(`${file} .working`)).toHaveCount(0, { timeout: 30_000 });
-  await page.screenshot({ path: `${SHOTS}/demo-install-message.png` });
   expect(violations).toEqual([]);
 });
 
@@ -249,7 +217,6 @@ test("Outbox toggle works on the seeded thread (#339)", async ({ page }) => {
   await thread.getByRole("button", { name: "Add to Outbox" }).click();
   await expect(thread.getByRole("button", { name: "Remove from the Outbox" })).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("#toast")).not.toContainText("Couldn't update the Outbox");
-  await thread.screenshot({ path: "test-results/static-demo-t-seed-outbox.png" });
   expect(violations).toEqual([]);
 });
 
@@ -292,7 +259,6 @@ test("settings are read-only in the demo", async ({ page }) => {
     for (let i = 0; i < n; i++) await expect(controls.nth(i)).toBeDisabled({ timeout: 10_000 });
   };
   await assertReadOnly();
-  await page.screenshot({ path: `${SHOTS}/demo-settings.png` });
   // A second section with the custom select: still read-only.
   await page.locator('[role="tablist"]').getByRole("tab", { name: "Models" }).click();
   await assertReadOnly();
@@ -300,7 +266,6 @@ test("settings are read-only in the demo", async ({ page }) => {
   await expect(page.getByText("Opus 5.5 (claude-opus-5-5)").first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".settings-panel")).not.toContainText("mock-main");
   await expect(page.locator(".settings-panel")).not.toContainText("Mock Main");
-  await page.screenshot({ path: `${SHOTS}/demo-settings-models.png` });
   // No Debug or Version section in the demo: no nav entries, and either
   // tab redirects to the first section instead of falling back silently.
   const tabs = page.locator('[role="tablist"]');
