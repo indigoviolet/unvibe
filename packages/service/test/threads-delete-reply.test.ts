@@ -18,6 +18,7 @@ function reply(kind: ReplyKind, question: string | null, over: Omit<Partial<Repl
     id: `ans_t${n}`,
     kind,
     who: kind === "comment" ? "you" : "agent",
+    seq: n,
     question,
     blocks: [
       {
