@@ -12,7 +12,7 @@
  * Slim set: 1440px light Default plus the `tour-matrix.ts` named keeps;
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,37 +51,6 @@ test.beforeEach(async ({ page }) => {
   await cpuThrottleFromEnv(page);
 });
 
-/** First text line vs the floated avatar (#331): top alignment, first-line
- * indent past the avatar, and wrap-back of the paragraph box to the thread
- * padding (later lines start left of the avatar's right edge). The box edge
- * — not the last line's rect, which inline markers can shift — proves the
- * wrap-back. */
-async function firstLineGeometry(reply: Locator): Promise<{
-  lines: number;
-  dTop: number;
-  firstLeft: number;
-  avRight: number;
-  pLeft: number;
-} | null> {
-  return reply.evaluate((el) => {
-    const av = el.querySelector(":scope > .av");
-    const p = el.querySelector(":scope > p, :scope > .exp-b .blk:first-child > p");
-    if (!(av instanceof HTMLElement) || !(p instanceof HTMLElement)) return null;
-    const a = av.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(p);
-    const rects = Array.from(range.getClientRects());
-    if (rects.length === 0) return null;
-    const first = rects[0]!;
-    return {
-      lines: rects.length,
-      dTop: first.top - a.top,
-      firstLeft: first.left,
-      avRight: a.right,
-      pLeft: p.getBoundingClientRect().left,
-    };
-  });
-}
 
 /** Reply chrome geometry (#336): avatar vs first-line centres, and the
  * hover toolbar vs the first text line. The toolbar keeps its wrap space

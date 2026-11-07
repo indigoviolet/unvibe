@@ -17,7 +17,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
-import { openPopup } from "../select.js";
 import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createSeededDemoReview } from "../journeys/journey-helpers.js";

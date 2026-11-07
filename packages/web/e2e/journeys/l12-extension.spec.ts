@@ -36,7 +36,7 @@
  * `toHaveCount(0)` with a timeout instead of sleeping a fixed window).
  */
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";

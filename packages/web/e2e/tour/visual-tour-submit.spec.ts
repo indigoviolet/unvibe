@@ -17,13 +17,11 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { hoverFresh } from "../hover-fresh.js";
 import { selectText } from "../select-text.js";
-import { fileKeyForPath } from "@unvibe/shared";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createDemoReview, createSeededDemoReview } from "../journeys/journey-helpers.js";
 

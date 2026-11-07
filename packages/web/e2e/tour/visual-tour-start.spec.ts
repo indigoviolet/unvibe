@@ -21,7 +21,6 @@ import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { openPopup } from "../select.js";
-import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "../journeys/journey-helpers.js";

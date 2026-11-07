@@ -223,9 +223,6 @@ test.describe("L11 document review", () => {
     await page.locator('#selbar [data-act="ask"]').click();
     const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
     await expect(askComposer).toBeVisible({ timeout: 10_000 });
-    const beforeAsk = (
-      (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { annotations: { id: string }[] }
-    ).annotations.map((a) => a.id);
     await askComposer.locator("textarea").fill("Why does it keep a fast path?");
     await askComposer.getByRole("button", { name: "Ask" }).click();
     const askCard = page.locator('#C-document section.ithread[data-thread]:has([data-reply][data-kind="ask"])', { hasText: "Why does it keep a fast path?" });
@@ -404,7 +401,6 @@ test.describe("L11 side panel over two repos", () => {
   test("settings extension, panel ask, documents web group", async ({ page }) => {
     if (!svc) throw new Error("no service");
     const PAGE_URL = "https://github.com/acme/service/issues/12";
-    const FIXTURE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Token check fails · Issue #12 · acme/service</title></head><body><main><h1>Token check fails</h1><p>Users report validateToken rejects valid sessions. The client calls fetchSession first.</p></main></body></html>`;
     await page.goto(`${svc.origin}/settings?tab=extension&token=${svc.token}`);
     await expect(page.getByTestId("extension-show-folder")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("extension-path")).toContainText("extension");

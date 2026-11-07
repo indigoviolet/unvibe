@@ -251,7 +251,6 @@ test.describe("L14 debug page", () => {
 
   test("delete removes the contribution without collapsing open blocks", async ({ page }) => {
     test.setTimeout(240_000);
-    const s = service();
     // Seed one contribution through the snapshot DB while stopped (the
     // seeded demo carries none), then restart and delete it in the UI.
     await svc!.stop();

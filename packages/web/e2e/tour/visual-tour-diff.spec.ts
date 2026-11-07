@@ -341,13 +341,8 @@ test.describe("J242 plotlines card", () => {
 // cut would have destroyed: its last space before 40 sits at "Add the".
 const LONG_NAME =
   "Add the `some_very_long_table_identifier_xyz` guard for the retry path with backoff and jitter";
-const IDENTIFIER = "some_very_long_table_identifier_xyz";
 // Plain-text forms: code spans render as code on screen, while tooltips
 // and chips read the name and description without backticks.
-const STRIPPED_NAME =
-  "Add the some_very_long_table_identifier_xyz guard for the retry path with backoff and jitter";
-const STRIPPED_DESC =
-  "Watches the retry path end to end: the some_very_long_table_identifier_xyz guard trips on repeated failures, backs off with jitter, and reports through the shared retry_helper without touching unrelated hunks.";
 const LONG_DESC =
   "Watches the retry path end to end: the `some_very_long_table_identifier_xyz` guard trips on repeated failures, backs off with jitter, and reports through the shared retry_helper without touching unrelated hunks.";
 const SECOND_NAME = "Retry failed uploads with the `retry_helper` and exponential backoff";
@@ -869,8 +864,6 @@ test.describe("J227 file tree (#227)", () => {
 
 // ---- j308-expand-repeat.spec.ts (frames re-added) ----
 const midKey = fileKeyForPath("src/mid.py");
-const firstKey = fileKeyForPath("src/first.py");
-const lastKey = fileKeyForPath("src/last.py");
 
 /** Issue #285 (E2): hover the button's row, then click. */
 async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): Promise<void> {
