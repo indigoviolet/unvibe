@@ -1980,7 +1980,7 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
-  test("code files highlight, cite and scroll with tokens (j255, j317)", async ({ page }) => {
+  test("a python block highlights, an unknown block stays plain, comment places (#255)", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
     if (!s) throw new Error("no service");
