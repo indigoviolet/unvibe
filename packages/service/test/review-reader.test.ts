@@ -33,7 +33,7 @@ describe("review reader turns (#143)", () => {
           post: false,
           replies: [
             {
-              id: "ans_1",
+              id: "ans_1", seq: 1,
               kind: "explain",
               who: "agent",
               question: null,
@@ -50,7 +50,7 @@ describe("review reader turns (#143)", () => {
               undoStack: [],
             },
             {
-              id: "ans_2",
+              id: "ans_2", seq: 2,
               kind: "ask",
               who: "agent",
               question: "What about ordering?",
@@ -80,7 +80,7 @@ describe("review reader turns (#143)", () => {
             version: 1,
           },
           open: true,
-          replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Double-check this line." }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Double-check this line." }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
           post: false,
         } as unknown as Thread,
       ];

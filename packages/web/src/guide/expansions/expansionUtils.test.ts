@@ -12,6 +12,7 @@ import {
 function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Reply {
   return {
     id: "ans_1",
+    seq: 1,
     kind: "ask",
     who: "agent",
     question: null,

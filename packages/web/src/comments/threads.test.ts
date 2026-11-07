@@ -11,7 +11,7 @@ import {
 function mkReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
-    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`, seq: 1,
     kind: "comment",
     who,
     question: null,

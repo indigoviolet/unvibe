@@ -331,6 +331,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return {
       id: `ans_${who}_${Math.random().toString(36).slice(2, 8)}`,
+      // Issue #365: every seed thread holds exactly one reply.
+      seq: 1,
       kind: "comment",
       who,
       question: null,
@@ -374,6 +376,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       replies: [
         {
           id: "ans_seed1",
+          // Issue #365: the seed thread holds exactly one reply.
+          seq: 1,
           kind: "explain",
           who: "agent",
           question: null,

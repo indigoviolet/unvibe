@@ -387,7 +387,8 @@ desc:<paragraph>@<rev>                     description paragraph
 card:<cardId>[#<blockId>]                  guide content (a page card, or one conversation answer `ans_…`)
 page:<pageId>                              a page
 concept:<slug>                             a concept (page written when opened)
-ann:<id>                                   an annotation
+ann:<id>                                   an annotation (thread)
+ann:<id>#r<n>                               one reply in that thread (stable per-thread sequence)
 ```
 
 - **Short forms:** within one version, the UI and prompts may drop the `@<sha>` suffix. Stored references always keep it.
@@ -491,6 +492,7 @@ A new base is built when any of these happens:
 |---|---|
 | `get_hunk(id)` | The hunk's text, with IDs on every line |
 | `get_code(path, lines, sha?)` | Code at a commit, with a `code:` ID |
+| `get_item(id)` | One card, block, page, thread, reply (`ann:<thread>#r<n>`) or description paragraph as its current content, with its parent chain and child IDs |
 | `search_review(query)` | Matching cards, annotations and contributions, with IDs |
 | `resolve(description)` | Candidate IDs for a description of a location |
 
@@ -560,8 +562,8 @@ A new base is built when any of these happens:
 | `critic` | Critic fork | Criteria, the suggested-comment format |
 | `hunk_pass` | Small model | `{{hunk}}`, `{{path}}` |
 | `concept_page` | Concept pages (on demand) | `{{concept}}`, `{{mentions}}` |
-| `ask` | Conversation first turns, Explain and Ask alike | `{{anchor.quote}}`, `{{anchor.block}}`, `{{card}}`, `{{thread}}`, `{{change_list}}`, `{{message}}` |
-| `ask_turn` | Conversation follow-ups on a live session | `{{change_list}}`, `{{message}}` |
+| `ask` | Conversation first turns, Explain and Ask alike | `{{quote}}`, `{{item_id}}`, `{{offsets}}`, `{{thread}}` (own transcript on rebuilt sessions, else `(none)`), `{{changed_hunks}}`, `{{message}}` |
+| `ask_turn` | Conversation follow-ups on a live session | `{{quote}}`, `{{item_id}}`, `{{offsets}}`, `{{changed_hunks}}`, `{{message}}` |
 | `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |

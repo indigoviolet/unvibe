@@ -34,6 +34,7 @@ import type {
   Thread,
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
+import { nextReplySeq } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import { commentHostText, findBlock } from "../interaction/l4.js";
@@ -70,6 +71,14 @@ export function newAnnotationId(): string {
 /** New reply ids. Format `ans_<12 hex>` (app-assigned, PRD §7.2). */
 export function newReplyId(): string {
   return `ans_${randomBytes(6).toString("hex")}`;
+}
+
+/**
+ * Issue #365: append a reply with its stable sequence stamped. Every
+ * creation path uses this so `ann:<thread>#r<seq>` never shifts.
+ */
+export function pushReplySeq(replies: Reply[], reply: Omit<Reply, "seq">): void {
+  replies.push({ ...reply, seq: nextReplySeq(replies) });
 }
 
 function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
@@ -323,8 +332,10 @@ export function buildAnchor(
   };
 }
 
-/** One comment reply carrying plain reviewer text. */
-export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Reply {
+/** One comment reply carrying plain reviewer text. The stable sequence
+ * is stamped by the caller (`pushReplySeq`, or `seq: 1` for a first
+ * reply in a fresh thread). */
+export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Omit<Reply, "seq"> {
   const who = opts?.who ?? "you";
   const html = escapeHtml(text).replace(/\n/g, "<br>");
   const block: Block = {
@@ -368,7 +379,7 @@ export function createThreadInDraft(
   );
   const replies: Reply[] = [];
   if (params.text !== undefined && params.text !== "") {
-    replies.push(commentReply(params.text));
+    pushReplySeq(replies, commentReply(params.text));
   }
   // Guide threads start closed; diff + description threads start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
@@ -406,11 +417,13 @@ export function createSuggestedCommentInDraft(
     params.quote ?? "",
     { prefix: params.prefix, suffix: params.suffix, position: params.position },
   );
+  const replies: Reply[] = [];
+  pushReplySeq(replies, commentReply(params.suggestionText, { who: "agent", suggested: true }));
   const thread: Thread = {
     id: newAnnotationId(),
     type: "thread",
     anchor,
-    replies: [commentReply(params.suggestionText, { who: "agent", suggested: true })],
+    replies,
     open: true,
     pinned: false,
     post: false,
@@ -433,7 +446,7 @@ export function replyInDraft(
 ): void {
   if (!text || text.trim() === "") throw new Error("reply text is required");
   const thread = findThread(draft, commentId);
-  thread.replies.push(commentReply(text));
+  pushReplySeq(thread.replies, commentReply(text));
   thread.reply = "";
   thread.open = true;
 }

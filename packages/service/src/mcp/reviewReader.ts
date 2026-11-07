@@ -12,7 +12,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ContextRepoRef } from "@unvibe/shared";
-import { documentBlockText, isDocumentReview, isReadySnapshot, renderMarkdown } from "@unvibe/shared";
+import { documentBlockText, isDocumentReview, isReadySnapshot, renderMarkdown, isLiveReply, replyRef } from "@unvibe/shared";
+import { blockPlainText, itemIdForAnchor } from "../interaction/l4.js";
 import { currentDescriptionHtml, parseDescriptionParagraphs } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import type { McpReviewData, ReviewReader } from "./read.js";
@@ -50,11 +51,19 @@ export class StoreReviewReader implements ReviewReader {
         text: h.lines.map((l) => `${l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}${l.text}`).join("\n"),
       })),
     );
+    const pages = snap.pages.map((p) => ({
+      id: p.id,
+      title: p.title,
+      kind: p.kind,
+      cardIds: p.cards.map((c) => c.id),
+    }));
     const cards = snap.pages.flatMap((p) =>
       p.cards.map((c) => ({
         id: c.id,
         title: c.title,
         text: plainText(renderMarkdown(c.blocks)),
+        pageId: p.id,
+        blocks: c.blocks.map((b) => ({ id: b.id, type: b.type, text: blockPlainText(b) })),
       })),
     );
     // Issue #222: the document is searchable/resolvable like a card.
@@ -63,20 +72,39 @@ export class StoreReviewReader implements ReviewReader {
         id: "document",
         title: snap.document.title,
         text: snap.document.blocks.map((b) => `[doc:${b.id}] ${documentBlockText(b)}`).join("\n\n"),
+        pageId: "root",
+        blocks: snap.document.blocks.map((b) => ({ id: b.id, type: b.block.type, text: documentBlockText(b) })),
       });
     }
     // Issue #143: agents read explanation text through the review tools.
     // Conversation answers are blocks, rendered like cards; comments
-    // contribute their messages.
+    // contribute their messages. Issue #365: every turn is headed with
+    // its stable reply ID (`ann:<thread>#r<seq>`); tombstoned replies
+    // (#364) contribute no text — the transcript must not leak them.
     const annotations = snap.annotations.map((a) => ({
       id: a.id,
       type: a.type,
       anchorSummary: a.anchor.quotedText.slice(0, 80),
+      anchorItemId: itemIdForAnchor(snap, a.anchor),
       text: (a.replies ?? [])
-        .map((t) => t.kind === "comment"
-          ? `${t.who === "you" ? "Reader" : "Agent"}: ${plainText(renderMarkdown(t.blocks))}`
-          : `${t.question === null ? "Explain this." : t.question}\n${plainText(renderMarkdown(t.blocks))}`)
+        .map((t, i) => {
+          if (!isLiveReply(t)) return null;
+          const ref = `[[${replyRef(a.id, a, i)}]]`;
+          return t.kind === "comment"
+            ? `${t.who === "you" ? "Reader" : "Agent"} ${ref}: ${plainText(renderMarkdown(t.blocks))}`
+            : `${ref} ${t.question === null ? "Explain this." : t.question}\n${plainText(renderMarkdown(t.blocks))}`;
+        })
+        .filter((t) => t !== null)
         .join("\n\n"),
+      replies: (a.replies ?? []).map((t) => ({
+        seq: t.seq,
+        id: t.id,
+        kind: t.kind,
+        who: t.who,
+        question: t.question,
+        text: isLiveReply(t) ? plainText(renderMarkdown(t.blocks)) : "",
+        live: isLiveReply(t),
+      })),
     }));
     const contributions = snap.contributions.flatMap((c) =>
       c.items.map((it) => ({
@@ -94,6 +122,7 @@ export class StoreReviewReader implements ReviewReader {
       headSha: snap.version.headSha,
       hunks,
       cards,
+      pages,
       annotations,
       contributions,
       description,

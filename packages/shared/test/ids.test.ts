@@ -60,6 +60,16 @@ describe("parseId", () => {
     expect(parseId("ann:x1")).toEqual({ kind: "ann", id: "x1" });
   });
 
+  it("parses stable reply ids (issue #365)", () => {
+    expect(parseId("ann:x1#r2")).toEqual({ kind: "ann", id: "x1", reply: 2 });
+    expect(formatId(parseId("ann:x1#r2")!)).toBe("ann:x1#r2");
+    expect(formatId(parseId("ann:x1")!)).toBe("ann:x1");
+    // Malformed reply suffixes are not IDs.
+    for (const bad of ["ann:x1#r0", "ann:x1#r", "ann:x1#b2", "ann:x1#r2#r3", "ann:#r2"]) {
+      expect(parseId(bad), bad).toBeNull();
+    }
+  });
+
   it("parses code ids whose paths contain brackets, @, +, ~ (issue #332)", () => {
     expect(parseId("code:src/app/(group)/items/[id]/page.tsx:433-492")).toEqual({
       kind: "code",

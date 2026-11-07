@@ -217,4 +217,45 @@ describe("repo prompts/ directory", () => {
     expect(reader).toContain('never as "commit N" or');
     expect(reader).toContain('"commits N–M"');
   });
+
+  it("ask turns are minimal: quote, item ID, offsets, question, changed hunks (#365)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const ask = lib.get("ask")!;
+    const askTurn = lib.get("ask_turn")!;
+    // Exact variable contract: no card, block, thread-transcript,
+    // change_list or glossary rides along anymore.
+    expect([...ask.variables].sort()).toEqual(["changed_hunks", "item_id", "message", "offsets", "quote", "thread"]);
+    expect([...askTurn.variables].sort()).toEqual(["changed_hunks", "item_id", "message", "offsets", "quote"]);
+    for (const t of [ask, askTurn]) {
+      for (const banned of ["anchor.quote", "anchor.block", "card", "thread", "change_list", "glossary"]) {
+        if (t.name === "ask" && banned === "thread") continue;
+        expect(t.usedVariables, `${t.name} uses ${banned}`).not.toContain(banned);
+      }
+      // The model fetches the tree itself; citation rules stay.
+      expect(t.body).toContain("get_item");
+      expect(t.body).toContain("get_hunk");
+      expect(t.body).toContain("get_code");
+      expect(t.body).toContain("Every claim about the change gets a citation");
+    }
+    // Both render with the minimal variable set.
+    expect(() =>
+      renderTemplate(ask, {
+        quote: "q",
+        item_id: "card:problem#b1",
+        offsets: "3–7",
+        thread: "(none)",
+        changed_hunks: "(no changes)",
+        message: "Explain this.",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      renderTemplate(askTurn, {
+        quote: "q",
+        item_id: "ann:ann_x#r1",
+        offsets: "(no offsets recorded)",
+        changed_hunks: "h:conn:deadbeef",
+        message: "Why?",
+      }),
+    ).not.toThrow();
+  });
 });

@@ -26,6 +26,7 @@ function comment(id: string, host: Thread["anchor"]["host"], messages: MsgLike[]
     pinned: false,
     replies: messages.map((m, i) => ({
       id: `ans_${id}_${i}`,
+      seq: i + 1,
       kind: "comment" as const,
       who: m.who === "ai" ? ("agent" as const) : ("you" as const),
       question: null,

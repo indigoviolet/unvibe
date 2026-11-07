@@ -181,6 +181,8 @@ export function mkTestReply(who: "you" | "agent", text: string, suggested = fals
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
     id: `ans_test${threadSeq}_${Math.random().toString(36).slice(2, 6)}`,
+    // Single-reply fixture threads: the only reply is r1.
+    seq: 1,
     kind: "comment",
     who,
     question: null,

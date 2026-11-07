@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [anchor.quote, anchor.block, card, thread, change_list, message, glossary]
+variables: [quote, item_id, offsets, thread, changed_hunks, message]
 ---
 
 # Ask
@@ -12,48 +12,47 @@ conversation card that appears right under the block the text came from.
 
 ## Selected text
 
-> {{anchor.quote}}
+> {{quote}}
 
-## Host block (the full paragraph, description text, or diff lines it came from)
+## Item (fetch it with `get_item` when you need more than the quote)
 
-{{anchor.block}}
+{{item_id}}
 
-## Card it belongs to
+## Selection offsets
 
-{{card}}
+{{offsets}}
 
 ## Conversation so far
 
 {{thread}}
 
-## What changed since this session last saw the review
+## Changed hunks since this turn's version
 
-{{change_list}}
+{{changed_hunks}}
 
 ## The question
 
 {{message}}
 
-## Glossary
-
-{{glossary}}
-
 ## Rules
 
-- Use the glossary's exact terms for the things they name, never a
-  synonym, abbreviation or paraphrase.
 - Answer the question about the selected text, directly first, then the
   supporting detail — no longer than the question needs. Do not quote
   the selection or the question back — the app already shows both on
   the card. When the selected detail serves a contract or invariant,
   connect the local detail to it, so the answer says what the detail is
   for, not only what it does.
-- Every claim about the change gets a citation. If the answer needs code
-  beyond the base, fetch it with `get_hunk` or `get_code` first. An
-  answer that cites something outside the base is shared with the review
-  in full; an answer from inside the base leaves only a one-line
-  summary. Neither is your choice to make — just answer well and cite
-  honestly.
+- This turn carries only the quote, the item ID, the offsets, the
+  question, and changed hunk IDs. Everything else — the host block,
+  the card, other threads — you fetch yourself: `get_item` for cards,
+  blocks, pages, threads, replies and description paragraphs,
+  `get_hunk` for a diff hunk by its `h:` ID, `get_code` for file lines
+  at a commit. Fetch the item above first when the quote alone does not
+  settle the question; fetch code before claiming anything about it.
+- Every claim about the change gets a citation. An answer that cites
+  something outside the base is shared with the review in full; an
+  answer from inside the base leaves only a one-line summary. Neither
+  is your choice to make — just answer well and cite honestly.
 - If the anchor text cannot be matched to its host anymore, still answer
   the question about the quoted text above; at most note in one line that
   you could not place it. Never refuse to answer for that reason.
