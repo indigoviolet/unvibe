@@ -695,6 +695,23 @@ needed (that deviation is closed, not added).
   and tooltips — where the prototype prints “Me”/“You”/“AI” plus a name
   line (owner decision; the second-opinion model label stays, since it
   is information, not an author label).
+- Issue #364 (thread polish): every reply deletes on its own with no
+  confirm, as a tombstone (an answer goes with its question — one
+  stored turn; later turns stay; deleting the last live turn deletes
+  the thread; posted content and filling replies refuse; Undelete
+  restores the turn exactly under the same ID — stored `deletedAt` +
+  shared `isLiveReply`, DATA_FORMAT 6 via #365); every anchored thread
+  shows a comment icon
+  in the margin (on its highlight's first line, else its paragraph's
+  first line; diff lines keep their gutter icons), clicking it opens
+  and scrolls to the thread; each answer carries an “↑ quoted text”
+  reverse link that scrolls to the passage and flashes it (margin
+  marker's line as fallback); turns read as tinted full-width question
+  bands with ~24px + divider between turns only; Ask inside a thread
+  uses the thread's own Reply box with a removable quote chip (no
+  second composer) — implemented, unit-tested
+  (`threads-delete-reply.test.ts`, `ThreadView.test.tsx` #364 cases,
+  `revealAnchor.test.ts`); journey J364 + frames pending the gate.
 - Issue #365 (agent context): a `get_item(id)` MCP tool returns any
   card, block, page, thread, reply or description paragraph as its
   current content with its parent chain and child IDs; replies carry

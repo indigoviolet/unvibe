@@ -26,6 +26,7 @@ import type { Thread } from "@unvibe/shared";
 import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
+import { ThreadMarginOverlay } from "../../comments/ThreadMarginOverlay.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { showGuidePane } from "../../shell/panes.js";
 import { ThreadView } from "../../comments/ThreadView.js";
@@ -394,6 +395,8 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         }
       }}
     >
+      {/* Issue #364: one margin icon per thread — on its highlight's first line, else its paragraph's first line. */}
+      <ThreadMarginOverlay threads={[...byPara.values()].flat()} readOnly={readOnly} />
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
         // Collapse-all renders every thread under the paragraph as a row,

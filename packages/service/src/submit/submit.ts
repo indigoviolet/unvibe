@@ -28,7 +28,7 @@ import type {
   SubmitPreview,
   SubmitPreviewComment,
 } from "@unvibe/shared";
-import { ingestStatusOf, isReadySnapshot } from "@unvibe/shared";
+import { ingestStatusOf, isLiveReply, isReadySnapshot } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
 import { locatePendingThreads, postedThreadIds, type SubmitRepoRef } from "../comments/location.js";
@@ -346,7 +346,7 @@ export async function runSubmit(
     const at = Date.now();
     await ctx.reviews.mutate(reviewId, (draft) => {
       for (const a of draft.annotations) {
-        if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment")) continue;
+        if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment" && isLiveReply(r))) continue;
         if (!pending.some((p) => p.thread.id === a.id)) continue;
         a.postedAt = at;
         if (reviewUrl) a.postedUrl = reviewUrl;

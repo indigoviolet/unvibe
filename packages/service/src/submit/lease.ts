@@ -18,6 +18,7 @@
  */
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
+import { isLiveReply } from "@unvibe/shared";
 import { locateThreadWithText } from "../comments/location.js";
 import type { ReviewStore } from "../state/store.js";
 import type { DatabaseSync } from "../store/index.js";
@@ -184,7 +185,7 @@ export async function markLeasePosted(
   if (snapshot) {
     const leasedById = new Map(lease.comments.map((c) => [c.threadId, c.body]));
     for (const a of snapshot.annotations) {
-      if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment")) continue;
+      if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment" && isLiveReply(r))) continue;
       const want = leasedById.get(a.id);
       if (want === undefined) continue;
       try {
@@ -198,7 +199,7 @@ export async function markLeasePosted(
   }
   await reviews.mutate(reviewId, (draft) => {
     for (const a of draft.annotations) {
-      if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment")) continue;
+      if (!a.post || a.postedAt || !a.replies.some((r) => r.kind === "comment" && isLiveReply(r))) continue;
       if (!matchIds.has(a.id)) continue;
       a.postedAt = at;
       if (url) a.postedUrl = url;

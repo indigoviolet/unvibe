@@ -3907,6 +3907,38 @@ export const mockApi = {
     return { ok: true };
   },
 
+  // Issue #364: soft delete — the reply stays as a tombstone (or the
+  // thread goes, when its last live turn is deleted).
+  deleteReply: async (_id: string, commentId: string, replyId: string) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread) throw new Error("unknown comment");
+    if (thread.postedAt !== undefined) throw new Error("posted content can't be deleted");
+    const target = thread.replies.find((r) => r.id === replyId);
+    if (!target) throw new Error(`unknown reply ${replyId}`);
+    if (target.jobId !== undefined || (target.working ?? null) !== null) {
+      throw new Error("that reply is still filling — wait for the answer");
+    }
+    target.deletedAt = Date.now();
+    if (!thread.replies.some((r) => r.deletedAt === undefined)) {
+      const tIdx = annotations.findIndex((a) => a.id === commentId);
+      if (tIdx >= 0) annotations.splice(tIdx, 1);
+    }
+    emitAnnotations();
+    return { ok: true };
+  },
+
+  // Issue #364: restore a tombstoned reply exactly as it was.
+  undeleteReply: async (_id: string, commentId: string, replyId: string) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread) throw new Error("unknown comment");
+    const target = thread.replies.find((r) => r.id === replyId);
+    if (!target) throw new Error(`unknown reply ${replyId}`);
+    if (target.deletedAt === undefined) throw new Error(`reply ${replyId} is not deleted`);
+    delete target.deletedAt;
+    emitAnnotations();
+    return { ok: true };
+  },
+
   updateDescription: async (_id: string, body: { html: string }) => {
     description = {
       ...description,
