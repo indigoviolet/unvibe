@@ -16,13 +16,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
-import { selectText } from "./select-text.js";
-import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
-import { checkLayout } from "./layout-check.js";
-import { tourCombos } from "./tour-matrix.js";
+import { hoverFresh } from "../hover-fresh.js";
+import { selectText } from "../select-text.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { checkLayout } from "../layout-check.js";
+import { tourCombos } from "../tour-matrix.js";
 
 const exec = promisify(execFile);
-const SHOTS = fileURLToPath(new URL("../visual-tour/218", import.meta.url));
+const SHOTS = fileURLToPath(new URL("../../visual-tour/218", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 test.use({ channel: "chromium" });
@@ -137,9 +138,11 @@ for (const combo of tourCombos("tour218", COMBOS)) {
     // links, so a glossary term stands in.
     const cite = page.locator('#page a.cx[data-link="concept:obs-fold"], #C-problem a.gx[data-glossary]').first();
     if (await cite.count()) {
-      await cite.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(600);
-      await cite.hover();
+      // Scroll-then-hover through the shared helper: Playwright's hover
+      // may scroll with the pointer already over the target, which the
+      // popover must ignore — so settle first, then arrive in steps
+      // (B5; the fixed 600 ms sleep is gone).
+      await hoverFresh(page, cite);
       await page.locator("#pop").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
       if (await page.locator("#pop").isVisible().catch(() => false)) await shot("popover");
       await page.mouse.move(4, 4);

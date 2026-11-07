@@ -27,7 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { selectDiffRows, selectText } from "./select-text.js";
+import { selectDiffRows, selectText } from "../select-text.js";
 /**
  * Issue #285 (E2): unified expand controls ride the hunk's first/last
  * row and show on row hover — hover the button's row, then click. (At
@@ -38,14 +38,14 @@ async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): 
   await btn.locator("xpath=ancestor::tr[1]").hover();
   await btn.click();
 }
-import { cpuThrottleFromEnv } from "./cpu-throttle.js";
-import { SERVICE_ENTRY, startService, type RunningService } from "./service-harness.js";
-import { checkLayout } from "./layout-check.js";
-import { fullMatrix, tourCombos } from "./tour-matrix.js";
-import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "./journeys/journey-helpers.js";
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { checkLayout } from "../layout-check.js";
+import { fullMatrix, tourCombos } from "../tour-matrix.js";
+import { createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline } from "../journeys/journey-helpers.js";
 
 const exec = promisify(execFile);
-const SHOTS = fileURLToPath(new URL("../visual-tour", import.meta.url));
+const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
