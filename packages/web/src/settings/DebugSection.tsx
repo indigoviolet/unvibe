@@ -1,14 +1,18 @@
 /**
- * Debug (issues #323, #356): explicit-only local exports and the
- * opt-in performance-trace recorder.
+ * Debug (issues #356, #366): the opt-in performance-trace recorder and
+ * its explicit-only local export.
  *
- * - Export statistics: anonymized usage file, stays on this machine.
  * - Record performance traces: OTel spans (HTTP, jobs, child processes by
  *   command name, SQLite by operation, ingest/refresh/first-card, plus
  *   browser document-load/fetch/interactions). Off by default; stored
  *   locally for as long as recording is on (no rotation); exportable at
  *   any time as OTLP JSON (Jaeger reads it natively, Perfetto converts it
  *   with `traceconv`); Clear empties the store via the inline confirm.
+ *   Job spans carry the usage statistics (model, tokens, tool counts,
+ *   reads, repairs, failure, timings); review spans carry the size
+ *   buckets — summarize an export with `mise run stats:summary`.
+ * - The lean build records nothing at all (no tracing libraries): the
+ *   Debug section says so and names the matching debug install.
  * Nothing is uploaded, ever.
  */
 import { useCallback, useEffect, useState } from "react";
@@ -60,9 +64,6 @@ export function DebugSection({
   settings?: Settings;
   onSaved?: (next: Settings) => void;
 }): React.JSX.Element {
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceNote, setTraceNote] = useState<string | null>(null);
@@ -125,27 +126,6 @@ export function DebugSection({
     }
   }, [recording, settings]);
 
-  const exportStats = async (): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    setDone(null);
-    try {
-      const body = await api.statsExport();
-      const blob = new Blob([`${JSON.stringify(body, null, 2)}\n`], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "unvibe-stats.json";
-      a.click();
-      URL.revokeObjectURL(url);
-      setDone(`Exported ${body.totals.reviews} reviews and ${body.totals.jobs} jobs.`);
-    } catch (err) {
-      setError(friendlyError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const toggleRecording = async (on: boolean): Promise<void> => {
     setSaving(true);
     setTraceError(null);
@@ -199,31 +179,25 @@ export function DebugSection({
   return (
     <>
       <section aria-label="Debug">
-        <p className="hint">
-          Export anonymized usage statistics for debugging: counts, timings, token totals and salted hashes
-          only — no text, paths, names or timestamps. The file stays on this machine; nothing is uploaded.
-        </p>
-        <div className="frow" style={{ gap: 8 }}>
-          <button
-            className="ui-btn"
-            data-variant="secondary"
-            type="button"
-            disabled={busy}
-            onClick={() => void exportStats()}
-          >
-            {busy ? "Exporting…" : "Export statistics"}
-          </button>
-        </div>
-        {done ? (
-          <p className="hint" role="status">
-            {done}
+        {unavailable ? (
+          // Lean build (issue #366): no tracing libraries shipped, so no
+          // usage statistics are recorded at all. Name the matching debug
+          // build for this install's channel.
+          // The install command itself shows once, under Performance traces.
+          channel === undefined ? null : (
+            <p className="hint">
+              This build records no usage statistics. The debug build records them with the
+              performance traces; its install command is under Performance traces below.
+            </p>
+          )
+        ) : (
+          <p className="hint">
+            Usage statistics live in the performance-trace export below: every job span carries its
+            model, tokens, tool counts, reads, repairs, failure and timings, and every review span
+            carries its size buckets. Export traces, then summarize the file with
+            <code> mise run stats:summary -- unvibe-traces.json</code>. Nothing is uploaded, ever.
           </p>
-        ) : null}
-        {error ? (
-          <p className="err" role="alert">
-            Couldn&apos;t export: {error}
-          </p>
-        ) : null}
+        )}
       </section>
       <section aria-label="Performance traces">
         <h2>Performance traces</h2>

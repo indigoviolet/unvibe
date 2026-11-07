@@ -72,7 +72,7 @@ import { hasAnySubmitLease } from "../update/index.js";
 import { fetchExistingComments, fetchLatestUserReview, fetchPrConversation } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
 import { isNoneRunner } from "../agent/factory.js";
-import { hasGuideCards, traceRefresh, traceSpan, watchOpenToFirstCard } from "../traces/index.js";
+import { hasGuideCards, reviewAttributes, traceRefresh, traceSpan, watchOpenToFirstCard } from "../traces/index.js";
 
 export interface ReviewsRouteDeps {
   baseRunner?: UpdateBaseRunner;
@@ -388,7 +388,8 @@ type BeginCreateResult =
  * (callers branch before calling).
  *
  * Issue #356: the wrapper records one `ingest` span per create (review
- * id hashed, nothing else); reuses share the same span shape.
+ * id hashed, nothing else); reuses share the same span shape. Issue
+ * #366: the span also carries the review's stats-shaped attributes.
  */
 async function beginReviewFromSource(
   ctx: ServiceContext,
@@ -400,7 +401,14 @@ async function beginReviewFromSource(
   const span = traceSpan("ingest");
   try {
     const out = await beginReviewFromSourceInner(ctx, opts, pendingIngests, inFlightCreates, args);
-    if (out.ok) span.setAttribute("review", out.snapshot.review.id);
+    if (out.ok) {
+      span.setAttribute("review", out.snapshot.review.id);
+      try {
+        for (const [k, v] of Object.entries(reviewAttributes(out.snapshot))) span.setAttribute(k, v);
+      } catch {
+        // Attribute shaping never breaks ingest.
+      }
+    }
     span.end();
     return out;
   } catch (err) {
@@ -1023,14 +1031,22 @@ export async function registerReviews(
     let result;
     try {
       // Issue #356: one `refresh` span per refresh (review id hashed).
-      result = await traceRefresh(id, () =>
-        refreshReview(
-          { runner: ctx.runner, db: ctx.db, reviews: ctx.reviews },
-          repo.localPath,
-          id,
-          row,
-          snapshot,
-        ),
+      result = await traceRefresh(
+        id,
+        () =>
+          refreshReview(
+            { runner: ctx.runner, db: ctx.db, reviews: ctx.reviews },
+            repo.localPath,
+            id,
+            row,
+            snapshot,
+          ),
+        // Issue #366: the refresh span carries the review's
+        // stats-shaped attributes from the landed snapshot.
+        () => {
+          const landed = ctx.reviews.getSnapshot(id);
+          return landed ? reviewAttributes(landed) : undefined;
+        },
       );
     } catch (err) {
       return reply.code(502).send({ error: `refresh failed: ${(err as Error).message}` });
