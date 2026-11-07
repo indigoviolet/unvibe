@@ -102,8 +102,9 @@ describe("DebugSection", () => {
     });
     render(<DebugSection settings={settings} onSaved={() => {}} />);
     expect(await screen.findByText(/records no usage statistics/)).toBeInTheDocument();
-    expect(await screen.findByText(/aren't available in this build/)).toBeInTheDocument();
-    expect(screen.getByText("npm install -g github:indigoviolet/unvibe#preview/feat-x-debug")).toBeInTheDocument();
+    // Both the Debug and the Performance-traces sections name the debug install.
+    expect(await screen.findAllByText(/aren't available in this build/)).toHaveLength(2);
+    expect(screen.getAllByText("npm install -g github:indigoviolet/unvibe#preview/feat-x-debug")).toHaveLength(2);
     expect(screen.queryByLabelText("Record performance traces")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Export traces" })).not.toBeInTheDocument();
   });

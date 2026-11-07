@@ -57,38 +57,22 @@ for (const span of spans) {
   if (!prev || end >= prev.end) jobSpans.set(id, { span, m, end });
 }
 
-// One row per review: ingest/refresh spans merge last-wins.
-const reviewSpans = new Map();
+// Review ids (ingest/refresh spans) with their earliest start, so job
+// offsets derive from the waterfall. Reviews without a span still count
+// via their job spans (see totals below).
+const reviewIds = new Set();
 const reviewFirstStart = new Map();
 for (const span of spans) {
   const m = attrsOf(span);
   if (span.name !== "ingest" && span.name !== "refresh") continue;
   const id = str(m.get("review"));
   if (!id) continue;
+  reviewIds.add(id);
   const start = nanos(span.startTimeUnixNano);
-  const end = nanos(span.endTimeUnixNano) ?? -1;
   if (start !== null && (!reviewFirstStart.has(id) || start < reviewFirstStart.get(id))) {
     reviewFirstStart.set(id, start);
   }
-  const prev = reviewSpans.get(id);
-  if (!prev || end >= prev.end) reviewSpans.set(id, { span, m, end });
 }
-
-const reviews = [...reviewSpans.entries()].map(([id, { m }]) => ({
-  id,
-  kind: str(m.get("review.kind")) ?? "change",
-  files: num(m.get("review.files")) ?? 0,
-  hunks: num(m.get("review.hunks")) ?? 0,
-  skippedHunkSummaries: num(m.get("review.skipped")) ?? 0,
-  addedLines: num(m.get("review.added")) ?? 0,
-  removedLines: num(m.get("review.removed")) ?? 0,
-  guidePages: num(m.get("review.pages")) ?? 0,
-  guideCards: num(m.get("review.cards")) ?? 0,
-  threads: num(m.get("review.threads")) ?? 0,
-  replies: num(m.get("review.replies")) ?? 0,
-  outboxThreads: num(m.get("review.outbox")) ?? 0,
-  versions: num(m.get("review.versions")) ?? 1,
-}));
 
 const jobs = [...jobSpans.values()].map(({ span, m }) => {
   const toolCounts = [];
@@ -166,7 +150,7 @@ for (const j of jobs) {
   }
 }
 // Reviews without an ingest/refresh span still count via their job spans.
-const reviewIds = new Set([...reviewSpans.keys(), ...jobs.map((j) => j.review).filter(Boolean)]);
+for (const j of jobs) if (j.review) reviewIds.add(j.review);
 const totals = {
   reviews: reviewIds.size,
   jobs: jobs.length,
