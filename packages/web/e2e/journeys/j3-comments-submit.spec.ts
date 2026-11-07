@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "../network-guard.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createScratchReview, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, createScratchReview, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
@@ -76,6 +76,7 @@ test.describe("J3 comments and submit", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j3-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j3-bin-"));
     writeFakeGh(fakeBin, logDir, repo.headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, { extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` } });

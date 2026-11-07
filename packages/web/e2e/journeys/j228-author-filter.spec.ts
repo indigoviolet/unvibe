@@ -22,7 +22,7 @@ import { expect, test } from "../network-guard.js";
 import { checkLayout } from "../layout-check.js";
 import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, git, makeScratchRepo } from "./journey-helpers.js";
+import { apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 test.use({ channel: "chromium" });
@@ -167,6 +167,7 @@ test.describe("J228 start-page author filter", () => {
     poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-pool-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j228-bin-"));
     writeFakeGhAuthorFilter(fakeBin, logDir, poolDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, {

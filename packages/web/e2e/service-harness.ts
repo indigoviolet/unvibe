@@ -15,7 +15,7 @@
  *   the ambient CI token (PRD §15).
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,33 @@ function harnessRealHome(): string {
 export const SERVICE_ENTRY = fileURLToPath(new URL("../../service/dist/index.js", import.meta.url));
 
 const LOG_DIR = fileURLToPath(new URL("../test-results/service-logs", import.meta.url));
+
+/**
+ * Harness fake bin dir(s) for `UNVIBE_TEST_BIN_DIR` (issue #370): the
+ * explicit option (string or list), else the `fakeshell` convention —
+ * SHELL naming a `fakeshell` script in a directory holding an executable
+ * `gh` (the `writeFakeShell` setup). Undefined when neither applies:
+ * specs without fakes keep the legacy guard behavior. Never throws.
+ */
+function testBinDirs(
+  explicit: string | string[] | undefined,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  if (explicit !== undefined) {
+    const dirs = (Array.isArray(explicit) ? explicit : [explicit]).filter((d) => d !== "");
+    return dirs.length > 0 ? dirs.join(path.delimiter) : undefined;
+  }
+  const shell = env.SHELL ?? "";
+  if (path.basename(shell) !== "fakeshell") return undefined;
+  const dir = path.dirname(shell);
+  try {
+    if (!existsSync(dir)) return undefined;
+    accessSync(path.join(dir, "gh"), constants.X_OK);
+    return statSync(path.join(dir, "gh")).isFile() ? dir : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface RunningService {
   origin: string;
@@ -64,15 +91,17 @@ export interface StartServiceOptions {
   /** Extra env entries for the child (e.g. the fake-gh SHELL/PATH stub). */
   extraEnv?: Record<string, string | undefined>;
   /**
-   * Harness fake bin dir (issue #370): the directory holding the fake
-   * `gh`/`git` (+ the fake login shell). Passed through as
-   * `UNVIBE_TEST_BIN_DIR`, so a test service refuses any `gh`/`git`
-   * binary resolving outside it — even when its inherited PATH was
-   * polluted. Prefer the `fakeServiceEnv` helper in journey-helpers
-   * (it sets SHELL/PATH plus this from one dir); this option stays for
-   * specs that build extraEnv by hand.
+   * Harness fake bin dir(s) (issue #370): directories holding the fake
+   * `gh`/`git`/agent binaries. Passed through as `UNVIBE_TEST_BIN_DIR`
+   * (delimiter-joined), so a test service refuses any of those binaries
+   * resolving outside them — even when its inherited PATH was polluted.
+   * Usually unnecessary: when the spec's SHELL is a `fakeshell` script
+   * (the `writeFakeShell` convention in journey-helpers) whose directory
+   * holds an executable `gh`, that directory is used automatically. Set
+   * this explicitly for setups the convention cannot see (e.g. the pi
+   * journey's separate fake + stub dirs).
    */
-  testBinDir?: string;
+  testBinDir?: string | string[];
   /** Log-file tag. Defaults to the data dir's basename. */
   label?: string;
 }
@@ -107,10 +136,13 @@ export async function startService(dataDir: string, opts: StartServiceOptions = 
   // real home is the one captured at harness start.
   env.UNVIBE_TEST = "1";
   env.UNVIBE_REAL_HOME = harnessRealHome();
-  // Issue #370: confine the service's gh/git to the harness fakes.
-  // Explicit option wins; extraEnv passthrough keeps working for specs
-  // that set it by hand.
-  if (opts.testBinDir !== undefined) env.UNVIBE_TEST_BIN_DIR = opts.testBinDir;
+  // Issue #370: confine the service's gh/git/agent CLIs to the harness
+  // fakes. Explicit option wins; otherwise the `fakeshell` convention
+  // (SHELL names a `fakeshell` script in a dir holding an executable
+  // `gh`) is detected; extraEnv passthrough keeps working for specs that
+  // set the variable by hand.
+  env.UNVIBE_TEST_BIN_DIR = testBinDirs(opts.testBinDir, env) ?? env.UNVIBE_TEST_BIN_DIR;
+  if (env.UNVIBE_TEST_BIN_DIR === undefined) delete env.UNVIBE_TEST_BIN_DIR;
   // Update-helper drills (fake updater) must never see the real login
   // unit: give them a scratch HOME unless the spec already set one.
   let harnessHome: string | null = null;

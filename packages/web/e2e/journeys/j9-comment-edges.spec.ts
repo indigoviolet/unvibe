@@ -8,7 +8,7 @@ import type { Locator, Page } from "@playwright/test";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { apiJson, createDemoReview, createScratchReview, createSeededDemoReview, makeScratchRepo, writeFakeGh } from "./journey-helpers.js";
+import { apiJson, createDemoReview, createScratchReview, createSeededDemoReview, makeScratchRepo, realGitPath, writeFakeGh, writeFakeGitOffline } from "./journey-helpers.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 const appKey = fileKeyForPath("src/app.py");
@@ -27,6 +27,7 @@ test.describe("J9 comment edges", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j9-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j9-bin-"));
     writeFakeGh(fakeBin, logDir, repo.headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = path.join(fakeBin, "fakeshell");
     writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, { mode: 0o755 });
     svc = await startService(dataDir, { extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` } });

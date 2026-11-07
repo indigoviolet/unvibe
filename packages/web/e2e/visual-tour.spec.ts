@@ -3041,6 +3041,7 @@ test.describe("visual tour file tab (#81)", () => {
     ftBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-bin-"));
     ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
     writeFakeGh(ftBin, ftLog, headOut.trim());
+    writeFakeGitOffline(ftBin, realGitPath());
     writeFileSync(
       path.join(ftBin, "fakeshell"),
       `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${ftBin}:$PATH"\n`,
