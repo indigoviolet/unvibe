@@ -13,6 +13,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import path from "node:path";
 import type { OtlpAttribute, OtlpSpan } from "@unvibe/shared";
+import { JOB_KINDS, JOB_STATES } from "./stats-spans.js";
 
 const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -106,6 +107,30 @@ function stripQuery(value: string): string {
   return cut < 0 ? value : value.slice(0, cut);
 }
 
+/**
+ * Fixed-shape stats keys (issue #366). Anything `job.*` / `review*`
+ * outside this set is forged (browser beacon) and drops — including
+ * numeric values, which otherwise bypass value scrubbing.
+ */
+const STATS_KEYS = new Set([
+  "job.id", "job.kind", "job.state", "job.provider", "job.model", "job.effort",
+  "job.access", "job.session", "job.turns", "job.repairs", "job.attempts", "job.attempt",
+  "job.failure", "job.queued_ms", "job.duration_ms",
+  "job.tokens.input", "job.tokens.cached_read", "job.tokens.cached_write", "job.tokens.output",
+  "review", "review.kind", "review.files", "review.hunks", "review.skipped", "review.added",
+  "review.removed", "review.pages", "review.cards", "review.threads", "review.replies",
+  "review.outbox", "review.versions",
+]);
+
+export function isStatsKey(key: string): boolean {
+  if (STATS_KEYS.has(key)) return true;
+  if (key.startsWith("job.tool.")) {
+    const suffix = key.slice("job.tool.".length);
+    return suffix === "other" || isSafeToken(suffix);
+  }
+  return /^job\.read\.\d+\.(file|lines|inside)$/.test(key);
+}
+
 /** API SpanKind (0..4) → OTLP spec kind (1..5); unknown → UNSPECIFIED. */
 function toOtlpKind(kind: number | undefined): number {
   return kind === 0 ? 1 : kind === 1 ? 2 : kind === 2 ? 3 : kind === 3 ? 4 : kind === 4 ? 5 : 0;
@@ -121,7 +146,60 @@ export function createExportScrubber(): ExportScrubber {
 
   const hashed = (key: string, value: string): string => hash(key, value);
 
+  /**
+   * Stats-shaped span keys (`job.*`, `review`, `review.*`, issue #366):
+   * every id and path hashes, known enums stay verbatim, unknown enums
+   * become `other` (the old exporter's fail-closed rule), and anything
+   * off-shape drops. Null when the key is not stats-shaped (generic
+   * handling applies).
+   */
+  function scrubStatsValue(key: string, value: string): { drop: boolean; kept?: string } | null {
+    if (!(key === "review" || key.startsWith("job.") || key.startsWith("review."))) return null;
+    // Identity + paths hash (the old exporter salted these per export).
+    if (
+      key === "review" || key === "job.id" || key === "job.review" || key === "job.session" ||
+      key.endsWith(".file")
+    ) {
+      return { drop: false, kept: hashed(key, value) };
+    }
+    // Tool counts: the suffix is sanitized at record time; a forged
+    // suffix (browser beacon) drops rather than leaking into a key.
+    if (key.startsWith("job.tool.")) {
+      const suffix = key.slice("job.tool.".length);
+      if (suffix !== "other" && !isSafeToken(suffix)) return { drop: true };
+      return isSafeToken(value) ? { drop: false, kept: value } : { drop: false, kept: hashed(key, value) };
+    }
+    // Read slots: fixed shape, anything else drops.
+    if (key.startsWith("job.read.")) {
+      if (!/^job\.read\.\d+\.(file|lines|inside)$/.test(key)) return { drop: true };
+      if (key.endsWith(".inside")) {
+        return value === "true" || value === "false" ? { drop: false, kept: value } : { drop: true };
+      }
+      return isSafeToken(value) ? { drop: false, kept: value } : { drop: false, kept: hashed(key, value) };
+    }
+    // Enums: known values verbatim, everything else `other`. Effort
+    // keeps `""` (the adapter default, as the old exporter did).
+    if (key in STATS_ENUMS) {
+      if (key === "job.effort" && value === "") return { drop: false, kept: "" };
+      if (!isSafeToken(value)) return { drop: false, kept: "other" };
+      const allowed = STATS_ENUMS[key];
+      if (allowed && !allowed.has(value)) return { drop: false, kept: "other" };
+      return { drop: false, kept: value };
+    }
+    // Other stats counters (`job.turns`, `job.queued_ms`, `review.files`,
+    // …): numbers never reach here; safe strings stay, rest hashes.
+    if (
+      key === "job.turns" || key === "job.repairs" || key === "job.attempts" || key === "job.attempt" ||
+      key.endsWith("_ms") || key.startsWith("job.tokens.") || key.startsWith("review.")
+    ) {
+      return isSafeToken(value) ? { drop: false, kept: value } : { drop: false, kept: hashed(key, value) };
+    }
+    return { drop: true };
+  }
+
   function scrubValue(key: string, value: string): { drop: boolean; kept?: string } {
+    const stats = scrubStatsValue(key, value);
+    if (stats) return stats;
     if (isHashUrlKey(key)) return { drop: false, kept: hashed(key, stripQuery(value)) };
     if (DROP_KEY.test(key)) return { drop: true };
     if (key === "http.route") {
@@ -148,10 +226,14 @@ export function createExportScrubber(): ExportScrubber {
     for (const attr of attrs ?? []) {
       const v = attr.value;
       if (typeof v.intValue === "string" && /^-?\d+$/.test(v.intValue)) {
+        // Numeric stats keys are fixed-shape; a forged numeric key
+        // (browser beacon) drops instead of reaching the export.
+        if (!isStatsKey(attr.key) && (attr.key === "review" || attr.key.startsWith("job.") || attr.key.startsWith("review."))) continue;
         out.push({ key: attr.key, value: { intValue: v.intValue } });
         continue;
       }
       if (typeof v.doubleValue === "number" && Number.isFinite(v.doubleValue)) {
+        if (!isStatsKey(attr.key) && (attr.key === "review" || attr.key.startsWith("job.") || attr.key.startsWith("review."))) continue;
         out.push({ key: attr.key, value: { doubleValue: v.doubleValue } });
         continue;
       }
@@ -162,7 +244,26 @@ export function createExportScrubber(): ExportScrubber {
     return out;
   }
 
-  /** Method from the usual method attributes (uppercased, allowlisted). */
+  const JOB_PROVIDERS = new Set(["claude", "codex", "pi", "other"]);
+const JOB_ACCESSES = new Set(["full", "lockdown"]);
+const JOB_FAILURES = new Set([
+  "timeout", "rate-limit", "auth", "no-agent", "not-found", "head-moved", "network", "cancelled", "interrupted", "other",
+]);
+const REVIEW_KINDS = new Set(["change", "document"]);
+
+/** Allowlisted values per stats enum key; null keeps any safe token. */
+const STATS_ENUMS: Record<string, Set<string> | null> = {
+  "job.kind": JOB_KINDS,
+  "job.state": JOB_STATES,
+  "job.provider": JOB_PROVIDERS,
+  "job.access": JOB_ACCESSES,
+  "job.failure": JOB_FAILURES,
+  "review.kind": REVIEW_KINDS,
+  "job.model": null,
+  "job.effort": null,
+};
+
+/** Method from the usual method attributes (uppercased, allowlisted). */
   function spanMethod(attrs: OtlpAttribute[] | undefined): string | null {
     for (const attr of attrs ?? []) {
       if ((attr.key === "http.method" || attr.key === "http.request.method") && typeof attr.value.stringValue === "string") {

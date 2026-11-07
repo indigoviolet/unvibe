@@ -278,7 +278,7 @@ description = "Build, then run unvibe doctor (environment checks)"
 run = "mise run build && node packages/service/dist/index.js doctor"
 
 [tasks."stats:summary"]
-description = "Print a readable summary of one anonymized stats export (reads only that file)"
+description = "Print a readable summary of one anonymized trace export (reads only that file)"
 raw = true
 run = "node scripts/stats-summary.mjs"
 

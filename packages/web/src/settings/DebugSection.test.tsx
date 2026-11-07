@@ -1,7 +1,9 @@
 /**
- * Debug section units (#356, `VITE_MOCK=1`): the recording switch saves
- * the setting and arms the browser SDK, size/capped status renders, Clear
- * runs through the inline confirm, and both exports download a file.
+ * Debug section units (#356, #366, `VITE_MOCK=1`): the recording switch
+ * saves the setting and arms the browser SDK, size/capped status
+ * renders, Clear runs through the inline confirm, and the trace export
+ * downloads a file. The lean build records no stats at all and names
+ * the debug install instead.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -90,7 +92,7 @@ describe("DebugSection", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Export traces" })).toBeDisabled());
   });
 
-  it("lean build shows the matching debug install command", async () => {
+  it("lean build records no stats and shows the matching debug install command", async () => {
     vi.spyOn(api, "traceStatus").mockRejectedValue(new Error("GET /api/traces/status: 501 no traces"));
     vi.spyOn(api, "updateStatus").mockResolvedValue({
       enabled: true,
@@ -99,9 +101,18 @@ describe("DebugSection", () => {
       outcome: null,
     });
     render(<DebugSection settings={settings} onSaved={() => {}} />);
+    expect(await screen.findByText(/records no usage statistics/)).toBeInTheDocument();
     expect(await screen.findByText(/aren't available in this build/)).toBeInTheDocument();
     expect(screen.getByText("npm install -g github:indigoviolet/unvibe#preview/feat-x-debug")).toBeInTheDocument();
     expect(screen.queryByLabelText("Record performance traces")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export traces" })).not.toBeInTheDocument();
+  });
+
+  it("debug build points usage statistics at the trace export", async () => {
+    vi.spyOn(api, "traceStatus").mockResolvedValue(idle);
+    render(<DebugSection settings={settings} onSaved={() => {}} />);
+    expect(await screen.findByText(/Usage statistics live in the performance-trace export/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export statistics" })).not.toBeInTheDocument();
   });
 
   it(" Clear runs through the inline confirm and reports", async () => {
@@ -115,13 +126,9 @@ describe("DebugSection", () => {
     expect(await screen.findByText("Cleared the recorded traces.")).toBeInTheDocument();
   });
 
-  it("exports download files with span/review counts", async () => {
+  it("trace export downloads a file with the span count", async () => {
     mockUrls();
     vi.spyOn(api, "traceStatus").mockResolvedValue({ recording: true, spans: 1, bytes: 128, capped: false });
-    vi.spyOn(api, "statsExport").mockResolvedValue({
-      schemaVersion: 2 as const, reviews: [], jobs: [],
-      totals: { reviews: 0, jobs: 0, failures: 0, repairs: 0, tokens: { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 } },
-    });
     vi.spyOn(api, "traceExport").mockResolvedValue({
       resourceSpans: [
         {
@@ -137,11 +144,9 @@ describe("DebugSection", () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     try {
       render(<DebugSection settings={settings} onSaved={() => {}} />);
-      fireEvent.click(await screen.findByRole("button", { name: "Export statistics" }));
-      expect(await screen.findByText("Exported 0 reviews and 0 jobs.")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Export traces" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Export traces" }));
       expect(await screen.findByText(/Exported 1 span as OTLP JSON/)).toBeInTheDocument();
-      expect(click).toHaveBeenCalledTimes(2);
+      expect(click).toHaveBeenCalledTimes(1);
     } finally {
       click.mockRestore();
       vi.unstubAllGlobals();
