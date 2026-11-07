@@ -94,11 +94,24 @@ function buildCatalog() {
   }));
 }
 
-function run(cmd, args, cwd) {
-  const r = spawnSync(cmd, args, { cwd, stdio: "inherit" });
+function run(cmd, args, cwd, extraEnv = {}) {
+  const r = spawnSync(cmd, args, { cwd, stdio: "inherit", env: { ...process.env, ...extraEnv } });
   if (r.error) throw r.error;
   return r.status ?? 1;
 }
+
+/**
+ * Browser runs go through one throttled core (#363 §6, issue #195):
+ * `UNVIBE_E2E_WORKERS=1` serialises the browsers and
+ * `UNVIBE_E2E_CPU_THROTTLE=4` slows each page ~4x through CDP, so the
+ * affected run catches timing races that only show on slow runners
+ * (like the j352 CI race) before they reach CI. Every journey wires
+ * `cpuThrottleFromEnv(page)`, so the throttle bites everywhere.
+ */
+const BROWSER_ENV = {
+  UNVIBE_E2E_WORKERS: "1",
+  UNVIBE_E2E_CPU_THROTTLE: "4",
+};
 
 function main() {
   const argv = process.argv.slice(2);
@@ -141,12 +154,15 @@ function main() {
     console.log("  mise run check");
     console.log("  mise run build && mise run demo:build");
     console.log(
-      `  [packages/web] npx playwright test --only-changed=${base}` +
+      "  browser runs use UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4 (one throttled core, #363 §6)",
+    );
+    console.log(
+      `  [packages/web] UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4 npx playwright test --only-changed=${base}` +
         (forwarded.length > 0 ? ` ${forwarded.join(" ")}` : ""),
     );
     if (runnerPaths.length > 0) {
       console.log(
-        `  [packages/web] npx playwright test ${runnerPaths.join(" ")}` +
+        `  [packages/web] UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4 npx playwright test ${runnerPaths.join(" ")}` +
           (forwarded.length > 0 ? ` ${forwarded.join(" ")}` : ""),
       );
     }
@@ -159,10 +175,10 @@ function main() {
   if (code !== 0) return code;
   code = run("mise", ["run", "demo:build"], ROOT);
   if (code !== 0) return code;
-  code = run("npx", ["playwright", "test", `--only-changed=${base}`, ...forwarded], WEB_DIR);
+  code = run("npx", ["playwright", "test", `--only-changed=${base}`, ...forwarded], WEB_DIR, BROWSER_ENV);
   if (code !== 0) return code;
   if (runnerPaths.length > 0) {
-    code = run("npx", ["playwright", "test", ...runnerPaths, ...forwarded], WEB_DIR);
+    code = run("npx", ["playwright", "test", ...runnerPaths, ...forwarded], WEB_DIR, BROWSER_ENV);
     if (code !== 0) return code;
   } else {
     console.log("test:affected: no trigger specs, skipping the second invocation.");

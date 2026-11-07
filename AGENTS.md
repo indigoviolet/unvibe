@@ -45,6 +45,9 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - The full gate runs once per branch, with current `main` merged in, before the merge or when the machine is free, and never several at the same time (one full run at a time across the machine; `gate` is a plain task chain, no lock script). A supervisor runs it for its agents. Nothing merges into `main` without it passing on that tree.
 - A preview may be published on affected tests alone. The issue comment then says which affected tests ran and "full gates not yet run".
 - When a gate fails: fix, re-run only the failed specs (`mise run gate:failed` — Playwright `--last-failed`; failed vitest files by name, vitest keeps no last-failed state) until green, then ONE final full gate — not a full re-run per fix (issue #358).
+- When a test fails, name the cause or race in the fix (what rendered, loaded or polled late, and what the assert now waits on). Raising a timeout or adding a sleep is not a fix.
+- A test fixed twice for timing gets rewritten or deleted on the second fix — the third strike is the rewrite, not a third patch.
+- A CI-only flake is root-caused the same day (throttle locally with `UNVIBE_E2E_CPU_THROTTLE=4` and repeat until it shows) or quarantined with `test.skip` + a tracking issue the same day. It never blocks a release unresolved: quarantined tests are listed in the issue comment at publish time.
 - A defect you know about (seen in a frame, a test, or review) gets fixed before publishing. Never ship it with a note calling it "minor": it is usually easy to fix.
 - Before saying a published preview contains a change, check the published ref's built files (e.g. `git show <preview ref>:packages/web/dist/assets/index-*.js | grep` for a string the change adds or removes) and say that you did.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict + open list; update it when behaviour changes.

@@ -32,7 +32,7 @@ const SYNC_SPEC = "packages/web/e2e/static-demo-sync.spec.ts";
 const J1_SPEC = "packages/web/e2e/journeys/j1-open-and-read.spec.ts";
 const J311_SPEC = "packages/web/e2e/journeys/j311-data-reset.spec.ts";
 const J5_SPEC = "packages/web/e2e/journeys/j5-settings-versions.spec.ts";
-const TOUR_SPEC = "packages/web/e2e/visual-tour.spec.ts";
+const TOUR_SPEC = "packages/web/e2e/tour/visual-tour.spec.ts";
 const COMMENTS_SPEC = "packages/web/e2e/comments.spec.ts";
 
 function catalog() {
@@ -100,6 +100,7 @@ describe("markers", () => {
     expect(usesDataReset("update-data-reset-warning")).toBe(true);
     expect(usesDataReset("plain spec")).toBe(false);
     expect(isVisualTourSpec(TOUR_SPEC)).toBe(true);
+    expect(isVisualTourSpec("packages/web/e2e/tour/visual-tour-start.spec.ts")).toBe(true);
     expect(isVisualTourSpec(GUIDE_SPEC)).toBe(false);
   });
 
@@ -146,14 +147,15 @@ describe("selectTriggerSpecs", () => {
     expect(out).toEqual([...out].sort((a, b) => (a.file < b.file ? -1 : 1)));
   });
 
-  it("a style change pulls only the visual tour", () => {
-    const out = selectTriggerSpecs(["packages/web/src/styles/tokens.css"], catalog());
-    expect(out.map((s) => s.file)).toEqual([TOUR_SPEC]);
+  // The tour is on-demand only (`mise run visual-tour`, #363 package D):
+  // styles/UI changes pull nothing in the affected gate run. The tour
+  // files still document the blind spot (see TRIGGER_TABLE `why`).
+  it("a style change pulls nothing (tour is on-demand)", () => {
+    expect(selectTriggerSpecs(["packages/web/src/styles/tokens.css"], catalog())).toEqual([]);
   });
 
-  it("a shared-ui change pulls only the visual tour", () => {
-    const out = selectTriggerSpecs(["packages/web/src/ui/TopBar.tsx"], catalog());
-    expect(out.map((s) => s.file)).toEqual([TOUR_SPEC]);
+  it("a shared-ui change pulls nothing (tour is on-demand)", () => {
+    expect(selectTriggerSpecs(["packages/web/src/ui/TopBar.tsx"], catalog())).toEqual([]);
   });
 
   it("a data-format change pulls the reset specs", () => {
