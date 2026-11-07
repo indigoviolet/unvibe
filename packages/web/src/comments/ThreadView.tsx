@@ -771,7 +771,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             <Icon name="open" />
           </button>
         ) : null}
-        <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete"} aria-label="Delete" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
+        <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete thread"} aria-label="Delete thread" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
           <Icon name="trash" />
         </button>
         {isNew ? null : (
@@ -909,7 +909,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
+      ) : suggested && !quoteChip ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}

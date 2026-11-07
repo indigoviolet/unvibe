@@ -559,7 +559,7 @@ test.describe("static-demo sync", () => {
       await idle.click();
       const card = hunk.locator("[data-thread]").first();
       await expect(card).toBeVisible({ timeout: 30_000 });
-      await card.getByRole("button", { name: "Delete" }).click();
+      await card.getByRole("button", { name: "Delete thread" }).click();
       await expect(idle).toHaveCount(0, { timeout: 30_000 });
       await hunk.getByRole("button", { name: "Summarize" }).click();
       await expect(idle).toBeVisible({ timeout: 90_000 });

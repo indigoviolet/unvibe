@@ -316,7 +316,7 @@ describe("ThreadView suggested comments (issue #163)", () => {
     render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={s} /></MemoryRouter>);
     expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
     expect(screen.getByRole("button", { name: /Add to Outbox/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete thread" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 

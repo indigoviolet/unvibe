@@ -55,7 +55,7 @@ test.describe("J13 hunk summaries", () => {
 
     // Delete: thread and its summary are both gone (seeded suggestion
     // threads elsewhere in the file are untouched).
-    await card.getByRole("button", { name: "Delete" }).click();
+    await card.getByRole("button", { name: "Delete thread" }).click();
     await expect(connFile.locator(`.dhunk section.ithread[data-thread="${cardId}"]`)).toHaveCount(0, { timeout: 15_000 });
     await expect(connFile.locator("p[data-hunksum]")).toHaveCount(summariesBefore - 1, { timeout: 15_000 });
 

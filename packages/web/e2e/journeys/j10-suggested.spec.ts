@@ -91,11 +91,13 @@ test.describe("J10 suggested comments and questions", () => {
     await selectText(page, `.ithread[data-thread="${sugHit.a.id}"]`, askWord);
     await expect(page.locator("#selbar")).toBeVisible();
     await page.locator('#selbar [data-act="ask"]').click();
-    await expect(page.locator('#right .ithread[data-pending-thread]')).toHaveCount(1);
-    const askComposer = thread.locator(".ithread[data-pending-thread]");
-    await expect(askComposer).toBeVisible({ timeout: 10_000 });
-    await askComposer.locator("textarea").fill("Why this suggestion?");
-    await askComposer.getByRole("button", { name: "Ask" }).click();
+    // Issue #364: Ask inside a thread uses the thread's own Reply box —
+    // the quote arrives as a removable chip, never a second composer.
+    await expect(page.locator('#right .ithread[data-pending-thread]')).toHaveCount(0);
+    const chip = thread.locator("[data-quote-chip]");
+    await expect(chip).toBeVisible({ timeout: 10_000 });
+    await thread.locator('textarea[aria-label="Reply"]').fill("Why this suggestion?");
+    await thread.getByRole("button", { name: "Reply", exact: true }).click();
     const askReply = thread.locator('[data-reply][data-kind="ask"]');
     await expect(askReply).toBeVisible({ timeout: 30_000 });
     await expect(askReply.locator(".exp-b")).not.toBeEmpty({ timeout: 90_000 });
@@ -124,7 +126,7 @@ test.describe("J10 suggested comments and questions", () => {
     await expect(thread).toBeVisible({ timeout: 10_000 });
     const threadId = await thread.getAttribute("data-thread");
     expect(threadId).toBeTruthy();
-    await thread.getByRole("button", { name: "Delete" }).click();
+    await thread.getByRole("button", { name: "Delete thread" }).click();
     await expect(page.locator(`.ithread[data-thread="${threadId}"]`)).toHaveCount(0, { timeout: 10_000 });
     await page.reload();
     await expect(page.locator("#right")).toBeVisible({ timeout: 30_000 });

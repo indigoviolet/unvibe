@@ -188,7 +188,7 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
             onClick={() => onOpenBucket(b)}
           >
             <Icon name="comment" />
-            {n > 1 ? <span className="tmargin-n">{n}</span> : null}
+            {n > 1 ? <span className="tmargin-n" data-n={n} aria-hidden="true" /> : null}
           </button>
         );
       })}
