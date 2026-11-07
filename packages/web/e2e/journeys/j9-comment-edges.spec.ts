@@ -96,10 +96,10 @@ test.describe("J9 comment edges", () => {
     await expect(openThread).toBeVisible({ timeout: 10_000 });
 
     // Delete removes them for good (both threads, leaving a clean slate).
-    await openThread.getByRole("button", { name: "Delete" }).click();
+    await openThread.getByRole("button", { name: "Delete thread" }).click();
     await expect(openThread).toHaveCount(0, { timeout: 10_000 });
     const second = page.locator(`[id="F-${appKey}"] .ithread[data-thread]`, { hasText: "A second thought on this line." });
-    await second.getByRole("button", { name: "Delete" }).click();
+    await second.getByRole("button", { name: "Delete thread" }).click();
     await expect(second).toHaveCount(0, { timeout: 10_000 });
     await page.reload();
     await expect(page.locator(`[id="F-${appKey}"]`)).toBeVisible({ timeout: 30_000 });
