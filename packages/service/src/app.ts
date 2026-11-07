@@ -281,12 +281,14 @@ export function resolvePromptsDirForBundle(): string {
 }
 
 /**
- * True inside the vitest suite (vitest sets both; either one counts).
+ * True inside the vitest suite (vitest sets both; either one counts) and
+ * in every test-spawned service (the e2e harness sets `UNVIBE_TEST=1`,
+ * issue #370 — Playwright services have no VITEST marker).
  * The composition root uses this to refuse the production fallbacks —
  * tests must never silently start real agents or real CLIs (issue #119).
  */
 export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test";
+  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test" || env.UNVIBE_TEST === "1";
 }
 
 export function buildApp(opts: BuildAppOptions): AppContext {
@@ -302,7 +304,9 @@ export function buildApp(opts: BuildAppOptions): AppContext {
   const needsTestAgents = underTest && (process.env.UNVIBE_AGENT ?? "") === "";
   // Issue #109: the production runner runs the service's own git/gh
   // through their resolved real executables, never a version-manager shim
-  // that would read a review worktree's config. Injected runners (tests,
+  // that would read a review worktree's config. Under test (vitest or
+  // UNVIBE_TEST, issue #370) the guard refuses real gh/agent CLIs and
+  // confines git/gh to the harness fake bin dir. Injected runners (tests,
   // doctor diagnostics) are used exactly as given.
   const runner =
     opts.runner ??

@@ -156,6 +156,38 @@ export class FakeCommandRunner implements CommandRunner {
 const TEST_BLOCKED_COMMANDS = new Set(["gh", "claude", "codex", "pi"]);
 
 /**
+ * True when `candidate` lives inside `dir` (both resolved, symlinks
+ * followed best-effort). Guards the harness-fake check below against
+ * `..` escapes and `/tmp` vs `/private/tmp` aliases.
+ */
+function isInsideDir(candidate: string, dir: string): boolean {
+  const resolve = (p: string): string => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const rel = path.relative(resolve(dir), resolve(candidate));
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/** First executable `name` on `pathValue`, or null. Node builtins only
+ * (this file is bundled into the update helper, see above). */
+function findExecutableOnPath(name: string, pathValue: string): string | null {
+  for (const dir of pathValue.split(path.delimiter).filter(Boolean)) {
+    const full = path.join(dir, name);
+    try {
+      fs.accessSync(full, fs.constants.X_OK);
+      if (fs.statSync(full).isFile()) return full;
+    } catch {
+      // keep looking
+    }
+  }
+  return null;
+}
+
+/**
  * Test backstop for the injectable command runner (issue #119): refuses
  * the blocked commands loudly instead of spawning the developer's real
  * tools, and delegates everything else (`git`, login shells, `d2`, …) to
@@ -163,12 +195,29 @@ const TEST_BLOCKED_COMMANDS = new Set(["gh", "claude", "codex", "pi"]);
  * test that forgets to inject a `FakeCommandRunner` fails with "inject a
  * fake" instead of hitting the network. Explicitly injected runners
  * (including `RealCommandRunner`) are never wrapped.
+ *
+ * Issue #370: under `UNVIBE_TEST` (every test-spawned service, vitest or
+ * Playwright) `gh` and `git` are additionally confined to the harness
+ * fake bin dir (`UNVIBE_TEST_BIN_DIR`, set by the e2e harness): any `gh`
+ * or `git` binary resolving outside it is refused loudly — even when the
+ * inherited PATH was polluted (e.g. a malformed fake-shell probe letting
+ * the real login PATH through). Agent CLIs stay fully blocked as before.
  */
 export class TestCommandGuard implements CommandRunner {
-  constructor(private readonly inner: CommandRunner = new RealCommandRunner()) {}
+  constructor(
+    private readonly inner: CommandRunner = new RealCommandRunner(),
+    private readonly opts: { testBinDir?: string } = {},
+  ) {}
 
   async run(cmd: string, opts: RunOptions): Promise<RunResult> {
     const base = cmd.split("/").pop() ?? cmd;
+    const binDir = this.opts.testBinDir ?? process.env.UNVIBE_TEST_BIN_DIR ?? "";
+    // Issue #370: with a harness fake bin dir, `gh`/`git` resolve to the
+    // fakes (allowed through) or are refused loudly — never the real ones.
+    if (binDir !== "" && (base === "gh" || base === "git")) {
+      this.throwUnlessInsideBinDir(cmd, opts, base, binDir);
+      return this.inner.run(cmd, opts);
+    }
     if (TEST_BLOCKED_COMMANDS.has(base)) {
       throw new Error(
         `TestCommandGuard: refusing to spawn real "${base}" in tests ` +
@@ -177,5 +226,22 @@ export class TestCommandGuard implements CommandRunner {
       );
     }
     return this.inner.run(cmd, opts);
+  }
+
+  /** Throw unless `cmd` resolves inside the harness fake bin dir. */
+  private throwUnlessInsideBinDir(cmd: string, opts: RunOptions, base: string, binDir: string): void {
+    const pathValue = opts.env?.PATH ?? process.env.PATH ?? "";
+    const candidate =
+      path.isAbsolute(cmd) || cmd.includes(path.sep)
+        ? path.resolve(cmd)
+        : findExecutableOnPath(cmd, pathValue);
+    if (!candidate || !isInsideDir(candidate, binDir)) {
+      throw new Error(
+        `TestCommandGuard: refusing to spawn "${base}" outside the harness fake bin dir ` +
+          `(${cmd} ${opts.args.join(" ")}; UNVIBE_TEST_BIN_DIR=${binDir}, ` +
+          `resolved=${candidate ?? "(not found on PATH)"}). ` +
+          `Test services must resolve gh/git from the harness fakes (issue #370).`,
+      );
+    }
   }
 }
