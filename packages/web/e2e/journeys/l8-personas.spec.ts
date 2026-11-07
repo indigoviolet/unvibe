@@ -630,6 +630,9 @@ test.describe("L8 pi provider", () => {
       // from UNVIBE_PORT, and `:0` would leave agent sessions with dead
       // review-tool URLs.
       port: "4529",
+      // Issue #370: the fake pi lives in binDir, the blocking stubs in
+      // blockedDir — both are harness fakes the service may run.
+      testBinDir: [binDir, blockedDir],
       extraEnv: {
         HOME: scratchHome,
         // Fake pi first, then the blocking stubs, then the rest: no real
@@ -768,6 +771,8 @@ test.describe("L8 pi provider", () => {
       liveRunner: true,
       label: "l8-plain",
       port: "4530",
+      // Issue #370: the blocking stubs are harness fakes (see above).
+      testBinDir: [blockedDir],
       extraEnv: {
         HOME: scratchHome,
         PATH: `${blockedDir}${path.delimiter}${process.env.PATH ?? ""}`,

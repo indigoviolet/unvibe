@@ -1158,7 +1158,9 @@ test.describe("L3 demo guide reading", () => {
       await expect.soft(link).toBeVisible({ timeout: 30_000 });
       const name = await link.getAttribute("data-glossary");
       expect.soft(name).toBeTruthy();
-      await link.hover();
+      // B5: hover only after scroll quiet, or the popover ignores the
+      // stationary pointer and nothing re-triggers it (throttle flake).
+      await hoverFresh(page, link);
       // Issue #341: the re-recorded glossary redefines the terms; the first
       // central link is obs-fold now ("headers view" is gone).
       await expect.soft(page.locator("#pop")).toContainText("Obsolete HTTP header line folding", { timeout: 30_000 });
@@ -1170,7 +1172,7 @@ test.describe("L3 demo guide reading", () => {
       await openReview(page, readReview);
       const link = page.locator("#C-central a.gx[data-glossary]").first();
       await expect.soft(link).toBeVisible({ timeout: 30_000 });
-      await link.hover();
+      await hoverFresh(page, link);
       const pop = page.locator("#pop");
       // Issue #341: see above — first central link is obs-fold now.
       await expect.soft(pop).toContainText("Obsolete HTTP header line folding", { timeout: 30_000 });
@@ -1255,7 +1257,8 @@ test.describe("L3 demo guide reading", () => {
       const decoration = await link.evaluate((el) => getComputedStyle(el).textDecorationStyle);
       expect.soft(decoration).toBe("dotted");
       await expect.soft(link.locator("svg.thg")).toHaveCount(0);
-      await link.hover();
+      // B5: hover only after scroll quiet (throttle flake — see above).
+      await hoverFresh(page, link);
       const pop = page.locator("#pop");
       await expect.soft(pop.locator(".pv-label", { hasText: "Glossary" })).toBeVisible({ timeout: 30_000 });
     });

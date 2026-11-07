@@ -236,6 +236,7 @@ test.describe("L5 comments and submit on a scratch PR", () => {
     logDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l5-gh-"));
     fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-l5-bin-"));
     writeFakeGhSubmit(fakeBin, logDir, repo.headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       label: "l5submit",
@@ -446,6 +447,7 @@ test.describe("L5 submit mix on the demo", () => {
     test.setTimeout(300_000);
     // Restart with fake gh first on PATH (login-shell stub, as in j3).
     writeFakeGhAnyPr(fakeBin, logDir, headSha);
+    writeFakeGitOffline(fakeBin, realGitPath());
     const fakeShell = writeFakeShell(fakeBin);
     svc = await startService(dataDir, {
       agent: "replay",
