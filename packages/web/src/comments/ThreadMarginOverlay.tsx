@@ -4,6 +4,12 @@
  * on the paragraph's first line when the exact words can't be placed.
  * Clicking it opens the thread and scrolls to it.
  *
+ * Issue #374: the icon is one compact pill (glyph + count, never
+ * overlapping) sitting inside the card's reserved gutter
+ * (`.has-threads`), so it is never clipped by the card or pane edge.
+ * It is the single entry point for the paragraph's threads — the
+ * end-of-block bubble is gone (see `BlockMarkers`).
+ *
  * React owns the buttons (they never disappear on re-render — unlike the
  * DOM-surgery highlight marks, which come and go with re-anchoring); a
  * layout effect only nudges each button's vertical offset to the
@@ -67,8 +73,8 @@ function fallbackTop(scope: Element, thread: Thread): number | null {
  * Issue #364 follow-up (found by the 218 tour): threads anchored on the
  * same line would stack their icons pixel-on-pixel, and no stacked icon
  * is clickable. Buttons less than one icon apart share a bucket: one
- * button with a count badge, opening every thread in the bucket. Like
- * the end-of-block bubble, the count reads the bucket, never the thread.
+ * pill with a count, toggling every thread in the bucket. The count
+ * reads the bucket, never the thread.
  */
 const BUCKET_PX = 20;
 
@@ -88,6 +94,15 @@ export function bucketsFor(threads: Thread[], tops: Record<string, number>): Buc
     else out.push({ top: tops[t.id] as number, threads: [t] });
   }
   return out;
+}
+
+/**
+ * Issue #374: the single computed thread count — the number the margin
+ * pill shows and the tooltip names. One pure function, so the icon and
+ * every assert read the same count.
+ */
+export function marginLabel(n: number): string {
+  return n === 1 ? "1 thread" : `${n} threads`;
 }
 
 export function ThreadMarginOverlay({ threads, readOnly }: Props) {
@@ -135,27 +150,36 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
     };
   }, [threads]);
 
-  const onOpenBucket = (bucket: Bucket): void => {
+  // Issue #374: the pill is the single entry point, so it keeps the old
+  // end-of-block toggle (#262): all open closes them all (no scroll — the
+  // pill stays where it is), otherwise closed ones open and the first
+  // scrolls into view. The tooltip names the count ("3 threads").
+  const onToggleBucket = (bucket: Bucket): void => {
     const reviewId = useReview.getState().snapshot?.review.id;
     if (!reviewId || readOnly) return;
     const snap = useReview.getState().snapshot;
-    const closed = bucket.threads.filter((t) => {
-      const live = snap?.annotations.find((a) => a.id === t.id);
-      return live && !live.open;
-    });
-    for (const t of closed) {
-      api.updateComment(reviewId, t.id, { open: true }).catch((err: unknown) => {
-        toast(`Couldn't open the thread: ${friendlyError(err)}`);
-      });
+    const liveOf = (id: string): Thread | undefined => snap?.annotations.find((a) => a.id === id) as Thread | undefined;
+    const allOpen = bucket.threads.length > 0 && bucket.threads.every((t) => liveOf(t.id)?.open ?? t.open);
+    for (const t of bucket.threads) {
+      const live = liveOf(t.id);
+      if (!live) continue;
+      if (allOpen && live.open) {
+        api.updateComment(reviewId, t.id, { open: false }).catch((err: unknown) => {
+          toast(`Couldn't close the thread: ${friendlyError(err)}`);
+        });
+      } else if (!allOpen && !live.open) {
+        api.updateComment(reviewId, t.id, { open: true }).catch((err: unknown) => {
+          toast(`Couldn't open the thread: ${friendlyError(err)}`);
+        });
+      }
     }
     const first = bucket.threads[0];
-    if (!first) return;
-    const anyClosed = closed.length > 0;
+    if (!first || allOpen) return;
     window.setTimeout(
       () => {
         document.getElementById(first.id)?.scrollIntoView({ block: "nearest" });
       },
-      anyClosed ? 120 : 0,
+      120,
     );
   };
 
@@ -175,20 +199,20 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
             type="button"
             className="tmargin-btn"
             data-thr-margin={ids}
-            data-tip={n > 1 ? `Open ${n} threads` : first.open ? "Scroll to thread" : "Open thread"}
+            data-tip={marginLabel(n)}
             data-tip-place="right"
             aria-label={
               n > 1
-                ? `Open ${n} threads, starting with: ${first.anchor.quotedText || "comment"}`
+                ? `Toggle ${n} threads, starting with: ${first.anchor.quotedText || "comment"}`
                 : first.open
                   ? `Scroll to thread: ${first.anchor.quotedText || "comment"}`
                   : `Open thread: ${first.anchor.quotedText || "comment"}`
             }
             style={{ top: b.top }}
-            onClick={() => onOpenBucket(b)}
+            onClick={() => onToggleBucket(b)}
           >
             <Icon name="comment" />
-            {n > 1 ? <span className="tmargin-n" data-n={n} aria-hidden="true" /> : null}
+            <span className="tmargin-n">{n}</span>
           </button>
         );
       })}

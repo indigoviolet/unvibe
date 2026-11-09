@@ -9,10 +9,10 @@
  *   (`mark.anc[data-thr]`, reusable anchor-highlighting), toggles
  *   threads from mark clicks, outlines anchors while hovering open threads,
  *   and reveals footnote chips (`[data-tfallback]`, issue #72) for quoted
- *   threads whose highlight landed nowhere (the bare bubble marker now
- *   holds only threads that never had a quote, so highlighted ids never
- *   need pruning out of it — and pruning would mean removing
- *   React-rendered nodes behind React's back, issue #101).
+ *   threads whose highlight landed nowhere (issue #374: there is no
+ *   end-of-block bubble, so highlighted ids never need pruning out of
+ *   one — and pruning would mean removing React-rendered nodes behind
+ *   React's back, issue #101).
  * - `GuideBlockThreads`: rendered per block (one additive line in
  *   `CardView`). Shows open threads under their block plus the pending
  *   composer the selection toolbar requests. Guide threads start closed;
@@ -103,10 +103,10 @@ export function GuideThreadHooks() {
   // store patches leave depth 1, inside one selection-preserving window.
   // Expansion marks (`mark.anc.ex/exl`, `a.cx.pg`) belong to
   // ExpansionHighlights and are never touched (narrow selector).
-  // Markers are never pruned here: the bubble lists only unquoted threads
-  // (see `BlockMarkers`), so highlighted ids cannot occur in it — and
-  // removing React-rendered marker nodes imperatively is exactly the
-  // `removeChild` crash of issue #101.
+  // Markers are never pruned here: footnote chips live in `.lo` and are
+  // toggled via `[data-tfallback]` below — never removed — and removing
+  // React-rendered marker nodes imperatively is exactly the `removeChild`
+  // crash of issue #101.
   useEffect(() => {
     const page = document.getElementById("page");
     if (!page) return;
