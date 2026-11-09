@@ -12,6 +12,7 @@
  * per-area route signatures.
  */
 import type { AgentRunner } from "@unvibe/shared";
+import type { TraceRecorder } from "../traces/recorder.js";
 import type { JobQueue } from "../jobs/index.js";
 import type { McpRegistry } from "../mcp/index.js";
 import type { Pipeline } from "../pipeline/index.js";
@@ -67,6 +68,11 @@ export interface RouteDeps {
   onDataFormatReset?: () => void;
   /** SERVICE_VERSION, set by `server.ts` for build identity in update routes. */
   serviceVersion?: string;
+  /**
+   * Opt-in performance traces (issue #356); absent in unwired tests,
+   * null in lean builds (no OTel) and tests that do not wire tracing.
+   */
+  traces?: TraceRecorder | null;
   /**
    * Native folder picker overrides (#26): platform + env for the
    * `POST /api/repos/pick-folder` dialog. Production omits both (real

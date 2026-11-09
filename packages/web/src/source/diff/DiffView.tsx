@@ -818,10 +818,23 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
   // own `versionStatus` (set when a refresh created a newer version).
-  // Hidden while viewing an older version.
-  const bannerCounts: BannerCounts | null = readOnly
+  // Hidden while viewing an older version. Issue #367: the banner stays
+  // mounted after an update pass (now reading "Updated to vN"), so the
+  // baseline label rides along for the up-to-date state.
+  const rawCounts: BannerCounts | null = readOnly
     ? null
     : (banner ?? (snapshot.versionStatus ? statusToBanner(snapshot.versionStatus) : null));
+  const bannerCounts: BannerCounts | null =
+    rawCounts === null
+      ? null
+      : {
+          ...rawCounts,
+          sinceLabel:
+            rawCounts.sinceLabel ??
+            (snapshot.sinceBaseline !== undefined
+              ? sinceBaselineLabel(snapshot.sinceBaseline)
+              : `v${rawCounts.fromVersion}`),
+        };
 
   return (
     <div>

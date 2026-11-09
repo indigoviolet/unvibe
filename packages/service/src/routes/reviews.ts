@@ -72,6 +72,7 @@ import { hasAnySubmitLease } from "../update/index.js";
 import { fetchExistingComments, fetchLatestUserReview, fetchPrConversation } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
 import { isNoneRunner } from "../agent/factory.js";
+import { hasGuideCards, reviewAttributes, traceRefresh, traceSpan, watchOpenToFirstCard } from "../traces/index.js";
 
 export interface ReviewsRouteDeps {
   baseRunner?: UpdateBaseRunner;
@@ -385,8 +386,38 @@ type BeginCreateResult =
  * or failed, #149 once ready), or insert the row + loading snapshot and
  * start the background ingest. The demo fixture is not handled here
  * (callers branch before calling).
+ *
+ * Issue #356: the wrapper records one `ingest` span per create (review
+ * id hashed, nothing else); reuses share the same span shape. Issue
+ * #366: the span also carries the review's stats-shaped attributes.
  */
 async function beginReviewFromSource(
+  ctx: ServiceContext,
+  opts: { pipeline?: Pipeline; autoPipeline?: boolean },
+  pendingIngests: Map<string, string>,
+  inFlightCreates: Map<string, Promise<BeginCreateResult>>,
+  args: BeginCreateArgs,
+): Promise<BeginCreateResult> {
+  const span = traceSpan("ingest");
+  try {
+    const out = await beginReviewFromSourceInner(ctx, opts, pendingIngests, inFlightCreates, args);
+    if (out.ok) {
+      span.setAttribute("review", out.snapshot.review.id);
+      try {
+        for (const [k, v] of Object.entries(reviewAttributes(out.snapshot))) span.setAttribute(k, v);
+      } catch {
+        // Attribute shaping never breaks ingest.
+      }
+    }
+    span.end();
+    return out;
+  } catch (err) {
+    span.end();
+    throw err;
+  }
+}
+
+async function beginReviewFromSourceInner(
   ctx: ServiceContext,
   opts: { pipeline?: Pipeline; autoPipeline?: boolean },
   pendingIngests: Map<string, string>,
@@ -922,6 +953,16 @@ export async function registerReviews(
     // Opening a review marks it recently opened for the front-screen list
     // (most recent first). Version views don't reorder the list.
     if (query.version === undefined) touchReviewOpened(ctx.db, id);
+    // Issue #356: review-open-to-first-card — watch for the first guide
+    // content when the opened review has no cards yet (version views and
+    // already-guided opens return below without watching).
+    if (query.version === undefined && !hasGuideCards(snapshot)) {
+      try {
+        watchOpenToFirstCard(ctx.bus, id);
+      } catch {
+        // Tracing never breaks the open path.
+      }
+    }
     // Merge live jobs so the Jobs view + usage totals stay current without
     // waiting for a patch event.
     const jobs = (deps as RouteDeps).jobs;
@@ -989,12 +1030,23 @@ export async function registerReviews(
 
     let result;
     try {
-      result = await refreshReview(
-        { runner: ctx.runner, db: ctx.db, reviews: ctx.reviews },
-        repo.localPath,
+      // Issue #356: one `refresh` span per refresh (review id hashed).
+      result = await traceRefresh(
         id,
-        row,
-        snapshot,
+        () =>
+          refreshReview(
+            { runner: ctx.runner, db: ctx.db, reviews: ctx.reviews },
+            repo.localPath,
+            id,
+            row,
+            snapshot,
+          ),
+        // Issue #366: the refresh span carries the review's
+        // stats-shaped attributes from the landed snapshot.
+        () => {
+          const landed = ctx.reviews.getSnapshot(id);
+          return landed ? reviewAttributes(landed) : undefined;
+        },
       );
     } catch (err) {
       return reply.code(502).send({ error: `refresh failed: ${(err as Error).message}` });

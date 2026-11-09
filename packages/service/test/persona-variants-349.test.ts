@@ -76,6 +76,7 @@ const ASK_ON_VARIANT = `The persona's answer about the fold.
 const PERSONA = {
   id: "historian",
   name: "Historian",
+  followMain: false,
   color: "#C2410C",
   lens: "You are the keeper of this codebase's history. Mention the year 1999 in every run.",
   cardInstruction: "",

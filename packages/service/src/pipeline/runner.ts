@@ -440,7 +440,8 @@ export class Pipeline {
   /**
    * Issue #349 step 2: the agent role for a turn — the persona's
    * provider/model (effort is the adapter default: personas name no
-   * effort) or the main guide role. The job stamp, the base key and the
+   * effort), the main pick for a persona with `followMain` (issue
+   * #359), or the main guide role. The job stamp, the base key and the
    * fork all use this, so the runner reaches the persona's model.
    */
   private roleFor(settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>, persona?: Persona): {
@@ -448,7 +449,15 @@ export class Pipeline {
     model: string;
     effort: string;
   } {
-    if (persona) return { provider: persona.provider, model: persona.model, effort: "" };
+    if (persona) {
+      // Issue #359: a persona following the main model runs on the
+      // effective main pick (live-resolved like every other main
+      // consumer); effort stays the adapter default, like all personas.
+      if (persona.followMain) {
+        return { provider: settings.main.provider, model: settings.main.model, effort: "" };
+      }
+      return { provider: persona.provider, model: persona.model, effort: "" };
+    }
     return { provider: settings.main.provider, model: settings.main.model, effort: settings.main.effort };
   }
 
@@ -511,6 +520,10 @@ export class Pipeline {
     }
     const template = this.render(o.template, variables);
     let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
+    // Issue #359 (owner decision, option B): same-model personas fork
+    // main's shared base, so the lens travels at the start of every
+    // persona turn's prompt — uniformly, whatever the persona's model.
+    if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -544,8 +557,10 @@ export class Pipeline {
             ctx.setPromptSnapshot(snapshotText);
             // #122: the base builds here, inside the job — after the job id
             // went out. forkFor ensures the same base again (a live-cache hit).
-            // Issue #349 step 2: persona turns ensure and fork the
-            // persona's own base (its provider/model), never the main one.
+            // Issue #349 step 2: persona turns ensure and fork the base
+            // for their provider/model — main's base when the persona
+            // follows the main model (issue #359, option B: the lens
+            // travels at the start of the turn prompt instead).
             const base = o.persona
               ? await this.ensureBaseForRole(o.reviewId, o.persona)
               : await this.ensureBase(o.reviewId);
@@ -715,6 +730,9 @@ export class Pipeline {
                   this.render(o.retryTemplate, retryVars),
                   o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
                 );
+                // Issue #359 (owner decision, option B): the retry is a
+                // persona turn too, so it carries the lens the same way.
+                if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
                 snapshotText = `${snapshotText}\n\n--- retry turn ---\n${prompt}`;
               }
               continue;

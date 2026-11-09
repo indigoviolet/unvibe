@@ -2,6 +2,7 @@
 import { PINNED_EXTENSION_ID } from "@unvibe/shared";
 import { DEFAULT_IDLE_MS } from "./lifecycle/index.js";
 import { assertNotRealHomeForWrite, isTestRun, realDataDir, realHomeDir } from "./update/service-manager.js";
+import { tracesDir } from "./traces/paths.js";
 
 export interface ServiceConfig {
   /**
@@ -39,7 +40,7 @@ export function defaultDataDir(env: NodeJS.ProcessEnv = process.env): string {
  * Exported so `serve()` can check the resolved config before any write.
  */
 export function assertNotRealDataDir(dataDir: string, env: NodeJS.ProcessEnv = process.env): void {
-  assertNotRealHomeForWrite({ dataDir }, env);
+  assertNotRealHomeForWrite({ dataDir, tracesDir: tracesDir(dataDir) }, env);
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -51,9 +52,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   // is refused here. Pure port-only reads pass a bare env without markers
   // (e.g. `{ UNVIBE_PORT }`), so they are unaffected.
   if (env.UNVIBE_DATA_DIR !== undefined && isTestRun(env)) {
-    assertNotRealHomeForWrite({ dataDir }, env);
+    assertNotRealHomeForWrite({ dataDir, tracesDir: tracesDir(dataDir) }, env);
   } else if (env.UNVIBE_TEST === "1") {
-    assertNotRealHomeForWrite({ dataDir }, env);
+    assertNotRealHomeForWrite({ dataDir, tracesDir: tracesDir(dataDir) }, env);
   }
   return {
     host: "127.0.0.1",

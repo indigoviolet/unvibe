@@ -16,7 +16,16 @@ import type { Pipeline } from "../runner.js";
 import type { SessionManager } from "../../sessions/manager.js";
 import type { SettingsStore } from "../../settings/index.js";
 import type { SharedContextService } from "../../sharedctx/service.js";
-import { findBlock, l4Variables, mirrorPromotedAnswer, recordInteraction } from "../../interaction/index.js";
+import {
+  changedHunksForTurn,
+  findBlock,
+  itemIdForAnchor,
+  l4Variables,
+  mirrorPromotedAnswer,
+  offsetsTextFor,
+  recordInteraction,
+  replyRefForId,
+} from "../../interaction/index.js";
 
 export { JOB_PRIORITY };
 export { recordInteraction };
@@ -134,6 +143,89 @@ export async function revealedBlockText(ctx: ActionContext, anchor: Anchor): Pro
   } catch {
     return null;
   }
+}
+
+/**
+ * Issue #365: minimal Ask/Explain turn variables. Every turn carries
+ * the quote, the exact item ID, the offsets and the question, plus
+ * changed hunk IDs only when the code moved since the anchor version.
+ * No card, block, thread-transcript or shared-log text: the model
+ * fetches what it needs with `get_item` and the code tools.
+ * `threadText` (the turn's own transcript, tombstones excluded) rides
+ * only on rebuilt sessions, which never saw the earlier turns.
+ */
+export interface MinimalTurnInput {
+  message: string;
+  /** Issue #365: the chip's quote wins over the anchor's in-thread. */
+  quoteOverride?: string;
+  /** Own-thread transcript for rebuilt sessions; else "(none)". */
+  threadText?: string;
+  /** In-thread turns address the source reply, not the anchor. */
+  itemIdOverride?: string;
+  /** The chip's recorded offsets win over the anchor's. */
+  offsetsOverride?: { start: number; end: number };
+}
+
+export function minimalTurnVariables(
+  snapshot: ReviewSnapshot,
+  anchor: Anchor,
+  input: MinimalTurnInput,
+): Record<string, unknown> {
+  const changed = changedHunksForTurn(snapshot, anchor);
+  return {
+    // The full selection travels verbatim: unlike the old prompt there
+    // is no host block below to hold a truncated tail.
+    quote: input.quoteOverride ?? anchor.quotedText,
+    item_id: input.itemIdOverride ?? itemIdForAnchor(snapshot, anchor),
+    offsets: offsetsTextFor(anchor, input.offsetsOverride),
+    ...(input.threadText !== undefined ? { thread: input.threadText } : {}),
+    changed_hunks: changed.length > 0 ? changed.join("\n") : "(no changes)",
+    message: input.message,
+  };
+}
+
+/**
+ * Issue #365: minimal `ask_turn` variables for a follow-up on a live
+ * or loaded session (issue #143: only what is new is sent). The
+ * `followup` block carries the turn's own reply ID plus the thread ID
+ * it follows — and, only when the reader selected new text (a quote
+ * chip), the chip's quote, item ID and offsets. Never the thread
+ * anchor's quote: the session already holds it.
+ */
+export interface MinimalFollowupInput {
+  message: string;
+  /** Chip selection (quote, item, offsets) — absent on plain turns. */
+  chip?: { quote: string; itemId: string; offsets?: { start: number; end: number } };
+}
+
+export function minimalFollowupVariables(
+  snapshot: ReviewSnapshot,
+  thread: Thread,
+  replyId: string,
+  anchor: Anchor,
+  input: MinimalFollowupInput,
+): Record<string, unknown> {
+  const ownRef = replyRefForId(thread, replyId) ?? `ann:${thread.id}`;
+  const threadRef = `ann:${thread.id}`;
+  const followup = input.chip
+    ? [
+        `New selection in reply [[${input.chip.itemId}]]:`,
+        "",
+        `> ${input.chip.quote}`,
+        "",
+        `Item: ${input.chip.itemId}`,
+        `Selection offsets: ${offsetsTextFor(anchor, input.chip.offsets)}`,
+        "",
+        `Answer as turn [[${ownRef}]] in thread [[${threadRef}]].`,
+      ].join("\n")
+    : `This is turn [[${ownRef}]] in thread [[${threadRef}]], following the turns above. ` +
+      `The session already holds the selection, the item and the earlier turns — answer only what is new.`;
+  const changed = changedHunksForTurn(snapshot, anchor);
+  return {
+    followup,
+    changed_hunks: changed.length > 0 ? changed.join("\n") : "(no changes)",
+    message: input.message,
+  };
 }
 
 /**

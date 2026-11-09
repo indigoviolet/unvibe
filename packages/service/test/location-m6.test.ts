@@ -38,7 +38,7 @@ function diffThread(fileKey: string, line: number, text = "body", extra: Partial
     anchor: { host: { kind: "diff-line", fileKey, line }, quotedText: "", prefix: "", suffix: "", position: line, version: 1 },
     open: true,
     replies: [{
-      id: "ans_t1",
+      id: "ans_t1", seq: 1,
       kind: "comment",
       who: "you",
       question: null,
@@ -156,7 +156,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "block", blockId: "b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "guide q" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "guide q" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t], [sourceFile()], pages);
@@ -189,7 +189,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "block", blockId: "b9" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "g" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "g" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const desc: Thread = {
@@ -198,7 +198,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "d" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "d" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([guide, desc], [sourceFile()], pages);
@@ -220,7 +220,7 @@ describe("locateThread", () => {
       },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t]);
@@ -232,7 +232,7 @@ describe("locateThread", () => {
     // No repo to link to: the plain text stands alone. An empty comment
     // stays empty, so Submit still refuses it instead of posting a bare link.
     expect(locateThreadWithText(snap, t).text).toBe("Is beta still the right default?");
-    const empty: Thread = { ...t, id: "t-code-empty", replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }] };
+    const empty: Thread = { ...t, id: "t-code-empty", replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }] };
     expect(locateThreadWithText(snap, empty, { owner: "octo", name: "hello" }).text).toBe("");
     // Single-line citations link #Lx, not #Lx-Lx.
     const single: Thread = {
@@ -252,8 +252,9 @@ describe("locateThread", () => {
   });
 
   it("prefers draft, then you, then suggested text", () => {
-    const mk = (who: "you" | "agent", text: string, suggested = false): Thread["replies"][number] => ({
+    const mk = (who: "you" | "agent", text: string, suggested = false, seq = 1): Thread["replies"][number] => ({
       id: `ans_${who}_${text}`,
+      seq,
       kind: "comment",
       who,
       question: null,
@@ -269,11 +270,11 @@ describe("locateThread", () => {
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       pinned: false,
-      replies: [mk("agent", "suggested", true), mk("you", "mine")],
+      replies: [mk("agent", "suggested", true, 1), mk("you", "mine", false, 2)],
       post: true,
     };
     expect(threadPostText(base)).toBe("mine");
     expect(threadPostText({ ...base, draft: "d" })).toBe("d");
-    expect(threadPostText({ ...base, replies: [{ id: "ans_t1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "s" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] })).toBe("s");
+    expect(threadPostText({ ...base, replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "s" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] })).toBe("s");
   });
 });

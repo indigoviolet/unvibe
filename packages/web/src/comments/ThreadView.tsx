@@ -14,7 +14,8 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { isLiveReply } from "@unvibe/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
 import { useEnabledPersonas } from "../settings/usePersonas.js";
@@ -29,11 +30,11 @@ import { busyForCard, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
 import { isReadOnlyVersionNow } from "./readOnly.js";
+import { revealThreadAnchor } from "./revealAnchor.js";
 import { isNoAgentMessage, NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { useProvisionalBlocks } from "../guide/expansions/streamedAnswer.js";
 import { revealSource } from "../source/reveal.js";
 import { ReplyBox } from "./ReplyBox.js";
-import { NewThreadComposer } from "./NewThreadComposer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 
 const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
@@ -147,7 +148,7 @@ function isAskWithQuestion(reply: Reply): boolean {
  * "Reviewer comment" label — the reviewer avatar alone says who's
  * speaking. The entry keeps an accessible name ("Your question") so
  * screen readers still tell it apart from the agent answer. */
-function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): React.ReactNode {
+function AskQuestionView({ reply, flash, onDelete, deleteDisabled }: { reply: Reply; flash: boolean; onDelete: () => void; deleteDisabled: boolean }): React.ReactNode {
   const question = (reply.question ?? "").trim();
   return (
     <div
@@ -162,6 +163,11 @@ function AskQuestionView({ reply, flash }: { reply: Reply; flash: boolean }): Re
       <span className="av you" role="img" aria-label="You">
         <Icon name="person" />
       </span>
+      {/* Issue #364: each turn deletes as one (no confirm) — the
+          question entry carries its answer's delete with it. */}
+      <div className="ctl">
+        <ControlButton icon="trash" label="Delete reply" disabled={deleteDisabled} onClick={onDelete} />
+      </div>
       <p>{question}</p>
     </div>
   );
@@ -178,6 +184,8 @@ function AgentReplyView({
   flash,
   onLink,
   hideQuestion,
+  onDelete,
+  deleteDisabled,
 }: {
   reviewId: string;
   thread: Thread;
@@ -190,6 +198,9 @@ function AgentReplyView({
   /** Issue #293: Ask renders its question as a separate reviewer entry,
    * so the answer reply carries no question heading. */
   hideQuestion?: boolean;
+  /** Issue #364: per-reply delete (no confirm). */
+  onDelete: () => void;
+  deleteDisabled: boolean;
 }) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
@@ -343,6 +354,15 @@ function AgentReplyView({
                 disabled={!undoEnabled || controlsBusy}
                 onClick={() => run({ kind: "undo", cardId: reply.id })}
               />
+              {/* Issue #364: every reply deletes on its own (no confirm).
+                  Deleting an answer removes its question turn with it —
+                  the two are one stored reply; later turns stay. */}
+              <ControlButton
+                icon="trash"
+                label="Delete reply"
+                disabled={deleteDisabled}
+                onClick={onDelete}
+              />
             </div>
           )}
       {showWorking && !errorText ? <Working text={workingLabel} /> : null}
@@ -374,6 +394,18 @@ function AgentReplyView({
           ))}
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
+      {/* Issue #364: reverse link — back to the quoted passage (or the
+          margin marker's line when the quote can't be placed), flashing it. */}
+      <button
+        type="button"
+        className="src-link"
+        data-src-link={reply.id}
+        data-tip="Show the quoted passage"
+        aria-label="Show the quoted passage"
+        onClick={() => revealThreadAnchor(thread.id)}
+      >
+        <span aria-hidden="true">↑</span> quoted text
+      </button>
     </div>
   );
 }
@@ -384,11 +416,16 @@ function CommentReplyView({
   threadId,
   flash,
   onLink,
+  onDelete,
+  deleteDisabled,
 }: {
   reply: Reply;
   threadId: string;
   flash: boolean;
   onLink: (targetId: string) => void;
+  /** Issue #364: per-reply delete (no confirm). */
+  onDelete: () => void;
+  deleteDisabled: boolean;
 }) {
   const html = reply.blocks
     .map((b) => {
@@ -437,6 +474,10 @@ function CommentReplyView({
       <span className="av you" role="img" aria-label="You">
         <Icon name="person" />
       </span>
+      {/* Issue #364: reviewer comments delete on their own too. */}
+      <div className="ctl">
+        <ControlButton icon="trash" label="Delete reply" disabled={deleteDisabled} onClick={onDelete} />
+      </div>
       {body}
     </div>
   );
@@ -449,7 +490,10 @@ export function ThreadCollapsedRow({
   thread: Thread;
   onExpand: () => void;
 }) {
-  const first = thread.replies[0];
+  // Issue #364: collapsed rows read off live turns (tombstones show in
+  // the open thread, never their text here).
+  const liveReplies = (thread.replies ?? []).filter(isLiveReply);
+  const first = liveReplies[0];
   // Same headings as the replies themselves (spike), so the row reads
   // quote · question/kind · snippet · count.
   const firstHeading = first
@@ -463,7 +507,7 @@ export function ThreadCollapsedRow({
             ? `Ask · ${first.question.slice(0, 100)}`
             : "Ask"
     : "";
-  const last = thread.replies[thread.replies.length - 1];
+  const last = liveReplies[liveReplies.length - 1];
   const lastText = last
     ? last.blocks
         .map((b) => {
@@ -480,7 +524,8 @@ export function ThreadCollapsedRow({
   const rowQuote = (thread.anchor.quotedText ?? "").trim();
   // Owner decision (#331 follow-up): the count is replies after the first
   // entry — a lone opening comment shows no count, matching the header.
-  const followups = thread.replies.length - 1;
+  // Issue #364: live turns only (tombstones are not replies any more).
+  const followups = liveReplies.length - 1;
   return (
     <button type="button" className="spike-row" data-row={thread.id} onClick={onExpand} aria-label={`Expand thread ${thread.anchor.quotedText}`}>
       {rowQuote !== "" ? <span className="spike-row-q">“{thread.anchor.quotedText}”</span> : null}
@@ -515,16 +560,21 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const storeExpanded = useReview((s) => s.expandedThreads);
   const storeSetExpanded = useReview((s) => s.setThreadExpanded);
   const [flashId, setFlashId] = useState<string | null>(null);
-  // Issue #273: Ask via the toolbar inside this thread opens its composer
-  // here (the anchor names a reply block, so no guide/diff/description slot
-  // would ever match it).
-  const [inThreadPending, setInThreadPending] = useState<NewThreadRequest | null>(null);
+  // Issue #364: Ask inside a thread uses this thread's own Reply box —
+  // the selected quote arrives as a removable chip, never a second
+  // composer. The chip is UI-local (never stored): it only rides the
+  // next Reply send.
+  const [quoteChip, setQuoteChip] = useState<{ quote: string; sourceReplyId?: string } | null>(null);
   useEffect(() => {
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.threadId !== thread.id) return;
       if (isReadOnlyVersionNow()) return;
-      setInThreadPending(req);
+      setQuoteChip({ quote: req.quote, ...(req.sourceReplyId ? { sourceReplyId: req.sourceReplyId } : {}) });
+      // Focus the Reply box so the quote can be answered at once.
+      window.setTimeout(() => {
+        document.getElementById(`ta-${thread.id}`)?.focus();
+      }, 60);
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
     return () => window.removeEventListener(NEW_THREAD_EVENT, onRequest);
@@ -575,12 +625,15 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const replies = thread.replies ?? [];
   const isNew = replies.length === 0;
   const posted = thread.postedAt !== undefined;
+  // Issue #364: counts and toggles read live turns only.
+  const liveReplyCount = replies.filter(isLiveReply).length;
   const successor = successorTarget(thread);
   const suggested = replies.some((r) => r.kind === "comment" && r.suggested === true);
   const suggestedQuestion = replies.some((r) => r.kind === "comment" && r.suggestedQuestion === true);
   // Outbox toggle only when there is something postable: agent-only
   // threads carry no comment replies and Submit skips them.
-  const hasCommentReplies = replies.some((r) => r.kind === "comment");
+  // Issue #364: tombstones are not postable.
+  const hasCommentReplies = replies.some((r) => r.kind === "comment" && isLiveReply(r));
   const commentCards = (snapshot?.annotations ?? []).filter(
     (a) => a.anchor.host.kind === "comment" && a.anchor.host.commentId === thread.id,
   );
@@ -591,14 +644,15 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   const threadWorking = (thread.working ?? "") !== "" && thread.working !== null;
   const threadError = thread.error ?? null;
   // Latest failed agent reply: Retry is the single source of truth (#270).
-  const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && r.error);
+  // Issue #364: tombstones never retry (Undelete restores them instead).
+  const failedReply = [...replies].reverse().find((r) => r.kind !== "comment" && isLiveReply(r) && r.error);
   // #271: while an answer is pending, the Reply box stays visible and
   // editable with Send disabled ("Wait for the answer").
-  const hasPendingAgent = replies.some((r) => r.kind !== "comment" && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
+  const hasPendingAgent = replies.some((r) => r.kind !== "comment" && isLiveReply(r) && ((r.working ?? "") !== "" || r.jobId !== undefined)) || ((thread.working ?? "") !== "");
   // #203: while the first agent answer is still being written (no blocks
   // yet) there is no answer for boxes to act on — show only the header
   // and the writing state.
-  const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && r.blocks.length > 0);
+  const firstAnswerArrived = replies.some((r) => r.kind !== "comment" && isLiveReply(r) && r.blocks.length > 0);
 
   const onRetryThread = (): void => {
     void performAction(reviewId, { kind: "retry", annotationId: thread.id }).catch((err: unknown) => {
@@ -629,8 +683,28 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
   };
 
   // Issue #301: removed the "Ask about this" header button — the Reply
-  // box at the end of every thread already asks the agent.
-  const onAskFollowup = (text: string): Promise<unknown> => api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
+  // box at the end of every thread already asks the agent. Issue #364:
+  // a pending quote chip turns the Reply send into an in-thread Ask
+  // (with the in-thread reply link); otherwise it stays a plain Reply.
+  const onAskFollowup = (text: string): Promise<unknown> => {
+    const chip = quoteChip;
+    if (!chip) return api.action(reviewId, { kind: "reply", annotationId: thread.id, message: text });
+    setQuoteChip(null);
+    return performAction(
+      reviewId,
+      {
+        kind: "ask",
+        quote: chip.quote,
+        message: text,
+        threadId: thread.id,
+        ...(chip.sourceReplyId ? { sourceReplyId: chip.sourceReplyId } : {}),
+      } as import("@unvibe/shared").ReviewAction,
+      { toast: false },
+    ).catch((err: unknown) => {
+      setQuoteChip(chip);
+      throw err;
+    });
+  };
 
   const onPromote = (): void => {
     void performAction(reviewId, { kind: "promote", annotationId: thread.id })
@@ -664,10 +738,11 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         {footnoted ? <span className="hint">from an earlier wording</span> : null}
         {suggestedQuestion ? <span className="qtag">Suggested question</span> : null}
         {/* Owner decision (#331 follow-up): the count is replies after the
-            first entry — a lone opening comment shows no count. */}
-        {replies.length > 1 ? (
+            first entry — a lone opening comment shows no count. Issue #364:
+            live turns only. */}
+        {liveReplyCount > 1 ? (
           <span className="count" data-count={thread.id}>
-            {replies.length - 1} {replies.length - 1 === 1 ? "reply" : "replies"}
+            {liveReplyCount - 1} {liveReplyCount - 1 === 1 ? "reply" : "replies"}
           </span>
         ) : null}
         {!isNew && hasCommentReplies ? (
@@ -696,7 +771,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             <Icon name="open" />
           </button>
         ) : null}
-        <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete"} aria-label="Delete" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
+        <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete thread"} aria-label="Delete thread" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
           <Icon name="trash" />
         </button>
         {isNew ? null : (
@@ -727,16 +802,65 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           </Button>
         </div>
       ) : null}
+      {/* Issue #364: one turn per reply — a question and its answer are
+          one stored reply, so each `.turn` is one deletable unit with
+          space + a divider between turns (never inside one). */}
       {replies.map((r) => {
+        // Posted threads never lose replies to GitHub; a filling reply
+        // can't go either (a landing job must find its turn).
+        const filling = r.jobId !== undefined || (r.working ?? null) !== null;
+        const deleteDisabled = readOnly || posted || filling;
+        const onDeleteReply = (): void => {
+          api.deleteReply(reviewId, thread.id, r.id).catch((err: unknown) => {
+            toast(`Couldn't delete the reply: ${friendlyError(err)}`);
+          });
+        };
+        // Issue #364: a deleted turn stays in place as a tombstone —
+        // same ID and position, restored exactly by Undelete. The
+        // tombstone keeps the reply's id so in-thread links still land.
+        if (!isLiveReply(r)) {
+          return (
+            <div className="turn" data-turn={r.id} key={r.id}>
+              <div
+                className="spike-reply tombstone"
+                id={r.id}
+                data-reply={r.id}
+                data-kind={r.kind}
+                data-tombstone={r.id}
+                role="article"
+                aria-label="Deleted reply"
+              >
+                <span>Reply deleted · </span>
+                <button
+                  type="button"
+                  className="tombstone-undo"
+                  data-undelete={r.id}
+                  disabled={readOnly}
+                  onClick={() => {
+                    api.undeleteReply(reviewId, thread.id, r.id).catch((err: unknown) => {
+                      toast(`Couldn't restore the reply: ${friendlyError(err)}`);
+                    });
+                  }}
+                >
+                  Undelete
+                </button>
+              </div>
+            </div>
+          );
+        }
         if (r.kind === "comment" || r.kind === "persona") {
-          return <CommentReplyView key={r.id} reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} />;
+          return (
+            <div className="turn" data-turn={r.id} key={r.id}>
+              <CommentReplyView reply={r} threadId={thread.id} flash={flashId === r.id} onLink={scrollToReply} onDelete={onDeleteReply} deleteDisabled={deleteDisabled} />
+            </div>
+          );
         }
         // Issue #293: an Ask question is a reviewer-styled entry with the
         // answer as the reply directly under it (no stored change).
         if (isAskWithQuestion(r)) {
           return (
-            <Fragment key={r.id}>
-              <AskQuestionView reply={r} flash={flashId === `${r.id}-question`} />
+            <div className="turn" data-turn={r.id} key={r.id}>
+              <AskQuestionView reply={r} flash={flashId === `${r.id}-question`} onDelete={onDeleteReply} deleteDisabled={deleteDisabled} />
               <AgentReplyView
                 reviewId={reviewId}
                 thread={thread}
@@ -747,39 +871,29 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
                 flash={flashId === r.id}
                 onLink={scrollToReply}
                 hideQuestion
+                onDelete={onDeleteReply}
+                deleteDisabled={deleteDisabled}
               />
-            </Fragment>
+            </div>
           );
         }
         return (
-          <AgentReplyView
-            key={r.id}
-            reviewId={reviewId}
-            thread={thread}
-            reply={r}
-            lookupPage={lp}
-            onOpenPage={op}
-            onFollowUp={of}
-            flash={flashId === r.id}
-            onLink={scrollToReply}
-          />
+          <div className="turn" data-turn={r.id} key={r.id}>
+            <AgentReplyView
+              reviewId={reviewId}
+              thread={thread}
+              reply={r}
+              lookupPage={lp}
+              onOpenPage={op}
+              onFollowUp={of}
+              flash={flashId === r.id}
+              onLink={scrollToReply}
+              onDelete={onDeleteReply}
+              deleteDisabled={deleteDisabled}
+            />
+          </div>
         );
       })}
-      {inThreadPending && !readOnly ? (
-        <NewThreadComposer
-          key="in-thread-pending"
-          reviewId={reviewId}
-          anchor={inThreadPending.anchor}
-          quote={inThreadPending.quote}
-          kind={inThreadPending.kind}
-          initialText={inThreadPending.initialText}
-          offsets={inThreadPending.offsets}
-          threadId={inThreadPending.threadId}
-          sourceReplyId={inThreadPending.sourceReplyId}
-          onDiscard={() => setInThreadPending(null)}
-          onCreated={() => setInThreadPending(null)}
-        />
-      ) : null}
       {posted ? (
         <div className="hint">
           Posted
@@ -795,7 +909,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
       ) : null}
       {readOnly ? (
         <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
+      ) : suggested && !quoteChip ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}
@@ -833,6 +947,8 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           persistField="followupDraft"
           onSend={onAskFollowup}
           onDiscard={() => api.updateComment(reviewId, thread.id, { followupDraft: null })}
+          quoteChip={quoteChip?.quote ?? null}
+          onRemoveQuoteChip={() => setQuoteChip(null)}
         />
       )}
       {pendingExplain && !hasOpenCard && !readOnly ? <WorkingPlaceholder label={inflightLabel(pendingExplain[1].kind)} /> : null}

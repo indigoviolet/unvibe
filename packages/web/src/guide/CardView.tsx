@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
-import { displayCardTitle, sinceBaselineLabel } from "@unvibe/shared";
+import { displayCardTitle, isUpdateAvailable, sinceBaselineLabel } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -29,6 +29,8 @@ import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
+import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
+import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
 import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
@@ -351,6 +353,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // and the active tab. The tab is UI state: a persona run never yanks
   // the reader off the Guide version.
   const personas = useEnabledPersonas();
+  const readOnlyCard = useIsReadOnlyVersion();
   const versions = cardVersions(card, personas);
   const [activeVersion, setActiveVersion] = useState("guide");
   const activeEntry = versions.find((v) => v.id === activeVersion) ?? versions[0];
@@ -362,6 +365,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         color: activeEntry.color,
         lens: "",
         cardInstruction: "",
+        followMain: false,
         provider: "",
         model: "",
         enabled: false,
@@ -466,6 +470,12 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     const title = displayCardTitle(card.title, card.blocks);
     return (
       <UiCard as="section" variant="raised" className="collapsed" id={`C-${card.id}`}>
+        {/* Issue #364: the margin marker survives even a collapsed card
+            (its threads anchor in the hidden body, so it sits at the top). */}
+        <ThreadMarginOverlay
+          threads={linkedBlocks.flatMap((b) => threadsFor(b.id))}
+          readOnly={readOnlyCard}
+        />
         <div className="chead">
           <ControlButton
             icon="right"
@@ -510,6 +520,12 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       // On the section itself, so block child selectors keep matching.
       {...(activePersonaId ? { "data-persona": activePersonaId, "data-card": card.id } : {})}
     >
+      {/* Issue #364: one margin icon per thread on this card — on its
+          highlight's first line, else its paragraph's first line. */}
+      <ThreadMarginOverlay
+        threads={linkedBlocks.flatMap((b) => threadsFor(b.id))}
+        readOnly={readOnlyCard}
+      />
       <CardHeader className="chead">
         <ControlButton
           icon="down"
@@ -580,7 +596,10 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       </CardHeader>
       <VersionTabs cardId={card.id} versions={versions} active={activeEntry.id} onSelect={setActiveVersion} />
-      {card.stale ? (
+      {/* Issue #367: the banner shows only while the service would
+          accept an update (shared predicate) — never an Update button
+          that can only fail with "already up to date". */}
+      {card.stale && isUpdateAvailable(snapshot?.versionStatus) ? (
         <div className="stale" role="status">
           <span>
             {card.staleChangedHunks ?? 0} cited{" "}

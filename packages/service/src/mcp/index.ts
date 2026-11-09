@@ -19,4 +19,11 @@ export {
   type McpRegistryOptions,
   type McpRole,
 } from "./registry.js";
-export { COMMON_TOOLS, READER_TOOL, stableToolSpec, toolsForRole, type McpToolDef } from "./tools.js";
+export {
+  COMMON_TOOLS,
+  READER_TOOL,
+  stableToolSpec,
+  toolsForRole,
+  type McpToolDef,
+} from "./tools.js";
+export type { McpBlockItem, McpPageItem, McpReplyItem } from "./read.js";

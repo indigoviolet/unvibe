@@ -73,7 +73,8 @@ import type {
   UpdateSwitchRequest,
   UpdateSwitchResponse,
   ViewerResponse,
-  StatsExport,
+  TraceExport,
+  TraceStatusResponse,
 } from "@unvibe/shared";
 // Static import keeps mock timing deterministic in dev; the mock modules are
 // data + an in-memory client with no side effects on import, so bundlers can
@@ -437,6 +438,14 @@ const realApi = {
     request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
       method: "DELETE",
     }),
+  /** Issue #364: delete one reply (no confirm); the last live turn deletes the thread. */
+  deleteReply: (reviewId: string, commentId: string, replyId: string): Promise<{ ok: boolean }> =>
+    request(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies/${encodeURIComponent(replyId)}`, {
+      method: "DELETE",
+    }),
+  /** Issue #364: restore a tombstoned reply exactly as it was. */
+  undeleteReply: (reviewId: string, commentId: string, replyId: string): Promise<{ ok: boolean }> =>
+    post(`/api/reviews/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}/replies/${encodeURIComponent(replyId)}/undelete`, {}),
 
   updateDescription: (id: string, body: UpdateDescriptionRequest): Promise<{ ok: boolean; changed?: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}/description`, {
@@ -468,8 +477,12 @@ const realApi = {
   thinking: (provider: string): Promise<ThinkingResponse> =>
     get(`/api/thinking?provider=${encodeURIComponent(provider)}`),
   diagnostics: (): Promise<DiagnosticsResponse> => get("/api/diagnostics"),
-  /** #323: anonymized stats export (Settings → Debug). */
-  statsExport: (): Promise<StatsExport> => get("/api/stats/export"),
+  /** #356: trace recording status/size (Settings → Debug). */
+  traceStatus: (): Promise<TraceStatusResponse> => get("/api/traces/status"),
+  /** #356: export everything recorded so far (OTLP JSON, Jaeger/Perfetto-openable). */
+  traceExport: (): Promise<TraceExport> => get("/api/traces/export"),
+  /** #356: empty the local trace store (recording continues when on). */
+  traceClear: (): Promise<TraceStatusResponse> => post("/api/traces/clear", {}),
   reload: (): Promise<ReloadResponse> => post("/api/reload"),
 
   updateNotes: (ref: string): Promise<UpdateNotesResponse> =>

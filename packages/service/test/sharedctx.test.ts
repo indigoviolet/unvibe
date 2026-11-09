@@ -100,7 +100,7 @@ function thread(id: string, agentText: string, open = true): Thread {
     open,
     replies: [
       {
-        id: `ans_${id}_0`,
+        id: `ans_${id}_0`, seq: 1,
         kind: "comment",
         who: "you",
         question: null,
@@ -110,7 +110,7 @@ function thread(id: string, agentText: string, open = true): Thread {
         undoStack: [],
       },
       {
-        id: `ans_${id}_1`,
+        id: `ans_${id}_1`, seq: 2,
         kind: "comment",
         who: "agent",
         question: null,
@@ -295,10 +295,14 @@ describe("change lists and the seen marker (PRD §9.3)", () => {
       },
     ]);
     const setup = await setupSharedCtx(agents);
+    // Issue #365: Ask turns are minimal — quote, item ID, offsets,
+    // own transcript, changed hunks, question.
     const explainVars = {
-      anchor: { quote: "y = 2", block: "y = 2" },
-      card: "Alpha body text.",
+      quote: "y = 2",
+      item_id: "card:c-A#b1",
+      offsets: "(no offsets recorded)",
       thread: "(none)",
+      changed_hunks: "(no changes)",
       message: "Why?",
     } as unknown as Record<string, string>;
     try {
@@ -1004,6 +1008,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
             replies: [
               {
                 id: "ans_tA_0",
+                seq: 1,
                 kind: "comment",
                 who: "you",
                 question: null,
@@ -1014,6 +1019,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
               },
               {
                 id: "ans_tA_1",
+                seq: 2,
                 kind: "comment",
                 who: "agent",
                 question: null,
@@ -1035,6 +1041,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
             replies: [
               {
                 id: "ans_tB_0",
+                seq: 1,
                 kind: "comment",
                 who: "you",
                 question: null,
@@ -1045,6 +1052,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
               },
               {
                 id: "ans_tB_1",
+                seq: 2,
                 kind: "comment",
                 who: "agent",
                 question: null,

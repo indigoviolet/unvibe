@@ -35,6 +35,7 @@ const CARD = "### The central change [[card:c-central]]\n\nFolds that end in a b
 const CUSTOM: Persona = {
   id: "perf-sceptic",
   name: "Performance sceptic",
+  followMain: false,
   provider: "claude",
   model: "claude-opus-5-5",
   lens: "You are a performance sceptic: you read every card asking what it costs at scale.",
@@ -124,7 +125,9 @@ describe("Settings → Personas CRUD routes", () => {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
       expect(get.statusCode).toBe(200);
       const body = get.json() as SettingsBody;
-      expect(body.personas).toHaveLength(1);
+      // Issue #359 seeds a second built-in (Clarity) after Second opinion.
+      expect(body.personas).toHaveLength(2);
+      expect(body.personas.map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
       expect(body.personas[0]).toMatchObject({
         id: "second-opinion",
         name: "Second opinion",
@@ -152,7 +155,7 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: [...seed.personas, CUSTOM] },
       });
       expect(added.statusCode).toBe(200);
-      expect((added.json() as SettingsBody).personas).toHaveLength(2);
+      expect((added.json() as SettingsBody).personas).toHaveLength(3);
 
       // Edit (rename + disable).
       const editedList = [...seed.personas, { ...CUSTOM, name: "Perf sceptic", enabled: false }];
@@ -175,11 +178,11 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: editedList.filter((p) => p.id !== "second-opinion") },
       });
       expect(deleted.statusCode).toBe(200);
-      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual([CUSTOM.id]);
+      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["clarity", CUSTOM.id]);
 
       // Round-trips through GET.
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
-      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual([CUSTOM.id]);
+      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["clarity", CUSTOM.id]);
     } finally {
       await app.close();
     }

@@ -25,6 +25,40 @@ export interface McpCard {
   title: string | null;
   /** Plain text of the card (all blocks concatenated by the adapter). */
   text: string;
+  /** Page holding the card (issue #365: `get_item` parent chain). */
+  pageId: string;
+  /** One entry per stored block, in order. */
+  blocks: McpBlockItem[];
+}
+
+/** One stored block, rendered as plain text (issue #365). */
+export interface McpBlockItem {
+  id: string;
+  type: string;
+  text: string;
+}
+
+/** One guide page: title plus its card IDs in order (issue #365). */
+export interface McpPageItem {
+  id: string;
+  title: string;
+  kind: string;
+  cardIds: string[];
+}
+
+/**
+ * One thread reply for `get_item` (issue #365). `seq` is the stable
+ * per-thread sequence (`ann:<thread>#r<seq>`); `live` is false for
+ * tombstoned replies (#364), whose text is withheld (empty).
+ */
+export interface McpReplyItem {
+  seq: number;
+  id: string;
+  kind: string;
+  who: string;
+  question: string | null;
+  text: string;
+  live: boolean;
 }
 
 export interface McpAnnotation {
@@ -32,7 +66,11 @@ export interface McpAnnotation {
   type: string;
   /** Short human summary of the anchor (file:line, quoted text, …). */
   anchorSummary: string;
+  /** Exact item ID of the anchor (issue #365: the thread's parent). */
+  anchorItemId: string | null;
   text: string;
+  /** Replies in creation order, tombstones marked (issue #365). */
+  replies: McpReplyItem[];
 }
 
 export interface McpContribution {
@@ -46,6 +84,8 @@ export interface McpReviewData {
   headSha: string;
   hunks: McpHunk[];
   cards: McpCard[];
+  /** Guide pages in order (issue #365: `get_item` parents/children). */
+  pages: McpPageItem[];
   annotations: McpAnnotation[];
   contributions: McpContribution[];
   description: { id: string; text: string }[];

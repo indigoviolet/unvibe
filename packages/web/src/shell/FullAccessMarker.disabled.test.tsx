@@ -30,7 +30,7 @@ function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>>
     uiTheme: "default",
   versionPickerEnabled: false,
     fullAccess,
-    autoGoDeeper: true,
+    autoGoDeeper: true, recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: fullAccess ? 1 : null,

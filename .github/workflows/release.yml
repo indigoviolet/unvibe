@@ -129,27 +129,60 @@ jobs:
         run: mise run test:slow:unit
         timeout-minutes: 10
 
-      - name: Verify the release installs with no flags (tarball + git ref)
-        run: node scripts/global-install-check.mjs --release-ref "${{ steps.rel.outputs.branch }}" --tarball "unvibe-${{ steps.rel.outputs.version }}.tgz"
+      # Debug flavour (issue #356): the same source rebuilt with tracing
+      # (UNVIBE_DEBUG_TRACES=1) and released with --debug, which ships the
+      # OTel dependencies, versions it <version>-debug and points the local
+      # `release-debug` branch at it. Runs after the slow unit tests, which
+      # must see the lean build.
+      - name: Assemble the debug release tree + tarball + local release-debug branch
+        run: UNVIBE_DEBUG_TRACES=1 mise run --force build && UNVIBE_RELEASE_DEBUG=1 mise run release
+        env:
+          UNVIBE_RELEASE_VERSION: ${{ steps.rel.outputs.version }}
+          UNVIBE_RELEASE_BRANCH: release-debug
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 10
+
+      - name: Verify the release installs with no flags (tarball + git ref, lean + debug)
+        run: >-
+          node scripts/global-install-check.mjs --flavours lean,debug
+          --release-ref "${{ steps.rel.outputs.branch }}" --tarball "unvibe-${{ steps.rel.outputs.version }}.tgz"
+          --debug-release-ref release-debug --debug-tarball "unvibe-${{ steps.rel.outputs.version }}-debug.tgz"
         env:
           UNVIBE_RELEASE_REF: ${{ steps.rel.outputs.branch }}
-        timeout-minutes: 30
+        timeout-minutes: 40
 
       # The release branch is an orphan with one commit and no history, so
       # every publish is a non-fast-forward update by design (force-push is
       # confined to these refs; nothing else is force-pushed).
       - name: Push the release branch (ubuntu only)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
-        run: git push --force origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
+        run: |
+          git push --force origin "refs/heads/${{ steps.rel.outputs.branch }}:refs/heads/${{ steps.rel.outputs.branch }}"
+          git push --force origin "refs/heads/release-debug:refs/heads/release-debug"
 
       - name: Write release notes
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
-        run: node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md
+        run: |
+          node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md
+          cat >> release-notes.md <<'EOF'
 
-      - name: Attach the tarball to the GitHub release (ubuntu only)
+          ## Debug build (performance traces)
+
+          The normal install records no traces or usage statistics. To record them, install the debug build instead (same version, plus the OpenTelemetry libraries):
+
+          ```sh
+          npm install -g github:indigoviolet/unvibe#release-debug
+          ```
+
+          or switch an existing install with `unvibe update release-debug` (and back with `unvibe update release`). Turn recording on in Settings → Debug.
+          EOF
+
+      - name: Attach the tarballs to the GitHub release (ubuntu only)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: unvibe-${{ steps.rel.outputs.version }}.tgz
+          files: |
+            unvibe-${{ steps.rel.outputs.version }}.tgz
+            unvibe-${{ steps.rel.outputs.version }}-debug.tgz
           body_path: release-notes.md
           prerelease: ${{ steps.rel.outputs.prerelease == 'true' }}

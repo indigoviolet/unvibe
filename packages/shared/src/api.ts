@@ -1457,8 +1457,10 @@ export interface Settings {
   main: ModelPick;
   small: ModelPick;
   /**
-   * Persona definitions (issue #349): the built-in Second opinion plus
-   * any custom personas. Managed through Settings → Personas (add, edit,
+   * Persona definitions (issue #349): the built-in Second opinion and
+   * Clarity personas plus any custom personas. A persona with
+   * `followMain` runs on the main model at run time (issue #359).
+   * Managed through Settings → Personas (add, edit,
    * delete); the colour is auto-assigned at creation.
    */
   personas: Persona[];
@@ -1504,6 +1506,13 @@ export interface Settings {
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
+  /**
+   * Issue #356: record OpenTelemetry performance traces. Off by default;
+   * nothing is recorded until it is turned on. Spans are kept locally
+   * for as long as recording is on (no rotation) and exportable from
+   * Settings → Debug at any time.
+   */
+  recordTraces: boolean;
   /** Issue #322: repos the extension panel may read. Null = never chosen (service defaults to 3 most recent); [] = none. */
   extensionActiveRepoIds: string[] | null;
   /** Issue #322: model for panel turns. Default muse-spark. */
@@ -1773,6 +1782,11 @@ export interface SharedContextBaseStats {
 }
 
 // --- update channels (issue #36, step 2: version picker) -----------------
+
+// Debug-channel helpers live in `./channels.js` (imported from there):
+// the update switch helper must stay bundlable without the shared
+// barrel (see the helper-bundle containment test).
+export { debugChannelFor, isDebugChannel } from "./channels.js";
 
 /**
  * One installable build: `release` or a `preview/<slug>` published from

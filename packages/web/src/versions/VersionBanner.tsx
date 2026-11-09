@@ -1,5 +1,8 @@
 /**
- * "New commits on this branch · Update" banner (PRD §8, §4.13, §4.2).
+ * Version banner (PRD §8, §4.13, §4.2): stale reads
+ * "New commits · v1 → v2 (…)" plus Update; up to date after an update
+ * pass reads "Updated to v2 · since v1" with the picker and range-diff
+ * and no Update button (issue #367).
  *
  * Counts come from `versionStatus` on the snapshot (or the refresh
  * `comparison`, normalised by the caller). The range-diff view is a plain
@@ -24,6 +27,15 @@ export interface BannerCounts {
   rangeDiff: string;
   /** #179: the new version's diff is empty. */
   empty?: boolean;
+  /**
+   * Issue #367: whether an update is still available. Mirrors the
+   * service's shared `isUpdateAvailable` predicate — the Update button
+   * renders exactly when the service would accept it. False after a
+   * completed update pass, until the next refresh marks new changes.
+   */
+  stale: boolean;
+  /** Baseline label for the up-to-date state ("v1" or a short sha). */
+  sinceLabel?: string;
 }
 
 export function statusToBanner(s: VersionStatus): BannerCounts {
@@ -34,6 +46,7 @@ export function statusToBanner(s: VersionStatus): BannerCounts {
     newHunks: s.newHunks,
     removedHunks: s.removedHunks,
     rangeDiff: s.rangeDiff,
+    stale: s.stale,
     ...(s.empty ? { empty: true } : {}),
   };
 }
@@ -49,6 +62,8 @@ export function comparisonToBanner(
     newHunks: c.newHunks,
     removedHunks: c.removedHunks,
     rangeDiff: c.rangeDiff,
+    // A fresh refresh comparison always carries unprocessed changes.
+    stale: true,
     ...(c.unchangedHunks + c.changedHunks + c.newHunks === 0 ? { empty: true } : {}),
   };
 }
@@ -133,12 +148,43 @@ export function VersionBanner({
     );
   }
 
+  // Issue #367: one state model. Stale shows the new-commits headline
+  // plus Update; up to date (after an update pass) shows what version
+  // the review is at, with no Update button and no "Already up to date"
+  // label beside a button. The Update button renders exactly when the
+  // service would accept it (shared `isUpdateAvailable` predicate).
+  if (!counts.stale) {
+    return (
+      <div className="dbar" data-testid="stale-banner" data-update-state="current" role="status">
+        <span className="dbar-group dbar-group-summary">
+          <span className="hint">
+            Updated to v{counts.toVersion} · since {counts.sinceLabel ?? `v${counts.fromVersion}`}
+          </span>
+          {counts.rangeDiff.trim() !== "" ? (
+            <details>
+              <summary className="hint" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+                range-diff
+              </summary>
+              <pre className="code" data-testid="range-diff">
+                {counts.rangeDiff}
+              </pre>
+            </details>
+          ) : null}
+        </span>
+        <span className="dbar-group">
+          <BaselinePick reviewId={reviewId} />
+        </span>
+        <SinceBaselineError />
+      </div>
+    );
+  }
+
   return (
-    <div className="dbar" data-testid="stale-banner" role="status">
+    <div className="dbar" data-testid="stale-banner" data-update-state="stale" role="status">
       <span className="dbar-group dbar-group-summary">
         <span className="hint">
-          New commits on this branch · v{counts.fromVersion} → v{counts.toVersion} (
-          {versionCountsText(counts)} hunks)
+          New commits · v{counts.fromVersion} → v{counts.toVersion} ({versionCountsText(counts)}{" "}
+          hunks)
         </span>
         {counts.rangeDiff.trim() !== "" ? (
           <details>

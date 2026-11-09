@@ -20,7 +20,7 @@ function descThread(text: string): Thread {
     open: true,
     pinned: false,
     replies: [{
-      id: "ans_desc1",
+      id: "ans_desc1", seq: 1,
       kind: "comment",
       who: "you",
       question: null,
@@ -157,7 +157,7 @@ describe("submit", () => {
       },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
       post: true,
     };
     const runner = new FakeCommandRunner();

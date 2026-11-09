@@ -1,0 +1,175 @@
+/**
+ * Tracing loader (issue #356, debug flavour): the ONLY module in the
+ * always-loaded path that touches the OTel packages, and only through
+ * dynamic `import()` in a `try/catch`. In a lean build (no OTel on disk)
+ * every function here degrades to a no-op or null — the service boots
+ * and runs with tracing unavailable instead of crashing on the missing
+ * packages. This module itself imports nothing but the pure seam
+ * surface and `fastify` types (erased).
+ */
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { FastifyInstance } from "fastify";
+import { setActiveTracer, type TraceBackend } from "./tracing.js";
+import type { TraceRecorder } from "./recorder.js";
+
+type RecorderModule = typeof import("./recorder.js");
+
+/**
+ * Probe for the OTel packages with the runtime resolver *before*
+ * touching the recorder module. This matters because bundlers inline
+ * the dynamic `import()` below into a single file: the import itself
+ * can no longer fail in a lean install, but the *evaluation* of the
+ * bundled recorder is side-effect free, so probing first keeps the
+ * whole path throw-free. (In unbundled source the import fails
+ * directly and this is just a fast path.)
+ */
+function otelPresent(): boolean {
+  try {
+    // Our own install must be *able* to depend on OTel (debug flavour).
+    // Checking this first makes lean installs immune to stray copies
+    // reachable through NODE_PATH, shared global prefixes, or hoisting
+    // quirks: no resolver environment can flip a lean build to recording.
+    // A dev checkout (workspaces root) always qualifies: its node_modules
+    // carry OTel for tests and local runs.
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    let allowByPackage = false;
+    for (;;) {
+      const candidate = path.join(dir, "package.json");
+      try {
+        const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as {
+          name?: unknown;
+          workspaces?: unknown;
+          dependencies?: unknown;
+        };
+        if (pkg?.name === "unvibe") {
+          if (Array.isArray(pkg.workspaces)) {
+            allowByPackage = true;
+          } else {
+            const deps = pkg.dependencies as Record<string, unknown> | undefined;
+            allowByPackage = !!deps && typeof deps["@opentelemetry/api"] === "string";
+          }
+          break;
+        }
+      } catch {
+        // Not a readable package.json: keep walking up.
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) return false;
+      dir = parent;
+    }
+    if (!allowByPackage) return false;
+    // Resolve the entry point, not package.json: several OTel packages
+    // restrict subpath exports, so ./package.json does not resolve.
+    createRequire(import.meta.url).resolve("@opentelemetry/api");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Dynamic importer, injectable so tests can simulate a lean install. */
+export type RecorderImporter = () => Promise<RecorderModule>;
+
+const defaultImporter: RecorderImporter = () => import("./recorder.js");
+
+let cached: RecorderModule | null | undefined;
+
+function isRecorderModule(mod: unknown): mod is RecorderModule {
+  if (typeof mod !== "object" || mod === null) return false;
+  const m = mod as Record<string, unknown>;
+  return (
+    typeof m["ensureTracingSetup"] === "function" &&
+    typeof m["attachRouteHook"] === "function" &&
+    typeof m["TraceRecorder"] === "function"
+  );
+}
+
+/**
+ * Resolve (and cache, for the default importer) the recorder module.
+ * `UNVIBE_DISABLE_TRACING=1` forces the lean path even with OTel
+ * installed (escape hatch + lets the lean e2e cover the unavailable
+ * UI against a dev checkout).
+ */
+async function recorderModule(importer: RecorderImporter = defaultImporter): Promise<RecorderModule | null> {
+  const useCache = importer === defaultImporter;
+  if (useCache && cached !== undefined) return cached;
+  // Lean install (or explicit opt-out): OTel is absent, so do not even
+  // load the recorder.
+  if (useCache && (process.env.UNVIBE_DISABLE_TRACING === "1" || !otelPresent())) {
+    cached = null;
+    return null;
+  }
+  let mod: RecorderModule | null = null;
+  try {
+    const loaded = await importer();
+    if (isRecorderModule(loaded)) mod = loaded;
+  } catch {
+    mod = null;
+  }
+  if (useCache) cached = mod;
+  return mod;
+}
+
+/**
+ * Install auto-instrumentation hooks + the shared provider + the real
+ * async context manager. Returns false in lean builds (nothing
+ * installed, nothing to hook). Call before the instrumented modules
+ * load (service entry prelude).
+ */
+export async function ensureTracingSetup(
+  importer: RecorderImporter = defaultImporter,
+): Promise<boolean> {
+  // Explicit opt-out (lean e2e, broken installs): never touch OTel.
+  if (process.env.UNVIBE_DISABLE_TRACING === "1" && importer === defaultImporter) return false;
+  const mod = await recorderModule(importer);
+  if (!mod) return false;
+  try {
+    mod.ensureTracingSetup();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create the process recorder and publish it as the seam backend. Null
+ * in a lean build (routes answer 501 "not available in this build").
+ */
+export async function loadTraceRecorder(
+  dataDir: string,
+  importer: RecorderImporter = defaultImporter,
+): Promise<TraceRecorder | null> {
+  // Explicit opt-out (lean e2e, broken installs): never touch OTel.
+  if (process.env.UNVIBE_DISABLE_TRACING === "1" && importer === defaultImporter) return null;
+  const mod = await recorderModule(importer);
+  if (!mod) return null;
+  try {
+    const rec = new mod.TraceRecorder(dataDir);
+    setActiveTracer(rec as unknown as TraceBackend);
+    return rec;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stamp the route pattern onto the auto HTTP span (`http.route`; the
+ * export scrubber renames from it). No-op without a recorder. Registered
+ * from `server.ts`.
+ */
+export async function attachRouteHook(
+  app: FastifyInstance,
+  getRecorder: () => TraceRecorder | null,
+  importer: RecorderImporter = defaultImporter,
+): Promise<void> {
+  const mod = await recorderModule(importer);
+  if (!mod) return;
+  try {
+    mod.attachRouteHook(app, getRecorder);
+  } catch {
+    // Tracing never breaks requests.
+  }
+}

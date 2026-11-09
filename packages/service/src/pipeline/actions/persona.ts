@@ -1,11 +1,13 @@
 /**
  * Persona card runs (issue #349, step 2).
  *
- * Choosing a persona in the card toolbar runs it on that card: base L0 +
- * the persona lens + the `persona_card` task + the persona's card
- * instruction, on the persona's provider/model. It forks that provider's
- * base session (or the fresh-session fallback, through the normal path —
- * `runInFork` with `persona`).
+ * Choosing a persona in the card toolbar runs it on that card: the
+ * persona lens at the start of the `persona_card` turn (issue #359,
+ * option B — uniform whether or not the persona shares main's model)
+ * plus the persona's card instruction, on the persona's
+ * provider/model. It forks that provider's base session (or the
+ * fresh-session fallback, through the normal path — `runInFork` with
+ * `persona`).
  *
  * The output is a normal card — same blocks, citations, validation and
  * the single repair turn — stored as a variant keyed by persona on that

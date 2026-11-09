@@ -233,7 +233,7 @@ describe("since-B step 1", () => {
             version: 2,
           },
           replies: [{
-            id: "ans_thread1",
+            id: "ans_thread1", seq: 1,
             kind: "comment",
             who: "you",
             question: null,

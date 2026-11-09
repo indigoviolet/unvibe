@@ -31,7 +31,7 @@ const SETTINGS: Settings = {
   uiTheme: "default",
   versionPickerEnabled: true,
   fullAccess: false,
-  autoGoDeeper: true,
+  autoGoDeeper: true, recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: null,

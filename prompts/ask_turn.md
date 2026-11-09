@@ -1,19 +1,22 @@
 ---
 role: user
 tier: main
-variables: [change_list, message]
+variables: [changed_hunks, followup, message]
 ---
 
 # Ask follow-up
 
 The reader asked a follow-up question in an ongoing conversation. You
 already hold the review context and everything said so far — answer only
-what is new. Do not repeat the selection, the earlier questions, or your
-earlier answers.
+what is new.
 
-## What changed since your last answer
+## Following
 
-{{change_list}}
+{{followup}}
+
+## Changed hunks since this turn's version
+
+{{changed_hunks}}
 
 ## The follow-up question
 
@@ -24,6 +27,13 @@ earlier answers.
 - Answer the question asked, directly first, then the supporting detail
   — no longer than the question needs. When the detail serves a contract
   or invariant, connect the local detail to it.
+- This turn carries only what is new: the follow-up context above, the
+  question, and changed hunk IDs. The session already holds the
+  selection, the item and the earlier turns — never restate them from
+  memory of another thread. When the follow-up names a new selection,
+  fetch its item with `get_item` (cards, blocks, pages, threads, replies
+  and description paragraphs), `get_hunk` for a diff hunk, `get_code`
+  for file lines, before claiming anything about it.
 - Every claim about the change gets a citation. If the answer needs code
   beyond the base, fetch it with `get_hunk` or `get_code` first.
 - If the question has no answer in the code (maintainer intent, unseen

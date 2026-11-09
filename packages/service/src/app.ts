@@ -59,6 +59,7 @@ import { FakeAgentRunner } from "./agent/fake.js";
 import { verifyCheckoutAfterJob } from "./fullaccess/verify.js";
 import { Pipeline } from "./pipeline/index.js";
 import { resolvePromptsDir } from "./prompts/index.js";
+import type { TraceRecorder } from "./traces/recorder.js";
 
 export interface AppContext {
   db: DatabaseSync;
@@ -78,6 +79,12 @@ export interface AppContext {
   sharedctx: SharedContextService;
   /** Version-picker backend (issue #36 step 2 seam; fake under `UNVIBE_UPDATER_BACKEND=fake`). */
   updater: Updater;
+  /**
+   * Opt-in performance traces (issue #356; null in lean builds and in
+   * tests that do not wire tracing). Loaded by the composition root
+   * through `traces/loader.ts`, never constructed here.
+   */
+  traces: TraceRecorder | null;
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
@@ -98,6 +105,8 @@ export interface BuildAppOptions {
   settings?: SettingsStore;
   mcp?: McpRegistry;
   updater?: Updater;
+  /** Opt-in performance traces (issue #356); null stays null (lean builds, most tests). */
+  traces?: TraceRecorder | null;
   /** SERVICE_VERSION (server.ts); feeds the real Updater + build identity. */
   serviceVersion?: string;
 }
@@ -272,27 +281,40 @@ export function resolvePromptsDirForBundle(): string {
 }
 
 /**
- * True inside the vitest suite (vitest sets both; either one counts).
+ * True inside the vitest suite (vitest sets both; either one counts) and
+ * in every test-spawned service (the e2e harness sets `UNVIBE_TEST=1`,
+ * issue #370 — Playwright services have no VITEST marker).
  * The composition root uses this to refuse the production fallbacks —
  * tests must never silently start real agents or real CLIs (issue #119).
  */
 export function isTestProcess(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test";
+  return env.VITEST === "true" || env.VITEST === "1" || env.NODE_ENV === "test" || env.UNVIBE_TEST === "1";
 }
 
 export function buildApp(opts: BuildAppOptions): AppContext {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-data-"));
+  const traces = opts.traces ?? null;
   // Tests never hit real GitHub or real agents (issue #119): under vitest
   // an app built without explicit fakes gets inert substitutes instead of
   // silently falling back to the production ones. Explicitly injected
   // runners are never replaced. `UNVIBE_AGENT=replay|none` keeps the
   // factory (both are hermetic); only the unset default (real ACP) is
   // replaced with the fake.
+  // Issue #370: the command guard covers every test-spawned service
+  // (vitest or UNVIBE_TEST), but the agent substitution stays a
+  // unit-suite behavior: a test service with UNVIBE_AGENT="" opted into
+  // the live factory on purpose (the pi journey sets
+  // UNVIBE_ALLOW_LIVE_AGENT=1 with a fake pi on PATH), and substituting
+  // the fake would hide the provider.
   const underTest = isTestProcess();
-  const needsTestAgents = underTest && (process.env.UNVIBE_AGENT ?? "") === "";
+  const underUnitTest =
+    process.env.VITEST === "true" || process.env.VITEST === "1" || process.env.NODE_ENV === "test";
+  const needsTestAgents = underUnitTest && (process.env.UNVIBE_AGENT ?? "") === "";
   // Issue #109: the production runner runs the service's own git/gh
   // through their resolved real executables, never a version-manager shim
-  // that would read a review worktree's config. Injected runners (tests,
+  // that would read a review worktree's config. Under test (vitest or
+  // UNVIBE_TEST, issue #370) the guard refuses real gh/agent CLIs and
+  // confines git/gh to the harness fake bin dir. Injected runners (tests,
   // doctor diagnostics) are used exactly as given.
   const runner =
     opts.runner ??
@@ -325,6 +347,16 @@ export function buildApp(opts: BuildAppOptions): AppContext {
         }
       },
       afterRun: (job) => verifyCheckoutAfterJob({ reviews, commands: runner, settings, dataDir }, job.reviewId ?? "", job),
+      // Issue #366: job spans resolve read diff-membership and hunk
+      // ranges against the review snapshot (a lookup failure records
+      // reads without diff membership, never breaks the job).
+      getReviewSnapshot: (reviewId) => {
+        try {
+          return reviews.getSnapshot(reviewId);
+        } catch {
+          return undefined;
+        }
+      },
       // Issue #354: a job settling after its review was deleted stops
       // quietly (no save, no FOREIGN KEY error). The snapshot row is
       // removed in the same transaction as the review row, so its
@@ -463,6 +495,7 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     reviews,
     jobs,
     settings,
+    traces,
     models,
     mcp,
     sessions,

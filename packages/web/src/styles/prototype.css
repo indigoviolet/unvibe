@@ -587,6 +587,9 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .cj .cx2 { font-size: var(--text-md); color: var(--text-primary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ci textarea { min-width: 120px; max-width: 100%; max-height: 240px; grid-column: 1 / -1; border: var(--border-width) solid var(--field-border); border-radius: var(--radius-4); font: 12.5px/1.4 var(--sans); padding: 5px; resize: vertical; min-height: 56px; background: var(--field-surface); color: var(--ink); }
 .prtag { font-size: 10.5px; color: var(--note); border: 1px solid var(--note); border-radius: var(--radius-pill); padding: 0 6px; white-space: nowrap; }
+/* Issue #368: every hunk-header chip sits off the diff stat (and each
+   other) with the same gap — one rule for all header chips. */
+.hh .hl2 > .prtag, .hh .hl2 > .ptag { margin-left: 6px; }
 .cmenu .obbox { border-top: var(--border-width) solid var(--line); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
 .cmenu .obmd { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11.5px/1.5 var(--mono); background: var(--sunk); border-radius: var(--radius-4); padding: 8px; color: var(--ink); }
 /* Suggested open questions (issue #181): quiet tag telling them apart
@@ -1682,6 +1685,53 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .spike-row-snip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .spike-row-count { flex: none; font-family: var(--label-font); font-size: var(--text-label); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 8px; }
 .spike-row .ic { flex: none; color: var(--muted); }
+/* Issue #364: one turn per reply. The divider and ~24px of air sit
+   only BETWEEN turns — a question and its answer are one stored reply,
+   so one turn. The question is a tinted full-width band in medium
+   weight on the theme token; the answer below sits on the card
+   background. (Specificity beats the old per-reply rules above.) */
+.spike-thread .turn + .turn { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; }
+/* Issue #364: scrolled-to turns land below the sticky review bar. */
+.spike-thread .turn { scroll-margin-top: 60px; }
+.spike-thread .turn > .spike-reply { border-top: none; padding-top: 2px; }
+.spike-thread .spike-reply.ask-question { background: var(--accent-soft); border-radius: var(--radius-6); padding: 6px 10px; }
+.spike-thread .spike-reply.ask-question > p { font-weight: 500; }
+/* Issue #364: the deleted-turn tombstone — quiet text with an Undelete
+   action, holding its turn's place until restored or the thread goes. */
+.spike-thread .spike-reply.tombstone { color: var(--muted); font-size: 12.5px; padding: 6px 0; }
+.spike-thread .tombstone-undo { background: none; border: none; padding: 0; font: inherit; font-size: inherit; color: var(--accent); cursor: pointer; }
+.spike-thread .tombstone-undo:hover:not(:disabled) { text-decoration: underline; }
+.spike-thread .tombstone-undo:disabled { color: var(--muted); cursor: default; }
+/* Issue #364: the reverse link under each answer — back to the quoted
+   passage (or the margin marker's line), flashing it on arrival. */
+.spike-thread .src-link { background: none; border: none; padding: 2px 0 0; margin: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.spike-thread .src-link:hover { text-decoration: underline; }
+/* Issue #364: reverse-link flash on the highlight mark or margin icon. */
+mark.anc.flash { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-4); background: var(--accent-soft); }
+.tmargin-btn.flash { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); }
+/* Issue #364: guaranteed margin marker — one comment icon per thread in
+   the card/desc margin, on the highlight's first line (measured) or the
+   paragraph's first line (fallback). The overlay is click-transparent
+   except on the buttons, so text selection underneath keeps working. */
+#right .ui-card.desc { position: relative; }
+.doc { position: relative; }
+.tmargin { position: absolute; inset: 0 auto 0 0; width: 0; overflow: visible; pointer-events: none; z-index: 3; }
+/* Issue #364 follow-up: the icon hangs left of the card edge, clearly
+   outside the text column in every theme (card padding varies 16–22px;
+   the prototype pins its markers outside the block the same way). */
+.tmargin-btn { position: absolute; left: -10px; transform: translateY(-3px); display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; pointer-events: auto; }
+.tmargin-btn:hover { color: var(--accent); border-color: var(--accent); }
+.tmargin-btn .ic { width: 11px; height: 11px; }
+/* Issue #364 follow-up: a bucket of threads on one line shares one icon
+   with a count badge (mirrors the end-of-block bubble). */
+.tmargin-btn .tmargin-n { position: absolute; right: -5px; bottom: -5px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--accent); }
+.tmargin-btn .tmargin-n::after { content: attr(data-n); display: block; color: var(--text-on-accent); font-size: 10px; line-height: 14px; text-align: center; }
+/* Issue #364: the Reply box's quote chip — Ask inside a thread quotes
+   into the thread's own composer instead of opening a second one. */
+.composer .qchip { display: flex; align-items: center; gap: 6px; max-width: 100%; margin-bottom: 6px; padding: 4px 6px 4px 10px; background: var(--accent-soft); border-radius: var(--radius-6); font-size: 12.5px; color: var(--ink); }
+.composer .qchip-q { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+.composer .qchip-x { flex: none; background: none; border: none; padding: 0 4px; font-size: 12px; line-height: 1; color: var(--muted); cursor: pointer; }
+.composer .qchip-x:hover { color: var(--ink); }
 /* Narrow row: same rule as the header — a quote that can't show ~12
    characters is dropped instead of truncating to a stub. */
 @container (max-width: 300px) {

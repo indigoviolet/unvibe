@@ -101,9 +101,11 @@ async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
 }
 
 const EXPLAIN_VARS = {
-  anchor: { quote: "y = 2", block: "y = 2" },
-  card: "Alpha body text.",
+  quote: "y = 2",
+  item_id: "card:c-A#b1",
+  offsets: "(no offsets recorded)",
   thread: "(none)",
+  changed_hunks: "(no changes)",
   message: "Why?",
 } as unknown as Record<string, string>;
 

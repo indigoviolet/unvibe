@@ -24,10 +24,11 @@ describe("snapshot build", () => {
     // + examples 4 + diagram 2 + explain 8 + ask 12 (incl. 2 thread).
     // No second-opinion recordings (#349); the cost ask was dropped —
     // Sonnet cited stdlib files outside the review.
-    // + 1 persona recording (#349 step 2: central second-opinion).
+    // + 2 persona recordings (#349 step 2: central second-opinion;
+    // #359: central Clarity).
     // Journey-only manifest entries (the #351 update-pass reply) are not
-    // demo content and are skipped by the builder, so the count stays 70.
-    expect(counts).toHaveLength(70);
+    // demo content and are skipped by the builder.
+    expect(counts).toHaveLength(71);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

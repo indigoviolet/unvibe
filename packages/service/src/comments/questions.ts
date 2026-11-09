@@ -185,7 +185,8 @@ export function suggestOpenQuestionsInDraft(
       // Guide questions start closed (marker); diff/description start open.
       open: built.host.kind === "block" ? false : true,
       pinned: false,
-      replies: [reply],
+      // Issue #365: first (only) reply in a fresh thread.
+      replies: [{ ...reply, seq: 1 }],
       post: false,
       openQuestion: { contributionId: q.contributionId, itemIndex: q.itemIndex },
     };

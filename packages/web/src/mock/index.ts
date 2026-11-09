@@ -66,7 +66,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, CLARITY_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -987,11 +987,14 @@ const DEMO_ROLE_PICKS = {
 /** Built-in Second opinion persona with the mock model (issue #349). */
 const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
+/** Built-in Clarity persona with the mock model (issue #359). */
+const MOCK_CLARITY_PERSONA = { ...CLARITY_PERSONA, provider: "claude", model: "mock-clarity" };
+
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  personas: [MOCK_BUILT_IN_PERSONA],
+  personas: [MOCK_BUILT_IN_PERSONA, MOCK_CLARITY_PERSONA],
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -1003,6 +1006,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
   autoGoDeeper: true,
+  recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };
@@ -1012,7 +1016,7 @@ function getMockSettings(): Settings {
     // Real service defaults, and stored overrides from mock-mode runs are
     // ignored so a stale localStorage can't leak mock ids into the demo.
     // Saves refuse anyway (read-only banner).
-    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }] };
+    return { ...DEFAULT_MOCK_SETTINGS, ...DEMO_ROLE_PICKS, personas: [{ ...SECOND_OPINION_PERSONA }, { ...CLARITY_PERSONA }] };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
 }
@@ -1713,6 +1717,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
     replies: [
       {
         id: replyId,
+        seq: 1,
         kind: "explain",
         who: "agent",
         question: null,
@@ -1793,10 +1798,11 @@ function mockPostText(thread: import("@unvibe/shared").Thread): string {
   return first ? mockReplyText(first) : "";
 }
 
-function mockCommentReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
+function mockCommentReply(who: "you" | "agent", text: string, suggested = false, seq = 1): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
     id: `ans_mock${Math.floor(Math.random() * 1e9).toString(36)}`,
+    seq,
     kind: "comment",
     who,
     question: null,
@@ -3162,6 +3168,7 @@ export const mockApi = {
           replies: [
             {
               id: replyId,
+              seq: 1,
               kind: "ask",
               who: "agent",
               question: a.message,
@@ -3346,6 +3353,7 @@ export const mockApi = {
         replies: [
           {
             id: replyId,
+            seq: 1,
             kind: "explain",
             who: "agent",
             question: null,
@@ -3486,7 +3494,7 @@ export const mockApi = {
         post: false,
         working: "Writing answer",
         replies: [
-          { id: replyId, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
@@ -3850,7 +3858,7 @@ export const mockApi = {
   replyComment: async (_id: string, commentId: string, body: { text: string }) => {
     const thread = annotations.find((a) => a.id === commentId);
     if (!thread) throw new Error("unknown comment");
-    thread.replies.push(mockCommentReply("you", body.text));
+    thread.replies.push(mockCommentReply("you", body.text, false, thread.replies.length + 1));
     delete thread.reply;
     thread.open = true;
     emitAnnotations();
@@ -3895,6 +3903,38 @@ export const mockApi = {
         emitHunkStates();
       }
     }
+    emitAnnotations();
+    return { ok: true };
+  },
+
+  // Issue #364: soft delete — the reply stays as a tombstone (or the
+  // thread goes, when its last live turn is deleted).
+  deleteReply: async (_id: string, commentId: string, replyId: string) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread) throw new Error("unknown comment");
+    if (thread.postedAt !== undefined) throw new Error("posted content can't be deleted");
+    const target = thread.replies.find((r) => r.id === replyId);
+    if (!target) throw new Error(`unknown reply ${replyId}`);
+    if (target.jobId !== undefined || (target.working ?? null) !== null) {
+      throw new Error("that reply is still filling — wait for the answer");
+    }
+    target.deletedAt = Date.now();
+    if (!thread.replies.some((r) => r.deletedAt === undefined)) {
+      const tIdx = annotations.findIndex((a) => a.id === commentId);
+      if (tIdx >= 0) annotations.splice(tIdx, 1);
+    }
+    emitAnnotations();
+    return { ok: true };
+  },
+
+  // Issue #364: restore a tombstoned reply exactly as it was.
+  undeleteReply: async (_id: string, commentId: string, replyId: string) => {
+    const thread = annotations.find((a) => a.id === commentId);
+    if (!thread) throw new Error("unknown comment");
+    const target = thread.replies.find((r) => r.id === replyId);
+    if (!target) throw new Error(`unknown reply ${replyId}`);
+    if (target.deletedAt === undefined) throw new Error(`reply ${replyId} is not deleted`);
+    delete target.deletedAt;
     emitAnnotations();
     return { ok: true };
   },
@@ -4286,14 +4326,19 @@ export const mockApi = {
     return buildMockDiagnostics();
   },
 
-  statsExport: async () => {
+  traceStatus: async () => {
     await wait(50);
-    return {
-      schemaVersion: 1 as const,
-      reviews: [],
-      jobs: [],
-      totals: { reviews: 0, jobs: 0, failures: 0, repairs: 0, tokens: { input: 0, cachedRead: 0, cachedWrite: 0, output: 0 } },
-    };
+    return { recording: getMockSettings().recordTraces === true, spans: 0, bytes: 0, capped: false };
+  },
+
+  traceExport: async () => {
+    await wait(50);
+    return { resourceSpans: [] };
+  },
+
+  traceClear: async () => {
+    await wait(50);
+    return { recording: getMockSettings().recordTraces === true, spans: 0, bytes: 0, capped: false };
   },
 
   reload: async () => {

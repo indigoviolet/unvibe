@@ -40,12 +40,6 @@ function goldenValues(): Record<string, RenderValues> {
   const hunkSummaries = buildHunkSummaries(snap);
   const firstHunk = snap.files[0].hunks[0];
   const card = `### ${snap.cards[0].title} [[card:${snap.cards[0].id}]]\n\n${snap.cards[0].markdown}\n`;
-  const anchor = {
-    quote: "obsolete line folding",
-    block: "HTTP/1.1 used to let a server continue a header value on the next line. [[desc:d-intro]]",
-  };
-  const thread = "you: What is a fold?\nai: A header value continued on the next line. [[desc:d-intro]]";
-  const changeList = "- [1 thread-summary global] Reader settled the cookie question";
   const glossary = "## Glossary\n\nUse these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.\n\n- `HTTPHeaderDict` — Headers view.\n";
   return {
     instructions: {},
@@ -68,8 +62,19 @@ function goldenValues(): Record<string, RenderValues> {
       mentions: "- problem card [[card:c-problem]]\n- diff [[diff:conn:650-651]]",
       glossary,
     },
-    ask: { anchor, card, thread, change_list: changeList, message: "Does Requests see the raw value?", glossary },
-    ask_turn: { change_list: changeList, message: "What about ordering?" },
+    ask: {
+      quote: "obsolete line folding",
+      item_id: "card:c-problem#pb1",
+      offsets: "12–18",
+      thread: "(none)",
+      changed_hunks: "(no changes)",
+      message: "Does Requests see the raw value?",
+    },
+    ask_turn: {
+      followup: "New selection in reply [[ann:ann_x1#r1]]:\n\n> obsolete line folding\n\nItem: ann:ann_x1#r1\nSelection offsets: (no offsets recorded)\n\nAnswer as turn [[ann:ann_x1#r2]] in thread [[ann:ann_x1]].",
+      changed_hunks: "h:conn:h111",
+      message: "What about ordering?",
+    },
     depth: { card, level: "deep" },
     examples: { card, level: "standard" },
     diagram: { card, level: "standard" },

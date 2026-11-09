@@ -11,7 +11,7 @@ import {
 function mkReply(who: "you" | "agent", text: string, suggested = false): import("@unvibe/shared").Reply {
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
-    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `ans_${who}_${Math.random().toString(36).slice(2, 6)}`, seq: 1,
     kind: "comment",
     who,
     question: null,
@@ -83,5 +83,27 @@ describe("description thread labels (finding 22)", () => {
     expect(threadWhereLabel(prSnap, descThread)).toBe("PR description");
     expect(threadLocationLabel(branchSnap, descThread)).toBe("Commits");
     expect(threadWhereLabel(branchSnap, descThread)).toBe("Commits");
+  });
+});
+
+describe("tombstones are excluded (issue #364)", () => {
+  test("threadPostText skips deleted comment replies", () => {
+    const deleted = mkReply("you", "gone");
+    (deleted as { deletedAt?: number }).deletedAt = 5;
+    expect(threadPostText(thread({ replies: [deleted, mkReply("you", "kept")] }))).toBe("kept");
+    expect(threadPostText(thread({ replies: [deleted] }))).toBe("");
+  });
+
+  test("outbox and menu skip threads with only deleted comments", () => {
+    const deleted = mkReply("you", "gone");
+    (deleted as { deletedAt?: number }).deletedAt = 5;
+    const snap = {
+      annotations: [
+        thread({ id: "a", post: true, replies: [deleted, mkReply("you", "kept")] }),
+        thread({ id: "b", post: true, replies: [deleted] }),
+      ],
+    } as unknown as ReviewSnapshot;
+    expect(outboxThreads(snap).map((t) => t.id)).toEqual(["a"]);
+    expect(threadPostText(thread({ id: "b", post: true, replies: [deleted] }))).toBe("");
   });
 });

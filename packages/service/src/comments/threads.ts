@@ -34,6 +34,7 @@ import type {
   Thread,
 } from "@unvibe/shared";
 import type { WritableDraft } from "immer";
+import { isLiveReply, nextReplySeq } from "@unvibe/shared";
 import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/description.js";
 import type { ReviewStore } from "../state/store.js";
 import { commentHostText, findBlock } from "../interaction/l4.js";
@@ -70,6 +71,14 @@ export function newAnnotationId(): string {
 /** New reply ids. Format `ans_<12 hex>` (app-assigned, PRD §7.2). */
 export function newReplyId(): string {
   return `ans_${randomBytes(6).toString("hex")}`;
+}
+
+/**
+ * Issue #365: append a reply with its stable sequence stamped. Every
+ * creation path uses this so `ann:<thread>#r<seq>` never shifts.
+ */
+export function pushReplySeq(replies: Reply[], reply: Omit<Reply, "seq">): void {
+  replies.push({ ...reply, seq: nextReplySeq(replies) });
 }
 
 function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
@@ -323,8 +332,10 @@ export function buildAnchor(
   };
 }
 
-/** One comment reply carrying plain reviewer text. */
-export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Reply {
+/** One comment reply carrying plain reviewer text. The stable sequence
+ * is stamped by the caller (`pushReplySeq`, or `seq: 1` for a first
+ * reply in a fresh thread). */
+export function commentReply(text: string, opts?: { who?: "you" | "agent"; suggested?: boolean; suggestedQuestion?: boolean }): Omit<Reply, "seq"> {
   const who = opts?.who ?? "you";
   const html = escapeHtml(text).replace(/\n/g, "<br>");
   const block: Block = {
@@ -368,7 +379,7 @@ export function createThreadInDraft(
   );
   const replies: Reply[] = [];
   if (params.text !== undefined && params.text !== "") {
-    replies.push(commentReply(params.text));
+    pushReplySeq(replies, commentReply(params.text));
   }
   // Guide threads start closed; diff + description threads start open
   // (prototype `threadShown`: `t.file || t.desc ? !collapsed : open`).
@@ -406,11 +417,13 @@ export function createSuggestedCommentInDraft(
     params.quote ?? "",
     { prefix: params.prefix, suffix: params.suffix, position: params.position },
   );
+  const replies: Reply[] = [];
+  pushReplySeq(replies, commentReply(params.suggestionText, { who: "agent", suggested: true }));
   const thread: Thread = {
     id: newAnnotationId(),
     type: "thread",
     anchor,
-    replies: [commentReply(params.suggestionText, { who: "agent", suggested: true })],
+    replies,
     open: true,
     pinned: false,
     post: false,
@@ -433,7 +446,7 @@ export function replyInDraft(
 ): void {
   if (!text || text.trim() === "") throw new Error("reply text is required");
   const thread = findThread(draft, commentId);
-  thread.replies.push(commentReply(text));
+  pushReplySeq(thread.replies, commentReply(text));
   thread.reply = "";
   thread.open = true;
 }
@@ -527,12 +540,59 @@ export function deleteInDraft(draft: WritableDraft<ReviewSnapshot>, commentId: s
 }
 
 /**
+ * Issue #364: soft-delete one reply (no confirm, per the thread-delete
+ * rule in #346). The reply keeps its ID, position and blocks and renders
+ * as a "Reply deleted · Undelete" tombstone; undelete restores it
+ * exactly. A question and its answer are one turn — stored as a single
+ * reply — so deleting an answer removes its question with it by
+ * construction. Later turns stay. Deleting the last *live* turn deletes
+ * the thread (same cleanup as a whole-thread delete). Posted content
+ * (`postedAt`) is never deletable; a reply that is still filling is
+ * refused so a landing job can never write into a missing turn.
+ */
+export function deleteReplyInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  commentId: string,
+  replyId: string,
+): void {
+  const thread = findThread(draft, commentId);
+  if (thread.postedAt !== undefined) {
+    throw new Error("posted content can't be deleted");
+  }
+  const target = (thread.replies ?? []).find((r) => r.id === replyId);
+  if (!target) throw new Error(`unknown reply ${replyId}`);
+  if (!isLiveReply(target)) throw new Error(`reply ${replyId} is already deleted`);
+  if (target.jobId !== undefined || (target.working ?? null) !== null) {
+    throw new Error("that reply is still filling — wait for the answer");
+  }
+  target.deletedAt = Date.now();
+  if (!(thread.replies ?? []).some(isLiveReply)) {
+    deleteInDraft(draft as WritableDraft<ReviewSnapshot>, commentId);
+  }
+}
+
+/** Issue #364: restore a tombstoned reply exactly as it was. */
+export function undeleteReplyInDraft(
+  draft: WritableDraft<ReviewSnapshot>,
+  commentId: string,
+  replyId: string,
+): void {
+  const thread = findThread(draft, commentId);
+  const target = (thread.replies ?? []).find((r) => r.id === replyId);
+  if (!target) throw new Error(`unknown reply ${replyId}`);
+  if (isLiveReply(target)) throw new Error(`reply ${replyId} is not deleted`);
+  delete target.deletedAt;
+}
+
+/**
  * Exact text that will be posted for a thread: the Outbox draft when set,
  * else the first reviewer reply, else the suggested reply (prototype
- * `Comments menu` draft fallback).
+ * `Comments menu` draft fallback). Issue #364: tombstoned replies never
+ * contribute (deleted turns are excluded unless restored).
  */
 export function threadPostText(thread: Thread): string {
   if (thread.draft !== undefined && thread.draft !== "") return thread.draft;
+  const live = (thread.replies ?? []).filter(isLiveReply);
   const toText = (r: Reply): string => {
     const parts: string[] = [];
     for (const b of r.blocks ?? []) {
@@ -550,7 +610,7 @@ export function threadPostText(thread: Thread): string {
     }
     return parts.join("\n\n");
   };
-  const comments = (thread.replies ?? []).filter((r) => r.kind === "comment");
+  const comments = live.filter((r) => r.kind === "comment");
   const you = comments.find((r) => r.who === "you" && toText(r) !== "");
   if (you) return toText(you);
   const suggested = comments.find((r) => r.suggested && toText(r) !== "");
@@ -710,5 +770,30 @@ export async function deleteAnnotation(
 ): Promise<ReviewSnapshot> {
   return mutateThread(store, reviewId, (draft) => {
     deleteInDraft(draft, commentId);
+  });
+}
+
+/** Issue #364: soft-delete one reply (tombstone; no confirm). Deleting
+ * the last live turn deletes the thread. */
+export async function deleteReply(
+  store: ReviewStore,
+  reviewId: string,
+  commentId: string,
+  replyId: string,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    deleteReplyInDraft(draft, commentId, replyId);
+  });
+}
+
+/** Issue #364: restore a tombstoned reply exactly as it was. */
+export async function undeleteReply(
+  store: ReviewStore,
+  reviewId: string,
+  commentId: string,
+  replyId: string,
+): Promise<ReviewSnapshot> {
+  return mutateThread(store, reviewId, (draft) => {
+    undeleteReplyInDraft(draft, commentId, replyId);
   });
 }

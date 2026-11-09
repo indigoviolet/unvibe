@@ -38,16 +38,18 @@ Every task lives in `mise.toml`; run it as `mise run <task>`.
 | `test:slow:unit` | Slow vitest files (`*.slow.test.*`: need a build) | `build` (auto) |
 | `test:slow` | Slow suite: `test:slow:unit`, then Playwright (`test:e2e`) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `test` | Every automated test that needs no login (`test:fast`, then `test:slow`) | as above |
+| `test:affected` | Pre-fold check (#358): full `check`, then Playwright on the import-graph-affected specs (`--only-changed` vs the merge base) plus the trigger-table specs; `--dry-run` prints the choice, `--base <ref>` overrides the base | `build` (auto) + browsers |
 | `typecheck:tests` | tsc over each workspace's tests (service `src` + `test`; shared `test`; web `src` incl. tests); blocking since issue #127 | — |
 | `check` | Fast suite: `lint` + `typecheck` + `typecheck:tests` in parallel, then `test:fast`; must pass from a clean tree with no `dist/` | — |
 | `gate` | Pre-merge gate: `check`, `build`, `test:slow`, `build-freshness`, shell e2e, `restart-resilience`, d2 seed check, `check-global-install`, one after another | everything (one full run at a time, see below) |
+| `gate:failed` | Re-run only what failed (#358): Playwright `--last-failed`; vitest has no last-failed state (re-run files by name) | browsers |
 | `restart-resilience` | SIGKILL mid-stage, restart, resume against the built service | `build` (auto) |
 | `start` | Run the built service | `build` (auto) |
 | `setup` / `doctor` | Build, then `unvibe setup` / `unvibe doctor` | — |
 | `fixture-snapshot` | Rebuild `fixtures/urllib3-5020/snapshot.json`; fails on unverified citations | — |
 | `test:e2e` | Playwright behaviour tests (mock UI + real service in demo mode) | `build` (auto) + browsers (`mise run playwright-install`) |
 | `playwright-install` | Install the Playwright Chromium browser | — |
-| `visual-tour` | Visual tour against the real built service (demo + replay agent): screenshots in `packages/web/visual-tour/` (git-ignored), generic viewport/stacking/overflow checks at 1440px and ~900px in light and dark | `build` (auto) + browsers |
+| `visual-tour` | On-demand visual tour (#363): frame capture in `packages/web/e2e/tour/` against the real built service (demo + replay agent), via `playwright.tour.config.ts` — never in the gate. Screenshots in `packages/web/visual-tour/` (git-ignored), generic viewport/stacking/overflow checks — default 1440px light Default theme; dark, other themes and 960px only for the named keeps in `packages/web/e2e/tour-matrix.ts` (full matrix on demand via `UNVIBE_TOUR_MATRIX=full`) | `build` + `demo:build` (auto) + browsers |
 | `e2e` | Linux shell end-to-end (setup --no-login, handler, reuse, idle exit, uninstall, in temp HOME/port; the login unit's contents + enable commands are pinned by `setup.test.ts`, not here) | Linux |
 | `e2e:macos` | macOS shell end-to-end (setup, helper app, handler, reuse, idle exit, uninstall, in temp HOME/port) | macOS |
 | `check-global-install` | `release`, then install the tarball and the `#release` git ref into temp prefixes (npm 10 and 11, no flags) | npm 10 + 11 |
@@ -124,11 +126,13 @@ not something to paper over.
 
 - **Timing races that only fail on the runner:** the GitHub runner is
   ~4x slower than a dev machine. Throttle the browser to match with
-  `UNVIBE_E2E_CPU_THROTTLE=4` (CDP `Emulation.setCPUThrottlingRate`,
-  wired into the specs that have needed it via
-  `e2e/cpu-throttle.ts`; a no-op when unset) and run the spec
+  `UNVIBE_E2E_CPU_THROTTLE=4` (CDP `Emulation.setCPUThrottlingRate` via
+  `e2e/cpu-throttle.ts`; wired into every journey and tour spec via
+  `cpuThrottleFromEnv(page)`, a no-op when unset) and run the spec
   repeatedly, e.g.
-  `UNVIBE_E2E_CPU_THROTTLE=6 UNVIBE_E2E_WORKERS=2 npx playwright test e2e/reply-draft-service.spec.ts --repeat-each=10`.
+  `UNVIBE_E2E_CPU_THROTTLE=6 UNVIBE_E2E_WORKERS=2 npx playwright test e2e/journeys/l5-submit.spec.ts --repeat-each=10`.
+  `mise run test:affected` always runs the browser set this way
+  (`UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4`: one throttled core).
 - **Vite never reachable (`Timed out ... from config.webServer`):** bare
   `vite` listens on `localhost`, which is resolution-order-dependent. Force
   the runner's order with
@@ -140,8 +144,8 @@ not something to paper over.
   identity. Reproduce with `HOME=$(mktemp -d) GIT_CONFIG_NOSYSTEM=1 mise run release`
   (`scripts/release.mjs` falls back to `unvibe <unvibe@localhost>` only
   when nothing is configured).
-- **Hover/popover flakes in Playwright:** `hoverFresh` (copied in the
-  guide/interaction/journey specs) waits for fonts + scroll quiet and aims
+- **Hover/popover flakes in Playwright:** the shared `hoverFresh`
+  helper (`e2e/hover-fresh.ts`) waits for fonts + scroll quiet and aims
   at the anchor's own line boxes until the cursor verifiably lands on it
   (union-box centers miss wrapped anchors). If a hover still misses, its
   error names the covering stack, `:hover` chain, scroll and viewport;
@@ -166,9 +170,9 @@ How `packages/service/src/agent/factory.ts` picks the runner:
 
 Access model: the content script (GitHub PR pages only) holds no token and makes no requests; only the background worker calls the service, reading the `__unvibe_token` cookie via `chrome.cookies` and sending it as Bearer to loopback origins. The token never goes to github.com. The worker probes the service on ports 4517–4521 (`unvibe.localhost`, then `127.0.0.1`).
 
-Tests: `packages/web/e2e/extension-322.spec.ts` (persistent Chromium with the unpacked extension, `github.com` routed to a local fixture, real service + stub `gh`; frame at `packages/web/test-results/extension-button.png`), plus unit tests for the origin allowlist and deep-link parser (`packages/shared/test/extension.test.ts`, `packages/service/test/extension-322.test.ts`, `host.test.ts`).
+Tests: the L12 journey `packages/web/e2e/journeys/l12-extension.spec.ts` (persistent Chromium with the unpacked extension, `github.com` routed to a local fixture, real service + stub `gh`; frames at `packages/web/visual-tour/extension-button-1440-light.png`, `extension-open-confirm-1440-light.png` and `extension-333-conversation-light.png` via `mise run visual-tour`), plus unit tests for the origin allowlist and deep-link parser (`packages/shared/test/extension.test.ts`, `packages/service/test/extension-322.test.ts`, `host.test.ts`).
 
-Part 2 (side panel): the manifest also declares a side panel (`extension/panel/`) and a capture content script on github.com pages; capture happens only when the panel asks. Panel endpoints (`/api/extension/panel/*`) share the pinned-origin + token gate. One thread per page lives on a `web` review (never in Reviews; listed under Documents in its own Web pages group with page title, site, question count and last activity); Settings → Extension holds the active-repo checkboxes (default: 3 most recent), the panel model picker (default muse-spark) and install help — `extension/` ships inside the installed package (`extension/**` in the tarball, asserted by `check-global-install`), Show extension folder opens it via `open`/`xdg-open` through the command runner, and the connected line reads the last worker call held in memory. The live repo-picking check is `mise run test:live:panel-322 -- --cap 0.25 [--model <id>]` (never run by check). Tests: `packages/shared/test/webdoc.test.ts`, `packages/service/test/panel-322.test.ts`, journeys `packages/web/e2e/journeys/j322-extension.spec.ts` and `packages/web/e2e/extension-panel-322.spec.ts` (frame at `packages/web/visual-tour/extension-panel-322.png`).
+Part 2 (side panel): the manifest also declares a side panel (`extension/panel/`) and a capture content script on github.com pages; capture happens only when the panel asks. Panel endpoints (`/api/extension/panel/*`) share the pinned-origin + token gate. One thread per page lives on a `web` review (never in Reviews; listed under Documents in its own Web pages group with page title, site, question count and last activity); Settings → Extension holds the active-repo checkboxes (default: 3 most recent), the panel model picker (default muse-spark) and install help — `extension/` ships inside the installed package (`extension/**` in the tarball, asserted by `check-global-install`), Show extension folder opens it via `open`/`xdg-open` through the command runner, and the connected line reads the last worker call held in memory. The live repo-picking check is `mise run test:live:panel-322 -- --cap 0.25 [--model <id>]` (never run by check). Tests: `packages/shared/test/webdoc.test.ts`, `packages/service/test/panel-322.test.ts`, the L11 journey `packages/web/e2e/journeys/l11-documents.spec.ts` (side-panel flow; frame at `packages/web/visual-tour/extension-panel-322.png` via `mise run visual-tour`).
 
 ## Tests
 
@@ -186,7 +190,9 @@ that needs a `dist/` or a browser. `mise run test` is both;
   `foo.slow.test.ts`. Slow files run after `mise run build` and FAIL
   (never skip) when the build is missing or stale.
 - **Slow by location (Playwright):** everything under `packages/web/e2e/`
-  is slow. There is no fast Playwright subset.
+  is slow, except `packages/web/e2e/tour/` (the on-demand visual tour:
+  excluded from the gate config, run only via `mise run visual-tour`).
+  There is no fast Playwright subset.
 - **Disabled:** one test or group is `it.skip` / `test.skip` /
   `describe.skip` with `// DISABLED(#119): <one-line reason>` on the line
   directly above; a whole file is renamed `*.disabled.test.ts`
@@ -195,7 +201,7 @@ that needs a `dist/` or a browser. `mise run test` is both;
   deleted). List them with `git grep -n "DISABLED(#"`. Never disable
   anything behind a rule in `AGENTS.md` or a gate named here.
 - Unit: vitest per workspace (`packages/*/test`, `*.test.ts(x)` next to the code). Prompt rendering has golden files (`prompt-goldens.test.ts`).
-- Behaviour: Playwright specs in `packages/web/e2e/` run against mock mode and against the real built service in `replay` mode.
+- Behaviour: Playwright specs in `packages/web/e2e/` run against mock mode and against the real built service in `replay` mode — the fourteen long journeys `e2e/journeys/l1-*` … `l14-*` (one boot per area, `test.step` + `expect.soft`, failure-only screenshots) plus the on-demand frame tour in `e2e/tour/` (never in the gate).
 - Shell: `scripts/e2e-linux.mjs` (setup/handler/reuse/idle/uninstall with a temp HOME, data dir and port) and `scripts/restart-resilience.mjs` (SIGKILL mid-stage against the built service).
 - Live: `scripts/live-*.mjs` plus `UNVIBE_LIVE=1` suites. Gated by env, excluded from `check` by design.
 - Shared options live in `vitest.shared.ts` at the root (imported by all
@@ -218,11 +224,13 @@ Rules:
   ```sh
   cd packages/service && npx vitest run test/reviews.test.ts        # one file, 1 to 3 s
   cd packages/web && VITE_MOCK=1 npx vitest run src/guide/CardView.test.tsx  # VITE_MOCK=1 is required: without it the mock API is real fetch
-  cd packages/web && npx playwright test e2e/comments.spec.ts       # one spec; *-service specs skip without a build, so `mise run build` first to exercise them
+  cd packages/web && npx playwright test e2e/journeys/l5-submit.spec.ts                  # one journey; journey specs skip without a build, so `mise run build` first to exercise them
   ```
   (`mise run test:e2e -- e2e/<spec>` from the root narrows the same way
   but rebuilds first.)
-- Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `check` plus the Playwright specs for the touched flows before a preview (**not** the full gate); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
+- Which gate when: targeted tests after each change; `mise run check` before each commit and before reporting; `mise run test:affected` (not a hand-picked list) before reporting and before each fold into `main-rc`, and say which tests ran ("affected tests run (list); full gates not yet run"); `mise run gate` once per branch with current `main` merged in, before merge or when the machine is free — one full run at a time across the machine (a plain task chain by owner decision, no lock script), never several at once.
+- Affected-test selection (`mise run test:affected`, issue #358): the base is the merge base with `main-rc` (`--base <ref>` overrides). Playwright's `--only-changed=<base>` follows the runner-side import graph (a changed spec, or a spec importing a changed file). What the graph cannot see comes from the trigger table in `scripts/test-affected-lib.mjs`: `fixtures/` (fs reads, the mock bundle's `snapshot.json?raw`, `dist-demo`) pulls the demo/static/mock/replay specs; `packages/shared/src/data-format.ts` pulls the data-reset specs (specs import the dist path, never src); `prompts/` (plus replay-match/prompts) pulls the replay specs (recordings match by prompt markers); `packages/web/src/mock/` pulls the mock-mode specs. `packages/web/src/styles/` + `packages/web/src/ui/` pull nothing: the visual tour is on-demand only (`mise run visual-tour`), never in the affected run — style regressions are caught by the `checkLayout` sweeps in the gate journeys. The task prints the changed files and the chosen specs with reasons before running anything (`--dry-run` prints only). It runs `mise run check` in full, then the needed builds once, then the two Playwright invocations (import-graph set, then trigger set: positional specs AND with `--only-changed`, so they must stay separate), both with `UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4` (one throttled core, #363 §6).
+- Fixing a red gate (issue #358): fix, then re-run **only** what failed (`mise run gate:failed` — Playwright `--last-failed`; re-run failed vitest files by name, vitest keeps no last-failed state) until green, then **one** final full `mise run gate` before merging — not a full re-run per fix.
 
 ## Environment variables
 
@@ -241,7 +249,8 @@ Rules:
 | `UNVIBE_TEST_SUITE` | both | `fast` / `slow`: run one vitest suite directly (`npm run test:fast` / `test:slow` set it). |
 | `UNVIBE_TEST_WORKERS` | `min(8, cores-1)` | Cap on vitest workers. |
 | `UNVIBE_E2E_WORKERS` | `min(4, cores/2)` | Cap on Playwright workers (`=8` when the machine is known to be free). |
-| `UNVIBE_E2E_CPU_THROTTLE` | unset | CDP CPU-throttling rate for test pages (e.g. `=4` to mimic the slower CI runner when reproducing timing races); no-op when unset. |
+| `UNVIBE_E2E_CPU_THROTTLE` | unset | CDP CPU-throttling rate for test pages (e.g. `=4` to mimic the slower CI runner when reproducing timing races); no-op when unset. `mise run test:affected` always sets `=4` (with `UNVIBE_E2E_WORKERS=1`). |
+| `UNVIBE_TOUR_MATRIX` | slim | `full` runs the full theme/width matrix (every tour combo and journey variant); default runs the slim set (1440px light Default plus the `tour-matrix.ts` named keeps). Never set in `check`, `test:slow`, `gate` or `test:affected`. |
 | `UNVIBE_UPDATER_BACKEND` | live (not wired) | `fake` selects the test-only update backend: channels from `<dataDir>/update/fake-channels.json` (else a built-in seed), installed ref in `<dataDir>/update/current-ref`. Never touches npm, git or the network. |
 | `UNVIBE_UPDATE_FAKE_FAIL` | — | Fake failure injection for switch drills: `install:<ref>` (install throws) or `health:<ref>` (install "succeeds" without advancing, so the new build never reports the target version). Test-only. |
 | `UNVIBE_UPDATE_EXIT_WAIT_MS` / `UNVIBE_UPDATE_HEALTH_TIMEOUT_MS` / `UNVIBE_UPDATE_POLL_MS` / `UNVIBE_UPDATE_STOP_WAIT_MS` | `30000` / `120000` / `500` / `10000` | Detached-helper timeout overrides. Test-only. |

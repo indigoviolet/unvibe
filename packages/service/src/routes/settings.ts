@@ -60,15 +60,19 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     if (typeof offered === "function" || typeof thinking === "function") {
       const problems: string[] = [];
       // Issue #349: every persona's model is validated like a role's —
-      // never persist a model id no adapter offers.
+      // never persist a model id no adapter offers. A persona following
+      // the main model (issue #359) is exempt: its stored pick is the
+      // last explicit one, not what runs.
       const personas = Array.isArray(patch.personas) ? (patch.personas as Persona[]) : [];
       const picks: { label: string; provider: string; model: string }[] = [
         ...ROLES.map((role) => ({ label: role, provider: patch[role]?.provider ?? "", model: patch[role]?.model ?? "" })),
-        ...personas.map((p, i) => ({
-          label: `personas[${i}] ("${p.name ?? p.id ?? "?"}")`,
-          provider: p.provider ?? "",
-          model: p.model ?? "",
-        })),
+        ...personas
+          .filter((p) => !p.followMain)
+          .map((p, i) => ({
+            label: `personas[${i}] ("${p.name ?? p.id ?? "?"}")`,
+            provider: p.provider ?? "",
+            model: p.model ?? "",
+          })),
       ];
       for (const { label, provider, model } of picks) {
         if (!provider || model === "") continue;
@@ -117,6 +121,10 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     }
     const res = deps.settings.update(patch);
     if (res.errors) return reply.code(400).send({ errors: res.errors });
+    // Issue #356: the Debug recording switch takes effect at once.
+    if (patch["recordTraces"] !== undefined && deps.traces && res.settings) {
+      deps.traces.setEnabled(res.settings.recordTraces === true);
+    }
     return res.settings;
   });
 

@@ -125,6 +125,18 @@ export interface VersionStatus {
   empty?: boolean;
 }
 
+/**
+ * Issue #367: the one shared update-availability predicate. The service
+ * (`enqueueUpdatePass`) refuses an update when this is false, so the web
+ * UI must not offer one either — card banners and the diff banner both
+ * read this, never a local `stale` flag alone. An update pass clears
+ * review-level staleness (option A also clears every card), so after a
+ * pass this is false until the next refresh marks new changes.
+ */
+export function isUpdateAvailable(status: VersionStatus | undefined | null): boolean {
+  return status?.stale === true;
+}
+
 /** Reader-pinned excerpt stored in the snapshot (PRD §8 "Pinned code"). */
 export interface PinnedCode {
   path: string;
@@ -230,6 +242,15 @@ export interface UpdatePassResult {
    * the old text unchanged. The service stamps id/version/baseline/at.
    */
   addenda?: CardAddendumDraft[];
+  /**
+   * Issue #367 option A: stale card IDs the pass judged unaffected —
+   * checked, but needing neither revision, recheck nor addendum. In the
+   * same single reply, no extra agent call. A stale card in none of
+   * revised/rechecked/addenda/unaffected was missed by the pass: it is
+   * still cleared (the pass saw the whole delta) and logged, hunks keep
+   * their own marks.
+   */
+  unaffectedCards?: string[];
   /**
    * Issue #351 step 1: new-side contentHash → plotline id for hunks
    * since the baseline. Genuinely new threads arrive as `newPlotlines`.

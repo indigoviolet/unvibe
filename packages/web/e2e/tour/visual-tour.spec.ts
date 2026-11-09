@@ -1,0 +1,4681 @@
+/**
+ * Visual tour against the REAL built service (owner: real testing
+ * wherever possible). Default matrix (#362): every scene runs once at
+ * 1440px, light, Default theme — dark, the non-default themes and 960px
+ * only for the NAMED_KEEPS in `tour-matrix.ts`, full matrix on demand
+ * via `UNVIBE_TOUR_MATRIX=full`. Scenes: the guide with a pinned card, a
+ * card opened from inside a pinned card in the guide and in the diff,
+ * the diff in unified and split, a deep-anchored card, every
+ * toolbar/file-tree menu, the comments menu, every Settings tab, and
+ * the start page (Open-a-PR row, PR list, Reviews list). Screenshots land
+ * in the git-ignored `visual-tour/` folder for the owner to look at.
+ *
+ * At every step, generic checks (no per-feature asserts), including
+ * the #225 layout check (`layout-check.ts`) on every scene:
+ * - every open menu/popover is fully inside the viewport and topmost
+ *   at its corners and centre;
+ * - every open card's FULL box is inside the viewport horizontally
+ *   and topmost across a grid (pinned headers excepted);
+ * - no horizontal page overflow.
+ *
+ * Requires `mise run build` first. Run via `mise run visual-tour`.
+ */
+import { execFile } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { selectDiffRows, selectText } from "../select-text.js";
+/**
+ * Issue #285 (E2): unified expand controls ride the hunk's first/last
+ * row and show on row hover — hover the button's row, then click. (At
+ * rest the buttons are transparent so number clicks pass through.)
+ */
+async function clickRowControl(scope: Locator, name: string | RegExp, nth = 0): Promise<void> {
+  const btn = scope.getByRole("button", { name }).nth(nth);
+  await btn.locator("xpath=ancestor::tr[1]").hover();
+  await btn.click();
+}
+import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
+import { checkLayout } from "../layout-check.js";
+import { fullMatrix, tourCombos } from "../tour-matrix.js";
+import {createScratchReview as createJourneyReview, createSeededDemoReview, git as journeyGit, makeEofFile, makeGapRepo, makeScratchRepo, realGitPath, stampDataFormat, writeFakeGh, writeFakeGhTour, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
+
+const exec = promisify(execFile);
+const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
+
+test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+
+// Full Chromium, not the headless shell (issue #196 review): the
+// shell's font shaping inflates some families' glyph advances at text
+// sizes (Nunito Sans "T" shaped 10px at 13px instead of its true
+// 7.8px), which made Studio text look broken in tour screenshots
+// while real Chrome renders it correctly. `channel: "chromium"` is
+// Playwright's full build in the new headless mode.
+test.use({ channel: "chromium" });
+
+async function apiJson(origin: string, token: string, method: string, urlPath: string, body?: unknown): Promise<unknown> {
+  const args = ["-s", "-X", method, `${origin}${urlPath}`, "-H", `Authorization: Bearer ${token}`, "-H", "content-type: application/json"];
+  if (body !== undefined) args.push("-d", JSON.stringify(body));
+  const { stdout } = await exec("curl", args);
+  return JSON.parse(stdout);
+}
+
+/**
+ * Wait until no review job is live (running/queued/backing-off), so
+ * done-state frames don't show the jobs pill mid-stream. Streaming shots
+ * must NOT call this — their working state is the subject.
+ */
+async function waitForJobsIdle(origin: string, token: string, reviewId: string, timeout = 120_000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const snap = (await apiJson(origin, token, "GET", `/api/reviews/${reviewId}`)) as {
+          jobs?: { state: string }[];
+        };
+        return (snap.jobs ?? []).every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
+let dataDir = "";
+let tourBin = "";
+let tourLog = "";
+let tourShellPath = "";
+let svc: RunningService | null = null;
+let reviewId = "";
+
+test.beforeEach(async ({ page }) => { await cpuThrottleFromEnv(page); });
+test.beforeAll(async () => {
+  mkdirSync(SHOTS, { recursive: true });
+  dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-data-"));
+  // Hermetic service (AGENTS.md: tests never hit real GitHub): fake
+  // `gh` (authenticated as a fake login, empty PR lists) and a `git`
+  // wrapper that fails `ls-remote` instantly, so the GitHub-fetch
+  // probe reports a deterministic offline warning — no real network.
+  tourBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-bin-"));
+  tourLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-gh-"));
+  writeFakeGhTour(tourBin, tourLog);
+  writeFakeGitOffline(tourBin, realGitPath());
+  tourShellPath = writeFakeShell(tourBin);
+  svc = await startService(dataDir, {
+    agent: "replay",
+    extraEnv: {
+      SHELL: tourShellPath,
+      PATH: fakeServicePath(tourBin),
+      // Fake updater so the Settings → Version scene lists channels (#229).
+      UNVIBE_UPDATER_BACKEND: "fake",
+    },
+  });
+  reviewId = await createTourReview();
+});
+
+async function createTourReview(): Promise<string> {
+  if (!svc) throw new Error("service not running");
+  const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+    review: { id: string };
+  };
+  const id = created.review.id;
+  const deadline = Date.now() + 90_000;
+  for (;;) {
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${id}`)) as {
+      pages: { id: string; cards: { id: string; blocks: unknown[] }[] }[];
+    };
+    const root = snap.pages.find((p) => p.id === "root");
+    if (root?.cards.some((c) => c.id === "problem" && c.blocks.length > 0) && root?.cards.some((c) => c.id === "central" && c.blocks.length > 0)) break;
+    if (Date.now() > deadline) throw new Error("guide did not fill in time");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return id;
+}
+
+test.afterAll(async () => {
+  await svc?.stop().catch(() => {});
+  svc = null;
+  for (const d of [dataDir, tourBin, tourLog]) rmSync(d, { recursive: true, force: true });
+});
+
+/**
+ * Syntax-token contrast (issue #196 review): a string/comment token in
+ * a diff row must read against its row background in every theme and
+ * scheme. The light palette on a dark add row scores ~1-2, the correct
+ * dark palette ~5+, so a ratio floor of 3 catches a mis-scoped palette.
+ */
+async function checkTokenContrast(page: Page, step: string): Promise<void> {
+  await page.waitForSelector("table.diff td.c .shk-str", { timeout: 15_000 });
+  const found = await page.evaluate(() => {
+    const lum = (rgb: string): number => {
+      const m = rgb.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
+      const f = (v: number): number => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * f(m[0] ?? 0) + 0.7152 * f(m[1] ?? 0) + 0.0722 * f(m[2] ?? 0);
+    };
+    const out: { cls: string; color: string; bg: string; ratio: number }[] = [];
+    for (const cls of ["shk-str", "shk-com"]) {
+      const el = document.querySelector(`table.diff td.c .${cls}`);
+      if (!el) continue;
+      const color = getComputedStyle(el).color;
+      let bg = "rgba(0, 0, 0, 0)";
+      let node: Element | null = el.closest("td");
+      while (node) {
+        const b = getComputedStyle(node).backgroundColor;
+        if (b && b !== "rgba(0, 0, 0, 0)" && b !== "transparent") { bg = b; break; }
+        node = node.parentElement;
+      }
+      const [hi, lo] = [lum(color), lum(bg)].sort((a, b) => b - a);
+      out.push({ cls, color, bg, ratio: (hi + 0.05) / (lo + 0.05) });
+    }
+    return out;
+  });
+  expect(found.length, `${step}: no syntax tokens found`).toBeGreaterThan(0);
+  for (const t of found) {
+    expect(t.ratio, `${step}: ${t.cls} ${t.color} on ${t.bg} ratio ${t.ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+  }
+}
+
+/** Generic check: menus/popovers fully in the viewport and topmost. */
+async function checkMenus(page: Page, step: string): Promise<void> {
+  const menus = page.locator(".fmenu:visible, .cmenu:visible, #pop:visible");
+  for (let i = 0; i < (await menus.count()); i++) {
+    const bad = await menus.nth(i).evaluate((el: Element) => {
+      const r = el.getBoundingClientRect();
+      if (r.left < -1 || r.right > window.innerWidth + 1 || r.top < -1 || r.bottom > window.innerHeight + 1) {
+        return `outside viewport ${JSON.stringify({ l: r.left, r: r.right, t: r.top, b: r.bottom })}`;
+      }
+      const pts: [number, number][] = [
+        [r.left + 5, r.top + 5],
+        [r.right - 5, r.top + 5],
+        [r.left + 5, r.bottom - 5],
+        [r.right - 5, r.bottom - 5],
+        [r.left + r.width / 2, r.top + r.height / 2],
+      ];
+      for (const [x, y] of pts) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || !el.contains(hit)) return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName + "." + (hit as HTMLElement).className : "nothing"}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: menu ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/** Generic check: open cards fully inside horizontally + topmost grid. */
+async function checkCards(page: Page, step: string): Promise<void> {
+  const cards = page.locator("section.ithread[data-thread]:visible");
+  for (let i = 0; i < (await cards.count()); i++) {
+    const bad = await cards.nth(i).evaluate((cardEl: Element) => {
+      const r = cardEl.getBoundingClientRect();
+      if (r.left < -1 || r.right > window.innerWidth + 1) {
+        return `full box outside viewport horizontally: left=${Math.round(r.left)} right=${Math.round(r.right)} vw=${window.innerWidth}`;
+      }
+      let x0 = Math.max(r.left, 0);
+      let x1 = Math.min(r.right, window.innerWidth);
+      let y0 = Math.max(r.top, 0);
+      let y1 = Math.min(r.bottom, window.innerHeight);
+      // A card inside a scrolling pane is clipped by it: sample only
+      // the part visible inside the pane, not the scrolled-away part
+      // above it (which legitimately sits under the app's top bar).
+      const col = cardEl.closest(".col");
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        x0 = Math.max(x0, cr.left);
+        x1 = Math.min(x1, cr.right);
+        y0 = Math.max(y0, cr.top);
+        y1 = Math.min(y1, cr.bottom);
+      }
+      // Inset past the card's rounded corners (a corner sample would
+      // legitimately hit whatever is underneath the cutout). Sample
+      // the FULL box, parents included: the regular grid plus explicit
+      // rows/columns at the bottom and right edges, so a code row
+      // painted across a card's bottom strip (its reply box) is caught.
+      const ys = new Set<number>();
+      const xs = new Set<number>();
+      if (y1 - y0 > 20) { ys.add(y0 + 14); ys.add(y1 - 8); }
+      if (x1 - x0 > 20) { xs.add(x0 + 14); xs.add(x1 - 8); }
+      for (let y = y0 + 14; y < y1 - 6; y += 40) ys.add(y);
+      for (let x = x0 + 14; x < x1 - 6; x += 40) xs.add(x);
+      for (const y of ys) {
+        for (const x of xs) {
+          const hit = document.elementFromPoint(x, y);
+          if (!hit || cardEl.contains(hit)) continue;
+          // The only allowed cover is a DESCENDANT card floating over
+          // its ancestor (a child above its parent). An ancestor — or
+          // any part of it, such as its sticky reply footer — covering
+          // a descendant, or an unrelated card covering this one, fails.
+          const hitCard = hit.closest("section.ithread[data-thread]");
+          if (hitCard && cardEl.contains(hitCard)) continue;
+          // A header may cover a card only while it is actually stuck
+          // in its pinned slot at the top of the pane (its top equals
+          // its sticky offset, ±1px). A header in place mid-pane — the
+          // next hunk's or file's, where an overflowing card reaches —
+          // must paint below the card, like its rows and gutters.
+          if (hit.closest(".dband")) continue;
+          // Pinned headers/bars (and the app top bar, over a header
+          // scrolled out of its pane) slide over inline cards by design.
+          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .rbar")) continue;
+          return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
+        }
+      }
+      return null;
+    });
+    expect(bad, `${step}: card ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/**
+ * Generic check: every open card's reply input (if it has one) is
+ * fully inside its card — never cut in half at the card's bottom edge —
+ * and topmost at its centre and corners (a child card floating over
+ * its parent is the one allowed cover, as in the grid check).
+ */
+async function checkReplyBoxes(page: Page, step: string): Promise<void> {
+  const boxes = page.locator("section.ithread[data-thread] textarea:visible");
+  for (let i = 0; i < (await boxes.count()); i++) {
+    const bad = await boxes.nth(i).evaluate((ta: Element) => {
+      const card = ta.closest("section.ithread[data-thread]");
+      if (!card) return "reply input not inside a floating card";
+      const r = ta.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      if (r.top < c.top - 1 || r.bottom > c.bottom + 1 || r.left < c.left - 1 || r.right > c.right + 1) {
+        return `reply input clipped by its card: input=${Math.round(r.top)}-${Math.round(r.bottom)} card=${Math.round(c.top)}-${Math.round(c.bottom)}`;
+      }
+      if (r.left < -1 || r.right > window.innerWidth + 1) return "reply input outside viewport horizontally";
+      // The footer must sit flush at the card's bottom: sample the
+      // strip below the composer (if any) — answer content visible
+      // there means scrolled text shows past the sticky footer.
+      // Issue #273: a thread carries two composers (comment Reply +
+      // Ask follow-up), so the other composer of the SAME thread below
+      // this one's footer is expected and allowed.
+      const composer = ta.closest(".composer");
+      if (composer) {
+        const f = composer.getBoundingClientRect();
+        for (let y = f.bottom + 2; y < c.bottom - 1; y += 4) {
+          for (let x = c.left + 16; x < c.right - 8; x += 60) {
+            const hit = document.elementFromPoint(x, y);
+            if (!hit) continue;
+            if (composer.contains(hit) || hit === card) continue;
+            const hitComposer = (hit as Element).closest?.(".composer");
+            if (hitComposer && card.contains(hitComposer)) continue;
+            // A descendant card over the strip is allowed; this
+            // card's own answer content showing there is the bug.
+            const hitCard: Element | null = hit.closest("section.ithread[data-thread]");
+            if (hitCard && hitCard !== card && card.contains(hitCard)) continue;
+            return `content below the reply footer at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} footer=${Math.round(f.bottom)} card=${Math.round(c.bottom)}`;
+          }
+        }
+      }
+      const pts: [number, number][] = [
+        [r.left + 6, r.top + 6],
+        [r.right - 6, r.top + 6],
+        [r.left + 6, r.bottom - 6],
+        [r.right - 6, r.bottom - 6],
+        [r.left + r.width / 2, r.top + r.height / 2],
+      ];
+      for (const [x, y] of pts) {
+        if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        // A point on the viewport's bottom edge can hit nothing at
+        // all (the input's last row is at the fold): out of view.
+        if (!hit && y > window.innerHeight - 8) continue;
+        if (!hit) return `nothing at reply input ${Math.round(x)},${Math.round(y)}`;
+        if (ta.contains(hit) || (ta as HTMLElement).parentElement?.contains(hit)) continue;
+        // Only a descendant card may cover this card's reply input;
+        // an ancestor's footer (or anything else) over it fails.
+        const hitCard = hit.closest("section.ithread[data-thread]");
+        if (hitCard && card.contains(hitCard)) continue;
+        return `reply input not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: reply box ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/**
+ * Generic check: every open card's header row (its quote and its
+ * Close button) is visible and topmost — sampled at the header's
+ * left, centre and right and at the Close button's centre. The only
+ * allowed cover is a descendant card, as in the grid check.
+ */
+async function checkCardHeaders(page: Page, step: string): Promise<void> {
+  const cards = page.locator("section.ithread[data-thread]:visible");
+  for (let i = 0; i < (await cards.count()); i++) {
+    const bad = await cards.nth(i).evaluate((cardEl: Element) => {
+      const header = cardEl.querySelector(":scope > .exp-h");
+      if (!header) return null;
+      const h = header.getBoundingClientRect();
+      if (h.bottom < 0 || h.top > window.innerHeight) return null;
+      // Only the header's visible part counts: a header scrolled out
+      // of its own card's box is not covered, it is just scrolled away.
+      const c = cardEl.getBoundingClientRect();
+      // A pinned card does not scroll internally (#204): its header
+      // row (quote, Open as page, Delete, Close) is in the flow; the
+      // part inside the pane must be visible and topmost.
+      let vt = Math.max(h.top, c.top);
+      let vb = Math.min(h.bottom, c.bottom);
+      let vl = Math.max(h.left, c.left);
+      let vr = Math.min(h.right, c.right);
+      // The card is clipped by its pane: the part above the pane's
+      // top edge sits under the app's top bar, not under anything
+      // the header check should blame.
+      const col = cardEl.closest(".col");
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        vt = Math.max(vt, cr.top);
+        vb = Math.min(vb, cr.bottom);
+        vl = Math.max(vl, cr.left);
+        vr = Math.min(vr, cr.right);
+      }
+      if (vb - vt < 4 || vr - vl < 24) {
+        return null;
+      }
+      const midY = (vt + vb) / 2;
+      const pts: [number, number][] = [
+        [vl + 12, midY],
+        [(vl + vr) / 2, midY],
+        [vr - 12, midY],
+      ];
+      const close = header.querySelector('button[aria-label="Close"]');
+      if (close) {
+        const b = close.getBoundingClientRect();
+        pts.push([b.left + b.width / 2, b.top + b.height / 2]);
+      }
+      for (const [x, y] of pts) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit) return `nothing at header ${Math.round(x)},${Math.round(y)}`;
+        if (cardEl.contains(hit)) {
+          const hitCard = hit.closest("section.ithread[data-thread]");
+          if (!hitCard || hitCard === cardEl || cardEl.contains(hitCard)) continue;
+        }
+        // The pinned top stack (and the app top bar) slides over
+        // inline cards by design.
+        if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
+        return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest("section.ithread[data-thread]")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
+      }
+      return null;
+    });
+    expect(bad, `${step}: card header ${i} ${bad ?? ""}`).toBeNull();
+  }
+}
+
+/**
+ * Generic check (diff scenes): when diff rows are visible at the top
+ * of the pane, the pinned slot must be occupied — the file header of
+ * the file owning the first visible row, and that row's hunk header,
+ * stuck at their sticky offsets and topmost there (a floating card
+ * covering the stuck slot fails; pinned headers slide over cards).
+ */
+async function checkPinnedSlots(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+    const strip = hh(".rstick");
+    const bar = hh(".dtool");
+    const fileSlot = pv.top + strip + bar;
+    const hunkSlot = fileSlot + hh(".dfile-h");
+    // First visible diff row below the actions bar: painted, not
+    // merely laid out — a row hidden under a floating card does not
+    // count, the first row the reader can actually see does.
+    let firstRow: Element | null = null;
+    let firstTop = Infinity;
+    pane.querySelectorAll(".dfile table.diff tr").forEach((tr) => {
+      const r = tr.getBoundingClientRect();
+      if (r.bottom <= pv.top + strip + bar || r.top >= pv.bottom || r.top >= firstTop) return;
+      const x = Math.min(Math.max(pv.left + pv.width / 2, r.left + 20), r.right - 20);
+      const y = Math.min(Math.max((r.top + r.bottom) / 2, pv.top + strip + bar + 2), pv.bottom - 2);
+      const hit = document.elementFromPoint(x, y);
+      if (hit && tr.contains(hit)) {
+        firstTop = r.top;
+        firstRow = tr;
+      }
+    });
+    if (!firstRow) return null;
+    // Rows only reach the slot area once the pane has scrolled into
+    // the file; before that the headers sit in place above the rows.
+    const dfile = (firstRow as Element).closest(".dfile");
+    const dhunk = (firstRow as Element).closest(".dhunk");
+    const fh = dfile?.querySelector(".dfile-h");
+    const kh = dhunk?.querySelector(".dhunk-h");
+    if (!fh || !kh) return "first visible row has no file/hunk header";
+    const fr = fh.getBoundingClientRect();
+    const kr = kh.getBoundingClientRect();
+    // Only once a header has scrolled up to its slot band must the
+    // slot be occupied and topmost; a header still in place further
+    // down (its hunk's tail visible under a card) is not there yet.
+    if (fr.top > fileSlot + fr.height || kr.top > hunkSlot + kr.height) return null;
+    if (Math.abs(fr.top - fileSlot) > fr.height) return `file header not in its slot: top=${Math.round(fr.top)} slot=${Math.round(fileSlot)}`;
+    if (Math.abs(kr.top - hunkSlot) > kr.height) return `hunk header not in its slot: top=${Math.round(kr.top)} slot=${Math.round(hunkSlot)}`;
+    for (const [el, r, what] of [[fh, fr, "file"], [kh, kr, "hunk"]] as const) {
+      const x = Math.min(Math.max(pv.left + pv.width / 2, r.left + 20), r.right - 20);
+      const y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || !el.contains(hit)) {
+        return `${what} header not topmost in its slot at ${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName + "." + (hit as HTMLElement).className.toString().slice(0, 40) : "nothing"}`;
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: pinned slot ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Generic check (diff scenes): the pinned band — from the actions
+ * top edge to the hunk slot's bottom, across the pane width —
+ * must never show a floating card. During a file hand-off the
+ * outgoing and incoming headers together cover the band; card text
+ * flickering through the strips around them fails. Sampled on a
+ * horizontal line every 4px.
+ */
+async function checkPinnedBand(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
+    // The whole top stack, from the pane's top edge (just below the
+    // app's top bar) to the band's bottom: the tab strip, the actions
+    // bar and the band must be one opaque, gapless stack — a sliver
+    // of card text in a seam between sticky layers fails.
+    const bandTop = pv.top;
+    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dfile-h") + hh(".dhunk-h");
+    for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
+      for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit.closest("section.ithread[data-thread]")) {
+          return `card in pinned band at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} band=${Math.round(bandTop)}-${Math.round(bandBottom)}`;
+        }
+      }
+    }
+    // Coverage test: the union of the opaque top-stack layers (tab
+    // strip, actions bar, band backing) must cover the whole stack
+    // interval with no sub-interval left open. A card behind an open
+    // sub-interval shows through it as a sliver of text, even when
+    // the gap is sub-pixel and hit sampling lands on a layer edge.
+    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+      .filter((el): el is Element => !!el)
+      .map((el) => el.getBoundingClientRect())
+      .sort((a, b) => a.top - b.top);
+    const cards = [...pane.querySelectorAll("section.ithread[data-thread]")].map((c) => c.getBoundingClientRect());
+    let coveredTo = bandTop;
+    for (const r of cover) {
+      if (r.top > coveredTo + 0.2) {
+        const hit = cards.find((c) => c.bottom > coveredTo && c.top < r.top);
+        if (hit) return `uncovered seam in top stack at y=${Math.round(coveredTo)}-${Math.round(r.top)} with a card behind it`;
+      }
+      coveredTo = Math.max(coveredTo, r.bottom);
+      if (coveredTo >= bandBottom) break;
+    }
+    if (coveredTo < bandBottom - 0.2) {
+      const hit = cards.find((c) => c.bottom > coveredTo && c.top < bandBottom);
+      if (hit) return `uncovered top-stack bottom at y=${Math.round(coveredTo)}-${Math.round(bandBottom)} with a card behind it`;
+    }
+    // Seam test: any positive gap between consecutive top-stack
+    // layers (tab strip, actions bar, band backing) whose midpoint
+    // lands in a card fails — a text line aligned with a sub-pixel
+    // seam shows exactly that sliver, and 2px sampling can miss it.
+    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+      .filter((el): el is Element => !!el)
+      .map((el) => el.getBoundingClientRect())
+      .sort((a, b) => a.top - b.top);
+    for (let i = 0; i + 1 < layers.length; i++) {
+      const gap = layers[i + 1].top - layers[i].bottom;
+      if (gap <= 0.2) continue;
+      const y = (layers[i].bottom + layers[i + 1].top) / 2;
+      for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit.closest("section.ithread[data-thread]")) {
+          return `card in top-stack seam at ${Math.round(x)},${y.toFixed(1)}: gap=${gap.toFixed(1)}px ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}`;
+        }
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: pinned band ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Generic check (diff scenes): every visible code row's line-number
+ * cells sit inside the pane and are topmost at their centre — a hunk
+ * scrolled sideways must keep its gutter (the #285 expand controls live
+ * in the first/last rows' number cells). Floating cards and the pinned
+ * top stack may legitimately cover the gutter; code rows may not.
+ */
+async function checkGutters(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const pv = pane.getBoundingClientRect();
+    for (const cell of pane.querySelectorAll("table.diff td.n")) {
+      const r = cell.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.bottom <= pv.top || r.top >= pv.bottom) continue;
+      const row = cell.closest("tr")?.id ?? "(no id)";
+      // Opacity, not just position: `elementFromPoint` cannot see a
+      // translucent cell, so assert the computed style directly —
+      // a sticky gutter cell (its background and the cell as a whole)
+      // must be fully opaque, or code shows through it while the
+      // hunk is scrolled sideways.
+      const cs = getComputedStyle(cell);
+      const bgInner = cs.backgroundColor.match(/(?:rgba?|color)\(([^)]+)\)/)?.[1] ?? "";
+      let bgAlpha = 1;
+      if (bgInner.includes("/")) {
+        const a = (bgInner.split("/").pop() ?? "1").trim();
+        bgAlpha = a.endsWith("%") ? Number.parseFloat(a) / 100 : Number.parseFloat(a);
+      } else if (bgInner.includes(",")) {
+        bgAlpha = Number.parseFloat(bgInner.split(",").pop() ?? "1");
+      }
+      if (cs.backgroundColor === "transparent" || bgAlpha < 1) {
+        return `line-number cell background not opaque: ${cs.backgroundColor} row=${row}`;
+      }
+      if (Number.parseFloat(cs.opacity) < 1) return `line-number cell translucent: opacity=${cs.opacity} row=${row}`;
+      if (r.left < pv.left - 1 || r.right > pv.right + 1) {
+        return `line-number cell outside the pane: left=${Math.round(r.left)} right=${Math.round(r.right)} pane=${Math.round(pv.left)}-${Math.round(pv.right)} row=${row}`;
+      }
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      // Only a cell whose centre is inside the pane's visible band
+      // counts; cells half under the top stack are the stack's.
+      if (y < pv.top || y > pv.bottom) continue;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || cell.contains(hit)) continue;
+      if (hit.closest("section.ithread[data-thread]")) continue;
+      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
+      return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
+    }
+    return null;
+  });
+  expect(bad, `${step}: gutter ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Issue #285 (E2): the unified gutter is at most digits + 8px padding
+ * with zero affordance room (the comment icon swaps in for the number,
+ * the expand carets replace the first/last rows' numbers, and the #189
+ * reopen marker is gone). Added files drop the empty old column;
+ * deleted files drop the new one. Returns the measured widths (px) so
+ * the run logs before/after numbers.
+ */
+async function checkGutterWidth(page: Page, fileKey: string, step: string): Promise<{ old: number; nw: number; digits: number }> {
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  const info = await page.evaluate((key) => {
+    const file = document.getElementById(`F-${key}`);
+    if (!file) return null;
+    const digits = Number.parseInt(file.style.getPropertyValue("--lnw"), 10) || 0;
+    // Measure padding on a code-row number cell (code rows use 4px +
+    // 4px; split keeps its own layout and never enters this check).
+    const sample = file.querySelector("table.diff tbody > tr:not(.xsep) td.n") ?? file.querySelector("table.diff td.n");
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;";
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.fontSize = cs.fontSize;
+      probe.style.fontStyle = cs.fontStyle;
+      probe.style.fontWeight = cs.fontWeight;
+      probe.style.letterSpacing = cs.letterSpacing;
+    }
+    probe.textContent = "0123456789";
+    document.body.appendChild(probe);
+    const digitW = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    let pad = 16;
+    if (sample) {
+      const cs = getComputedStyle(sample);
+      pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+    }
+    let oldMax = 0;
+    let nwMax = 0;
+    for (const t of file.querySelectorAll("table.diff:not(.split)")) {
+      const hideOld = t.classList.contains("hide-old");
+      const hideNew = t.classList.contains("hide-new");
+      for (const tr of t.querySelectorAll("tbody > tr")) {
+        if (tr.classList.contains("xsep")) continue;
+        if ((tr as HTMLElement).dataset.revealed !== undefined) continue;
+        const cells = [...tr.querySelectorAll(":scope > td.n")];
+        if (cells.length === 2 && !hideOld && !hideNew) {
+          oldMax = Math.max(oldMax, cells[0].getBoundingClientRect().width);
+          nwMax = Math.max(nwMax, cells[1].getBoundingClientRect().width);
+        } else if (cells.length === 1 && (hideOld || hideNew)) {
+          const w = cells[0].getBoundingClientRect().width;
+          if (hideOld) nwMax = Math.max(nwMax, w);
+          else oldMax = Math.max(oldMax, w);
+        }
+      }
+    }
+    return {
+      digits,
+      digitW,
+      pad,
+      oldMax,
+      nwMax,
+      hideOld: !!file.querySelector("table.diff.hide-old"),
+      hideNew: !!file.querySelector("table.diff.hide-new"),
+      isNew: file.classList.contains("is-new"),
+      isDeleted: file.classList.contains("is-deleted"),
+    };
+  }, fileKey);
+  expect(info, `${step}: missing #F-${fileKey}`).not.toBeNull();
+  const { digits, digitW, pad, oldMax, nwMax, hideOld, hideNew, isNew } = info!;
+  // Deleted files keep only the old column; added files keep only the
+  // new one. Control buttons shrink into the floor, so first/last rows
+  // (transparent overlays at rest) measure the same as plain rows.
+  if (isNew) expect(hideOld, `${step}: added file must hide the empty old column`).toBe(true);
+  else expect(hideOld, `${step}: modified file must keep both number columns`).toBe(false);
+  expect(hideNew, `${step}: this review has no deleted files`).toBe(false);
+  const tol = 3;
+  if (!hideOld) {
+    expect(oldMax, `${step}: old gutter ${oldMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
+    expect(oldMax, `${step}: no old number cells measured`).toBeGreaterThan(0);
+  } else {
+    expect(oldMax, `${step}: hidden old column must measure 0`).toBe(0);
+  }
+  expect(nwMax, `${step}: new gutter ${nwMax.toFixed(1)}px wider than ${digits} digits + padding`).toBeLessThanOrEqual(digits * digitW + pad + tol);
+  expect(nwMax, `${step}: no new number cells measured`).toBeGreaterThan(0);
+  console.log(`gutter-285 ${step} ${fileKey}: digits=${digits} old=${oldMax.toFixed(1)}px new=${nwMax.toFixed(1)}px`);
+  return { old: oldMax, nw: nwMax, digits };
+}
+
+/**
+ * Generic check (diff scenes, issue #191): on a settled pane nothing
+ * animates forever. Any running infinite animation inside the diff
+ * pane fails — unless a working indicator (the dots or a spinner) is
+ * visible, meaning a job is genuinely running and motion is the
+ * point. One-shot animations (a card rising into place) are not
+ * continuous and never count.
+ */
+async function checkAnimations(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    const working = [...pane.querySelectorAll(".dots, .spin")].some((el) => el.getBoundingClientRect().height > 0);
+    if (working) return null;
+    const running = document
+      .getAnimations()
+      .filter((a) => {
+        if (a.playState !== "running") return false;
+        const target = (a.effect as { target?: Element } | null)?.target;
+        if (!target || !pane.contains(target)) return false;
+        try {
+          return a.effect?.getComputedTiming().iterations === Infinity;
+        } catch {
+          return false;
+        }
+      })
+      .map((a) => {
+        const target = (a.effect as { target?: Element } | null)?.target as Element;
+        const name = (a as { animationName?: string }).animationName ?? "transition";
+        return `${target.tagName}.${target.className.toString().slice(0, 40)}:${name}`;
+      });
+    return running.length > 0 ? `continuous animations on a settled pane: ${running.join(", ")}` : null;
+  });
+  expect(bad, `${step}: animations ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Generic check (diff scenes, issue #191): no empty block above a
+ * file's first hunk. Every element between the file header and the
+ * first hunk's content (and inside that hunk, before its summary or
+ * table) must carry text or a control — a bare spacer taller than
+ * 8px fails.
+ */
+async function checkEmptyAboveHunk(page: Page, step: string): Promise<void> {
+  const bad = await page.evaluate(() => {
+    const pane = document.getElementById("right");
+    if (!pane || !pane.querySelector("table.diff")) return null;
+    // Issue #202: the pinned band backing (`.dband`) must never cover a
+    // file or hunk header — a header under it reads as a blank band
+    // above the first hunk, with no file header shown. (The filtered,
+    // split and tab-switch cases are covered end to end in J19.)
+    const band = pane.querySelector(".dband");
+    if (band) {
+      const br = band.getBoundingClientRect();
+      for (const h of pane.querySelectorAll(".dfile-h, .dhunk-h")) {
+        const r = h.getBoundingClientRect();
+        if (r.bottom <= br.top || r.top >= br.bottom) continue;
+        const hit = document.elementFromPoint(r.left + Math.min(200, r.width / 2), r.top + r.height / 2);
+        if (hit && band.contains(hit)) {
+          return `header covered by the pinned band backing in ${h.closest(".dfile")?.id ?? "?"}: ${h.className.toString().slice(0, 40)}`;
+        }
+      }
+    }
+    const isEmptyBlock = (el: Element): boolean => {
+      const r = el.getBoundingClientRect();
+      if (r.height <= 8 || r.width <= 40) return false;
+      if ((el.textContent ?? "").trim() !== "") return false;
+      if (el.querySelector("svg, img, button, input, textarea, select, a, mark")) return false;
+      return true;
+    };
+    for (const file of pane.querySelectorAll(".dfile")) {
+      const firstHunk = file.querySelector(".dhunk");
+      if (!firstHunk) continue;
+      for (const el of file.querySelectorAll(".dbody *")) {
+        if (firstHunk.contains(el)) break;
+        if (isEmptyBlock(el)) {
+          return `empty block above the first hunk in ${file.id}: ${el.tagName}.${(el as HTMLElement).className.toString().slice(0, 40)} h=${Math.round(el.getBoundingClientRect().height)}`;
+        }
+      }
+      const anchor = firstHunk.querySelector(".fwrap, table.diff, .fcard");
+      if (anchor) {
+        for (const el of firstHunk.children) {
+          if (el === anchor || el.contains(anchor)) break;
+          if (el.classList.contains("dhunk-h") || el.classList.contains("dhunk-float")) continue;
+          if (isEmptyBlock(el)) {
+            return `empty block above the first summary in ${file.id}: ${el.tagName}.${(el as HTMLElement).className.toString().slice(0, 40)} h=${Math.round(el.getBoundingClientRect().height)}`;
+          }
+        }
+      }
+    }
+    return null;
+  });
+  expect(bad, `${step}: empty block ${bad ?? ""}`).toBeNull();
+}
+
+/**
+ * Close a card and wait until that exact card is gone.
+ * Close is fire-and-forget (an async action; the card hides when the
+ * snapshot patch lands), so a click alone guarantees nothing: on a
+ * slow runner the previous card is still open when the next one
+ * opens, and `.first()` picks the wrong card (#195). Never swallow
+ * the click — a card that will not close is a real failure here.
+ */
+async function closeCard(page: Page, card: Locator): Promise<void> {
+  const id = await card.getAttribute("data-thread");
+  await card.getByRole("button", { name: "Close" }).click();
+  const gone = id ? page.locator(`[data-thread="${id}"]`) : card;
+  await expect(gone).toBeHidden({ timeout: 15_000 });
+}
+
+async function shot(page: Page, name: string, suffix: string, expectedText?: string): Promise<void> {
+  // Never screenshot an empty or still-loading scene: each scene
+  // names one piece of real content that must be visible first.
+  if (expectedText) {
+    await expect(page.getByText(expectedText).first(), `${name}: expected visible text "${expectedText}"`).toBeVisible({ timeout: 15_000 });
+  }
+  await page.screenshot({ path: path.join(SHOTS, `${name}-${suffix}.png`) });
+}
+
+/**
+ * Wait until the diff pane's scroll geometry is unchanged across two
+ * samples. Selections made while the pane is still re-rendering
+ * (Unfold all, cards arriving) lose their toolbar: any scroll after
+ * the grace period dismisses it, so a busy pane starves the
+ * select-then-Explain steps under load (#195).
+ */
+async function waitPaneQuiet(page: Page): Promise<void> {
+  let last = "";
+  for (let i = 0; i < 15; i++) {
+    const now = await page.evaluate(() => {
+      const p = document.getElementById("right");
+      return p ? `${p.scrollTop}:${p.scrollHeight}:${p.querySelectorAll("table.diff tr").length}` : "";
+    });
+    if (now === last && i > 0) break;
+    last = now;
+    await page.waitForTimeout(300);
+  }
+}
+
+async function stepChecks(page: Page, step: string): Promise<void> {
+  // Let streamed answers and fixed-position sync settle: wait until
+  // every open card's rect is unchanged across two samples.
+  let last = "";
+  for (let i = 0; i < 10; i++) {
+    const now = await page.evaluate(() =>
+      [...document.querySelectorAll("section.ithread[data-thread]")].map((c) => {
+        const r = c.getBoundingClientRect();
+        return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      }).join("|"),
+    );
+    if (now === last && i > 0) break;
+    last = now;
+    await page.waitForTimeout(300);
+  }
+  await checkLayout(page, step);
+  await checkPinnedSlots(page, step);
+  await checkPinnedBand(page, step);
+  await checkGutters(page, step);
+  await checkAnimations(page, step);
+  await checkEmptyAboveHunk(page, step);
+  await checkCards(page, step);
+  await checkCardHeaders(page, step);
+  await checkReplyBoxes(page, step);
+  await checkMenus(page, step);
+}
+
+// The passes share one service review, and every pass creates
+// threads with the same quotes plus a global collapse-all toggle: run
+// them serially so one pass never fills, selects inside, collapses or
+// outboxes another pass's threads mid-shot.
+test.describe("visual tour passes", () => {
+  test.describe.configure({ mode: "serial" });
+
+  for (const combo of tourCombos("main", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+  test(`visual tour (${combo.name})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(240_000);
+    // A fresh review per pass: passes share identical selections, and
+    // the service dedupes identical explain/ask requests onto the same
+    // thread — a shared review would hand one pass another pass's
+    // thread (and its collapse-all/outbox state).
+    reviewId = await createTourReview();
+    await page.setViewportSize({ width: combo.width, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    const suffix = combo.name;
+
+    // Guide with a pinned card open (the seeded one).
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // #242: the Plotlines card tops the guide root (two plotlines,
+    // one building on the other) — capture it before scrolling on.
+    await expect(page.locator(".plotlines")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".plotlines").scrollIntoViewIfNeeded();
+    await stepChecks(page, "guide-plotlines");
+    await shot(page, "guide-plotlines", suffix, "Plotlines");
+    // Explain-first guide (#198): the build-up and decisions cards sit
+    // after the central change in the settled reader order.
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
+    await page.locator("#C-decisions").scrollIntoViewIfNeeded();
+    // Issue #341: the re-recorded Decisions card uses **Bold** section
+    // labels (no ### sub-headings left in the fixture, so #327's h3 path
+    // has no fixture instance) — assert the labels render.
+    for (const label of ["Decisions", "Invariants", "Known uncertainties", "Interfaces with reach"]) {
+      await expect(page.locator("#C-decisions strong").filter({ hasText: label })).toBeVisible();
+    }
+    await stepChecks(page, "guide-decisions");
+    await shot(page, "guide-decisions", suffix, "Decisions and questions");
+    await page.locator("#C-problem").scrollIntoViewIfNeeded();
+    // Open a pinned card the way a reader does: select guide text
+    // and Explain it.
+    const beforeIds = (
+      (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }
+    ).annotations.map((a) => a.id);
+    // Issue #341: explain a guide sentence with a recorded explain. The
+    // re-recorded fixture records explains on the problem/central cards
+    // only, so select the recorded obs-fold quote on the problem card:
+    // replay matches the quote in the prompt and answers from it.
+    await page.locator("#C-problem").scrollIntoViewIfNeeded();
+    await selectText(page, "#C-problem", "keeps those raw CRLFs inside the HTTPMessage values");
+    await page.locator('#selbar [data-act="explain"]').click();
+    let seedId: string | null = null;
+    await expect
+      .poll(async () => {
+        const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        seedId = snap.annotations.map((a) => a.id).find((id) => !beforeIds.includes(id)) ?? null;
+        return seedId;
+      }, { timeout: 30_000 })
+      .toBeTruthy();
+    const seedCard: Locator = page.locator(`#page section.ithread[data-thread="${seedId}"]`);
+    await expect(seedCard).toBeVisible({ timeout: 15_000 });
+    await expect(seedCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    // #336: reply toolbars reveal on hover — hover the reply so the shot
+    // shows the revealed toolbar, then assert it.
+    await seedCard.locator("[data-reply]").first().hover();
+    await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
+    await stepChecks(page, "guide-pinned");
+    await shot(page, "guide-pinned", suffix, "three pieces");
+
+    // A reply inside the pinned thread (guide): Explain on selected text
+    // inside the reply appends to the same thread (flat, #273).
+    await expect(seedId).toBeTruthy();
+    const seedSelector = `#page section.ithread[data-thread="${seedId!}"] [data-reply]`;
+    await selectText(page, seedSelector, "fold");
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect
+      .poll(async () => seedCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(2);
+    await expect(seedCard.locator('[data-reply] .exp-b').nth(1)).not.toBeEmpty({ timeout: 60_000 });
+    // #273 frames: the in-thread link, collapse-all, and expand-one.
+    const rlink = seedCard.locator('button.rlink[data-replylink]').first();
+    await expect(rlink).toBeVisible({ timeout: 30_000 });
+    // #315: replies are avatar-only now (no kind chip), so the shots key
+    // on the in-thread link's text instead of "explain".
+    const linkText = (await rlink.innerText()).trim();
+    await stepChecks(page, "guide-nested");
+    await shot(page, "guide-nested", suffix, linkText);
+    await rlink.click();
+    await page.waitForTimeout(800);
+    await stepChecks(page, "thread-replylink");
+    await shot(page, "thread-replylink", suffix, linkText);
+    await page.getByRole("button", { name: "Collapse threads" }).click();
+    await expect(page.locator(`button.spike-row[data-row="${seedId}"]`)).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "threads-collapsed");
+    await shot(page, "threads-collapsed", suffix, "reply");
+    await page.locator(`button.spike-row[data-row="${seedId}"]`).click();
+    await expect(seedCard).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "thread-expanded");
+    await shot(page, "thread-expanded", suffix, linkText);
+    await closeCard(page, seedCard);
+    expect(seedId).toBeTruthy();
+    // Collapse-all is global (store): switch it back off so later scenes
+    // start from expanded threads.
+    await page.getByRole("button", { name: "Expand threads" }).click();
+    await expect(page.getByRole("button", { name: "Collapse threads" })).toHaveAttribute("aria-pressed", "false", { timeout: 15_000 });
+
+    // PR description tab (#263): paragraphs, a bullet list, a numbered
+    // list past 9 items and inline code, in the shared Card. No
+    // "Restated →" links remain.
+    await page.locator('#right [role="tab"]').getByText("PR description").click();
+    await expect(page.locator("#right #d-p1")).toContainText("obs-fold response-header case", { timeout: 15_000 });
+    await expect(page.locator("#right #d-p2")).toContainText("HTTPHeaderDict", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li").nth(9)).toContainText("towncrier", { timeout: 15_000 });
+    await expect(page.locator("#right ol#d-p6 li")).toHaveCount(12);
+    await expect(page.locator("#right .desc button.back")).toHaveCount(0);
+    await expect(page.locator("#right .desc")).not.toContainText("Restated →");
+    await stepChecks(page, "desc-full");
+    await shot(page, "desc-full", suffix, "Review checklist");
+
+    // Scrolled to the end of the numbered list: two-digit numbers sit
+    // inside the content padding like the single-digit ones.
+    await page.locator("#right ol#d-p6 li").nth(11).scrollIntoViewIfNeeded();
+    await stepChecks(page, "desc-checklist-end");
+    await shot(page, "desc-checklist-end", suffix, "next request");
+
+    // Diff, unified.
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "diff-unified");
+    await checkTokenContrast(page, "diff-unified");
+    await shot(page, "diff-unified", suffix, "_OBSOLETE_FOLD_RE");
+
+    // Pinned thread + in-thread reply in the diff (flat, #273): use the
+    // seeded suggestion thread on this line (already visible under it)
+    // and Explain inside its comment reply — the answer appends there.
+    const sugAll = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string; anchor: { host: { kind: string; fileKey?: string } }; replies: { kind: string; suggested?: boolean }[] }[] }).annotations;
+    const diffId = sugAll.find((a) => a.anchor.host.kind === "diff-line" && String((a.anchor.host as { fileKey?: string }).fileKey ?? "").includes("conn") && a.replies.some((r) => r.kind === "comment" && r.suggested))?.id;
+    if (!diffId) throw new Error("no seeded diff suggestion thread");
+    const diffCard = page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`).first();
+    await expect(diffCard).toBeVisible({ timeout: 30_000 });
+    await expect(diffCard.locator('[data-reply][data-kind="comment"]').first()).toBeVisible({ timeout: 30_000 });
+    const diffWord = await diffCard.locator('[data-reply][data-kind="comment"]').first().evaluate((el) => (el.textContent ?? "").match(/[A-Za-z]{4,}/)?.[0] ?? "bare");
+    await selectText(page, `.dhunk section.ithread[data-thread="${diffId}"] [data-reply][data-kind="comment"]`, diffWord);
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect
+      .poll(async () => diffCard.locator('[data-reply][data-kind="explain"]').count(), { timeout: 90_000 })
+      .toBeGreaterThanOrEqual(1);
+    await stepChecks(page, "diff-nested");
+    // #315: replies are avatar-only now (no kind chip), so the shot keys
+    // on the selected word (now the in-thread link) instead of "explain".
+    await shot(page, "diff-nested", suffix, diffWord);
+    await closeCard(page, diffCard);
+    // Our thread closed; seeded suggestion threads may remain open.
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${diffId}"]`)).toHaveCount(0, { timeout: 15_000 });
+
+    // Top-level diff card with a LONG answer (the dedicated replay
+    // recording), scrolled to its middle and then its bottom inside
+    // the card: the gutter must not paint over it and no answer text
+    // may show below its sticky reply footer.
+    const beforeLong = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await selectText(page, "#right table.diff", "_normalize_header_values");
+    await page.locator('#selbar [data-act="explain"]').click();
+    let longId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        longId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeLong.includes(id)) ?? null;
+        if (longId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!longId) throw new Error("long thread did not appear");
+    const longCard = page.locator(`.dhunk section.ithread[data-thread="${longId}"]`).first();
+    await expect(longCard).toBeVisible({ timeout: 15_000 });
+    await expect(longCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    // Issue #341: no explain pattern matches a diff-anchored prompt, so
+    // replay answers with the first explain entry (the recorded obs-fold
+    // explain); the old plotline text is gone with the re-record.
+    await expect(longCard).toContainText("Why this is a problem.");
+    // Frame the whole card in the pane (its footer included), as the
+    // reader would scrolling to it, then scroll inside the card.
+    await longCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await longCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await stepChecks(page, "diff-long-mid");
+    await shot(page, "diff-long-mid", suffix);
+    await longCard.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
+    await stepChecks(page, "diff-long-bottom");
+    await shot(page, "diff-long-bottom", suffix, "Where the change shows this behavior.");
+    await closeCard(page, longCard);
+
+    // Same long card in split view, scrolled inside its card.
+    await page.getByRole("button", { name: "Split", exact: true }).click();
+    const beforeSplit = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await selectText(page, "#right table.diff.split", "_normalize_header_values");
+    await page.locator('#selbar [data-act="explain"]').click();
+    let splitId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        // Dedupe may reopen the long thread instead of creating one.
+        splitId = ids.find((id) => !beforeSplit.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (splitId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!splitId) throw new Error("split thread did not appear");
+    const splitCard = page.locator(`.dhunk section.ithread[data-thread="${splitId}"]`).first();
+    await expect(splitCard).toBeVisible({ timeout: 15_000 });
+    await expect(splitCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    await splitCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await splitCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    // Park the pointer off the card: scrolling moved card text under the
+    // stationary cursor, and a hovered glossary term's tooltip would paint
+    // over the card during the topmost check below.
+    await page.mouse.move(20, 20);
+    await stepChecks(page, "diff-long-split");
+    await shot(page, "diff-long-split", suffix);
+    await closeCard(page, splitCard);
+    await page.getByRole("button", { name: "Unified" }).click();
+
+    // Long card anchored in the file's LAST hunk (the call site at
+    // the end of connection.py), overflowing into the NEXT FILE's
+    // section: its header and rows must paint below the card too.
+    // The call site sits in the file's folded last hunk; unfold all.
+    await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    const beforeFile = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await selectText(page, "#right", "_normalize_header_values(http");
+    await page.locator('#selbar [data-act="explain"]').click();
+    let fileId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        const ids = (res.annotations ?? []).map((a) => a.id);
+        fileId = ids.find((id) => !beforeFile.includes(id)) ?? (ids.includes(longId!) ? longId! : null);
+        if (fileId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!fileId) throw new Error("file thread did not appear");
+    const fileCard = page.locator(`.dhunk section.ithread[data-thread="${fileId}"]`).first();
+    await expect(fileCard).toBeVisible({ timeout: 15_000 });
+    await expect(fileCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    // Issue #341: the call-site selection resolves like the helper one
+    // above (no explain pattern matches a diff-anchored prompt, so the
+    // recorded obs-fold explain answers).
+    await expect(fileCard).toContainText("Why this is a problem.");
+    await fileCard.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(300);
+    await fileCard.evaluate((el) => { el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2); });
+    await waitForJobsIdle(svc.origin, svc.token, reviewId);
+    // Park the pointer off the card before each check below: scrolling
+    // moves card text under the stationary cursor, and a hovered citation
+    // preview would paint over the card during a topmost check (as the
+    // split-view scene above already guards).
+    await page.mouse.move(20, 20);
+    await stepChecks(page, "diff-long-file");
+    await shot(page, "diff-long-file", suffix);
+    // Two scroll offsets around the file boundary, mid hand-off.
+    await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 24; });
+    await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
+    await stepChecks(page, "diff-long-file-h1");
+    await shot(page, "diff-long-file-h1", suffix);
+    await page.evaluate(() => { const pane = document.getElementById("right"); if (pane) pane.scrollTop += 48; });
+    await page.waitForTimeout(300);
+    await page.mouse.move(20, 20);
+    await stepChecks(page, "diff-long-file-h2");
+    await shot(page, "diff-long-file-h2", suffix);
+    await closeCard(page, fileCard);
+
+    // Closed multi-line Explain: select across three rows, Explain,
+    // close — every line of the range keeps its dotted anchor text plus
+    // the tint (issue #285: no gutter marker), and clicking any dotted
+    // piece reopens the card.
+    await page.getByRole("button", { name: "Unfold all" }).click({ timeout: 5_000 }).catch(() => {});
+    await waitPaneQuiet(page);
+    await selectDiffRows(page, "src-urllib3-connection.py", 86, 88);
+    const beforeMl = ((await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] }).annotations.map((a) => a.id);
+    await page.locator('#selbar [data-act="explain"]').click();
+    let mlId: string | null = null;
+    {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const res = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${reviewId}`)) as { annotations: { id: string }[] };
+        mlId = (res.annotations ?? []).map((a) => a.id).find((id) => !beforeMl.includes(id)) ?? null;
+        if (mlId || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!mlId) throw new Error("multiline thread did not appear");
+    const mlCard = page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`).first();
+    await expect(mlCard).toBeVisible({ timeout: 15_000 });
+    await expect(mlCard.locator(".working")).toHaveCount(0, { timeout: 15_000 });
+    await mlCard.getByRole("button", { name: "Close" }).click();
+    await expect(page.locator(`.dhunk section.ithread[data-thread="${mlId}"]`)).toBeHidden({ timeout: 10_000 });
+    const mlMarks = page.locator(`#right mark.anc.exl[data-jump="${mlId}"]`);
+    await expect(mlMarks).toHaveCount(3, { timeout: 15_000 });
+    // No gutter marker: the first cell keeps its number.
+    await expect(page.locator('[id="L-src-urllib3-connection.py-87"] td.n mark')).toHaveCount(0);
+    await stepChecks(page, "diff-multiline-closed");
+    await shot(page, "diff-multiline-closed", suffix);
+    // One-shot DOM clicks, retried until the card is actually back:
+    // a retried Playwright click can land twice (open, then the retry
+    // toggles it shut) and starve on detach under load (#195).
+    await expect
+      .poll(
+        async () => {
+          if (await mlCard.isVisible().catch(() => false)) return true;
+          await mlMarks.first().evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+          return mlCard.isVisible().catch(() => false);
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    await closeCard(page, mlCard);
+
+    // Sideways-scrolled hunk: the line-number gutter — the #285 expand
+    // controls ride the first/last rows' number cells — sticks to the
+    // pane's left edge instead of scrolling away with the code.
+    await page.locator('[id="F-src-urllib3-connection.py"] .dwrap').first().evaluate((el) => {
+      el.scrollLeft = 260;
+    });
+    await stepChecks(page, "diff-hscroll");
+    await shot(page, "diff-hscroll", suffix);
+
+    // Deep-anchored card in the long socket-level hunk.
+    const scope = '[id="F-test-with_dummyserver-test_socketlevel.py"]';
+    await selectText(page, scope, 'msg["fold-mixed-repeated"]');
+    await page.locator('#selbar [data-act="explain"]').click();
+    await expect(page.locator(".dhunk section.ithread[data-thread]").first()).toBeVisible({ timeout: 15_000 });
+    await stepChecks(page, "diff-deep");
+    await shot(page, "diff-deep", suffix, "fold-mixed-repeated");
+    await closeCard(page, page.locator(".dhunk section.ithread[data-thread]").first());
+
+    // Split.
+    await page.getByRole("button", { name: "Split", exact: true }).click();
+    await stepChecks(page, "diff-split");
+    await shot(page, "diff-split", suffix, "_OBSOLETE_FOLD_RE");
+    await page.getByRole("button", { name: "Unified" }).click();
+
+    // Issue #285 gutter tour: a modified file and an added file in the
+    // narrow pane (the named 960 keeps run the guide beside the diff, so
+    // the diff pane is narrow with the source pane open), before and after a
+    // sideways scroll (the sticky gutter must hold). This review is
+    // no-content, so it renders no expand controls — the hover and EOF
+    // frames live in the dedicated #285 scene below. Each frame runs the
+    // generic layout checks plus the gutter-width assert.
+    const MOD = "src-urllib3-connection.py";
+    const ADDED = "changelog-1362.bugfix.rst";
+    await page.locator(`[id="F-${MOD}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${MOD}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-modified");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified");
+    await shot(page, "diff-gutter-modified", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-modified-hscroll");
+    await checkGutterWidth(page, MOD, "diff-gutter-modified-hscroll");
+    await shot(page, "diff-gutter-modified-hscroll", suffix, "_OBSOLETE_FOLD_RE");
+    await page.locator(`[id="F-${MOD}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
+    // The added changelog file hides under Hide-uninteresting: reveal it
+    // (later steps assert no hidden counts, so this is safe here).
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="uninteresting"]').click();
+    await page.locator(`[id="F-${ADDED}"]`).scrollIntoViewIfNeeded();
+    await expect(page.locator(`[id="F-${ADDED}"] table.diff`).first()).toBeVisible();
+    await stepChecks(page, "diff-gutter-added");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added");
+    await shot(page, "diff-gutter-added", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 260; });
+    await stepChecks(page, "diff-gutter-added-hscroll");
+    await checkGutterWidth(page, ADDED, "diff-gutter-added-hscroll");
+    await shot(page, "diff-gutter-added-hscroll", suffix, "bugfix");
+    await page.locator(`[id="F-${ADDED}"] .dwrap`).first().evaluate((el) => { el.scrollLeft = 0; });
+
+    // Menus: file-type filter, then Reviewed/GitHub filter.
+    await page.getByRole("button", { name: "Show file list" }).click({ timeout: 5_000 }).catch(() => {});
+    await page.getByRole("button", { name: "File filters" }).click();
+    await expect(page.getByRole("menu", { name: "File filters" })).toBeVisible();
+    await stepChecks(page, "menu-file-filter");
+    await shot(page, "menu-file-filter", suffix, "Generated");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Review filters" }).click();
+    await expect(page.getByRole("menu", { name: "Review filters" })).toBeVisible();
+    await stepChecks(page, "menu-review-filter");
+    await shot(page, "menu-review-filter", suffix, "GitHub comments");
+    await page.keyboard.press("Escape");
+
+    // File tree (#227): no horizontal overflow in the panel, and every
+    // row's change indicators sit inside its right edge.
+    const treeBad = await page.locator(".flist").evaluate((el) => {
+      if (el.scrollWidth > el.clientWidth + 1) return `tree scrolls sideways ${el.scrollWidth}>${el.clientWidth}`;
+      const box = el.getBoundingClientRect();
+      for (const ind of el.querySelectorAll(".fr.file .st, .fr.file .rv")) {
+        const r = ind.getBoundingClientRect();
+        if (r.left < box.left - 1 || r.right > box.right + 1) return "tree indicator outside the panel";
+      }
+      return null;
+    });
+    expect(treeBad, `file-tree: ${treeBad ?? ""}`).toBeNull();
+    await stepChecks(page, "file-tree");
+    await shot(page, "file-tree", suffix, "connection.py");
+
+    // Comments menu, Comments tab: This review and On GitHub (#226, #236).
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmtab="comments"]')).toBeVisible();
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toContainText("This review");
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toContainText("On GitHub");
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).toHaveCount(0);
+    await stepChecks(page, "menu-comments");
+    await shot(page, "menu-comments", suffix, "On GitHub");
+    await page.keyboard.press("Escape");
+
+    // Outbox section with the Markdown export box (#223): write a fresh
+    // comment on a visible diff line (deterministic: earlier steps close
+    // every thread they open, and seeded threads may sit in folded
+    // hunks), mark it, then open the menu — This review, Outbox (with
+    // drafts + Copy box) and On GitHub all populated.
+    const connLine = page.locator('[id="F-src-urllib3-connection.py"] td.n.new').first();
+    await expect(connLine).toBeVisible({ timeout: 15_000 });
+    await connLine.click();
+    const outboxComposer = page.locator(".dhunk .ithread[data-pending-thread]").first();
+    await expect(outboxComposer).toBeVisible({ timeout: 15_000 });
+    await outboxComposer.locator("textarea").fill("Tour outbox probe.");
+    await outboxComposer.getByRole("button", { name: "Save" }).click();
+    const outboxThread = page.locator('.dhunk section.ithread[data-thread]', { hasText: "Tour outbox probe." }).first();
+    await expect(outboxThread).toBeVisible({ timeout: 30_000 });
+    const inOutbox = outboxThread.getByRole("button", { name: "Remove from the Outbox" });
+    await expect(inOutbox, "fresh comment threads start in the Outbox").toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
+    await expect(page.locator(".cmenu [data-outbox-md]")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.cmenu [data-cmsec="outbox"]')).not.toContainText("Nothing in the Outbox yet.");
+    await expect(page.locator('.cmenu [data-cmsec="review"]')).toHaveCount(0);
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await stepChecks(page, "menu-outbox");
+    await shot(page, "menu-outbox", suffix, "Copy");
+    await page.keyboard.press("Escape");
+
+    // Debug page (#194): job timings in local time with durations.
+    await page.goto(`${svc!.origin}/review/${reviewId}/debug?token=${svc.token}`);
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
+    await checkLayout(page, "debug");
+    await shot(page, "debug", suffix, "Queued");
+
+    // Debug Output (#207): one view per job (no Prompt button); the
+    // first job expanded, turn by turn, with its prompt, reply, tool
+    // calls as one expandable line each in a bounded list, and the raw
+    // usage payload. The row's Tools count expands the same way.
+    await expect(page.getByRole("button", { name: "Prompt" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Output" }).first().click();
+    await expect(page.locator('[data-testid="job-output"]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Read", { timeout: 15_000 });
+    await page.locator('[data-testid="job-turn-tool"]').first().locator("summary").click();
+    await expect(page.locator('[data-testid="job-turn-tool"]').first()).toContainText("Arguments", { timeout: 15_000 });
+    // Frame the whole job row, header (kind/state) above Turn 1.
+    await page.locator(".jobrow").first().scrollIntoViewIfNeeded();
+    await checkLayout(page, "debug-output");
+    await shot(page, "debug-output", suffix, "Raw usage");
+
+    // Settings → every tab (#225): fields must fit the card at
+    // every width. One scene per tab so the failure names the tab.
+    // Scratch repos seeded for the extension tab are removed afterwards
+    // (the per-run temp guard fails on leftovers).
+    const extDirs: string[] = [];
+    for (const tab of [
+      { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
+      { id: "repositories", name: "Repos", marker: "Add by path" },
+      { id: "models", name: "Models", marker: "Writes the guide" },
+      { id: "environment", name: "Environment", marker: "Re-check" },
+      { id: "version", name: "Version", marker: "Channels" },
+      { id: "appearance", name: "Appearance", marker: "Theme" },
+      { id: "extension", name: "Extension", marker: "Show extension folder" },
+    ] as const) {
+      if (tab.id === "extension") {
+        // #322: seed 4 repos so the frame shows Active-repo checkboxes
+        // with the 3 most recent ticked (default).
+        const existing = (await apiJson(svc!.origin, svc!.token, "GET", "/api/repos")) as { repos: { id: string; localPath: string }[] };
+        if (existing.repos.filter((r) => r.id !== "demo" && r.localPath).length < 4) {
+          for (let i = 1; i <= 4; i++) {
+            const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-tour-ext${i}-`));
+            extDirs.push(dir);
+            await makeScratchRepo(dir);
+            await journeyGit(dir, "remote", "add", "origin", `https://github.com/acme/tour${i}.git`);
+            await apiJson(svc!.origin, svc!.token, "POST", "/api/repos", { path: dir });
+          }
+        }
+      }
+      await page.goto(`${svc!.origin}/settings?tab=${tab.id}&token=${svc.token}`);
+      await expect(page.getByRole("tab", { name: tab.name })).toBeVisible({ timeout: 15_000 });
+      if (tab.id === "version") {
+        // #233 (with #229's horizontal alignment): enable the picker
+        // (fake backend) and assert compact single-line rows sharing
+        // the card's side padding with equal heights, and the Channels
+        // label bottom-aligned with Refresh above the divider.
+        const versionToggle = page.getByTestId("version-picker-toggle");
+        if (!(await versionToggle.isChecked())) {
+          await versionToggle.click();
+          await expect(versionToggle).toBeChecked({ timeout: 15_000 });
+        }
+        await expect(page.locator('[data-testid="update-channel"]').first()).toBeVisible({ timeout: 30_000 });
+        const vToggleBox = await versionToggle.boundingBox();
+        const vLabelBox = await page.locator('.ver-toggle label[for="version-picker-toggle"]').boundingBox();
+        expect(
+          Math.abs(vToggleBox!.y + vToggleBox!.height / 2 - (vLabelBox!.y + vLabelBox!.height / 2)),
+          "version: checkbox and label share one line",
+        ).toBeLessThanOrEqual(2);
+        // #246: the "Releases always listed." help text is gone.
+        await expect(page.locator(".ver-toggle-hint")).toHaveCount(0);
+        await expect(page.getByTestId("update-current-version")).toHaveCount(0);
+        const vRows = page.locator('[data-testid="update-channel"]');
+        expect(await vRows.locator(".ui-row-meta").count()).toBe(0);
+        const vHeights = await vRows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+        expect(Math.max(...vHeights) - Math.min(...vHeights)).toBeLessThanOrEqual(1.5);
+        const vHeadBox = await page.locator(".ver-listhead").boundingBox();
+        const vFirstBox = await vRows.first().boundingBox();
+        expect(Math.abs(vHeadBox!.x - vFirstBox!.x)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vHeadBox!.x + vHeadBox!.width - (vFirstBox!.x + vFirstBox!.width))).toBeLessThanOrEqual(2);
+        const vRefreshBox = await page.getByTestId("update-refresh").boundingBox();
+        const vChannelsBox = await page.locator(".ver-listhead .hint").boundingBox();
+        // Bottom-aligned (#233): the label's bottom and the button's
+        // bottom sit the same distance above the divider (the first
+        // row's top border), within 2px.
+        const vDividerY = vFirstBox!.y;
+        const vLabelAbove = vDividerY - (vChannelsBox!.y + vChannelsBox!.height);
+        const vButtonAbove = vDividerY - (vRefreshBox!.y + vRefreshBox!.height);
+        expect(Math.abs(vLabelAbove - vButtonAbove)).toBeLessThanOrEqual(2);
+        // #330: every row ends in a Notes button after its Switch/Update
+        // action, so the row's right edge is the Notes button.
+        const vActionBox = await vRows.first().locator("button").last().boundingBox();
+        expect(Math.abs(vRefreshBox!.x + vRefreshBox!.width - (vActionBox!.x + vActionBox!.width))).toBeLessThanOrEqual(2);
+        // Compact rows (#233): each row is at most the button height + 16px.
+        const vBtnH = (await vRows.locator("button").first().boundingBox())!.height;
+        for (const h of vHeights) {
+          expect(h, "version: channel rows are compact").toBeLessThanOrEqual(vBtnH + 16);
+        }
+      }
+      if (tab.id === "limits") {
+        // #328 standard settings row: help under the label on the
+        // left, control alone on the right top-aligned with the
+        // label, one number width, unit beside the field, hairlines
+        // between rows. Runs at 1440 in every pass.
+        const rows = await page.locator('section[aria-label="Limits"] .ui-field').evaluateAll((els) =>
+          els.map((el) => {
+            const rect = (n: Element | null): { x: number; y: number; w: number; right: number; bottom: number } | null => {
+              if (!n) return null;
+              const b = n.getBoundingClientRect();
+              return { x: b.x, y: b.y, w: b.width, right: b.right, bottom: b.bottom };
+            };
+            return {
+              field: rect(el),
+              label: rect(el.querySelector(".ui-field-label")),
+              help: rect(el.querySelector(".ui-help")),
+              control: rect(el.querySelector(".ui-field-control")),
+              input: rect(el.querySelector('input[type="number"]')),
+              unit: rect(el.querySelector(".ui-unit")),
+              unitText: el.querySelector(".ui-unit")?.textContent ?? "",
+              borderTop: getComputedStyle(el).borderTopWidth,
+            };
+          }),
+        );
+        expect(rows.length, "limits: one checkbox row + six number rows").toBe(7);
+        for (const [i, row] of rows.entries()) {
+          expect(row.label, `limits row ${i}: label`).not.toBeNull();
+          expect(row.help, `limits row ${i}: help`).not.toBeNull();
+          expect(row.control, `limits row ${i}: control`).not.toBeNull();
+          expect(Math.abs(row.help!.x - row.label!.x), `limits row ${i}: help under label (same left edge)`).toBeLessThanOrEqual(2);
+          expect(row.help!.y, `limits row ${i}: help below label`).toBeGreaterThanOrEqual(row.label!.bottom - 2);
+          expect(row.help!.right, `limits row ${i}: help stays in the left column`).toBeLessThanOrEqual(row.control!.x + 2);
+          expect(Math.abs(row.control!.y - row.label!.y), `limits row ${i}: control top-aligned with label`).toBeLessThanOrEqual(4);
+          expect(Math.abs(row.control!.right - row.field!.right), `limits row ${i}: control pinned to the right edge`).toBeLessThanOrEqual(2);
+          expect(row.help!.w, `limits row ${i}: help takes the remaining width`).toBeGreaterThan(row.control!.w);
+          if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
+        }
+        const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
+        expect(widths.length, "limits: six number inputs").toBe(6);
+        expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
+        const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
+        expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
+        const inputRights = rows.flatMap((r) => (r.input ? [r.input.right] : []));
+        expect(Math.max(...inputRights) - Math.min(...inputRights), "limits: number inputs share the same right edge").toBeLessThanOrEqual(1);
+        for (const row of rows) {
+          if (!row.unit || !row.unitText) continue;
+          expect(row.input, "limits: unit row has an input").not.toBeNull();
+          expect(row.unit.x, "limits: unit beside the field").toBeGreaterThanOrEqual(row.input!.right);
+          expect(Math.abs(row.unit.y - row.input!.y), "limits: unit aligned with the field").toBeLessThanOrEqual(12);
+        }
+      }
+      await checkLayout(page, `settings-${tab.id}`);
+      await shot(page, `settings-${tab.id}`, suffix, tab.marker);
+    }
+    for (const d of extDirs) rmSync(d, { recursive: true, force: true });
+
+    // Start page (#225): the "Open a PR" row and the Reviews list
+    // share one width. (The PR list with its empty sub-groups needs
+    // gh-loaded lists, unreachable in the tour sandbox: no repos, no
+    // login. Rules 4b/4c cover it wherever it renders.)
+    // Issue #231: stage a newer release (fake backend: installed older
+    // than published on the same ref) so the top bar shows the update
+    // icon from here on; the Version scene above already ran on the seed.
+    {
+      const upd = path.join(dataDir, "update");
+      mkdirSync(upd, { recursive: true });
+      const now = Date.now();
+      writeFileSync(
+        path.join(upd, "fake-channels.json"),
+        JSON.stringify([
+          {
+            ref: "release",
+            version: "0.0.2",
+            commit: "tournew00000001",
+            builtAt: new Date(now).toISOString(),
+          },
+        ]),
+      );
+      writeFileSync(
+        path.join(upd, "fake-installed.json"),
+        JSON.stringify({
+          version: "0.0.1",
+          commit: "tourold00000001",
+          builtAt: new Date(now - 7 * 86400_000).toISOString(),
+        }),
+      );
+      await apiJson(svc.origin, svc.token, "GET", "/api/update/channels?refresh=1");
+    }
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start");
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await page.getByRole("heading", { name: "Reviews" }).scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-reviews");
+    await shot(page, "start-reviews", suffix, "Unfold obsolete folded response headers");
+    // Issue #231: top bar with the update icon (tooltip names the release).
+    await expect(page.getByTestId("update-available-icon")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("update-available-icon")).toHaveAttribute("title", "Update available: v0.0.2");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-update-icon");
+    await shot(page, "start-update-icon", suffix, "Open a PR by URL or number");
+    // Issue #235: the full-access marker lives on the front-page top
+    // bar (turned on here through settings, back off right after so no
+    // later scene sees it).
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+      fullAccess: true,
+      fullAccessAcknowledgedAt: Date.now(),
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByTestId("full-access-marker")).toBeVisible({ timeout: 15_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await checkLayout(page, "start-full-access");
+    await shot(page, "start-full-access", suffix, "full access");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { fullAccess: false });
+  });
+}
+
+// Issue #265: expanding up lands in the clicked hunk. The demo's worktree
+// pads every line outside the hunks blank, so expansion cannot run there;
+// these frames use a scratch repo with one two-hunk file over a real gap
+// (the J265 journey asserts the placement against the same shape).
+test.describe("visual tour diff expansion up (#265)", () => {
+  let dir265 = "";
+  let data265 = "";
+  let svc265: RunningService | null = null;
+  let review265 = "";
+  let gapLen265 = 0;
+  let gapEnd265 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-repo-"));
+    await makeGapRepo(dir265);
+    data265 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-265-data-"));
+    svc265 = await startService(data265, { agent: "none" });
+    review265 = await createJourneyReview(svc265, dir265);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc265.origin, svc265.token, "GET", `/api/reviews/${review265}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const file = snap.files?.find((f) => f.path === "src/big.py");
+      if (file && file.hunks.length === 2) {
+        gapEnd265 = file.hunks[1].newStart - 1;
+        gapLen265 = gapEnd265 - file.hunks[0].newEnd;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gap review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc265?.stop().catch(() => {});
+    svc265 = null;
+    for (const d of [dir265, data265]) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("visual tour diff expansion up (#265)", async ({ page }) => {
+    if (!svc265) throw new Error("expansion service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const suffix = "1440-light";
+    const BIG = "src-big.py";
+    await page.goto(`${svc265.origin}/review/${review265}?token=${svc265.token}`);
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    const file = page.locator(`[id="F-${BIG}"]`);
+    await expect(file.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+    const second = file.locator(".dhunk").nth(1);
+    // ^ on the second hunk: the tail reads atop its own code.
+    // (#288 adds the optimistic bottom step below it, same label.)
+    await clickRowControl(second, "Show 20 more lines", 0);
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(20, { timeout: 30_000 });
+    await page.mouse.move(20, 400);
+    await file.getByText("Hunk 2 of 2").scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-up");
+    await shot(page, "diff-expand-up", suffix, "Hunk 2 of 2");
+    // ⇞ to the previous hunk: the whole gap reads once, into the
+    // hunk's first line (20 lines already revealed above).
+    await clickRowControl(second, `Show all ${gapLen265 - 20} lines`);
+    await expect(second.locator("tr[data-revealed]")).toHaveCount(gapLen265, { timeout: 60_000 });
+    await page.mouse.move(20, 400);
+    await page.locator(`[id="L-${BIG}-${gapEnd265}"]`).scrollIntoViewIfNeeded();
+    await stepChecks(page, "diff-expand-full-gap");
+    await shot(page, "diff-expand-full-gap", suffix, "Hunk 2 of 2");
+    });
+  });
+});
+
+/**
+ * Gutter E2 frames (issue #285): the tight two-column gutter at rest
+ * and on hover, plus the EOF case — 1440px light by default (dark in the
+ * scratch repo and agent-none service: the main tour review is
+ * no-content, so it renders no expand controls (the J285 journey
+ * asserts the same behaviour against the real service). The repo is the
+ * #265 gap shape plus a whole-file new `src/eof.py` (one hunk, 1–20).
+ */
+test.describe("visual tour gutter E2 (#285)", () => {
+  let dirE2 = "";
+  let dataE2 = "";
+  let svcE2: RunningService | null = null;
+  let reviewE2 = "";
+  let h1StartE2 = 0;
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dirE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-repo-"));
+    await makeGapRepo(dirE2);
+    await makeEofFile(dirE2);
+    dataE2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-285-data-"));
+    svcE2 = await startService(dataE2, { agent: "none" });
+    reviewE2 = await createJourneyReview(svcE2, dirE2);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svcE2.origin, svcE2.token, "GET", `/api/reviews/${reviewE2}`)) as {
+        files: { path: string; hunks: { newStart: number; newEnd: number }[] }[];
+      };
+      const big = snap.files?.find((f) => f.path === "src/big.py");
+      const eof = snap.files?.find((f) => f.path === "src/eof.py");
+      if (big && big.hunks.length === 2 && eof && eof.hunks.length === 1) {
+        h1StartE2 = big.hunks[0].newStart;
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("gutter E2 review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svcE2?.stop().catch(() => {});
+    svcE2 = null;
+    for (const d of [dirE2, dataE2]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("gutterE2", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const)) {
+    test(`visual tour gutter E2 (#285, ${combo.name})`, async ({ page }) => {
+      if (!svcE2) throw new Error("gutter E2 service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      const BIG = "src-big.py";
+      const EOF = "src-eof.py";
+      await page.goto(`${svcE2.origin}/review/${reviewE2}?token=${svcE2.token}`);
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      const big = page.locator(`[id="F-${BIG}"]`);
+      await expect(big.getByText("Hunk 2 of 2")).toBeVisible({ timeout: 30_000 });
+      // At rest the first/last rows show their numbers (no controls).
+      await big.locator(".dfile-h").scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-rest");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-rest");
+      await shot(page, "diff-gutter-e2-rest", suffix, "Hunk 1 of 2");
+      // Row hover swaps the first row's numbers for the up pair.
+      const firstCode = page.locator(`[id="L-${BIG}-${h1StartE2}"]`);
+      await firstCode.scrollIntoViewIfNeeded();
+      await firstCode.hover();
+      await stepChecks(page, "diff-gutter-e2-hover");
+      await checkGutterWidth(page, BIG, "diff-gutter-e2-hover");
+      await shot(page, "diff-gutter-e2-hover", suffix, "Hunk 1 of 2");
+      await page.mouse.move(20, 400);
+      // EOF: the whole-file hunk starts at line 1 and ends at EOF. The
+      // optimistic step drops on click and the row keeps its number.
+      const eof = page.locator(`[id="F-${EOF}"]`);
+      await eof.scrollIntoViewIfNeeded();
+      await expect(eof.getByText("Hunk 1 of 1")).toBeVisible({ timeout: 30_000 });
+      await clickRowControl(eof.locator(".dhunk").nth(0), "Show 20 more lines");
+      await expect(eof.locator("tr[data-revealed]")).toHaveCount(0);
+      await expect(eof.locator("tr.has-xdown")).toHaveCount(0);
+      await page.locator(`[id="L-${EOF}-20"]`).scrollIntoViewIfNeeded();
+      await stepChecks(page, "diff-gutter-e2-eof");
+      await checkGutterWidth(page, EOF, "diff-gutter-e2-eof");
+      await shot(page, "diff-gutter-e2-eof", suffix, "Hunk 1 of 1");
+    });
+  }
+});
+
+/**
+ * Hidden-hunk rows (issue #283): a hidden-only first file and a mixed
+ * file, at 1440px light by default (960/dark in the full matrix only). Own scratch repo and
+ * agent-none service (the main tour review has no hidden-only first
+ * file): docs-only change first, then an imports hunk hidden beside a
+ * shown code hunk, with long summaries PATCHed on (what the hunk pass
+ * writes). The full generic checks run on both scenes, plus the
+ * regression asserts: every label topmost (never under the band
+ * backing), the summary at full width, and the `>` box lined up with
+ * the hunk-header chevrons.
+ */
+test.describe("visual tour hidden-hunk rows (#283)", () => {
+  test.describe.configure({ mode: "serial" });
+  let dir283 = "";
+  let data283 = "";
+  let svc283: RunningService | null = null;
+  let review283 = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-repo-"));
+    mkdirSync(path.join(dir283, "a-docs"), { recursive: true });
+    mkdirSync(path.join(dir283, "src"), { recursive: true });
+    await journeyGit(dir283, "init", "-b", "main");
+    await journeyGit(dir283, "config", "user.email", "t@example.com");
+    await journeyGit(dir283, "config", "user.name", "T");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Alpha line one.", "Alpha line two.", "Alpha line three.", "Alpha line four.", ""].join("\n"),
+    );
+    const codeBase = [
+      "import os",
+      "import re",
+      ...Array.from({ length: 78 }, (_, i) => `value_${String(i + 1).padStart(2, "0")} = ${i + 1}`),
+      `tail_marker = "end"`,
+    ].join("\n") + "\n";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeBase);
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "base");
+    await journeyGit(dir283, "checkout", "-b", "feature");
+    writeFileSync(
+      path.join(dir283, "a-docs", "notes.md"),
+      ["# Notes", "", "Beta line one revised.", "Beta line two revised.", "Beta line three revised.", "Beta line four revised.", ""].join("\n"),
+    );
+    const codeLines = codeBase.split("\n");
+    codeLines[0] = "import sys";
+    codeLines[1] = "import json";
+    codeLines[70] = "value_69 = 6900  # changed";
+    writeFileSync(path.join(dir283, "src", "app.py"), codeLines.join("\n"));
+    await journeyGit(dir283, "add", ".");
+    await journeyGit(dir283, "commit", "-m", "feature work");
+    data283 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-283-data-"));
+    svc283 = await startService(data283, { agent: "none" });
+    review283 = await createJourneyReview(svc283, dir283);
+    const deadline = Date.now() + 90_000;
+    let hashes: { docs: string; imports: string } | null = null;
+    for (;;) {
+      const snap = (await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`)) as {
+        files: { path: string; hunks: { contentHash: string; hiddenReason?: string }[] }[];
+      };
+      const docs = snap.files?.find((f) => f.path === "a-docs/notes.md")?.hunks[0];
+      const mixed = snap.files?.find((f) => f.path === "src/app.py")?.hunks ?? [];
+      if (docs?.hiddenReason && mixed.length === 2 && mixed[0].hiddenReason && !mixed[1].hiddenReason) {
+        hashes = { docs: docs.contentHash, imports: mixed[0].contentHash };
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("hidden review diff did not land");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.docs}`, {
+      summary:
+        "Rewords the four onboarding notes for the new checkout flow, keeping every " +
+        "heading and the step order exactly as documented so downstream links hold.",
+    });
+    await apiJson(svc283.origin, svc283.token, "PATCH", `/api/reviews/${review283}/hunks/${hashes.imports}`, {
+      summary:
+        "Swaps the two stdlib imports the helper module needs for the new value " +
+        "formatting path, leaving every call site untouched and sorted in place.",
+    });
+    const echoDeadline = Date.now() + 30_000;
+    for (;;) {
+      const snap = await apiJson(svc283.origin, svc283.token, "GET", `/api/reviews/${review283}`) as {
+        hunkStates: { contentHash: string; summary?: string }[];
+      };
+      const got = new Set((snap.hunkStates ?? []).filter((s) => s.summary).map((s) => s.contentHash));
+      if (got.has(hashes.docs) && got.has(hashes.imports)) break;
+      if (Date.now() > echoDeadline) throw new Error("hidden summaries did not land");
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc283?.stop().catch(() => {});
+    svc283 = null;
+    for (const d of [dir283, data283]) rmSync(d, { recursive: true, force: true });
+  });
+
+  /** The #283 regression asserts for one hidden row: label topmost,
+   * summary at full width, `>` box lined up with the hunk chevrons. */
+  async function expectHiddenRow(page: Page, row: Locator, step: string): Promise<void> {
+    const rowBox = (await row.boundingBox())!;
+    const label = row.locator(".hidl");
+    await expect(label).toContainText(/^Hunks? \d+(–\d+)?$/, { timeout: 10_000 });
+    const labelBox = (await label.boundingBox())!;
+    const topmost = await page.evaluate(({ x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit?.closest("button.hid")?.getAttribute("aria-label") ?? `${hit?.tagName}.${(hit as HTMLElement | null)?.className}`;
+    }, { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 });
+    expect(topmost, `${step}: label covered by ${topmost}`).toMatch(/collapsed\. Show these hunks/);
+    const briefBox = (await row.locator(".hidb").boundingBox())!;
+    expect(
+      briefBox.width > rowBox.width * 0.5 || briefBox.x <= rowBox.x + 14,
+      `${step}: summary squeezed (box ${JSON.stringify(briefBox)} row ${JSON.stringify(rowBox)})`,
+    ).toBe(true);
+    const headerBox = (await page.locator(".dhunk-h .ib").first().boundingBox())!;
+    const hicBox = (await row.locator(".hic").boundingBox())!;
+    expect(Math.abs(hicBox.x - headerBox.x), `${step}: chevron x ${hicBox.x} vs header ${headerBox.x}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(hicBox.width - headerBox.width), `${step}: chevron width`).toBeLessThanOrEqual(1);
+  }
+
+  for (const combo of tourCombos("hiddenHunk", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+    test(`visual tour hidden-hunk rows (#283, ${combo.name})`, async ({ page }) => {
+      if (!svc283) throw new Error("hidden-hunk service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${svc283.origin}/review/${review283}?token=${svc283.token}`);
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      // First file: hidden-only. Its row sits directly under its file
+      // header (no blank band), label showing.
+      const first = page.locator(".dfile").first();
+      await first.scrollIntoViewIfNeeded();
+      await expect(first.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      const firstHead = (await first.locator(".dfile-h").boundingBox())!;
+      const firstTop = (await first.locator("button.hid").boundingBox())!.y;
+      expect(firstTop - (firstHead.y + firstHead.height), "hidden-first: blank band above the row").toBeLessThanOrEqual(2);
+      await expectHiddenRow(page, first.locator("button.hid"), "hidden-first");
+      await stepChecks(page, "diff-hidden-first");
+      await shot(page, "diff-hidden-first", suffix, "Rewords the four onboarding notes");
+      // Mixed file: hidden imports hunk above a shown code hunk.
+      const mixed = page.locator('[id="F-src-app.py"]');
+      await mixed.getByRole("button", { name: /Hunk 1, collapsed/ }).scrollIntoViewIfNeeded();
+      await expect(mixed.getByRole("button", { name: /Hunk 1, collapsed/ })).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(20, 400);
+      await expectHiddenRow(page, mixed.locator("button.hid"), "hidden-mixed");
+      await stepChecks(page, "diff-hidden-mixed");
+      await shot(page, "diff-hidden-mixed", suffix, "Swaps the two stdlib imports");
+    });
+  }
+});
+
+// Hide-level selector (#325): one frame, 1440 light, the selector open
+// with its options and score swatches.
+test.describe("visual tour hide-level selector (#325)", () => {
+  let data325 = "";
+  let svc325: RunningService | null = null;
+  let review325 = "";
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    data325 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-325-data-"));
+    review325 = createSeededDemoReview(data325, "tour-325-seed");
+    // Deterministic hunk scores (what the hunk pass would store), so
+    // the menu frame shows real per-category counts.
+    const scores: Record<string, string> = {
+      "src/urllib3/connection.py:0": "substantive",
+      "src/urllib3/connection.py:1": "substantive",
+      "test/test_connection.py:0": "mechanical",
+      "test/test_connection.py:1": "mechanical",
+      "test/test_connection.py:2": "routine",
+      "test/with_dummyserver/test_socketlevel.py:0": "mechanical",
+      "test/with_dummyserver/test_socketlevel.py:1": "substantive",
+      "changelog/1362.bugfix.rst:0": "routine",
+    };
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data325, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review325) as { snapshot: string };
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; hunks: { contentHash: string }[] }[];
+        hunkStates: { contentHash: string; score?: string }[];
+      };
+      const byHash = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
+      for (const f of snap.files) {
+        f.hunks.forEach((h, i) => {
+          const entry = byHash.get(h.contentHash) ?? { contentHash: h.contentHash };
+          entry.score = scores[`${f.path}:${i}`];
+          byHash.set(h.contentHash, entry);
+        });
+      }
+      snap.hunkStates = [...byHash.values()];
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review325);
+    } finally {
+      db.close();
+    }
+    svc325 = await startService(data325, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc325?.stop().catch(() => {});
+    svc325 = null;
+    rmSync(data325, { recursive: true, force: true });
+  });
+  test("hide-level selector open (1440-light)", async ({ page }) => {
+    if (!svc325) throw new Error("hide-level service not running");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc325.origin}/review/${review325}?token=${svc325.token}`);
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    // Move the threshold to Routine (clicking the shown Routine row):
+    // guide-cited hunks hide like any other now (#325), so the button
+    // counts the truly hidden hunks and the menu shows Routine greyed.
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await page.locator('[data-hidecat="routine"]').click();
+    await expect(page.locator('[data-hidelevel-current="substantive"]')).toBeVisible();
+    await page.getByRole("button", { name: /Hide level:/ }).click();
+    await expect(page.getByRole("menu", { name: "Hunk categories" })).toBeVisible();
+    await expect(page.getByRole("menuitemcheckbox", { name: /Needs attention/ })).toBeVisible();
+    await expect(page.locator('[data-hidecat="routine"]')).toHaveAttribute("data-hidden", "true");
+    await expect(page.getByRole("button", { name: /Hide level:/ })).toContainText("Hiding 5");
+    // The open menu is legitimately topmost over the pinned headers,
+    // so this frame runs the layout check only, not the pinned checks.
+    await checkLayout(page, "hide-level-open");
+    await shot(page, "hide-level-open", "1440-light", "Needs attention");
+  });
+});
+
+
+// Studio and Console themes (issues #196/#164): one scene set per
+
+// Studio and Console themes (issues #196/#164): one 1440-light scene set
+// per theme (the #362 named keeps: Studio fonts, Console variables).
+// The default theme's scenes are the main passes above.
+for (const combo of tourCombos("theme", [
+  { theme: "studio", name: "studio-1440-light", dark: false },
+  { theme: "studio", name: "studio-1440-dark", dark: true },
+  { theme: "console", name: "console-1440-light", dark: false },
+  { theme: "console", name: "console-1440-dark", dark: true },
+] as const)) {
+  test(`visual tour theme (${combo.name})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    // Persist the theme server-side (the source of truth) and mirror
+    // it locally, exactly as Settings -> Appearance leaves the browser.
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+    await page.addInitScript((theme) => {
+      try {
+        localStorage.setItem("unvibe:ui-theme", theme);
+      } catch {
+        // Boot falls back to the default theme; the assert below fails.
+      }
+    }, combo.theme);
+    const suffix = combo.name;
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // The theme's bundled fonts actually render (issue #196): each
+    // family the theme names must be loaded, not fallen back.
+    const fontFamilies =
+      combo.theme === "studio" ? ["Fraunces", "Nunito Sans", "DM Mono"] : ["Fira Sans", "Fira Code"];
+    for (const family of fontFamilies) {
+      const loaded = await page.evaluate(async (f) => {
+        try {
+          await document.fonts.load(`16px "${f}"`);
+          await document.fonts.load(`600 16px "${f}"`);
+        } catch { /* check below reports it */ }
+        return document.fonts.check(`16px "${f}"`);
+      }, family);
+      expect(loaded, `${combo.name}: font ${family} loaded`).toBe(true);
+    }
+    // Shaped advances must match the font's true metrics (issue #196
+    // review): under the headless shell, Nunito Sans shaped "T" at
+    // 0.77em instead of 0.60em and "The" ran 9% wider than the stack's
+    // fallback. Full Chromium shapes the true advances.
+    const sansFamily = combo.theme === "studio" ? "Nunito Sans" : "Fira Sans";
+    // #274 stack B removed IBM Plex Sans, the old canvas reference: Inter
+    // Variable is bundled for every theme (main.tsx), so it is the stable
+    // reference now (true Nunito/Inter ~0.94, Fira/Inter ~0.91; the tPerEm
+    // check above stays the primary mis-shaping guard).
+    const shaped = await page.evaluate((fam) => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (!ctx) return { tPerEm: 99, theRatio: 99 };
+      ctx.font = `13px "${fam}"`;
+      const t = ctx.measureText("T").width;
+      const the = ctx.measureText("The").width;
+      ctx.font = `13px "Inter Variable"`;
+      const fallbackThe = ctx.measureText("The").width;
+      return { tPerEm: t / 13, theRatio: the / fallbackThe };
+    }, sansFamily);
+    expect(shaped.tPerEm, `${combo.name}: shaped T advance per em`).toBeLessThanOrEqual(0.68);
+    expect(shaped.theRatio, `${combo.name}: "The" width vs fallback`).toBeLessThanOrEqual(1.05);
+    await checkLayout(page, `theme-${combo.theme}-guide`);
+    await shot(page, `theme-${combo.theme}-guide`, suffix, "Unfold obsolete folded response headers");
+
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+    await checkLayout(page, `theme-${combo.theme}-diff`);
+    await checkTokenContrast(page, `theme-${combo.theme}-diff`);
+    await shot(page, `theme-${combo.theme}-diff`, suffix, "_OBSOLETE_FOLD_RE");
+    // Styling-only theme variables (issue #196): Console's hatched
+    // empty cells and thin scrollbars, Studio's none/auto.
+    await page.getByRole("button", { name: "Split", exact: true }).click();
+    await page.waitForSelector("table.diff.split td.empty", { timeout: 15_000 }).catch(() => {});
+    const styling = await page.evaluate(() => {
+      const empty = document.querySelector("table.diff td.empty");
+      return {
+        hatch: empty ? getComputedStyle(empty).backgroundImage : "(no empty cell)",
+        scrollbar: getComputedStyle(document.documentElement).scrollbarWidth,
+      };
+    });
+    if (combo.theme === "console") {
+      expect(styling.hatch, `${combo.name}: hatched empty cells`).toContain("repeating-linear-gradient");
+      expect(styling.scrollbar, `${combo.name}: thin scrollbars`).toBe("thin");
+    } else {
+      expect(styling.hatch, `${combo.name}: no hatching`).toBe("none");
+      expect(styling.scrollbar, `${combo.name}: default scrollbars`).toBe("auto");
+    }
+    await page.getByRole("button", { name: "Unified" }).click();
+
+    await page.goto(`${svc.origin}/settings?tab=appearance&token=${svc.token}`);
+    await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="ui-theme"]')).toContainText(combo.theme === "studio" ? "Studio" : "Console", { timeout: 15_000 });
+    await checkLayout(page, `theme-${combo.theme}-settings`);
+    await shot(page, `theme-${combo.theme}-settings`, suffix, "Theme");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
+  });
+}
+
+// Issue #281 (variant A Watermark): the start screen in Studio at
+// 1440px light by default (dark/960 in the full matrix only). One frame
+// per combo: the wordmark top-bar logo plus the faint centred ball behind
+// the lists. Resets the theme to default, like the theme loop above.
+for (const combo of tourCombos("startStudio", [
+  { name: "studio-1440-light", width: 1440, dark: false },
+  { name: "studio-1440-dark", width: 1440, dark: true },
+  { name: "studio-960-light", width: 960, dark: false },
+] as const)) {
+  const suffix = combo.name;
+  test(`visual tour start studio (${suffix})`, async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: combo.width, height: 900 });
+    if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "studio" });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("unvibe:ui-theme", "studio");
+      } catch {
+        // Boot falls back to the default theme; the assert below fails.
+      }
+    });
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "studio");
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("Open a PR by URL or number").scrollIntoViewIfNeeded();
+    await checkLayout(page, `start-${suffix}`);
+    await shot(page, "start", suffix, "Open a PR by URL or number");
+    await apiJson(svc.origin, svc.token, "PUT", "/api/settings", { uiTheme: "default" });
+  });
+}
+
+// Issue #232 preparing states: while a review is being prepared both
+// panes share one modest loading state — the processing indicator plus a
+// short label at body size ("Building the guide" / "Loading the diff"),
+// inside the pane's normal content padding. Two scenes, every theme ×
+// scheme (the default theme at both widths, Studio/Console at 1440px per
+// #259), each with checkLayout:
+// - ingest loading: the guide shows "Building the guide" and the diff
+//   shows "Loading the diff". The ingest is held open on a sleeping fake
+//   `gh pr view` (sleeper PIDs recorded for cleanup, so afterAll kills
+//   only what this test started);
+// - guide building after a finished ingest: the guide still shows
+//   "Building the guide" (a seeded running pipeline stage with no pages,
+//   stable under agent=none) while the diff is ready.
+test.describe("visual tour review preparing (#232)", () => {
+  let dir232 = "";
+  let bin232 = "";
+  let log232 = "";
+  let repo232 = "";
+  let svc232: RunningService | null = null;
+  let loadingId = "";
+  let buildingId = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    dir232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-data-"));
+    bin232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-bin-"));
+    log232 = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-232-gh-"));
+    // Scratch repo (branch `feature` over `main`): the PR review hangs
+    // its ingest on the sleeping fake `gh`; the branch review ingests
+    // for real and is then seeded into the building state.
+    repo232 = path.join(os.tmpdir(), `unvibe-tour-232-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", repo232]);
+    const g = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo232 });
+    };
+    await g("config", "user.email", "t@example.com");
+    await g("config", "user.name", "T");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 1\n");
+    await g("add", ".");
+    await g("commit", "-m", "base");
+    await g("checkout", "-b", "feature");
+    writeFileSync(path.join(repo232, "app.py"), "def main():\n    return 2\n");
+    await g("add", ".");
+    await g("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: repo232 });
+    const head = headOut.trim();
+    writeFileSync(
+      path.join(bin232, "gh"),
+      `#!/bin/sh
+LOG="${log232}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo "tour-host: Logged in to github.com account tour-reviewer (e2e stub)"
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  sleep 150 & echo $! >> "$LOG/sleep.pids"
+  wait
+  cat <<EOF
+{"title":"Tour preparing PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0
+fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(bin232, realGitPath());
+    const fakeShell = writeFakeShell(bin232);
+    const extraEnv = {
+      SHELL: fakeShell,
+      PATH: fakeServicePath(bin232),
+    };
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+    // PR review: ingest hangs on the sleeping `gh`, staying loading.
+    const repos = (await apiJson(svc232.origin, svc232.token, "POST", "/api/repos", { path: repo232 })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repo232);
+    if (!registered) throw new Error("scratch repo not registered");
+    const createdLoading = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      pr: 1,
+    })) as { review: { id: string } };
+    loadingId = createdLoading.review.id;
+    // Branch review: ingests for real, then seeded into building below.
+    const createdBuilding = (await apiJson(svc232.origin, svc232.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    buildingId = createdBuilding.review.id;
+    const readyDeadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = (await apiJson(svc232.origin, svc232.token, "GET", `/api/reviews/${buildingId}`)) as {
+        ingest?: { status?: string };
+      };
+      if (snap.ingest?.status === "ready") break;
+      if (Date.now() > readyDeadline) throw new Error("branch ingest did not finish");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // Seed the building state: finished ingest with a real diff, no
+    // guide pages, one finished stage with the rest pending (the
+    // about-to-queue gap). Stable under agent=none (no pipeline to
+    // mutate it); a `running` stage with no live jobs would now read as
+    // idle, since running is keyed to live jobs (#247), which agent=none
+    // can never provide. The loading review resumes its held ingest on
+    // the restart below and stays loading.
+    await svc232.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dir232, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(buildingId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as {
+        pages: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        jobs: unknown[];
+      };
+      seeded.pages = [];
+      seeded.pipeline = { stages: { reader: "done", base: "pending" } };
+      seeded.jobs = [];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        buildingId,
+      );
+      stampDataFormat(db);
+    } finally {
+      db.close();
+    }
+    svc232 = await startService(dir232, { agent: "none", extraEnv, label: "tour232" });
+  });
+
+  test.afterAll(async () => {
+    // Wake the held ingests by killing only this test's recorded sleepers.
+    try {
+      const { readFileSync } = await import("node:fs");
+      const pids = readFileSync(path.join(log232, "sleep.pids"), "utf8").split(/\s+/).filter(Boolean);
+      for (const pid of pids) {
+        try {
+          process.kill(Number(pid), "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    } catch {
+      // No sleepers recorded.
+    }
+    await svc232?.stop().catch(() => {});
+    svc232 = null;
+    for (const d of [dir232, bin232, log232]) rmSync(d, { recursive: true, force: true });
+    rmSync(repo232, { recursive: true, force: true });
+  });
+
+// Issue #259: non-default themes keep one representative width. The
+// loading scenes below assert label alignment and pane padding — not
+// narrow-layout or theme behaviour — so the slim keeper is the default
+// theme at the widest (1440px); Studio/Console/dark/960 run in the full
+// matrix only.
+  for (const combo of tourCombos("preparing", [
+    { name: "default-1440-light", theme: "default", width: 1440, dark: false },
+    { name: "default-1440-dark", theme: "default", width: 1440, dark: true },
+    { name: "default-960-light", theme: "default", width: 960, dark: false },
+    { name: "studio-1440-light", theme: "studio", width: 1440, dark: false },
+    { name: "console-1440-light", theme: "console", width: 1440, dark: false },
+  ] as const)) {
+    const suffix = `${combo.theme}-${combo.width}-${combo.dark ? "dark" : "light"}`;
+    test(`visual tour review preparing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      // Persist the theme server-side (the source of truth) and mirror
+      // it locally, exactly as Settings -> Appearance leaves the browser.
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("review-loading")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #232 nit: both panes share one padding, so the two labels sit
+      // at the same height — their vertical centres match within 2px.
+      const labelDy = await page.evaluate(() => {
+        const centres = ["review-loading", "diff-loading"].map((t) => {
+          const r = document.querySelector(`[data-testid="${t}"] .pane-loading`)?.getBoundingClientRect();
+          return r ? (r.top + r.bottom) / 2 : null;
+        });
+        if (centres[0] === null || centres[1] === null) return null;
+        return Math.abs((centres[0] as number) - (centres[1] as number));
+      });
+      expect(labelDy, `review-preparing-${suffix}: labels misaligned`).not.toBeNull();
+      expect(labelDy as number, `review-preparing-${suffix}: labels misaligned`).toBeLessThanOrEqual(2);
+      await checkLayout(page, `review-preparing-${suffix}`);
+      await checkHeroFits(page, `review-preparing-${suffix}`, "review-loading", ".guide-scene");
+      await checkHeroFits(page, `review-preparing-${suffix}`, "diff-loading", ".loading-glints");
+      await shot(page, "review-preparing", suffix, "Loading the diff");
+    });
+    // Issue #284: a still frame can't show motion, so freeze the swing
+    // at an extreme (0%: tilt maximal) and at mid-swing (25%: tilt
+    // crossing centre) via the Web Animations API and frame each.
+    // Paused times are in ms of the 2.5s cycle; the diff glints share
+    // the cycle (bright at the extremes, dim mid-swing).
+    async function freezeSwing(page: Page, atMs: number): Promise<void> {
+      await page.evaluate((ms) => {
+        for (const el of document.querySelectorAll(".guide-scene, .loading-glints svg")) {
+          for (const a of el.getAnimations()) {
+            a.pause();
+            (a as Animation).currentTime = ms;
+          }
+        }
+      }, atMs);
+    }
+    // Issue #284 follow-up: the hero art stays inside its pane at
+    // both swing extremes (mount, chain and ball for the guide; the
+    // glint cluster for the diff), and the label is not covered by
+    // the art — the group stacks art above text. The measured art box
+    // is the rotated one, so the check covers the swing's travel.
+    async function checkHeroFits(page: Page, step: string, scope: string, artSel: string): Promise<void> {
+      const bad = await page.evaluate(
+        ({ scope, artSel }: { scope: string; artSel: string }) => {
+          const root = document.querySelector(`[data-testid="${scope}"]`);
+          const art = root?.querySelector(artSel);
+          const label = root?.querySelector(".pane-loading > span:last-child");
+          if (!root || !art || !label) return "missing hero art or label";
+          const pane = art.closest(".col");
+          if (!pane) return "hero art has no pane column";
+          const pr = pane.getBoundingClientRect();
+          const ar = art.getBoundingClientRect();
+          if (ar.left < pr.left - 1 || ar.right > pr.right + 1) {
+            return `hero art outside its pane: art=${Math.round(ar.left)}-${Math.round(ar.right)} pane=${Math.round(pr.left)}-${Math.round(pr.right)}`;
+          }
+          const lr = label.getBoundingClientRect();
+          const hit = document.elementFromPoint(lr.left + lr.width / 2, lr.top + lr.height / 2);
+          if (!hit || !root.contains(hit)) {
+            return `hero label covered at its centre by ${hit ? `${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)}` : "nothing"}`;
+          }
+          return null;
+        },
+        { scope, artSel },
+      );
+      expect(bad, `${step}: hero fit ${bad ?? ""}`).toBeNull();
+    }
+    test(`visual tour guide building swing (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284 (owner change): the guide shows the ball alone — no
+      // glints, no dots here.
+      await expect(page.locator('[data-testid="guide-empty"] .guide-ball')).toBeVisible();
+      await expect(page.locator('[data-testid="guide-empty"] .loading-glints')).toHaveCount(0);
+      await expect(page.locator('[data-testid="guide-empty"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-extreme-${suffix}.png`) });
+      await checkHeroFits(page, `guide-swing-extreme-${suffix}`, "guide-empty", ".guide-scene");
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `guide-swing-mid-${suffix}.png`) });
+      await checkHeroFits(page, `guide-swing-mid-${suffix}`, "guide-empty", ".guide-scene");
+    });
+    // Issue #284 (owner revision): the diff state shows the same glints
+    // on their own — no ball — drifting in the same rhythm, as if the
+    // ball were just out of frame. Freeze at an extreme (glints bright)
+    // and at mid-swing (glints dim) and frame each.
+    test(`visual tour diff loading glints (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // #284: glints only here — no ball, no dots.
+      await expect(page.locator('[data-testid="diff-loading"] .loading-glints svg')).toHaveCount(3);
+      await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+      await expect(page.locator('[data-testid="diff-loading"] .dots')).toHaveCount(0);
+      await freezeSwing(page, 0);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-extreme-${suffix}.png`) });
+      await checkHeroFits(page, `diff-glint-extreme-${suffix}`, "diff-loading", ".loading-glints");
+      await freezeSwing(page, 625);
+      await page.screenshot({ path: path.join(SHOTS, `diff-glint-mid-${suffix}.png`) });
+      await checkHeroFits(page, `diff-glint-mid-${suffix}`, "diff-loading", ".loading-glints");
+    });
+    test(`visual tour guide building (${suffix})`, async ({ page }) => {
+      if (!svc232) throw new Error("preparing service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await apiJson(svc232.origin, svc232.token, "PUT", "/api/settings", { uiTheme: combo.theme });
+      await page.addInitScript((theme) => {
+        try {
+          localStorage.setItem("unvibe:ui-theme", theme);
+        } catch {
+          // Boot falls back to the default theme; the assert below fails.
+        }
+      }, combo.theme);
+      await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+      await expect(page.locator("html")).toHaveAttribute("data-ui-theme", combo.theme);
+      await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, `guide-building-${suffix}`);
+      await checkHeroFits(page, `guide-building-${suffix}`, "guide-empty", ".guide-scene");
+      await shot(page, "guide-building", suffix, "Building the guide");
+    });
+  }
+  // Issue #284 (owner change): under reduced motion the ball hangs
+  // still with no separate glints on the guide side; the diff pane's
+  // glints sit static but visible — nothing animates, in either pane.
+  test("visual tour loading indicators honour reduced motion (#284)", async ({ page }) => {
+    if (!svc232) throw new Error("preparing service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`${svc232.origin}/review/${buildingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("guide-empty")).toContainText("Building the guide", { timeout: 30_000 });
+    const ballAnim = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="guide-empty"] .guide-scene');
+      return el ? getComputedStyle(el).animationName : null;
+    });
+    expect(ballAnim, "guide ball animates under reduced motion").toBe("none");
+    // Owner change: no separate glints on the guide side at all.
+    await expect(page.locator('[data-testid="guide-empty"] .loading-glints')).toHaveCount(0);
+    // The diff pane's glints-only state is static too — and carries no
+    // ball and no dots in either loading pane.
+    await page.goto(`${svc232.origin}/review/${loadingId}?token=${svc232.token}`);
+    await expect(page.getByTestId("diff-loading")).toContainText("Loading the diff", { timeout: 15_000 });
+    const diffGlintAnims = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="diff-loading"] .loading-glints svg')].map((el) => getComputedStyle(el).animationName),
+    );
+    expect(diffGlintAnims.length, "diff glints missing").toBe(3);
+    for (const name of diffGlintAnims) expect(name, "diff glint animates under reduced motion").toBe("none");
+    await expect(page.locator('[data-testid="diff-loading"] .guide-ball')).toHaveCount(0);
+    await expect(page.locator('.pane-loading .dots')).toHaveCount(0);
+  });
+});
+test("visual tour documents web group (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-web322-"));
+  try {
+    await makeScratchRepo(dir);
+    await journeyGit(dir, "remote", "add", "origin", "https://github.com/acme/weblib.git");
+    await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: dir });
+    const asked = (await apiJson(svc.origin, svc.token, "POST", "/api/extension/panel/ask", {
+      url: "https://github.com/acme/weblib/issues/5", title: "Widget fails to load", selection: "", context: "widget page",
+      question: "Where is validateToken?",
+    })) as unknown as { reviewId?: string };
+    expect(asked.reviewId).toBeTruthy();
+    await page.goto(`${svc.origin}/documents?token=${svc.token}`);
+    await expect(page.getByTestId("web-thread-row")).toContainText("Widget fails to load", { timeout: 15_000 });
+    await expect(page.getByTestId("web-thread-row")).toContainText("github.com");
+    await checkLayout(page, "documents-web-1440-light");
+    await shot(page, "documents-web", "1440-light", "Widget fails to load");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+// Issue #222: the start page's New document review form and a document
+// review (rendered blocks, an Explain answer, an Ask answer, a comment,
+// and a `code:` citation opening the second context repo's file) in the
+// default theme at 1440 light. The context repos are throwaway git
+// checkouts registered with the tour's own service.
+test("visual tour document review (#222)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-"));
+  const repo2Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-doc222-b-"));
+  try {
+    const git = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repoDir });
+    };
+    await git("init", "-b", "main");
+    await git("config", "user.email", "tour@example.com");
+    await git("config", "user.name", "Tour");
+    writeFileSync(path.join(repoDir, "README.md"), "# Widget\n\nA widget library.\n");
+    mkdirSync(path.join(repoDir, "src"));
+    writeFileSync(path.join(repoDir, "src", "widget.ts"), "export const widget = 1;\n");
+    await git("add", ".");
+    await git("commit", "-m", "init");
+    const added = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    expect(added.repos.some((r) => r.localPath === repoDir)).toBe(true);
+    const repoId = added.repos.find((r) => r.localPath === repoDir)!.id;
+    // Second context repo: same path, different line, so the cited sha
+    // decides whose bytes the file tab shows.
+    const git2 = async (...args: string[]): Promise<void> => {
+      await exec("git", args, { cwd: repo2Dir });
+    };
+    await git2("init", "-b", "main");
+    await git2("config", "user.email", "tour@example.com");
+    await git2("config", "user.name", "Tour");
+    writeFileSync(path.join(repo2Dir, "README.md"), "# Widget two\n");
+    mkdirSync(path.join(repo2Dir, "src"));
+    writeFileSync(path.join(repo2Dir, "src", "widget.ts"), "export const widget = 2; // second repo\n");
+    await git2("add", ".");
+    await git2("commit", "-m", "init two");
+    await git2("remote", "add", "origin", "https://github.com/acme/widget-two.git");
+    const added2 = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repo2Dir })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const repo2Id = added2.repos.find((r) => r.localPath === repo2Dir)!.id;
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Start page: the top bar carries the Documents icon (tooltip
+    // "Documents") next to the Unvibe home link; the page itself holds no
+    // Document section.
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    await expect(page.getByRole("link", { name: "Documents" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toHaveCount(0);
+    await checkLayout(page, "start-topbar-documents");
+    await shot(page, "start-topbar-documents", "1440-light", "Reviews");
+
+    // Documents screen: the New document review form, filled in.
+    await page.getByRole("link", { name: "Documents" }).click();
+    await page.waitForURL(/\/documents/, { timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "New document review" })).toBeVisible({ timeout: 15_000 });
+    await checkLayout(page, "documents-screen");
+    await shot(page, "documents-screen", "1440-light", "No documents yet");
+    await page.getByRole("button", { name: "New document review" }).click();
+    await page.getByTestId("doc-markdown").fill(
+      "# Design note\n\nThe widget folds obsolete headers before parsing.\n\nIt keeps the fast path for modern responses.\n\n## Details\n\n- Folding runs before parsing\n- The fast path skips folding\n",
+    );
+    await page.getByTestId("doc-repo-select-0").selectOption(repoId);
+    await page.getByRole("button", { name: "Add another context repo" }).click();
+    await page.getByTestId("doc-repo-select-1").selectOption(repo2Id);
+    await checkLayout(page, "start-document-form");
+    await shot(page, "start-document-form", "1440-light", "Paste the document's Markdown");
+
+    await page.getByRole("button", { name: "Create document review" }).click();
+    await page.waitForURL(/\/review\//, { timeout: 30_000 });
+    const docReviewId = page.url().split("/review/")[1].split(/[/?#]/)[0];
+
+    // The document, rendered with its blocks.
+    await expect(page.getByTestId("document-view")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("document-context")).toContainText("local copy");
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "document-review");
+    await shot(page, "document-review", "1440-light", "folds obsolete headers");
+
+    // An Explain answer on document text.
+    await selectText(page, "#C-document", "folds obsolete headers");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const exp = page.locator("#C-document [data-thread]").first();
+    await expect(exp).toBeVisible({ timeout: 15_000 });
+    await expect(exp.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+    // #336: reply toolbars reveal on hover.
+    await exp.locator("[data-reply]").first().hover();
+    await expect(exp.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkLayout(page, "document-explain");
+    await shot(page, "document-explain", "1440-light", "folds obsolete headers");
+    await closeCard(page, exp);
+
+    // An Ask answer on document text.
+    await selectText(page, "#C-document", "fast path for modern responses");
+    await page.locator('#selbar [data-act="ask"]').click();
+    const askComposer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(askComposer).toBeVisible({ timeout: 10_000 });
+    // The question matches the `ask-thread-cookie` recording, which
+    // declares itself degraded: no repair turn, so the frame shows the
+    // recorded answer. Recordings that cite the urllib3 diff fail
+    // validation in a document review, and the repair turn has no
+    // recording (a replay placeholder).
+    const askQuestion = "Which consumer re-emits the raw CRLF?";
+    await askComposer.locator("textarea").fill(askQuestion);
+    await askComposer.getByRole("button", { name: "Ask" }).click();
+    const askCard = page.locator("#C-document [data-thread]", { hasText: askQuestion });
+    await expect(askCard.first()).toBeVisible({ timeout: 30_000 });
+    // #336: reply toolbars reveal on hover. Hover the agent answer, not
+    // the question entry above it (which has no toolbar), and only once
+    // the answer has settled and rendered its toolbar.
+    const askAnswer = askCard.locator("[data-reply]:not([data-ask-question])").first();
+    await expect(askAnswer.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+    await expect(askAnswer.locator(".ctl")).toBeAttached({ timeout: 60_000 });
+    await expect(askAnswer).toContainText("Requests", { timeout: 60_000 });
+    // The answer is taller than the viewport: frame its top, where the
+    // toolbar floats, and hover there.
+    await askCard.first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await askAnswer.hover({ position: { x: 40, y: 12 } });
+    await expect(askAnswer.locator(".ctl").first()).toBeVisible({ timeout: 60_000 });
+    await checkLayout(page, "document-ask");
+    await shot(page, "document-ask", "1440-light", askQuestion);
+
+    // A local comment on document text.
+    await selectText(page, "#C-document", "Folding runs before parsing");
+    await page.locator('#selbar [data-act="note"]').click();
+    const composer = page.locator("#C-document .ithread[data-pending-thread]");
+    await expect(composer).toBeVisible({ timeout: 10_000 });
+    await composer.locator("textarea").fill("Please expand this part.");
+    await composer.getByRole("button", { name: /comment|save/i }).first().click();
+    await expect(page.locator("#C-document .ithread", { hasText: "Please expand this part." }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await checkLayout(page, "document-comment");
+    await shot(page, "document-comment", "1440-light", "Please expand this part.");
+
+    // A document answer citing the second repo's file (#81): seed the
+    // answer (the J81/J222 pattern), click its citation, and frame the
+    // file tab showing the second repo's bytes.
+    const snap = (await apiJson(svc.origin, svc.token, "GET", `/api/reviews/${docReviewId}`)) as {
+      contextRepos: { repoId: string; sha?: string }[];
+    };
+    const sha2 = snap.contextRepos.find((c) => c.repoId === repo2Id)?.sha ?? "";
+    expect(sha2).toMatch(/^[0-9a-f]{40}$/);
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(docReviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const seeded = JSON.parse(row.snapshot) as { annotations: unknown[] };
+      seeded.annotations.push({
+        id: "ann-doc-cite",
+        type: "thread",
+        anchor: {
+          host: { kind: "block", blockId: "document#p2" },
+          quotedText: "folds obsolete headers",
+          prefix: "The widget ",
+          suffix: " before parsing.",
+          position: 11,
+          version: 1,
+        },
+        open: true,
+        pinned: true,
+        post: false,
+        replies: [
+          {
+            id: "ans_doc_cite1",
+            kind: "explain",
+            who: "agent",
+            question: null,
+            blocks: [
+              {
+                type: "paragraph",
+                id: "b-cite",
+                text: { standard: "The widget constant lives in the second repo." },
+                citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
+              },
+            ],
+            level: "standard",
+            revision: 1,
+            undoStack: [],
+          },
+        ],
+      });
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(seeded),
+        docReviewId,
+      );
+      stampDataFormat(db);
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, {
+      agent: "replay",
+      extraEnv: { SHELL: tourShellPath, PATH: fakeServicePath(tourBin) },
+    });
+    await page.goto(`${svc.origin}/review/${docReviewId}?token=${svc.token}`);
+    const cited = page.locator("#C-document [data-thread]", { hasText: "The widget constant lives in the second repo." });
+    await expect(cited.first()).toBeVisible({ timeout: 30_000 });
+    await cited.first().getByRole("button", { name: "Source" }).click();
+    await expect(page.getByRole("tab", { name: "widget.ts" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".codefile")).toContainText("second repo");
+    await checkLayout(page, "document-citation");
+    await shot(page, "document-citation", "1440-light", "second repo");
+
+    // The document comment on the Outbox tab (#223, #226, #236), with
+    // its export box — and no GitHub side on a document, either tab.
+    await page.getByRole("button", { name: /Comments/ }).first().click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await page.locator('.cmenu [data-cmtab="outbox"]').click();
+    await expect(page.locator('.cmenu [data-cmsec="github"]')).toHaveCount(0);
+    await expect(page.locator("[data-outbox-md]")).toContainText("## Design note › p5", { timeout: 15_000 });
+    await stepChecks(page, "document-outbox");
+    await shot(page, "document-outbox", "1440-light", "Please expand this part.");
+    await page.keyboard.press("Escape");
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(repo2Dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #203 writing state, on a slow replay (like J6): the fast tour
+// replay answers before a writing frame can be captured, so this scene
+// runs its own throttled service and screenshots the card mid-answer —
+// header and writing state only, no answer toolbar, no reply box. It
+// then waits for the answer and screenshots the same card completed.
+test("visual tour writing state (slow replay)", async ({ page }) => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-writing-"));
+  const slow = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(slow.origin, slow.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(slow.origin, slow.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
+    // Issue #341: explain "three pieces" on the build-up card. No explain
+    // pattern matches a build-up-anchored prompt, so replay answers with
+    // the first explain entry (the recorded obs-fold explain) — still a
+    // real recording while the writing state is captured.
+    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-buildup", "three pieces");
+    await page.locator('#selbar [data-act="explain"]').click();
+    const card = page.locator("#C-buildup [data-thread]").first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
+    // While writing: no answer toolbar, no reply box (#203), pinned (#204).
+    await expect(card).not.toHaveClass(/floating/);
+    await expect(card.locator(".ctl")).toHaveCount(0);
+    await expect(card.locator("textarea")).toHaveCount(0);
+    mkdirSync(SHOTS, { recursive: true });
+    await card.scrollIntoViewIfNeeded().catch(() => {});
+    await checkLayout(page, "guide-writing");
+    await page.screenshot({ path: path.join(SHOTS, "guide-writing-1440-light.png") });
+    // Once the answer arrives, the toolbar and the reply box appear
+    // (#336: the toolbar reveals on hover — hover the reply first).
+    await expect(card.locator("[data-reply]").first()).toBeVisible({ timeout: 120_000 });
+    await card.locator("[data-reply]").first().hover();
+    await expect(card.locator(".ctl").first()).toBeVisible({ timeout: 120_000 });
+    await expect(card.getByPlaceholder(/Ask a follow-up/)).toBeVisible({ timeout: 30_000 });
+    await waitForJobsIdle(slow.origin, slow.token, rid);
+    await checkLayout(page, "guide-writing-done");
+    await page.screenshot({ path: path.join(SHOTS, "guide-writing-done-1440-light.png") });
+  } finally {
+    await slow.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #270: a failed Ask follow-up shows the banner with Retry, and
+// the retry lands a clean answer (no raw trailing block, no cut-off
+// start). Own service lifecycle like the writing-state scene above:
+// slow replay, killed mid-answer, restarted fast.
+test("visual tour ask retry (#270)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askretry-"));
+  let svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // One fresh Ask card per theme in the full matrix (light only by
+    // default, so the kill/restart cycle never shares turn state).
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
+    ].filter(([t]) => t === "light" || fullMatrix())) {
+      if (theme === "dark") {
+        await page.emulateMedia({ colorScheme: "dark" });
+        // Slow the stream again (the light cycle restarted fast): the
+        // follow-up must still be mid-flight at the kill. killHard only —
+        // a graceful stop mid-cycle is not what this scene exercises.
+        svc.killHard();
+        await page.waitForTimeout(500);
+        svc = await startService(dir, {
+          agent: "replay",
+          extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+        });
+      }
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      // Fail the follow-up mid-answer, then restart on the same data dir.
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator("[data-reply]").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      svc.killHard();
+      await page.waitForTimeout(500);
+      svc = await startService(dir, { agent: "replay" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      const shotCard = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(shotCard).toBeVisible({ timeout: 30_000 });
+      const failed = shotCard.locator("[data-reply]").last();
+      await expect(failed.getByRole("alert")).toContainText("Couldn't get an answer", { timeout: 30_000 });
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-failed", `1440-${theme}`, "Couldn't get an answer");
+      // Retry lands the clean answer (#336: landed is blocks with no
+      // working marker — the toolbar itself stays hidden until hovered).
+      await failed.getByRole("button", { name: "Retry" }).click();
+      await expect(failed.locator(".working")).toHaveCount(0, { timeout: 120_000 });
+      const retried = shotCard.locator(".exp-b").last();
+      await expect(retried).not.toBeEmpty({ timeout: 60_000 });
+      await expect(retried).not.toContainText('{"contribute"');
+      await shotCard.scrollIntoViewIfNeeded().catch(() => {});
+      await shot(page, "ask-retried", `1440-${theme}`, followUp);
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #271: while a follow-up answer is pending, the reply box stays
+// visible and editable (Send disabled with the reason as its tooltip)
+// and the indicator carries the plain label. One frame per theme in the
+// full matrix (light only by default): the
+// pending turn with a typed draft in the box.
+test("visual tour ask pending draft (#271)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-askpending-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
+    ].filter(([t]) => t === "light" || fullMatrix())) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 60_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const turn = card.locator("[data-reply]").last();
+      await expect(turn.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await expect(turn.locator(".working")).toHaveText("Writing answer");
+      // The box stays through the fill: type the next question already.
+      const draft = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(draft).toBeVisible();
+      await draft.fill("And then?");
+      const send = card.getByRole("button", { name: "Reply", exact: true });
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute("data-tip", "Wait for the answer");
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await shot(page, "ask-pending", `1440-${theme}`, "And then?");
+      // Let the answer land so the next theme starts settled (#336:
+      // landed is blocks with no working marker, not .ctl visibility).
+      await expect(turn.locator(".exp-b")).not.toBeEmpty({ timeout: 120_000 });
+      await expect(turn.locator(".working")).toHaveCount(0, { timeout: 30_000 });
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #293: an Ask thread with one follow-up — the reviewer's question
+// shows as a comment with the answer as the reply under it. One frame
+// while the follow-up streams and one when done, light by default (dark in
+// the full matrix).
+test("visual tour ask thread (#293)", async ({ page }) => {
+  test.setTimeout(420_000);
+  const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ask293-"));
+  const svc: RunningService | null = await startService(dir, {
+    agent: "replay",
+    extraEnv: { UNVIBE_REPLAY_DELAY_MS: "50", UNVIBE_REPLAY_CHUNK_CHARS: "20" },
+  });
+  try {
+    const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: "demo" })) as {
+      review: { id: string };
+    };
+    const rid = created.review.id;
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svc!.origin, svc!.token, "GET", `/api/reviews/${rid}`)) as {
+            pages?: { cards?: { id: string }[] }[];
+          };
+          return (snap.pages ?? []).some((p) => (p.cards ?? []).some((c) => c.id === "central"));
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #341: selections and questions match the re-recorded ask
+    // recordings (quote- or message-start), so the frames show real
+    // answers instead of the kind fallback.
+    for (const [theme, host, sel, first, followUp] of [
+      ["light", "#C-problem", "re-emit raw CRLF", "Which downstream consumer re-emits the raw CRLF, and how does the fix stop it?", "Should a bare LF not followed by whitespace also be normalized, or is leaving it correct?"],
+      ["dark", "#C-central", "right after parsing", "Why must the message and the dict stay identical?", "Is the rewritten message the same object downstream code already holds, or a copy?"],
+    ].filter(([t]) => t === "light" || fullMatrix())) {
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc.origin}/review/${rid}?token=${svc.token}`);
+      await expect(page.locator(host)).toBeVisible({ timeout: 60_000 });
+      await selectText(page, host, sel);
+      await page.locator('#selbar [data-act="ask"]').click();
+      const composer = page.locator(`${host} .ithread[data-pending-thread]`);
+      await expect(composer).toBeVisible({ timeout: 10_000 });
+      await composer.locator("textarea").fill(first);
+      await composer.getByRole("button", { name: "Ask" }).click();
+      const card = page.locator(`${host} section.ithread[data-thread]`, { hasText: first }).first();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card.locator("[data-ask-question]").first()).toContainText(first, { timeout: 30_000 });
+      await expect(card.locator(".exp-b").first()).not.toBeEmpty({ timeout: 120_000 });
+      await expect(card.locator("[data-ask-answer] .working")).toHaveCount(0, { timeout: 30_000 });
+      const box = card.getByPlaceholder(/Ask a follow-up/);
+      await expect(box).toBeVisible({ timeout: 30_000 });
+      await box.fill(followUp);
+      await card.getByRole("button", { name: /ask|send|reply/i }).last().click();
+      const followQ = card.locator("[data-ask-question]").nth(1);
+      await expect(followQ).toContainText(followUp, { timeout: 30_000 });
+      const followA = card.locator("[data-ask-answer]").nth(1);
+      await expect(followA.locator(".working")).toBeVisible({ timeout: 30_000 });
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      mkdirSync(SHOTS, { recursive: true });
+      await checkLayout(page, "ask-thread-streaming");
+      await shot(page, "ask-thread-streaming", `1440-${theme}`, followUp);
+      // #336: landed is blocks with no working marker, not .ctl visibility.
+      await expect(followA.locator(".working")).toHaveCount(0, { timeout: 120_000 });
+      await expect(followA.locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+      await expect(card.locator("[data-ask-answer] .ans-q")).toHaveCount(0);
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      await waitForJobsIdle(svc.origin, svc.token, rid);
+      await checkLayout(page, "ask-thread-done");
+      await shot(page, "ask-thread-done", `1440-${theme}`, followUp);
+      if (theme === "dark") await page.emulateMedia({ colorScheme: "light" });
+    }
+  } finally {
+    await svc?.stop().catch(() => {});
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #81 file tab. The demo review's commits resolve in no checkout,
+// so its files cannot be read; these frames use a scratch repo (three
+// small files written here, nothing external) on an agent-less service,
+// the same way the J81 journey reads real content. Seeded guide cards
+// cite files outside the diff; one seeded file-tab comment, marked for
+// posting, shows the Submit preview's review-body permalink.
+test.describe("visual tour file tab (#81)", () => {
+  let ftRepo = "";
+  let ftData = "";
+  let ftBin = "";
+  let ftLog = "";
+  let ftSvc: RunningService | null = null;
+  let ftReview = "";
+  let ftHead = "";
+
+  async function ftGit(...args: string[]): Promise<void> {
+    await exec("git", args, { cwd: ftRepo });
+  }
+
+  // Stubbed `gh` only (AGENTS.md: tests never hit real GitHub): the
+  // fake answers `api user` as "author" and records every call.
+  async function ftStart(): Promise<RunningService> {
+    const fakeShell = writeFakeShell(ftBin);
+    return startService(ftData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(ftBin) },
+    });
+  }
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    // Name the checkout so its registered repo reads local/<name>.
+    ftRepo = path.join(os.tmpdir(), `unvibe-tour-ft-${Date.now()}-demo-app`);
+    await exec("git", ["init", "-b", "main", ftRepo]);
+    await ftGit("config", "user.email", "t@example.com");
+    await ftGit("config", "user.name", "T");
+    writeFileSync(path.join(ftRepo, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
+    writeFileSync(path.join(ftRepo, "other.py"), "red = 1\ngreen = 2\n");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 1\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "base");
+    await ftGit("checkout", "-b", "feature");
+    writeFileSync(path.join(ftRepo, "app.py"), "def main():\n    return 2\n");
+    await ftGit("add", ".");
+    await ftGit("commit", "-m", "feature work");
+    const { stdout: headOut } = await exec("git", ["rev-parse", "HEAD"], { cwd: ftRepo });
+    ftBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-bin-"));
+    ftLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-gh-"));
+    writeFakeGh(ftBin, ftLog, headOut.trim());
+    writeFakeGitOffline(ftBin, realGitPath());
+    ftData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-ft-data-"));
+    ftSvc = await ftStart();
+    const repos = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/repos", { path: ftRepo })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === ftRepo);
+    if (!registered) throw new Error("scratch repo not registered");
+    const created = (await apiJson(ftSvc.origin, ftSvc.token, "POST", "/api/reviews", {
+      repoId: registered.id,
+      branch: "feature",
+    })) as { review: { id: string } };
+    ftReview = created.review.id;
+    // Let ingest settle before seeding: the head SHA must have landed
+    // (citations pin to it), and a job still queued at shutdown resumes
+    // on the next boot and would replace the seeded snapshot.
+    const settleDeadline = Date.now() + 90_000;
+    let before: { version: { headSha: string }; files: { path: string }[] } | null = null;
+    for (;;) {
+      const snap = (await apiJson(ftSvc.origin, ftSvc.token, "GET", `/api/reviews/${ftReview}`)) as {
+        version: { headSha: string };
+        files: { path: string }[];
+        jobs?: { state: string }[];
+      };
+      const active = (snap.jobs ?? []).some((j) => j.state === "queued" || j.state === "running" || j.state === "backing-off");
+      if (snap.version.headSha !== "" && !active) {
+        before = snap;
+        break;
+      }
+      if (Date.now() > settleDeadline) throw new Error("scratch ingest did not settle");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    ftHead = before.version.headSha;
+    if (before.files.some((f) => f.path === "helper.py")) throw new Error("helper.py must sit outside the diff");
+
+    await ftSvc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(ftData, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(ftReview) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as {
+        pages: { id: string; kind: string; title: string; cards: unknown[] }[];
+        annotations: unknown[];
+        pipeline?: { stages: Record<string, string> };
+        ingest?: { status: string };
+      };
+      // Mark the ingest ready and every stage done: a snapshot still
+      // saying "loading" is re-ingested on boot, which would replace
+      // the seeded guide with an empty one.
+      snap.ingest = { status: "ready" };
+      snap.pipeline = {
+        stages: { reader: "done", base: "done", critic: "done", "hunk-pass": "done", "go-deeper": "done" },
+      };
+      let root = snap.pages.find((p) => p.id === "root");
+      if (!root) {
+        root = { id: "root", kind: "root", title: "Guide", cards: [] };
+        snap.pages.unshift(root);
+      }
+      const card = (id: string, text: string, target: string): unknown => ({
+        id,
+        pageId: "root",
+        title: id,
+        level: "standard",
+        collapsed: false,
+        revision: 1,
+        blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+        undoStack: [],
+      });
+      root.cards.push(
+        card("c-beta", "Uses the helper beta value.", `code:helper.py:2@${ftHead}`),
+        card("c-past", "Cites past the end.", `code:helper.py:2-99@${ftHead}`),
+        card("c-other", "Also see the other file.", `code:other.py:1@${ftHead}`),
+      );
+      snap.annotations = [
+        ...(snap.annotations ?? []),
+        {
+          id: "ft-comment",
+          type: "thread",
+          anchor: {
+            host: { kind: "code", path: "helper.py", commit: ftHead, line: 2, endLine: 3 },
+            quotedText: "beta = 2\ngamma = 3",
+            prefix: "",
+            suffix: "",
+            position: 2,
+            version: 1,
+          },
+          open: true,
+          pinned: false,
+          replies: [
+            {
+              id: "ans_ft1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b1",
+                  text: { standard: "Is beta still the right default?" },
+                  citations: [],
+                },
+              ],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
+          post: true,
+        },
+      ];
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        ftReview,
+      );
+      // Give the review a PR number so the Submit preview lists the
+      // comments instead of the no-PR notice (preview is read-only;
+      // nothing posts).
+      db.prepare("UPDATE reviews SET pr_number = 7 WHERE id = ?").run(ftReview);
+      stampDataFormat(db);
+    } finally {
+      db.close();
+    }
+    ftSvc = await ftStart();
+  });
+
+  test.afterAll(async () => {
+    await ftSvc?.stop().catch(() => {});
+    rmSync(ftRepo, { recursive: true, force: true });
+    rmSync(ftData, { recursive: true, force: true });
+    rmSync(ftBin, { recursive: true, force: true });
+    rmSync(ftLog, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("fileTab", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+    test(`visual tour file tab (${combo.name})`, async ({ page }) => {
+      if (!ftSvc) throw new Error("file-tab service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${ftSvc.origin}/review/${ftReview}?token=${ftSvc.token}`);
+      await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
+
+      // Hover preview of the cited lines at the cited commit.
+      await page.locator("#C-c-beta .lk[data-refs]").hover();
+      await expect(page.locator("#pop")).toContainText("beta = 2", { timeout: 30_000 });
+      await stepChecks(page, "file-hover");
+      await shot(page, "file-hover", suffix, "beta = 2");
+
+      // Open tab; a past-the-end citation reuses it, clamped to line 3.
+      await page.locator("#C-c-beta .lk[data-refs]").click();
+      await expect(page.locator("#right .codefile")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
+      await page.locator("#C-c-past .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "helper.py" })).toHaveCount(1);
+      await expect(page.locator('.codefile [data-code-line="3"]')).toHaveClass(/cited/);
+      await stepChecks(page, "file-tab");
+      await shot(page, "file-tab", suffix, "helper.py");
+
+      // A second file opens a second tab; both show close buttons.
+      await page.locator("#C-c-other .lk[data-refs]").click();
+      await expect(page.getByRole("tab", { name: "other.py" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: /^Close / })).toHaveCount(2);
+      await stepChecks(page, "file-tabs");
+      await shot(page, "file-tabs", suffix, "other.py");
+
+      // Submit preview: the file-tab comment sits in the review body
+      // with its permalink.
+      await page.locator("[data-submit]").click();
+      const panel = page.locator(".submit");
+      await expect(panel).toBeVisible({ timeout: 30_000 });
+      await expect(panel).toContainText("goes in the review body", { timeout: 30_000 });
+      await expect(panel).toContainText("github.com/local/", { timeout: 30_000 });
+      await expect(panel).toContainText("beta = 2", { timeout: 30_000 });
+      await expect(panel).toContainText("Is beta still the right default?", { timeout: 30_000 });
+      await expect(panel).toContainText("Submit as author", { timeout: 30_000 });
+      await stepChecks(page, "file-submit");
+      await shot(page, "file-submit", suffix, "review body");
+    });
+  }
+});
+
+/**
+ * Remove inline confirm (#346, ex #225 popover, #234) on the worst-case
+ * Reviews row: decision + new commits (open has no icon). Own service
+ * (agent-less) with a scratch repo and a fake `gh` whose PR view
+ * resolves the branch head at call time, so a commit added after open
+ * is picked up by refresh and the row gains its new-commits tag. The
+ * pill is asserted not to move the row's title or meta and to overlay
+ * within the row, then cancelled with Escape. Frames: idle,
+ * confirming (kept name `start-remove-confirm`), confirmed flash.
+ */
+test.describe("visual tour remove-confirm (#225)", () => {
+  let rcRepo = "";
+  let rcData = "";
+  let rcBin = "";
+  let rcLog = "";
+  let rcSvc: RunningService | null = null;
+  let rcReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rcRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-repo-"));
+    await makeScratchRepo(rcRepo);
+    rcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-data-"));
+    rcLog = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-gh-"));
+    rcBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rc-bin-"));
+    writeFileSync(
+      path.join(rcBin, "gh"),
+      `#!/bin/sh
+mkdir -p "${rcLog}"
+printf '%s\\n' "$*" >> "${rcLog}/calls.log"
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  HEAD=$(git -C "${rcRepo}" rev-parse feature 2>/dev/null || echo none)
+  cat <<EOF
+{"title":"Tour remove PR","body":"First paragraph.","author":{"login":"author"},"state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","baseRefName":"main","headRefName":"feature","headRefOid":"$HEAD"}
+EOF
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'author'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as author"; exit 0; fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(rcBin, realGitPath());
+    const fakeShell = writeFakeShell(rcBin);
+    rcSvc = await startService(rcData, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(rcBin) },
+    });
+    rcReview = await createJourneyReview(rcSvc, rcRepo, { pr: 1 });
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    writeFileSync(path.join(rcRepo, "src", "util.py"), "VALUE = 43\n");
+    await journeyGit(rcRepo, "add", ".");
+    await journeyGit(rcRepo, "commit", "-m", "bump value");
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${rcReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+    // The tour's apiJson always sends a JSON content-type, which Fastify
+    // rejects on a bodiless POST; the refresh route ignores its body.
+    const refreshed = (await apiJson(rcSvc.origin, rcSvc.token, "POST", `/api/reviews/${rcReview}/refresh`, {})) as {
+      newVersion?: boolean;
+    };
+    expect(refreshed.newVersion).toBe(true);
+    await expect
+      .poll(async () => {
+        const s = (await apiJson(rcSvc!.origin, rcSvc!.token, "GET", "/api/reviews")) as {
+          reviews: { id: string; stale?: boolean }[];
+        };
+        return s.reviews.find((r) => r.id === rcReview)?.stale;
+      }, { timeout: 60_000 })
+      .toBe(true);
+  });
+
+  test.afterAll(async () => {
+    await rcSvc?.stop().catch(() => {});
+    rcSvc = null;
+    for (const d of [rcRepo, rcData, rcBin, rcLog]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("removeConfirm", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+    test(`remove inline confirm on the worst-case row (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${rcReview}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      // The most badges a row can have (#234: open has no icon):
+      // decision + new commits.
+      await expect(row.getByRole("img", { name: "Changes requested" })).toBeVisible();
+      await expect(row.getByRole("img", { name: "Open" })).toHaveCount(0);
+      await expect(row).toContainText("new commits");
+      // Readiness callouts mount above the list after first paint; pin
+      // their final state (present here: the hermetic gh stub always
+      // fails the fetch probe) before measuring.
+      await expect(
+        page.locator('[aria-label="Environment problems"]').or(page.getByTestId("readiness-ready")),
+      ).toBeVisible({ timeout: 30_000 });
+      // Boxes are read atomically (one evaluate per snapshot): the old
+      // sequential boundingBox awaits could straddle a layout shift from
+      // a late-mounting callout, mixing boxes from two layouts in one
+      // "before" set — the 87px CI flake. Settle first (fonts, then
+      // identical snapshots across two animation frames), then measure.
+      interface RowBox { x: number; y: number; width: number; height: number }
+      const readLayout = (): Promise<{ row: RowBox | null; title: RowBox | null; meta: RowBox | null; pill: RowBox | null }> =>
+        page.evaluate((id: string) => {
+          const rect = (el: Element | null): RowBox | null => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+          };
+          const rowEl = document.querySelector(`[data-testid="session-${id}"]`);
+          const pillEl = rowEl?.querySelector(".uic-pill") ?? null;
+          return {
+            row: rect(rowEl),
+            title: rect(rowEl?.querySelector(".cx2") ?? null),
+            meta: rect(rowEl?.querySelector(".cj > .hint") ?? null),
+            pill: pillEl ? rect(pillEl) : null,
+          };
+        }, rcReview);
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await expect
+        .poll(
+          async () => {
+            const first = await readLayout();
+            await page.evaluate(
+              () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+            );
+            const second = await readLayout();
+            return JSON.stringify(first) === JSON.stringify(second) ? "stable" : "settling";
+          },
+          { timeout: 15_000 },
+        )
+        .toBe("stable");
+      // Idle state frame (#346: first of the three states).
+      await shot(page, "start-remove-idle", suffix, "Remove");
+      // The row keeps its size and the title/meta keep their size and
+      // position relative to it when the button expands in place: the
+      // pill is an overlay anchored to the button's slot, so neighbours
+      // never shift. Each side is one atomic snapshot, so a layout
+      // shift can never mix boxes from two layouts into one comparison.
+      const before = await readLayout();
+      expect(before.row).not.toBeNull();
+      expect(before.title).not.toBeNull();
+      expect(before.meta).not.toBeNull();
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      const pill = row.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm remove review");
+      await expect(pill.getByRole("button", { name: "Confirm remove review" })).toBeVisible();
+      await expect(pill.getByRole("button", { name: "Cancel" })).toBeVisible();
+      const after = await readLayout();
+      const sizeOf = (b: { width: number; height: number }): { width: number; height: number } => ({ width: b.width, height: b.height });
+      const offsetOf = (
+        inner: { x: number; y: number },
+        outer: { x: number; y: number },
+      ): { dx: number; dy: number } => ({ dx: inner.x - outer.x, dy: inner.y - outer.y });
+      expect(sizeOf(after.row!)).toEqual(sizeOf(before.row!));
+      expect(sizeOf(after.title!)).toEqual(sizeOf(before.title!));
+      expect(sizeOf(after.meta!)).toEqual(sizeOf(before.meta!));
+      expect(offsetOf(after.title!, after.row!)).toEqual(offsetOf(before.title!, before.row!));
+      expect(offsetOf(after.meta!, after.row!)).toEqual(offsetOf(before.meta!, before.row!));
+      // The pill overlays within the row: fully inside the row's box.
+      expect(after.pill).not.toBeNull();
+      expect(after.pill!.x).toBeGreaterThanOrEqual(after.row!.x - 1);
+      expect(after.pill!.x + after.pill!.width).toBeLessThanOrEqual(after.row!.x + after.row!.width + 1);
+      expect(after.pill!.y).toBeGreaterThanOrEqual(after.row!.y - 1);
+      expect(after.pill!.y + after.pill!.height).toBeLessThanOrEqual(after.row!.y + after.row!.height + 1);
+      // Let the pill's entry animation settle: capturing mid-fade reads
+      // as a see-through pill with doubled text.
+      await page.waitForTimeout(300);
+      await checkLayout(page, "start-remove-confirm");
+      await shot(page, "start-remove-confirm", suffix, "Confirm remove review");
+      await page.keyboard.press("Escape");
+      await expect(pill).toHaveCount(0);
+      await expect(row).toBeVisible();
+    });
+  }
+
+  // The third state (#346): confirming deletes the row, but only after
+  // the "✓ Confirmed" flash. Each scheme gets its own sacrificial
+  // branch review — created here, so the worst-case row above survives
+  // every combo and the tests stay order-independent.
+  for (const combo of tourCombos("removeFlash", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const)) {
+    test(`remove confirmed flash (${combo.name})`, async ({ page }) => {
+      if (!rcSvc) throw new Error("remove-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rcSvc, rcRepo, `victim-remove-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rcSvc!.origin, rcSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rcSvc.origin}/?token=${rcSvc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      const row = page.locator(`[data-testid="session-${victim}"]`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.getByRole("button", { name: "Remove this review" }).click();
+      await row.getByRole("button", { name: "Confirm remove review" }).click();
+      // The flash is brief (under a second): shot waits for it, then
+      // captures immediately.
+      await shot(page, "start-remove-confirmed", combo.name, "Confirmed");
+      await expect(row).toHaveCount(0);
+    });
+  }
+});
+
+/**
+ * A sacrificial branch review on a tour repo: opening the same source
+ * twice reuses the review (#92/#149), so each victim gets its own
+ * branch — creation never touches the shared scene review. Leaves the
+ * repo back on `feature`.
+ */
+async function createBranchVictim(svc: RunningService, repoDir: string, branch: string): Promise<string> {
+  await journeyGit(repoDir, "checkout", "-b", branch);
+  await journeyGit(repoDir, "checkout", "feature");
+  const repos = (await apiJson(svc.origin, svc.token, "POST", "/api/repos", { path: repoDir })) as {
+    repos: { id: string; localPath: string }[];
+  };
+  const repoId = repos.repos.find((r) => r.localPath === repoDir)?.id;
+  if (!repoId) throw new Error(`repo not registered: ${repoDir}`);
+  const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId, branch })) as {
+    review: { id: string };
+  };
+  return created.review.id;
+}
+
+/**
+ * Re-do guide top bar (#345) with the shared inline confirm (#346):
+ * idle icon, confirming pill, and the new review it lands on. Own
+ * agent-less service with a scratch repo; the confirming frame
+ * cancels with Escape so the shared review survives every scheme,
+ * while the result frame re-does a sacrificial review per scheme.
+ */
+test.describe("visual tour re-do guide (#345, #346)", () => {
+  let rdRepo = "";
+  let rdData = "";
+  let rdSvc: RunningService | null = null;
+  let rdReview = "";
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    rdRepo = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-repo-"));
+    await makeScratchRepo(rdRepo);
+    rdData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rd-data-"));
+    rdSvc = await startService(rdData, { agent: "none" });
+    rdReview = await createJourneyReview(rdSvc, rdRepo);
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${rdReview}`)) as { ingest?: { status?: string } })
+            .ingest?.status,
+        { timeout: 120_000 },
+      )
+      .toBe("ready");
+  });
+
+  test.afterAll(async () => {
+    await rdSvc?.stop().catch(() => {});
+    rdSvc = null;
+    for (const d of [rdRepo, rdData]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("redo", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const)) {
+    test(`re-do idle and confirming (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${rdSvc.origin}/review/${rdReview}?token=${rdSvc.token}`);
+      const bar = page.locator("#reviewbar");
+      await expect(bar).toBeVisible({ timeout: 30_000 });
+      const redo = page.getByRole("button", { name: "Re-do guide" });
+      await expect(redo).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-topbar");
+      await shot(page, "redo-topbar", combo.name, "Guide");
+      await redo.click();
+      const pill = bar.locator(".uic-pill");
+      await expect(pill).toContainText("Confirm re-do guide");
+      await expect(pill).toHaveAttribute("aria-label", /Anything already on GitHub stays there/);
+      // Let the pill's entry animation settle before capturing.
+      await page.waitForTimeout(300);
+      await checkLayout(page, "redo-confirm");
+      await shot(page, "redo-confirm", combo.name, "Confirm re-do guide");
+      await page.keyboard.press("Escape");
+      await expect(pill).toHaveCount(0);
+      await expect(bar).toBeVisible();
+    });
+
+    test(`re-do result (${combo.name})`, async ({ page }) => {
+      if (!rdSvc) throw new Error("re-do service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const victim = await createBranchVictim(rdSvc, rdRepo, `victim-redo-${combo.name}`);
+      await expect
+        .poll(
+          async () =>
+            ((await apiJson(rdSvc!.origin, rdSvc!.token, "GET", `/api/reviews/${victim}`)) as { ingest?: { status?: string } })
+              .ingest?.status,
+          { timeout: 120_000 },
+        )
+        .toBe("ready");
+      await page.goto(`${rdSvc.origin}/review/${victim}?token=${rdSvc.token}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Re-do guide" }).click();
+      await page.getByRole("button", { name: "Confirm re-do guide" }).click();
+      // The confirm lands on the new review; capture whatever it shows.
+      await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${victim}`);
+      await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
+      await checkLayout(page, "redo-result");
+      await shot(page, "redo-result", combo.name);
+    });
+  }
+});
+
+/**
+ * #311: the data-format reset notice, 1440px light and dark plus 960px
+ * light (the narrow keep: card/text-column 1px edge match). Its own
+ * service on a seeded old-format data dir (a DB with no format stamp);
+ * the notice is the whole page, so one frame per scheme is the scene.
+ */
+test.describe("data reset notice tour (#311)", () => {
+  let noticeDataDir = "";
+  let noticeSvc: RunningService | null = null;
+
+  test.beforeAll(async () => {
+    noticeDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notice-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(noticeDataDir, "unvibe.db"));
+    db.exec(
+      "CREATE TABLE review_snapshots (review_id TEXT PRIMARY KEY, rev INTEGER NOT NULL, snapshot JSON NOT NULL, updated_at INTEGER NOT NULL)",
+    );
+    // One unposted draft, so the frame shows the Export card with its
+    // count, and a recorded previous build, so it shows Go back too.
+    const snapshot = {
+      review: { id: "rv_old", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+      version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+      files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
+      ingest: { status: "ready" },
+      pages: [{ id: "root", kind: "root", title: "Guide title", cards: [] }],
+      annotations: [
+        {
+          type: "thread",
+          id: "t1",
+          anchor: { host: { kind: "diff-line", fileKey: "fk1", line: 2 }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
+          open: true,
+          pinned: false,
+          post: true,
+          replies: [
+            {
+              id: "r1",
+              kind: "comment",
+              who: "you",
+              question: null,
+              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
+              level: "standard",
+              revision: 1,
+              undoStack: [],
+            },
+          ],
+        },
+      ],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: {},
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+    };
+    db.prepare("INSERT INTO review_snapshots (review_id, rev, snapshot, updated_at) VALUES (?, ?, ?, ?)").run(
+      "rv_old",
+      1,
+      JSON.stringify(snapshot),
+      0,
+    );
+    db.close();
+    mkdirSync(path.join(noticeDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(noticeDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "preview/previous", to: "release", finishedAt: "2026-10-29T00:00:00.000Z", fromVersion: "0.0.11" }) + "\n",
+    );
+    noticeSvc = await startService(noticeDataDir, { agent: "none" });
+  });
+
+  test.afterAll(async () => {
+    await noticeSvc?.stop().catch(() => {});
+    noticeSvc = null;
+    rmSync(noticeDataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("dataReset", [
+    { name: "1440-light", dark: false, width: 1440 },
+    { name: "1440-dark", dark: true, width: 1440 },
+    { name: "960-light", dark: false, width: 960 },
+  ] as const)) {
+    test(`data reset notice (${combo.name})`, async ({ page }) => {
+      if (!noticeSvc) throw new Error("notice service not running");
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${noticeSvc.origin}/?token=${noticeSvc.token}`);
+      await expect(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      await checkLayout(page, "data-reset-notice");
+      await shot(page, "data-reset-notice", combo.name, "This version can't read your existing reviews");
+    });
+  }
+});
+
+test.describe("release notes tour (#330)", () => {
+  let notesDataDir = "";
+  let notesSvc: RunningService | null = null;
+  const NOTES_VERSION = "0.0.1-preview.feat-x.abc1234";
+
+  test.beforeAll(async () => {
+    notesDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-notes-"));
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(notesDataDir, "unvibe.db"));
+    db.exec("PRAGMA user_version = 1");
+    db.close();
+    mkdirSync(path.join(notesDataDir, "update"), { recursive: true });
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", kind: "release", version: "0.0.1", commit: "b535a30ccccccc", sourceBranch: null, builtAt: "2026-10-28T00:00:00.000Z", dataFormat: 1 },
+        { ref: "preview/feat-x", kind: "preview", version: NOTES_VERSION, commit: "abc1234def5678", sourceBranch: "feat/x", builtAt: "2026-10-31T00:00:00.000Z", dataFormat: 1 },
+      ]),
+    );
+    writeFileSync(path.join(notesDataDir, "update", "current-ref"), "preview/feat-x\n");
+    writeFileSync(
+      path.join(notesDataDir, "update", "outcome.json"),
+      JSON.stringify({ status: "ok", from: "release", to: "preview/feat-x", finishedAt: "2026-10-31T00:00:00.000Z", fromVersion: "0.0.1", toVersion: NOTES_VERSION }) + "\n",
+    );
+    const item = {
+      number: 330,
+      title: "Release notes inside every build",
+      summary: "Release notes inside every build",
+      url: "https://github.com/indigoviolet/unvibe/issues/330",
+      whatChanged: "Every build now ships its release notes.",
+      whatToTry: "Open Settings, then Version, and read the notes.",
+      caveats: "Full gates not yet run.",
+    };
+    writeFileSync(
+      path.join(notesDataDir, "update", "fake-release-notes.json"),
+      JSON.stringify({
+        "preview/feat-x": { channel: "preview/feat-x", version: NOTES_VERSION, previousVersion: "0.0.1", commit: "abc1234def5678", previousCommit: "b535a30ccccccc", dataFormat: 1, previousDataFormat: 1, dataResetNeeded: false, generatedAt: "2026-10-31T00:00:00.000Z", items: [item] },
+        release: { channel: "release", version: "0.0.1", previousVersion: null, commit: "b535a30ccccccc", previousCommit: null, dataFormat: 1, previousDataFormat: null, dataResetNeeded: false, generatedAt: "2026-10-28T00:00:00.000Z", items: [{ ...item, summary: "Earlier release notes" }] },
+      }),
+    );
+    notesSvc = await startService(notesDataDir, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+  });
+
+  test.afterAll(async () => {
+    await notesSvc?.stop().catch(() => {});
+    notesSvc = null;
+    rmSync(notesDataDir, { recursive: true, force: true });
+  });
+
+  test("version notes (1440-light)", async ({ page }) => {
+    if (!notesSvc) throw new Error("notes service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${notesSvc.origin}/settings?token=${notesSvc.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Version" }).click();
+    await expect(page.getByTestId("current-release-notes")).toHaveCount(0);
+    await page.locator('[data-testid="channel-notes-toggle"][data-ref="release"]').click();
+    await expect(page.locator('[data-testid="channel-release-notes"][data-ref="release"]')).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await checkLayout(page, "version-notes");
+    await shot(page, "version-notes", "1440-light", "Earlier release notes");
+  });
+});
+
+/**
+ * Version Switch + Full access inline confirms (#346 follow-up): the
+ * Version row idle (releases only), with the one-line reset warn
+ * ("Needs a data reset (format 1 → 2)") once previews show, confirming
+ * ("Confirm switch" ✓ ✕) with the pill settled, and Full access
+ * confirming ("Confirm full access" + one short line). Own
+ * fake-updater service; nothing is ever switched or enabled.
+ */
+test.describe("visual tour version + access confirms (#346)", () => {
+  let vcData = "";
+  let vcSvc: RunningService | null = null;
+  const NOW = Date.now();
+  const iso = (ms: number): string => new Date(ms).toISOString();
+
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    vcData = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-vc-data-"));
+    // Start first so the service stamps its fresh DB; staging the fake
+    // channels before the start would read as unstamped data and trip
+    // the data-format notice (#311).
+    vcSvc = await startService(vcData, { agent: "none", extraEnv: { UNVIBE_UPDATER_BACKEND: "fake" } });
+    mkdirSync(path.join(vcData, "update"), { recursive: true });
+    writeFileSync(
+      path.join(vcData, "update", "fake-channels.json"),
+      JSON.stringify([
+        { ref: "release", version: "0.0.1", commit: "rel0000000000001", builtAt: iso(NOW), dataFormat: 1 },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.1-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 3600_000),
+          dataFormat: 2,
+        },
+      ]),
+    );
+    writeFileSync(path.join(vcData, "update", "current-ref"), "release\n");
+  });
+
+  test.afterAll(async () => {
+    await vcSvc?.stop().catch(() => {});
+    vcSvc = null;
+    rmSync(vcData, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("versionAccess", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+  ] as const)) {
+    test(`version + access confirms (${combo.name})`, async ({ page }) => {
+      if (!vcSvc) throw new Error("version-confirm service not running");
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${vcSvc.origin}/settings?tab=version&token=${vcSvc.token}`);
+      await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('[data-testid="update-channel"]')).not.toHaveCount(0, { timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+      // Idle: releases only, no warn line yet.
+      await checkLayout(page, "version-row-idle");
+      await shot(page, "version-row-idle", suffix, "release");
+      // Previews on: the format-changing row gets its one short warn line.
+      const toggle = page.getByTestId("version-picker-toggle");
+      if (!(await toggle.isChecked())) {
+        await toggle.click();
+        await expect(toggle).toBeChecked({ timeout: 15_000 });
+      }
+      const warn = page.locator('[data-testid="update-data-reset-warning"][data-ref="preview/feat-x"]');
+      await expect(warn).toContainText("Needs a data reset (format 1 → 2)", { timeout: 15_000 });
+      await checkLayout(page, "version-row-reset-warn");
+      await shot(page, "version-row-reset-warn", suffix, "Needs a data reset");
+      // Confirming: the pill, settled (mid-fade reads see-through).
+      const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+      await feat.getByRole("button", { name: "Switch to preview/feat-x" }).click();
+      await expect(feat.getByText("Confirm switch")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "version-row-confirm");
+      await shot(page, "version-row-confirm", suffix, "Confirm switch");
+      await page.keyboard.press("Escape");
+      await expect(feat.getByText("Confirm switch")).toHaveCount(0);
+      // Full access: the inline confirm with its one short line.
+      await page.getByRole("tab", { name: "Access" }).click();
+      await expect(page.getByRole("tabpanel", { name: "Access" })).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Turn on full access" }).click();
+      await expect(page.getByText("Confirm full access")).toBeVisible();
+      await page.waitForTimeout(300);
+      await checkLayout(page, "full-access-confirm");
+      await shot(page, "full-access-confirm", suffix, "Confirm full access");
+    });
+  }
+});
+
+/**
+ * Since-B tour (#351 step 1): the dated Since-B section, a card addendum,
+ * the plotline `+N since B` / `new since B` markers, and the Since-B diff
+ * filter. The review is the seeded demo snapshot with the update pass's
+ * since state written in (the same shape `applyUpdateResult` stores, with
+ * real demo hunk ids), so every combo renders deterministically.
+ */
+test.describe("since-B tour (#351)", () => {
+  test.describe.configure({ mode: "serial" });
+  // Seeded-demo + synthetic since state: no agents, no refresh, no fixtures.
+  let svc351: RunningService | null = null;
+  let data351 = "";
+  let review351 = "";
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data351 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-351-"));
+    review351 = createSeededDemoReview(data351, "tour-351-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data351, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review351) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-351 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      // A synthetic second version (tour-only, like #325's scores): the
+      // picker needs two versions, so v1 is the recorded merge-base and
+      // v2 the recorded head.
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      // Tour-local resolved feedback links (what `applyUpdateResult`
+      // stores after resolving the agent's pointers): remark excerpts
+      // from the PR under review, linking back to it.
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      const bareLfAnswer = {
+        kind: "comment",
+        label: "@reviewer on src/urllib3/connection.py:651",
+        excerpt: "http.client accepts lines ending in a bare \\n, so a folded header leaves '\\n ' in the value",
+        url: prUrl,
+      };
+      const socketAnswer = {
+        kind: "comment",
+        label: "@reviewer on test/test_connection.py:211",
+        excerpt: "Please add a socket test with bare-LF folds",
+        url: prUrl,
+      };
+      snap.sinceSection = {
+        baseline: { kind: "version", version: 1 },
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-obs-fold",
+            pageId: "since",
+            title: "Obs-fold unfolded",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-351-1",
+                "The follow-up unfolds the remaining obs-fold in request headers. It answers the review remark quoted below.",
+                [changedId],
+              ),
+            ],
+            answers: [bareLfAnswer],
+          },
+          {
+            id: "since-socket-tests",
+            pageId: "since",
+            title: "Socket-level tests",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [para("b-since-351-2", "New socket-level cases pin the unfolded headers.", [addedId])],
+            answers: [socketAnswer],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: { kind: "version", version: 1 },
+          at: now,
+          blocks: [
+            para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
+          ],
+          answers: [bareLfAnswer],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const s of snap.hunkStates) {
+        if (s.contentHash === hashOf(changedId)) s.plotline = "unfold";
+        else if (s.contentHash === hashOf(addedId)) s.plotline = "socket-followups";
+        else if (s.plotline === undefined) s.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review351);
+    } finally {
+      db.close();
+    }
+    svc351 = await startService(data351, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc351?.stop().catch(() => {});
+    svc351 = null;
+    if (data351) rmSync(data351, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("sinceB", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+    const suffix = combo.name;
+    test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc351) throw new Error("tour-351 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // The Since-B filter is stored with the review, so an earlier combo
+      // may have left it on: reset it first to keep every combo's opening
+      // scenes deterministic (the filter scene re-enables it below).
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      {
+        const chip = page.locator('[data-filterchip="since"]');
+        if ((await chip.getAttribute("aria-pressed")) === "true") {
+          await chip.click();
+          await expect(chip).toHaveAttribute("aria-pressed", "false");
+        }
+      }
+
+      // 1. The dated Since-B section, expanded.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await since.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-expanded");
+      // #351 review: the gap between the Since cards must match the
+      // normal guide card rhythm. Differences of rect edges are
+      // scroll-independent; park the mouse first so no tooltip skews
+      // the shot (same before every capture below).
+      await page.mouse.move(20, 20);
+      await shot(page, "since-expanded", suffix, "Obs-fold unfolded");
+      {
+        const gaps = await page.evaluate(() => {
+          const bottom = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().bottom;
+          };
+          const top = (sel: string): number | null => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            return el.getBoundingClientRect().top;
+          };
+          const sinceBottom = bottom("#page #C-since-obs-fold");
+          const sinceTop = top("#page #C-since-socket-tests");
+          const normalBottom = bottom("#page #C-problem");
+          const normalTop = top("#page #C-central");
+          return {
+            sinceGap: sinceBottom !== null && sinceTop !== null ? sinceTop - sinceBottom : null,
+            normalGap: normalBottom !== null && normalTop !== null ? normalTop - normalBottom : null,
+          };
+        });
+        console.log(`since-gaps ${suffix}: since=${gaps.sinceGap}px normal=${gaps.normalGap}px`);
+        expect(gaps.sinceGap).not.toBeNull();
+        expect(gaps.normalGap).not.toBeNull();
+        expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
+      }
+
+      // 2. Collapsed: the cards fold away.
+      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
+      await stepChecks(page, "since-collapsed");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
+      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
+      await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
+
+      // 3. The card addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-addendum", suffix, "Updated since v1");
+
+      // 4. The visible feedback link: the remark the delta answers.
+      const firstSince = page.locator("#page #C-since-obs-fold");
+      await firstSince.scrollIntoViewIfNeeded();
+      await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-feedback");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-feedback", suffix, "Answers:");
+
+      // 5. The plotlines card with the new-since marker.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-plotlines", suffix, "new since v1");
+
+      // 5. The diff with the Since-B filter on. The filter is stored
+      // with the review, so an earlier combo may have left it on: reset
+      // it first to keep every combo deterministic.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const sinceChip = page.locator('[data-filterchip="since"]');
+      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
+        await sinceChip.click();
+        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
+      }
+      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
+      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
+      await stepChecks(page, "since-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-filter", suffix, "Since v1");
+    });
+  }
+});
+
+/**
+ * Since-commit tour (#351 step 2): the baseline is a commit, not a
+ * version. Same seeded-demo technique as the step-1 scene (tour-only
+ * synthetic state with real demo hunk ids, so every combo renders
+ * deterministically): the header, addendum, markers and filter chip all
+ * name the real short sha, and the picker lists versions and commits.
+ */
+test.describe("since-commit tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svc352: RunningService | null = null;
+  let data352 = "";
+  let review352 = "";
+  // Tour-seeded commit sha (40 hex): the demo seed carries no commits, so
+  // the baseline commit is tour-local synthetic state like the v1/v2 rows.
+  const commit352 = "a1b2c3d4".repeat(5);
+  const short352 = commit352.slice(0, 8);
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    data352 = mkdtempSync(path.join(os.tmpdir(), "unvibe-visual-tour-352-"));
+    review352 = createSeededDemoReview(data352, "tour-352-seed");
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(data352, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(review352) as
+        | { snapshot?: string }
+        | undefined;
+      if (!row?.snapshot) throw new Error("seeded tour-352 review has no snapshot");
+      const snap = JSON.parse(row.snapshot) as {
+        files: { path: string; fileKey: string; hunks: { contentHash: string }[] }[];
+        pages: { id: string; cards: { id: string; addenda?: unknown[] }[] }[];
+        hunkStates: { contentHash: string; plotline?: string }[];
+        plotlines?: unknown;
+        review: { versions: unknown[]; currentVersion: number };
+        version: { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number };
+        [key: string]: unknown;
+      };
+      const hid = (filePath: string, index: number): string => {
+        const f = snap.files.find((x) => x.path === filePath);
+        if (!f || !f.hunks[index]) throw new Error(`no hunk ${index} in ${filePath}`);
+        return `h:${f.fileKey}:${f.hunks[index].contentHash}`;
+      };
+      const changedId = hid("src/urllib3/connection.py", 1);
+      const addedId = hid("test/test_connection.py", 2);
+      const now = Date.now();
+      const v1 = {
+        n: 1,
+        headSha: snap.version.mergeBaseSha,
+        mergeBaseSha: snap.version.mergeBaseSha,
+        baseRef: snap.version.baseRef,
+        fetchedAt: now - 86_400_000,
+        idMapping: {},
+      };
+      const v2 = { ...snap.version, n: 2, fetchedAt: now };
+      snap.review.versions = [v1, v2];
+      snap.review.currentVersion = 2;
+      snap.version = v2;
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
+      snap.sinceBaseline = { kind: "commit", sha: commit352 };
+      snap.sinceHunks = { added: [addedId], changed: [changedId] };
+      const para = (id: string, text: string, citations: string[]): unknown => ({
+        type: "paragraph",
+        id,
+        text: { standard: text },
+        citations: citations.map((target) => ({ target })),
+      });
+      const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
+      snap.sinceSection = {
+        baseline: { kind: "commit", sha: commit352 },
+        headVersion: 2,
+        at: now,
+        cards: [
+          {
+            id: "since-beta-gamma",
+            pageId: "since",
+            title: "Beta reworked, gamma added",
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              para(
+                "b-since-352-1",
+                "Beta now returns 22 and the gamma probe is new. It answers the review remark quoted below.",
+                [changedId, addedId],
+              ),
+            ],
+            answers: [
+              {
+                kind: "comment",
+                label: "@reviewer on src/urllib3/connection.py:651",
+                excerpt: "please rework beta against the new gamma probe",
+                url: prUrl,
+              },
+            ],
+          },
+        ],
+      };
+      const root = snap.pages.find((p) => p.id === "root");
+      const central = root?.cards.find((c) => c.id === "central");
+      if (!central) throw new Error("seeded demo snapshot has no central card");
+      central.addenda = [
+        {
+          id: "add-v2-1",
+          version: 2,
+          baseline: { kind: "commit", sha: commit352 },
+          at: now,
+          blocks: [para("b-add-352-1", "Beta reads the new value now.", [changedId])],
+          answers: [],
+        },
+      ];
+      snap.plotlines = [
+        { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
+        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework.", newSinceBaseline: true },
+      ];
+      const hashOf = (id: string): string => id.split(":").slice(2).join(":");
+      for (const st of snap.hunkStates) {
+        if (st.contentHash === hashOf(changedId) || st.contentHash === hashOf(addedId)) st.plotline = "beta-gamma";
+        else if (st.plotline === undefined) st.plotline = "unfold";
+      }
+      db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), review352);
+    } finally {
+      db.close();
+    }
+    svc352 = await startService(data352, { agent: "none" });
+  });
+  test.afterAll(async () => {
+    await svc352?.stop().catch(() => {});
+    svc352 = null;
+    if (data352) rmSync(data352, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("sinceCommit", [{ name: "1440-light", width: 1440, dark: false }])) {
+    const suffix = combo.name;
+    test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svc352) throw new Error("tour-352 service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svc352.origin}/review/${review352}?token=${svc352.token}`);
+      await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+
+      // 1. The Since section names the short sha, not a version.
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      await expect(since).toContainText(new RegExp(`Since ${short352} → v2`));
+      await stepChecks(page, "since-commit-section");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-section", suffix, `Since ${short352}`);
+
+      // 2. The addendum on the central card.
+      const central = page.locator("#page #C-central");
+      await central.scrollIntoViewIfNeeded();
+      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-addendum");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-addendum", suffix, `Updated since ${short352}`);
+
+      // 3. The plotline marker names the short sha too.
+      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
+      await plotlines.scrollIntoViewIfNeeded();
+      await expect(plotlines.getByText(`new since ${short352}`)).toBeVisible({ timeout: 30_000 });
+      await stepChecks(page, "since-commit-plotlines");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-plotlines", suffix, `new since ${short352}`);
+
+      // 4. The diff filter chip.
+      await page.locator('#right [role="tab"]').getByText("Diff").click();
+      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+      const chip = page.locator('[data-filterchip="since"]');
+      if ((await chip.getAttribute("aria-pressed")) === "true") {
+        await chip.click();
+        await expect(chip).toHaveAttribute("aria-pressed", "false");
+      }
+      await expect(chip).toContainText(`Since ${short352}`, { timeout: 30_000 });
+      await stepChecks(page, "since-commit-filter");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
+
+      // 5. The picker lists versions and the commit (guide is the
+      // left pane, always present — just scroll back to the section).
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await expect(since).toBeVisible({ timeout: 30_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      await stepChecks(page, "since-commit-picker");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-commit-picker", suffix, "Commits");
+      await page.keyboard.press("Escape");
+    });
+  }
+});
+/**
+ * Since-offer tour (#351 step 2): a real PR review with a stubbed prior
+ * GitHub review, served agent-less so the guide never runs and the offer
+ * stays put. The offer line, its checked state, the picker with versions,
+ * commits and the last GitHub review, and the unfetchable-commit toast
+ * are all the real service path (stubbed `gh` in, real git + sqlite).
+ */
+test.describe("since-offer tour (#351 step 2)", () => {
+  test.describe.configure({ mode: "serial" });
+  let svcO: RunningService | null = null;
+  let dataO = "", repoO = "", bareO = "", binO = "", logO = "";
+  let revValid = "", revGone = "", revToast = "";
+  let c1 = "", c1short = "";
+  const gone = "f".repeat(40);
+  const goneShort = gone.slice(0, 8);
+
+  async function shell(cwd: string, ...args: string[]): Promise<string> {
+    const { stdout } = await exec("git", args, { cwd });
+    return stdout.trim();
+  }
+
+  test.beforeAll(async () => {
+    test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+    dataO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-data-"));
+    repoO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-repo-"));
+    bareO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-remote-"));
+    binO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-bin-"));
+    logO = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-offer-log-"));
+    const V1 = ["def alpha():", "    return 1", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    const V2 = ["def alpha():", "    return 11", "", "", "CONST_A = 10", "", "", "def beta():", "    return 2", ""].join("\n");
+    await shell(bareO, "init", "--bare", "-b", "main");
+    await shell(repoO, "init", "-b", "main");
+    await shell(repoO, "config", "user.email", "t@example.com");
+    await shell(repoO, "config", "user.name", "T");
+    writeFileSync(path.join(repoO, "src-app.py"), V1);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "base");
+    await shell(repoO, "checkout", "-b", "feature");
+    writeFileSync(path.join(repoO, "src-app.py"), V2);
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha");
+    c1 = await shell(repoO, "rev-parse", "HEAD");
+    c1short = c1.slice(0, 8);
+    await shell(repoO, "remote", "add", "origin", "https://github.com/acme/app.git");
+    await shell(repoO, "config", `url.${bareO}.insteadOf`, "https://github.com/acme/app.git");
+    await shell(repoO, "push", "origin", "main", "feature");
+    await shell(repoO, "fetch", "origin");
+    const head = c1;
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${head}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    writeFakeGitOffline(binO, realGitPath());
+    const fakeShell = writeFakeShell(binO);
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(binO) },
+      label: "tour-offer",
+    });
+    const repos = (await apiJson(svcO!.origin, svcO!.token, "POST", "/api/repos", { path: repoO })) as {
+      repos: { id: string; localPath: string }[];
+    };
+    const registered = repos.repos.find((r) => r.localPath === repoO);
+    if (!registered) throw new Error("tour offer repo not registered");
+    if (!svcO) throw new Error("tour-offer service did not start");
+    const svc = svcO;
+    const mk = async (pr: number): Promise<string> => {
+      const created = (await apiJson(svc.origin, svc.token, "POST", "/api/reviews", { repoId: registered.id, pr })) as {
+        review: { id: string };
+      };
+      return created.review.id;
+    };
+    revValid = await mk(78);
+    revGone = await mk(79);
+    revToast = await mk(80);
+    // Agent-less: ingest finishes, the guide never starts. Wait for ready.
+    for (const id of [revValid, revGone, revToast]) {
+      await expect
+        .poll(
+          async () => {
+            const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${id}`)) as {
+              ingest?: { status?: string };
+            };
+            return snap.ingest?.status ?? null;
+          },
+          { timeout: 60_000 },
+        )
+        .toBe("ready");
+    }
+
+    // A second version on the gone-baseline review, so its picker can
+    // show all three groups (versions, commits, last GitHub review):
+    // one more commit, a refresh, then a tour-seeded Since section with
+    // real hunk ids (same technique as the step-1 scene).
+    writeFileSync(path.join(repoO, "src-app.py"), V2.replace("    return 11", "    return 111"));
+    await shell(repoO, "add", ".");
+    await shell(repoO, "commit", "-m", "rework alpha again");
+    await shell(repoO, "push", "origin", "feature");
+    const c3 = await shell(repoO, "rev-parse", "HEAD");
+    writeFileSync(
+      path.join(binO, "gh"),
+      `#!/bin/sh
+LOG="${logO}"
+mkdir -p "$LOG"
+printf '%s\\\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'tour-reviewer'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat <<EOF
+{"title":"Tour offer PR","body":"","author":{"login":"author"},"state":"OPEN","isDraft":false,"baseRefName":"main","headRefName":"feature","headRefOid":"${c3}"}
+EOF
+  exit 0; fi
+case "$*" in *pulls/78/reviews*) echo '[{"id":3,"user":{"login":"tour-reviewer"},"commit_id":"${c1}","state":"COMMENTED","submitted_at":"2026-11-02T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/79/reviews*) echo '[{"id":4,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-03T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/80/reviews*) echo '[{"id":5,"user":{"login":"tour-reviewer"},"commit_id":"${gone}","state":"COMMENTED","submitted_at":"2026-11-04T10:00:00Z"}]'; exit 0 ;; esac
+case "$*" in *pulls/78/comments*|*pulls/79/comments*|*pulls/80/comments*) echo '[]'; exit 0 ;; esac
+case "$*" in *issues/78/comments*|*issues/79/comments*|*issues/80/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`,
+      { mode: 0o755 },
+    );
+    const refreshed = (await apiJson(svcO!.origin, svcO!.token, "POST", `/api/reviews/${revGone}/refresh`, {})) as {
+      newVersion?: boolean;
+      error?: string;
+    };
+    expect({ newVersion: refreshed.newVersion, error: refreshed.error }).toEqual({
+      newVersion: true,
+      error: undefined,
+    });
+    await expect
+      .poll(
+        async () => {
+          const snap = (await apiJson(svcO!.origin, svcO!.token, "GET", `/api/reviews/${revGone}`)) as {
+            review?: { currentVersion?: number };
+          };
+          return snap.review?.currentVersion ?? 0;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(2);
+    await svcO!.stop();
+    {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(path.join(dataO, "unvibe.db"));
+      try {
+        const row = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        if (!row?.snapshot) throw new Error("tour offer review has no snapshot");
+        const snap = JSON.parse(row.snapshot) as {
+          files: { fileKey: string; hunks: { contentHash: string }[] }[];
+          sinceBaseline?: unknown;
+          sinceHunks?: unknown;
+          sinceSection?: unknown;
+          pages?: unknown;
+        };
+        const hid = `h:${snap.files[0].fileKey}:${snap.files[0].hunks[0].contentHash}`;
+        // A minimal root page + card (tour-only, citing a real hunk id):
+        // agent:none never runs the guide, and the section — hence the
+        // picker — only renders on a root page.
+        snap.pages = [
+          {
+            id: "root",
+            kind: "root",
+            title: "Guide",
+            cards: [
+              {
+                id: "problem",
+                pageId: "root",
+                title: "The problem",
+                level: "standard",
+                collapsed: false,
+                revision: 1,
+                undoStack: [],
+                blocks: [
+                  {
+                    type: "paragraph",
+                    id: "b-problem-1",
+                    text: { standard: "Alpha was reworked." },
+                    citations: [{ target: hid }],
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+        snap.sinceBaseline = { kind: "commit", sha: c1 };
+        snap.sinceHunks = { added: [], changed: [hid] };
+        snap.sinceSection = {
+          baseline: { kind: "commit", sha: c1 },
+          headVersion: 2,
+          at: Date.now(),
+          cards: [
+            {
+              id: "since-tour-1",
+              pageId: "since",
+              title: "Alpha reworked again",
+              level: "standard",
+              collapsed: false,
+              revision: 1,
+              undoStack: [],
+              blocks: [
+                {
+                  type: "paragraph",
+                  id: "b-since-tour-1",
+                  text: { standard: "Alpha returns 111 now." },
+                  citations: [{ target: hid }],
+                },
+              ],
+              answers: [],
+            },
+          ],
+        };
+        const changed = db.prepare("UPDATE review_snapshots SET snapshot = ? WHERE review_id = ?").run(JSON.stringify(snap), revGone);
+        const back = db.prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?").get(revGone) as
+          | { snapshot?: string }
+          | undefined;
+        const check = back?.snapshot ? (JSON.parse(back.snapshot) as { sinceSection?: unknown }).sinceSection : undefined;
+        if (changed.changes !== 1 || check === undefined) {
+          throw new Error(`tour offer seed failed (changes=${changed.changes}, section=${check !== undefined})`);
+        }
+      } finally {
+        db.close();
+      }
+    }
+    svcO = await startService(dataO, {
+      agent: "none",
+      extraEnv: {
+        SHELL: writeFakeShell(binO),
+        PATH: fakeServicePath(binO),
+      },
+      label: "tour-offer",
+    });
+  });
+  test.afterAll(async () => {
+    await svcO?.stop().catch(() => {});
+    svcO = null;
+    for (const d of [dataO, repoO, bareO, binO, logO]) {
+      if (d) rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  for (const combo of tourCombos("sinceOffer", [{ name: "1440-light", width: 1440, dark: false }])) {
+    const suffix = combo.name;
+    test(`since offer unchecked and checked (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revValid}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${c1short}`);
+      // Reset for combo determinism: an earlier combo may have left it on.
+      const box = page.getByTestId("prior-review-checkbox");
+      if (await box.getAttribute("aria-checked") === "true") {
+        await box.click();
+        await expect(box).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
+      }
+      await stepChecks(page, "since-offer");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer", suffix, `You reviewed this at ${c1short}`);
+      // The label text toggles the box too (native `label` behaviour).
+      await offer.getByText(`You reviewed this at ${c1short}`).click();
+      await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+      // The range-diff toggle never breaks over lines: one line high
+      // and fully visible (no clipped overflow).
+      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
+      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
+      const rdBox = await rangeDiff.boundingBox();
+      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
+      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
+      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
+      await stepChecks(page, "since-offer-checked");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
+    });
+
+    test(`unfetchable baseline message under the offer (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revToast}?token=${svcO.token}`);
+      const offer = page.getByTestId("prior-review-offer");
+      await expect(offer).toBeVisible({ timeout: 60_000 });
+      await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
+      // The banner picker is untouched by the error below it: same
+      // trigger width with and without the message (±2px).
+      const bannerTrigger = page.getByTestId("since-pick").getByRole("combobox");
+      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
+      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await page.getByTestId("prior-review-checkbox").click();
+      // The failure leaves a persistent inline message under the
+      // offer until the baseline changes — and no toast for this case.
+      const inline = page.getByTestId("prior-review-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      // The error sits on its own line below the offer label at every
+      // width — never inline after the offer text.
+      const labelBox = await offer.locator("label").boundingBox();
+      const errBox = await inline.boundingBox();
+      expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
+        (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
+      );
+      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
+    });
+
+    test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      await expect(since).toContainText(new RegExp(`Since ${c1short} → v2`));
+      const pick = since.locator('[data-testid="since-pick"]');
+      await pick.scrollIntoViewIfNeeded();
+      // Layout checks run before the popup opens: the open popup
+      // overlays the diff gutter by design, which the gutter check
+      // would flag.
+      await stepChecks(page, "since-picker-groups");
+      await pick.getByRole("combobox").click();
+      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
+      await expect(page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) })).toBeVisible();
+      await page.mouse.move(20, 20);
+      await shot(page, "since-picker-groups", suffix, "GitHub reviews");
+      await page.keyboard.press("Escape");
+    });
+
+    test(`unfetchable baseline picked in the picker (${suffix})`, async ({ page }) => {
+      test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+      if (!svcO) throw new Error("tour-offer service did not start");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
+      const since = page.locator('[data-testid="since-section"]');
+      await expect(since).toBeVisible({ timeout: 60_000 });
+      const pick = since.locator('[data-testid="since-pick"]');
+      await expect(pick).toBeVisible({ timeout: 30_000 });
+      // The header picker keeps its size when the error lands below
+      // it: same trigger width with and without the message (±2px).
+      const trigger = pick.getByRole("combobox");
+      const wBefore = (await trigger.boundingBox())?.width ?? -1;
+      expect(wBefore).toBeGreaterThan(0);
+      await pick.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
+      await expect(goneOption).toBeVisible({ timeout: 15_000 });
+      await goneOption.click();
+      // The failed pick leaves the stored baseline alone but records
+      // `sinceError`, shown persistently below the header row.
+      const inline = since.getByTestId("since-error");
+      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
+      await expect(inline).toContainText("Pick another baseline.");
+      await expect(page.locator("#toast")).toBeHidden();
+      const wAfter = (await trigger.boundingBox())?.width ?? -1;
+      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
+      await stepChecks(page, "since-unfetchable-picker");
+      await page.mouse.move(20, 20);
+      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
+    });
+  }
+});

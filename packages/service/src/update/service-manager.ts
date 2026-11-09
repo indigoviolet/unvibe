@@ -95,11 +95,13 @@ function isSameOrUnder(candidate: string, base: string): boolean {
 
 /**
  * Throw when, under a test marker, a write would touch the real home:
- * the home dir itself, a login-unit path under the real home, or the
- * real data dir. Called before any write, so nothing real is touched.
+ * the home dir itself, a login-unit path under the real home, the real
+ * data dir, or the traces dir (issue #356: `<dataDir>-traces` lives next
+ * to the data dir, so it is checked against the real home itself).
+ * Called before any write, so nothing real is touched.
  */
 export function assertNotRealHomeForWrite(
-  target: { homeDir?: string; unitPath?: string; dataDir?: string },
+  target: { homeDir?: string; unitPath?: string; dataDir?: string; tracesDir?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (!isTestRun(env)) return;
@@ -119,6 +121,9 @@ export function assertNotRealHomeForWrite(
   }
   if (target.dataDir && isSameOrUnder(target.dataDir, realData)) {
     problems.push(`data dir resolves to the real data dir (${realData})`);
+  }
+  if (target.tracesDir && isSameOrUnder(target.tracesDir, realHome)) {
+    problems.push(`traces dir resolves under the real home (${realHome})`);
   }
   if (problems.length > 0) {
     throw new Error(

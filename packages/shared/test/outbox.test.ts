@@ -6,6 +6,7 @@ function commentReply(who: "you" | "agent", text: string, opts?: { suggested?: b
   return {
     id: `r_${who}_${Math.random().toString(36).slice(2, 6)}`,
     kind: "comment",
+    seq: 1,
     who,
     question: null,
     blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
@@ -20,6 +21,7 @@ function agentReply(question: string): Reply {
   return {
     id: `r_ask_${Math.random().toString(36).slice(2, 6)}`,
     kind: "ask",
+    seq: 1,
     who: "agent",
     question,
     blocks: [{ type: "paragraph", id: "b1", text: { standard: "answer" }, citations: [] }],

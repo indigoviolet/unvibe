@@ -534,14 +534,18 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
   forked("critic", {});
   forked("concept_page", { concept: conceptText, mentions: PH.mentions, glossary: glossaryForPreview });
   forked("ask", {
-    anchor: { quote: PH.anchorQuote, block: PH.anchorBlock },
-    card: cardText,
+    quote: PH.anchorQuote,
+    item_id: "(the exact item ID is attached when the action runs)",
+    offsets: "(selection offsets are attached when the action runs)",
     thread: PH.thread,
-    change_list: changeList,
+    changed_hunks: "(no changes)",
     message: PH.message,
-    glossary: glossaryForPreview,
   });
-  forked("ask_turn", { change_list: changeList, message: PH.message });
+  forked("ask_turn", {
+    followup: "(which turn this is, in which thread — plus a chip selection when the reader made one)",
+    changed_hunks: "(no changes)",
+    message: PH.message,
+  });
   forked("depth", { card: cardText, level: PH.level });
   forked("examples", { card: cardText, level: PH.level });
   forked("diagram", { card: cardText, level: PH.level });

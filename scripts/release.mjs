@@ -74,6 +74,26 @@ const RUNTIME_DEPS = [
   "ws",
 ];
 
+/**
+ * Debug flavour (issue #356): the OTel closure ships in the install so
+ * the Debug switch can record. Pure-JS packages only (the no-compiler
+ * install story holds); kept out of the lean install by omitting them
+ * here. Versions resolve from the worktree install (see runtimeVersion).
+ */
+const DEBUG_RUNTIME_DEPS = [
+  "@opentelemetry/api",
+  "@opentelemetry/core",
+  "@opentelemetry/resources",
+  "@opentelemetry/sdk-trace",
+  "@opentelemetry/sdk-trace-base",
+  "@opentelemetry/context-async-hooks",
+  "@opentelemetry/instrumentation",
+  "@opentelemetry/instrumentation-http",
+  "@opentelemetry/instrumentation-fastify",
+  "@opentelemetry/instrumentation-undici",
+  "@opentelemetry/instrumentation-fs",
+];
+
 function sh(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", timeout: 300_000 });
   if (r.status !== 0) {
@@ -90,16 +110,20 @@ function flagValue(name) {
   return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
 }
 
+const isDebug = process.argv.includes("--debug") || process.env.UNVIBE_RELEASE_DEBUG === "1";
+
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--source-branch <name>] [--notes-file <file>] [--print-notices]
+  console.log(`usage: node scripts/release.mjs [--version <semver>] [--branch <name>] [--source-branch <name>] [--notes-file <file>] [--print-notices] [--debug]
   --version         override the release version (default: package.json; in CI, the tag via GITHUB_REF_NAME)
-  --branch          local branch to point at the release tree (default: release)
+  --branch          local branch to point at the release tree (default: release, or release-debug with --debug)
   --source-branch   source branch the tree was built from (preview builds; recorded in package.json, null otherwise)
   --source-commit   source-branch commit the tree was built from (merged previews; null otherwise)
   --base-branch     base the source branch was merged onto, usually main (merged previews; null otherwise)
   --base-commit     base-side commit the tree was built from (merged previews; null otherwise)
   --notes-file      publisher notes JSON merged into release-notes.json (#330; default: release-notes-input.json when present)
-  env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, UNVIBE_RELEASE_SOURCE_BRANCH, UNVIBE_RELEASE_SOURCE_COMMIT, UNVIBE_RELEASE_BASE_BRANCH, UNVIBE_RELEASE_BASE_COMMIT, GITHUB_REF_NAME (tag like v0.0.1)`);
+  --debug           debug flavour (issue #356): ship the OTel dependencies, append -debug to the version,
+                    and default --branch to release-debug. Build the tree first with UNVIBE_DEBUG_TRACES=1.
+  env: UNVIBE_RELEASE_VERSION, UNVIBE_RELEASE_BRANCH, UNVIBE_RELEASE_SOURCE_BRANCH, UNVIBE_RELEASE_SOURCE_COMMIT, UNVIBE_RELEASE_BASE_BRANCH, UNVIBE_RELEASE_BASE_COMMIT, GITHUB_REF_NAME (tag like v0.0.1), UNVIBE_RELEASE_DEBUG=1 (same as --debug)`);
   process.exit(0);
 }
 
@@ -111,22 +135,34 @@ function stripV(v) {
  * Release version: explicit --version, else UNVIBE_RELEASE_VERSION, else the
  * tag name when running on a tag (GITHUB_REF_NAME=v0.0.1 → 0.0.1),
  * else package.json. The generated package.json version and the tarball name
- * both come from this, so the tag and the artifact always agree.
+ * both come from this, so the tag and the artifact always agree. With
+ * --debug the version gains a `-debug` prerelease suffix
+ * (`0.0.17` → `0.0.17-debug`; already-suffixed versions pass through).
  */
 function resolveVersion() {
   const explicit = flagValue("--version") ?? process.env.UNVIBE_RELEASE_VERSION ?? null;
-  if (explicit) return stripV(explicit);
-  const ref = process.env.GITHUB_REF_NAME ?? "";
-  if (/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ref)) return stripV(ref);
-  return srcPkg.version;
+  let v;
+  if (explicit) v = stripV(explicit);
+  else {
+    const ref = process.env.GITHUB_REF_NAME ?? "";
+    if (/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ref)) v = stripV(ref);
+    else v = srcPkg.version;
+  }
+  // Preview slugs already carry `-debug` (preview/<slug>-debug); do not
+  // stack a second suffix.
+  if (isDebug && !/-debug/.test(v)) v = `${v}-debug`;
+  return v;
 }
 
 /**
  * Release branch: explicit --branch, else UNVIBE_RELEASE_BRANCH, else
- * `release`. Preview builds always pass --branch explicitly.
+ * `release` (`release-debug` with --debug). Preview builds always pass
+ * --branch explicitly.
  */
 function resolveBranch() {
-  return flagValue("--branch") ?? process.env.UNVIBE_RELEASE_BRANCH ?? "release";
+  const explicit = flagValue("--branch") ?? process.env.UNVIBE_RELEASE_BRANCH ?? null;
+  if (explicit) return explicit;
+  return isDebug ? "release-debug" : "release";
 }
 
 const version = resolveVersion();
@@ -177,6 +213,33 @@ for (const g of [
 ]) {
   if (!existsSync(path.join(ROOT, "packages/service/dist/grammars", g))) {
     console.error(`release: missing packages/service/dist/grammars/${g} — run \`mise run build\` first`);
+    process.exit(1);
+  }
+}
+// Debug flavour (issue #356, --debug): the tree must have been built with
+// UNVIBE_DEBUG_TRACES=1 (otherwise the web bundle stubs out the SDK and
+// the Debug switch can never record). Refuse rather than ship a broken
+// debug build.
+if (isDebug) {
+  const webAssets = path.join(ROOT, "packages/web/dist/assets");
+  let sawOtel = false;
+  try {
+    for (const f of readdirSync(webAssets)) {
+      if (!f.endsWith(".js")) continue;
+      const text = readFileSync(path.join(webAssets, f), "utf8");
+      if (text.includes("DocumentLoadInstrumentation")) {
+        sawOtel = true;
+        break;
+      }
+    }
+  } catch {
+    // Missing dist is reported by the checks above.
+  }
+  if (!sawOtel) {
+    console.error(
+      "release: --debug but packages/web/dist has no OTel SDK — rebuild with UNVIBE_DEBUG_TRACES=1 first " +
+        "(`UNVIBE_DEBUG_TRACES=1 mise run build`), then re-run",
+    );
     process.exit(1);
   }
 }
@@ -281,9 +344,12 @@ writeFileSync(path.join(RELEASE, "THIRD-PARTY-NOTICES.md"), notices);
 
 // 4. Generated package.json: bin + pinned runtime deps only.
 const deps = {};
-for (const name of RUNTIME_DEPS) {
+// Debug flavour (issue #356, --debug): the OTel closure ships too, so
+// the Debug switch can record. Lean installs stay dependency-free.
+for (const name of [...RUNTIME_DEPS, ...(isDebug ? DEBUG_RUNTIME_DEPS : [])]) {
   deps[name] = runtimeVersion(name);
 }
+if (isDebug) console.log(`release: debug flavour — OTel dependencies included (${DEBUG_RUNTIME_DEPS.length} packages)`);
 /**
  * Exact installed version of a runtime dep. Reads the top-level
  * `node_modules/<name>/package.json` directly: resolving `<name>/package.json`
@@ -362,10 +428,13 @@ if (version !== srcPkg.version) {
   console.log(`release: patched bundle versions ${srcPkg.version} -> ${version}`);
 }
 
-// 5. Tarball at the repo root (remove stale ones first so unvibe-*.tgz
-// globs in CI attach exactly one file).
+// 5. Tarball at the repo root. Remove stale same-line tarballs first so
+// the CI glob attaches exactly one — but keep the sibling flavour
+// (lean vs `-debug`) so both tarballs can sit side by side.
 for (const e of readdirSync(ROOT)) {
-  if (e.startsWith("unvibe-") && e.endsWith(".tgz")) rmSync(path.join(ROOT, e), { force: true });
+  if (!e.startsWith("unvibe-") || !e.endsWith(".tgz")) continue;
+  const keep = isDebug ? `unvibe-${version.replace(/-debug$/, "")}.tgz` : `unvibe-${version}-debug.tgz`;
+  if (e !== `unvibe-${version}.tgz` && e !== keep) rmSync(path.join(ROOT, e), { force: true });
 }
 const tarball = sh("npm", ["pack", "--pack-destination", ROOT], RELEASE);
 console.log(`release: tarball ${tarball}`);

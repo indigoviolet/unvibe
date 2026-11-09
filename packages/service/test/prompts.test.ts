@@ -217,4 +217,59 @@ describe("repo prompts/ directory", () => {
     expect(reader).toContain('never as "commit N" or');
     expect(reader).toContain('"commits N–M"');
   });
+
+  it("ask turns are minimal: quote, item ID, offsets, question, changed hunks (#365)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const ask = lib.get("ask")!;
+    const askTurn = lib.get("ask_turn")!;
+    // Exact variable contracts. First turns carry the selection;
+    // follow-ups carry only the follow-up context (own reply ID plus
+    // thread ID, with a chip selection only when the reader made one).
+    expect([...ask.variables].sort()).toEqual(["changed_hunks", "item_id", "message", "offsets", "quote", "thread"]);
+    expect([...askTurn.variables].sort()).toEqual(["changed_hunks", "followup", "message"]);
+    // No card, block, thread-transcript, change_list or glossary rides
+    // along on either template anymore.
+    for (const t of [ask, askTurn]) {
+      for (const banned of ["anchor.quote", "anchor.block", "card", "change_list", "glossary"]) {
+        expect(t.usedVariables, `${t.name} uses ${banned}`).not.toContain(banned);
+      }
+      if (t.name === "ask_turn") {
+        expect(t.usedVariables).not.toContain("thread");
+        expect(t.usedVariables).not.toContain("quote");
+        expect(t.usedVariables).not.toContain("item_id");
+        expect(t.usedVariables).not.toContain("offsets");
+        expect(t.body).not.toContain("## Selected text");
+      }
+      // The model fetches the tree itself; citation rules stay.
+      expect(t.body).toContain("get_item");
+      expect(t.body).toContain("get_hunk");
+      expect(t.body).toContain("get_code");
+      expect(t.body).toContain("Every claim about the change gets a citation");
+    }
+    // Both render with the minimal variable set.
+    expect(() =>
+      renderTemplate(ask, {
+        quote: "q",
+        item_id: "card:problem#b1",
+        offsets: "3–7",
+        thread: "(none)",
+        changed_hunks: "(no changes)",
+        message: "Explain this.",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      renderTemplate(askTurn, {
+        followup: "This is turn [[ann:ann_x#r2]] in thread [[ann:ann_x]].",
+        changed_hunks: "(no changes)",
+        message: "Why?",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      renderTemplate(askTurn, {
+        followup: "New selection in reply [[ann:ann_x#r1]]:\n\n> chip\n\nItem: ann:ann_x#r1",
+        changed_hunks: "h:conn:deadbeef",
+        message: "Why?",
+      }),
+    ).not.toThrow();
+  });
 });

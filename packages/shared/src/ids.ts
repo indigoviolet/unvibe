@@ -13,6 +13,9 @@
  * page:<pageId>                              a page
  * concept:<slug>                             a concept (page written when opened)
  * ann:<id>                                   an annotation
+ * ann:<id>#r<n>                               one reply in that thread
+ *                                            (stable per-thread sequence,
+ *                                            issue #365)
  * doc:<blockId>                              a document block (issue #222,
  *                                            e.g. doc:p3)
  * ```
@@ -34,7 +37,7 @@ export type ParsedId =
   | { kind: "card"; cardId: string; blockId?: string }
   | { kind: "page"; pageId: string }
   | { kind: "concept"; slug: string }
-  | { kind: "ann"; id: string }
+  | { kind: "ann"; id: string; reply?: number }
   | { kind: "doc"; blockId: string };
 
 const SHA = "[0-9a-fA-F]{4,64}";
@@ -116,8 +119,22 @@ export function parseId(input: string): ParsedId | null {
       return { kind: "concept", slug: rest };
     }
     case "ann": {
-      if (/[:#@]/.test(rest)) return null;
-      return { kind: "ann", id: rest };
+      // Issue #365: `ann:<id>` is the thread; `ann:<id>#r<n>` is one
+      // reply by its stable per-thread sequence. The thread id itself
+      // never contains `#`.
+      const hash = rest.indexOf("#");
+      if (hash < 0) {
+        if (/[:#@]/.test(rest)) return null;
+        return { kind: "ann", id: rest };
+      }
+      const id = rest.slice(0, hash);
+      const tail = rest.slice(hash + 1);
+      if (/[:#@]/.test(id) || id === "") return null;
+      const m = /^r(\d+)$/.exec(tail);
+      if (!m) return null;
+      const reply = Number(m[1]);
+      if (!Number.isSafeInteger(reply) || reply < 1) return null;
+      return { kind: "ann", id, reply };
     }
     case "doc": {
       if (!/^p\d+$/.test(rest)) return null;
@@ -174,7 +191,7 @@ export function formatId(id: ParsedId, opts?: { short?: boolean }): string {
     case "concept":
       return `concept:${id.slug}`;
     case "ann":
-      return `ann:${id.id}`;
+      return id.reply === undefined ? `ann:${id.id}` : `ann:${id.id}#r${id.reply}`;
     case "doc":
       return `doc:${id.blockId}`;
   }

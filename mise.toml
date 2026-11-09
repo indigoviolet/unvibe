@@ -72,14 +72,18 @@ depends = ["build", "demo:build"]
 run = "npm run test:e2e --workspace @unvibe/web --if-present"
 
 [tasks.journeys]
-description = "Real-service journeys J1-J7 plus the visual tour (#188): one spec per journey against the built service"
+description = "Real-service journeys L1-L14 against the built service (#363: frames live in the on-demand visual tour, not here)"
 depends = ["build"]
-run = "npx --workspace @unvibe/web playwright test e2e/journeys/ e2e/visual-tour.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/"
+
+[tasks."test:e2e:debug"]
+description = "Debug-flavour e2e (issue #356): build with tracing and run the debug-only j356 journey + frames (skipped everywhere else)"
+run = "UNVIBE_DEBUG_TRACES=1 mise run --force build && UNVIBE_TEST_DEBUG_TRACES=1 npx --workspace @unvibe/web playwright test e2e/journeys/j356-traces-debug.spec.ts"
 
 [tasks."visual-tour"]
-description = "Visual tour against the real built service (demo + replay agent, browser): screenshots in packages/web/visual-tour/ (owner reviews every one)"
-depends = ["build"]
-run = "npx --workspace @unvibe/web playwright test e2e/visual-tour.spec.ts"
+description = "On-demand visual tour (#363): frame capture in e2e/tour/ against the real built service (demo + replay agent, browser) — never in the gate. Screenshots in packages/web/visual-tour/ (owner reviews every one). UNVIBE_TOUR_MATRIX=full runs the full theme/width matrix"
+depends = ["build", "demo:build"]
+run = "npx --workspace @unvibe/web playwright test -c playwright.tour.config.ts"
 
 [tasks."playwright-install"]
 description = "Install Playwright browsers for e2e tests"
@@ -93,14 +97,14 @@ sources = ["package.json", "package-lock.json", "tsconfig.base.json", "packages/
 outputs = ["packages/web/dist-demo", "packages/web/dist-demo/index.html"]
 
 [tasks."demo:test"]
-description = "Static demo behaviour on a static file server (issue #334): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, size budget"
+description = "Static demo behaviour on a static file server (issue #334 + #357 Q6): guide, citation hover, recorded Explain, unrecorded Ask, comments + reset, hunk summaries, disabled submit, read-only settings, hidden debug/doctor, banner geometry, sync check, size budget"
 depends = ["demo:build"]
-run = "npx --workspace @unvibe/web playwright test e2e/static-demo.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/l13-static-demo.spec.ts"
 
 [tasks."demo:sync"]
-description = "Static demo sync check (issue #334): key screens compared between the static build and the real service in replay mode (joins the slow suite: needs a build + browser, like the other e2e)"
+description = "Static demo sync check only (issue #334): -g subset of the merged static-demo spec comparing the static build with the real service in replay mode"
 depends = ["build", "demo:build"]
-run = "npx --workspace @unvibe/web playwright test e2e/static-demo-sync.spec.ts"
+run = "npx --workspace @unvibe/web playwright test e2e/journeys/l13-static-demo.spec.ts -g \"static-demo sync\""
 
 [tasks."build:shared"]
 description = "Build @unvibe/shared"
@@ -201,6 +205,14 @@ run = "npm run test:slow --workspaces --if-present"
 description = "Slow suite: slow vitest files, then Playwright behaviour tests"
 run = "mise run test:slow:unit && mise run test:e2e"
 
+[tasks."test:affected"]
+description = "Pre-fold check (issue #358): full check, then Playwright affected-by-base plus trigger specs (--dry-run prints the choice; --base <ref> overrides the merge-base with main-rc)"
+run = "node scripts/test-affected.mjs"
+
+[tasks."gate:failed"]
+description = "Re-run only what failed (issue #358): Playwright --last-failed; vitest has no last-failed state (re-run files by name)"
+run = "node scripts/gate-failed.mjs"
+
 [tasks.restart-resilience]
 description = "SIGKILL mid-stage, restart, resume against the built service"
 depends = ["build"]
@@ -266,7 +278,7 @@ description = "Build, then run unvibe doctor (environment checks)"
 run = "mise run build && node packages/service/dist/index.js doctor"
 
 [tasks."stats:summary"]
-description = "Print a readable summary of one anonymized stats export (reads only that file)"
+description = "Print a readable summary of one anonymized trace export (reads only that file)"
 raw = true
 run = "node scripts/stats-summary.mjs"
 
@@ -279,8 +291,8 @@ description = "macOS end-to-end: setup, helper app, handler start, reuse, idle e
 run = "mise run build && node scripts/e2e-macos.mjs"
 
 [tasks.check-global-install]
-description = "Release-install the tarball + git ref into temp prefixes (npm 10+11), run doctor/start/demo outside the repo"
-run = "mise run release && node scripts/global-install-check.mjs"
+description = "Release-install the tarball + git ref into temp prefixes (npm 10+11), run doctor/start/demo outside the repo (lean + debug flavours)"
+run = "mise run --force build && mise run release && UNVIBE_DEBUG_TRACES=1 mise run --force build && UNVIBE_RELEASE_DEBUG=1 mise run release && node scripts/global-install-check.mjs --flavours lean,debug"
 
 [tasks.release]
 description = "Assemble the self-contained release tree, tarball, and local release branch"
@@ -337,6 +349,10 @@ run = "npm run build --workspace @unvibe/shared && UNVIBE_PI_LIVE=1 UNVIBE_ALLOW
 [tasks."test:live:panel-322"]
 description = "Live panel check (#322 part 2): pi + muse-spark answers fixture questions across active repos, pilot first, $0.25 cap (never run by check)"
 run = "UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-panel-322.mjs"
+
+[tasks."test:live:persona-359"]
+description = "Live #359 lens check: one persona card turn on pi/muse-spark through the real pipeline (main's shared base, lens at the start of the turn), $0.10 cap, bundled demo only (never run by check)"
+run = "mise run build && UNVIBE_ALLOW_LIVE_AGENT=1 node scripts/live-persona-359.mjs"
 
 [tasks."demo:large:build"]
 description = "Live large-demo build (#309): pi + muse-spark over one owner-picked public PR, $1 cap, saves the cache (token spend, capped; never run by check)"
