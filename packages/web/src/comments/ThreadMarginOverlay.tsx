@@ -31,6 +31,12 @@ interface Props {
   threads: Thread[];
   readOnly?: boolean;
   /**
+   * A collapsed card shows exactly one pill carrying every thread:
+   * per-block pills would all stack on the same line and only the
+   * topmost would show.
+   */
+  singleBucket?: boolean;
+  /**
    * Issue #374 follow-up: floor for measured tops. A collapsed card's
    * hidden body measures at the container's top line (0), which would
    * straddle the card's top border — the collapsed card passes its
@@ -100,13 +106,18 @@ export function bucketKeyFor(thread: Thread): string {
   return `thread:${thread.id}`;
 }
 
-export function bucketsFor(threads: Thread[], tops: Record<string, number>): Bucket[] {
+export function bucketsFor(
+  threads: Thread[],
+  tops: Record<string, number>,
+  singleBucket = false,
+): Bucket[] {
   const groups = new Map<string, Thread[]>();
   for (const t of threads) {
     if (tops[t.id] === undefined) continue;
-    const list = groups.get(bucketKeyFor(t)) ?? [];
+    const key = singleBucket ? "all" : bucketKeyFor(t);
+    const list = groups.get(key) ?? [];
     list.push(t);
-    groups.set(bucketKeyFor(t), list);
+    groups.set(key, list);
   }
   return [...groups.values()].map((group) => ({
     top: Math.min(...group.map((t) => tops[t.id] as number)),
@@ -123,7 +134,7 @@ export function marginLabel(n: number): string {
   return n === 1 ? "1 thread" : `${n} threads`;
 }
 
-export function ThreadMarginOverlay({ threads, readOnly, minTop = 0 }: Props) {
+export function ThreadMarginOverlay({ threads, readOnly, minTop = 0, singleBucket = false }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [tops, setTops] = useState<Record<string, number>>({});
 
@@ -204,7 +215,7 @@ export function ThreadMarginOverlay({ threads, readOnly, minTop = 0 }: Props) {
   if (threads.length === 0) return null;
   // Buttons appear only once measured, so they never stack at the
   // container's top for a frame before positioning settles.
-  const buckets = bucketsFor(threads, tops);
+  const buckets = bucketsFor(threads, tops, singleBucket);
   return (
     <div className="tmargin" ref={hostRef} aria-hidden={false}>
       {buckets.map((b) => {

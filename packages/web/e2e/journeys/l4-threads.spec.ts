@@ -1731,6 +1731,24 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(margin).toHaveClass(/flash/, { timeout: 15_000 });
     });
 
+    await test.step("a collapsed card shows one pill with the card total (#374)", async () => {
+      const expandedTotal = await page.evaluate(() => {
+        const pills = document.querySelectorAll("#C-problem [data-thr-margin]");
+        return [...pills].reduce(
+          (sum, el) => sum + (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length,
+          0,
+        );
+      });
+      expect.soft(expandedTotal).toBeGreaterThan(1);
+      await page.locator("#C-problem > .chead").getByRole("button", { name: "Collapse" }).click();
+      await expect.soft(page.locator("#C-problem")).toHaveClass(/collapsed/, { timeout: 10_000 });
+      const collapsedPills = page.locator("#C-problem [data-thr-margin]");
+      await expect.soft(collapsedPills).toHaveCount(1, { timeout: 15_000 });
+      await expect.soft(collapsedPills.first()).toHaveAttribute("data-tip", `${expandedTotal} threads`);
+      await page.locator("#C-problem > .chead").getByRole("button", { name: "Expand" }).click();
+      await expect.soft(page.locator("#C-problem")).not.toHaveClass(/collapsed/, { timeout: 10_000 });
+    });
+
     await test.step("closing and reopening 5 times leaves one highlight, no glyphs, same count (#374, #206)", async () => {
       // A comment thread (inline highlight + margin pill) on #C-problem.
       const snapRes = await apiJson(s, "GET", `/api/reviews/${reviewId}`);

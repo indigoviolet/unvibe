@@ -931,11 +931,23 @@ test.describe("J374 margin pill", () => {
         await settleScroll(page);
         await page.screenshot({ path: `${FRAMES}/margin-single-${suffix}.png` });
 
-        // The pill survives a collapsed card, parked at its top.
+        // A collapsed card shows exactly one pill carrying the card's
+        // total thread count (per-block pills would stack on one line).
+        const expandedTotal = await page.evaluate(() => {
+          const pills = document.querySelectorAll("#C-problem [data-thr-margin]");
+          return [...pills].reduce(
+            (sum, el) => sum + (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length,
+            0,
+          );
+        });
+        expect(expandedTotal).toBeGreaterThan(1);
         await page.locator("#C-problem > .chead").getByRole("button", { name: "Collapse" }).click();
         await expect(page.locator("#C-problem")).toHaveClass(/collapsed/, { timeout: 10_000 });
-        await expect(pair).toBeVisible({ timeout: 15_000 });
-        await pair.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        const collapsedPills = page.locator("#C-problem [data-thr-margin]");
+        await expect(collapsedPills).toHaveCount(1, { timeout: 15_000 });
+        await expect(collapsedPills.first()).toHaveAttribute("data-tip", `${expandedTotal} threads`);
+        await expect(collapsedPills.first()).toContainText(String(expandedTotal));
+        await collapsedPills.first().evaluate((el) => el.scrollIntoView({ block: "center" }));
         await settleScroll(page);
         await page.screenshot({ path: `${FRAMES}/margin-collapsed-${suffix}.png` });
         await page.locator("#C-problem > .chead").getByRole("button", { name: "Expand" }).click();

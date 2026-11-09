@@ -35,6 +35,14 @@ describe("bucketsFor", () => {
     expect(buckets[0]!.top).toBe(0);
   });
 
+  test("singleBucket merges every block into one card pill", () => {
+    const other = (id: string): Thread => ({ ...thread(id), anchor: { ...thread(id).anchor, host: { kind: "block", blockId: "c#other" } } });
+    const buckets = bucketsFor([thread("a"), other("b")], { a: 0, b: 50 }, true);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.threads.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(buckets[0]!.top).toBe(0);
+  });
+
   test("threads on different blocks get their own pills", () => {
     const other = (id: string): Thread => ({ ...thread(id), anchor: { ...thread(id).anchor, host: { kind: "block", blockId: "c#other" } } });
     const buckets = bucketsFor([thread("a"), other("b")], { a: 0, b: 0 });

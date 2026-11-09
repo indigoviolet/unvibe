@@ -482,6 +482,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           threads={cardThreads}
           readOnly={readOnlyCard}
           minTop={8}
+          singleBucket
         />
         <div className="chead">
           <ControlButton
