@@ -1530,7 +1530,8 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       if (!q) throw new Error("no suggested question");
       const thread = page.locator(`section.ithread[data-thread="${q.id}"]`);
       if ((await thread.count()) === 0 || !(await thread.isVisible().catch(() => false))) {
-        await page.locator("#C-problem .lk.cm[data-threads]").first().click();
+        // Issue #374: the margin pill opens the closed thread (no end bubble).
+        await page.locator(`#C-problem [data-thr-margin~="${q.id}"]`).click();
       }
       await expect.soft(thread).toBeVisible({ timeout: 15_000 });
       await expect.soft(thread).toContainText("Suggested question");
@@ -1648,10 +1649,59 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(mine.locator(':scope > .turn')).toHaveCount(3, { timeout: 30_000 });
     });
 
-    await test.step("the margin icon hangs on the highlight and reopens a closed thread", async () => {
+    await test.step("the margin pill sits inside the card, reads one count, and reopens a closed thread", async () => {
       const mine = page.locator(`#C-problem section.ithread[data-thread="${threadId}"]`);
       const margin = page.locator(`[data-thr-margin~="${threadId}"]`);
       await expect.soft(margin).toBeVisible({ timeout: 15_000 });
+      // Issue #374, one synchronous read (atomic, #363 B1): the pill's
+      // box is inside the card's box, its glyph and count boxes never
+      // intersect, and no end-of-paragraph marker remains for it.
+      const geom = await margin.evaluate((el) => {
+        const box = (r: DOMRect): { top: number; left: number; bottom: number; right: number } => ({
+          top: r.top,
+          left: r.left,
+          bottom: r.bottom,
+          right: r.right,
+        });
+        const card = el.closest("section.ui-card");
+        const glyph = el.querySelector(":scope > svg.ic");
+        const count = el.querySelector(":scope > .tmargin-n");
+        const pill = box(el.getBoundingClientRect());
+        const brect = (q: string): { top: number; left: number; bottom: number; right: number } | null => {
+          const n = q === ".card" ? card : el.querySelector(q);
+          return n instanceof Element ? box(n.getBoundingClientRect()) : null;
+        };
+        const ids = (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean);
+        return {
+          pill,
+          card: brect(".card"),
+          glyph: brect(":scope > svg.ic"),
+          count: brect(":scope > .tmargin-n"),
+          glyphTag: glyph instanceof Element ? glyph.tagName : null,
+          countText: count?.textContent?.trim() ?? null,
+          tip: el.getAttribute("data-tip"),
+          ids,
+          bubbles: card instanceof Element ? card.querySelectorAll(".lk.cm[data-threads]").length : -1,
+        };
+      });
+      expect.soft(geom.card).not.toBeNull();
+      expect.soft(geom.glyph).not.toBeNull();
+      expect.soft(geom.count).not.toBeNull();
+      if (geom.card) {
+        expect.soft(geom.pill.left >= geom.card.left, `pill left ${Math.round(geom.pill.left)} inside card ${Math.round(geom.card.left)}`).toBe(true);
+        expect.soft(geom.pill.right <= geom.card.right, `pill right ${Math.round(geom.pill.right)} inside card ${Math.round(geom.card.right)}`).toBe(true);
+      }
+      // Glyph and count sit side by side, never overlapping (#374).
+      if (geom.glyph && geom.count) {
+        const overlap =
+          geom.glyph.left < geom.count.right && geom.count.left < geom.glyph.right && geom.glyph.top < geom.count.bottom && geom.count.top < geom.glyph.bottom;
+        expect.soft(overlap, `glyph ${JSON.stringify(geom.glyph)} vs count ${JSON.stringify(geom.count)}`).toBe(false);
+      }
+      // One count only: tooltip and pill text read the bucket's threads.
+      expect.soft(geom.countText).toBe(String(geom.ids.length));
+      expect.soft(geom.tip).toBe(geom.ids.length === 1 ? "1 thread" : `${geom.ids.length} threads`);
+      // No end-of-paragraph marker survives for a margined paragraph.
+      expect.soft(geom.bubbles).toBe(0);
       await mine.locator('button[aria-label="Close"]').click();
       await expect.soft(mine).toBeHidden({ timeout: 15_000 });
       await expect.soft(margin).toBeVisible({ timeout: 15_000 });
@@ -1679,6 +1729,124 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       // falls back to the margin marker's line and flashes that instead.
       const margin = page.locator(`[data-thr-margin~="${threadId}"]`);
       await expect.soft(margin).toHaveClass(/flash/, { timeout: 15_000 });
+    });
+
+    await test.step("a collapsed card shows one pill with the card total (#374)", async () => {
+      const expandedTotal = await page.evaluate(() => {
+        const pills = document.querySelectorAll("#C-problem [data-thr-margin]");
+        return [...pills].reduce(
+          (sum, el) => sum + (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length,
+          0,
+        );
+      });
+      expect.soft(expandedTotal).toBeGreaterThan(1);
+      await page.locator("#C-problem > .chead").getByRole("button", { name: "Collapse" }).click();
+      await expect.soft(page.locator("#C-problem")).toHaveClass(/collapsed/, { timeout: 10_000 });
+      const collapsedPills = page.locator("#C-problem [data-thr-margin]");
+      await expect.soft(collapsedPills).toHaveCount(1, { timeout: 15_000 });
+      await expect.soft(collapsedPills.first()).toHaveAttribute("data-tip", `${expandedTotal} threads`);
+      await page.locator("#C-problem > .chead").getByRole("button", { name: "Expand" }).click();
+      await expect.soft(page.locator("#C-problem")).not.toHaveClass(/collapsed/, { timeout: 10_000 });
+    });
+
+    await test.step("closing and reopening 5 times leaves one highlight, no glyphs, same count (#374, #206)", async () => {
+      // A comment thread (inline highlight + margin pill) on #C-problem.
+      const snapRes = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+      const snap = snapRes.json as {
+        pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[];
+      };
+      const problem = snap.pages?.find((p) => p.id === "root")?.cards.find((c) => c.id === "problem");
+      const firstBlock = problem?.blocks[0]?.id;
+      if (!problem || !firstBlock) throw new Error("no problem block");
+      const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
+        anchor: { where: "block", blockId: `${problem.id}#${firstBlock}` },
+        // Plain-text quote that spans no inline markup: one text node,
+        // so the pass owes exactly one mark (multi-node quotes wrap one
+        // mark per node by design).
+        quote: "servers may still send obsolete",
+        text: "Idempotence note",
+      });
+      expect(made.status).toBe(201);
+      const noteId = (made.json as { id: string }).id;
+      const note = page.locator(`#C-problem section.ithread[data-thread="${noteId}"]`);
+      const pill = page.locator(`#C-problem [data-thr-margin~="${noteId}"]`);
+      await expect.soft(pill).toBeVisible({ timeout: 15_000 });
+      // Guide comments start closed: open through the pill first.
+      await pill.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await pill.evaluate((el) => (el as HTMLElement).click());
+      await expect.soft(note).toBeVisible({ timeout: 30_000 });
+      const countBefore = await pill.evaluate((el) => (el.textContent ?? "").trim());
+      for (let i = 0; i < 5; i++) {
+        await note.getByRole("button", { name: "Close" }).click();
+        await expect.soft(note).toBeHidden({ timeout: 15_000 });
+        await pill.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await pill.evaluate((el) => (el as HTMLElement).click());
+        await expect.soft(note).toBeVisible({ timeout: 15_000 });
+      }
+      // One synchronous read (atomic, #363 B1): exactly one highlight
+      // for the anchor, zero inline glyphs, and the pill count unchanged.
+      const after = await page.evaluate((id: string) => {
+        const card = document.querySelector("#C-problem");
+        return {
+          marks: card?.querySelectorAll(`mark.anc[data-thr="${id}"]:not(.fnote)`).length ?? -1,
+          glyphs: card?.querySelectorAll("svg.thg").length ?? -1,
+        };
+      }, noteId);
+      expect.soft(after.marks).toBe(1);
+      expect.soft(after.glyphs).toBe(0);
+      await expect.soft(pill).toHaveText(countBefore, { timeout: 10_000 });
+    });
+
+    await test.step("a list block gets the same unclipped margin pill, no bubble (#374)", async () => {
+      const snapRes = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+      const snap = snapRes.json as {
+        pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[];
+      };
+      const buildup = snap.pages?.find((p) => p.id === "root")?.cards.find((c) => c.id === "buildup");
+      const listBlock = buildup?.blocks.find((b) => b.id === "b2");
+      if (!buildup || !listBlock) throw new Error("no buildup list block");
+      const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
+        anchor: { where: "block", blockId: `${buildup.id}#${listBlock.id}` },
+        quote: "They return early when a value has no CRLF.",
+        text: "List note",
+      });
+      expect(made.status).toBe(201);
+      const listId = (made.json as { id: string }).id;
+      const listPill = page.locator(`#C-buildup [data-thr-margin~="${listId}"]`);
+      await expect.soft(listPill).toBeVisible({ timeout: 15_000 });
+      await expect.soft(listPill).toHaveAttribute("data-tip", "1 thread");
+      const geom = await listPill.evaluate((el) => {
+        const box = (r: DOMRect): { top: number; left: number; bottom: number; right: number } => ({
+          top: r.top,
+          left: r.left,
+          bottom: r.bottom,
+          right: r.right,
+        });
+        const card = el.closest("section.ui-card");
+        const pill = box(el.getBoundingClientRect());
+        const cardBox = card instanceof Element ? box(card.getBoundingClientRect()) : null;
+        const glyph = el.querySelector(":scope > svg.ic");
+        const count = el.querySelector(":scope > .tmargin-n");
+        const glyphBox = glyph instanceof Element ? box(glyph.getBoundingClientRect()) : null;
+        const countBox = count instanceof Element ? box(count.getBoundingClientRect()) : null;
+        return {
+          pill,
+          card: cardBox,
+          glyph: glyphBox,
+          count: countBox,
+          bubbles: card instanceof Element ? card.querySelectorAll(".lk.cm[data-threads]").length : -1,
+        };
+      });
+      if (geom.card) {
+        expect.soft(geom.pill.left >= geom.card.left, `list pill left ${Math.round(geom.pill.left)} inside card ${Math.round(geom.card.left)}`).toBe(true);
+        expect.soft(geom.pill.right <= geom.card.right, `list pill right ${Math.round(geom.pill.right)} inside card ${Math.round(geom.card.right)}`).toBe(true);
+      }
+      if (geom.glyph && geom.count) {
+        const overlap =
+          geom.glyph.left < geom.count.right && geom.count.left < geom.glyph.right && geom.glyph.top < geom.count.bottom && geom.count.top < geom.glyph.bottom;
+        expect.soft(overlap).toBe(false);
+      }
+      expect.soft(geom.bubbles).toBe(0);
     });
 
     await test.step("per-reply Delete tombstones the turn; Undelete restores it", async () => {

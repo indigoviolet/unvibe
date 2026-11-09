@@ -296,6 +296,13 @@ export function markTextInElement(el: Element, quote: string, make: () => Elemen
  * re-appends afterwards.
  */
 export function ensureThreadGlyphs(root: ParentNode): void {
+  // Issue #374: glyphs orphaned by an older pass (a re-mark used to
+  // hoist the glyph into the text instead of dropping it, so every
+  // close/reopen stacked another inline glyph) are swept first — the
+  // pass stays idempotent no matter what a previous run left behind.
+  for (const svg of root.querySelectorAll("svg.thg")) {
+    if (!(svg.parentElement instanceof Element && svg.parentElement.matches("mark.anc"))) svg.remove();
+  }
   const groups = new Map<string, Element[]>();
   for (const el of root.querySelectorAll('mark.anc.exl[data-jump]:not(.fnote)')) {
     const id = (el as HTMLElement).dataset.jump ?? "";
@@ -446,6 +453,11 @@ export function anchorScope(root: ParentNode, anchorBlockId: string): ParentNode
 /** Remove all anchor marks created by `make` (class `anc` by default). */
 export function clearAnchorMarks(root: ParentNode, cls = "anc"): void {
   clearMarks(root, `mark.${cls}`);
+  // Issue #374: a re-mark must never resurrect an orphaned glyph: any
+  // pass-owned glyph left outside a mark is pass debris, not text.
+  for (const svg of root.querySelectorAll("svg.thg")) {
+    if (!(svg.parentElement instanceof Element && svg.parentElement.matches("mark.anc"))) svg.remove();
+  }
 }
 
 /**
@@ -775,6 +787,12 @@ export function retryUntilSettled(opts: {
 function unwrapElement(el: Element): void {
   const parent = el.parentNode;
   if (!parent) return;
+  // Issue #374: the pass-owned thread glyph (`svg.thg`) is dropped, never
+  // hoisted — hoisting left it in the text, so every close/reopen stacked
+  // another inline glyph (the #206 idempotence regression).
+  for (const child of [...el.childNodes]) {
+    if (child instanceof Element && child.matches("svg.thg")) child.remove();
+  }
   while (el.firstChild) parent.insertBefore(el.firstChild, el);
   parent.removeChild(el);
   try {

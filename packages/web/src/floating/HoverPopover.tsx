@@ -141,7 +141,7 @@ function previewExpansion(expansion: Thread | undefined): string {
 }
 
 const ANCHOR_SELECTOR =
-  "[data-refs], [data-threads], a.cx[data-node], a.cx[data-link], a.gx[data-glossary], [data-cprev], [data-cjump], mark.anc[data-jump]";
+  "[data-refs], [data-threads], [data-thr-margin], a.cx[data-node], a.cx[data-link], a.gx[data-glossary], [data-cprev], [data-cjump], mark.anc[data-jump]";
 
 export function HoverPopover() {
   const [html, setHtml] = useState<string | null>(null);
@@ -237,8 +237,10 @@ export function HoverPopover() {
           );
         });
       }
-    } else if (ds.threads) {
-      const ids = ds.threads.split("|");
+    } else if (ds.threads || ds.thrMargin) {
+      // Issue #374: the margin pill (`data-thr-margin`, space-separated)
+      // previews exactly like the old end-of-block bubble did.
+      const ids = ds.threads ? ds.threads.split("|") : (ds.thrMargin ?? "").split(/\s+/).filter(Boolean);
       content =
         ids
           .map((id) => previewThread(snap.annotations.find((a) => a.id === id), true))

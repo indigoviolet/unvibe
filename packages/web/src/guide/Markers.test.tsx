@@ -1,15 +1,14 @@
 /**
  * Rendering tests for citation markers and counts (PRD §4.5) + footnote
  * chips (issue #72, PRD §4.7): grouped `<>` marker with a count when >1,
- * no marker at all for unverified citations (issue #264), the speech-bubble
- * comment marker (only for threads that never had a quote), and footnote
- * chips for closed expansions / links / quoted threads sharing the
- * citations line.
+ * no marker at all for unverified citations (issue #264), no end-of-block
+ * comment bubble (issue #374: the margin pill is the single entry point),
+ * and footnote chips for closed expansions / links / quoted threads
+ * sharing the citations line.
  */
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { Thread } from "@unvibe/shared";
-import { onOpenBlockThread } from "./annotations.js";
 import { BlockMarkers } from "./Markers.js";
 import type { ResolvedCitation } from "./citations.js";
 
@@ -73,7 +72,7 @@ describe("BlockMarkers", () => {
     expect(container.querySelector('[data-tip*="confirm"]')).toBeNull();
   });
 
-  it("renders the comment marker with a count", () => {
+  it("renders no end-of-block comment bubble — the margin pill owns the entry point (#374)", () => {
     const threads: Thread[] = ["t1", "t2"].map((id) => ({
       id,
       type: "thread",
@@ -90,38 +89,12 @@ describe("BlockMarkers", () => {
       replies: [],
       post: false,
     }));
-    render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
-    const marker = screen.getByRole("button", { name: "2 comments" });
-    expect(marker).toHaveAttribute("data-threads", "t1|t2");
-    expect(marker.textContent).toContain("2");
-  });
-
-  it("clicking the comment marker opens every comment on the block, in order (#205)", () => {
-    const threads: Thread[] = ["t1", "t2", "t3"].map((id) => ({
-      id,
-      type: "thread",
-      anchor: {
-        host: { kind: "block", blockId: "b" },
-        quotedText: "",
-        prefix: "",
-        suffix: "",
-        position: 0,
-        version: 1,
-      },
-      open: false,
-      pinned: false,
-      replies: [mkReply(`note ${id}`)],
-      post: false,
-    }));
-    const opened: string[] = [];
-    const off = onOpenBlockThread((id) => opened.push(id));
-    try {
-      render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
-      fireEvent.click(screen.getByRole("button", { name: "3 comments" }));
-      expect(opened).toEqual(["t1", "t2", "t3"]);
-    } finally {
-      off();
-    }
+    const { container } = render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
+    // Never-quoted threads used to keep the bare bubble here; now they
+    // surface only through the margin pill, so the row stays empty.
+    expect(container.querySelector("button.lk.cm")).toBeNull();
+    expect(container.querySelector("[data-threads]")).toBeNull();
+    expect(container.querySelector(".lo")).toBeNull();
   });
 
   it("quoted comment threads get footnote chips, not the bubble marker", () => {
@@ -160,9 +133,9 @@ describe("BlockMarkers", () => {
       },
     ];
     const { container } = render(<BlockMarkers citations={[]} threads={threads} blockId="b" />);
-    // Bare bubble holds only the never-quoted thread.
-    const marker = screen.getByRole("button", { name: "1 comments" });
-    expect(marker).toHaveAttribute("data-threads", "tn");
+    // No bubble at all now (#374) — not even for the never-quoted thread.
+    expect(container.querySelector("button.lk.cm")).toBeNull();
+    expect(container.querySelector("[data-threads]")).toBeNull();
     // Quoted comment thread keeps its hidden footnote chip with its quote.
     const chip = container.querySelector("mark.fnote.th[data-thr='tq']");
     expect(chip).not.toBeNull();

@@ -4,6 +4,7 @@ import {
   expansionPreview,
   isAnchorStale,
   isClosedExpansion,
+  isExpansionFootnote,
   isNoAgentMessage,
   isOpenExpansion,
   isPromotedLink,
@@ -66,6 +67,18 @@ describe("conversation card utils", () => {
       ],
     });
     expect(expansionPreview(a)).toContain("hello world");
+  });
+
+  it("excludes comment threads from expansion footnotes (#374)", () => {
+    const comment = (open: boolean): Thread =>
+      ann({ open, replies: [{ ...turn({ kind: "comment", who: "you" }), question: "note" }] });
+    // Closed comment threads are not closed expansions for footnote
+    // purposes — GuideThreads + the margin pill own them.
+    expect(isExpansionFootnote(comment(false))).toBe(false);
+    expect(isExpansionFootnote(comment(true))).toBe(false);
+    expect(isExpansionFootnote(ann({ open: false }))).toBe(true);
+    expect(isExpansionFootnote(ann({ open: true }))).toBe(false);
+    expect(isExpansionFootnote(ann({ open: false, promotedToPage: "p-1" }))).toBe(true);
   });
 
   it("detects the no-agent message", () => {

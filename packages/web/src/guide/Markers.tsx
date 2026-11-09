@@ -6,9 +6,10 @@
  *   the cited lines, click reveals the source. Unverified citations get
  *   no marker at all (issue #264): the surrounding text stays plain text
  *   and the failure stays on the job for the Debug page.
- * - Speech-bubble comment marker with a count, only for threads that never
- *   had a quote (PRD §4.6). Threads whose quote is lost get a footnote chip
- *   instead (same row, with their quote).
+ * - No end-of-block comment bubble (issue #374): every thread on the card
+ *   already has a margin pill (`ThreadMarginOverlay`), which is the single
+ *   entry point — the bubble showed the same threads twice. Threads whose
+ *   quote is lost get a footnote chip instead (same row, with their quote).
  * - Footnote chips (`footnotes` + quoted threads): one quiet row shared with
  *   the citations chip. Closed expansions become thread-link marks
  *   (`mark.anc.exl[data-jump]`, soft highlight + thread glyph in the guide
@@ -25,7 +26,6 @@
 import { type Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { revealSource } from "../source/reveal.js";
-import { closeBlockThreads, openBlockThreads } from "./annotations.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
 import { citationChip } from "./citations.js";
@@ -39,23 +39,13 @@ interface Props {
   onOpenPage?: (pageId: string) => void;
 }
 
-export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPage }: Props) {
+export function BlockMarkers({ citations, threads, footnotes, onOpenPage }: Props) {
   // Issue #336: the prose chip never renders empty — `citationChip` is
   // null unless at least one verified, non-blank target exists.
   const chip = citationChip(citations);
-  // Threads that never had a quote keep the bare bubble marker (PRD §4.6);
-  // quoted threads get footnote chips when their highlight is lost.
-  const unquoted = threads.filter((t) => !t.anchor.quotedText);
-  // Issue #262: the marker is a toggle. When every one of its threads
-  // is already open a click collapses all of them; otherwise (none open,
-  // or a mix) a click opens all of them. The tooltip states the action.
-  const unquotedIds = unquoted.map((t) => t.id);
-  const allOpen = unquoted.length > 0 && unquoted.every((t) => t.open);
-  const markerTip = allOpen ? "Hide comments" : "Show comments";
-  const toggleThreads = (): void => {
-    if (allOpen) closeBlockThreads(unquotedIds, blockId);
-    else openBlockThreads(unquotedIds, blockId);
-  };
+  // Issue #374: no end-of-block bubble — the margin pill already covers
+  // every thread on the card (quoted or not). Quoted threads whose
+  // highlight is lost keep their footnote chip below instead.
   // Issue #303: `.th` chips belong to GuideThreads, which only tracks
   // threads with a reviewer comment (its marks and chip toggle cover
   // those alone). Agent (explain/ask) threads render their marks and
@@ -66,7 +56,7 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
     (t) => !!t.anchor.quotedText && (t.replies ?? []).some((r) => r.kind === "comment"),
   );
   const notes = footnotes ?? [];
-  if (!chip && !unquoted.length && !notes.length && !quotedThreads.length) return null;
+  if (!chip && !notes.length && !quotedThreads.length) return null;
   return (
     <span className="lo">
       {chip && (
@@ -80,19 +70,6 @@ export function BlockMarkers({ citations, threads, footnotes, blockId, onOpenPag
           onClick={() => revealSource(chip.targets[0])}
         >
           {chip.text}
-        </button>
-      )}
-      {unquoted.length > 0 && (
-        <button
-          className="lk cm"
-          type="button"
-          data-threads={unquoted.map((t) => t.id).join("|")}
-          aria-label={`${unquoted.length} comments`}
-          data-tip={markerTip}
-          onClick={toggleThreads}
-        >
-          <Icon name="comment" />
-          {unquoted.length}
         </button>
       )}
       {notes.map((a) => {

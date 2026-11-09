@@ -91,6 +91,16 @@ export const NAMED_KEEPS: readonly NamedKeep[] = [
     combos: ["960-light"],
     reason: "review bar with the boxed PR link never overflows the narrow desktop window (moved from 800px, #245)",
   },
+  {
+    scene: "threads",
+    combos: ["1440-dark"],
+    reason: "#374 margin pill contrast and gutter clipping in dark",
+  },
+  {
+    scene: "threads",
+    combos: ["960-light"],
+    reason: "#374 margin pill stays inside the gutter at narrow width",
+  },
 ];
 
 /**
@@ -122,6 +132,7 @@ export const SLIM_SCENES: Record<string, readonly string[]> = {
   reviewbarPr: ["default-light"],
   reviewbarNarrow: ["1440-light", "960-light"],
   docBar: ["default-light"],
+  threads: ["1440-light", "1440-dark", "960-light"],
   demoBanner: ["1440"],
   demoBannerStatic: ["1440"],
   // Inline-assert sites with no combo loop: the slim widths asserted there.
