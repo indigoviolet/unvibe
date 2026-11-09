@@ -1,59 +1,48 @@
 {
-  "338": {
-    "whatChanged": "Release notes no longer repeat the summary as a What changed line, and items without a written entry show their issue title."
+  "356": {
+    "whatChanged": "Opt-in performance traces (OpenTelemetry) for this machine only: turn on Record in Settings → Debug to record HTTP requests, jobs, child processes, SQLite and the open-to-first-card time, plus the browser’s page load, fetches and clicks. Traces stay local with no time window and survive data resets and version switches, because they live next to the data folder rather than in it. A 256 MB safety limit pauses recording without deleting anything; Debug shows the size, Clear and Export (OTLP JSON, readable by Jaeger and Perfetto). The export is scrubbed: only numbers, enums and salted hashes, never code, paths, tokens or prompt text. Tracing ships only in the debug build, so the normal install stays lean and its Debug section shows how to install the debug build. The stats export now includes conversation turns, read line ranges and a skipped-summary count per review.",
+    "whatToTry": "Install the debug build (the command is in Settings → Debug), turn on Record, open a review, then Export traces.",
+    "caveats": "Debug builds of previews and releases are published separately (release-debug, preview/<name>-debug)."
   },
-  "341": {
-    "whatChanged": "The bundled demo (urllib3#5020) is re-recorded on Claude Sonnet 5.5 against the current prompts, with every on-demand action recorded (Explain, Ask, depth, examples, diagrams, a persona card). A banner on demo pages says the answers are replayed and nothing is posted, links to the install page and carries the one Reset demo button. PR references link to the real PR. On narrow screens the review top bar wraps instead of overflowing, and comment quotes taken from code render upright in the code font.",
-    "whatToTry": "Open the demo review (or the site demo) and try Explain, Ask and a depth change; open it on a phone-width window.",
-    "caveats": "The new recording has no card or concept links in its answers and no list-style Ask answer."
+  "357": {
+    "whatChanged": "Test suite pruning, pass 2: duplicate, wording-only and removed-feature tests cut, and overlapping journeys merged; no change in the app."
   },
-  "342": {
-    "whatChanged": "Hidden-hunk rows show only the hunk range and its summary (a collapsed band with a chevron; no size, no score words, no \"hidden\"). Choosing a hide level fully re-applies it; expanding a hidden row is temporary and collapses again on a level change or reload.",
-    "whatToTry": "In a diff, open a hidden hunk, then change the Hide level or reload."
+  "358": {
+    "whatChanged": "New mise run test:affected (check plus only the browser tests your change affects, with extra triggers for fixtures, data format, prompts and styles) and mise run gate:failed (re-run only what failed). No change in the app."
   },
-  "343": {
-    "whatChanged": "Each plotline on the plotlines card has a check that marks every hunk in it reviewed and folds them, hidden hunks included. It shows checked when all are reviewed, partial when some are, and is disabled on older versions.",
-    "whatToTry": "On the guide's Plotlines card, tick a plotline, then unmark one of its hunks in the diff."
+  "359": {
+    "whatChanged": "New built-in persona \"Clarity\": it rewrites a guide card in clearer prose with the same facts, hedges and citations, and leaves a card that is already clear unchanged. It runs on your main model (Settings → Personas shows \"Main model (…)\"; untick to pin a specific model). A persona on the same model as main shares main’s base session, with its lens given at the start of each persona turn, so it adds no extra session build.",
+    "whatToTry": "On a guide card, open the persona button → Clarity, then compare the Clarity tab with Guide.",
+    "caveats": "Data format 4 → 5: the app asks for a data reset on first start (export Outbox drafts first)."
   },
-  "345": {
-    "whatChanged": "Re-do guide moved out of the Debug page into the review top bar (an icon after Debug), confirming in place. It is hidden on the demo and disabled while the review is still opening.",
-    "whatToTry": "Open a review and use the Re-do guide icon in the top bar."
+  "362": {
+    "whatChanged": "Browser tests run once at 1440, light, Default theme; dark, other themes and 960 only for a short named list of scenes, and the full matrix only on demand. No change in the app."
   },
-  "346": {
-    "whatChanged": "Destructive actions confirm in place: the button expands to Confirm <action> ✓ ✕, then flashes ✓ Confirmed. Used for removing a review or document, the data and data-format resets, repo remove and Re-do guide (its confirm drops below the toolbar). The old pop-out confirm is gone. Settings → Version Switch/Update and Full access now use it too; a channel that needs a data reset shows one warning line (with Export drafts only when you have drafts). The expanded confirm keeps the button’s height, shows no edge of the button behind it, and marks danger with a red ring and a red ✓. In the review toolbar, Re-do guide stays visible and pressed with its confirm just below; in Settings → Repos the confirm (“Confirm remove repo”) drops below the row without squeezing the name.",
-    "whatToTry": "Remove a review from the start page, or press Re-do guide in a review's top bar; Escape or ✕ cancels."
+  "363": {
+    "whatChanged": "The browser test suite is rebuilt as 14 long journeys (start page, opening, reading, threads, submit and Outbox, diff, versions and Since, personas, settings, recovery, documents, extension, static demo, debug): 357 tests in 97 files become 191 in 16, with far fewer service starts. Screenshot capture moved to an on-demand tour (mise run visual-tour), test:affected runs the journeys on one throttled core to catch timing races early, and AGENTS.md has fix-it-properly rules for flaky tests. No change in the app."
   },
-  "348": {
-    "whatChanged": "pi turns can no longer hang silently: each pi tool call has a 60s timeout that returns a tool error to the model, and a turn that sends no events for 120s fails with a visible error naming the last tool, instead of waiting 10 minutes.",
-    "whatToTry": "Use a pi model (e.g. muse-spark) for a guide; a stalled turn now fails fast with a named error and can be retried.",
-    "caveats": "The original stall did not reproduce in diagnosis; the fix adds guards at every layer rather than a confirmed single cause."
+  "364": {
+    "whatChanged": "Threads: each reply has a delete control; deleting leaves a \"Reply deleted · Undelete\" line that survives reloads (an answer goes with its question, and deleting the last live turn removes the thread). A comment icon always sits in the margin beside the highlighted line, so a thread can never lose its link to the text, and each answer has a \"↑ quoted text\" link that scrolls back and flashes the passage. Questions show as tinted bands with more space between turns, and Ask inside a thread uses the thread’s own Reply box with a removable quote chip instead of a second composer.",
+    "whatToTry": "In a thread, delete a reply and undelete it; click the margin icon beside a highlight; use ↑ quoted text on an answer; select text inside a thread and press Ask."
   },
-  "349": {
-    "whatChanged": "Personas: Settings → Personas lists reviewer voices (name, model, lens, optional card instruction, on/off, auto colour). Each guide card has a persona button: pick one and it writes its own version of that card on its model; a tab strip (Guide + one tab per persona) appears, in persona colours, and Explain, Ask, depth and examples on a persona tab are answered by that persona. Second opinion is now a built-in persona instead of a special mode.",
-    "whatToTry": "On a guide card, use the persona button → Second opinion; switch tabs; Ask on the persona tab.",
-    "caveats": "Personas never run on their own and give no verdict; you choose one per card."
+  "365": {
+    "whatChanged": "The agent now reads the review instead of being handed text: a get_item tool lets it fetch any card, block, page, thread, reply or description paragraph with its parents and children, and every reply has a stable ID (ann:<thread>#r<n>). Ask and Explain turns carry only the quote, its exact ID and offsets, and your question (plus the changed hunks when the code moved); a plain follow-up carries just the question. Other threads’ answers no longer leak into a turn.",
+    "whatToTry": "Explain a phrase inside an existing thread, then ask a follow-up; the answers stay about that thread.",
+    "caveats": "Data format 5 → 6: the app asks for a data reset on first start (export Outbox drafts first)."
   },
-  "350": {
-    "whatChanged": "The browser extension now carries the Unvibe version it shipped with: chrome://extensions shows the full version (e.g. 0.0.16-preview.main-rc.abc1234), so you can tell which build is loaded.",
-    "whatToTry": "After installing, reload the unpacked extension from Settings → Extension and check its version on chrome://extensions."
+  "366": {
+    "whatChanged": "Usage statistics now live in the performance traces: job and review spans carry the model, tokens, tool counts, reads (hashed file, line range, inside or outside the diff), repairs, failures and timings, and per-review sizes, as numbers, enums and hashes only, scrubbed on export. The separate stats export (Debug button and unvibe stats export) is gone; mise run stats:summary reads a trace export instead.",
+    "whatToTry": "In a debug build, record traces, open a review and ask something, then Export traces and run mise run stats:summary on the file.",
+    "caveats": "The normal (lean) build records no usage statistics at all; install the debug build to record them."
   },
-  "351": {
-    "whatChanged": "Update now explains what changed since a baseline version instead of rewriting the guide. It adds a dated \"Since v1 → v2\" section at the top of the guide whose cards say what changed, why (from the commit messages) and which review comment, thread or PR remark each change answers (an Answers: link). Affected cards get a dated \"Updated since v1\" note at the end; their text is left as it was. Plotlines show +N since v1, and new threads of work are marked new since v1. The diff has a Since v1 toggle that shows only the hunks added or changed since the baseline; rebased branches are compared by hunk content. The baseline defaults to the version you last opened and can be switched to any earlier version. The baseline can also be any commit of the PR (listed in the picker with your last GitHub review), compared by hunk content so force-pushes work; a commit that can no longer be found shows a message under the picker. On a PR you have not reviewed in Unvibe yet, the guide offers your last GitHub review (\"You reviewed this at abc1234 on 2 Nov; focus on changes since then?\"); ticking it makes the one guide run also write the Since section.",
-    "whatToTry": "On a review whose PR gained commits, refresh, then press Update; read the Since section, open a card note, and turn on Since v1 in the diff. Open a PR you reviewed on GitHub but not in Unvibe and tick the offer; or pick a commit in the baseline picker."
+  "367": {
+    "whatChanged": "After Update, the review no longer contradicts itself: every card’s \"cited hunks changed\" banner clears, and the diff banner reads \"Updated to v2 · since v1\" with no Update button. Before an update it reads \"New commits · v1 → v2\" with Update. The update pass also confirms which stale cards it judged unaffected. Nothing anywhere offers an Update that would be refused.",
+    "whatToTry": "On a review whose PR gained commits, refresh, press Update, then check the cards and the diff banner."
   },
-  "352": {
-    "whatChanged": "The start page’s reviews list shows every phase in one place: a single line under the title (Opening · Reading the diff…, the hunks bar while the guide builds, or the error when opening failed). The amber opening pill is gone; the right side keeps only status badges, and Remove (plus Retry on a failed open) appears on hover or keyboard focus. Rows keep the same height from opening to done.",
-    "whatToTry": "Open a branch or PR from the start page and watch its row through opening and building; hover a failed row for Retry."
+  "368": {
+    "whatChanged": "The \"changed since reviewed\" badge in a diff hunk header has the same gap as the other header chips."
   },
-  "353": {
-    "whatChanged": "Plotline names and descriptions are stored whole (no more names cut to \"Add the…\" at 40 characters); a long name is only shortened on screen — two lines in the plotlines card, an ellipsis in chips and filters — with the full text in a tooltip. Code in names shows in the code font instead of raw backticks.",
-    "whatToTry": "Open a review with long plotline names and hover a plotline row or a hunk’s plotline chip."
-  },
-  "354": {
-    "whatChanged": "Removing a review while its guide is still building no longer crashes the service: its jobs are cancelled, a job that finishes after the review is gone stops quietly, and an error saving a job is logged instead of stopping the service.",
-    "whatToTry": "Start a review, and while its row shows the guide building, Remove it from the start page; the service keeps running."
-  },
-  "355": {
-    "whatChanged": "The app ships a favicon.ico (16, 32 and 48 px, the pink u), so browsers that ask for /favicon.ico get the icon instead of a 404."
+  "370": {
+    "whatChanged": "Test-only safety fix: a test-started Unvibe service no longer applies the login shell’s PATH, and refuses to run any gh, git or agent CLI that is not the test harness’s fake. Before, a broken test setup could make a test service call the real gh with your login (read-only). No change in the app you use."
   }
 }

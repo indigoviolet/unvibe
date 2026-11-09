@@ -1,13 +1,13 @@
 {
   "name": "unvibe",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "private": true,
   "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*"
   ],
-  "description": "Reader for code changes: localhost service + installable web app (PRD \u00a714).",
+  "description": "Reader for code changes: localhost service + installable web app (PRD §14).",
   "bin": {
     "unvibe": "./packages/service/dist/index.js"
   },
