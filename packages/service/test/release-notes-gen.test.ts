@@ -126,6 +126,26 @@ describe("generateReleaseNotes", () => {
     expect(notes.previousCommit).toBe("v0.0.1");
   });
 
+  it("gives a debug flavour the same baseline and items as its lean release (#373)", async () => {
+    const { runner } = fakeRunner({
+      "describe": { stdout: "v0.0.2\n" },
+      "tag --list": { stdout: "v0.0.2\nv0.0.1\n" },
+      "show v0.0.1:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 1;" },
+      "log v0.0.1..HEAD": { stdout: MERGES },
+      "issue view": { stdout: JSON.stringify({ title: "T", url: "https://github.com/indigoviolet/unvibe/issues/330" }) },
+      "show HEAD:packages/shared/src/data-format.ts": { stdout: "export const DATA_FORMAT = 2;" },
+      "rev-parse HEAD": { stdout: "headsha999\n" },
+    });
+    const notes = (await generateReleaseNotes({
+      runner: runner as never,
+      channel: "release-debug",
+      version: "0.0.2-debug",
+    })) as { previousVersion: string | null; items: unknown[]; dataResetNeeded: boolean };
+    expect(notes.previousVersion).toBe("0.0.1");
+    expect(notes.items).toHaveLength(2);
+    expect(notes.dataResetNeeded).toBe(true);
+  });
+
   it("uses the newest reachable v* tag on every channel (cumulative since the last release)", async () => {
     const { runner, calls } = fakeRunner({
       "describe": { stdout: "v0.0.1\n" },
