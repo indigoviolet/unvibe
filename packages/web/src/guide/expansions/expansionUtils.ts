@@ -34,6 +34,18 @@ export function isPromotedLink(a: Thread): boolean {
   return a.type === "link" || !!a.promotedToPage;
 }
 
+/**
+ * Issue #374: comment threads are never expansion footnotes — not even
+ * closed ones. They belong to GuideThreads (inline marks + `.th` chips)
+ * and the margin pill. Letting them into `footnotes` renders a second,
+ * `data-fallback` chip that ExpansionHighlights (which never tracks
+ * comment threads) unhides even when the highlight landed.
+ */
+export function isExpansionFootnote(a: Thread): boolean {
+  if ((a.replies ?? []).some((r) => r.kind === "comment")) return false;
+  return isClosedExpansion(a) || isPromotedLink(a);
+}
+
 /** Anchor-stale fallback (PRD §4.7): show a collapsed card instead. */
 export function isAnchorStale(a: Thread): boolean {
   return !!a.anchorStale;

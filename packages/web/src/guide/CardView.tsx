@@ -36,7 +36,7 @@ import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { isClosedExpansion, isPromotedLink } from "./expansions/expansionUtils.js";
+import { isExpansionFootnote } from "./expansions/expansionUtils.js";
 import { busyForCard, inflightLabel, updateKey } from "./inflight.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
 
@@ -433,13 +433,19 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // Issue #252: glossary terms link in card text (first mention per card).
   const glossary = snapshot?.glossary ?? [];
   const linkedBlocks = linkCardBlocks(shownBlocks, glossary, shownLevel);
+  // Issue #374: every thread on the card gets a margin pill, so the
+  // card reserves the gutter it sits in (`.has-threads`).
+  const cardThreads = linkedBlocks.flatMap((b) => threadsFor(b.id));
+  const gutterClass = cardThreads.length > 0 ? "has-threads" : undefined;
 
   const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
     // Closed expansions + promoted links whose quote is gone become footnote
     // chips on the paragraph's citations line (via BlockView → BlockMarkers);
     // the highlight passes reveal them when the mark lands nowhere.
-    const footnotes = exps.filter((e) => isClosedExpansion(e) || isPromotedLink(e));
+    // Issue #374: never comment threads (their fallback is the `.th`
+    // chip + the margin pill).
+    const footnotes = exps.filter(isExpansionFootnote);
     return (
       // Fragment (not a div): prototype.css child selectors depend on
       // blocks being direct children of the section.
@@ -469,11 +475,11 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // body-prefix preview.
     const title = displayCardTitle(card.title, card.blocks);
     return (
-      <UiCard as="section" variant="raised" className="collapsed" id={`C-${card.id}`}>
+      <UiCard as="section" variant="raised" className={gutterClass ? `collapsed ${gutterClass}` : "collapsed"} id={`C-${card.id}`}>
         {/* Issue #364: the margin marker survives even a collapsed card
             (its threads anchor in the hidden body, so it sits at the top). */}
         <ThreadMarginOverlay
-          threads={linkedBlocks.flatMap((b) => threadsFor(b.id))}
+          threads={cardThreads}
           readOnly={readOnlyCard}
         />
         <div className="chead">
@@ -511,7 +517,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     <UiCard
       as="section"
       variant="raised"
-      className={busy?.rewriting ? "rewriting" : undefined}
+      className={[busy?.rewriting ? "rewriting" : "", gutterClass ?? ""].filter(Boolean).join(" ") || undefined}
       id={`C-${card.id}`}
       aria-busy={busy ? true : undefined}
       {...(personaRing ? { style: personaRing } : {})}
@@ -523,7 +529,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       {/* Issue #364: one margin icon per thread on this card — on its
           highlight's first line, else its paragraph's first line. */}
       <ThreadMarginOverlay
-        threads={linkedBlocks.flatMap((b) => threadsFor(b.id))}
+        threads={cardThreads}
         readOnly={readOnlyCard}
       />
       <CardHeader className="chead">

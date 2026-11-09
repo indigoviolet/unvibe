@@ -33,7 +33,6 @@ import { ThreadView } from "../../comments/ThreadView.js";
 import { useViewer } from "../../comments/viewer.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../../floating/SelectionToolbar.js";
 import { toast } from "../../floating/Toast.js";
-import { Icon } from "../../components/Icon.js";
 import { WorkingPlaceholder } from "../../components/WorkingPlaceholder.js";
 import { Button, Card } from "../../ui/index.js";
 import { performFollowUp } from "../../guide/actions.js";
@@ -71,12 +70,6 @@ function makeMark(threadId: string): HTMLElement {
   return mark;
 }
 
-function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) if (!b.has(id)) return false;
-  return true;
-}
-
 export function DescriptionView({ reviewId, editor }: Props) {
   const description = useReview((s) => s.snapshot?.description);
   const annotations = useReview((s) => s.snapshot?.annotations);
@@ -84,7 +77,6 @@ export function DescriptionView({ reviewId, editor }: Props) {
   const viewer = useViewer();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
-  const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
   const draftRef = useRef("");
 
   const displayHtml = description?.pendingHtml ?? description?.html ?? "";
@@ -251,8 +243,6 @@ export function DescriptionView({ reviewId, editor }: Props) {
           segments={segments}
           byPara={byPara}
           orphans={orphans}
-          highlighted={highlighted}
-          setHighlighted={setHighlighted}
           pending={pending}
           setPending={setPending}
           readOnly={readOnlyVersion}
@@ -267,15 +257,13 @@ interface BodyProps {
   segments: ReturnType<typeof splitDescriptionHtml>;
   byPara: Map<string, Thread[]>;
   orphans: Thread[];
-  highlighted: ReadonlySet<string>;
-  setHighlighted: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   pending: NewThreadRequest | null;
   setPending: (req: NewThreadRequest | null) => void;
   readOnly: boolean;
 }
 
 const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function DescriptionBody(
-  { reviewId, segments, byPara, orphans, highlighted, setHighlighted, pending, setPending, readOnly },
+  { reviewId, segments, byPara, orphans, pending, setPending, readOnly },
   ref,
 ) {
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -338,7 +326,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             }
           }
         }
-        setHighlighted((prev: ReadonlySet<string>) => (sameSet(prev, found) ? prev : found));
       });
       if (pending.size === 0) recordUnplacedAnchors("Description threads", []);
       else retry.schedule();
@@ -348,7 +335,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       window.clearTimeout(timer);
       retry.cancel();
     };
-  }, [byPara, segments, setHighlighted]);
+  }, [byPara, segments]);
 
   const openThread = (id: string): void => {
     if (readOnly) {
@@ -360,15 +347,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     });
   };
 
-  const closeThread = (id: string): void => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
-    api.updateComment(reviewId, id, { open: false }).catch((err: unknown) => {
-      toast(`Couldn't close the comment: ${friendlyError(err)}`);
-    });
-  };
 
   const setRefs = (node: HTMLDivElement | null): void => {
     innerRef.current = node;
@@ -376,10 +354,12 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     else if (ref) (ref as MutableRefObject<HTMLDivElement | null>).current = node;
   };
 
+  // Issue #374: the margin pills sit in a gutter the card reserves.
+  const descThreads = [...byPara.values()].flat();
   return (
     <Card
       variant="plain"
-      className="desc"
+      className={descThreads.length > 0 ? "desc has-threads" : "desc"}
       ref={setRefs}
       onClick={(e) => {
         const mark = (e.target as HTMLElement).closest?.("mark.anc[data-thr]");
@@ -396,19 +376,12 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       }}
     >
       {/* Issue #364: one margin icon per thread — on its highlight's first line, else its paragraph's first line. */}
-      <ThreadMarginOverlay threads={[...byPara.values()].flat()} readOnly={readOnly} />
+      <ThreadMarginOverlay threads={descThreads} readOnly={readOnly} />
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
         // Collapse-all renders every thread under the paragraph as a row,
         // including closed ones (which otherwise show only as marks).
         const open = threads.filter((t) => t.open || collapseAll);
-        // Issue #262: the marker is a toggle over the paragraph's
-        // unhighlighted threads (quoted threads that placed keep their
-        // inline mark instead). When all of them are open a click
-        // collapses them; otherwise a click opens the closed ones. The
-        // tooltip states the action.
-        const markerThreads = threads.filter((t) => (t.replies ?? []).length > 0 && !highlighted.has(t.id));
-        const allOpen = markerThreads.length > 0 && markerThreads.every((t) => t.open);
         const showPending =
           pending &&
           ((pending.anchor.where === "description" && pending.anchor.paragraphId === seg.id) ||
@@ -417,25 +390,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
         return (
           <div key={seg.id ?? `seg-${i}`} data-top={seg.id ?? undefined}>
             <div className="dseg-body" dangerouslySetInnerHTML={{ __html: seg.html }} />
-            {markerThreads.length > 0 ? (
-              <button
-                className="lk cm"
-                type="button"
-                data-threads={markerThreads.map((t) => t.id).join("|")}
-                aria-label={`${markerThreads.length} comments`}
-                data-tip={allOpen ? "Hide comments" : "Show comments"}
-                onClick={() => {
-                  if (allOpen) markerThreads.forEach((t) => closeThread(t.id));
-                  else
-                    markerThreads
-                      .filter((t) => !t.open)
-                      .forEach((t) => openThread(t.id));
-                }}
-              >
-                <Icon name="comment" />
-                {markerThreads.length}
-              </button>
-            ) : null}
             {open.map((t) => (
               <div className="dann" key={t.id}>
                 <ThreadView reviewId={reviewId} thread={t} readOnly={readOnly} />
