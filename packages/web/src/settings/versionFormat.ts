@@ -101,6 +101,10 @@ export function compareReleaseVersions(a: string, b: string): number {
  *   the running preview was built.
  * Missing versions, build times or unparseable dates mean null — the
  * caller shows no icon and no error.
+ *
+ * The debug flavour (issue #375) is the same release as its lean build:
+ * versions compare without the `-debug` suffix, only a strictly newer
+ * release counts, and a debug build is pointed at `release-debug`.
  */
 export function findUpdateAvailable(
   build: UpdateBuildInfo | null,
@@ -108,6 +112,12 @@ export function findUpdateAvailable(
 ): UpdateChannel | null {
   if (!build?.channel || !build.version) return null;
   const release = channels.find((c) => c.ref === "release" && c.kind === "release");
+  if (build.channel === "release-debug") {
+    const debug = channels.find((c) => c.ref === "release-debug");
+    const target = debug?.version ? debug : release;
+    if (!target?.version) return null;
+    return compareReleaseVersions(baseVersion(target.version), baseVersion(build.version)) > 0 ? target : null;
+  }
   if (!release?.version) return null;
   if (build.channel.startsWith("preview/")) {
     if (!build.builtAt || !release.builtAt) return null;
@@ -116,7 +126,12 @@ export function findUpdateAvailable(
     if (!Number.isFinite(built) || !Number.isFinite(published)) return null;
     return published > built ? release : null;
   }
-  return compareReleaseVersions(release.version, build.version) > 0 ? release : null;
+  return compareReleaseVersions(baseVersion(release.version), baseVersion(build.version)) > 0 ? release : null;
+}
+
+/** A release version without its debug-flavour suffix (`0.0.17-debug` -> `0.0.17`). */
+function baseVersion(version: string): string {
+  return version.replace(/-debug$/, "");
 }
 
 /** Display state of one channel row for the installed channel and the rest. */

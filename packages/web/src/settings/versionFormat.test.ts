@@ -261,6 +261,45 @@ describe("versionFormat", () => {
     ).toBeNull();
   });
 
+  it("treats the debug flavour as the same release (#375)", () => {
+    const row = (ref: string, version: string): UpdateChannel => ({
+      ref,
+      kind: "release",
+      version,
+      commit: "c0ffee1",
+      sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      builtAt: null,
+      dataFormat: 1,
+      current: false,
+    });
+    const build = (version: string, channel: string): UpdateBuildInfo => ({
+      version,
+      channel,
+      sourceBranch: null,
+      sourceCommit: null,
+      baseBranch: null,
+      baseCommit: null,
+      commit: "aaa1111",
+      builtAt: null,
+      dataFormat: 1,
+    });
+    const both = (v: string): UpdateChannel[] => [row("release", v), row("release-debug", `${v}-debug`)];
+
+    // 0.0.17-debug vs release 0.0.17: the same release, no icon.
+    expect(findUpdateAvailable(build("0.0.17-debug", "release-debug"), both("0.0.17"))).toBeNull();
+    expect(findUpdateAvailable(build("0.0.17-debug", "release-debug"), [row("release", "0.0.17")])).toBeNull();
+    // A strictly newer release: the icon, pointing debug users at release-debug.
+    expect(findUpdateAvailable(build("0.0.17-debug", "release-debug"), both("0.0.18"))?.ref).toBe("release-debug");
+    // No release-debug row yet: fall back to the newer release.
+    expect(findUpdateAvailable(build("0.0.17-debug", "release-debug"), [row("release", "0.0.18")])?.ref).toBe("release");
+    // Lean 0.0.17 vs release-debug 0.0.17-debug: no icon; lean users follow release.
+    expect(findUpdateAvailable(build("0.0.17", "release"), both("0.0.17"))).toBeNull();
+    expect(findUpdateAvailable(build("0.0.17", "release"), both("0.0.18"))?.ref).toBe("release");
+  });
+
   it("release row shows the version, previews keep the sha (#249)", () => {
     const release = (version: string | null, commit: string | null): UpdateChannel => ({
       ref: "release",
