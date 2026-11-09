@@ -1731,9 +1731,17 @@ test.describe("L4 threads on the demo (fast replay)", () => {
         const liveIds = snap.replies.filter((r) => !r.deletedAt).map((r) => r.id);
         if (liveIds.length === 0) break;
         const victim = liveIds[0]!;
-        const first = mine.locator(':scope > .turn:not(:has([data-tombstone]))').first();
-        await first.hover();
-        await first.getByRole("button", { name: "Delete reply" }).first().click();
+        // Target the server's victim by id (the DOM can lag the last
+        // patch), and only a Delete the hover actually revealed: an ask
+        // turn carries a second, hidden one on its question row.
+        const turn = mine.locator(`:scope > .turn[data-turn="${victim}"]`);
+        await expect(turn).toBeVisible({ timeout: 15_000 });
+        await turn.hover();
+        await turn
+          .getByRole("button", { name: "Delete reply" })
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 15_000 });
         // Either its tombstone appears, or (last live turn) the thread goes.
         await expect
           .soft.poll(async () => {
