@@ -82,7 +82,9 @@ export function channelRef(channel: string): string {
 }
 
 export function channelKind(ref: string): UpdateChannel["kind"] {
-  return ref === "release" ? "release" : "preview";
+  // release-debug (issue #356) is the debug flavour of a release: always
+  // switchable, never hidden behind the previews toggle.
+  return ref === "release" || ref === "release-debug" ? "release" : "preview";
 }
 
 /**

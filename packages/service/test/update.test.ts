@@ -97,6 +97,7 @@ describe("channel names + install specs", () => {
 
   it("maps refs to kinds", () => {
     expect(channelKind("release")).toBe("release");
+    expect(channelKind("release-debug")).toBe("release");
     expect(channelKind("preview/feat-x")).toBe("preview");
   });
 

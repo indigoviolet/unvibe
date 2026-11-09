@@ -144,6 +144,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
 
+      # Issue #373: a tag release always has changes since the previous
+      # tag; zero items in either flavour's shipped notes means the
+      # generator picked the wrong baseline. Fail before publishing.
+      - name: Check both flavours ship release notes with items
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          node -e '
+            const fs = require("fs");
+            for (const f of ["release-notes-lean.json", "release/release-notes.json"]) {
+              const n = JSON.parse(fs.readFileSync(f, "utf8"));
+              console.log(`${f}: ${n.version} since ${n.previousVersion}, ${n.items.length} item(s)`);
+              if (!Array.isArray(n.items) || n.items.length === 0) {
+                console.error(`release: ${f} has no items (baseline ${n.previousCommit})`);
+                process.exit(1);
+              }
+            }'
+
       - name: Verify the release installs with no flags (tarball + git ref, lean + debug)
         run: >-
           node scripts/global-install-check.mjs --flavours lean,debug
