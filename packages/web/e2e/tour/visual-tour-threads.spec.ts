@@ -849,10 +849,10 @@ test.describe("J374 margin pill", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j374-data-"));
     svc = await startService(dataDir, { agent: "replay" });
     reviewId = await createDemoReview(svc);
-    // A first-line quote plus an unquoted thread share problem#b1's pill
-    // (same top line); a mid-paragraph quote gets its own; problem#b2
-    // and buildup's list block each get one single-thread pill. Guide
-    // comments start closed; the pills show regardless.
+    // One pill per block: problem#b1's threads (first-line, unquoted,
+    // mid-paragraph) share one pill; problem#b2 and buildup's list block
+    // each get one single-thread pill. Guide comments start closed; the
+    // pills show regardless.
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
     const pages = (snap.json as { pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[] }).pages ?? [];
     const card = (id: string) => pages.find((p) => p.id === "root")?.cards.find((c) => c.id === id);
@@ -894,15 +894,16 @@ test.describe("J374 margin pill", () => {
       await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 30_000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
 
-      // The b1 pair shares one pill naming its count; the pill sits
-      // inside the card gutter, glyph and count side by side.
+      // Issue #374: one pill per block — the b1 threads (first-line,
+      // unquoted, mid-paragraph) share one pill naming the block's full
+      // count. The pill sits inside the card gutter, glyph and count
+      // side by side.
       const pair = page.locator(`#C-problem [data-thr-margin~="${ids.first}"]`);
       await expect(pair).toBeVisible({ timeout: 15_000 });
-      // The pill names its own bucket's count (first-line + unquoted
-      // share b1's top line; the mid-paragraph mark may or may not
-      // bucket with them — the tooltip always matches the pill's ids).
+      await expect(pair).toHaveAttribute("data-thr-margin", new RegExp(`${ids.mid}`));
       const pairCount = await pair.evaluate((el) => (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length);
-      await expect(pair).toHaveAttribute("data-tip", pairCount === 1 ? "1 thread" : `${pairCount} threads`);
+      expect(pairCount).toBeGreaterThanOrEqual(3);
+      await expect(pair).toHaveAttribute("data-tip", `${pairCount} threads`);
       await pair.evaluate((el) => el.scrollIntoView({ block: "center" }));
       await settleScroll(page);
       const geom = await pair.evaluate((el) => {
@@ -922,13 +923,7 @@ test.describe("J374 margin pill", () => {
       await page.screenshot({ path: `${FRAMES}/margin-pill-${suffix}.png` });
 
       if (!combo.dark && combo.width === 1440) {
-        // Mid-paragraph highlight gets its own pill; single-thread pill
-        // on the second paragraph.
-        const mid = page.locator(`#C-problem [data-thr-margin~="${ids.mid}"]`);
-        await expect(mid).toBeVisible({ timeout: 15_000 });
-        await mid.evaluate((el) => el.scrollIntoView({ block: "center" }));
-        await settleScroll(page);
-        await page.screenshot({ path: `${FRAMES}/margin-mid-${suffix}.png` });
+        // Single-thread pill on the second paragraph.
         const single = page.locator(`#C-problem [data-thr-margin~="${ids.single}"]`);
         await expect(single).toBeVisible({ timeout: 15_000 });
         await expect(single).toHaveAttribute("data-tip", "1 thread");

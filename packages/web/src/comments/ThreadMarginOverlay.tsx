@@ -27,9 +27,16 @@ import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 
 interface Props {
-  /** Threads to mark (one icon per vertical bucket — see below). */
+  /** Threads to mark (one pill per block — see below). */
   threads: Thread[];
   readOnly?: boolean;
+  /**
+   * Issue #374 follow-up: floor for measured tops. A collapsed card's
+   * hidden body measures at the container's top line (0), which would
+   * straddle the card's top border — the collapsed card passes its
+   * title line here so the pill sits inside, aligned with the title.
+   */
+  minTop?: number;
 }
 
 function esc(id: string): string {
@@ -70,30 +77,41 @@ function fallbackTop(scope: Element, thread: Thread): number | null {
 }
 
 /**
- * Issue #364 follow-up (found by the 218 tour): threads anchored on the
- * same line would stack their icons pixel-on-pixel, and no stacked icon
- * is clickable. Buttons less than one icon apart share a bucket: one
- * pill with a count, toggling every thread in the bucket. The count
- * reads the bucket, never the thread.
+ * Issue #374 follow-up: one pill per block. Threads anchored in the same
+ * block share one pill — the single entry point for the block's threads —
+ * aligned to the block's first highlighted line (or its first line when
+ * nothing placed). The count reads every thread anchored in the block.
+ * (Issue #364 bucketed by vertical proximity; the owner asked for one
+ * marker per paragraph instead.)
  */
-const BUCKET_PX = 20;
-
 interface Bucket {
   top: number;
   threads: Thread[];
 }
 
-export function bucketsFor(threads: Thread[], tops: Record<string, number>): Bucket[] {
-  const placed = threads
-    .filter((t) => tops[t.id] !== undefined)
-    .sort((a, b) => (tops[a.id] as number) - (tops[b.id] as number));
-  const out: Bucket[] = [];
-  for (const t of placed) {
-    const last = out[out.length - 1];
-    if (last && (tops[t.id] as number) - last.top < BUCKET_PX) last.threads.push(t);
-    else out.push({ top: tops[t.id] as number, threads: [t] });
+/** Grouping key: the block (or description paragraph) a thread anchors in. */
+export function bucketKeyFor(thread: Thread): string {
+  const host = thread.anchor.host;
+  if (host.kind === "block") {
+    const hash = host.blockId.indexOf("#");
+    return `block:${hash >= 0 ? host.blockId.slice(hash + 1) : host.blockId}`;
   }
-  return out;
+  if (host.kind === "description") return `desc:${host.paragraphId}`;
+  return `thread:${thread.id}`;
+}
+
+export function bucketsFor(threads: Thread[], tops: Record<string, number>): Bucket[] {
+  const groups = new Map<string, Thread[]>();
+  for (const t of threads) {
+    if (tops[t.id] === undefined) continue;
+    const list = groups.get(bucketKeyFor(t)) ?? [];
+    list.push(t);
+    groups.set(bucketKeyFor(t), list);
+  }
+  return [...groups.values()].map((group) => ({
+    top: Math.min(...group.map((t) => tops[t.id] as number)),
+    threads: group.sort((a, b) => (tops[a.id] as number) - (tops[b.id] as number)),
+  }));
 }
 
 /**
@@ -105,7 +123,7 @@ export function marginLabel(n: number): string {
   return n === 1 ? "1 thread" : `${n} threads`;
 }
 
-export function ThreadMarginOverlay({ threads, readOnly }: Props) {
+export function ThreadMarginOverlay({ threads, readOnly, minTop = 0 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [tops, setTops] = useState<Record<string, number>>({});
 
@@ -130,9 +148,9 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
           top = null;
         }
         top ??= fallbackTop(scope, thread);
-        // No host at all (a collapsed card's hidden body): the icon sits
+        // No host at all (a collapsed card's hidden body): the pill sits
         // at the container's top line rather than vanishing.
-        next[thread.id] = Math.max(0, (top ?? base) - base);
+        next[thread.id] = Math.max(minTop, (top ?? base) - base);
       }
       setTops((prev) => {
         const keys = Object.keys(next);
@@ -148,7 +166,7 @@ export function ThreadMarginOverlay({ threads, readOnly }: Props) {
       window.clearTimeout(late);
       window.removeEventListener("resize", place);
     };
-  }, [threads]);
+  }, [threads, minTop]);
 
   // Issue #374: the pill is the single entry point, so it keeps the old
   // end-of-block toggle (#262): all open closes them all (no scroll — the

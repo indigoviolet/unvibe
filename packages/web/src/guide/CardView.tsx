@@ -481,6 +481,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         <ThreadMarginOverlay
           threads={cardThreads}
           readOnly={readOnlyCard}
+          minTop={8}
         />
         <div className="chead">
           <ControlButton
