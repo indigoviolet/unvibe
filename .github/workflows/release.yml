@@ -111,7 +111,9 @@ jobs:
           echo "tag=$TAG version=$VERSION branch=$BRANCH prerelease=$PRERELEASE"
 
       - name: Assemble release tree + tarball + local release branch
-        run: mise run release
+        # The debug assembly below rebuilds release/, so keep the lean
+        # notes (the GitHub release body renders from them).
+        run: mise run release && cp release/release-notes.json release-notes-lean.json
         env:
           UNVIBE_RELEASE_VERSION: ${{ steps.rel.outputs.version }}
           UNVIBE_RELEASE_BRANCH: ${{ steps.rel.outputs.branch }}
@@ -163,7 +165,7 @@ jobs:
       - name: Write release notes
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/v')
         run: |
-          node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md
+          node scripts/release-notes.mjs "${{ steps.rel.outputs.version }}" --tag "${{ github.ref_name }}" --output release-notes.md --notes-file release-notes-lean.json
           cat >> release-notes.md <<'EOF'
 
           ## Debug build (performance traces)
@@ -174,7 +176,7 @@ jobs:
           npm install -g github:indigoviolet/unvibe#release-debug
           ```
 
-          or switch an existing install with `unvibe update release-debug` (and back with `unvibe update release`). Turn recording on in Settings → Debug.
+          or switch an existing install with `unvibe update release-debug` (and back with `unvibe update release`), or download the attached `unvibe-${{ steps.rel.outputs.version }}-debug.tgz`. Turn recording on in Settings → Debug.
           EOF
 
       - name: Attach the tarballs to the GitHub release (ubuntu only)
