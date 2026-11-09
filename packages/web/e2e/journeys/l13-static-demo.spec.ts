@@ -430,7 +430,10 @@ test.describe("static-demo sync", () => {
       const out: Record<string, string> = {};
       for (const el of document.querySelectorAll('#page [id^="C-"]')) {
         const clone = el.cloneNode(true) as HTMLElement;
-        for (const t of clone.querySelectorAll("section.ithread, [data-pending-thread], button.cm, button.rlink, div.suggest"))
+        // Issue #374: the margin pills name live-thread counts (which
+        // differ by backend by design), so they are stripped like the
+        // thread sections themselves.
+        for (const t of clone.querySelectorAll("section.ithread, [data-pending-thread], button.cm, button.rlink, div.suggest, .tmargin"))
           t.remove();
         for (const t of clone.querySelectorAll("svg, style")) t.remove();
         for (const m of clone.querySelectorAll("span.lo mark.anc")) m.remove();

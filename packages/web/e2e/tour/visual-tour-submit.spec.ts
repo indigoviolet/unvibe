@@ -162,7 +162,8 @@ test.describe("J9 comment marker opens all (#205)", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
     // Guide: clicking one preview item opens only that comment.
-    const gMarker = page.locator("#C-central button.lk.cm[data-threads]");
+    // Issue #374: the margin pill is the entry point (no end bubble).
+    const gMarker = page.locator("#C-central [data-thr-margin]:has(:text-is(\"3\"))");
     await expect(gMarker).toBeVisible({ timeout: 15_000 });
     await expect(gMarker).toContainText("3");
     await hoverFresh(page, gMarker);
@@ -184,7 +185,7 @@ test.describe("J9 comment marker opens all (#205)", () => {
 
     // Description: same behaviour next to a paragraph.
     await page.locator('#right [role="tab"]').getByText(/description/i).click();
-    const dMarker = page.locator("#right .desc button.lk.cm[data-threads]");
+    const dMarker = page.locator("#right .desc [data-thr-margin]:has(:text-is(\"3\"))");
     await expect(dMarker).toBeVisible({ timeout: 15_000 });
     await expect(dMarker).toContainText("3");
     await hoverFresh(page, dMarker);
@@ -204,7 +205,7 @@ test.describe("J9 comment marker opens all (#205)", () => {
   });
 });
 
-test.describe("J262 comment marker is a toggle (#262)", () => {
+test.describe("J262 margin pill is a toggle (#262, #374)", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
@@ -219,7 +220,7 @@ test.describe("J262 comment marker is a toggle (#262)", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("marker expands, collapses, mixed opens all; tooltip states the action", async ({ page }) => {
+  test("pill expands, collapses, mixed opens all; tooltip names the count", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     const snapRes = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -256,84 +257,84 @@ test.describe("J262 comment marker is a toggle (#262)", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    // Guide: the marker starts as "Show comments".
-    const gMarker = page.locator("#C-central button.lk.cm[data-threads]");
+    // Guide: the pill names its count.
+    const gMarker = page.locator("#C-central [data-thr-margin]:has(:text-is(\"3\"))");
     await expect(gMarker).toBeVisible({ timeout: 15_000 });
     await expect(gMarker).toContainText("3");
-    await expect(gMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
 
-    // Expand from the marker: all three open, tooltip flips.
+    // Expand from the pill: all three open, tooltip still names the count.
     await gMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toBeVisible({ timeout: 15_000 });
     }
-    await expect(gMarker).toHaveAttribute("data-tip", "Hide comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
     await page.locator("#C-central").screenshot({ path: `${SHOTS}/j262-guide-open.png` });
 
-    // The tooltip states the collapse action.
+    // The tooltip names the count.
     await hoverFresh(page, gMarker);
-    await expect(page.locator("#tip")).toContainText("Hide comments", { timeout: 10_000 });
+    await expect(page.locator("#tip")).toContainText("3 threads", { timeout: 10_000 });
     await page.screenshot({ path: `${SHOTS}/j262-guide-tip.png` });
     await page.keyboard.press("Escape");
 
-    // Collapse from the marker: one click closes all three.
+    // Collapse from the pill: one click closes all three.
     await gMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toHaveCount(0, { timeout: 15_000 });
     }
-    await expect(gMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
 
-    // Mixed case: one open via its preview item, the marker opens all.
+    // Mixed case: one open via its preview item, the pill opens all.
     await hoverFresh(page, gMarker);
     await expect(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
     await page.locator("#pop [data-open-thread]").nth(1).click();
     const gThread2 = page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 2" });
     await expect(gThread2).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 1" })).toHaveCount(0);
-    await expect(gMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
     await gMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toBeVisible({ timeout: 15_000 });
     }
-    await expect(gMarker).toHaveAttribute("data-tip", "Hide comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
 
-    // Per-thread Close still works, and the marker's state follows it.
+    // Per-thread Close still works; the pill (and its count) stays.
     const gThread1 = page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 1" });
     await gThread1.getByRole("button", { name: "Close" }).click();
     await expect(gThread1).toHaveCount(0, { timeout: 10_000 });
-    await expect(gMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(gMarker).toHaveAttribute("data-tip", "3 threads");
 
     // Description: the same toggle next to a paragraph.
     await page.locator('#right [role="tab"]').getByText(/description/i).click();
-    const dMarker = page.locator("#right .desc button.lk.cm[data-threads]");
+    const dMarker = page.locator("#right .desc [data-thr-margin]:has(:text-is(\"3\"))");
     await expect(dMarker).toBeVisible({ timeout: 15_000 });
     await expect(dMarker).toContainText("3");
-    await expect(dMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(dMarker).toHaveAttribute("data-tip", "3 threads");
     await dMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toBeVisible({ timeout: 15_000 });
     }
-    await expect(dMarker).toHaveAttribute("data-tip", "Hide comments");
+    await expect(dMarker).toHaveAttribute("data-tip", "3 threads");
     await page.locator("#right .desc").screenshot({ path: `${SHOTS}/j262-desc-open.png` });
     await dMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toHaveCount(0, { timeout: 15_000 });
     }
-    await expect(dMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(dMarker).toHaveAttribute("data-tip", "3 threads");
 
-    // Description mixed case: one open, the marker opens all.
+    // Description mixed case: one open, the pill opens all.
     await hoverFresh(page, dMarker);
     await expect(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
     await page.locator("#pop [data-open-thread]").nth(0).click();
     const dThread1 = page.locator("#right .ithread[data-thread]", { hasText: "Toggle desc 1" });
     await expect(dThread1).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#right .ithread[data-thread]", { hasText: "Toggle desc 2" })).toHaveCount(0);
-    await expect(dMarker).toHaveAttribute("data-tip", "Show comments");
+    await expect(dMarker).toHaveAttribute("data-tip", "3 threads");
     await dMarker.click();
     for (let i = 1; i <= 3; i++) {
       await expect(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toBeVisible({ timeout: 15_000 });
     }
-    await expect(dMarker).toHaveAttribute("data-tip", "Hide comments");
+    await expect(dMarker).toHaveAttribute("data-tip", "3 threads");
   });
 });
 
