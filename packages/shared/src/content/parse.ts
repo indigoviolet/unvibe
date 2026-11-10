@@ -153,10 +153,41 @@ export interface RenderedInline {
   links: string[];
 }
 
+/**
+ * Citation tokens (`[[diff:…]]`, `[[code:…]]`, …) are stripped from display
+ * text, which can leave their brackets behind: "links ([[desc:x]])." would
+ * render "links ()." (#369). Drop bracket pairs left empty or holding only
+ * separators/whitespace ("()", "( )", "(, )", "(; )", "[]"), with the
+ * space before them. Pairs still holding text keep their text with the
+ * residue gap trimmed ("(see [[desc:x]])" → "(see)"); square brackets
+ * with text are left alone. Only text nodes are touched: tags (a link
+ * target may hold parens) and `<code>` spans (literal `foo()`) are never
+ * rewritten. Runs to a fixpoint for nested pairs ("(( ))").
+ */
+function stripEmptiedBrackets(html: string): string {
+  return html
+    .split(/(<code>[\s\S]*?<\/code>|<[^>]*>)/g)
+    .map((part) => {
+      if (part.startsWith("<")) return part;
+      let prev = "";
+      let cur = part;
+      while (cur !== prev) {
+        prev = cur;
+        cur = cur.replace(/ \([\s,;]*\)| \[[\s,;]*\]/g, "").replace(/\([\s,;]*\)|\[[\s,;]*\]/g, "");
+      }
+      // Surviving parens keep their text; trim the gap the token left.
+      cur = cur.replace(/\(([^()]*?)\)/g, (m, inner: string) =>
+        /[^\s,;]/.test(inner) ? `(${inner.trim()})` : m,
+      );
+      return cur;
+    })
+    .join("");
+}
+
 /** Render inline Markdown inside a block: emphasis, links, code spans, tokens. */
 export function renderInline(text: string): RenderedInline {
   const acc: InlineAcc = { citations: [], links: [] };
-  const html = inlineMd.renderInline(text, { acc });
+  const html = stripEmptiedBrackets(inlineMd.renderInline(text, { acc }));
   return { html, citations: acc.citations, links: acc.links };
 }
 

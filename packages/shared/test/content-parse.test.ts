@@ -467,6 +467,56 @@ describe("renderInline (Markdown inside a block)", () => {
   });
 });
 
+describe("emptied brackets after citation stripping (issue #369)", () => {
+  it("drops parens left empty at a sentence end", () => {
+    const blocks = parseBlocks("…for building the links ([[desc:d-p2]]).\n");
+    expect(blocks[0].type).toBe("paragraph");
+    if (blocks[0].type !== "paragraph") return;
+    expect(blocks[0].text.standard).toBe("…for building the links.");
+    expect(blocks[0].citations).toEqual([{ target: "desc:d-p2" }]);
+  });
+
+  it("drops parens holding only two stripped citations", () => {
+    const blocks = parseBlocks(
+      "Both scope the fix to folds ([[diff:changelog-1362.bugfix.rst:1-3]], [[desc:d-p1]]).\n",
+    );
+    expect(blocks[0].type).toBe("paragraph");
+    if (blocks[0].type !== "paragraph") return;
+    expect(blocks[0].text.standard).toBe("Both scope the fix to folds.");
+    expect(blocks[0].citations).toEqual([
+      { target: "diff:changelog-1362.bugfix.rst:1-3" },
+      { target: "desc:d-p1" },
+    ]);
+  });
+
+  it("keeps brackets that still hold real text", () => {
+    const blocks = parseBlocks("(see [[desc:d-p2]]) stays.\n");
+    expect(blocks[0].type).toBe("paragraph");
+    if (blocks[0].type !== "paragraph") return;
+    expect(blocks[0].text.standard).toBe("(see) stays.");
+    expect(blocks[0].citations).toEqual([{ target: "desc:d-p2" }]);
+  });
+
+  it("leaves code spans and link targets alone", () => {
+    const r = renderInline("call `foo()` and [docs](https://example.com/a()) done [[diff:conn:1]]");
+    expect(r.html).toContain("<code>foo()</code>");
+    expect(r.html).toContain('href="https://example.com/a()"');
+    expect(r.html).not.toContain("(diff");
+  });
+
+  it("covers the recorded-answer path (parseReply over ask-style text)", () => {
+    const parsed = parseReply(
+      "The trailing `[ \\t]+` is what separates a fold from a line end ([[diff:src-urllib3-connection.py:80-82]]).\n\n```json\n{}\n```\n",
+    );
+    expect(parsed.blocks).toHaveLength(1);
+    const first = parsed.blocks[0];
+    expect(first.type).toBe("paragraph");
+    if (first.type !== "paragraph") return;
+    expect(first.text.standard).not.toMatch(/\(\s*[,;]?\s*\)/);
+    expect(first.citations).toEqual([{ target: "diff:src-urllib3-connection.py:80-82" }]);
+  });
+});
+
 describe("parseCardsPartial (streaming)", () => {
   it("returns finished cards only; the growing last section is withheld", () => {
     const buf = "## One\n\nBody one.\n\n## Two\n\nBody two growing";
