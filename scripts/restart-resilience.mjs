@@ -53,8 +53,17 @@ fs.mkdirSync(DATA, { recursive: true });
 const PORT = Number(flag("--port", "0")) || (await freePort());
 console.log(`work dir: ${TMP} port: ${PORT}`);
 
+// Scratch HOME and no user session bus (#382): with the real HOME the CLI
+// sees the real login unit and `unvibe start` asks the real user manager
+// (reachable through DBUS_SESSION_BUS_ADDRESS) to start the real service.
+const HOME = path.join(TMP, "home");
+fs.mkdirSync(HOME, { recursive: true });
+const BASE_ENV = { ...process.env };
+delete BASE_ENV.DBUS_SESSION_BUS_ADDRESS;
 const ENV = {
-  ...process.env,
+  ...BASE_ENV,
+  HOME,
+  XDG_RUNTIME_DIR: path.join(TMP, "no-runtime"),
   UNVIBE_DATA_DIR: DATA,
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "0",
