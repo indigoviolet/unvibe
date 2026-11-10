@@ -161,6 +161,31 @@ test.describe("J349 personas settings", () => {
     await row.getByTestId("persona-second-opinion-edit").click();
   });
 
+  test("guide edit form frame", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    // Issue #379: the fixed Guide entry opened for editing — model
+    // pickers plus the Writing style lens, with no delete, no disable
+    // switch and no card instruction.
+    const row = page.getByTestId("persona-guide");
+    await expect(row).toBeVisible();
+    await expect(page.getByTestId("persona-guide-swatch")).toHaveCount(0);
+    await row.getByTestId("persona-guide-edit").click();
+    await expect(page.getByTestId("persona-guide-lens")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-provider")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-model")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-card-instruction")).toHaveCount(0);
+    await expect(page.getByTestId("persona-guide-follow-main")).toHaveCount(0);
+    await expect(page.getByTestId("persona-guide-enabled")).toHaveCount(0);
+    // Park the mouse away from the row so Close isn't caught in hover.
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "personas-guide-edit-form");
+    await page.screenshot({ path: path.join(SHOTS, "personas-guide-edit-form.png") });
+    await row.getByTestId("persona-guide-edit").click();
+  });
+
   test("add form frame", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(120_000);

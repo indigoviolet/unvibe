@@ -574,7 +574,9 @@ test.describe("L8 persona runs on cards", () => {
       const row = page.getByTestId("persona-guide");
       await expect.soft(row).toBeVisible({ timeout: 15_000 });
       await expect.soft(row).toContainText("Guide");
-      // The fixed entry has no delete and no disable switch.
+      // The fixed entry is neutral (no colour dot) with no delete and
+      // no disable switch.
+      await expect.soft(page.getByTestId("persona-guide-swatch")).toHaveCount(0);
       await expect.soft(row.getByRole("button", { name: /Delete/ })).toHaveCount(0);
       await row.getByTestId("persona-guide-edit").click();
       await expect.soft(page.getByTestId("persona-guide-lens")).toBeVisible();

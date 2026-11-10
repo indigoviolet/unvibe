@@ -109,9 +109,12 @@ export function PersonasSection({
             key={p.id}
             variant="raised"
             data-testid={`persona-${p.id}`}
-            style={{ borderLeft: `3px solid ${p.color}` }}
+            // Issue #379: the Guide row is neutral — no colour dot, no
+            // tinted border (its colour is data-only, never rendered).
+            style={p.id === GUIDE_PERSONA_ID ? undefined : { borderLeft: `3px solid ${p.color}` }}
           >
             <div className="frow" style={{ gap: 8, alignItems: "center" }}>
+              {p.id === GUIDE_PERSONA_ID ? null : (
               <span
                 aria-hidden="true"
                 title={`Colour ${p.color} (automatic)`}
@@ -124,6 +127,7 @@ export function PersonasSection({
                   background: p.color,
                 }}
               />
+              )}
               <div style={{ minWidth: 0, flex: "1 1 auto" }}>
                 <div style={{ fontSize: 13 }}>
                   <b>{p.name}</b>
