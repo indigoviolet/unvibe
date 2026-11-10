@@ -7,11 +7,14 @@ import {
   BUILT_IN_PERSONA_ID,
   CLARITY_PERSONA,
   CLARITY_PERSONA_ID,
+  GUIDE_PERSONA,
+  GUIDE_PERSONA_ID,
   PERSONA_COLORS,
   SECOND_OPINION_PERSONA,
   defaultPersonas,
   isPersonaColor,
   nextPersonaColor,
+  getGuidePersona,
   personaColorAt,
   slugifyPersonaName,
   validatePersona,
@@ -122,10 +125,11 @@ describe("built-in Second opinion", () => {
   it("defaultPersonas returns a fresh seed list", () => {
     const a = defaultPersonas();
     const b = defaultPersonas();
-    expect(a).toEqual([SECOND_OPINION_PERSONA, CLARITY_PERSONA]);
+    expect(a).toEqual([GUIDE_PERSONA, SECOND_OPINION_PERSONA, CLARITY_PERSONA]);
     expect(a).not.toBe(b);
-    expect(a[0]).not.toBe(SECOND_OPINION_PERSONA);
-    expect(a[1]).not.toBe(CLARITY_PERSONA);
+    expect(a[0]).not.toBe(GUIDE_PERSONA);
+    expect(a[1]).not.toBe(SECOND_OPINION_PERSONA);
+    expect(a[2]).not.toBe(CLARITY_PERSONA);
   });
 });
 
@@ -157,5 +161,44 @@ describe("built-in Clarity", () => {
     expect(CLARITY_PERSONA.lens).not.toContain("ask one narrow question");
     expect(CLARITY_PERSONA.lens).not.toContain("Output only the rewritten text");
     expect(CLARITY_PERSONA.lens).not.toContain("ask for it");
+  });
+});
+
+describe("built-in Guide (issue #379)", () => {
+  it("is the fixed main agent: owns its model, no card instruction, style empty by default", () => {
+    expect(GUIDE_PERSONA.id).toBe(GUIDE_PERSONA_ID);
+    expect(GUIDE_PERSONA.id).toBe("guide");
+    expect(GUIDE_PERSONA.name).toBe("Guide");
+    expect(GUIDE_PERSONA.enabled).toBe(true);
+    // It IS the main model: never follows, always explicit.
+    expect(GUIDE_PERSONA.followMain).toBe(false);
+    expect(GUIDE_PERSONA.provider).toBe("claude");
+    expect(GUIDE_PERSONA.model).toBe("claude-opus-5-5");
+    // No card instruction (its card task is the guide's own); the
+    // writing-style lens is empty by default (no behaviour change).
+    expect(GUIDE_PERSONA.cardInstruction).toBe("");
+    expect(GUIDE_PERSONA.lens).toBe("");
+    expect(validatePersona(GUIDE_PERSONA)).toEqual([]);
+  });
+
+  it("seeds first, leaving Second opinion and Clarity on their colours", () => {
+    const seed = defaultPersonas();
+    expect(seed.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    expect(seed[0]).toMatchObject({ id: GUIDE_PERSONA_ID });
+    expect(seed[1]).toMatchObject({ id: "second-opinion", color: PERSONA_COLORS[0] });
+    expect(seed[2]).toMatchObject({ id: "clarity", color: PERSONA_COLORS[1] });
+    expect(getGuidePersona(seed)).toMatchObject({ id: GUIDE_PERSONA_ID });
+    expect(getGuidePersona([])).toBeUndefined();
+  });
+
+  it("allows an empty lens only for the Guide", () => {
+    expect(validatePersona(valid({ lens: "" }))).toContain(
+      "persona lens must be a non-empty string",
+    );
+    expect(validatePersona(valid({ lens: "  " }))).toContain(
+      "persona lens must be a non-empty string",
+    );
+    expect(validatePersona({ ...valid({ lens: "" }), id: GUIDE_PERSONA_ID })).toEqual([]);
+    expect(validatePersona({ ...valid({ lens: "  " }), id: GUIDE_PERSONA_ID })).toEqual([]);
   });
 });

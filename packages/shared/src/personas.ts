@@ -77,6 +77,15 @@ export const BUILT_IN_PERSONA_ID = "second-opinion";
 export const CLARITY_PERSONA_ID = "clarity";
 
 /**
+ * Id of the built-in Guide persona (issue #379): the main agent. There
+ * is exactly one, and it cannot be deleted or disabled. It owns the
+ * main provider + model (replacing `settings.main`) and a writing-style
+ * lens (empty by default). Its colour is data-only, never rendered —
+ * the Guide tab stays untinted, exactly as before.
+ */
+export const GUIDE_PERSONA_ID = "guide";
+
+/**
  * The built-in Second opinion persona (issue #349): seeded into fresh
  * settings. Its card instruction reproduces today's "check" behaviour —
  * review the card's claims against the code; push back, correct, add
@@ -199,9 +208,40 @@ Do not decide which object resets without additional context.`,
   color: PERSONA_COLORS[1],
 };
 
+/**
+ * The built-in Guide persona (issue #379): the main agent itself. It
+ * owns the main provider + model (replacing `settings.main`) and a
+ * writing-style lens that is empty by default, so behaviour is
+ * unchanged until the owner writes one. When set, the lens is prefixed
+ * to every main-agent writing turn (guide, cards, depth, Explain, Ask)
+ * as a subordinate style section — it governs tone and wording only.
+ * No card instruction (its card task is the guide's own), never offered
+ * as a run choice on cards, never tinted. After seeding it stays fixed:
+ * not deletable, not disableable, `followMain` always false (it IS the
+ * model others follow). The colour is the first sequence slot neither
+ * built-in uses, so Second opinion and Clarity keep theirs; it is never
+ * rendered.
+ */
+export const GUIDE_PERSONA: Persona = {
+  id: GUIDE_PERSONA_ID,
+  name: "Guide",
+  followMain: false,
+  provider: "claude",
+  model: "claude-opus-5-5",
+  lens: "",
+  cardInstruction: "",
+  enabled: true,
+  color: PERSONA_COLORS[2],
+};
+
 /** Fresh seed list for new settings (never share the mutable array). */
 export function defaultPersonas(): Persona[] {
-  return [structuredClone(SECOND_OPINION_PERSONA), structuredClone(CLARITY_PERSONA)];
+  return [structuredClone(GUIDE_PERSONA), structuredClone(SECOND_OPINION_PERSONA), structuredClone(CLARITY_PERSONA)];
+}
+
+/** The Guide persona in a list, or undefined when absent. Pure. */
+export function getGuidePersona(personas: Persona[]): Persona | undefined {
+  return personas.find((p) => p.id === GUIDE_PERSONA_ID);
 }
 
 /** Colour for a creation index (wraps the sequence). Pure. */
@@ -264,8 +304,12 @@ export function validatePersona(p: unknown): string[] {
   if (typeof o["model"] !== "string" || (o["model"] as string).trim() === "") {
     errors.push("persona model must be a non-empty string");
   }
-  if (typeof o["lens"] !== "string" || (o["lens"] as string).trim() === "") {
-    errors.push("persona lens must be a non-empty string");
+  if (typeof o["lens"] !== "string" || ((o["lens"] as string).trim() === "" && o["id"] !== GUIDE_PERSONA_ID)) {
+    errors.push(
+      o["id"] === GUIDE_PERSONA_ID
+        ? "guide persona lens must be a string (empty means no writing-style lens)"
+        : "persona lens must be a non-empty string",
+    );
   }
   if (typeof o["cardInstruction"] !== "string") {
     errors.push("persona cardInstruction must be a string (empty means the card default applies)");
