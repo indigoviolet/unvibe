@@ -704,8 +704,9 @@ needed (that deviation is closed, not added).
   shows a comment icon
   in the margin (on its highlight's first line, else its paragraph's
   first line; diff lines keep their gutter icons), clicking it opens
-  and scrolls to the thread; each answer carries an “↑ quoted text”
-  reverse link that scrolls to the passage and flashes it (margin
+  and scrolls to the thread; each answer carries an icon-only reverse
+  link (same “Show the quoted passage” tooltip and name, #381) that
+  scrolls to the passage and flashes it (margin
   marker's line as fallback); turns read as tinted full-width question
   bands with ~24px + divider between turns only; Ask inside a thread
   uses the thread's own Reply box with a removable quote chip (no
