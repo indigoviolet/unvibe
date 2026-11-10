@@ -61,4 +61,19 @@ export {
   liveBlockLists,
 } from "./blocks.js";
 export { renderUntrustedMarkdown } from "./untrusted.js";
+export {
+  blocksToMarkdown,
+  cardToMarkdown,
+  citationToMarkdown,
+  contextFromSnapshot,
+  htmlInlineToMarkdown,
+  replyToMarkdown,
+  tableHtmlToMarkdown,
+} from "./copy-markdown.js";
+export type {
+  BlockMarkdownOptions,
+  CopyMarkdownContext,
+  CopyMarkdownPage,
+  CopyMarkdownRepo,
+} from "./copy-markdown.js";
 export type { BlockSnapshot } from "./blocks.js";

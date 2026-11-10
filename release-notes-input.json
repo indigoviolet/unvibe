@@ -1,48 +1,17 @@
 {
-  "356": {
-    "whatChanged": "Opt-in performance traces (OpenTelemetry) for this machine only: turn on Record in Settings → Debug to record HTTP requests, jobs, child processes, SQLite and the open-to-first-card time, plus the browser’s page load, fetches and clicks. Traces stay local with no time window and survive data resets and version switches, because they live next to the data folder rather than in it. A 256 MB safety limit pauses recording without deleting anything; Debug shows the size, Clear and Export (OTLP JSON, readable by Jaeger and Perfetto). The export is scrubbed: only numbers, enums and salted hashes, never code, paths, tokens or prompt text. Tracing ships only in the debug build, so the normal install stays lean and its Debug section shows how to install the debug build. The stats export now includes conversation turns, read line ranges and a skipped-summary count per review.",
-    "whatToTry": "Install the debug build (the command is in Settings → Debug), turn on Record, open a review, then Export traces.",
-    "caveats": "Debug builds of previews and releases are published separately (release-debug, preview/<name>-debug)."
+  "373": {
+    "whatChanged": "The debug build (release-debug) now ships the same release notes as the normal build: Settings → Version shows its changes and any data reset. A release build fails if either flavour's notes come out empty. release-debug is now a release channel: it is always listed and switchable in Settings → Version, without the previews toggle."
   },
-  "357": {
-    "whatChanged": "Test suite pruning, pass 2: duplicate, wording-only and removed-feature tests cut, and overlapping journeys merged; no change in the app."
+  "374": {
+    "whatChanged": "Each paragraph, list or aside with threads has one comment pill in the card's left gutter, fully visible, with the glyph and the thread count side by side and a \"N threads\" tooltip. It is the only marker: the end-of-paragraph comment bubble and the inline glyphs after highlights are gone. A collapsed card shows one pill with all its threads. Closing and reopening a thread no longer adds extra glyphs.",
+    "whatToTry": "Open a review with several threads on one paragraph; check the pill, hover it, click it to open and close the threads a few times, then collapse the card.",
+    "caveats": "Cards with threads reserve a small left gutter, so their text sits slightly further right than cards without threads."
   },
-  "358": {
-    "whatChanged": "New mise run test:affected (check plus only the browser tests your change affects, with extra triggers for fixtures, data format, prompts and styles) and mise run gate:failed (re-run only what failed). No change in the app."
+  "375": {
+    "whatChanged": "On the debug build (release-debug) the top-bar update icon no longer shows when no newer release exists; it appears only for a strictly newer release and points debug installs at release-debug.",
+    "whatToTry": "On a release-debug install of the current release, check that no gift icon shows."
   },
-  "359": {
-    "whatChanged": "New built-in persona \"Clarity\": it rewrites a guide card in clearer prose with the same facts, hedges and citations, and leaves a card that is already clear unchanged. It runs on your main model (Settings → Personas shows \"Main model (…)\"; untick to pin a specific model). A persona on the same model as main shares main’s base session, with its lens given at the start of each persona turn, so it adds no extra session build.",
-    "whatToTry": "On a guide card, open the persona button → Clarity, then compare the Clarity tab with Guide.",
-    "caveats": "Data format 4 → 5: the app asks for a data reset on first start (export Outbox drafts first)."
-  },
-  "362": {
-    "whatChanged": "Browser tests run once at 1440, light, Default theme; dark, other themes and 960 only for a short named list of scenes, and the full matrix only on demand. No change in the app."
-  },
-  "363": {
-    "whatChanged": "The browser test suite is rebuilt as 14 long journeys (start page, opening, reading, threads, submit and Outbox, diff, versions and Since, personas, settings, recovery, documents, extension, static demo, debug): 357 tests in 97 files become 191 in 16, with far fewer service starts. Screenshot capture moved to an on-demand tour (mise run visual-tour), test:affected runs the journeys on one throttled core to catch timing races early, and AGENTS.md has fix-it-properly rules for flaky tests. No change in the app."
-  },
-  "364": {
-    "whatChanged": "Threads: each reply has a delete control; deleting leaves a \"Reply deleted · Undelete\" line that survives reloads (an answer goes with its question, and deleting the last live turn removes the thread). A comment icon always sits in the margin beside the highlighted line, so a thread can never lose its link to the text, and each answer has a \"↑ quoted text\" link that scrolls back and flashes the passage. Questions show as tinted bands with more space between turns, and Ask inside a thread uses the thread’s own Reply box with a removable quote chip instead of a second composer.",
-    "whatToTry": "In a thread, delete a reply and undelete it; click the margin icon beside a highlight; use ↑ quoted text on an answer; select text inside a thread and press Ask."
-  },
-  "365": {
-    "whatChanged": "The agent now reads the review instead of being handed text: a get_item tool lets it fetch any card, block, page, thread, reply or description paragraph with its parents and children, and every reply has a stable ID (ann:<thread>#r<n>). Ask and Explain turns carry only the quote, its exact ID and offsets, and your question (plus the changed hunks when the code moved); a plain follow-up carries just the question. Other threads’ answers no longer leak into a turn.",
-    "whatToTry": "Explain a phrase inside an existing thread, then ask a follow-up; the answers stay about that thread.",
-    "caveats": "Data format 5 → 6: the app asks for a data reset on first start (export Outbox drafts first)."
-  },
-  "366": {
-    "whatChanged": "Usage statistics now live in the performance traces: job and review spans carry the model, tokens, tool counts, reads (hashed file, line range, inside or outside the diff), repairs, failures and timings, and per-review sizes, as numbers, enums and hashes only, scrubbed on export. The separate stats export (Debug button and unvibe stats export) is gone; mise run stats:summary reads a trace export instead.",
-    "whatToTry": "In a debug build, record traces, open a review and ask something, then Export traces and run mise run stats:summary on the file.",
-    "caveats": "The normal (lean) build records no usage statistics at all; install the debug build to record them."
-  },
-  "367": {
-    "whatChanged": "After Update, the review no longer contradicts itself: every card’s \"cited hunks changed\" banner clears, and the diff banner reads \"Updated to v2 · since v1\" with no Update button. Before an update it reads \"New commits · v1 → v2\" with Update. The update pass also confirms which stale cards it judged unaffected. Nothing anywhere offers an Update that would be refused.",
-    "whatToTry": "On a review whose PR gained commits, refresh, press Update, then check the cards and the diff banner."
-  },
-  "368": {
-    "whatChanged": "The \"changed since reviewed\" badge in a diff hunk header has the same gap as the other header chips."
-  },
-  "370": {
-    "whatChanged": "Test-only safety fix: a test-started Unvibe service no longer applies the login shell’s PATH, and refuses to run any gh, git or agent CLI that is not the test harness’s fake. Before, a broken test setup could make a test service call the real gh with your login (read-only). No change in the app you use."
+  "378": {
+    "whatChanged": "Development only: the global-install check no longer reaches the real login service on the machine running it; every install scenario now stays inside its sandbox."
   }
 }

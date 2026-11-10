@@ -60,6 +60,21 @@ describe("SettingsStore", () => {
     // Nothing persisted on failure.
     expect(store.get()).toEqual(DEFAULT_SETTINGS);
   });
+
+  it("persists the hunk summary limit and rejects out-of-range values (issue #376)", () => {
+    const store = makeStore();
+    expect(store.get().hunkSummaryLimit).toBe(50);
+    expect(store.update({ hunkSummaryLimit: 0 }).errors).toBeUndefined();
+    expect(store.get().hunkSummaryLimit).toBe(0);
+    expect(store.update({ hunkSummaryLimit: 500 }).errors).toBeUndefined();
+    expect(store.update({ hunkSummaryLimit: -1 }).errors).toMatchObject([
+      expect.stringContaining("hunkSummaryLimit"),
+    ]);
+    expect(store.update({ hunkSummaryLimit: 501 }).errors).toHaveLength(1);
+    expect(store.update({ hunkSummaryLimit: 1.5 }).errors).toHaveLength(1);
+    // Nothing persisted on failure.
+    expect(store.get().hunkSummaryLimit).toBe(500);
+  });
 });
 
 describe("StaticModelCatalog", () => {

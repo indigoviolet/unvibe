@@ -1051,13 +1051,14 @@ test.describe("L6 demo diff work", () => {
     svc = await startService(dataDir, { agent: "replay", label: "l6demo" });
     foldReview = await createDemoReview(svc);
     summaryReview = await createDemoReview(svc);
-    // j13's hunk summaries land asynchronously.
+    // j13's hunk summaries land asynchronously (issue #376: only the 5
+    // visible hunks are auto-summarised; hidden ones never are).
     {
       const deadline = Date.now() + 90_000;
       for (;;) {
         const snap = await apiJson(svc, "GET", `/api/reviews/${summaryReview}`);
         const states = (snap.json as { hunkStates?: { summary?: string }[] }).hunkStates ?? [];
-        if (states.filter((s) => s.summary).length >= 8) break;
+        if (states.filter((s) => s.summary).length >= 5) break;
         if (Date.now() > deadline) throw new Error("hunk summaries did not land");
         await new Promise((r) => setTimeout(r, 500));
       }
@@ -1163,6 +1164,8 @@ test.describe("L6 demo diff work", () => {
     await test.step("hunk scores land; plotline filter keeps every file", async () => {
       // Hunk passes land asynchronously; wait until every hunk carries a score
       // (an unscored hunk matches any score filter, so filtering earlier lies).
+      // Issue #376: scores land with the auto summaries, so only the 5
+      // visible hunks carry one (hidden hunks never do).
       await expect
         .poll(
           async () => {
@@ -1172,7 +1175,7 @@ test.describe("L6 demo diff work", () => {
           },
           { timeout: 90_000 },
         )
-        .toBe(8);
+        .toBe(5);
       await expect.soft(page.locator(".dhunk-h .score-dot").first()).toBeVisible({ timeout: 30_000 });
       await expect.soft(page.locator('.dhunk-h .score-dot[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
       await expect.soft(page.locator(".dhunk-h .ptag", { hasText: "Unfold obsolete folded response headers" }).first()).toBeVisible({ timeout: 30_000 });
@@ -1226,7 +1229,8 @@ test.describe("L6 demo diff work", () => {
     const connFileLoc = page.locator(`[id="F-${CONN}"]`);
 
     await test.step("filters combine: file type AND plotline AND level (#190)", async () => {
-      // Wait for the hunk pass so every hunk carries a score and plotline.
+      // Wait for the hunk pass so every hunk carries a score and plotline
+      // (issue #376: the 5 visible hunks; hidden ones never get scores).
       await expect
         .poll(
           async () => {
@@ -1236,7 +1240,7 @@ test.describe("L6 demo diff work", () => {
           },
           { timeout: 90_000 },
         )
-        .toBe(8);
+        .toBe(5);
       await expect.soft(page.locator('.dhunk-h .score-ind[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
 
       // File-type filter first: Tests off hides both test files.
@@ -1426,6 +1430,64 @@ test.describe("L6 demo diff work", () => {
       await page.locator('#selbar [data-act="explain"]').click();
       await expect.soft(page).toHaveURL(pageUrl, { timeout: 30_000 });
     });
+  });
+
+  test("top-N auto summaries with header and Summarize more (#376)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const s = service();
+    if (!s) throw new Error("no service");
+    // A small budget: 3 of the demo's 8 hunks summarise automatically
+    // (source first), the hidden ones never do.
+    await apiJson(s, "PUT", "/api/settings", { hunkSummaryLimit: 3 });
+    try {
+      const cappedReview = await createDemoReview(s);
+      // Wait for the top-3 batch, then for the pipeline to go quiet: the
+      // guide-cited reprioritisation draws on the same budget N, so no
+      // further auto summaries can arrive.
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        const snap = await apiJson(s, "GET", `/api/reviews/${cappedReview}`);
+        const states = (snap.json as { hunkStates?: { summary?: string }[] }).hunkStates ?? [];
+        const jobs = (snap.json as { jobs?: { state: string }[] }).jobs ?? [];
+        const open = jobs.some((j) => j.state !== "done" && j.state !== "error" && j.state !== "cancelled");
+        if (states.filter((st) => st.summary).length >= 3 && !open) break;
+        if (Date.now() > deadline) throw new Error("top-3 summaries did not settle");
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      const settled = await apiJson(s, "GET", `/api/reviews/${cappedReview}`);
+      const body = settled.json as {
+        files: { path: string; hunks: { contentHash: string; hiddenReason?: string }[] }[];
+        hunkStates: { contentHash: string; summary?: string }[];
+      };
+      expect(body.hunkStates.filter((st) => st.summary)).toHaveLength(3);
+      // Source first: both connection.py hunks carry summaries.
+      const conn = body.files.find((f) => f.path === "src/urllib3/connection.py")!;
+      for (const h of conn.hunks) {
+        expect(body.hunkStates.find((st) => st.contentHash === h.contentHash)?.summary).toBeTruthy();
+      }
+      const hiddenHashes = new Set(
+        body.files.flatMap((f) => f.hunks).filter((h) => h.hiddenReason !== undefined).map((h) => h.contentHash),
+      );
+      expect(hiddenHashes.size).toBeGreaterThan(0);
+
+      await openReview(page, cappedReview);
+      await expect(page.getByText("Summaries for 3 of 8 hunks")).toBeVisible({ timeout: 30_000 });
+      // Summarize more queues the next visible hunks in the same order.
+      await page.getByRole("button", { name: "Summarize more" }).click();
+      await expect(page.getByText("Summaries for 5 of 8 hunks")).toBeVisible({ timeout: 120_000 });
+      const after = await apiJson(s, "GET", `/api/reviews/${cappedReview}`);
+      const afterStates = (after.json as { hunkStates?: { contentHash: string; summary?: string }[] }).hunkStates ?? [];
+      expect(afterStates.filter((st) => st.summary)).toHaveLength(5);
+      // Hidden hunks stay bare through every automatic and batch path.
+      for (const hash of hiddenHashes) {
+        expect(afterStates.find((st) => st.contentHash === hash)?.summary).toBeUndefined();
+      }
+      // Nothing left to queue: the button says so.
+      await page.getByRole("button", { name: "Summarize more" }).click();
+      await expect(page.locator("#toast")).toContainText("Every hunk already has a summary.", { timeout: 30_000 });
+    } finally {
+      await apiJson(s, "PUT", "/api/settings", { hunkSummaryLimit: 50 });
+    }
   });
 
   test("plotlines read as chips, filter, review and disable on old versions (#242, #324, #343)", async ({ page }) => {

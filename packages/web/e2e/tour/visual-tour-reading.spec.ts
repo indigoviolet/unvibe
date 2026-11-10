@@ -73,6 +73,22 @@ for (const combo of [{ name: "1440-light", width: 1440, dark: false }] as const)
   });
 }
 
+// ---- copy-markdown (#377): the card toolbar's copy icon with its tooltip ----
+test("copy as Markdown toolbar icon with tooltip (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  const button = page.locator('#C-central [data-copy-card="central"]');
+  await expect(button).toBeVisible();
+  await hoverFresh(page, button);
+  await expect(page.locator("#tip")).toContainText("Copy as Markdown", { timeout: 10_000 });
+  await checkLayout(page, "copy-markdown");
+  await page.screenshot({ path: path.join(SHOTS, "copy-markdown-1440-light.png") });
+});
+
 
 // ---- j20-critic-concepts-godeeper.spec.ts (frames re-added) ----
 /** J20 (#215/#216/#217): one critic job, concept pages on open, auto go-deeper — real service, replay. */

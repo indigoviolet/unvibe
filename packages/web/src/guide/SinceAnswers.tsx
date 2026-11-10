@@ -8,14 +8,7 @@
  */
 import type { SinceFeedbackLink } from "@unvibe/shared";
 
-/**
- * Strip a leading "Updated since vN …:" from an addendum body. The
- * prompt tells the agent not to write it, but older passes may have;
- * the dated header above the body already says it. Pure.
- */
-export function stripAddendumPrefix(standard: string): string {
-  return standard.replace(/^updated since (?:v\d+|[0-9a-f]{7,8})\s*(·[^:]*)?[:\-–—]\s*/i, "");
-}
+export { stripAddendumPrefix } from "@unvibe/shared";
 
 function AnswerLink({ answer }: { answer: SinceFeedbackLink }): React.JSX.Element {
   const text = `${answer.label} — “${answer.excerpt}”`;

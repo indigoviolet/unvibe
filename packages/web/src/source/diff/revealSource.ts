@@ -67,17 +67,20 @@ function diffPane(): HTMLElement | null {
 /**
  * Total height of the rows pinned at the top of `#right` that sit above a
  * reveal target (0 when the pane isn't mounted, e.g. unit tests). A `"line"`
- * target lands below all four rows (a file header and a hunk header pin
+ * target lands below all five rows (a file header and a hunk header pin
  * above it); a `"file"` target is the file header itself, so it lands below
- * the tab strip plus actions bar only. Every header kind is a uniform single
- * row, so sampling the first mounted one stands in for the pinned one.
+ * the tab strip plus actions bar plus the summary header (issue #376).
+ * Every header kind is a uniform single row, so sampling the first mounted
+ * one stands in for the pinned one.
  */
 export function diffPinnedHeight(scope: RevealScope = "line"): number {
   const pane = diffPane();
   if (!pane) return 0;
   const top =
     measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK) +
-    measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+    measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK) +
+    // Issue #376: the summary header pins with the stack (0 when absent).
+    measuredHeight(pane.querySelector(".dsumbar"), 0);
   if (scope === "file") return top;
   return (
     top +
@@ -89,26 +92,30 @@ export function diffPinnedHeight(scope: RevealScope = "line"): number {
 /**
  * Write the pinned rows' live heights onto `#right` as CSS variables, so
  * each sticky `top` tracks the rows above it without hard-coding a height:
- * `--diffbar-top` (tab strip), `--dfile-top` (strip + bar), `--dhunk-top`
- * (strip + bar + file header). No-op when the pane isn't mounted.
+ * `--diffbar-top` (tab strip), `--dsumbar-top` (strip + bar, issue #376),
+ * `--dfile-top` (strip + bar + summary header), `--dhunk-top` (all of
+ * those plus the file header). No-op when the pane isn't mounted.
  */
 export function refreshDiffPinned(): void {
   const pane = diffPane();
   if (!pane) return;
   const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
   const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+  const sum = measuredHeight(pane.querySelector(".dsumbar"), 0);
   const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
   const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
   pane.style.setProperty("--diffbar-top", `${strip}px`);
-  pane.style.setProperty("--dfile-top", `${strip + bar}px`);
-  pane.style.setProperty("--dhunk-top", `${strip + bar + file}px`);
+  pane.style.setProperty("--dsumbar-top", `${strip + bar}px`);
+  pane.style.setProperty("--dfile-top", `${strip + bar + sum}px`);
+  pane.style.setProperty("--dhunk-top", `${strip + bar + sum + file}px`);
   pane.style.setProperty("--dhunk-h", `${hunk}px`);
 }
 
 /**
  * Keep the pinned-offset variables equal to the rows' live heights (a
  * `ResizeObserver`, never a scroll listener: sticky positioning does the
- * pinning). The observer watches the pane plus the two top rows; header
+ * pinning). The observer watches the pane plus the top rows (strip, bar,
+ * and the #376 summary header when present); header
  * heights are re-sampled on every fire, and a MutationObserver re-marks
  * the stuck headers on DOM insertions (snapshot load, view switch,
  * filter change) that neither resize the pane nor scroll it.
@@ -129,15 +136,17 @@ export function observeDiffPinned(): () => void {
     const paneTop = pane.getBoundingClientRect().top;
     const strip = measuredHeight(pane.querySelector(".rstick"), RSTICK_FALLBACK);
     const bar = measuredHeight(pane.querySelector(".dtool"), DTOOL_FALLBACK);
+    // Issue #376: the summary header pins with the stack.
+    const sum = measuredHeight(pane.querySelector(".dsumbar"), 0);
     const file = measuredHeight(pane.querySelector(".dfile-h"), DFILE_FALLBACK);
     const hunk = measuredHeight(pane.querySelector(".dhunk-h"), DHUNK_FALLBACK);
-    // The pinned band: from the actions bar's bottom to the hunk
-    // slot's bottom. Every header intersecting it — stuck, incoming
+    // The pinned band: from the summary header's bottom (the actions
+    // bar's bottom when it is absent) to the hunk slot's bottom. Every header intersecting it — stuck, incoming
     // (a few px short of sticking) or outgoing (being pushed out) —
     // is marked `.stuck` and so paints above floating cards. The
     // band is then always covered by headers, never card text, at
     // every scroll offset including mid hand-off between files.
-    const bandTop = paneTop + strip + bar;
+    const bandTop = paneTop + strip + bar + sum;
     const bandBottom = bandTop + file + hunk;
     // The band backing (`.dband`) sits in flow directly before the
     // first file, pulled over that file's headers by its negative
@@ -171,10 +180,21 @@ export function observeDiffPinned(): () => void {
     });
   };
   let raf = 0;
+  // Issue #376: the summary header mounts and unmounts with the
+  // snapshot (present only while hunks lack summaries), which moves
+  // every slot below it. Recompute the offsets when its height changes
+  // (mount, unmount, wrap); width-driven changes already reach
+  // `refreshDiffPinned` through the pane resize observer.
+  let lastSum = -1;
   const scheduleStuck = (): void => {
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
+      const sum = measuredHeight(pane.querySelector(".dsumbar"), 0);
+      if (sum !== lastSum) {
+        lastSum = sum;
+        refreshDiffPinned();
+      }
       updateStuck();
     });
   };

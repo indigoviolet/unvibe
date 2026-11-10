@@ -1547,25 +1547,19 @@ needed (that deviation is closed, not added).
    evidence/assessment/confidence + suggested comments; concept pages
    written on demand only, #216) — met (demo `f-critic`/`f-critic-2` from the one
    combined critic recording — ran; #341 re-record).
-5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
-   — met (demo 8 summaries — ran from global install).
-   (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
-   per-hunk fan-out at ingest (no guide exists yet to cite): only
-   guide-cited hunks lacking a stored summary fan out once the reader
-   lands, everything else summarises on demand (`POST
-   …/hunks/:hash/summarize`, Fold-all; jobs dedupe per hunk hash). The
-   stage still reaches done (empty fan-out sets done; completions are
-   counted in the success path, fixing a race where concurrent jobs all
-   saw each other "running" and nobody marked done), and resume reruns
-   the same branch — never the full fan-out. The limit is shared
-   (`HUNK_PASS_FANOUT_LIMIT` in `packages/shared`, read by the pipeline
-   and the web): past it Fold all folds only and requests no summaries
-   (toast, tooltip and Tips copy say so; per-hunk Summarize stays
-   on-demand). Hide-uninteresting folding
-   needs no model summaries: it folds on the deterministic ingest hidden
-   reason, and summary-less rows render the reason copy with no spinner
-   (`DiffView.test.tsx` "folds on the deterministic hidden reason").
-   Deviation from PRD §11 step 5 noted below.
+5. Hunk pass (small model, summary + hiddenReason, never one-line;
+   guide-cited hunks hide like any other, #325) — met (demo 8 summaries
+   — ran from global install).
+   (#376) At most N summaries per review version (the `hunkSummaryLimit`
+   setting, default 50, 0 for none), picked source, tests, config, docs —
+   never generated, never hidden at the review's hide level. Cited hunks
+   get priority within the same N after the reader (queued cited jobs
+   raised; only unspent budget enqueues more — never extra jobs).
+   `POST …/hunks/summarize-more` queues the next N in the same order
+   (same eligibility); Fold all only folds. The diff header shows
+   "Summaries for X of Y hunks · Summarize more" whenever hunks lack
+   summaries, and the trace's `review.skipped` counts every hunk without
+   a summary to match.
 6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
@@ -1992,14 +1986,16 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     review, no separate ingest path). The user never edits the managed
     checkout, so fetching is safe; removing the repo deletes the clone
     (managed only), and only while it has no reviews.
-12. Huge-PR prompt tiers (#107): PRD §9.1 says L1 carries "the full
-    handwritten diff" with only the 40k-token header fallback, and §11
-    step 5 says the hunk pass summarises each hunk. Past the inline
-    budget L1 now degrades further (no-uninteresting-hunks → files-only
-    → counts-only, hard-capped at 80k tokens), and past 500 hunks the
-    hunk pass only fans out guide-cited hunks, summarising the rest on
-    demand. Under the budgets every prompt is byte-identical to the
-    PRD shape; only oversized reviews see the degraded tiers.
+12. Huge-PR prompt tiers (#107) and the top-N hunk cap (#376): PRD §9.1
+    says L1 carries "the full handwritten diff" with only the 40k-token
+    header fallback, and §11 step 5 caps the hunk pass at N summaries per
+    review version (the `hunkSummaryLimit` setting, default 50), picked
+    source first — never generated, never hidden. Past the inline budget
+    L1 degrades further (no-uninteresting-hunks → files-only →
+    counts-only, hard-capped at 80k tokens), and past N hunks the rest
+    summarise on demand (per-hunk Summarize, Summarize more). Under the
+    budgets every prompt is byte-identical to the PRD shape; only
+    oversized reviews see the degraded tiers.
 
 ## Open list
 
@@ -4259,3 +4255,37 @@ one-variant union today).
   assertions; Models halves moved to the small picker; pi picker
   flow runs through the Guide form), tour frame
   `personas-1440-light` (Guide entry). Full gates not yet run.
+
+## Addendum: #377 (branch `feat/377-copy-markdown`)
+
+- **Copy as Markdown (§4.4):** each card's hover toolbar (and each agent
+  answer's reply toolbar) carries a copy icon with the tooltip "Copy as
+  Markdown"; clicking copies the card/answer as shown and toasts "Copied
+  as Markdown" (the shared toast idiom, same shape as the Outbox copy).
+  The Markdown is built from the card's data model (never the DOM) by a
+  pure converter (`packages/shared/src/content/copy-markdown.ts`): the
+  title as a `##` heading (shared fallback when the reply carried none),
+  blocks at the shown depth level, the active persona variant's blocks,
+  lists (per-item citations, ordered starts), tables as pipe Markdown,
+  asides as quoted sections with their label, diagrams as fenced `d2`
+  with caption, sub-headings as `###`, finding links as titled text,
+  follow-ups as a labelled list. Citations become portable permalinks
+  `[path:lines](https://github.com/o/r/blob/<headSha>/path#Lx-Ly)` on PR
+  reviews (`diff:` tokens address new-side lines, so the permalink is the
+  new-side blob at the head commit — the same rule as the selection
+  toolbar) and plain `path:lines` on local/branch reviews; concept, card
+  and page links render as their visible label; description/document and
+  hunk citations degrade to plain text labels. The output never contains
+  `[[…]]` tokens. No new settings, jobs or agent calls; thread answers
+  are covered (same converter on the reply). Additive only: a new shared
+  module plus toolbar buttons, so `DATA_FORMAT` stays 6.
+  Evidence: `packages/shared/test/copy-markdown-377.test.ts` (18 tests:
+  depth level, persona-variant blocks, list, table, aside, d2, heading,
+  PR permalink, local path:lines, desc/doc labels, concept/card/page
+  labels, no `[[` in output), journey steps in `l3-reading` (card copy,
+  tooltip + clipboard + permalink), `l8-personas` (variant copy) and
+  `l4-threads` (answer copy), tour frame
+  `packages/web/visual-tour/copy-markdown-1440-light.png` (git-ignored,
+  toolbar icon + tooltip at 1440 light). Unit tests, typecheck and lint
+  green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
+  run.

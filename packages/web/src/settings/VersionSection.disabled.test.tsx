@@ -30,6 +30,7 @@ const SETTINGS: Settings = {
   logBatchTokens: 2000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
+  hunkSummaryLimit: 50,
   uiTheme: "default",
   versionPickerEnabled: true,
   fullAccess: false,

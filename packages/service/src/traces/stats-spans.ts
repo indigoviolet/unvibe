@@ -14,7 +14,7 @@
  * maps unknown enum values to `other` (the same fail-closed rule the
  * old exporter used).
  */
-import { HUNK_PASS_FANOUT_LIMIT, isDocumentReview } from "@unvibe/shared";
+import { isDocumentReview } from "@unvibe/shared";
 import type { Job, ReviewSnapshot } from "@unvibe/shared";
 
 export const JOB_KINDS = new Set([
@@ -288,7 +288,7 @@ export function reviewAttributes(snapshot: ReviewSnapshot): StatsAttrs {
     "review.kind": isDocumentReview(snapshot) ? "document" : "change",
     "review.files": files.length,
     "review.hunks": hunks,
-    "review.skipped": hunks > HUNK_PASS_FANOUT_LIMIT ? missingSummaries : 0,
+    "review.skipped": missingSummaries,
     "review.added": added,
     "review.removed": removed,
     "review.pages": (snapshot.pages ?? []).length,

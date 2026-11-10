@@ -26,7 +26,7 @@ const settings: Settings = {
   personas: [MOCK_GUIDE],
   sessionsPerProvider: 4, inlineBudgetTokens: 40000, rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000, logBatchTokens: 2000, cacheLifetimeMs: 300000,
-  idleExitMinutes: 10, versionPickerEnabled: false, fullAccess: false,
+  idleExitMinutes: 10, hunkSummaryLimit: 50, versionPickerEnabled: false, fullAccess: false,
   fullAccessAcknowledgedAt: null, autoGoDeeper: true, recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },

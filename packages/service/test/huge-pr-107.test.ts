@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewFile, ReviewSnapshot } from "@unvibe/shared";
+import { JOB_PRIORITY } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { isRetryableError } from "../src/agent/acp/errors.js";
 import {
@@ -24,7 +25,6 @@ import {
   charTokenEstimator,
   countCodePoints,
   DEFAULT_BASE_PROMPT_CAP_TOKENS,
-  DEFAULT_HUNK_PASS_FANOUT_LIMIT,
   DEFAULT_LEFTOVER_FLOOR_TOKENS,
   type ContextHunk,
   type L1Rung,
@@ -346,71 +346,306 @@ async function waitForStage(
   }
 }
 
-describe("hunk pass fan-out limit (#107)", () => {
-  it(`under the limit (${DEFAULT_HUNK_PASS_FANOUT_LIMIT}) every hunk is enqueued as today`, async () => {
+describe("top-N auto hunk summaries (#376)", () => {
+  /** Hashes back out of hunk-pass job dedupe anchors (`hunk:<hash>|…`). */
+  function hunkJobHashes(
+    ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+    id: string,
+  ): string[] {
+    return ctx.jobs
+      .listByReview(id)
+      .filter((j) => j.kind === "hunk-pass")
+      .map((j) => (j.dedupeKey?.split("|", 1)[0] ?? "").replace(/^hunk:/, ""));
+  }
+
+  async function setStages(
+    ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+    id: string,
+    stages: Record<string, string>,
+  ): Promise<void> {
+    await ctx.reviews.mutate(id, (draft) => {
+      draft.pipeline = { stages: { reader: "pending", base: "pending", critic: "pending", "hunk-pass": "pending", "go-deeper": "pending", ...stages } };
+    });
+  }
+
+  async function citeHashes(
+    ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+    id: string,
+    hashes: string[],
+  ): Promise<void> {
+    const snap = ctx.reviews.getSnapshot(id)!;
+    const byHash = new Map<string, { fileKey: string }>();
+    for (const file of snap.files) {
+      for (const hunk of file.hunks) byHash.set(hunk.contentHash, { fileKey: file.fileKey });
+    }
+    await ctx.reviews.mutate(id, (draft) => {
+      draft.pages = [
+        {
+          id: "root",
+          kind: "root",
+          title: "Guide",
+          cards: hashes.map((hash, i) => ({
+            id: `c${i}`,
+            pageId: "root",
+            title: `Card ${i}`,
+            level: "standard",
+            collapsed: false,
+            revision: 1,
+            blocks: [
+              {
+                type: "paragraph",
+                id: `b${i}`,
+                text: { standard: `See [[h:${byHash.get(hash)?.fileKey}:${hash}]]` },
+                citations: [{ target: `h:${byHash.get(hash)?.fileKey}:${hash}` }],
+              },
+            ],
+            undoStack: [],
+          })),
+        },
+      ];
+    });
+  }
+
+  /** Mixed-category review; hashes are `mx0…` in file/hunk order. */
+  async function makeMixedReview(
+    ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
+    files: { path: string; category: ReviewFile["category"]; hidden?: boolean }[],
+  ): Promise<{ id: string; hashes: string[] }> {
+    const id = `rv_h376${Math.random().toString(36).slice(2, 8)}`;
+    ctx.db
+      .prepare(
+        "INSERT INTO repos (id, owner, name, local_path, last_opened) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+      )
+      .run("demo", "demo", "urllib3-5020", "/tmp", Date.now());
+    ctx.db
+      .prepare(
+        "INSERT INTO reviews (id, repo_id, branch, pr_number, current_version, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+      )
+      .run(id, "demo", "main", null, 1, Date.now(), JSON.stringify({}));
+    ctx.db
+      .prepare(
+        "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING",
+      )
+      .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
+    const hashes: string[] = [];
+    const reviewFiles: ReviewFile[] = files.map((spec) => {
+      const fileKey = spec.path.replace(/[^A-Za-z0-9_.-]/g, "-");
+      const n = hashes.length;
+      const hash = `mx${n}`;
+      hashes.push(hash);
+      return {
+        fileKey,
+        path: spec.path,
+        category: spec.category,
+        hunks: [
+          {
+            contentHash: hash,
+            header: `@@ -${n * 10 + 1},2 +${n * 10 + 1},4 @@`,
+            newStart: n * 10 + 1,
+            newEnd: n * 10 + 4,
+            oldStart: n * 10 + 1,
+            oldEnd: n * 10 + 3,
+            added: 2,
+            removed: 1,
+            lines: [
+              { kind: "ctx", oldLine: n * 10 + 1, newLine: n * 10 + 1, text: `x${n} = 1` },
+              { kind: "del", oldLine: n * 10 + 2, text: `y${n} = 2` },
+              { kind: "add", newLine: n * 10 + 2, text: `z${n} = 3` },
+              { kind: "add", newLine: n * 10 + 3, text: `w${n} = 4` },
+            ],
+            ...(spec.hidden ? { hiddenReason: "imports" } : {}),
+          },
+        ],
+      };
+    });
+    const snap: ReviewSnapshot = {
+      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+      version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+      files: reviewFiles,
+      ingest: { status: "ready" },
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      fileStates: [],
+      viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" },
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      pipeline: {
+        stages: {
+          reader: "done",
+          base: "done",
+          critic: "done",
+          "hunk-pass": "pending",
+          "go-deeper": "pending",
+        },
+      },
+    };
+    ctx.reviews.putSnapshot(id, snap);
+    return { id, hashes };
+  }
+
+  it("ingest enqueues at most N in category order, skipping generated", async () => {
     const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
     const { app, ctx } = await demoApp(agents);
     try {
-      const { id, hashes } = await makeBigReview(ctx, 3);
-      const res = await ctx.pipeline.resumeReview(id);
-      const hunkJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass");
-      expect(hunkJobs).toHaveLength(3);
-      expect(res.jobIds).toHaveLength(3);
-      await ctx.jobs.drain(10000);
-      await waitForStage(ctx, id, "done");
-      const snap = ctx.reviews.getSnapshot(id)!;
-      for (const hash of hashes) {
-        expect(snap.hunkStates.find((s) => s.contentHash === hash)?.summary).toBe("Adds one row.");
-      }
+      ctx.settings.update({ hunkSummaryLimit: 3 });
+      const { id } = await makeMixedReview(ctx, [
+        { path: "docs/d.md", category: "docs" },
+        { path: "docs/e.md", category: "docs" },
+        { path: "src/s.py", category: "source" },
+        { path: "src/t.py", category: "source" },
+        { path: "test/u.py", category: "tests" },
+        { path: "gen/g.py", category: "generated" },
+        { path: "gen/h.py", category: "generated" },
+      ]);
+      // mx0-1 docs, mx2-3 source, mx4 tests, mx5-6 generated.
+      await ctx.pipeline.resumeReview(id);
+      expect(hunkJobHashes(ctx, id)).toEqual(["mx2", "mx3", "mx4"]);
     } finally {
       await app.close();
     }
   });
 
-  it("over the limit there is no fan-out and the stage still reaches done", async () => {
+  it("hidden and generated hunks are never auto-summarised", async () => {
     const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
     const { app, ctx } = await demoApp(agents);
     try {
-      const { id } = await makeBigReview(ctx, DEFAULT_HUNK_PASS_FANOUT_LIMIT + 50);
+      ctx.settings.update({ hunkSummaryLimit: 50 });
+      const { id, hashes } = await makeMixedReview(ctx, [
+        { path: "src/hidden.py", category: "source", hidden: true },
+        { path: "src/visible.py", category: "source" },
+        { path: "gen/g.py", category: "generated" },
+      ]);
+      await ctx.pipeline.resumeReview(id);
+      expect(hunkJobHashes(ctx, id)).toEqual([hashes[1]]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("at 0 no auto summaries run and the stage still reaches done", async () => {
+    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      ctx.settings.update({ hunkSummaryLimit: 0 });
+      const { id } = await makeBigReview(ctx, 3);
       const res = await ctx.pipeline.resumeReview(id);
       expect(res.jobIds).toHaveLength(0);
-      expect(ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass")).toHaveLength(0);
+      expect(hunkJobHashes(ctx, id)).toHaveLength(0);
       await waitForStage(ctx, id, "done");
-      // A resume in the same state must not re-enqueue the full fan-out either.
-      const again = await ctx.pipeline.resumeReview(id);
-      expect(again.jobIds).toHaveLength(0);
-      expect(ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass")).toHaveLength(0);
     } finally {
       await app.close();
     }
   });
 
-  it("over the limit only guide-cited hunks fan out, and they still get summaries", async () => {
-    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
+  it("guide-cited hunks get priority within N after the reader, never beyond it", async () => {
+    const agents = new FakeAgentRunner([
+      { match: "Hunk pass", events: hunkReplyEvents() },
+      {
+        match: "# Critic task",
+        events: [
+          { type: "text", delta: `No findings.\n\n\`\`\`json\n{"findings": []}\n\`\`\`\n` },
+          { type: "usage", inputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0, outputTokens: 3 },
+          { type: "done", stopReason: "end_turn" },
+        ],
+      },
+    ]);
+    // Cap 1 plus a gate on the hunk turns: the first hunk job stays
+    // running while the second stays queued, so the re-prioritisation is
+    // deterministic.
+    let releaseHunk!: () => void;
+    const hunkGate = new Promise<void>((r) => {
+      releaseHunk = r;
+    });
+    let hunkGated = true;
+    const origPrompt = agents.prompt.bind(agents);
+    agents.prompt = async function* (session, text, signal) {
+      if (hunkGated && text.includes("Hunk pass")) await hunkGate;
+      yield* origPrompt(session, text, signal);
+    };
     const { app, ctx } = await demoApp(agents);
     try {
-      // hunk hashes are deterministic (hx0..hxN); cite the first one.
-      const total = DEFAULT_HUNK_PASS_FANOUT_LIMIT + 20;
-      const { id } = await makeBigReview(ctx, total, ["hx0"]);
-      const res = await ctx.pipeline.resumeReview(id);
-      const hunkJobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass");
-      expect(hunkJobs).toHaveLength(1);
-      expect(res.jobIds).toHaveLength(1);
+      ctx.settings.update({ hunkSummaryLimit: 2, sessionsPerProvider: 1 });
+      const { id } = await makeBigReview(ctx, 3, ["hx2"]);
+      // Reader landed, base still open: the after-reader path runs.
+      await setStages(ctx, id, { reader: "done", base: "pending", critic: "done", "hunk-pass": "pending", "go-deeper": "done" });
+      await ctx.pipeline.resumeReview(id);
+      // The diff-last cited hunk wins the budget over the first two.
+      expect(hunkJobHashes(ctx, id)).toEqual(["hx2"]);
+      // Newly cited hx0 takes the last budget slot; hx1 stays on demand.
+      await citeHashes(ctx, id, ["hx0"]);
+      await setStages(ctx, id, { reader: "done", base: "pending", critic: "done", "hunk-pass": "pending", "go-deeper": "done" });
+      await ctx.pipeline.resumeReview(id);
+      expect(hunkJobHashes(ctx, id)).toEqual(["hx2", "hx0"]);
+      // Budget exhausted: nothing new enqueues, but the still-queued cited
+      // job is raised ahead of the background band (the running one keeps
+      // its band).
+      await setStages(ctx, id, { reader: "done", base: "pending", critic: "done", "hunk-pass": "pending", "go-deeper": "done" });
+      await ctx.pipeline.resumeReview(id);
+      expect(hunkJobHashes(ctx, id)).toEqual(["hx2", "hx0"]);
+      const jobs = ctx.jobs.listByReview(id).filter((j) => j.kind === "hunk-pass");
+      const ofHash = (hash: string) =>
+        jobs.find((j) => (j.dedupeKey?.split("|", 1)[0] ?? "") === `hunk:${hash}`);
+      expect(ofHash("hx2")?.state).toBe("running");
+      expect(ofHash("hx0")?.state).toBe("queued");
+      expect(ofHash("hx0")?.priority).toBe(JOB_PRIORITY.visible);
+      expect(ofHash("hx2")?.priority).toBe(JOB_PRIORITY.background);
+      hunkGated = false;
+      releaseHunk();
       await ctx.jobs.drain(10000);
       await waitForStage(ctx, id, "done");
       const snap = ctx.reviews.getSnapshot(id)!;
+      expect(snap.hunkStates.find((s) => s.contentHash === "hx2")?.summary).toBe("Adds one row.");
       expect(snap.hunkStates.find((s) => s.contentHash === "hx0")?.summary).toBe("Adds one row.");
-      expect(snap.hunkStates).toHaveLength(1);
+      expect(snap.hunkStates.find((s) => s.contentHash === "hx1")).toBeUndefined();
     } finally {
       await app.close();
     }
   });
 
-  it("over the limit an on-demand request enqueues exactly one job and a repeat dedupes", async () => {
+  it("summarizeMore queues the next N in order, skipping hidden hunks", async () => {
     const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
     const { app, ctx } = await demoApp(agents);
     try {
-      const { id, hashes } = await makeBigReview(ctx, DEFAULT_HUNK_PASS_FANOUT_LIMIT + 10);
+      ctx.settings.update({ hunkSummaryLimit: 2 });
+      const { id, hashes } = await makeMixedReview(ctx, [
+        { path: "src/a.py", category: "source" },
+        { path: "src/b.py", category: "source" },
+        { path: "src/h.py", category: "source", hidden: true },
+        { path: "docs/d.md", category: "docs" },
+      ]);
+      await ctx.pipeline.resumeReview(id);
+      expect(hunkJobHashes(ctx, id)).toEqual([hashes[0], hashes[1]]);
+      await ctx.jobs.drain(10000);
+      await waitForStage(ctx, id, "done");
+      // First batch landed; the next batch continues past it and never
+      // touches the hidden hunk.
+      const jobs = await ctx.pipeline.summarizeMore(id);
+      expect(jobs.map((j) => (j.dedupeKey?.split("|", 1)[0] ?? "").replace(/^hunk:/, ""))).toEqual([hashes[3]]);
+      await ctx.jobs.drain(10000);
+      const snap = ctx.reviews.getSnapshot(id)!;
+      expect(snap.hunkStates.find((s) => s.contentHash === hashes[3])?.summary).toBe("Adds one row.");
+      expect(snap.hunkStates.find((s) => s.contentHash === hashes[2])).toBeUndefined();
+      // The route answers 202 with the batch's job ids.
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reviews/${id}/hunks/summarize-more`,
+        headers: { authorization: "Bearer tok" },
+      });
+      expect(res.statusCode).toBe(202);
+      expect((res.json() as { jobIds: string[] }).jobIds).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("an on-demand request still enqueues exactly one job and a repeat dedupes", async () => {
+    const agents = new FakeAgentRunner([{ match: "Hunk pass", events: hunkReplyEvents() }]);
+    const { app, ctx } = await demoApp(agents);
+    try {
+      const { id, hashes } = await makeBigReview(ctx, 10);
       const first = await ctx.pipeline.summarizeHunk(id, hashes[7]);
       const second = await ctx.pipeline.summarizeHunk(id, hashes[7]);
       if (!("id" in first) || !("id" in second)) throw new Error("expected jobs, got reused summaries");

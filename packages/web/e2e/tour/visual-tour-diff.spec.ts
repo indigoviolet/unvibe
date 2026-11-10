@@ -187,6 +187,59 @@ test.describe("J283 hidden-hunk rows", () => {
   }
 });
 
+// ---- j376 summary header (top-N auto summaries) ----
+test.describe("J376 summary header", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-data-"));
+    svc = await startService(dataDir, { agent: "replay" });
+    // A small budget on the bundled demo (8 hunks, 3 hidden): the header
+    // reads "Summaries for 3 of 8 hunks" with visible summaries above
+    // hidden rows that stay bare.
+    await apiJson(svc, "PUT", "/api/settings", { hunkSummaryLimit: 3 });
+    reviewId = await createDemoReview(svc);
+    // Wait for the top-3 batch, then for the pipeline to go quiet: the
+    // guide-cited reprioritisation draws on the same budget N, so no
+    // further auto summaries can arrive.
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+      const states = (snap.json as { hunkStates?: { summary?: string }[] }).hunkStates ?? [];
+      const jobs = (snap.json as { jobs?: { state: string }[] }).jobs ?? [];
+      const open = jobs.some((j) => j.state !== "done" && j.state !== "error" && j.state !== "cancelled");
+      if (states.filter((st) => st.summary).length >= 3 && !open) break;
+      if (Date.now() > deadline) throw new Error("top-3 summaries did not settle");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("summary header names the covered hunks with Summarize more (1440-light)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    // The header row in place: quiet line plus the on-demand button.
+    const line = page.locator(".dsumbar", { hasText: "Summaries for" });
+    await expect(line).toContainText("Summaries for 3 of 8 hunks", { timeout: 30_000 });
+    await expect(line.getByRole("button", { name: "Summarize more" })).toBeEnabled();
+    // Some hunks carry agent summaries while hidden rows stay bare.
+    await expect(page.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("button.hid").first()).toBeVisible({ timeout: 30_000 });
+    await checkLayout(page, "summary-header-1440-light");
+    await page.screenshot({ path: path.join(SHOTS, "376-summary-header-1440-light.png") });
+  });
+});
+
 // ---- j242-plotlines-card.spec.ts (frames re-added) ----
 test.describe("J242 plotlines card", () => {
   let dataDir = "";

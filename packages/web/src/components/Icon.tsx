@@ -50,6 +50,14 @@ const PATHS: Record<string, JSX.Element> = {
   ),
   comment: (<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z" />),
   code: (<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />),
+  // Issue #377: copy-as-Markdown (two overlapping sheets, same 16x16
+  // stroke style as the rest of the set).
+  copy: (
+    <>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
+      <path d="M10.5 5.5V4a1 1 0 00-1-1h-5a1 1 0 00-1 1v5a1 1 0 001 1h1" />
+    </>
+  ),
   x: (<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />),
   open: (<path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v4h-9v-9h4" />),
   send: (

@@ -180,10 +180,10 @@ async function driveSmall(scripts: { match: string; events: AgentEvent[] }[], by
   const id = `rv_p169${Math.random().toString(36).slice(2, 8)}`;
   seedDb(ctx, id);
   ctx.reviews.putSnapshot(id, smallSnapshot(id));
-  // Two phases: the first runs the reader (which lands plotlines); the
-  // second runs the hunk pass the ingest-time fan-out would have started
-  // (bypassed here by seeding the snapshot directly).
-  await ctx.pipeline.resumeReview(id);
+  // Two phases: `startReview` runs the reader plus the ingest-time top-N
+  // hunk pass; the second `resumeReview` runs the after-reader steps
+  // (critic, cited-hunk priority, go-deeper, plotline assign).
+  await ctx.pipeline.startReview(id);
   await ctx.jobs.drain(30000);
   await ctx.pipeline.resumeReview(id);
   await ctx.jobs.drain(30000);

@@ -33,6 +33,8 @@ export const DEFAULT_SETTINGS: Settings = {
   logBatchTokens: 2_000,
   cacheLifetimeMs: 5 * 60 * 1000,
   idleExitMinutes: 10,
+  /** Issue #376: at most this many hunk summaries per review version. */
+  hunkSummaryLimit: 50,
   /**
    * Version picker (issue #36, step 2; toggle meaning #231): releases
    * are always listed and switchable, and the update check always runs
@@ -133,6 +135,7 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   int("logBatchTokens", 1, 10_000_000);
   int("cacheLifetimeMs", 1000, 24 * 60 * 60 * 1000);
   int("idleExitMinutes", 0, 24 * 60);
+  int("hunkSummaryLimit", 0, 500);
   const ratio = patch["rebuildSupersededRatio"];
   if (ratio !== undefined && (typeof ratio !== "number" || ratio <= 0 || ratio > 1)) {
     errors.push("rebuildSupersededRatio must be a number in (0, 1]");
