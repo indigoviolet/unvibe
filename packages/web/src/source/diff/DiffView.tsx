@@ -30,7 +30,6 @@ import {
   hideLevelStats,
   hunkCategory,
   hunkMatchesFilter,
-  HUNK_PASS_FANOUT_LIMIT,
   sinceBaselineLabel,
   type HideCategory,
 } from "@unvibe/shared";
@@ -485,6 +484,48 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const readOnly =
     versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
 
+  // Issue #376: the diff header names how many hunks carry a summary.
+  // Summarize more queues the next N in the automatic pass's order;
+  // the button stays disabled while a summary batch runs.
+  const summaryCounts = useMemo(() => {
+    const files = snapshot?.files ?? [];
+    const total = files.reduce((s, f) => s + f.hunks.length, 0);
+    const withSummary = (snapshot?.hunkStates ?? []).filter((s) => s.summary !== undefined).length;
+    return { total, withSummary, missing: total - withSummary };
+  }, [snapshot]);
+  const [morePending, setMorePending] = useState(false);
+  const [moreBatch, setMoreBatch] = useState<string[]>([]);
+  const moreBatchRunning = useMemo(() => {
+    if (moreBatch.length === 0) return false;
+    const jobs = new Map((snapshot?.jobs ?? []).map((j) => [j.id, j.state]));
+    return moreBatch.some((id) => {
+      const state = jobs.get(id);
+      // Not yet in the snapshot: the batch just started.
+      if (state === undefined) return true;
+      return state !== "done" && state !== "error" && state !== "cancelled";
+    });
+  }, [moreBatch, snapshot]);
+  const autoBatchRunning = useMemo(
+    () =>
+      (snapshot?.jobs ?? []).some(
+        (j) => j.kind === "hunk-pass" && (j.state === "queued" || j.state === "running" || j.state === "backing-off"),
+      ),
+    [snapshot],
+  );
+  const summarizeMore = useCallback(async () => {
+    if (readOnly || morePending) return;
+    setMorePending(true);
+    try {
+      const res = await api.summarizeMore(reviewId);
+      setMoreBatch(res.jobIds);
+      if (res.jobIds.length === 0) toast("Every hunk already has a summary.");
+    } catch {
+      toast("Couldn't queue more summaries");
+    } finally {
+      setMorePending(false);
+    }
+  }, [reviewId, readOnly, morePending]);
+
   const setPlotFilterAndPersist = useCallback(
     (next: DiffFilter) => {
       setPlotFilter(next);
@@ -733,31 +774,14 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         targets.push({ file: f, hunk: h });
       });
     }
-    // Fold first so the UI settles, then summarize only the hunks still
-    // lacking one — except past the hunk-pass fan-out limit (issue #107),
-    // where Fold all folds only: requesting a summary per hunk would be
-    // exactly the fan-out the pipeline refuses to run, and the per-hunk
-    // Summarize button in the hunk header stays as the on-demand path.
+    // Issue #376: Fold all only folds — it never starts summary jobs
+    // (no jobs beyond the automatic N without asking). Summarize more
+    // in the diff header is the on-demand path to more summaries,
+    // alongside the per-hunk Summarize button.
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
-    const totalHunks = snap.files.reduce((n, f) => n + f.hunks.length, 0);
-    const overFanout = totalHunks > HUNK_PASS_FANOUT_LIMIT;
     const foldedNoun = `${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}`;
-    if (!overFanout) {
-      let missing = 0;
-      for (const { hunk } of targets) {
-        if (!st.get(hunk.contentHash)?.summary) {
-          missing += 1;
-          actions.summarize(hunk.contentHash);
-        }
-      }
-      toast(missing > 0 ? `Folded ${foldedNoun}. Summaries appear as they are written.` : `Folded ${foldedNoun}.`);
-    } else {
-      toast(
-        `Folded ${foldedNoun}. ` +
-          "This review is past the per-hunk summary limit, so summaries stay on demand — use the Summarize button on any hunk.",
-      );
-    }
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, actions, plotActive, sinceActive, sinceIds, plotFilter, hideLevel]);
+    toast(`Folded ${foldedNoun}.`);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, plotActive, sinceActive, sinceIds, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -812,8 +836,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   const tree: TreeRow[] = prefs.filesOpen ? buildFileTree(visible) : [];
   const catCount = (k: string): number => snapshot.files.filter((f) => f.category === k).length;
-  // Tooltip is the action only (#225); `foldAll` still computes the
-  // fan-out/summary state itself for its behaviour and toast.
+  // Tooltip is the action only (#225); Fold all only folds (#376).
   const foldTip = "Fold the code";
 
   // Update banner: the local refresh result wins; otherwise the snapshot's
@@ -978,6 +1001,30 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       ) : null}
       {bannerCounts ? (
         <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={() => void onUpdated()} />
+      ) : null}
+      {summaryCounts.missing > 0 ? (
+        <div className="dbar" role="status">
+          <span className="hint">
+            Summaries for {summaryCounts.withSummary} of {summaryCounts.total}{" "}
+            {summaryCounts.total === 1 ? "hunk" : "hunks"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={morePending || moreBatchRunning || autoBatchRunning}
+            data-tip={
+              morePending || moreBatchRunning || autoBatchRunning
+                ? "A summary batch is already running"
+                : "Queue the next hunks lacking summaries"
+            }
+            aria-label={morePending || moreBatchRunning || autoBatchRunning ? "Summarizing" : "Summarize more"}
+            onClick={() => void summarizeMore()}
+          >
+            {morePending || moreBatchRunning || autoBatchRunning ? "Summarizing…" : "Summarize more"}
+          </Button>
+        </div>
       ) : null}
       {prefs.filesOpen ? (
         <div className="files">

@@ -1002,6 +1002,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   logBatchTokens: 2000,
   cacheLifetimeMs: 300000,
   idleExitMinutes: 10,
+  hunkSummaryLimit: 50,
   versionPickerEnabled: false,
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
@@ -3761,6 +3762,24 @@ export const mockApi = {
     hunkStates.set(hash, { ...prev, summary });
     emitHunkStates();
     return { jobId: `mock-${hash}` };
+  },
+
+  // Issue #376: the mock mirrors summarize-more loosely — the next hunks
+  // lacking summaries in diff order (capped like the service default),
+  // each resolved with the same canned text as `summarizeHunk`.
+  summarizeMore: async (_id: string): Promise<{ jobIds: string[] }> => {
+    const missing: string[] = [];
+    for (const f of MOCK_FILES) {
+      for (const h of f.hunks) {
+        if (hunkStates.get(h.contentHash)?.summary === undefined) missing.push(h.contentHash);
+      }
+    }
+    const batch = missing.slice(0, 50);
+    const jobIds: string[] = [];
+    for (const hash of batch) {
+      jobIds.push((await mockApi.summarizeHunk(_id, hash)).jobId ?? `mock-${hash}`);
+    }
+    return { jobIds };
   },
 
   // Issue #169: mirrors the service PATCH semantics (null clears a field;
