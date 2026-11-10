@@ -6,9 +6,9 @@
  *
  * The built-in Second opinion arrives seeded in fresh settings and is an
  * ordinary entry afterwards — editable and deletable like any other.
- * The built-in Clarity (issue #359) follows the main model
- * (`followMain`); the form shows that as "Main model" with the option
- * to pin a specific one. The built-in Guide (issue #379) is the main
+ * The built-in Clarity (issue #359) follows the Guide's model
+ * (`followMain`); the form shows that with the option to pin a
+ * specific one. The built-in Guide (issue #379) is the main
  * agent itself — fixed (no delete, no disable), owning the main provider
  * + model and a writing-style lens (empty by default).
  * Every change PUTs the whole list through `saveSettings`, like every
@@ -357,7 +357,7 @@ function PersonaForm({
           <Checkbox
             id={`${testIdPrefix}-follow-main`}
             testId={`${testIdPrefix}-follow-main`}
-            ariaLabel="Use main model"
+            ariaLabel="Use Guide model"
             checked={followMain}
             onChange={setFollowMain}
           />
