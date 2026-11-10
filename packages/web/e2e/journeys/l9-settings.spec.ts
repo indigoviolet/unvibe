@@ -131,6 +131,21 @@ test.describe("L9 settings CRUD", () => {
     await page.getByRole("tab", { name: "Limits" }).click();
     await expect(page.locator("#limit-sessionsPerProvider")).toHaveValue("5");
 
+    // Issue #376: the hunk summary limit row persists like the rest.
+    const hunkInput = page.locator("#limit-hunkSummaryLimit");
+    await hunkInput.fill("501");
+    await page.getByRole("button", { name: "Save limits" }).click();
+    await expect(
+      page.getByText("Hunk summaries written automatically: must be an integer in [0, 500]"),
+    ).toBeVisible({ timeout: 15_000 });
+    await hunkInput.fill("7");
+    await page.getByRole("button", { name: "Save limits" }).click();
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Limits" }).click();
+    await expect(page.locator("#limit-hunkSummaryLimit")).toHaveValue("7");
+
     // Full access: acknowledge, marker shows on a review, turn off, marker goes.
     await page.getByRole("tab", { name: "Access" }).click();
     await expect(page.locator('[data-testid="access-state"]')).toContainText("Read-only", { timeout: 15_000 });

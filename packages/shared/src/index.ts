@@ -12,6 +12,7 @@ export * from "./content/index.js";
 export * from "./prompts.js";
 export * from "./versions.js";
 export * from "./diff.js";
+export * from "./hunk-summary.js";
 export * from "./scores.js";
 export * from "./outbox.js";
 export * from "./personas.js";

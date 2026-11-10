@@ -8,7 +8,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
 import { api } from "../../api/client.js";
 import { useReview } from "../../state/store.js";
 import { resetMockState, setMockLatency } from "../../mock/index.js";
@@ -222,9 +221,10 @@ describe("DiffView", () => {
     expect(src.queryByLabelText("Summarizing")).toBeNull();
   });
 
-  it("Fold all summarizes under the fan-out limit (#107)", async () => {
+  it("Fold all only folds, never summarizing (#376)", async () => {
     // makeNoSummarySnapshot: 3 hunks, 2 hidden by Hide-uninteresting, so
-    // the one visible hunk folds and gets exactly one summary request.
+    // the one visible hunk folds and no summary is requested: Fold all
+    // never starts summary jobs (Summarize more is the on-demand path).
     useReview.getState().setSnapshot(makeNoSummarySnapshot());
     render(<DiffView reviewId="nosum" />);
     await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
@@ -234,7 +234,7 @@ describe("DiffView", () => {
       expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toBe("Fold the code");
       await fireEvent.click(screen.getByRole("button", { name: "Fold all" }));
       await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(summarize).toHaveBeenCalledTimes(1));
+      expect(summarize).not.toHaveBeenCalled();
     } finally {
       update.mockRestore();
       summarize.mockRestore();
@@ -256,9 +256,9 @@ describe("DiffView", () => {
     expect(screen.getByRole("button", { name: "Fold all" }).getAttribute("data-tip")).toBe("Fold the code");
   });
 
-  it("Fold all folds without summarizing past the fan-out limit (#107)", async () => {
-    // 525 hunks > limit: every hunk folds, no summary is requested (that
-    // would be the per-hunk fan-out the pipeline refuses to run).
+  it("Fold all folds a large review without summarizing (#376)", async () => {
+    // 21 files x 25 hunks = 525 hunks: every hunk folds, no summary is
+    // requested — Fold all never starts summary jobs at any size.
     const RealIO = globalThis.IntersectionObserver;
     class NeverIO {
       observe(): void {}
@@ -269,7 +269,6 @@ describe("DiffView", () => {
     const update = vi.spyOn(api, "updateHunk").mockResolvedValue({ ok: true });
     const summarize = vi.spyOn(api, "summarizeHunk").mockResolvedValue({ jobId: "j1" });
     try {
-      expect(HUNK_PASS_FANOUT_LIMIT).toBeLessThan(525);
       useReview.getState().setSnapshot(makeOverLimitSnapshot());
       render(<DiffView reviewId="over" />);
       await screen.findByText("over-0.ts", {}, { timeout: 5000 });
@@ -284,6 +283,50 @@ describe("DiffView", () => {
       else delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
     }
   }, 20000);
+
+  it("shows the summary count and Summarize more while hunks lack summaries (#376)", async () => {
+    useReview.getState().setSnapshot(makeNoSummarySnapshot());
+    render(<DiffView reviewId="nosum" />);
+    await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
+    expect(screen.getByText("Summaries for 0 of 3 hunks")).toBeInTheDocument();
+    const more = screen.getByRole("button", { name: "Summarize more" });
+    expect(more).toBeEnabled();
+    const summarizeMore = vi.spyOn(api, "summarizeMore").mockResolvedValue({ jobIds: ["j1"] });
+    try {
+      await fireEvent.click(more);
+      await waitFor(() => expect(summarizeMore).toHaveBeenCalledTimes(1));
+      // The batch is tracked: unknown job ids read as running.
+      expect(await screen.findByRole("button", { name: /Summarizing/ })).toBeDisabled();
+      // Once the batch's jobs are terminal the button re-enables.
+      const snap = useReview.getState().snapshot;
+      if (!snap) throw new Error("missing snapshot");
+      useReview.getState().setSnapshot({
+        ...snap,
+        jobs: [{ id: "j1", state: "done" } as unknown as import("@unvibe/shared").Job],
+      });
+      expect(await screen.findByRole("button", { name: "Summarize more" })).toBeEnabled();
+    } finally {
+      summarizeMore.mockRestore();
+    }
+  });
+
+  it("counts partial summaries and hides the line when none are missing (#376)", async () => {
+    const snap = makeNoSummarySnapshot();
+    snap.hunkStates = [{ contentHash: "plain0", folded: false, reviewed: false, summary: "Plain change." }];
+    useReview.getState().setSnapshot(snap);
+    render(<DiffView reviewId="nosum" />);
+    await screen.findByText("gen-u1.ts", {}, { timeout: 3000 });
+    expect(screen.getByText("Summaries for 1 of 3 hunks")).toBeInTheDocument();
+    const full = makeNoSummarySnapshot();
+    full.hunkStates = [
+      { contentHash: "gen0", folded: false, reviewed: false, summary: "Generated helper." },
+      { contentHash: "gen1", folded: false, reviewed: false, summary: "Generated helper." },
+      { contentHash: "plain0", folded: false, reviewed: false, summary: "Plain change." },
+    ];
+    useReview.getState().setSnapshot(full);
+    await waitFor(() => expect(screen.queryByText(/Summaries for/)).toBeNull());
+    expect(screen.queryByRole("button", { name: "Summarize more" })).toBeNull();
+  });
 
   it("revealSource unhides a hidden hunk and highlights the line", async () => {
     await renderDiff();
@@ -419,7 +462,7 @@ function makeNoSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
   };
 }
 
-/** 21 files x 25 hunks = 525 hunks, past the fan-out limit (#107). */
+/** 21 files x 25 hunks = 525 hunks, exercising fold-only at scale (#376). */
 function makeOverLimitSnapshot(): import("@unvibe/shared").ReviewSnapshot {
   const files = Array.from({ length: 21 }, (_, fi) => ({
     fileKey: `over-${fi}`,

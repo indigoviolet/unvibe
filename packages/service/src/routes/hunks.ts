@@ -9,9 +9,10 @@
  *   #162), keyed by file key. Reviewed is derived from the file's hunks,
  *   never stored here.
  * - `POST …/hunks/:hash/summarize` — one-hunk summarize on demand at user
- *   priority (small model, no fork). "Fold all" is the client calling this
- *   per hunk missing a summary (documented in `docs/pipeline.md`); no batch
- *   endpoint is needed because jobs dedupe per hunk hash.
+ *   priority (small model, no fork).
+ * - `POST …/hunks/summarize-more` (issue #376) — queue the next N hunks
+ *   lacking summaries in the automatic pass's order (an explicit user
+ *   request, so it draws on no auto budget; jobs dedupe per hunk hash).
  * - `PATCH /api/reviews/:id/diff-filter` — the diff's score/plotline
  *   filter (issue #169), remembered with the review. Each field is a
  *   plotline id (or "other") / score level; explicit null clears it.
@@ -131,6 +132,25 @@ export async function registerHunks(
     } catch (err) {
       const msg = (err as Error).message;
       if (/unknown hunk/.test(msg)) return reply.code(404).send({ error: msg });
+      if (/unknown review/.test(msg)) return reply.code(404).send({ error: msg });
+      return reply.code(500).send({ error: msg });
+    }
+  });
+
+  app.post("/api/reviews/:id/hunks/summarize-more", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    void req;
+    const snapshot = ctx.reviews.getSnapshot(id);
+    if (!snapshot) return reply.code(404).send({ error: "unknown review" });
+    const refusedMore = ingestRefusal(snapshot);
+    if (refusedMore) return reply.code(409).send({ error: refusedMore });
+    const pipeline = (deps as { pipeline?: Pipeline }).pipeline;
+    if (!pipeline) return reply.code(501).send({ error: "not available in this build" });
+    try {
+      const jobs = await pipeline.summarizeMore(id);
+      return reply.code(202).send({ jobIds: jobs.map((j) => j.id) });
+    } catch (err) {
+      const msg = (err as Error).message;
       if (/unknown review/.test(msg)) return reply.code(404).send({ error: msg });
       return reply.code(500).send({ error: msg });
     }

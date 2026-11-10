@@ -385,7 +385,7 @@ test.describe("L8 persona runs on cards", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
   }
 
-  test("persona run on a card, tabs, persona-tab Ask", async ({ page }) => {
+  test("persona run on a card, tabs, persona-tab Ask", async ({ page, context }) => {
     test.setTimeout(300_000);
     const s = service();
     await openReview(page);
@@ -428,6 +428,18 @@ test.describe("L8 persona runs on cards", () => {
       await expect.soft(card).toContainText("checked it against the code", { timeout: 15_000 });
       const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
       expect.soft(ring).toContain(PERSONA_RGB);
+    });
+
+    await test.step("copy on the persona tab copies the variant as Markdown (#377)", async () => {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+      const card = page.locator("#C-central");
+      await card.hover();
+      await card.locator('[data-copy-card="central"]').click();
+      await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
+      const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+      expect.soft(clip.startsWith("## ")).toBe(true);
+      expect.soft(clip).toContain("checked it against the code");
+      expect.soft(clip).not.toContain("[[");
     });
 
     await test.step("depth on the persona tab rewrites the variant, never the Guide version", async () => {

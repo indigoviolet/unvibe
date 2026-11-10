@@ -153,11 +153,50 @@ export interface RenderedInline {
   links: string[];
 }
 
+/**
+ * Citation tokens (`[[diff:…]]`, `[[code:…]]`, …) are stripped from display
+ * text, which can leave their brackets behind: "links ([[desc:x]])." would
+ * render "links ()." (#369). Drop bracket pairs left empty or holding only
+ * separators/whitespace ("()", "( )", "(, )", "(; )", "[]"), with the
+ * space before them — but never a pair glued to a word character, so prose
+ * like "run()" stays. Pairs still holding text keep their text with the
+ * residue gap trimmed ("(see [[desc:x]])" → "(see)"); square brackets
+ * with text are left alone. Only text nodes are touched: tags (a link
+ * target may hold parens) and `<code>` spans (literal `foo()`) are never
+ * rewritten. Runs to a fixpoint for nested pairs ("(( ))"). Only runs
+ * when a token was actually stripped (see `renderInline`): token-free text
+ * stays byte-identical.
+ */
+function stripEmptiedBrackets(html: string): string {
+  return html
+    .split(/(<code>[\s\S]*?<\/code>|<[^>]*>)/g)
+    .map((part) => {
+      if (part.startsWith("<")) return part;
+      let prev = "";
+      let cur = part;
+      while (cur !== prev) {
+        prev = cur;
+        cur = cur
+          .replace(/ \([\s,;]*\)| \[[\s,;]*\]/g, "")
+          .replace(/(?<!\w)\([\s,;]*\)|(?<!\w)\[[\s,;]*\]/g, "");
+      }
+      // Surviving parens keep their text; trim the gap the token left.
+      cur = cur.replace(/\(([^()]*?)\)/g, (m, inner: string) =>
+        /[^\s,;]/.test(inner) ? `(${inner.trim()})` : m,
+      );
+      return cur;
+    })
+    .join("");
+}
+
 /** Render inline Markdown inside a block: emphasis, links, code spans, tokens. */
 export function renderInline(text: string): RenderedInline {
   const acc: InlineAcc = { citations: [], links: [] };
   const html = inlineMd.renderInline(text, { acc });
-  return { html, citations: acc.citations, links: acc.links };
+  // #369: only rewrite when a citation token was actually stripped, so
+  // token-free prose ("run()", "[ ]") stays byte-identical.
+  if (acc.citations.length === 0) return { html, citations: acc.citations, links: acc.links };
+  return { html: stripEmptiedBrackets(html), citations: acc.citations, links: acc.links };
 }
 
 function unionCitations(lists: Citation[][]): Citation[] {

@@ -59,6 +59,7 @@ import type {
   SubmitReviewRequest,
   SubmitReviewResponse,
   SummarizeHunkResponse,
+  SummarizeMoreResponse,
   ThinkingResponse,
   UpdateChannelsResponse,
   UpdateNotesResponse,
@@ -382,6 +383,10 @@ const realApi = {
     }),
   summarizeHunk: (id: string, hash: string): Promise<SummarizeHunkResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/hunks/${encodeURIComponent(hash)}/summarize`),
+
+  /** Issue #376: queue the next N hunks lacking summaries, in auto-pass order. */
+  summarizeMore: (id: string): Promise<SummarizeMoreResponse> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/hunks/summarize-more`),
 
   /** Per-file fold state (issue #162): persisted on the review. */
   updateFile: (id: string, fileKey: string, body: UpdateFileRequest): Promise<{ ok: boolean }> =>

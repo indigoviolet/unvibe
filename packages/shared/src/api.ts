@@ -1182,6 +1182,17 @@ export interface SummarizeHunkResponse {
 }
 
 /**
+ * `POST /api/reviews/:id/hunks/summarize-more` (issue #376): queue the
+ * next N hunks lacking summaries, in the same order as the automatic
+ * pass (source first; hidden and generated hunks excluded, hunks with
+ * summaries or live jobs skipped).
+ */
+export interface SummarizeMoreResponse {
+  /** Jobs started for this batch (empty when nothing was missing). */
+  jobIds: string[];
+}
+
+/**
  * Issue #169: `PATCH /api/reviews/:id/diff-filter` — the diff's
  * plotline filter, remembered with the review. The field is a
  * plotline id (or "other"); explicit null clears it. Unknown
@@ -1480,6 +1491,14 @@ export interface Settings {
   cacheLifetimeMs: number;
   /** Service exits after this many idle minutes (PRD §14; 0 = never). */
   idleExitMinutes: number;
+  /**
+   * Issue #376: at most this many hunk summaries are written
+   * automatically per review version (Settings → Limits). Picked
+   * source first, then tests, config, docs; generated files and hunks
+   * hidden at the review's hide level are never auto-summarised. 0 means
+   * none — every summary is on demand. Default 50, max 500.
+   */
+  hunkSummaryLimit: number;
   /**
    * Version picker (issue #36, step 2; toggle meaning #231): Settings →
    * Version always lists releases (and the update check always runs —

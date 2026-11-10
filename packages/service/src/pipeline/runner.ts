@@ -29,17 +29,17 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import { validateTarget } from "../validate/index.js";
-import type { HunkReplyResult } from "@unvibe/shared";
+import type { HunkReplyResult, HunkSummaryCandidate } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
 import type { JobQueue } from "../jobs/index.js";
 import { McpRegistry } from "../mcp/index.js";
 import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
-import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder, DEFAULT_HUNK_PASS_FANOUT_LIMIT } from "../context/index.js";
+import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
 import type { SessionManager } from "../sessions/manager.js";
@@ -2341,15 +2341,11 @@ export class Pipeline {
     this.setStage(reviewId, "base", "running");
     out.push(...(await this.enqueueCritic(reviewId)));
     // #123: the hunk pass starts in startReview now (at ingest), not here.
-    // Issue #107: past the fan-out limit the ingest-time pass enqueues
-    // nothing (no guide exists yet to cite), so fan out the guide-cited
-    // hunks now that the reader landed; the rest stay on demand. Under the
-    // limit the ingest pass already covers every hunk.
-    const snapshotNow = this.opts.reviews.getSnapshot(reviewId);
-    const hunkCount = snapshotNow?.files.reduce((n, f) => n + f.hunks.length, 0) ?? 0;
-    if (hunkCount > DEFAULT_HUNK_PASS_FANOUT_LIMIT) {
-      out.push(...(await this.enqueueHunkPass(reviewId)));
-    }
+    // Issue #376: the ingest pass covers the top N hunks; now that the
+    // reader landed, guide-cited hunks without summaries get priority
+    // within the same budget N — only what hasn't started is
+    // re-prioritised, never extra jobs beyond N.
+    out.push(...(await this.enqueueCitedHunkPass(reviewId)));
     // #217 owner order: auto go-deeper runs after the hunk summaries
     // (enqueued at start) and the critic, before any other background
     // job. The queue is FIFO within the background band, so enqueue
@@ -2529,34 +2525,184 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Issue #376: build the automatic-summary selection input in diff
+   * order (file order, then hunk index). Hidden is evaluated at the
+   * review's current hide level with the stored scores; files carry
+   * their ingest-time category (`generated` never auto-summarises).
+   */
+  private hunkSummaryCandidates(
+    snapshot: ReviewSnapshot,
+    liveHashes: ReadonlySet<string>,
+  ): HunkSummaryCandidate[] {
+    const level = snapshot.viewPrefs?.hideLevel ?? DEFAULT_HIDE_LEVEL;
+    const states = new Map(snapshot.hunkStates.map((s) => [s.contentHash, s]));
+    const out: HunkSummaryCandidate[] = [];
+    let order = 0;
+    for (const file of snapshot.files) {
+      for (const hunk of file.hunks) {
+        const state = states.get(hunk.contentHash);
+        out.push({
+          contentHash: hunk.contentHash,
+          category: file.category,
+          hidden: shouldHideAtLevel(
+            { hiddenReason: hunk.hiddenReason, score: state?.score, added: hunk.added, removed: hunk.removed },
+            level,
+          ),
+          hasSummary: state?.summary !== undefined,
+          hasLiveJob: liveHashes.has(hunk.contentHash),
+          order: order++,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Content hashes with a live summary job (hunk-pass or on-demand). */
+  private liveSummaryHashes(reviewId: string): Set<string> {
+    const hashes = new Set<string>();
+    for (const job of this.opts.jobs.listByReview(reviewId)) {
+      if (job.kind !== "hunk-pass" && job.kind !== "summarize") continue;
+      if (job.state !== "queued" && job.state !== "running" && job.state !== "backing-off") continue;
+      const anchor = job.dedupeKey?.split("|", 1)[0] ?? "";
+      if (anchor.startsWith("hunk:")) hashes.add(anchor.slice("hunk:".length));
+    }
+    return hashes;
+  }
+
+  /**
+   * Issue #376: automatic summaries already spent for this review
+   * version (non-cancelled hunk-pass jobs carry the version in their
+   * dedupe key). A new version gets a fresh N (owner decision):
+   * unchanged hunks carry over with summaries, so only new hunks cost
+   * budget.
+   */
+  private autoSummaryBudgetUsed(reviewId: string, versionN: number): number {
+    const base = `v${versionN}`;
+    let used = 0;
+    for (const job of this.opts.jobs.listByReview(reviewId)) {
+      if (job.kind !== "hunk-pass" || job.state === "cancelled") continue;
+      if ((job.dedupeKey?.split("|") ?? [])[3] === base) used++;
+    }
+    return used;
+  }
+
+  private enqueueHunkSummaryBatch(
+    reviewId: string,
+    snapshot: ReviewSnapshot,
+    targets: string[],
+    small: { provider: string; model: string; effort: string },
+    hunkPassAccess: AccessMode,
+  ): Job[] {
+    if (targets.length === 0) {
+      this.setStage(reviewId, "hunk-pass", "done");
+      return [];
+    }
+    this.setStage(reviewId, "hunk-pass", "running");
+    this.hunkPassCompleted.set(reviewId, 0);
+    const byHash = new Map<string, { file: ReviewSnapshot["files"][number]; hunk: ReviewSnapshot["files"][number]["hunks"][number] }>();
+    for (const file of snapshot.files) {
+      for (const hunk of file.hunks) byHash.set(hunk.contentHash, { file, hunk });
+    }
+    const jobs: Job[] = [];
+    for (const hash of targets) {
+      const found = byHash.get(hash);
+      if (!found) continue;
+      jobs.push(
+        this.enqueueOneHunkPass(reviewId, snapshot, found.file, found.hunk, small, targets.length, hunkPassAccess),
+      );
+    }
+    return jobs;
+  }
+
   private async enqueueHunkPass(reviewId: string): Promise<Job[]> {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) return [];
     this.setStage(reviewId, "hunk-pass", "running");
     const settings = await this.effectiveSettings();
-    const hunks = snapshot.files.flatMap((f) => f.hunks.map((h) => ({ file: f, hunk: h })));
-    // Issue #107: past the fan-out limit there is no per-hunk fan-out —
-    // only guide-cited hunks lacking a stored summary are enqueued, and
-    // everything else summarises on demand (`POST …/hunks/:hash/summarize`,
-    // Fold-all). At ingest (#123 starts the pass here) no guide exists yet,
-    // so the cited set is empty and the stage reaches done with no jobs;
-    // `enqueueAfterReader` fans out the cited hunks once the reader lands.
-    // Resume re-runs this same branch — never the full fan-out.
-    const overLimit = hunks.length > DEFAULT_HUNK_PASS_FANOUT_LIMIT;
-    const targets = overLimit
-      ? hunks.filter(({ hunk }) => {
-          if (!this.isCitedByGuide(reviewId, hunk.contentHash)) return false;
-          return snapshot.hunkStates.find((s) => s.contentHash === hunk.contentHash)?.summary === undefined;
-        })
-      : hunks;
-    if (targets.length === 0) {
-      this.setStage(reviewId, "hunk-pass", "done");
-      return [];
-    }
-    this.hunkPassCompleted.set(reviewId, 0);
-    const hunkPassAccess = postureFor(settings, "hunk-pass");
-    return targets.map(({ file, hunk }) =>
-      this.enqueueOneHunkPass(reviewId, snapshot, file, hunk, settings.small, targets.length, hunkPassAccess),
+    // Issue #376: at ingest, summarise at most N hunks (the
+    // `hunkSummaryLimit` setting, default 50), picked source first —
+    // never generated files, never hidden hunks. At ingest no guide
+    // exists yet, so the cited set is empty. Resume re-runs this same
+    // branch; hunks with summaries or live jobs are skipped, never
+    // re-enqueued.
+    const targets = selectHunkSummaryTargets(
+      this.hunkSummaryCandidates(snapshot, this.liveSummaryHashes(reviewId)),
+      { limit: settings.hunkSummaryLimit },
+    );
+    return this.enqueueHunkSummaryBatch(
+      reviewId,
+      snapshot,
+      targets,
+      settings.small,
+      postureFor(settings, "hunk-pass"),
+    );
+  }
+
+  /**
+   * Issue #376: after the reader lands, guide-cited hunks without
+   * summaries get priority within the same budget N. No extra jobs
+   * beyond N: cited hunks still queued run ahead of the background
+   * band, and only the unspent budget enqueues more. Hidden hunks are
+   * never auto-summarised, cited or not.
+   */
+  private async enqueueCitedHunkPass(reviewId: string): Promise<Job[]> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) return [];
+    const settings = await this.effectiveSettings();
+    const candidates = this.hunkSummaryCandidates(snapshot, this.liveSummaryHashes(reviewId));
+    const cited = new Set(
+      candidates.map((c) => c.contentHash).filter((hash) => this.isCitedByGuide(reviewId, hash)),
+    );
+    if (cited.size === 0) return [];
+    const raiseQueuedCited = (hashes: ReadonlySet<string>): void => {
+      for (const job of this.opts.jobs.listByReview(reviewId)) {
+        if (job.kind !== "hunk-pass" || job.state !== "queued") continue;
+        const anchor = job.dedupeKey?.split("|", 1)[0] ?? "";
+        if (anchor.startsWith("hunk:") && hashes.has(anchor.slice("hunk:".length))) {
+          this.opts.jobs.setPriority(job.id, JOB_PRIORITY.visible);
+        }
+      }
+    };
+    // Re-prioritise only what hasn't started: queued cited jobs run
+    // ahead of the background band (still behind explicit requests).
+    raiseQueuedCited(cited);
+    const remaining = settings.hunkSummaryLimit - this.autoSummaryBudgetUsed(reviewId, snapshot.version.n);
+    if (remaining <= 0) return [];
+    const targets = selectHunkSummaryTargets(candidates, { limit: remaining, cited }).filter((h) =>
+      cited.has(h),
+    );
+    const jobs = this.enqueueHunkSummaryBatch(
+      reviewId,
+      snapshot,
+      targets,
+      settings.small,
+      postureFor(settings, "hunk-pass"),
+    );
+    raiseQueuedCited(new Set(targets));
+    return jobs;
+  }
+
+  /**
+   * Issue #376: on-demand "Summarize more" — queue the next N hunks
+   * lacking summaries, in the same order as the automatic pass. Same
+   * eligibility (hidden and generated excluded, live jobs skipped). An
+   * explicit user request, so it draws on no auto budget.
+   */
+  async summarizeMore(reviewId: string): Promise<Job[]> {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    const settings = await this.effectiveSettings();
+    const targets = selectHunkSummaryTargets(
+      this.hunkSummaryCandidates(snapshot, this.liveSummaryHashes(reviewId)),
+      { limit: settings.hunkSummaryLimit },
+    );
+    return this.enqueueHunkSummaryBatch(
+      reviewId,
+      snapshot,
+      targets,
+      settings.small,
+      postureFor(settings, "hunk-pass"),
     );
   }
 

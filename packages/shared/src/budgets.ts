@@ -1,16 +1,13 @@
 /**
- * Prompt and pipeline budgets shared by the service and the web (issue
- * #107). Single source of truth: both sides import these instead of
+ * Prompt and pipeline budgets shared by the service and the web.
+ * Single source of truth: both sides import these instead of
  * duplicating the numbers.
+ *
+ * Hunk summaries are capped by the `hunkSummaryLimit` setting (issue
+ * #376, default 50) instead of a fixed fan-out constant: at most N
+ * hunks per review version are summarised automatically, picked
+ * source-first (see `hunk-summary.ts`).
  */
-
-/**
- * Hunk-pass fan-out limit: reviews with more hunks than this skip the
- * per-hunk summarise fan-out; summaries go on demand instead (the diff
- * view's per-hunk Summarize action, Fold-all exclusions below). At or
- * under it behaviour is unchanged.
- */
-export const HUNK_PASS_FANOUT_LIMIT = 500;
 
 /**
  * Plotline assign-step cap (issue #169): when the reader lands on a
