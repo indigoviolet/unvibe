@@ -179,8 +179,8 @@ export function citationToMarkdown(target: string, ctx: CopyMarkdownContext): st
     }
     return label;
   }
-  if (parsed.kind === "desc") return `${ctx.descriptionLabel} · ${parsed.paragraph}`;
-  if (parsed.kind === "doc") return `Document · ${parsed.blockId}`;
+  if (parsed.kind === "desc") return ctx.descriptionLabel;
+  if (parsed.kind === "doc") return `Document ${parsed.blockId}`;
   if (parsed.kind === "concept") return parsed.slug;
   if (parsed.kind === "page") return parsed.pageId;
   if (parsed.kind === "card") return parsed.blockId ? `${parsed.cardId}#${parsed.blockId}` : parsed.cardId;
@@ -188,10 +188,26 @@ export function citationToMarkdown(target: string, ctx: CopyMarkdownContext): st
   return target;
 }
 
-/** Trailing citation string for a block (` …` + space-joined citations, or ""). */
-function citeSuffix(citations: Citation[], ctx: CopyMarkdownContext): string {
+/**
+ * A block's citations as one trailing parenthetical, comma-separated
+ * (`… (conn.py:10–20, sock.py:1)`), links staying links inside. Identical
+ * rendered citations dedupe (a `diff:` and an `h:` resolving to the same
+ * range copy once), first-seen order kept. Empty when there is nothing
+ * to cite.
+ */
+function citeParenthetical(citations: Citation[], ctx: CopyMarkdownContext): string {
   if (citations.length === 0) return "";
-  return ` ${citations.map((c) => citationToMarkdown(c.target, ctx)).join(" ")}`;
+  const seen = new Set<string>();
+  const rendered: string[] = [];
+  for (const c of citations) {
+    const md = citationToMarkdown(c.target, ctx);
+    if (!seen.has(md)) {
+      seen.add(md);
+      rendered.push(md);
+    }
+  }
+  if (rendered.length === 0) return "";
+  return ` (${rendered.join(", ")})`;
 }
 
 /** Per-depth text for a paragraph at the card's level (same rule as the renderer). */
@@ -277,11 +293,11 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
   switch (block.type) {
     case "paragraph": {
       const text = htmlInlineToMarkdown(depthHtmlText(block.text, level));
-      return [`${text}${citeSuffix(block.citations, ctx)}`.trim()];
+      return [`${text}${citeParenthetical(block.citations, ctx)}`.trim()];
     }
     case "heading": {
       const text = htmlInlineToMarkdown(block.html);
-      return [`### ${text}${citeSuffix(block.citations, ctx)}`.trim()];
+      return [`### ${text}${citeParenthetical(block.citations, ctx)}`.trim()];
     }
     case "list": {
       const start = block.ordered ? (block.start ?? 1) : 1;
@@ -289,7 +305,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       block.items.forEach((item, i) => {
         const itemLines = listItemToLines(item.html);
         const marker = block.ordered ? `${start + i}.` : "-";
-        const cites = citeSuffix(item.citations, ctx);
+        const cites = citeParenthetical(item.citations, ctx);
         lines.push(`${marker} ${itemLines[0]}${cites}`.trimEnd());
         for (const cont of itemLines.slice(1)) {
           for (const cl of cont.split("\n")) lines.push(`  ${cl}`);
@@ -300,20 +316,19 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       const covered = new Set(block.items.flatMap((it) => it.citations.map((c) => c.target)));
       const uncovered = block.citations.filter((c) => !c.unverified && !covered.has(c.target));
       if (uncovered.length > 0 && lines.length > 0) {
-        const suffix = uncovered.map((c) => citationToMarkdown(c.target, ctx)).join(" ");
-        lines[lines.length - 1] = `${lines[lines.length - 1]} ${suffix}`.trimEnd();
+        lines[lines.length - 1] = `${lines[lines.length - 1]}${citeParenthetical(uncovered, ctx)}`.trimEnd();
       }
       return lines;
     }
     case "table": {
       const out = [tableHtmlToMarkdown(block.html)];
-      const cites = citeSuffix(block.citations, ctx).trim();
+      const cites = citeParenthetical(block.citations, ctx).trim();
       if (cites) out.push("", cites);
       return out;
     }
     case "code": {
       const out = [`\`\`\`${block.language ?? ""}\n${block.code}\n\`\`\``];
-      const cites = citeSuffix(block.citations, ctx).trim();
+      const cites = citeParenthetical(block.citations, ctx).trim();
       if (cites) out.push("", cites);
       return out;
     }
@@ -325,7 +340,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
         // formatting render as-is so markers never nest ambiguously.
         out.push("", cap.includes("*") || cap.includes("_") ? cap : `*${cap}*`);
       }
-      const cites = citeSuffix(block.citations, ctx).trim();
+      const cites = citeParenthetical(block.citations, ctx).trim();
       if (cites) out.push("", cites);
       return out;
     }

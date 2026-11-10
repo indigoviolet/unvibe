@@ -110,8 +110,8 @@ describe("copy-markdown (#377)", () => {
       "standard",
       prCtx(),
     );
-    expect(md).toContain("3. First `a` [conn.py:10–12](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L12)");
-    expect(md).toContain("4. Second [sock.py:5](https://github.com/acme/app/blob/abc1234/src/sock.py#L5)");
+    expect(md).toContain("3. First `a` ([conn.py:10–12](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L12))");
+    expect(md).toContain("4. Second ([sock.py:5](https://github.com/acme/app/blob/abc1234/src/sock.py#L5))");
     // The covered block-level citation is not repeated; the uncovered one lands on the last item.
     expect(md.match(/conn\.py:10–12/g)?.length).toBe(1);
   });
@@ -146,7 +146,7 @@ describe("copy-markdown (#377)", () => {
       "standard",
       localCtx(),
     );
-    expect(md).toBe("> **Example**\n> Do **this**. conn.py:10\n");
+    expect(md).toBe("> **Example**\n> Do **this**. (conn.py:10)\n");
   });
 
   it("renders diagrams as fenced d2 source with caption and code citations", () => {
@@ -163,7 +163,7 @@ describe("copy-markdown (#377)", () => {
       "standard",
       localCtx(),
     );
-    expect(md).toBe("```d2\na -> b: read\n```\n\nThe *flow*\n\nsock.py:1–3\n");
+    expect(md).toBe("```d2\na -> b: read\n```\n\nThe *flow*\n\n(sock.py:1–3)\n");
   });
 
   it("renders sub-headings as ### and code fences with language", () => {
@@ -199,7 +199,7 @@ describe("copy-markdown (#377)", () => {
       prCtx(),
     );
     expect(md).toBe(
-      "Mutates state. [conn.py:10–20](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L20)\n",
+      "Mutates state. ([conn.py:10–20](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L20))\n",
     );
   });
 
@@ -210,11 +210,11 @@ describe("copy-markdown (#377)", () => {
       prCtx(),
     );
     expect(md).toBe(
-      "A hunk. [conn.py:10–20](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L20)\n",
+      "A hunk. ([conn.py:10–20](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L20))\n",
     );
   });
 
-  it("cites local and branch reviews as plain path:lines", () => {
+  it("dedupes citations rendering to the same range and comma-separates them", () => {
     const md = blocksToMarkdown(
       [
         para("Mutates state.", [
@@ -226,7 +226,7 @@ describe("copy-markdown (#377)", () => {
       "standard",
       localCtx(),
     );
-    expect(md).toBe("Mutates state. conn.py:10–20 conn.py:10–20 sock.py:1\n");
+    expect(md).toBe("Mutates state. (conn.py:10–20, sock.py:1)\n");
   });
 
   it("renders description and document citations as plain text", () => {
@@ -235,7 +235,7 @@ describe("copy-markdown (#377)", () => {
       "standard",
       prCtx(),
     );
-    expect(md).toBe("Context. PR description · d-sync Document · p3\n");
+    expect(md).toBe("Context. (PR description, Document p3)\n");
   });
 
   it("renders finding and comment links without raw ids", () => {
@@ -304,7 +304,7 @@ describe("copy-markdown (#377)", () => {
         'Answers: Thread t-1 — "is this right?" · [PR conversation — "ship it"](https://example.com/c/1)\n\n' +
         "### Updated since v1 · 4 Nov\n\n" +
         "alpha returns 111 now. " +
-        "[conn.py:3](https://github.com/acme/app/blob/abc1234/src/conn.py#L3)\n\n" +
+        "([conn.py:3](https://github.com/acme/app/blob/abc1234/src/conn.py#L3))\n\n" +
         'Answers: abc1234 subject — "fix"\n',
     );
     expect(md).not.toContain("[[");
@@ -316,7 +316,7 @@ describe("copy-markdown (#377)", () => {
       "standard",
       localCtx(),
     );
-    expect(md).toBe("## Why retry?\n\nBecause `x`. sock.py:7\n");
+    expect(md).toBe("## Why retry?\n\nBecause `x`. (sock.py:7)\n");
   });
 
   it("builds the context from a snapshot", () => {
