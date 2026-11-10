@@ -1164,6 +1164,8 @@ test.describe("L6 demo diff work", () => {
     await test.step("hunk scores land; plotline filter keeps every file", async () => {
       // Hunk passes land asynchronously; wait until every hunk carries a score
       // (an unscored hunk matches any score filter, so filtering earlier lies).
+      // Issue #376: scores land with the auto summaries, so only the 5
+      // visible hunks carry one (hidden hunks never do).
       await expect
         .poll(
           async () => {
@@ -1173,7 +1175,7 @@ test.describe("L6 demo diff work", () => {
           },
           { timeout: 90_000 },
         )
-        .toBe(8);
+        .toBe(5);
       await expect.soft(page.locator(".dhunk-h .score-dot").first()).toBeVisible({ timeout: 30_000 });
       await expect.soft(page.locator('.dhunk-h .score-dot[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
       await expect.soft(page.locator(".dhunk-h .ptag", { hasText: "Unfold obsolete folded response headers" }).first()).toBeVisible({ timeout: 30_000 });
@@ -1227,7 +1229,8 @@ test.describe("L6 demo diff work", () => {
     const connFileLoc = page.locator(`[id="F-${CONN}"]`);
 
     await test.step("filters combine: file type AND plotline AND level (#190)", async () => {
-      // Wait for the hunk pass so every hunk carries a score and plotline.
+      // Wait for the hunk pass so every hunk carries a score and plotline
+      // (issue #376: the 5 visible hunks; hidden ones never get scores).
       await expect
         .poll(
           async () => {
@@ -1237,7 +1240,7 @@ test.describe("L6 demo diff work", () => {
           },
           { timeout: 90_000 },
         )
-        .toBe(8);
+        .toBe(5);
       await expect.soft(page.locator('.dhunk-h .score-ind[data-score="substantive"]').first()).toBeVisible({ timeout: 30_000 });
 
       // File-type filter first: Tests off hides both test files.
