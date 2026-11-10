@@ -309,7 +309,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     return { thread, threadId };
   }
 
-  test("explain, ask, follow-up and nested explain stay flat; depth rewrites", async ({ page }) => {
+  test("explain, ask, follow-up and nested explain stay flat; depth rewrites", async ({ page, context }) => {
     test.setTimeout(300_000);
     const s = service();
     // Our explain thread's id, captured at creation (the replay pipeline
@@ -336,6 +336,18 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(exp).toBeVisible({ timeout: 15_000 });
       await expect.soft(exp.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
       await expect.soft(exp.locator(".working")).toHaveCount(0, { timeout: 30_000 });
+    });
+
+    await test.step("copy on the answer copies it as Markdown (#377)", async () => {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+      const exp = page.locator(`#C-central section.ithread[data-thread="${explainId}"]`).first();
+      await exp.hover();
+      await exp.locator("[data-copy-reply]").first().click();
+      await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
+      const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+      expect.soft(clip.startsWith("## ")).toBe(true);
+      expect.soft(clip).toMatch(/fold|helper|space/i);
+      expect.soft(clip).not.toContain("[[");
     });
 
     await test.step("in-thread Explain appends a reply in the same thread, with a source link", async () => {

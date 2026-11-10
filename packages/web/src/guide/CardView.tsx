@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
-import { displayCardTitle, isUpdateAvailable, sinceBaselineLabel } from "@unvibe/shared";
+import { cardToMarkdown, displayCardTitle, isUpdateAvailable, sinceBaselineLabel, stripAddendumPrefix } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -31,9 +31,10 @@ import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
-import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
+import { SinceAnswers } from "./SinceAnswers.js";
 import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
+import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isExpansionFootnote } from "./expansions/expansionUtils.js";
@@ -57,14 +58,17 @@ function ControlButton({
   disabled,
   pressed,
   busy,
+  copyId,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "copy";
   label: string;
   onClick: () => void;
   disabled?: boolean;
   pressed?: boolean;
   /** This control's action is running: dots in place of the icon. */
   busy?: boolean;
+  /** Renders `data-copy-card` for the copy control (journey + tour hooks). */
+  copyId?: string;
 }) {
   return (
     <button
@@ -76,6 +80,7 @@ function ControlButton({
       aria-busy={busy || undefined}
       disabled={disabled || busy}
       onClick={onClick}
+      data-copy-card={copyId}
     >
       {busy ? (
         <span className="dots" aria-hidden="true">
@@ -354,6 +359,9 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // the reader off the Guide version.
   const personas = useEnabledPersonas();
   const readOnlyCard = useIsReadOnlyVersion();
+  // Issue #377: the review's repo for permalink citations (null for
+  // local reviews → plain path:lines). Fetched once per review.
+  const githubRepo = useGithubRepo();
   const versions = cardVersions(card, personas);
   const [activeVersion, setActiveVersion] = useState("guide");
   const activeEntry = versions.find((v) => v.id === activeVersion) ?? versions[0];
@@ -501,6 +509,25 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     );
   }
 
+  // Issue #377: copy the card as shown (active persona variant's
+  // blocks when a persona tab is selected) as portable Markdown.
+  // Read-only like every other toolbar action: no job, no settings.
+  const copyCard = (): void => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) {
+      toast("The review is still loading");
+      return;
+    }
+    const { ctx, findPage } = copyContextFor(snap, githubRepo);
+    copyMarkdownText(
+      cardToMarkdown(
+        { title: card.title, blocks: shownBlocks, answers: card.answers, addenda: card.addenda },
+        shownLevel,
+        ctx,
+        { findPage },
+      ),
+    );
+  };
   // While an agent action runs for this card, the conflicting controls go
   // disabled and the clicked one shows dots in place of its icon.
   const controlsBusy = busy !== null;
@@ -593,6 +620,12 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
                   : { kind: "undo", cardId: card.id },
               )
             }
+          />
+          <ControlButton
+            icon="copy"
+            label="Copy as Markdown"
+            copyId={card.id}
+            onClick={copyCard}
           />
           <PersonaButton
             reviewId={reviewId}

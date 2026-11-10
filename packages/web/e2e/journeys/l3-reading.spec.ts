@@ -2129,6 +2129,39 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
+  test("card copies its Markdown to the clipboard (#377)", async ({ page, context }) => {
+    test.setTimeout(180_000);
+    const s = service();
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await openReview(page, readReview);
+
+    await test.step("the toolbar carries a Copy as Markdown control with a tooltip", async () => {
+      const button = page.locator('#C-central [data-copy-card="central"]');
+      await page.locator("#C-central").hover();
+      await expect.soft(button).toBeVisible();
+      await hoverFresh(page, button);
+      await expect.soft(page.locator("#tip")).toContainText("Copy as Markdown", { timeout: 10_000 });
+    });
+
+    await test.step("clicking it copies the card as portable Markdown", async () => {
+      await page.locator('#C-central [data-copy-card="central"]').click();
+      await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
+      const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+      expect.soft(clip.startsWith("## ")).toBe(true);
+      expect.soft(clip).not.toContain("[[");
+      // The demo is a PR review: cited ranges are head-commit permalinks.
+      type SnapProbe = {
+        pages: { cards: { id: string; blocks: { citations?: { target?: string }[] }[] }[] }[];
+      };
+      const snap = await apiJson(s, "GET", `/api/reviews/${readReview}`);
+      const cards = ((snap.json as unknown as SnapProbe).pages ?? []).flatMap((p) => p.cards);
+      const cites = (cards.find((c) => c.id === "central")?.blocks ?? []).flatMap((b) => b.citations ?? []);
+      if (cites.length > 0) {
+        expect.soft(clip).toContain("https://github.com/urllib3/urllib3/blob/");
+      }
+    });
+  });
+
   test("a diagram in the guide renders on demand; without d2 the fallback links Settings", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();
