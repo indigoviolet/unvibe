@@ -504,6 +504,20 @@ describe("emptied brackets after citation stripping (issue #369)", () => {
     expect(r.html).not.toContain("(diff");
   });
 
+  it("leaves token-free prose byte-identical: run(), foo(), [ ]", () => {
+    expect(renderInline("the run() method and foo() here").html).toBe(
+      "the run() method and foo() here",
+    );
+    expect(renderInline("a list [ ] item").html).toBe("a list [ ] item");
+    expect(renderInline("an empty () pair").html).toBe("an empty () pair");
+  });
+
+  it("keeps word-glued pairs when a citation is stripped elsewhere", () => {
+    const r = renderInline("run() stays but links ([[desc:d-p2]]) go.");
+    expect(r.html).toBe("run() stays but links go.");
+    expect(r.citations).toEqual([{ target: "desc:d-p2" }]);
+  });
+
   it("covers the recorded-answer path (parseReply over ask-style text)", () => {
     const parsed = parseReply(
       "The trailing `[ \\t]+` is what separates a fold from a line end ([[diff:src-urllib3-connection.py:80-82]]).\n\n```json\n{}\n```\n",
