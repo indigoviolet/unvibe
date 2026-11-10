@@ -388,6 +388,8 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       const send = card.getByRole("button", { name: "Reply", exact: true });
       await send.click();
       await expect.soft(card.locator(".exp-b").last()).not.toBeEmpty({ timeout: 60_000 });
+      // Issue #369: stripped citations must not leave empty brackets behind.
+      await expect.soft(card.locator(".exp-b").last()).not.toContainText(/\(\s*[,;]?\s*\)/);
     });
 
     await test.step("close collapses to a mark; the mark previews and reopens; delete removes both", async () => {
