@@ -8,6 +8,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { api } from "../api/client.js";
+import { GUIDE_PERSONA } from "@unvibe/shared";
 import { FullAccessMarker } from "./FullAccessMarker.js";
 
 afterEach(() => {
@@ -15,11 +16,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
+
 function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>> {
   return {
-    main: { provider: "claude", model: "m", effort: "" },
     small: { provider: "claude", model: "m", effort: "" },
-    personas: [],
+    personas: [MOCK_GUIDE],
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,

@@ -8,13 +8,15 @@
  * ordinary entry afterwards — editable and deletable like any other.
  * The built-in Clarity (issue #359) follows the main model
  * (`followMain`); the form shows that as "Main model" with the option
- * to pin a specific one.
+ * to pin a specific one. The built-in Guide (issue #379) is the main
+ * agent itself — fixed (no delete, no disable), owning the main provider
+ * + model and a writing-style lens (empty by default).
  * Every change PUTs the whole list through `saveSettings`, like every
  * other settings section.
  */
 import { useEffect, useState } from "react";
 import type { ModelInfo, Persona, Settings } from "@unvibe/shared";
-import { nextPersonaColor, slugifyPersonaName } from "@unvibe/shared";
+import { getGuidePersona, nextPersonaColor, slugifyPersonaName, GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button, Card, Checkbox, Field, InlineConfirm, Input, Select } from "../ui/index.js";
 import { modelLabel } from "./ModelsSection.js";
@@ -38,6 +40,12 @@ export function PersonasSection({
   onSaved: (next: Settings) => void;
 }): React.JSX.Element {
   const personas = settings.personas ?? [];
+  // Issue #379: the Guide owns the main provider + model — the "main
+  // model" followers run on and the new-form starting point.
+  const guide = getGuidePersona(personas);
+  const guidePick = guide
+    ? { provider: guide.provider, model: guide.model }
+    : { provider: "", model: "" };
   const [providers, setProviders] = useState<string[]>(FALLBACK_PROVIDERS);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -83,9 +91,11 @@ export function PersonasSection({
   return (
     <section aria-label="Personas" id="personas" style={{ scrollMarginTop: 12 }} data-testid="personas-section">
       <p className="hint">
-        Reviewer voices that can take on a card. Each runs on its model — or on the main model —
-        with its lens; the colour is assigned automatically. Second opinion and Clarity are
-        built in — edit or delete them like any other persona.
+        The Guide is the main agent: it writes the guide, explanations and answers on its model,
+        in its writing style (empty means no extra style). Reviewer voices can take on a card.
+        Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
+        assigned automatically. Second opinion and Clarity are built in — edit or delete them
+        like any other persona.
       </p>
       {error ? (
         <p className="err" role="alert">
@@ -124,9 +134,11 @@ export function PersonasSection({
                   )}
                 </div>
                 <div className="hint">
-                  {p.followMain
-                    ? `Main model (${settings.main.provider}/${settings.main.model})`
-                    : `${p.provider}/${p.model}`}
+                  {p.id === GUIDE_PERSONA_ID
+                    ? `${p.provider}/${p.model}`
+                    : p.followMain
+                      ? `Guide's model (${getGuidePersona(personas)?.provider ?? ""}/${getGuidePersona(personas)?.model ?? ""})`
+                      : `${p.provider}/${p.model}`}
                 </div>
               </div>
               <div className="frow" style={{ gap: 4, alignItems: "center" }}>
@@ -144,6 +156,7 @@ export function PersonasSection({
                     {editingId === p.id ? "Close" : "Edit"}
                   </Button>
                 )}
+                {p.id === GUIDE_PERSONA_ID ? null : (
                 <InlineConfirm
                   action="Delete"
                   confirmAction={`delete the “${p.name}” persona`}
@@ -162,6 +175,7 @@ export function PersonasSection({
                   idleAriaLabel={`Delete ${p.name}`}
                   title={`Delete ${p.name}`}
                 />
+                )}
               </div>
             </div>
             {editingId === p.id ? (
@@ -169,7 +183,8 @@ export function PersonasSection({
                 key={p.id}
                 initial={p}
                 providers={providers}
-                mainPick={settings.main}
+                mainPick={guidePick}
+                fixed={p.id === GUIDE_PERSONA_ID}
                 submitLabel="Save"
                 testIdPrefix={`persona-${p.id}`}
                 onCancel={() => setEditingId(null)}
@@ -192,7 +207,8 @@ export function PersonasSection({
           <PersonaForm
             initial={null}
             providers={providers}
-            mainPick={settings.main}
+            mainPick={guidePick}
+            fixed={false}
             submitLabel="Add persona"
             testIdPrefix="persona-new"
             onCancel={() => setEditingId(null)}
@@ -236,12 +252,15 @@ function PersonaForm({
   testIdPrefix,
   onCancel,
   onSave,
+  fixed,
 }: {
   /** Edited persona, or null for a new one (id + colour assigned on save). */
   initial: Persona | null;
   providers: string[];
-  /** Current main pick: what a main-following persona runs on. */
+  /** Current Guide pick: what a main-following persona runs on. */
   mainPick: { provider: string; model: string };
+  /** Fixed Guide entry (issue #379): model + style only, no source choice. */
+  fixed: boolean;
   submitLabel: string;
   testIdPrefix: string;
   onCancel: () => void;
@@ -289,7 +308,7 @@ function PersonaForm({
       setFormError("Pick a model for this persona.");
       return;
     }
-    if (lens.trim() === "") {
+    if (!fixed && lens.trim() === "") {
       setFormError("Lens is required — who the persona is and what it looks for.");
       return;
     }
@@ -299,15 +318,17 @@ function PersonaForm({
       await onSave({
         id: initial?.id ?? "",
         name: name.trim(),
-        followMain,
-        // A main-following persona stores the current main pick as its
+        // The fixed Guide entry (issue #379) owns its model outright and
+        // takes no card instruction; it is never disabled.
+        followMain: fixed ? false : followMain,
+        // A main-following persona stores the Guide pick as its
         // last explicit one (the starting point if a model is pinned
         // later); it is not what runs.
-        provider: followMain ? mainPick.provider : provider,
-        model: followMain ? mainPick.model : model,
+        provider: fixed ? provider : followMain ? mainPick.provider : provider,
+        model: fixed ? model : followMain ? mainPick.model : model,
         lens,
-        cardInstruction,
-        enabled,
+        cardInstruction: fixed ? "" : cardInstruction,
+        enabled: fixed ? true : enabled,
         color: initial?.color ?? "",
       });
     } catch (err) {
@@ -330,6 +351,7 @@ function PersonaForm({
           style={{ width: 360, maxWidth: "100%" }}
         />
       </Field>
+      {fixed ? null : (
       <Field label="Model source" htmlFor={`${testIdPrefix}-follow-main`}>
         <div className="frow" style={{ gap: 6, alignItems: "center" }}>
           <Checkbox
@@ -340,13 +362,14 @@ function PersonaForm({
             onChange={setFollowMain}
           />
           <span className="hint">
-            Use main model (currently {mainPick.provider}/{mainPick.model})
+            Use the Guide&apos;s model (currently {mainPick.provider}/{mainPick.model})
           </span>
         </div>
       </Field>
+      )}
       {followMain ? (
         <p className="hint" style={{ margin: 0 }}>
-          Runs on the main model at run time; pin a specific model below by turning this off.
+          Runs on the Guide&apos;s model at run time; pin a specific model below by turning this off.
         </p>
       ) : (
         <>
@@ -385,9 +408,13 @@ function PersonaForm({
         </>
       )}
       <Field
-        label="Lens"
+        label={fixed ? "Writing style (optional)" : "Lens"}
         htmlFor={`${testIdPrefix}-lens`}
-        help="Who the persona is and what it looks for — applied to every task it performs."
+        help={
+          fixed
+            ? "Tone and wording for everything the Guide writes (guide, cards, depth, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
+            : "Who the persona is and what it looks for — applied to every task it performs."
+        }
         layout="stacked"
       >
         <textarea
@@ -398,9 +425,10 @@ function PersonaForm({
           rows={4}
           value={lens}
           onChange={(e) => setLens(e.target.value)}
-          placeholder="e.g. You are a performance sceptic…"
+          placeholder={fixed ? "e.g. Short sentences. No jargon…" : "e.g. You are a performance sceptic…"}
         />
       </Field>
+      {fixed ? null : (
       <Field
         label="Card instruction (optional)"
         htmlFor={`${testIdPrefix}-card-instruction`}
@@ -418,6 +446,8 @@ function PersonaForm({
           placeholder="e.g. Respond to the card: check its claims…"
         />
       </Field>
+      )}
+      {fixed ? null : (
       <Field label="Enabled" htmlFor={`${testIdPrefix}-enabled`}>
         <Checkbox
           id={`${testIdPrefix}-enabled`}
@@ -427,6 +457,7 @@ function PersonaForm({
           onChange={setEnabled}
         />
       </Field>
+      )}
       {formError ? (
         <p className="err" role="alert">
           {formError}
