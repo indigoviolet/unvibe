@@ -447,7 +447,11 @@ describe("ThreadView per-reply delete + quote chip (issue #364)", () => {
     const { container } = render(<MemoryRouter><ThreadView reviewId={REVIEW_ID} thread={t} /></MemoryRouter>);
     const link = container.querySelector('[data-src-link="ans_ask1"]');
     expect(link).not.toBeNull();
-    expect(link?.textContent).toMatch(/quoted text/);
+    // Issue #381: icon-only — same tooltip and accessible name, no text.
+    expect(link?.getAttribute("aria-label")).toBe("Show the quoted passage");
+    expect(link?.getAttribute("data-tip")).toBe("Show the quoted passage");
+    expect(link?.querySelector("svg")).not.toBeNull();
+    expect(link?.textContent).toBe("");
   });
 
   test("a tombstoned turn stays in place with Undelete; counts skip it", () => {
