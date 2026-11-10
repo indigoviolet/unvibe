@@ -4207,3 +4207,37 @@ one-variant union today).
   run stores its tab with citations intact) pass; frames in
   /tmp/359-frames/ (Settings + menu + tab strip, 1440/960 x
   light/dark) inspected.
+
+## Addendum: #377 (branch `feat/377-copy-markdown`)
+
+- **Copy as Markdown (§4.4):** each card's hover toolbar (and each agent
+  answer's reply toolbar) carries a copy icon with the tooltip "Copy as
+  Markdown"; clicking copies the card/answer as shown and toasts "Copied
+  as Markdown" (the shared toast idiom, same shape as the Outbox copy).
+  The Markdown is built from the card's data model (never the DOM) by a
+  pure converter (`packages/shared/src/content/copy-markdown.ts`): the
+  title as a `##` heading (shared fallback when the reply carried none),
+  blocks at the shown depth level, the active persona variant's blocks,
+  lists (per-item citations, ordered starts), tables as pipe Markdown,
+  asides as quoted sections with their label, diagrams as fenced `d2`
+  with caption, sub-headings as `###`, finding links as titled text,
+  follow-ups as a labelled list. Citations become portable permalinks
+  `[path:lines](https://github.com/o/r/blob/<headSha>/path#Lx-Ly)` on PR
+  reviews (`diff:` tokens address new-side lines, so the permalink is the
+  new-side blob at the head commit — the same rule as the selection
+  toolbar) and plain `path:lines` on local/branch reviews; concept, card
+  and page links render as their visible label; description/document and
+  hunk citations degrade to plain text labels. The output never contains
+  `[[…]]` tokens. No new settings, jobs or agent calls; thread answers
+  are covered (same converter on the reply). Additive only: a new shared
+  module plus toolbar buttons, so `DATA_FORMAT` stays 1.
+  Evidence: `packages/shared/test/copy-markdown-377.test.ts` (18 tests:
+  depth level, persona-variant blocks, list, table, aside, d2, heading,
+  PR permalink, local path:lines, desc/doc labels, concept/card/page
+  labels, no `[[` in output), journey steps in `l3-reading` (card copy,
+  tooltip + clipboard + permalink), `l8-personas` (variant copy) and
+  `l4-threads` (answer copy), tour frame
+  `packages/web/visual-tour/copy-markdown-1440-light.png` (git-ignored,
+  toolbar icon + tooltip at 1440 light). Unit tests, typecheck and lint
+  green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
+  run.
