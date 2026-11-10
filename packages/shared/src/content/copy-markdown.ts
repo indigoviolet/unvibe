@@ -107,7 +107,7 @@ export function htmlInlineToMarkdown(html: string): string {
   let s = html.replace(/<code>([\s\S]*?)<\/code>/gi, (_m, code: string) => {
     const text = decodeEntities(stripTags(code));
     codes.push(text.includes("`") ? "`` " + text + " ``" : "`" + text + "`");
-    return `\u0000${codes.length - 1}\u0000`;
+    return `\uFFFC${codes.length - 1}\uFFFC`;
   });
   // Dotted in-app links → visible label (concept/card/page links, issue #377).
   s = s.replace(
@@ -135,7 +135,7 @@ export function htmlInlineToMarkdown(html: string): string {
   s = s.replace(/<(del|s|strike)>([\s\S]*?)<\/\1>/gi, (_m, _t: string, inner: string) => `~~${stripTags(inner)}~~`);
   s = s.replace(/<br\s*\/?>/gi, "\n");
   s = decodeEntities(stripTags(s));
-  s = s.replace(/\u0000(\d+)\u0000/g, (_m, n: string) => codes[Number(n)]);
+  s = s.replace(/\uFFFC(\d+)\uFFFC/g, (_m, n: string) => codes[Number(n)]);
   // Collapse horizontal whitespace; keep intentional line breaks.
   return s
     .split("\n")
@@ -235,22 +235,22 @@ function listItemToLines(html: string): string[] {
   s = s.replace(/<pre><code(?: class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>/gi,
     (_m, lang: string | undefined, code: string) => {
       chunks.push(`\`\`\`${lang ?? ""}\n${decodeEntities(stripTags(code)).replace(/\n$/, "")}\n\`\`\``);
-      return `\u0000${chunks.length - 1}\u0000`;
+      return `\uFFFC${chunks.length - 1}\uFFFC`;
     });
   s = s.replace(/<table>([\s\S]*?)<\/table>/gi, (_m, inner: string) => {
     chunks.push(tableHtmlToMarkdown(`<table>${inner}</table>`));
-    return `\u0000${chunks.length - 1}\u0000`;
+    return `\uFFFC${chunks.length - 1}\uFFFC`;
   });
   s = s.replace(/<(ul|ol)([^>]*)>([\s\S]*?)<\/\1>/gi, (_m, _t: string, _a: string, inner: string) => {
     const items = [...inner.matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((li) =>
       htmlInlineToMarkdown(li[1]).replace(/\s+/g, " ").trim(),
     );
     chunks.push(items.map((t) => `- ${t}`).join("\n"));
-    return `\u0000${chunks.length - 1}\u0000`;
+    return `\uFFFC${chunks.length - 1}\uFFFC`;
   });
-  const text = htmlInlineToMarkdown(s.replace(/\u0000\d+\u0000/g, ""));
+  const text = htmlInlineToMarkdown(s.replace(/\uFFFC\d+\uFFFC/g, ""));
   const out = text ? [text] : [];
-  for (const m of s.matchAll(/\u0000(\d+)\u0000/g)) out.push(chunks[Number(m[1])]);
+  for (const m of s.matchAll(/\uFFFC(\d+)\uFFFC/g)) out.push(chunks[Number(m[1])]);
   return out.length > 0 ? out : [""];
 }
 

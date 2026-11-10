@@ -14,7 +14,7 @@
  * Prototype class names kept (`ithread`, `thd`, `mq`) so existing styles apply.
  */
 import type { Thread, Block, Reply } from "@unvibe/shared";
-import { isLiveReply } from "@unvibe/shared";
+import { isLiveReply, replyToMarkdown } from "@unvibe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, friendlyError } from "../api/client.js";
@@ -24,6 +24,7 @@ import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { toast } from "../floating/Toast.js";
 import { performAction, performInsertAction } from "../guide/actions.js";
 import { BlockView } from "../guide/BlockView.js";
+import { copyContextFor, copyMarkdownText, useGithubRepo } from "../guide/copyAsMarkdown.js";
 import { DepthControl } from "../guide/DepthControl.js";
 import { linkCardBlocks } from "../guide/glossary.js";
 import { busyForCard, inflightLabel } from "../guide/inflight.js";
@@ -64,13 +65,16 @@ function ControlButton({
   disabled,
   pressed,
   busy,
+  copyId,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open";
+  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open" | "copy";
   label: string;
   onClick: () => void;
   disabled?: boolean;
   pressed?: boolean;
   busy?: boolean;
+  /** Renders `data-copy-reply` for the copy control (journey hooks). */
+  copyId?: string;
 }) {
   return (
     <button
@@ -82,6 +86,7 @@ function ControlButton({
       aria-busy={busy || undefined}
       disabled={disabled || busy}
       onClick={onClick}
+      data-copy-reply={copyId}
     >
       {busy ? (
         <span className="dots" aria-hidden="true">
@@ -226,6 +231,21 @@ function AgentReplyView({
       else toast(`Couldn't retry: ${friendlyError(err)}`);
     });
   };
+  // Issue #377: copy this answer as shown as portable Markdown.
+  // Read-only: no job, no settings.
+  const githubRepo = useGithubRepo();
+  const copyReply = (): void => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) {
+      toast("The review is still loading");
+      return;
+    }
+    const { ctx, findPage } = copyContextFor(snap, githubRepo);
+    const shown = linkCardBlocks(reply.blocks, snap.glossary ?? [], reply.level);
+    copyMarkdownText(
+      replyToMarkdown({ question: reply.question, kind: reply.kind, blocks: shown }, reply.level, ctx, { findPage }),
+    );
+  };
   const controlsBusy = direct !== null;
   const busyKind = direct?.kind;
   const depthBusy = busyKind === "depth";
@@ -353,6 +373,14 @@ function AgentReplyView({
                 label="Undo"
                 disabled={!undoEnabled || controlsBusy}
                 onClick={() => run({ kind: "undo", cardId: reply.id })}
+              />
+              {/* Issue #377: copy this answer as portable Markdown. */}
+              <ControlButton
+                icon="copy"
+                label="Copy as Markdown"
+                copyId={reply.id}
+                disabled={!contentReady}
+                onClick={copyReply}
               />
               {/* Issue #364: every reply deletes on its own (no confirm).
                   Deleting an answer removes its question turn with it —
