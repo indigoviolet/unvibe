@@ -33,14 +33,15 @@ export type SettingsRole = "small";
 const ROLES: SettingsRole[] = ["small"];
 
 /**
- * The Guide persona's provider/model: the main role (issue #379).
- * Personas name no effort, so the adapter default (""). Throws when
- * the list holds no Guide — settings always seed exactly one.
+ * The Guide persona's provider/model/effort: the main role (issue
+ * #379; the owner kept the main-model effort picker on the Guide —
+ * "" = Default). Throws when the list holds no Guide — settings always
+ * seed exactly one.
  */
 export function guidePick(settings: Settings): { provider: string; model: string; effort: string } {
   const guide = getGuidePersona(settings.personas);
   if (!guide) throw new Error("settings hold no Guide persona");
-  return { provider: guide.provider, model: guide.model, effort: "" };
+  return { provider: guide.provider, model: guide.model, effort: guide.effort ?? "" };
 }
 
 export interface EffectiveSettingsDeps {

@@ -139,7 +139,7 @@ The central paragraph.
     app: Awaited<ReturnType<typeof createApp>>["app"],
     ctx: Awaited<ReturnType<typeof createApp>>["ctx"],
     id: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     // A fresh placeholder card: generation always calls the agent (no
     // stored reuse like depth levels).
     await ctx.reviews.mutate(id, (draft) => {
@@ -159,21 +159,11 @@ The central paragraph.
       payload: { kind: "generate", cardId: "pending-1" },
     } as never);
     expect(res.statusCode).toBe(200);
+    const jobId = (res.json() as { jobId?: string }).jobId;
     // Only the sent turn matters here (the fake reply never parses into
     // a card, so the job itself may error — the prompt already ran).
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      if (agents.prompts.some((p) => p.text.includes("# Go deeper"))) break;
-      if (i % 5 === 4) {
-        console.log(
-          "JOBS:",
-          JSON.stringify(
-            ctx.jobs.listByReview(id).map((j) => ({ kind: j.kind, state: j.state, error: (j as { error?: string }).error })),
-          ),
-        );
-      }
-    }
-    expect(agents.prompts.some((p) => p.text.includes("# Go deeper"))).toBe(true);
+    await waitFor(() => agents.prompts.some((p) => p.text.includes("# Go deeper")), 120000);
+    return jobId;
   }
 
   it(
@@ -230,6 +220,89 @@ The central paragraph.
         for (const start of agents.starts) {
           expect(start.systemPrompt).not.toContain("# Writing style");
         }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it(
+    "guide effort reaches the main run; followMain personas keep the adapter default",
+    { timeout: 180000 },
+    async () => {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const LENS2 = "Terse prose.";
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Go deeper", events: textEvents("fresh card body") },
+        {
+          match: "# Persona card",
+          events: textEvents(
+            `The problem, rewritten for clarity. See the problem statement [[card:problem]].\n\n\`\`\`json\n{}\n\`\`\`\n`,
+          ),
+        },
+        {
+          match: "# Depth rewrite",
+          events: textEvents(`A simpler variant line.\n\n\`\`\`json\n{"depth": {"level": "simple"}}\n\`\`\`\n`),
+        },
+      ]);
+      const { app, ctx, id } = await openDemo(agents);
+      try {
+        // Guide on a non-default effort with a lens set.
+        const seed = (ctx.settings.get().personas ?? []) as Persona[];
+        const res = await app.inject({
+          method: "PUT",
+          url: "/api/settings",
+          headers: { authorization: "Bearer tok" },
+          payload: {
+            personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: LENS2, effort: "high" } : p)),
+          },
+        } as never);
+        expect(res.statusCode).toBe(200);
+        // Main run: the job stamp and the base session carry the effort.
+        const jobId = await runGenerate(agents, app, ctx, id);
+        expect(jobId).toBeDefined();
+        expect(ctx.jobs.get(jobId!)?.effort).toBe("high");
+        expect(agents.startCalls.some((c) => c.effort === "high")).toBe(true);
+        // followMain persona run: no Guide lens in its turns, effort stays Default.
+        const run = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: { authorization: "Bearer tok" },
+          payload: { kind: "persona", cardId: "problem", personaId: "clarity" },
+        } as never);
+        expect(run.statusCode).toBe(200);
+        const personaJobId = (run.json() as { jobId?: string }).jobId;
+        await waitFor(() => {
+          const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
+          const variant = card?.variants?.["clarity"];
+          return !!variant && variant.blocks.length > 0 && !variant.working;
+        }, 120000);
+        const depth = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: { authorization: "Bearer tok" },
+          payload: { kind: "depth", cardId: "problem", direction: "simpler", personaId: "clarity" },
+        } as never);
+        expect(depth.statusCode).toBe(200);
+        const depthJobId = (depth.json() as { jobId?: string }).jobId;
+        await waitFor(() => {
+          const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
+          return (card?.variants?.["clarity"]?.level ?? "") === "simple";
+        }, 120000);
+        for (const marker of ["# Persona card", "# Depth rewrite"]) {
+          const turns = agents.prompts.filter((p) => p.text.includes(marker));
+          expect(turns.length).toBeGreaterThan(0);
+          for (const turn of turns) {
+            expect(turn.text).not.toContain("# Writing style");
+            expect(turn.text).not.toContain(LENS2);
+          }
+        }
+        expect(personaJobId).toBeDefined();
+        expect(ctx.jobs.get(personaJobId!)?.effort).toBe("");
+        expect(depthJobId).toBeDefined();
+        expect(ctx.jobs.get(depthJobId!)?.effort).toBe("");
       } finally {
         await app.close();
       }

@@ -338,6 +338,15 @@ describe("Guide persona validation (issue #379)", () => {
     expect(mutate({ cardInstruction: "do things" })).toMatchObject([
       expect.stringContaining("no card instruction"),
     ]);
+    expect(mutate({ effort: 3 } as never)).toMatchObject([
+      expect.stringContaining("guide persona effort must be a string"),
+    ]);
+    const other = seed.find((p) => p.id !== GUIDE_PERSONA_ID)!;
+    expect(
+      store
+        .update({ personas: seed.map((p) => (p.id === other.id ? { ...p, effort: "high" } : p)) })
+        .errors ?? [],
+    ).toMatchObject([expect.stringContaining("only the Guide persona carries an effort")]);
   });
 
   it("allows an empty Guide lens but requires one for every other persona", () => {

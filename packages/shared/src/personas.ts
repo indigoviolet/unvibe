@@ -36,6 +36,10 @@ export const PERSONA_COLORS = [
  * DATA_FORMAT 5. When true, `provider`/`model` below are the last
  * explicit pick: the seed for a fresh persona, the display fallback,
  * and the starting point if the owner pins a specific model.
+ *
+ * `effort` (issue #379) exists only on the Guide: the thinking level
+ * for the main model, "" = the adapter default. Other personas never
+ * carry it (validated).
  */
 export interface Persona {
   /** Stable id: slug of the name at creation (`second-opinion` for the built-in). */
@@ -66,6 +70,12 @@ export interface Persona {
   cardInstruction: string;
   /** Off means the persona is hidden from the run choices (kept, not deleted). */
   enabled: boolean;
+  /**
+   * Thinking level for the main model (issue #379) — Guide only.
+   * "" = Default (the adapter's own setting stands). Absent on every
+   * other persona (rejected by validation).
+   */
+  effort?: string;
   /** Auto-assigned from `PERSONA_COLORS` at creation; read-only in the UI. */
   color: string;
 }
@@ -232,6 +242,7 @@ export const GUIDE_PERSONA: Persona = {
   cardInstruction: "",
   enabled: true,
   color: PERSONA_COLORS[2],
+  effort: "",
 };
 
 /** Fresh seed list for new settings (never share the mutable array). */
@@ -303,6 +314,13 @@ export function validatePersona(p: unknown): string[] {
   }
   if (typeof o["model"] !== "string" || (o["model"] as string).trim() === "") {
     errors.push("persona model must be a non-empty string");
+  }
+  if (o["id"] === GUIDE_PERSONA_ID) {
+    if (typeof o["effort"] !== "string") {
+      errors.push('guide persona effort must be a string ("" = Default)');
+    }
+  } else if (o["effort"] !== undefined) {
+    errors.push("only the Guide persona carries an effort");
   }
   if (typeof o["lens"] !== "string" || ((o["lens"] as string).trim() === "" && o["id"] !== GUIDE_PERSONA_ID)) {
     errors.push(

@@ -15,7 +15,7 @@
  * other settings section.
  */
 import { useEffect, useState } from "react";
-import type { ModelInfo, Persona, Settings } from "@unvibe/shared";
+import type { ModelInfo, Persona, Settings, ThinkingResponse } from "@unvibe/shared";
 import { getGuidePersona, nextPersonaColor, slugifyPersonaName, GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button, Card, Checkbox, Field, InlineConfirm, Input, Select } from "../ui/index.js";
@@ -281,6 +281,12 @@ function PersonaForm({
   const [lens, setLens] = useState(initial?.lens ?? "");
   const [cardInstruction, setCardInstruction] = useState(initial?.cardInstruction ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+  // Issue #379 (effort picker, owner decision A): the fixed Guide keeps
+  // the main-model effort picker. Local state until Save, like the rest.
+  const [effort, setEffort] = useState(initial?.effort ?? "");
+  const [thinking, setThinking] = useState<ThinkingResponse | null>(null);
+  const [thinkingError, setThinkingError] = useState<string | null>(null);
+  const [effortReset, setEffortReset] = useState<string | null>(null);
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -302,10 +308,33 @@ function PersonaForm({
       .catch((err: unknown) => {
         if (!cancelled) setModelsError(friendlyError(err));
       });
+    // Thinking levels come from the same provider's adapter (#172).
+    setThinking(null);
+    setThinkingError(null);
+    api
+      .thinking(provider)
+      .then((r) => {
+        if (!cancelled) setThinking(r);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setThinkingError(friendlyError(err));
+      });
     return () => {
       cancelled = true;
     };
   }, [provider]);
+
+  // Keep the saved effort when the new provider offers it, else fall
+  // back to Default with a notice (same rule as Settings → Models).
+  // Unknown offerings (still loading, fetch failed) keep the value;
+  // the service skips validation then.
+  useEffect(() => {
+    if (!fixed || effort === "" || thinkingError !== null || thinking === null) return;
+    if (!thinking.options.some((o) => o.value === effort)) {
+      setEffort("");
+      setEffortReset(`"${effort}" isn't available for ${provider} — reset to Default.`);
+    }
+  }, [fixed, effort, thinking, thinkingError, provider]);
 
   const submit = async (): Promise<void> => {
     if (name.trim() === "") {
@@ -338,6 +367,7 @@ function PersonaForm({
         cardInstruction: fixed ? "" : cardInstruction,
         enabled: fixed ? true : enabled,
         color: initial?.color ?? "",
+        ...(fixed ? { effort } : {}),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : friendlyError(err));
@@ -389,6 +419,7 @@ function PersonaForm({
           onValueChange={(v) => {
             setProvider(v);
             setModel("");
+            setEffortReset(null);
           }}
           options={providerOptions.map((p) => ({ value: p, label: p }))}
         />
@@ -415,6 +446,52 @@ function PersonaForm({
       </Field>
         </>
       )}
+      {fixed ? (
+      <Field label="Effort" htmlFor={`${testIdPrefix}-effort`}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          {thinkingError ? (
+            <span className="hint" role="status">
+              Couldn&apos;t load thinking levels ({thinkingError}) — Default stands.
+            </span>
+          ) : thinking === null ? (
+            <span className="hint settings-thinking">Loading thinking levels…</span>
+          ) : (
+            <>
+              <Select
+                id={`${testIdPrefix}-effort`}
+                data-testid={`${testIdPrefix}-effort`}
+                value={effort}
+                onValueChange={(v) => {
+                  setEffort(v);
+                  setEffortReset(null);
+                }}
+                title="How hard the model thinks. Default leaves the provider's own setting alone."
+                options={[
+                  { value: "", label: "Default" },
+                  ...thinking.options.map((o) => ({ value: o.value, label: o.name ?? o.value })),
+                ]}
+              />
+              {(() => {
+                const current = thinking.options.find((o) => o.value === effort);
+                if (current?.description) {
+                  return (
+                    <span className="hint" data-testid={`${testIdPrefix}-effort-desc`}>
+                      {current.description}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
+          {effortReset ? (
+            <span className="warnline" role="status" data-testid={`${testIdPrefix}-effort-reset`}>
+              {effortReset}
+            </span>
+          ) : null}
+        </div>
+      </Field>
+      ) : null}
       <Field
         label={fixed ? "Writing style (optional)" : "Lens"}
         htmlFor={`${testIdPrefix}-lens`}

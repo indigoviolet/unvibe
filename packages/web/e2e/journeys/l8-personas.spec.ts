@@ -602,15 +602,18 @@ test.describe("L8 persona runs on cards", () => {
       expect.soft(list.find((p) => p.id === "guide")?.lens).toBe(LENS);
     });
 
-    await test.step("point the Guide at another model through the API (no agent CLIs on PATH, so the UI model list stays empty)", async () => {
+    await test.step("point the Guide at another model and effort through the API (no agent CLIs on PATH, so the UI model list stays empty; thinking levels are adapter-offered, so effort goes through the API too)", async () => {
       const seed = await personas(s);
       const res = await apiJson(s, "PUT", "/api/settings", {
-        personas: seed.map((p) => (p.id === "guide" ? { ...p, provider: "codex", model: "gpt-6.1-sol" } : p)),
+        personas: seed.map((p) =>
+          p.id === "guide" ? { ...p, provider: "codex", model: "gpt-6.1-sol", effort: "high" } : p,
+        ),
       });
       expect(res.status).toBe(200);
       expect((res.json as { personas: PersonaBody[] }).personas.find((p) => p.id === "guide")).toMatchObject({
         provider: "codex",
         model: "gpt-6.1-sol",
+        effort: "high",
       });
     });
 
@@ -643,11 +646,12 @@ test.describe("L8 persona runs on cards", () => {
       };
       const depth = after.jobs.filter((j) => j.kind === "depth" && !before.includes(j.id)).at(-1);
       expect(depth).toBeDefined();
-      expect(depth).toMatchObject({ provider: "codex", model: "gpt-6.1-sol" });
+      expect(depth).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", effort: "high" });
       // …with the lens at the start of the turn and the task rules intact.
       const full = (await apiJson(s, "GET", `/api/jobs/${depth!.id}`)).json as {
-        job: { promptSnapshot: string };
+        job: { promptSnapshot: string; effort: string };
       };
+      expect(full.job.effort).toBe("high");
       expect(full.job.promptSnapshot.startsWith(`# Writing style\n\n${LENS}\n\n`)).toBe(true);
       expect(full.job.promptSnapshot).toContain("# Depth rewrite");
       await expect.soft(card.locator(".prose, .lst").first()).toContainText("CRLF", { timeout: 15_000 });

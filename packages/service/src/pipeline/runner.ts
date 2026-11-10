@@ -454,9 +454,13 @@ export class Pipeline {
   } {
     if (persona) {
       // Issue #359: a persona following the main model runs on the
-      // Guide persona's pick (issue #379; effort stays the adapter
-      // default, like all personas).
-      if (persona.followMain) return guidePick(settings);
+      // Guide persona's provider/model (issue #379). Effort stays the
+      // adapter default, as before — a follower never inherits the
+      // Guide's effort.
+      if (persona.followMain) {
+        const guide = guidePick(settings);
+        return { provider: guide.provider, model: guide.model, effort: "" };
+      }
       return { provider: persona.provider, model: persona.model, effort: "" };
     }
     return guidePick(settings);

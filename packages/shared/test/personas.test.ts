@@ -178,6 +178,9 @@ describe("built-in Guide (issue #379)", () => {
     // writing-style lens is empty by default (no behaviour change).
     expect(GUIDE_PERSONA.cardInstruction).toBe("");
     expect(GUIDE_PERSONA.lens).toBe("");
+    // Effort picker (owner decision A): the Guide carries the
+    // main-model effort, "" = Default.
+    expect(GUIDE_PERSONA.effort).toBe("");
     expect(validatePersona(GUIDE_PERSONA)).toEqual([]);
   });
 
@@ -191,6 +194,17 @@ describe("built-in Guide (issue #379)", () => {
     expect(getGuidePersona([])).toBeUndefined();
   });
 
+  it("carries effort only on the Guide", () => {
+    expect(validatePersona({ ...valid(), effort: "high" })).toEqual([
+      "only the Guide persona carries an effort",
+    ]);
+    expect(validatePersona({ ...valid({ id: GUIDE_PERSONA_ID }), effort: "" })).toEqual([]);
+    expect(validatePersona({ ...valid({ id: GUIDE_PERSONA_ID }), effort: "high" })).toEqual([]);
+    expect(validatePersona({ ...valid({ id: GUIDE_PERSONA_ID }), effort: 3 })).toEqual([
+      'guide persona effort must be a string ("" = Default)',
+    ]);
+  });
+
   it("allows an empty lens only for the Guide", () => {
     expect(validatePersona(valid({ lens: "" }))).toContain(
       "persona lens must be a non-empty string",
@@ -198,7 +212,7 @@ describe("built-in Guide (issue #379)", () => {
     expect(validatePersona(valid({ lens: "  " }))).toContain(
       "persona lens must be a non-empty string",
     );
-    expect(validatePersona({ ...valid({ lens: "" }), id: GUIDE_PERSONA_ID })).toEqual([]);
-    expect(validatePersona({ ...valid({ lens: "  " }), id: GUIDE_PERSONA_ID })).toEqual([]);
+    expect(validatePersona({ ...valid({ lens: "", id: GUIDE_PERSONA_ID }), effort: "" })).toEqual([]);
+    expect(validatePersona({ ...valid({ lens: "  ", id: GUIDE_PERSONA_ID }), effort: "" })).toEqual([]);
   });
 });
