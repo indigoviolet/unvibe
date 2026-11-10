@@ -602,6 +602,12 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 #right .ui-card.desc { margin: 14px 16px; }
 .desc.editing { outline: 2px solid var(--accent); outline-offset: -8px; border-radius: var(--radius-10); background: var(--surface); }
 .dbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 20px 0; font-size: 12.5px; }
+/* Issue #376: the summary header is a pinned row of the diff stack
+   (below the toolbar, above the file headers), so the first file
+   header still sits at its slot at scroll 0 and reveal landings clear
+   the whole stack. `top` tracks the live strip + bar heights
+   (`refreshDiffPinned`); the file/hunk slots move down by its height. */
+.dsumbar { position: sticky; top: var(--dsumbar-top, 81px); left: 0; z-index: 9; background: var(--surface); }
 /* Issue #351: the banner stacks as coherent groups — the summary text
    with range-diff always on its own full-width line, then the picker
    with Update left-aligned below — so a narrow pane never strands one

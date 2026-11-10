@@ -1051,13 +1051,14 @@ test.describe("L6 demo diff work", () => {
     svc = await startService(dataDir, { agent: "replay", label: "l6demo" });
     foldReview = await createDemoReview(svc);
     summaryReview = await createDemoReview(svc);
-    // j13's hunk summaries land asynchronously.
+    // j13's hunk summaries land asynchronously (issue #376: only the 5
+    // visible hunks are auto-summarised; hidden ones never are).
     {
       const deadline = Date.now() + 90_000;
       for (;;) {
         const snap = await apiJson(svc, "GET", `/api/reviews/${summaryReview}`);
         const states = (snap.json as { hunkStates?: { summary?: string }[] }).hunkStates ?? [];
-        if (states.filter((s) => s.summary).length >= 8) break;
+        if (states.filter((s) => s.summary).length >= 5) break;
         if (Date.now() > deadline) throw new Error("hunk summaries did not land");
         await new Promise((r) => setTimeout(r, 500));
       }

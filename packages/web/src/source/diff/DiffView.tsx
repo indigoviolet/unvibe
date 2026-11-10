@@ -1003,7 +1003,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={() => void onUpdated()} />
       ) : null}
       {summaryCounts.missing > 0 ? (
-        <div className="dbar" role="status">
+        <div className="dbar dsumbar" role="status">
           <span className="hint">
             Summaries for {summaryCounts.withSummary} of {summaryCounts.total}{" "}
             {summaryCounts.total === 1 ? "hunk" : "hunks"}
