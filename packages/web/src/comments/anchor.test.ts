@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   anchorScope,
+  clearMarks,
   ensureThreadGlyphs,
   highlightAnchorInRoot,
   locateNearestQuoteSegments,
@@ -188,6 +189,33 @@ describe("thread glyphs (issue #302)", () => {
     // Idempotent: a second pass adds no duplicate.
     ensureThreadGlyphs(root);
     expect(root.querySelectorAll('mark.anc.exl[data-jump="e1"] svg.thg')).toHaveLength(1);
+  });
+
+  test("re-marking a marked host drops the glyph with the mark — never hoists it (#374)", () => {
+    const { root } = hostWithQuote("<p>before <code>foo</code> bar after</p>", "b1");
+    highlightAnchorInRoot(root, "b1", { quote: "foo bar" }, () => makeExpMark("e1", true));
+    ensureThreadGlyphs(root);
+    expect(root.querySelectorAll("svg.thg")).toHaveLength(1);
+    // Unwrap the marks the way a close/reopen pass does: the glyph must
+    // go with its mark, not survive as an inline orphan.
+    clearMarks(root, "mark.anc.exl[data-jump]:not(.fnote)");
+    expect(root.querySelectorAll("svg.thg")).toHaveLength(0);
+    // Re-mark + glyph again: exactly one, never stacked.
+    highlightAnchorInRoot(root, "b1", { quote: "foo bar" }, () => makeExpMark("e1", true));
+    ensureThreadGlyphs(root);
+    expect(root.querySelectorAll("svg.thg")).toHaveLength(1);
+    highlightAnchorInRoot(root, "b1", { quote: "foo bar" }, () => makeExpMark("e1", true));
+    ensureThreadGlyphs(root);
+    expect(root.querySelectorAll("svg.thg")).toHaveLength(1);
+  });
+
+  test("orphan glyphs left by an older pass are swept (#374)", () => {
+    const { root } = hostWithQuote("<p>the fast path wins</p>", "b1");
+    const orphan = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    orphan.setAttribute("class", "ic thg");
+    root.querySelector("p")?.appendChild(orphan);
+    ensureThreadGlyphs(root);
+    expect(root.querySelectorAll("svg.thg")).toHaveLength(0);
   });
 
   test("footnote chips and other threads are left alone", () => {

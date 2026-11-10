@@ -767,6 +767,10 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
     const paraId = snap.description?.html?.match(/id="(d-[^"]+)"/)?.[1];
     if (!paraId) throw new Error("no description paragraph");
 
+    // Issue #374: the margin pill is the single entry point (the
+    // end-of-block bubble is gone), so these steps drive the pill.
+    const guideIds: string[] = [];
+    const descIds: string[] = [];
     await test.step("seed three guide comments and three (closed) description comments", async () => {
       for (let i = 1; i <= 3; i++) {
         const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
@@ -775,6 +779,7 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
           text: `Guide note ${i}`,
         });
         expect(made.status).toBe(201);
+        guideIds.push((made.json as { id: string }).id);
       }
       for (let i = 1; i <= 3; i++) {
         const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
@@ -784,6 +789,7 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
         });
         expect(made.status).toBe(201);
         const id = (made.json as { id: string }).id;
+        descIds.push(id);
         // Description comments start open; close them so the marker shows.
         await apiJson(s, "PATCH", `/api/reviews/${reviewId}/comments/${id}`, { open: false });
       }
@@ -793,9 +799,10 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
     await test.step("a guide preview item opens only its own comment", async () => {
-      const gMarker = page.locator("#C-central button.lk.cm[data-threads]");
+      const gMarker = page.locator(`#C-central [data-thr-margin~="${guideIds[0]}"]`);
       await expect.soft(gMarker).toBeVisible({ timeout: 15_000 });
       await expect.soft(gMarker).toContainText("3");
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
       await hoverFresh(page, gMarker);
       await expect.soft(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
       await expect.soft(page.locator("#pop [data-open-thread]")).toHaveCount(3);
@@ -815,9 +822,10 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
 
     await test.step("description markers behave the same next to a paragraph", async () => {
       await page.locator('#right [role="tab"]').getByText(/description/i).click();
-      const dMarker = page.locator("#right .desc button.lk.cm[data-threads]");
+      const dMarker = page.locator(`#right .desc [data-thr-margin~="${descIds[0]}"]`);
       await expect.soft(dMarker).toBeVisible({ timeout: 15_000 });
       await expect.soft(dMarker).toContainText("3");
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
       await hoverFresh(page, dMarker);
       await expect.soft(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
       await expect.soft(page.locator("#pop [data-open-thread]")).toHaveCount(3);
@@ -834,7 +842,8 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
     });
   });
 
-  test("comment marker is a toggle: expand, collapse, mixed, tooltip (#262)", async ({ page }) => {
+  // Issue #374: the margin pill owns the old end-of-block toggle (#262).
+  test("margin pill is a toggle: expand, collapse, mixed, count tooltip (#262)", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();
     const reviewId = await createDemoReview(s);
@@ -850,6 +859,8 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
     const paraId = snap.description?.html?.match(/id="(d-[^"]+)"/)?.[1];
     if (!paraId) throw new Error("no description paragraph");
 
+    const guideIds: string[] = [];
+    const descIds: string[] = [];
     await test.step("seed three guide and three description toggle notes", async () => {
       for (let i = 1; i <= 3; i++) {
         const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
@@ -858,6 +869,7 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
           text: `Toggle note ${i}`,
         });
         expect(made.status).toBe(201);
+        guideIds.push((made.json as { id: string }).id);
       }
       for (let i = 1; i <= 3; i++) {
         const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
@@ -867,6 +879,7 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
         });
         expect(made.status).toBe(201);
         const id = (made.json as { id: string }).id;
+        descIds.push(id);
         await apiJson(s, "PATCH", `/api/reviews/${reviewId}/comments/${id}`, { open: false });
       }
     });
@@ -874,78 +887,78 @@ test.describe("L5 ask-thread outbox, markers and polish (replay)", () => {
     await page.goto(`${s.origin}/review/${reviewId}?token=${s.token}`);
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    await test.step("the guide marker expands all three and flips its tooltip", async () => {
-      const gMarker = page.locator("#C-central button.lk.cm[data-threads]");
+    await test.step("the guide pill expands all three; its tooltip names the count", async () => {
+      const gMarker = page.locator(`#C-central [data-thr-margin~="${guideIds[0]}"]`);
       await expect.soft(gMarker).toBeVisible({ timeout: 15_000 });
       await expect.soft(gMarker).toContainText("3");
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Show comments");
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
       await gMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toBeVisible({ timeout: 15_000 });
       }
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Hide comments");
-      // The tooltip states the collapse action.
+      // The tooltip names the count in every state (#374).
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
       await hoverFresh(page, gMarker);
-      await expect.soft(page.locator("#tip")).toContainText("Hide comments", { timeout: 10_000 });
+      await expect.soft(page.locator("#tip")).toContainText("3 threads", { timeout: 10_000 });
       await page.keyboard.press("Escape");
     });
 
-    await test.step("one click collapses all three; the marker state follows per-thread Close", async () => {
-      const gMarker = page.locator("#C-central button.lk.cm[data-threads]");
+    await test.step("one click collapses all three; per-thread Close keeps the pill", async () => {
+      const gMarker = page.locator(`#C-central [data-thr-margin~="${guideIds[0]}"]`);
       await gMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toHaveCount(0, { timeout: 15_000 });
       }
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Show comments");
-      // Mixed case: one open via its preview item, the marker opens all.
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
+      // Mixed case: one open via its preview item, the pill opens all.
       await hoverFresh(page, gMarker);
       await expect.soft(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
       await page.locator("#pop [data-open-thread]").nth(1).click();
       const gThread2 = page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 2" });
       await expect.soft(gThread2).toBeVisible({ timeout: 15_000 });
       await expect.soft(page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 1" })).toHaveCount(0);
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Show comments");
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
       await gMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#C-central .ithread[data-thread]", { hasText: `Toggle note ${i}` })).toBeVisible({ timeout: 15_000 });
       }
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Hide comments");
-      // Per-thread Close still works, and the marker's state follows it.
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
+      // Per-thread Close still works; the pill (and its count) stays.
       const gThread1 = page.locator("#C-central .ithread[data-thread]", { hasText: "Toggle note 1" });
       await gThread1.getByRole("button", { name: "Close" }).click();
       await expect.soft(gThread1).toHaveCount(0, { timeout: 10_000 });
-      await expect.soft(gMarker).toHaveAttribute("data-tip", "Show comments");
+      await expect.soft(gMarker).toHaveAttribute("data-tip", "3 threads");
     });
 
-    await test.step("the description marker toggles the same way", async () => {
+    await test.step("the description pill toggles the same way", async () => {
       await page.locator('#right [role="tab"]').getByText(/description/i).click();
-      const dMarker = page.locator("#right .desc button.lk.cm[data-threads]");
+      const dMarker = page.locator(`#right .desc [data-thr-margin~="${descIds[0]}"]`);
       await expect.soft(dMarker).toBeVisible({ timeout: 15_000 });
       await expect.soft(dMarker).toContainText("3");
-      await expect.soft(dMarker).toHaveAttribute("data-tip", "Show comments");
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
       await dMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toBeVisible({ timeout: 15_000 });
       }
-      await expect.soft(dMarker).toHaveAttribute("data-tip", "Hide comments");
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
       await dMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toHaveCount(0, { timeout: 15_000 });
       }
-      await expect.soft(dMarker).toHaveAttribute("data-tip", "Show comments");
-      // Description mixed case: one open, the marker opens all.
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
+      // Description mixed case: one open, the pill opens all.
       await hoverFresh(page, dMarker);
       await expect.soft(page.locator("#pop")).toBeVisible({ timeout: 10_000 });
       await page.locator("#pop [data-open-thread]").nth(0).click();
       const dThread1 = page.locator("#right .ithread[data-thread]", { hasText: "Toggle desc 1" });
       await expect.soft(dThread1).toBeVisible({ timeout: 15_000 });
       await expect.soft(page.locator("#right .ithread[data-thread]", { hasText: "Toggle desc 2" })).toHaveCount(0);
-      await expect.soft(dMarker).toHaveAttribute("data-tip", "Show comments");
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
       await dMarker.click();
       for (let i = 1; i <= 3; i++) {
         await expect.soft(page.locator("#right .ithread[data-thread]", { hasText: `Toggle desc ${i}` })).toBeVisible({ timeout: 15_000 });
       }
-      await expect.soft(dMarker).toHaveAttribute("data-tip", "Hide comments");
+      await expect.soft(dMarker).toHaveAttribute("data-tip", "3 threads");
     });
   });
 

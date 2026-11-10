@@ -244,7 +244,9 @@ export async function generateReleaseNotes({
   let previousCommit = null;
   let previousDataFormat = null;
   {
-    const cur = `v${version}`;
+    // A debug flavour (`X.Y.Z-debug`, issue #373) is the same build as
+    // its lean release: exclude that release's own tag too.
+    const cur = `v${version.replace(/-debug$/, "")}`;
     let prevTag = null;
     const desc = await run("git", ["describe", "--tags", "--abbrev=0", head]);
     if (desc.code === 0) {

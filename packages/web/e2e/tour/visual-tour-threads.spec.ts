@@ -22,6 +22,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
 import { apiJson, createDemoReview } from "../journeys/journey-helpers.js";
+import { tourCombos } from "../tour-matrix.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 const FRAMES = fileURLToPath(new URL("../../visual-tour/364", import.meta.url));
@@ -832,4 +833,133 @@ test.describe("J364 thread polish", () => {
       .toBeUndefined();
     await expect(page.locator(`section.ithread[data-thread="${threadId}"]`)).toHaveCount(0, { timeout: 30_000 });
   });
+});
+
+// ---- J374 margin pill (issue #374): one pill per paragraph, inside the
+// gutter, in every theme and width. Slim set: 1440-light plus the
+// tour-matrix named keeps (dark + 960); the full matrix runs on demand.
+test.describe("J374 margin pill", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+  // Thread ids by seed name (pills show counts, never thread text).
+  const ids: Record<string, string> = {};
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j374-data-"));
+    svc = await startService(dataDir, { agent: "replay" });
+    reviewId = await createDemoReview(svc);
+    // One pill per block: problem#b1's threads (first-line, unquoted,
+    // mid-paragraph) share one pill; problem#b2 and buildup's list block
+    // each get one single-thread pill. Guide comments start closed; the
+    // pills show regardless.
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const pages = (snap.json as { pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[] }).pages ?? [];
+    const card = (id: string) => pages.find((p) => p.id === "root")?.cards.find((c) => c.id === id);
+    const seeds: { name: string; blockId: string; quote: string; text: string }[] = [
+      { name: "first", blockId: `problem#${card("problem")?.blocks[0]?.id}`, quote: "HTTP/1.1 servers", text: "First-line note" },
+      { name: "unquoted", blockId: `problem#${card("problem")?.blocks[0]?.id}`, quote: "", text: "Unquoted note" },
+      { name: "mid", blockId: `problem#${card("problem")?.blocks[0]?.id}`, quote: "value continues on the next line", text: "Mid-paragraph note" },
+      { name: "single", blockId: `problem#${card("problem")?.blocks[1]?.id}`, quote: "built the headers", text: "Second paragraph note" },
+      { name: "list", blockId: `buildup#${card("buildup")?.blocks.find((b) => b.id === "b2")?.id}`, quote: "They return early when a value has no CRLF.", text: "List note" },
+    ];
+    for (const seed of seeds) {
+      const made = await apiJson(svc, "POST", `/api/reviews/${reviewId}/comments`, {
+        anchor: { where: "block", blockId: seed.blockId },
+        quote: seed.quote,
+        text: seed.text,
+      });
+      if (made.status !== 201) throw new Error(`seed failed: ${JSON.stringify(made.json)}`);
+      ids[seed.name] = (made.json as { id: string }).id;
+    }
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("threads", [
+    { name: "1440-light", width: 1440, dark: false },
+    { name: "1440-dark", width: 1440, dark: true },
+    { name: "960-light", width: 960, dark: false },
+  ] as const)) {
+    test(`margin pill, pair, collapsed and list (${combo.name})`, async ({ page }) => {
+      test.setTimeout(240_000);
+      if (!svc) throw new Error("no service");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      if (combo.dark) await page.emulateMedia({ colorScheme: "dark" });
+      const suffix = combo.name;
+      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+
+      // Issue #374: one pill per block — the b1 threads (first-line,
+      // unquoted, mid-paragraph) share one pill naming the block's full
+      // count. The pill sits inside the card gutter, glyph and count
+      // side by side.
+      const pair = page.locator(`#C-problem [data-thr-margin~="${ids.first}"]`);
+      await expect(pair).toBeVisible({ timeout: 15_000 });
+      await expect(pair).toHaveAttribute("data-thr-margin", new RegExp(`${ids.mid}`));
+      const pairCount = await pair.evaluate((el) => (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length);
+      expect(pairCount).toBeGreaterThanOrEqual(3);
+      await expect(pair).toHaveAttribute("data-tip", `${pairCount} threads`);
+      await pair.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await settleScroll(page);
+      const geom = await pair.evaluate((el) => {
+        const box = (r: DOMRect) => ({ top: r.top, left: r.left, bottom: r.bottom, right: r.right });
+        const card = el.closest("section.ui-card");
+        const pill = box(el.getBoundingClientRect());
+        return {
+          pill,
+          card: card instanceof Element ? box(card.getBoundingClientRect()) : null,
+        };
+      });
+      expect(geom.card).not.toBeNull();
+      if (geom.card) {
+        expect(geom.pill.left).toBeGreaterThanOrEqual(geom.card.left);
+        expect(geom.pill.right).toBeLessThanOrEqual(geom.card.right);
+      }
+      await page.screenshot({ path: `${FRAMES}/margin-pill-${suffix}.png` });
+
+      if (!combo.dark && combo.width === 1440) {
+        // Single-thread pill on the second paragraph.
+        const single = page.locator(`#C-problem [data-thr-margin~="${ids.single}"]`);
+        await expect(single).toBeVisible({ timeout: 15_000 });
+        await expect(single).toHaveAttribute("data-tip", "1 thread");
+        await single.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await settleScroll(page);
+        await page.screenshot({ path: `${FRAMES}/margin-single-${suffix}.png` });
+
+        // A collapsed card shows exactly one pill carrying the card's
+        // total thread count (per-block pills would stack on one line).
+        const expandedTotal = await page.evaluate(() => {
+          const pills = document.querySelectorAll("#C-problem [data-thr-margin]");
+          return [...pills].reduce(
+            (sum, el) => sum + (el.getAttribute("data-thr-margin") ?? "").split(/\s+/).filter(Boolean).length,
+            0,
+          );
+        });
+        expect(expandedTotal).toBeGreaterThan(1);
+        await page.locator("#C-problem > .chead").getByRole("button", { name: "Collapse" }).click();
+        await expect(page.locator("#C-problem")).toHaveClass(/collapsed/, { timeout: 10_000 });
+        const collapsedPills = page.locator("#C-problem [data-thr-margin]");
+        await expect(collapsedPills).toHaveCount(1, { timeout: 15_000 });
+        await expect(collapsedPills.first()).toHaveAttribute("data-tip", `${expandedTotal} threads`);
+        await expect(collapsedPills.first()).toContainText(String(expandedTotal));
+        await collapsedPills.first().evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await settleScroll(page);
+        await page.screenshot({ path: `${FRAMES}/margin-collapsed-${suffix}.png` });
+        await page.locator("#C-problem > .chead").getByRole("button", { name: "Expand" }).click();
+        await expect(page.locator("#C-problem")).not.toHaveClass(/collapsed/, { timeout: 10_000 });
+
+        // List blocks get the same gutter treatment.
+        const list = page.locator(`#C-buildup [data-thr-margin~="${ids.list}"]`);
+        await expect(list).toBeVisible({ timeout: 15_000 });
+        await list.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await settleScroll(page);
+        await page.screenshot({ path: `${FRAMES}/margin-list-${suffix}.png` });
+      }
+    });
+  }
 });

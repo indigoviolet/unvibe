@@ -16,7 +16,7 @@ import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
-import { isClosedExpansion } from "./expansions/expansionUtils.js";
+import { isExpansionFootnote } from "./expansions/expansionUtils.js";
 import { RichText } from "./RichText.js";
 import { Card as UiCard } from "../ui/index.js";
 
@@ -59,13 +59,15 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const titleBlock =
     doc.blocks[0]?.kind === "heading" && doc.blocks[0].level === 1 ? doc.blocks[0] : undefined;
   const titleHtml = titleBlock?.block.type === "paragraph" ? titleBlock.block.text.standard : "";
+  // Issue #374: the margin pills sit in a gutter the doc reserves.
+  const docThreads = [
+    ...(titleBlock ? blockThreads(annotations, DOCUMENT_CARD_ID, titleBlock.id) : []),
+    ...doc.blocks.filter((db) => db.id !== titleBlock?.id).flatMap((db) => blockThreads(annotations, DOCUMENT_CARD_ID, db.id)),
+  ];
   return (
-    <div className="doc" data-testid="document-view">
+    <div className={docThreads.length > 0 ? "doc has-threads" : "doc"} data-testid="document-view">
       <ThreadMarginOverlay
-        threads={[
-          ...(titleBlock ? blockThreads(annotations, DOCUMENT_CARD_ID, titleBlock.id) : []),
-          ...doc.blocks.filter((db) => db.id !== titleBlock?.id).flatMap((db) => blockThreads(annotations, DOCUMENT_CARD_ID, db.id)),
-        ]}
+        threads={docThreads}
         readOnly={readOnlyDoc}
       />
       {titleBlock ? (
@@ -86,7 +88,7 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
       <UiCard as="section" variant="raised" id={`C-${DOCUMENT_CARD_ID}`}>
         {doc.blocks.filter((db) => db.id !== titleBlock?.id).map((db) => {
           const exps = expansionsForBlock(annotations, DOCUMENT_CARD_ID, db.id);
-          const footnotes = exps.filter(isClosedExpansion);
+          const footnotes = exps.filter(isExpansionFootnote);
           return (
             <Fragment key={db.id}>
               {db.kind === "heading" ? (
