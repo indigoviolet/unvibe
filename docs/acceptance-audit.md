@@ -4230,8 +4230,12 @@ one-variant union today).
   the prompt byte-identical. Persona turns never carry it; the base
   and system prompts never depend on the lens (a unit test pins
   base-identity with and without a lens). `followMain` keeps its
-  name and now resolves to the Guide's model; Guide effort is the
-  adapter default (personas name no effort).
+  name and now resolves to the Guide's provider/model — never its
+  effort (followers stay on the adapter default, as before). The Guide
+  keeps the main-model effort picker (owner decision A):
+  provider-offered values, "" = Default, validated on save like a role;
+  the effort rides the base key, job stamps and agent sessions exactly
+  as `settings.main.effort` did.
 - **Validation:** the list must hold exactly one Guide (enabled,
   own model, no card instruction); an empty lens is allowed only
   for the Guide. The Guide is not offered in card run pickers and
