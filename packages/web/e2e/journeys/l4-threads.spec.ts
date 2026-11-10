@@ -346,7 +346,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
       const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
       expect.soft(clip.startsWith("## ")).toBe(true);
-      expect.soft(clip).toContain(/fold|helper|space/i);
+      expect.soft(clip).toMatch(/fold|helper|space/i);
       expect.soft(clip).not.toContain("[[");
     });
 
