@@ -187,6 +187,70 @@ test.describe("J283 hidden-hunk rows", () => {
   }
 });
 
+// ---- j376 summary header (top-N auto summaries) ----
+test.describe("J376 summary header", () => {
+  let repoDir = "";
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-repo-"));
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-data-"));
+    mkdirSync(path.join(repoDir, "src"), { recursive: true });
+    await git(repoDir, "init", "-b", "main");
+    await git(repoDir, "config", "user.email", "t@example.com");
+    await git(repoDir, "config", "user.name", "T");
+    writeFileSync(
+      path.join(repoDir, "src", "app.py"),
+      ["def main():", "    return 1", "", "", "def helper():", "    return 2", ""].join("\n"),
+    );
+    writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 1\n");
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "base");
+    await git(repoDir, "checkout", "-b", "feature");
+    writeFileSync(
+      path.join(repoDir, "src", "app.py"),
+      ["def main():", "    return 10", "", "", "def helper():", "    return 2", "", "", "def extra():", "    return 3", ""].join("\n"),
+    );
+    writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 2\n");
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "feature work");
+    // Agent none: the pipeline is disabled, so the only summary is the
+    // one PATCHed below — the header state is fully deterministic.
+    svc = await startService(dataDir, { agent: "none" });
+    reviewId = await createScratchReview(svc, repoDir);
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const files = (snap.json as { files: { hunks: { contentHash: string }[] }[] }).files ?? [];
+    const first = files[0]?.hunks[0];
+    if (!first) throw new Error("scratch review has no hunks");
+    await apiJson(svc, "PATCH", `/api/reviews/${reviewId}/hunks/${first.contentHash}`, {
+      summary: "Bumps the main return value.",
+    });
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("summary header names the covered hunks with Summarize more (1440-light)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    const line = page.locator(".dbar", { hasText: "Summaries for" });
+    await expect(line).toContainText(/Summaries for 1 of \d+ hunks/, { timeout: 30_000 });
+    // The one PATCHed summary is covered; the rest are on demand.
+    await expect(line.getByRole("button", { name: "Summarize more" })).toBeEnabled();
+    await checkLayout(page, "summary-header-1440-light");
+    await line.screenshot({ path: path.join(SHOTS, "376-summary-header-1440-light.png") });
+  });
+});
+
 // ---- j242-plotlines-card.spec.ts (frames re-added) ----
 test.describe("J242 plotlines card", () => {
   let dataDir = "";

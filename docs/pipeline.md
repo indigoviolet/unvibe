@@ -100,18 +100,22 @@ description.
 4. **Hunk pass** (small model, no fork, one prompt per hunk, background;
    starts at ingest in its own queue bucket — #123). Summary +
    `hiddenReason` per hunk, replacing the rule-based pre-classification.
-   Never hide a hunk the guide cites (recomputed after the reader) nor a
-   one-line change. Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks
-   there is no per-hunk fan-out at ingest (issue #107: no guide exists
-   yet to cite, so the stage reaches done with no jobs); only
-   guide-cited hunks lacking a stored summary fan out once the reader
-   lands, everything else summarises on demand, and the stage still
-   reaches done (empty fan-out sets done; completions are counted in the
-   success path) so resume never re-runs
-   the full fan-out. `POST …/hunks/:hash/summarize` runs
-   one hunk on demand at user priority (`kind: "summarize"`); **Fold all**
-   is the client calling summarize per hunk missing a summary (jobs dedupe
-   per hunk hash, so no batch endpoint is needed).
+   Never hide a one-line change; guide-cited hunks hide like any other
+   (#325). At most N hunks per review version are summarised
+   automatically (issue #376: the `hunkSummaryLimit` setting, default
+   50), picked source first, then tests, config, docs — never generated
+   files, never hunks hidden at the review's hide level. Cited hunks get
+   priority within the same N once the reader lands (queued cited jobs
+   run ahead of the background band; only the unspent budget enqueues
+   more — never extra jobs). The stage still reaches done (empty
+   selection sets done; completions are counted in the success path) so
+   resume never re-runs finished work: hunks with summaries or live
+   jobs are skipped. `POST …/hunks/:hash/summarize` runs
+   one hunk on demand at user priority (`kind: "summarize"`);
+   `POST …/hunks/summarize-more` queues the next N hunks lacking
+   summaries in the same order (same eligibility; an explicit request,
+   so no auto budget). **Fold all** only folds and never starts summary
+   jobs.
 
 Every reply: `splitReply` → `parseCards` → citation validator.
 Valid/repaired tokens stored resolved; unverified stored flagged
@@ -191,14 +195,12 @@ job; per-job usage + `cacheHitRate` in `GET /api/jobs?review=:id`.
 Time-to-first-card in `usageTotals.firstCardAt` (set on the first streamed
 card) and `logTail` (`new-card` with `unverified` count).
 
-## Fold-all choice
+## Fold-all choice (#376)
 
-No batch endpoint: the client calls `POST …/hunks/:hash/summarize` per
-hunk missing a summary. Jobs dedupe per hunk hash, run at user priority,
-and never hide cited/one-line hunks. Past the shared
-`HUNK_PASS_FANOUT_LIMIT` (500 hunks, `packages/shared/src/budgets.ts` —
-the single number both sides import) Fold all folds only and requests no
-summaries; the per-hunk Summarize button in the hunk header stays as the
-on-demand path (`DiffView.tsx` Fold-all guard, `FileSection.tsx`
-`.dhunk-h` header, Tips copy, `DiffView.test.tsx` both sides).
-Documented here so web and service agree.
+Fold all only folds and never starts summary jobs (no jobs beyond the
+automatic N without asking). The on-demand paths are the per-hunk
+Summarize button (`kind: "summarize"`, user priority) and
+`POST …/hunks/summarize-more`, which queues the next N hunks lacking
+summaries in the automatic pass's order (jobs dedupe per hunk hash).
+Hidden and generated hunks are excluded from both automatic and
+Summarize-more batches; they summarise on expand or per-hunk request.

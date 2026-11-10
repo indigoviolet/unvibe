@@ -247,7 +247,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - Expand by unit: one control per hunk steps from the innermost enclosing function or method to its class and then the file, one level per click, with the unit's name in the hunk header. Units come from tree-sitter grammars (eight languages) with an indentation fallback shown as approximate; hunks with no enclosing unit expand by lines.
 - Where the review has no file content to read, expansion controls hide instead of showing load errors.
 
-**Fold all and Unfold all:** Fold all folds every hunk that isn't hidden and asks the agent to summarize only the hunks still missing a summary (past the per-hunk summary limit it folds without requesting any). Unfold all shows all code and keeps the summaries.
+**Fold all and Unfold all:** Fold all folds every hunk that isn't hidden and never starts summary jobs. Summaries arrive through the automatic top-N pass, the per-hunk Summarize button, or Summarize more in the diff header (the next hunks lacking summaries, in the same order). Unfold all shows all code and keeps the summaries.
 
 **Views**
 - **Unified:** long lines scroll sideways (per hunk: each hunk's code scrolls independently, so its header can pin without sitting inside the scroller).
@@ -525,7 +525,7 @@ A new base is built when any of these happens:
 3. **Build the base** (§9.2).
 4. **Parallel forks of the base:**
    - a **critic** (main model): findings with evidence, an assessment, a confidence level, and drafted suggested comments on diff lines;
-5. **Hunk pass** (small model, no fork): a summary for each hunk, plus the uninteresting classification with a one-line reason.
+5. **Hunk pass** (small model, no fork): at most N summaries per review version (the "Hunk summaries written automatically" setting, Settings → Limits, default 50, 0 for none), picked source first, then tests, config, docs — never generated files, never hunks hidden at the review's hide level — plus the uninteresting classification with a one-line reason. Guide-cited hunks without summaries get priority within the same N once the reader lands; no extra jobs beyond N without asking. The rest summarise on demand. The diff header shows "Summaries for X of Y hunks · Summarize more", which queues the next N in the same order.
 6. **On demand:** depth versions, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
 7. **Update pass** (§8).
 

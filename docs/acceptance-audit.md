@@ -1545,25 +1545,19 @@ needed (that deviation is closed, not added).
    evidence/assessment/confidence + suggested comments; concept pages
    written on demand only, #216) — met (demo `f-critic`/`f-critic-2` from the one
    combined critic recording — ran; #341 re-record).
-5. Hunk pass (small model, summary + hiddenReason, never cited/one-line)
-   — met (demo 8 summaries — ran from global install).
-   (#107) Past `DEFAULT_HUNK_PASS_FANOUT_LIMIT` (500) hunks there is no
-   per-hunk fan-out at ingest (no guide exists yet to cite): only
-   guide-cited hunks lacking a stored summary fan out once the reader
-   lands, everything else summarises on demand (`POST
-   …/hunks/:hash/summarize`, Fold-all; jobs dedupe per hunk hash). The
-   stage still reaches done (empty fan-out sets done; completions are
-   counted in the success path, fixing a race where concurrent jobs all
-   saw each other "running" and nobody marked done), and resume reruns
-   the same branch — never the full fan-out. The limit is shared
-   (`HUNK_PASS_FANOUT_LIMIT` in `packages/shared`, read by the pipeline
-   and the web): past it Fold all folds only and requests no summaries
-   (toast, tooltip and Tips copy say so; per-hunk Summarize stays
-   on-demand). Hide-uninteresting folding
-   needs no model summaries: it folds on the deterministic ingest hidden
-   reason, and summary-less rows render the reason copy with no spinner
-   (`DiffView.test.tsx` "folds on the deterministic hidden reason").
-   Deviation from PRD §11 step 5 noted below.
+5. Hunk pass (small model, summary + hiddenReason, never one-line;
+   guide-cited hunks hide like any other, #325) — met (demo 8 summaries
+   — ran from global install).
+   (#376) At most N summaries per review version (the `hunkSummaryLimit`
+   setting, default 50, 0 for none), picked source, tests, config, docs —
+   never generated, never hidden at the review's hide level. Cited hunks
+   get priority within the same N after the reader (queued cited jobs
+   raised; only unspent budget enqueues more — never extra jobs).
+   `POST …/hunks/summarize-more` queues the next N in the same order
+   (same eligibility); Fold all only folds. The diff header shows
+   "Summaries for X of Y hunks · Summarize more" whenever hunks lack
+   summaries, and the trace's `review.skipped` counts every hunk without
+   a summary to match.
 6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
@@ -1990,14 +1984,16 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
     review, no separate ingest path). The user never edits the managed
     checkout, so fetching is safe; removing the repo deletes the clone
     (managed only), and only while it has no reviews.
-12. Huge-PR prompt tiers (#107): PRD §9.1 says L1 carries "the full
-    handwritten diff" with only the 40k-token header fallback, and §11
-    step 5 says the hunk pass summarises each hunk. Past the inline
-    budget L1 now degrades further (no-uninteresting-hunks → files-only
-    → counts-only, hard-capped at 80k tokens), and past 500 hunks the
-    hunk pass only fans out guide-cited hunks, summarising the rest on
-    demand. Under the budgets every prompt is byte-identical to the
-    PRD shape; only oversized reviews see the degraded tiers.
+12. Huge-PR prompt tiers (#107) and the top-N hunk cap (#376): PRD §9.1
+    says L1 carries "the full handwritten diff" with only the 40k-token
+    header fallback, and §11 step 5 caps the hunk pass at N summaries per
+    review version (the `hunkSummaryLimit` setting, default 50), picked
+    source first — never generated, never hidden. Past the inline budget
+    L1 degrades further (no-uninteresting-hunks → files-only →
+    counts-only, hard-capped at 80k tokens), and past N hunks the rest
+    summarise on demand (per-hunk Summarize, Summarize more). Under the
+    budgets every prompt is byte-identical to the PRD shape; only
+    oversized reviews see the degraded tiers.
 
 ## Open list
 
