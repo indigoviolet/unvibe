@@ -95,7 +95,9 @@ describe("pipeline demo e2e (replay)", () => {
       });
 
       // Wait for the full demo (reader + one critic job (#215) +
-      // 8 hunks + 4 go-deeper fills; no concept pages before a click, #216).
+      // the top-N auto summaries of the 8 demo hunks (issue #376: the 3
+      // hidden hunks never get summaries) + 4 go-deeper fills; no concept
+      // pages before a click, #216).
       await waitFor(() => {
         const s = ctx.reviews.getSnapshot(id);
         if (!s) return false;
@@ -103,7 +105,7 @@ describe("pipeline demo e2e (replay)", () => {
         if (!root || root.cards.length < 6) return false;
         if (root.cards.some((c) => c.pending)) return false;
         if (s.pages.filter((p) => p.kind === "finding").length < 2) return false;
-        if (s.hunkStates.filter((h) => h.summary).length < 8) return false;
+        if (s.hunkStates.filter((h) => h.summary).length < 5) return false;
         return true;
       }, 60000);
       unsub();
@@ -158,16 +160,20 @@ describe("pipeline demo e2e (replay)", () => {
         }
       }
 
-      // Hunk summaries + hidden reasons match the recordings.
-      expect(snap.hunkStates).toHaveLength(8);
-      for (const h of snap.hunkStates) expect(h.summary).toBeTruthy();
+      // Hunk summaries + hidden reasons match the recordings: the 5
+      // visible hunks carry agent summaries (issue #376: hidden hunks
+      // are never auto-summarised, so the ingest rule's reasons stand).
+      // Plotline assignment still touches every hunk (plotline only).
+      const summarized = snap.hunkStates.filter((h) => h.summary !== undefined);
+      expect(summarized).toHaveLength(5);
+      for (const h of summarized) expect(h.summary).toBeTruthy();
       const hiddenOf = (s: ReviewSnapshot, fileKey: string, i: number): string | undefined =>
         s.files.find((f) => f.fileKey === fileKey)!.hunks[i].hiddenReason;
       for (const s of [snap, expected]) {
         void s;
       }
-      expect(hiddenOf(snap, "test-test_connection.py", 0)).toBe("import-only change");
-      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("docs/changelog entry only");
+      expect(hiddenOf(snap, "test-test_connection.py", 0)).toBe("imports");
+      expect(hiddenOf(snap, "changelog-1362.bugfix.rst", 0)).toBe("docs / config");
       expect(hiddenOf(snap, "src-urllib3-connection.py", 0)).toBeUndefined();
 
       // Zero unverified citations across all cards.

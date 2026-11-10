@@ -42,7 +42,7 @@ export function countCodePoints(text: string): number {
   }
   return n;
 }
-import { BASE_PROMPT_CAP_TOKENS, HUNK_PASS_FANOUT_LIMIT } from "@unvibe/shared";
+import { BASE_PROMPT_CAP_TOKENS } from "@unvibe/shared";
 
 /** Starting guess for the L1 inline budget: ~40k tokens of diff (PRD §9.1). */
 export const DEFAULT_INLINE_BUDGET_TOKENS = 40_000;
@@ -63,17 +63,6 @@ export const DEFAULT_INLINE_BUDGET_TOKENS = 40_000;
  * prompt, tool specs, log batches and the reply.
  */
 export const DEFAULT_BASE_PROMPT_CAP_TOKENS = BASE_PROMPT_CAP_TOKENS;
-
-/**
- * Hunk-pass fan-out limit (issue #107): reviews with more hunks than this
- * skip the per-hunk summarise fan-out; summaries go on demand instead
- * (`POST …/hunks/:hash/summarize`, Fold-all, guide-cited hunks). At or
- * under it behaviour is unchanged. Kept a plain constant next to the
- * other budgets (not a setting) so queue growth stays bounded no matter
- * what the user tunes. Single source of truth in `@unvibe/shared` — the
- * web reads the same number instead of duplicating it.
- */
-export const DEFAULT_HUNK_PASS_FANOUT_LIMIT = HUNK_PASS_FANOUT_LIMIT;
 
 /**
  * Floor for a leftover cap share (issue #107): when hunk summaries (or
