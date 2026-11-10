@@ -145,14 +145,14 @@ test.describe("L8 personas settings", () => {
       });
       expect.soft(list[1]!.lens).toContain("second reader");
       expect.soft(list[1]!.cardInstruction).toContain("check its claims against the code");
-      // Issue #359: Clarity follows the main model at run time.
-      expect.soft(list[1]).toMatchObject({
+      // Issue #359: Clarity follows the Guide's model at run time.
+      expect.soft(list[2]).toMatchObject({
         id: "clarity",
         name: "Clarity",
         followMain: true,
         enabled: true,
       });
-      expect.soft(list[1]!.lens).toContain("You are Clarity");
+      expect.soft(list[2]!.lens).toContain("You are Clarity");
     });
 
     await test.step("Settings lists all three with their models", async () => {

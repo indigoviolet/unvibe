@@ -95,14 +95,14 @@ test.describe("J349 personas settings", () => {
     });
     expect(list[1].lens).toContain("second reader");
     expect(list[1].cardInstruction).toContain("check its claims against the code");
-    // Issue #359: Clarity follows the main model at run time.
-    expect(list[1]).toMatchObject({
+    // Issue #359: Clarity follows the Guide's model at run time.
+    expect(list[2]).toMatchObject({
       id: "clarity",
       name: "Clarity",
       followMain: true,
       enabled: true,
     });
-    expect(list[1].lens).toContain("You are Clarity");
+    expect(list[2].lens).toContain("You are Clarity");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
