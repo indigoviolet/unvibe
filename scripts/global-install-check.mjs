@@ -96,6 +96,12 @@ function assert(cond, msg) {
 // all live under one fresh dir, removed by exact path on success,
 // failure and interruption. Never globs the system temp dir.
 const TMP = createRunRoot();
+// The caller's env minus the user session bus (#378). With
+// DBUS_SESSION_BUS_ADDRESS inherited, `systemctl --user` reaches the real
+// user manager even with XDG_RUNTIME_DIR pointed at a missing dir, and
+// `unvibe start` starts the real login unit. Every sandbox env starts here.
+const SANDBOX_BASE_ENV = { ...process.env };
+delete SANDBOX_BASE_ENV.DBUS_SESSION_BUS_ADDRESS;
 console.log(`work dir: ${TMP}`);
 // Interruption net: remove only our own root. Installed daemons started
 // by verifyInstall are stopped on their normal path (`stop` after each
@@ -462,7 +468,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
   const DATA = dataDir;
   fs.mkdirSync(HOME, { recursive: true });
   const ENV = {
-    ...process.env,
+    ...SANDBOX_BASE_ENV,
     HOME,
     UNVIBE_DATA_DIR: DATA,
     UNVIBE_PORT: String(port),
@@ -708,7 +714,7 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
 /** Env shared by every install in this check (fake HOME, isolated cache). */
 function installEnv({ cacheDir, prefix, home, dataDir, port }) {
   return {
-    ...process.env,
+    ...SANDBOX_BASE_ENV,
     npm_config_cache: cacheDir,
     HOME: home,
     UNVIBE_DATA_DIR: dataDir,
@@ -963,7 +969,7 @@ async function phaseMise(tarballPath, port) {
     { mode: 0o755 },
   );
   const ENV = {
-    ...process.env,
+    ...SANDBOX_BASE_ENV,
     HOME: home,
     UNVIBE_DATA_DIR: dataDir,
     UNVIBE_PORT: String(port),
