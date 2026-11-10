@@ -23,9 +23,9 @@ import type { Persona, Settings, ThinkingResponse } from "@unvibe/shared";
 import { resolveEffectiveSettings, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
 
-type Role = "main" | "small";
+type Role = "small";
 
-const ROLES: Role[] = ["main", "small"];
+const ROLES: Role[] = ["small"];
 
 /**
  * Effective settings: stored values, with live adapter defaults filled in
@@ -61,8 +61,9 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       const problems: string[] = [];
       // Issue #349: every persona's model is validated like a role's —
       // never persist a model id no adapter offers. A persona following
-      // the main model (issue #359) is exempt: its stored pick is the
-      // last explicit one, not what runs.
+      // the main model (issue #359: the Guide persona, #379) is exempt:
+      // its stored pick is the last explicit one, not what runs. The
+      // Guide itself always names its model, so it is validated.
       const personas = Array.isArray(patch.personas) ? (patch.personas as Persona[]) : [];
       const picks: { label: string; provider: string; model: string }[] = [
         ...ROLES.map((role) => ({ label: role, provider: patch[role]?.provider ?? "", model: patch[role]?.model ?? "" })),
@@ -95,8 +96,8 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       // Never persist an effort value the adapter does not offer.
       // Default ("") always passes: it leaves the adapter's own
       // setting alone. Validation above already rejected a missing or
-      // non-string effort, so it is always present here. (Roles only:
-      // personas name provider + model, no effort in v1.)
+      // non-string effort, so it is always present here. (The small role
+      // only: personas name provider + model, no effort in v1.)
       for (const role of ROLES) {
         const pick = patch[role];
         if (!pick || pick.model === "") continue;

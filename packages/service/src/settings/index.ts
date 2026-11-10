@@ -15,6 +15,7 @@ export {
   type DefaultModels,
 } from "./defaults.js";
 export {
+  guidePick,
   resolveEffectiveSettings,
   type EffectiveSettingsDeps,
   type SettingsRole,

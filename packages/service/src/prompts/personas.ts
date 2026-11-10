@@ -28,6 +28,50 @@ import { renderTemplate, type TemplateLibrary } from "./index.js";
 import { renderSystemPrompt } from "./access.js";
 
 /**
+ * Main writing turns covered by the Guide lens (issue #379): the
+ * templates rendered for main-agent turns (`runInFork` plus the reader
+ * guide turn). Persona turns and the repair follow-ups that continue an
+ * already-prefixed session are excluded. One set, so switching
+ * placement later touches one place.
+ */
+export const GUIDE_STYLE_TEMPLATES: ReadonlySet<string> = new Set([
+  "reader",
+  "go_deeper",
+  "depth",
+  "ask",
+  "ask_turn",
+]);
+
+/**
+ * Prefix the Guide's writing-style lens to a main writing turn. Empty
+ * lens returns the prompt unchanged (byte-identical). The lens governs
+ * tone and wording only: the task's own rules stay authoritative, said
+ * in the section so the model cannot mistake style for new output
+ * rules. Persona turns never pass through here.
+ */
+export function withGuideWritingStyle(prompt: string, lens: string): string {
+  const style = lens.trim();
+  if (style === "") return prompt;
+  return (
+    `# Writing style\n\n${style}\n\n` +
+    `(This governs tone and wording only; the task's rules below on structure, citations, ` +
+    `containers and JSON output take precedence.)\n\n${prompt}`
+  );
+}
+
+/**
+ * Prefix the Guide lens to one turn of a main writing task (issue
+ * #379): the single placement helper for every main-turn site (first
+ * turns, connection retries, the reader). Persona tasks and repair
+ * follow-ups never call it. A template outside the set, or an empty
+ * lens, returns the prompt unchanged.
+ */
+export function withGuideStyleForTurn(template: string, prompt: string, lens: string): string {
+  if (!GUIDE_STYLE_TEMPLATES.has(template)) return prompt;
+  return withGuideWritingStyle(prompt, lens);
+}
+
+/**
  * Card-task default: what an empty card instruction means. Kept here
  * (not in the template) so the override decision stays testable in one
  * place and the template only carries its variables.

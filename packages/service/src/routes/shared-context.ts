@@ -19,7 +19,7 @@ import { buildBasePack } from "../context/base.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SessionManager } from "../sessions/manager.js";
 import type { ModelCatalog, SettingsStore } from "../settings/index.js";
-import { resolveEffectiveSettings } from "../settings/index.js";
+import { guidePick, resolveEffectiveSettings } from "../settings/index.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import { buildBaseMarkdown, buildContributionsMarkdown, buildLogMarkdown } from "../sharedctx/debug.js";
 import { loadTemplatesDirSync } from "../prompts/index.js";
@@ -49,10 +49,11 @@ export async function registerSharedContext(app: FastifyInstance, ctx: Ctx): Pro
     const settings = ctx.settings
       ? await resolveEffectiveSettings({ settings: ctx.settings, models: ctx.models ?? null })
       : undefined;
-    const provider = settings?.main.provider ?? "unknown";
-    const model = settings?.main.model ?? "unknown";
+    const guide = settings ? guidePick(settings) : undefined;
+    const provider = guide?.provider ?? "unknown";
+    const model = guide?.model ?? "unknown";
     // No settings store (scaffold): no role pick, so the adapter default.
-    const effort = settings ? settings.main.effort : "";
+    const effort = guide?.effort ?? "";
     const currentKey = baseKeyString({
       reviewId: id,
       reviewVersion: `v${snapshot.version.n}`,
