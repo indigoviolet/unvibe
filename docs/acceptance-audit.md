@@ -4230,7 +4230,7 @@ one-variant union today).
   hunk citations degrade to plain text labels. The output never contains
   `[[…]]` tokens. No new settings, jobs or agent calls; thread answers
   are covered (same converter on the reply). Additive only: a new shared
-  module plus toolbar buttons, so `DATA_FORMAT` stays 1.
+  module plus toolbar buttons, so `DATA_FORMAT` stays 6.
   Evidence: `packages/shared/test/copy-markdown-377.test.ts` (18 tests:
   depth level, persona-variant blocks, list, table, aside, d2, heading,
   PR permalink, local path:lines, desc/doc labels, concept/card/page
