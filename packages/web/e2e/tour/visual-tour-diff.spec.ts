@@ -193,6 +193,7 @@ test.describe("J376 summary header", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
+  let totalHunks = 0;
 
   test.beforeAll(async () => {
     repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-repo-"));
@@ -220,13 +221,24 @@ test.describe("J376 summary header", () => {
     // one PATCHed below — the header state is fully deterministic.
     svc = await startService(dataDir, { agent: "none" });
     reviewId = await createScratchReview(svc, repoDir);
-    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    const files = (snap.json as { files: { hunks: { contentHash: string }[] }[] }).files ?? [];
-    const first = files[0]?.hunks[0];
-    if (!first) throw new Error("scratch review has no hunks");
+    // Wait for ingest: the snapshot lands without files first.
+    const deadline = Date.now() + 90_000;
+    let first: { contentHash: string } | null = null;
+    let total = 0;
+    for (;;) {
+      const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+      const files = (snap.json as { files: { hunks: { contentHash: string }[] }[] }).files ?? [];
+      total = files.reduce((n, f) => n + f.hunks.length, 0);
+      first = files[0]?.hunks[0] ?? null;
+      if (first && total > 1) break;
+      if (Date.now() > deadline) throw new Error("scratch review has no hunks");
+      await new Promise((r) => setTimeout(r, 500));
+    }
     await apiJson(svc, "PATCH", `/api/reviews/${reviewId}/hunks/${first.contentHash}`, {
       summary: "Bumps the main return value.",
     });
+    // The header names the one covered hunk out of the total.
+    totalHunks = total;
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
@@ -242,8 +254,8 @@ test.describe("J376 summary header", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-    const line = page.locator(".dbar", { hasText: "Summaries for" });
-    await expect(line).toContainText(/Summaries for 1 of \d+ hunks/, { timeout: 30_000 });
+    const line = page.locator(".dsumbar", { hasText: "Summaries for" });
+    await expect(line).toContainText(`Summaries for 1 of ${totalHunks} hunks`, { timeout: 30_000 });
     // The one PATCHed summary is covered; the rest are on demand.
     await expect(line.getByRole("button", { name: "Summarize more" })).toBeEnabled();
     await checkLayout(page, "summary-header-1440-light");
