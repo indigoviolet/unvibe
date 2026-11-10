@@ -123,10 +123,19 @@ test.describe("L8 personas settings", () => {
 
   test("built-ins are seeded and listed", async ({ page }) => {
     const s = service();
-    await test.step("the API seeds Second opinion and Clarity", async () => {
+    await test.step("the API seeds the fixed Guide, Second opinion and Clarity", async () => {
       const list = await personas(s);
-      expect.soft(list).toHaveLength(2);
+      expect.soft(list).toHaveLength(3);
+      // Issue #379: the fixed Guide seeds first (the main agent).
       expect.soft(list[0]).toMatchObject({
+        id: "guide",
+        name: "Guide",
+        followMain: false,
+        enabled: true,
+        cardInstruction: "",
+      });
+      expect.soft(list[0]!.lens).toBe("");
+      expect.soft(list[1]).toMatchObject({
         id: "second-opinion",
         name: "Second opinion",
         followMain: false,
@@ -134,8 +143,8 @@ test.describe("L8 personas settings", () => {
         model: "gpt-6.1-sol",
         enabled: true,
       });
-      expect.soft(list[0]!.lens).toContain("second reader");
-      expect.soft(list[0]!.cardInstruction).toContain("check its claims against the code");
+      expect.soft(list[1]!.lens).toContain("second reader");
+      expect.soft(list[1]!.cardInstruction).toContain("check its claims against the code");
       // Issue #359: Clarity follows the main model at run time.
       expect.soft(list[1]).toMatchObject({
         id: "clarity",
@@ -146,9 +155,12 @@ test.describe("L8 personas settings", () => {
       expect.soft(list[1]!.lens).toContain("You are Clarity");
     });
 
-    await test.step("Settings lists both with their models", async () => {
+    await test.step("Settings lists all three with their models", async () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await gotoPersonas(page, s);
+      const guideRow = page.getByTestId("persona-guide");
+      await expect.soft(guideRow).toBeVisible();
+      await expect.soft(guideRow).toContainText("Guide");
       const row = page.getByTestId("persona-second-opinion");
       await expect.soft(row).toBeVisible();
       await expect.soft(row).toContainText("Second opinion");
@@ -157,7 +169,7 @@ test.describe("L8 personas settings", () => {
       const clarityRow = page.getByTestId("persona-clarity");
       await expect.soft(clarityRow).toBeVisible();
       await expect.soft(clarityRow).toContainText("Clarity");
-      await expect.soft(clarityRow).toContainText("Main model (claude/claude-opus-5-5)");
+      await expect.soft(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
       await checkLayout(page, "personas-1440-light");
     });
   });
@@ -189,7 +201,7 @@ test.describe("L8 personas settings", () => {
       const list = await personas(s);
       const clarity = list.find((p) => p.id === "clarity");
       expect.soft(clarity?.followMain).toBe(true);
-      await expect.soft(row).toContainText("Main model (claude/claude-opus-5-5)");
+      await expect.soft(row).toContainText("Guide's model (claude/claude-opus-5-5)");
     });
   });
 
@@ -213,7 +225,7 @@ test.describe("L8 personas settings", () => {
       const seed = await personas(s);
       const added = await apiJson(s, "PUT", "/api/settings", { personas: [...seed, custom] });
       expect(added.status).toBe(200);
-      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
+      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
       await gotoPersonas(page, s);
       const row = page.getByTestId("persona-perf-sceptic");
       await expect.soft(row).toBeVisible({ timeout: 15_000 });
@@ -254,7 +266,7 @@ test.describe("L8 personas settings", () => {
       await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
       await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
       await expect.soft(row).toHaveCount(0);
-      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
+      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
     });
   });
 
@@ -263,12 +275,13 @@ test.describe("L8 personas settings", () => {
     const s = service();
     await page.goto(`${s.origin}/settings?token=${s.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
-    // Models: pick a different offered model for the main role; it persists.
-    // (Effort levels come from a live adapter, so with no agent the control
-    // honestly stays on Default — asserted, not skipped.)
+    // Models: pick a different offered model for the small role; it persists.
+    // (Issue #379: Models keeps only the small model; the main model lives
+    // in the Guide persona. Effort levels come from a live adapter, so with
+    // no agent the control honestly stays on Default — asserted, not skipped.)
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator('[data-testid="model-main"]')).toBeVisible({ timeout: 30_000 });
-    const model = page.locator("#model-main");
+    await expect(page.locator('[data-testid="model-small"]')).toBeVisible({ timeout: 30_000 });
+    const model = page.locator("#model-small");
     await expect(model).toBeVisible({ timeout: 30_000 });
     const currentText = (await model.textContent())?.trim() ?? "";
     await model.click();
@@ -308,11 +321,11 @@ test.describe("L8 personas settings", () => {
     );
     await target.click();
     await saved;
-    await expect.soft(page.locator("#effort-main")).toContainText("Default", { timeout: 15_000 });
+    await expect.soft(page.locator("#effort-small")).toContainText("Default", { timeout: 15_000 });
     await page.reload();
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect.soft(page.locator("#model-main")).toContainText(chosenName, { timeout: 30_000 });
+    await expect.soft(page.locator("#model-small")).toContainText(chosenName, { timeout: 30_000 });
   });
 
   test("model pickers show display names on the real service (j5 Models half)", async ({ page }) => {
@@ -322,9 +335,12 @@ test.describe("L8 personas settings", () => {
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 20000 });
     await page.getByRole("tab", { name: "Models" }).click();
     // Static fallback carries names (Sonnet/Opus/GPT) even with no agent.
-    const main = page.locator('[data-testid="model-main"]');
-    await main.locator("#model-main").click();
+    // Issue #379: only the small picker remains; the main model lives in
+    // the Guide persona.
+    const small = page.locator('[data-testid="model-small"]');
+    await small.locator("#model-small").click();
     await expect.soft(openPopup(page).getByRole("option", { name: "Sonnet" })).toBeVisible();
+    await expect(page.locator('[data-testid="model-main"]')).toHaveCount(0);
   });
 });
 
@@ -540,6 +556,89 @@ test.describe("L8 persona runs on cards", () => {
       await checkLayout(page, "persona-clarity-1440-light");
     });
   });
+
+  test("Guide model + style lens flow into the next main run", async ({ page }) => {
+    test.setTimeout(300_000);
+    const s = service();
+    // Issue #379: the fixed Guide owns the main model and a writing-style
+    // lens. Editing both, then running depth on the Guide version, must
+    // reach the runner on the Guide's model with the lens up front.
+    const LENS = "Write with short sentences. No jargon without a gloss.";
+
+    await test.step("edit the Guide lens through the Settings UI", async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${s.origin}/settings?token=${s.token}`);
+      await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("tab", { name: "Personas" }).click();
+      await expect(page.getByTestId("personas-section")).toBeVisible();
+      const row = page.getByTestId("persona-guide");
+      await expect.soft(row).toBeVisible({ timeout: 15_000 });
+      await expect.soft(row).toContainText("Guide");
+      // The fixed entry has no delete and no disable switch.
+      await expect.soft(row.getByRole("button", { name: /Delete/ })).toHaveCount(0);
+      await row.getByTestId("persona-guide-edit").click();
+      await expect.soft(page.getByTestId("persona-guide-lens")).toBeVisible();
+      // No card-instruction field and no model-source choice on the Guide.
+      await expect.soft(page.getByTestId("persona-guide-card-instruction")).toHaveCount(0);
+      await expect.soft(page.getByTestId("persona-guide-follow-main")).toHaveCount(0);
+      await page.getByTestId("persona-guide-lens").fill(LENS);
+      await page.getByTestId("persona-guide-save").click();
+      await expect.soft(page.getByTestId("persona-guide-lens")).toHaveCount(0);
+      const list = await personas(s);
+      expect.soft(list.find((p) => p.id === "guide")?.lens).toBe(LENS);
+    });
+
+    await test.step("point the Guide at another model through the API (no agent CLIs on PATH, so the UI model list stays empty)", async () => {
+      const seed = await personas(s);
+      const res = await apiJson(s, "PUT", "/api/settings", {
+        personas: seed.map((p) => (p.id === "guide" ? { ...p, provider: "codex", model: "gpt-6.1-sol" } : p)),
+      });
+      expect(res.status).toBe(200);
+      expect((res.json as { personas: PersonaBody[] }).personas.find((p) => p.id === "guide")).toMatchObject({
+        provider: "codex",
+        model: "gpt-6.1-sol",
+      });
+    });
+
+    await test.step("deeper on the Guide version runs on the Guide model with the lens up front", async () => {
+      const before = (
+        (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as { jobs: { id: string }[] }
+      ).jobs.map((j) => j.id);
+      await openReview(page);
+      // Earlier steps left persona tabs behind; the Guide version is the
+      // untinted tab.
+      const tabs = page.locator('[data-testid="versions-central"]');
+      if (await tabs.isVisible()) {
+        await tabs.locator('[data-version-tab="guide"]').click();
+      }
+      const card = page.locator("#C-central");
+      await card.getByRole("button", { name: "Deeper" }).click();
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        const res = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+        const level = ((res.json as { pages: { cards: { id: string; level: string }[] }[] }).pages ?? [])
+          .flatMap((p) => p.cards)
+          .find((c) => c.id === "central")?.level;
+        if (level === "deep") break;
+        if (Date.now() > deadline) throw new Error("guide depth never landed");
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      // The new depth job ran on the Guide's model…
+      const after = (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as {
+        jobs: { id: string; kind: string; provider: string; model: string }[];
+      };
+      const depth = after.jobs.filter((j) => j.kind === "depth" && !before.includes(j.id)).at(-1);
+      expect(depth).toBeDefined();
+      expect(depth).toMatchObject({ provider: "codex", model: "gpt-6.1-sol" });
+      // …with the lens at the start of the turn and the task rules intact.
+      const full = (await apiJson(s, "GET", `/api/jobs/${depth!.id}`)).json as {
+        job: { promptSnapshot: string };
+      };
+      expect(full.job.promptSnapshot.startsWith(`# Writing style\n\n${LENS}\n\n`)).toBe(true);
+      expect(full.job.promptSnapshot).toContain("# Depth rewrite");
+      await expect.soft(card.locator(".prose, .lst").first()).toContainText("CRLF", { timeout: 15_000 });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -701,10 +800,10 @@ test.describe("L8 pi provider", () => {
     await page.goto(`${s.origin}/settings?token=${s.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator('[data-testid="model-main"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="model-small"]')).toBeVisible({ timeout: 30_000 });
 
     await test.step("pi is offered alongside claude/codex while detected", async () => {
-      await page.locator("#prov-main").click();
+      await page.locator("#prov-small").click();
       const providerOptions = openPopup(page).getByRole("option");
       await expect.soft(providerOptions.first()).toBeVisible({ timeout: 15_000 });
       const providerNames = await providerOptions.evaluateAll((os) => os.map((o) => (o.textContent ?? "").replace("✓", "").trim()));
@@ -712,27 +811,58 @@ test.describe("L8 pi provider", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("pick pi for main and small; the fake's models save", async () => {
+    await test.step("pick pi for small; the fake's models save", async () => {
       const models = (await apiJson(s, "GET", "/api/models?provider=pi")).json as { models: { id: string }[] };
       const modelId = models.models[0]!.id;
-      for (const role of ["main", "small"] as const) {
-        await page.locator(`#prov-${role}`).click();
-        const target = openPopup(page).getByRole("option", { name: "pi" });
-        await target.scrollIntoViewIfNeeded();
-        await target.click();
-        const saveModel = page.waitForResponse(
-          (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
-          { timeout: 15_000 },
-        );
-        await page.locator(`#model-${role}`).click();
-        const modelOption = openPopup(page).getByRole("option").filter({ hasText: modelId });
-        await modelOption.first().scrollIntoViewIfNeeded();
-        await modelOption.first().click();
-        await saveModel;
-      }
-      await expect.soft(page.locator("#model-main")).toContainText(modelId, { timeout: 15_000 });
+      await page.locator("#prov-small").click();
+      const target = openPopup(page).getByRole("option", { name: "pi" });
+      await target.scrollIntoViewIfNeeded();
+      await target.click();
+      const saveModel = page.waitForResponse(
+        (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+        { timeout: 15_000 },
+      );
+      await page.locator("#model-small").click();
+      const modelOption = openPopup(page).getByRole("option").filter({ hasText: modelId });
+      await modelOption.first().scrollIntoViewIfNeeded();
+      await modelOption.first().click();
+      await saveModel;
+      await expect.soft(page.locator("#model-small")).toContainText(modelId, { timeout: 15_000 });
       // Thinking levels come from pi's adapter (#172).
-      await expect.soft(page.locator("#effort-main")).not.toContainText("Couldn't load thinking levels", { timeout: 15_000 });
+      await expect.soft(page.locator("#effort-small")).not.toContainText("Couldn't load thinking levels", { timeout: 15_000 });
+    });
+
+    await test.step("pick pi for the Guide in Settings → Personas; the fake's models save", async () => {
+      // Issue #379: the Guide owns the main model, so the main pi flow
+      // runs through its edit form (the fake pi is detected here, so the
+      // model list works — unlike the no-CLI services above).
+      const models = (await apiJson(s, "GET", "/api/models?provider=pi")).json as { models: { id: string }[] };
+      const modelId = models.models[0]!.id;
+      await page.getByRole("tab", { name: "Personas" }).click();
+      await expect(page.getByTestId("personas-section")).toBeVisible();
+      const row = page.getByTestId("persona-guide");
+      await expect(row).toBeVisible();
+      await row.getByTestId("persona-guide-edit").click();
+      await expect(page.getByTestId("persona-guide-provider")).toBeVisible();
+      await page.getByTestId("persona-guide-provider").click();
+      const target = openPopup(page).getByRole("option", { name: "pi" });
+      await target.scrollIntoViewIfNeeded();
+      await target.click();
+      await expect(page.getByTestId("persona-guide-model")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("persona-guide-model").click();
+      const modelOption = openPopup(page).getByRole("option").filter({ hasText: modelId });
+      await modelOption.first().scrollIntoViewIfNeeded();
+      await modelOption.first().click();
+      // The form saves the whole list on Save (provider/model picks above
+      // are local state until then).
+      const saved = page.waitForResponse(
+        (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+        { timeout: 15_000 },
+      );
+      await page.getByTestId("persona-guide-save").click();
+      await saved;
+      await expect.soft(page.getByTestId("persona-guide-model")).toHaveCount(0);
+      await expect.soft(row).toContainText(`pi/${modelId}`);
     });
 
     await test.step("doctor reports pi installed and logged in, in plain words", async () => {
@@ -746,13 +876,14 @@ test.describe("L8 pi provider", () => {
   test("a review runs on pi and the guide fills", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
-    // Self-contained: pin main+small to the fake pi through the API so this
-    // test never depends on the picker test above (and never touches a real
-    // agent when run alone).
+    // Self-contained: pin the Guide + small to the fake pi through the API
+    // so this test never depends on the picker test above (and never
+    // touches a real agent when run alone).
     const models = (await apiJson(svc, "GET", "/api/models?provider=pi")).json as { models: { id: string }[] };
     const modelId = models.models[0]!.id;
+    const before = (await apiJson(svc, "GET", "/api/settings")).json as { personas: PersonaBody[] };
     const saved = await apiJson(svc, "PUT", "/api/settings", {
-      main: { provider: "pi", model: modelId, effort: "" },
+      personas: before.personas.map((p) => (p.id === "guide" ? { ...p, provider: "pi", model: modelId } : p)),
       small: { provider: "pi", model: modelId, effort: "" },
     });
     expect(saved.status).toBe(200);
@@ -791,7 +922,7 @@ test.describe("L8 pi provider", () => {
       await page.goto(`${plain!.origin}/settings?token=${plain!.token}`);
       await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Models" }).click();
-      await page.locator("#prov-main").click();
+      await page.locator("#prov-small").click();
       const providerOptions = openPopup(page).getByRole("option");
       await expect.soft(providerOptions.first()).toBeVisible({ timeout: 15_000 });
       const providerNames = await providerOptions.evaluateAll((os) => os.map((o) => (o.textContent ?? "").replace("✓", "").trim()));

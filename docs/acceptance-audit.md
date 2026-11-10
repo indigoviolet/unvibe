@@ -1140,7 +1140,9 @@ needed (that deviation is closed, not added).
 
 ### §4.14 Settings — all met
 
-- Model pickers per role with provider models — met
+- Model pickers per role with provider models — met (issue #379:
+  Models keeps only the small picker; the main provider + model live
+  in the fixed Guide persona in Settings → Personas)
   (`journeys/j5-settings-versions.spec.ts` “model pickers show display names”,
   `journeys/j11-settings-combos.spec.ts` model persists, `routes/settings.ts`,
   `GET /api/models` ran 200). Switching a role's provider only browses that
@@ -3912,15 +3914,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   today's "check" behaviour verbatim in the new vocabulary). After
   seeding it is ordinary data: editable and deletable like any
   other persona.
+  (Issue #379 seeds the fixed Guide first; see its addendum.)
 - **Settings → Personas:** new section + tab (`PersonasSection.tsx`,
   after Models) following the #328 `Field` row layout (label left,
   control right, help + status under the label): name, provider +
   model (per-provider list, adapter errors inline), lens, optional
   card instruction, enabled. Add/edit PUT the whole list; delete
   goes through the shared #346 `InlineConfirm` (`placement="stack"`,
-  in the row like the repo remove). The model pickers stay
-  main/small only; persona models are validated like roles on save
-  (never persist a model no adapter offers).
+  in the row like the repo remove). At the time the model pickers
+  stayed main/small only; issue #379 later moved the main picker
+  into the fixed Guide entry (see its addendum). Persona models are
+  validated like roles on save (never persist a model no adapter
+  offers).
 - **Prompt composition (owner decision 2026-11-03):** L0 base
   instructions (shared, unchanged) + persona lens (system prompt,
   every task) + shared task template. New `prompts/persona_card.md`
@@ -4207,3 +4212,50 @@ one-variant union today).
   run stores its tab with citations intact) pass; frames in
   /tmp/359-frames/ (Settings + menu + tab strip, 1440/960 x
   light/dark) inspected.
+
+## Addendum: #379 — Built-in Guide persona owns the main model + writing-style lens (branch `feat/379-guide-persona`)
+
+- **Persona:** the fixed built-in Guide (id `guide`) IS the main agent.
+  There is exactly one: not deletable, not disableable, `followMain`
+  always false. It owns the main provider + model (replacing
+  `Settings.main`); Settings → Models keeps only the small model.
+  Its writing-style lens is empty by default (no behaviour change
+  until written) and it takes no card instruction (its card task is
+  the guide's own). Its colour is data-only (first unused sequence
+  slot, so Second opinion and Clarity keep theirs) and never
+  rendered — the Guide tab stays untinted exactly as before.
+- **Prompt placement (owner decision, option A):** the lens is
+  prefixed to the start of every main writing turn (guide/reader,
+  cards/go-deeper, depth, Explain, Ask, plus their connection-retry
+  re-renders) through the single helper `withGuideStyleForTurn`
+  (template allowlist in `packages/service/src/prompts/personas.ts`),
+  as a labelled "Writing style" section that subordinates itself to
+  the task's own rules (tone and wording only). Empty lens returns
+  the prompt byte-identical. Persona turns never carry it; the base
+  and system prompts never depend on the lens (a unit test pins
+  base-identity with and without a lens). `followMain` keeps its
+  name and now resolves to the Guide's model; Guide effort is the
+  adapter default (personas name no effort).
+- **Validation:** the list must hold exactly one Guide (enabled,
+  own model, no card instruction); an empty lens is allowed only
+  for the Guide. The Guide is not offered in card run pickers and
+  `personaFor` refuses it.
+- **Data format 6 → 7:** `Settings` loses `main`; stored rows
+  without the Guide entry need a reset.
+- Evidence: `packages/shared/test/personas.test.ts` (Guide seed:
+  fixed, own model, no card instruction, empty lens, seeds first,
+  colours stable, lens rule), `packages/service/test/settings.test.ts`
+  (Guide validation), `packages/service/test/settings-defaults.test.ts`
+  (unsaved Guide takes the live main default; saved Guide sticks),
+  `packages/service/test/personas-349.test.ts` + `clarity-359.test.ts`
+  (3 seeds, Guide first) and new
+  `packages/service/test/guide-379.test.ts` (helper: five templates
+  covered, others pass through, empty is identical; fake runner:
+  set lens is prefixed to a card turn with task rules intact on the
+  Guide model while no system prompt carries it, empty lens leaves
+  turns unchanged), journey `l8-personas` (Guide lens edit in
+  Settings → Personas, Guide model re-point, deeper on the Guide
+  version runs on the Guide model with the lens up front — jobs API
+  assertions; Models halves moved to the small picker; pi picker
+  flow runs through the Guide form), tour frame
+  `personas-1440-light` (Guide entry). Full gates not yet run.
