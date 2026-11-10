@@ -114,7 +114,11 @@ export function PersonasSection({
             style={p.id === GUIDE_PERSONA_ID ? undefined : { borderLeft: `3px solid ${p.color}` }}
           >
             <div className="frow" style={{ gap: 8, alignItems: "center" }}>
-              {p.id === GUIDE_PERSONA_ID ? null : (
+              {p.id === GUIDE_PERSONA_ID ? (
+                // Neutral slot the swatch's size: the row text lines up
+                // with the other rows (issue #379: no colour rendered).
+                <span aria-hidden="true" style={{ flex: "none", width: 14, height: 14 }} />
+              ) : (
               <span
                 aria-hidden="true"
                 title={`Colour ${p.color} (automatic)`}
