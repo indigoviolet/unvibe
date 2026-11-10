@@ -59,13 +59,14 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const titleBlock =
     doc.blocks[0]?.kind === "heading" && doc.blocks[0].level === 1 ? doc.blocks[0] : undefined;
   const titleHtml = titleBlock?.block.type === "paragraph" ? titleBlock.block.text.standard : "";
-  // Issue #374: the margin pills sit in a gutter the doc reserves.
+  // Issue #380: the margin pills sit in a gutter the doc always reserves
+  // (`.gutter`) — the first thread must never move the text.
   const docThreads = [
     ...(titleBlock ? blockThreads(annotations, DOCUMENT_CARD_ID, titleBlock.id) : []),
     ...doc.blocks.filter((db) => db.id !== titleBlock?.id).flatMap((db) => blockThreads(annotations, DOCUMENT_CARD_ID, db.id)),
   ];
   return (
-    <div className={docThreads.length > 0 ? "doc has-threads" : "doc"} data-testid="document-view">
+    <div className="doc gutter" data-testid="document-view">
       <ThreadMarginOverlay
         threads={docThreads}
         readOnly={readOnlyDoc}

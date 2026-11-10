@@ -1722,13 +1722,15 @@ mark.anc.flash { outline: 2px solid var(--accent); outline-offset: 2px; border-r
 #right .ui-card.desc { position: relative; }
 .doc { position: relative; }
 .tmargin { position: absolute; inset: 0 auto 0 0; width: 0; overflow: visible; pointer-events: none; z-index: 3; }
-/* Issue #374: the pill lives INSIDE the card, in a gutter the card
-   reserves (`.has-threads`) — never clipped by the card or pane edge.
+/* Issue #380: the pill lives INSIDE the card, in a gutter every
+   thread-hosting card reserves always (`.gutter` on guide cards and the
+   document host, `.desc` on the description host) — never clipped by
+   the card or pane edge, and the first thread never moves the text.
    One compact pill per vertical bucket: glyph + count side by side, no
    overlap. The tooltip names the count ("3 threads"). */
-#page .ui-card.has-threads,
-#right .ui-card.desc.has-threads { padding-left: 46px; }
-.doc.has-threads { padding-left: 40px; }
+#page .ui-card.gutter,
+#right .ui-card.desc { padding-left: 46px; }
+.doc.gutter { padding-left: 40px; }
 .tmargin-btn { position: absolute; left: 6px; transform: translateY(-2px); display: inline-flex; align-items: center; gap: 3px; height: 20px; min-width: 20px; padding: 0 7px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-pill); color: var(--muted); font: 600 11px/1 var(--sans); cursor: pointer; pointer-events: auto; white-space: nowrap; }
 .tmargin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .tmargin-btn .ic { width: 12px; height: 12px; flex: none; }

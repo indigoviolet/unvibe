@@ -354,12 +354,14 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
     else if (ref) (ref as MutableRefObject<HTMLDivElement | null>).current = node;
   };
 
-  // Issue #374: the margin pills sit in a gutter the card reserves.
+  // Issue #380: the margin pills sit in a gutter the card always reserves
+  // (`.desc` carries the gutter unconditionally) — the first thread must
+  // never move the text.
   const descThreads = [...byPara.values()].flat();
   return (
     <Card
       variant="plain"
-      className={descThreads.length > 0 ? "desc has-threads" : "desc"}
+      className="desc"
       ref={setRefs}
       onClick={(e) => {
         const mark = (e.target as HTMLElement).closest?.("mark.anc[data-thr]");
