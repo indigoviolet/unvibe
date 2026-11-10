@@ -189,60 +189,34 @@ test.describe("J283 hidden-hunk rows", () => {
 
 // ---- j376 summary header (top-N auto summaries) ----
 test.describe("J376 summary header", () => {
-  let repoDir = "";
   let dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
-  let totalHunks = 0;
 
   test.beforeAll(async () => {
-    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-repo-"));
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-376-data-"));
-    mkdirSync(path.join(repoDir, "src"), { recursive: true });
-    await git(repoDir, "init", "-b", "main");
-    await git(repoDir, "config", "user.email", "t@example.com");
-    await git(repoDir, "config", "user.name", "T");
-    writeFileSync(
-      path.join(repoDir, "src", "app.py"),
-      ["def main():", "    return 1", "", "", "def helper():", "    return 2", ""].join("\n"),
-    );
-    writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 1\n");
-    await git(repoDir, "add", ".");
-    await git(repoDir, "commit", "-m", "base");
-    await git(repoDir, "checkout", "-b", "feature");
-    writeFileSync(
-      path.join(repoDir, "src", "app.py"),
-      ["def main():", "    return 10", "", "", "def helper():", "    return 2", "", "", "def extra():", "    return 3", ""].join("\n"),
-    );
-    writeFileSync(path.join(repoDir, "src", "util.py"), "VALUE = 2\n");
-    await git(repoDir, "add", ".");
-    await git(repoDir, "commit", "-m", "feature work");
-    // Agent none: the pipeline is disabled, so the only summary is the
-    // one PATCHed below — the header state is fully deterministic.
-    svc = await startService(dataDir, { agent: "none" });
-    reviewId = await createScratchReview(svc, repoDir);
-    // Wait for ingest: the snapshot lands without files first.
+    svc = await startService(dataDir, { agent: "replay" });
+    // A small budget on the bundled demo (8 hunks, 3 hidden): the header
+    // reads "Summaries for 3 of 8 hunks" with visible summaries above
+    // hidden rows that stay bare.
+    await apiJson(svc, "PUT", "/api/settings", { hunkSummaryLimit: 3 });
+    reviewId = await createDemoReview(svc);
+    // Wait for the top-3 batch, then for the pipeline to go quiet: the
+    // guide-cited reprioritisation draws on the same budget N, so no
+    // further auto summaries can arrive.
     const deadline = Date.now() + 90_000;
-    let first: { contentHash: string } | null = null;
-    let total = 0;
     for (;;) {
       const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-      const files = (snap.json as { files: { hunks: { contentHash: string }[] }[] }).files ?? [];
-      total = files.reduce((n, f) => n + f.hunks.length, 0);
-      first = files[0]?.hunks[0] ?? null;
-      if (first && total > 1) break;
-      if (Date.now() > deadline) throw new Error("scratch review has no hunks");
+      const states = (snap.json as { hunkStates?: { summary?: string }[] }).hunkStates ?? [];
+      const jobs = (snap.json as { jobs?: { state: string }[] }).jobs ?? [];
+      const open = jobs.some((j) => j.state !== "done" && j.state !== "error" && j.state !== "cancelled");
+      if (states.filter((st) => st.summary).length >= 3 && !open) break;
+      if (Date.now() > deadline) throw new Error("top-3 summaries did not settle");
       await new Promise((r) => setTimeout(r, 500));
     }
-    await apiJson(svc, "PATCH", `/api/reviews/${reviewId}/hunks/${first.contentHash}`, {
-      summary: "Bumps the main return value.",
-    });
-    // The header names the one covered hunk out of the total.
-    totalHunks = total;
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
-    rmSync(repoDir, { recursive: true, force: true });
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -254,12 +228,15 @@ test.describe("J376 summary header", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    // The header row in place: quiet line plus the on-demand button.
     const line = page.locator(".dsumbar", { hasText: "Summaries for" });
-    await expect(line).toContainText(`Summaries for 1 of ${totalHunks} hunks`, { timeout: 30_000 });
-    // The one PATCHed summary is covered; the rest are on demand.
+    await expect(line).toContainText("Summaries for 3 of 8 hunks", { timeout: 30_000 });
     await expect(line.getByRole("button", { name: "Summarize more" })).toBeEnabled();
+    // Some hunks carry agent summaries while hidden rows stay bare.
+    await expect(page.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("button.hid").first()).toBeVisible({ timeout: 30_000 });
     await checkLayout(page, "summary-header-1440-light");
-    await line.screenshot({ path: path.join(SHOTS, "376-summary-header-1440-light.png") });
+    await page.screenshot({ path: path.join(SHOTS, "376-summary-header-1440-light.png") });
   });
 });
 
