@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
-import { cardToMarkdown, displayCardTitle, isUpdateAvailable, sinceBaselineLabel } from "@unvibe/shared";
+import { cardToMarkdown, displayCardTitle, isUpdateAvailable, sinceBaselineLabel, stripAddendumPrefix } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -31,7 +31,7 @@ import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
-import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
+import { SinceAnswers } from "./SinceAnswers.js";
 import { sinceDate } from "./SinceSection.js";
 import { DepthControl } from "./DepthControl.js";
 import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
@@ -519,7 +519,14 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       return;
     }
     const { ctx, findPage } = copyContextFor(snap, githubRepo);
-    copyMarkdownText(cardToMarkdown({ title: card.title, blocks: shownBlocks }, shownLevel, ctx, { findPage }));
+    copyMarkdownText(
+      cardToMarkdown(
+        { title: card.title, blocks: shownBlocks, answers: card.answers, addenda: card.addenda },
+        shownLevel,
+        ctx,
+        { findPage },
+      ),
+    );
   };
   // While an agent action runs for this card, the conflicting controls go
   // disabled and the clicked one shows dots in place of its icon.

@@ -12,6 +12,8 @@
  */
 import type { Block, Citation, DepthLevel } from "../entities.js";
 import type { ReviewSnapshot } from "../api.js";
+import type { CardAddendum, SinceFeedbackLink } from "../versions.js";
+import { sinceBaselineLabel, stripAddendumPrefix } from "../versions.js";
 import { parseId } from "../ids.js";
 import { githubFileUrl } from "../repos.js";
 import { displayCardTitle } from "./titles.js";
@@ -257,6 +259,17 @@ function listItemToLines(html: string): string[] {
 export interface BlockMarkdownOptions {
   /** Page lookup for finding-link blocks (title/confidence/summary). */
   findPage?: (pageId: string) => CopyMarkdownPage | null;
+  /**
+   * Addendum date rendering. Defaults to the card's own rule (`day Mon`,
+   * the same rule as the Since section header); tests pass a stub.
+   */
+  formatDate?: (at: number) => string;
+}
+
+/** The card header's date rule (`day Mon`, e.g. `4 Nov`). */
+export function formatAddendumDate(at: number): string {
+  const d = new Date(at);
+  return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
 }
 
 /** One block → Markdown lines (without the blank-line joins). */
@@ -369,19 +382,57 @@ export function blocksToMarkdown(
 
 /**
  * A card as shown → Markdown: the display title as a `##` heading plus
- * its blocks. `title` is the stored title (null when the reply carried
- * none); the shared fallback renders from `blocks` then, the same string
- * the card header shows.
+ * its blocks, then the card's Since answers line and each dated "Updated
+ * since" addendum (issue #377: copy = what's shown). `title` is the
+ * stored title (null when the reply carried none); the shared fallback
+ * renders from `blocks` then, the same string the card header shows.
+ * Addendum bodies render at standard level with the same echo-prefix
+ * strip the card applies.
  */
 export function cardToMarkdown(
-  card: { title: string | null; blocks: Block[] },
+  card: {
+    title: string | null;
+    blocks: Block[];
+    answers?: SinceFeedbackLink[];
+    addenda?: CardAddendum[];
+  },
   level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const title = displayCardTitle(card.title, card.blocks);
+  const formatDate = opts.formatDate ?? formatAddendumDate;
+  const parts: string[] = [];
   const body = blocksToMarkdown(card.blocks, level, ctx, opts);
-  return body ? `## ${title}\n\n${body}` : `## ${title}\n`;
+  if (body) parts.push(body.replace(/\n$/, ""));
+  if (card.answers?.length) parts.push(answersToMarkdown(card.answers));
+  for (const addendum of card.addenda ?? []) {
+    const head = `### Updated since ${sinceBaselineLabel(addendum.baseline)} · ${formatDate(addendum.at)}`;
+    const shown = addendum.blocks.map((block, i) =>
+      i === 0 && block.type === "paragraph"
+        ? { ...block, text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) } }
+        : block,
+    );
+    const abody = blocksToMarkdown(shown, "standard", ctx, opts);
+    const aparts = [head];
+    if (abody) aparts.push(abody.replace(/\n$/, ""));
+    if (addendum.answers?.length) aparts.push(answersToMarkdown(addendum.answers));
+    parts.push(aparts.join("\n\n"));
+  }
+  return parts.length > 0 ? `## ${title}\n\n${parts.join("\n\n")}\n` : `## ${title}\n`;
+}
+
+/**
+ * Resolved Since answers (`Answers: label — "excerpt" …`), remote
+ * remarks as links, local threads and commits as text — the same content
+ * the card's answers line shows. Pure.
+ */
+export function answersToMarkdown(answers: SinceFeedbackLink[]): string {
+  const items = answers.map((a) => {
+    const text = `${a.label} — "${a.excerpt}"`;
+    return a.url ? `[${text}](${a.url})` : text;
+  });
+  return `Answers: ${items.join(" · ")}`;
 }
 
 /**

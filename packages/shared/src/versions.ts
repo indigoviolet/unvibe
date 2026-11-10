@@ -328,6 +328,17 @@ export function emptySinceHunks(): SinceHunks {
   return { added: [], changed: [] };
 }
 
+/**
+ * Strip a leading "Updated since vN …:" from an addendum body. The
+ * prompt tells the agent not to write it, but older passes may have;
+ * the dated header above the body already says it. Pure. (Moved here
+ * from the web's `SinceAnswers` in issue #377 so the copy converter
+ * strips the same prefix the card shows without.)
+ */
+export function stripAddendumPrefix(standard: string): string {
+  return standard.replace(/^updated since (?:v\d+|[0-9a-f]{7,8})\s*(·[^:]*)?[:\-–—]\s*/i, "");
+}
+
 /** Both sides as one lookup set. Pure. */
 export function sinceHunkSet(s: SinceHunks | undefined): Set<string> {
   if (!s) return new Set();

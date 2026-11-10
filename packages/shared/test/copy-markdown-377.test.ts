@@ -274,6 +274,42 @@ describe("copy-markdown (#377)", () => {
     expect(md).toBe("**Follow up:**\n- Why not here?\n- More — Tell me more\n");
   });
 
+  it("renders a card's Since answers and Updated-since addenda", () => {
+    const md = cardToMarkdown(
+      {
+        title: "Guide",
+        blocks: [para("Main.")],
+        answers: [
+          { kind: "thread", label: "Thread t-1", excerpt: "is this right?" },
+          { kind: "conversation", label: "PR conversation", excerpt: "ship it", url: "https://example.com/c/1" },
+        ],
+        addenda: [
+          {
+            id: "add-v2-0",
+            version: 2,
+            baseline: { kind: "version", version: 1 },
+            at: 0,
+            blocks: [para("Updated since v1: alpha returns 111 now.", [{ target: "diff:conn:3" }])],
+            answers: [{ kind: "commit", label: "abc1234 subject", excerpt: "fix" }],
+          },
+        ],
+      },
+      "standard",
+      prCtx(),
+      { formatDate: () => "4 Nov" },
+    );
+    expect(md).toBe(
+      "## Guide\n\n" +
+        "Main.\n\n" +
+        'Answers: Thread t-1 — "is this right?" · [PR conversation — "ship it"](https://example.com/c/1)\n\n' +
+        "### Updated since v1 · 4 Nov\n\n" +
+        "alpha returns 111 now. " +
+        "[conn.py:3](https://github.com/acme/app/blob/abc1234/src/conn.py#L3)\n\n" +
+        'Answers: abc1234 subject — "fix"\n',
+    );
+    expect(md).not.toContain("[[");
+  });
+
   it("renders a thread answer under its question", () => {
     const md = replyToMarkdown(
       { question: "Why retry?", kind: "ask", blocks: [para("Because <code>x</code>.", [{ target: "diff:sock:7" }])] },
