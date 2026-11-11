@@ -50,7 +50,7 @@ import type { ServiceConfig } from "./config.js";
 import { migrate, openDatabase, type DatabaseSync } from "./store/index.js";
 import { reportError } from "./telemetry/sentry.js";
 
-export const SERVICE_VERSION = "0.0.18";
+export const SERVICE_VERSION = "0.0.19";
 
 /** `createApp` return: Fastify app + unified context (all singletons). */
 export interface AppContext {

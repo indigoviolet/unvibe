@@ -22,8 +22,12 @@
  *   reset.
  * - 6: replies gain required `seq` (stable per-thread sequence, #365):
  *   stored rows without one need a reset.
+ * - 7: the main agent becomes the built-in Guide persona (#379):
+ *   `Settings` loses `main` (the Guide persona owns the provider +
+ *   model) and gains the fixed Guide entry in `personas`; stored rows
+ *   without it need a reset.
  */
-export const DATA_FORMAT = 6;
+export const DATA_FORMAT = 7;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

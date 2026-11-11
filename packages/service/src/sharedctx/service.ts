@@ -25,6 +25,7 @@ import type {
   SharedContextBaseStats,
 } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
+import { guidePick } from "../settings/index.js";
 import { filterChangeList, formatChangeList } from "../context/log.js";
 import { formatLogEntry } from "../context/log.js";
 import { charTokenEstimator } from "../context/tokens.js";
@@ -183,10 +184,10 @@ export class SharedContextService {
       reviewId,
       reviewVersion: `v${snap.version.n}`,
       guideRevision: guideRevisionForSnapshot(snap),
-      provider: settings.main.provider,
-      model: settings.main.model,
+      provider: guidePick(settings).provider,
+      model: guidePick(settings).model,
       access: postureFor(settings),
-      effort: settings.main.effort,
+      effort: guidePick(settings).effort,
     });
   }
 

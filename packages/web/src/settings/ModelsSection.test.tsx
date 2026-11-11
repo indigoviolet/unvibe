@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Settings } from "@unvibe/shared";
+import { GUIDE_PERSONA } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ModelsSection } from "./ModelsSection.js";
 
@@ -20,10 +21,11 @@ const MODELS: Record<string, string[]> = {
   codex: ["gpt-6.1-sol", "gpt-6-luna"],
 };
 
+const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
+
 const SETTINGS = {
-  main: { provider: "claude", model: "opus", effort: "" },
   small: { provider: "claude", model: "haiku", effort: "" },
-  personas: [],
+  personas: [MOCK_GUIDE],
 } as unknown as Settings;
 
 type ModelsResult = Awaited<ReturnType<typeof api.models>>;
@@ -92,6 +94,19 @@ async function choose(trigger: HTMLElement, label: string): Promise<void> {
   fireEvent.mouseUp(option);
   fireEvent.click(option);
 }
+
+describe("ModelsSection roles (issue #379)", () => {
+  it("renders only the small picker (the main model lives in the Guide persona)", async () => {
+    mockReadiness();
+    mockModels();
+    mockThinking();
+    render(<ModelsSection settings={SETTINGS} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("haiku"));
+    expect(screen.queryByTestId("model-main")).not.toBeInTheDocument();
+    expect(provSelect("small")).toBeInTheDocument();
+  });
+});
 
 describe("ModelsSection provider switch", () => {
   it("saves nothing on provider change, then saves the new provider with the chosen model", async () => {

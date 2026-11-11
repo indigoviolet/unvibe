@@ -1,17 +1,17 @@
 {
-  "373": {
-    "whatChanged": "The debug build (release-debug) now ships the same release notes as the normal build: Settings → Version shows its changes and any data reset. A release build fails if either flavour's notes come out empty. release-debug is now a release channel: it is always listed and switchable in Settings → Version, without the previews toggle."
+  "369": {
+    "whatChanged": "Cards, page cards, persona tabs and thread answers no longer show empty brackets where a citation was moved to the chips: \"…the links ([[cite]]).\" now reads \"…the links.\" with the citation as a chip. Brackets in ordinary text, like run() or [ ], are left alone.",
+    "whatToTry": "Open the demo thread \"What is line folding?\" and check that no \"()\" or \"(, )\" appears in the answer."
   },
-  "374": {
-    "whatChanged": "Each paragraph, list or aside with threads has one comment pill in the card's left gutter, fully visible, with the glyph and the thread count side by side and a \"N threads\" tooltip. It is the only marker: the end-of-paragraph comment bubble and the inline glyphs after highlights are gone. A collapsed card shows one pill with all its threads. Closing and reopening a thread no longer adds extra glyphs.",
-    "whatToTry": "Open a review with several threads on one paragraph; check the pill, hover it, click it to open and close the threads a few times, then collapse the card.",
-    "caveats": "Cards with threads reserve a small left gutter, so their text sits slightly further right than cards without threads."
+  "376": {
+    "whatChanged": "Hunk summaries are written for the most useful hunks first instead of all of them: source, then tests, then config, then docs, never generated files or hunks hidden at the current level, with hunks the guide cites first. Settings → Limits → Hunk summaries sets how many (default 50, 0 for none). The diff header reads \"Summaries for X of Y hunks · Summarize more\"; Summarize more writes the next batch. Hunks without a summary are listed as skipped. A new version of a PR summarizes only hunks that lack a summary.",
+    "whatToTry": "Open a large PR, check the header count in the diff pane, click Summarize more, and change the limit in Settings → Limits."
   },
-  "375": {
-    "whatChanged": "On the debug build (release-debug) the top-bar update icon no longer shows when no newer release exists; it appears only for a strictly newer release and points debug installs at release-debug.",
-    "whatToTry": "On a release-debug install of the current release, check that no gift icon shows."
+  "377": {
+    "whatChanged": "Each card's hover toolbar has a copy icon (\"Copy as Markdown\") that copies the card as shown: the current depth and persona tab, headings, lists, tables, asides, diagrams as d2 source, and any \"Updated since…\" sections and answers. Citations become GitHub links at the PR's head commit (plain path:lines for local reviews), listed after each paragraph. Agent replies in threads have the same icon.",
+    "whatToTry": "Hover a card, click the copy icon, and paste into a GitHub comment or a Markdown editor; try a persona tab and a deeper level too."
   },
-  "378": {
-    "whatChanged": "Development only: the global-install check no longer reaches the real login service on the machine running it; every install scenario now stays inside its sandbox."
+  "382": {
+    "whatChanged": "Development only: the restart-resilience check now runs with a scratch home and no session bus, so it no longer starts the real login service on the machine running the checks."
   }
 }

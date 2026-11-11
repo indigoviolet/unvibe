@@ -1,6 +1,6 @@
 {
   "name": "@unvibe/service",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "type": "module",
   "bin": {
     "unvibe": "./dist/index.js"
@@ -39,7 +39,7 @@
     "@opentelemetry/instrumentation-http": "0.200.0",
     "@opentelemetry/instrumentation-undici": "0.32.0",
     "@opentelemetry/sdk-trace-base": "2.12.0",
-    "@unvibe/shared": "0.0.18",
+    "@unvibe/shared": "0.0.19",
     "fastify": "^5.2.0",
     "immer": "^11.1.21",
     "ws": "^8.22.0"

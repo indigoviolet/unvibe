@@ -9,7 +9,7 @@
 import { JOB_PRIORITY } from "@unvibe/shared";
 import type { JobQueue } from "../../jobs/index.js";
 import type { ReviewStore } from "../../state/store.js";
-import { resolveEffectiveSettings } from "../../settings/index.js";
+import { guidePick, resolveEffectiveSettings } from "../../settings/index.js";
 import type { ModelCatalog, SettingsStore } from "../../settings/index.js";
 import type { Pipeline } from "../runner.js";
 
@@ -58,9 +58,9 @@ async function enqueueGenerate(
   const enqueued = jobs.enqueue({
     reviewId,
     kind: "go-deeper",
-    provider: settings.main.provider,
-    model: settings.main.model,
-    effort: settings.main.effort,
+    provider: guidePick(settings).provider,
+    model: guidePick(settings).model,
+    effort: guidePick(settings).effort,
     priority: JOB_PRIORITY.userRequested,
     dedupe: { anchor: `go-deeper:${cardId}`, requestKind: "go-deeper", baseVersion },
     cardId,

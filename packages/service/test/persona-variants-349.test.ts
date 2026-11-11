@@ -105,11 +105,13 @@ async function openDemo(agents: FakeAgentRunner): Promise<{ app: App["app"]; ctx
         ?.cards.find((c) => c.id === "problem")?.blocks.length,
   );
   // Personas live in settings (step 1); the run under test uses them.
+  // Issue #379: the fixed Guide stays seeded (a Guide-less list is a 400).
+  const seed = ctx.settings.get().personas ?? [];
   const patched = await app.inject({
     method: "PUT",
     url: "/api/settings",
     headers: authed,
-    payload: { personas: [PERSONA] },
+    payload: { personas: [...seed, PERSONA] },
   } as never);
   expect(patched.statusCode).toBe(200);
   return { app, ctx, id };

@@ -1997,6 +1997,57 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(page.locator(`section.ithread[data-thread="${threadId}"]`)).toHaveCount(0, { timeout: 30_000 });
     });
   });
+
+  test("reply footer: inline code chips, no label, icon reverse link (#381)", async ({ page }) => {
+    test.setTimeout(300_000);
+    const s = service();
+    // The seeded explain answer carries a follow-up block whose labels
+    // wrap identifiers in backticks (real-service fixture content, not
+    // a mock): one long (wrapping) suggestion and one short one.
+    const snapRes = await apiJson(s, "GET", "/api/reviews/l4-explain");
+    const anns = (
+      snapRes.json as {
+        annotations?: {
+          id: string;
+          replies?: { blocks?: { type: string; items?: { label: string }[] }[] }[];
+        }[];
+      }
+    ).annotations ?? [];
+    const seeded = anns.find((a) =>
+      (a.replies ?? []).some((r) =>
+        (r.blocks ?? []).some(
+          (b) => b.type === "follow-up" && (b.items ?? []).some((i) => i.label.includes("`")),
+        ),
+      ),
+    );
+    if (!seeded) throw new Error("no seeded reply with a backticked follow-up");
+    await openReview(page, "l4-explain");
+    const mine = page.locator(`section.ithread[data-thread="${seeded.id}"]`);
+    await expect(mine).toBeVisible({ timeout: 30_000 });
+    const footer = mine.locator(".follow").first();
+    await expect(footer).toBeVisible({ timeout: 15_000 });
+
+    await test.step("chips render inline code with no literal backticks, and no label", async () => {
+      const chips = footer.locator("button");
+      await expect.soft(chips).toHaveCount(2);
+      const long = chips.filter({ hasText: "keep the line ending" });
+      await expect.soft(long.locator("code").first()).toContainText("http.client");
+      for (const chip of await chips.all()) {
+        expect.soft((await chip.innerText()).includes("`")).toBe(false);
+      }
+      await expect.soft(footer).not.toContainText("Follow up:");
+    });
+
+    await test.step("the quoted-passage button is icon-only and still reveals the anchor", async () => {
+      const rev = mine.getByRole("button", { name: "Show the quoted passage" }).first();
+      await expect.soft(rev).toBeVisible();
+      await expect.soft(rev).toHaveAttribute("data-src-link", /.+/);
+      await rev.click();
+      // The seeded quote places on the guide highlight (else the margin
+      // marker's line): either way the target flashes.
+      await expect.soft(page.locator("#C-problem .flash")).toBeVisible({ timeout: 15_000 });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

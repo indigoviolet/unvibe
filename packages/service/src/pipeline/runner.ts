@@ -31,6 +31,7 @@ import type {
 } from "@unvibe/shared";
 import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
+import { getGuidePersona } from "@unvibe/shared";
 import { validateTarget } from "../validate/index.js";
 import type { HunkReplyResult, HunkSummaryCandidate } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
@@ -42,10 +43,11 @@ import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder } from "../context/index.js";
 import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
+import { withGuideStyleForTurn } from "../prompts/personas.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
-import { resolveEffectiveSettings } from "../settings/index.js";
+import { guidePick, resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog } from "../settings/index.js";
 import type { ReviewStore } from "../state/store.js";
 import type { CommandRunner } from "../exec/index.js";
@@ -440,9 +442,10 @@ export class Pipeline {
   /**
    * Issue #349 step 2: the agent role for a turn — the persona's
    * provider/model (effort is the adapter default: personas name no
-   * effort), the main pick for a persona with `followMain` (issue
-   * #359), or the main guide role. The job stamp, the base key and the
-   * fork all use this, so the runner reaches the persona's model.
+   * effort), the Guide persona's pick for a persona with `followMain`
+   * (issue #359), or the Guide role itself. The job stamp, the base key
+   * and the fork all use this, so the runner reaches the persona's
+   * model. Issue #379: the main role IS the Guide persona.
    */
   private roleFor(settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>, persona?: Persona): {
     provider: string;
@@ -451,14 +454,16 @@ export class Pipeline {
   } {
     if (persona) {
       // Issue #359: a persona following the main model runs on the
-      // effective main pick (live-resolved like every other main
-      // consumer); effort stays the adapter default, like all personas.
+      // Guide persona's provider/model (issue #379). Effort stays the
+      // adapter default, as before — a follower never inherits the
+      // Guide's effort.
       if (persona.followMain) {
-        return { provider: settings.main.provider, model: settings.main.model, effort: "" };
+        const guide = guidePick(settings);
+        return { provider: guide.provider, model: guide.model, effort: "" };
       }
       return { provider: persona.provider, model: persona.model, effort: "" };
     }
-    return { provider: settings.main.provider, model: settings.main.model, effort: settings.main.effort };
+    return guidePick(settings);
   }
 
   /**
@@ -523,7 +528,11 @@ export class Pipeline {
     // Issue #359 (owner decision, option B): same-model personas fork
     // main's shared base, so the lens travels at the start of every
     // persona turn's prompt — uniformly, whatever the persona's model.
+    // Issue #379: main writing turns carry the Guide's writing-style
+    // lens the same way (system prompt and base stay untouched, so the
+    // base never depends on the lens); persona turns never do.
     if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
+    else prompt = withGuideStyleForTurn(o.template, prompt, getGuidePersona(settings.personas)?.lens ?? "");
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -732,7 +741,12 @@ export class Pipeline {
                 );
                 // Issue #359 (owner decision, option B): the retry is a
                 // persona turn too, so it carries the lens the same way.
+                // Issue #379: a main-writing retry re-renders the full
+                // first-turn prompt, so it carries the Guide lens again.
                 if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
+                else if (o.retryTemplate) {
+                  prompt = withGuideStyleForTurn(o.retryTemplate, prompt, getGuidePersona(settings.personas)?.lens ?? "");
+                }
                 snapshotText = `${snapshotText}\n\n--- retry turn ---\n${prompt}`;
               }
               continue;
@@ -999,7 +1013,7 @@ export class Pipeline {
       return this.opts.jobs.enqueue({
         reviewId,
         kind: "concept",
-        ...roleFields(effective.main),
+        ...roleFields(guidePick(effective)),
         priority: JOB_PRIORITY.userRequested,
         run: async () => {},
       });
@@ -1018,7 +1032,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      ...roleFields(settings.main),
+      ...roleFields(guidePick(settings)),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `concept:${slug}`, requestKind: "concept-page", baseVersion: `v${snapshot.version.n}` },
       cardId: `cc-${slug}`,
@@ -1225,7 +1239,7 @@ export class Pipeline {
       const text = await buildDocumentBaseText(this.opts.commands, snapshot);
       return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
     }
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
   }
@@ -1795,7 +1809,7 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
     // One ladder call for both halves (issue #107): source + diff come
     // from the same rung, so the reader prompt stays under the hard cap.
     const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
@@ -1859,11 +1873,15 @@ export class Pipeline {
       reviewed_context,
     });
     if (isReplayRunner(this.opts.runner)) prompt = withReplayMark(prompt, { kind: "reader" });
+    // Issue #379: the guide is a main writing turn, so it carries the
+    // Guide's writing-style lens up front (empty lens: unchanged). The
+    // session's system prompt stays the base alone, like every base.
+    prompt = withGuideStyleForTurn("reader", prompt, getGuidePersona(settings.personas)?.lens ?? "");
     this.setStage(reviewId, "reader", "running");
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "reader",
-      ...roleFields(settings.main),
+      ...roleFields(guidePick(settings)),
       priority: JOB_PRIORITY.visible,
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -1882,7 +1900,7 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
           const session = await this.opts.runner.start({
-            ...roleFields(settings.main),
+            ...roleFields(guidePick(settings)),
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
             readOnly: postureFor(settings) !== "full",
@@ -2371,7 +2389,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "critic",
-      ...roleFields(settings.main),
+      ...roleFields(guidePick(settings)),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: "finding:critic", requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -2824,7 +2842,7 @@ export class Pipeline {
     // The ladder is deterministic: rebuild it to learn exactly which hunk
     // IDs the reader saw (inlined + summarized). Anything assigned or
     // visible stays out of the follow-up.
-    const promptSnap = toPromptSnapshot(snapshot, { model: settings.main.model });
+    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
     const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const seen = new Set([...ladder.inlinedHunkIds, ...ladder.summarizedHunkIds]);
     const unassigned = snapshot.files.flatMap((f) =>
@@ -2954,7 +2972,7 @@ export class Pipeline {
       this.opts.jobs.enqueue({
         reviewId,
         kind: "go-deeper",
-        ...roleFields(effective.main),
+        ...roleFields(guidePick(effective)),
         priority: JOB_PRIORITY.background,
         dedupe: { anchor: `go-deeper:${card.id}`, requestKind: "go-deeper", baseVersion: `v${snapshot.version.n}` },
         cardId: card.id,
@@ -2986,9 +3004,17 @@ export class Pipeline {
     const card = root?.cards.find((c) => c.id === cardId);
     if (!card?.pending) throw new Error(`no pending card ${cardId}`);
     const direction = `${card.pending.label}\n${card.pending.why}`;
-    const prompt = withReplayMark(
-      this.render("go_deeper", { direction, glossary: this.glossaryForPrompt(snapshot) }),
-      isReplayRunner(this.opts.runner) ? { kind: "go-deeper", key: cardId.replace(/^g-/, "") } : undefined,
+    // Issue #379: card fills are main writing turns — they carry the
+    // Guide's lens up front (empty: unchanged). `fillGoDeeper` renders
+    // outside `runInFork`, so it prefixes through the same helper.
+    const settings = await this.effectiveSettings();
+    const prompt = withGuideStyleForTurn(
+      "go_deeper",
+      withReplayMark(
+        this.render("go_deeper", { direction, glossary: this.glossaryForPrompt(snapshot) }),
+        isReplayRunner(this.opts.runner) ? { kind: "go-deeper", key: cardId.replace(/^g-/, "") } : undefined,
+      ),
+      getGuidePersona(settings.personas)?.lens ?? "",
     );
     ctx?.setPromptSnapshot(prompt);
     const base = await this.ensureBase(reviewId);

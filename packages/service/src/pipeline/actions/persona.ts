@@ -17,6 +17,7 @@
  */
 import type { Anchor, Block, CardVariant, Job, Persona, ReviewSnapshot } from "@unvibe/shared";
 import { blockPlainText, dedupeBlockIds, isCardVariant, JOB_PRIORITY } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { cardPromptText, recordInteraction } from "../../interaction/index.js";
 import { isReplayRunner } from "../../agent/factory.js";
 import { DEFAULT_CARD_INSTRUCTION } from "../../prompts/personas.js";
@@ -41,6 +42,7 @@ export const PERSONA_WORKING = "Persona is writing";
  */
 export function personaFor(ctx: ActionContext, personaId: string): Persona {
   if (!ctx.settings) throw new Error("personas are not available in this build");
+  if (personaId === GUIDE_PERSONA_ID) throw new Error("the Guide persona is the main agent, not a run choice");
   const personas = ctx.settings.get().personas ?? [];
   const persona = personas.find((p) => p.id === personaId);
   if (!persona) throw new Error(`unknown persona ${personaId}`);
