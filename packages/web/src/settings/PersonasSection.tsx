@@ -6,15 +6,17 @@
  *
  * The built-in Second opinion arrives seeded in fresh settings and is an
  * ordinary entry afterwards — editable and deletable like any other.
- * The built-in Clarity (issue #359) follows the main model
- * (`followMain`); the form shows that as "Main model" with the option
- * to pin a specific one.
+ * The built-in Clarity (issue #359) follows the Guide's model
+ * (`followMain`); the form shows that with the option to pin a
+ * specific one. The built-in Guide (issue #379) is the main
+ * agent itself — fixed (no delete, no disable), owning the main provider
+ * + model and a writing-style lens (empty by default).
  * Every change PUTs the whole list through `saveSettings`, like every
  * other settings section.
  */
 import { useEffect, useState } from "react";
-import type { ModelInfo, Persona, Settings } from "@unvibe/shared";
-import { nextPersonaColor, slugifyPersonaName } from "@unvibe/shared";
+import type { ModelInfo, Persona, Settings, ThinkingResponse } from "@unvibe/shared";
+import { getGuidePersona, nextPersonaColor, slugifyPersonaName, GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button, Card, Checkbox, Field, InlineConfirm, Input, Select } from "../ui/index.js";
 import { modelLabel } from "./ModelsSection.js";
@@ -38,6 +40,12 @@ export function PersonasSection({
   onSaved: (next: Settings) => void;
 }): React.JSX.Element {
   const personas = settings.personas ?? [];
+  // Issue #379: the Guide owns the main provider + model — the "main
+  // model" followers run on and the new-form starting point.
+  const guide = getGuidePersona(personas);
+  const guidePick = guide
+    ? { provider: guide.provider, model: guide.model }
+    : { provider: "", model: "" };
   const [providers, setProviders] = useState<string[]>(FALLBACK_PROVIDERS);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -83,9 +91,11 @@ export function PersonasSection({
   return (
     <section aria-label="Personas" id="personas" style={{ scrollMarginTop: 12 }} data-testid="personas-section">
       <p className="hint">
-        Reviewer voices that can take on a card. Each runs on its model — or on the main model —
-        with its lens; the colour is assigned automatically. Second opinion and Clarity are
-        built in — edit or delete them like any other persona.
+        The Guide is the main agent: it writes the guide, explanations and answers on its model,
+        in its writing style (empty means no extra style). Reviewer voices can take on a card.
+        Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
+        assigned automatically. Second opinion and Clarity are built in — edit or delete them
+        like any other persona.
       </p>
       {error ? (
         <p className="err" role="alert">
@@ -99,9 +109,16 @@ export function PersonasSection({
             key={p.id}
             variant="raised"
             data-testid={`persona-${p.id}`}
-            style={{ borderLeft: `3px solid ${p.color}` }}
+            // Issue #379: the Guide row is neutral — no colour dot, no
+            // tinted border (its colour is data-only, never rendered).
+            style={p.id === GUIDE_PERSONA_ID ? undefined : { borderLeft: `3px solid ${p.color}` }}
           >
             <div className="frow" style={{ gap: 8, alignItems: "center" }}>
+              {p.id === GUIDE_PERSONA_ID ? (
+                // Neutral slot the swatch's size: the row text lines up
+                // with the other rows (issue #379: no colour rendered).
+                <span aria-hidden="true" style={{ flex: "none", width: 14, height: 14 }} />
+              ) : (
               <span
                 aria-hidden="true"
                 title={`Colour ${p.color} (automatic)`}
@@ -114,6 +131,7 @@ export function PersonasSection({
                   background: p.color,
                 }}
               />
+              )}
               <div style={{ minWidth: 0, flex: "1 1 auto" }}>
                 <div style={{ fontSize: 13 }}>
                   <b>{p.name}</b>
@@ -124,9 +142,11 @@ export function PersonasSection({
                   )}
                 </div>
                 <div className="hint">
-                  {p.followMain
-                    ? `Main model (${settings.main.provider}/${settings.main.model})`
-                    : `${p.provider}/${p.model}`}
+                  {p.id === GUIDE_PERSONA_ID
+                    ? `${p.provider}/${p.model}`
+                    : p.followMain
+                      ? `Guide's model (${getGuidePersona(personas)?.provider ?? ""}/${getGuidePersona(personas)?.model ?? ""})`
+                      : `${p.provider}/${p.model}`}
                 </div>
               </div>
               <div className="frow" style={{ gap: 4, alignItems: "center" }}>
@@ -144,6 +164,7 @@ export function PersonasSection({
                     {editingId === p.id ? "Close" : "Edit"}
                   </Button>
                 )}
+                {p.id === GUIDE_PERSONA_ID ? null : (
                 <InlineConfirm
                   action="Delete"
                   confirmAction={`delete the “${p.name}” persona`}
@@ -162,6 +183,7 @@ export function PersonasSection({
                   idleAriaLabel={`Delete ${p.name}`}
                   title={`Delete ${p.name}`}
                 />
+                )}
               </div>
             </div>
             {editingId === p.id ? (
@@ -169,7 +191,8 @@ export function PersonasSection({
                 key={p.id}
                 initial={p}
                 providers={providers}
-                mainPick={settings.main}
+                mainPick={guidePick}
+                fixed={p.id === GUIDE_PERSONA_ID}
                 submitLabel="Save"
                 testIdPrefix={`persona-${p.id}`}
                 onCancel={() => setEditingId(null)}
@@ -192,7 +215,8 @@ export function PersonasSection({
           <PersonaForm
             initial={null}
             providers={providers}
-            mainPick={settings.main}
+            mainPick={guidePick}
+            fixed={false}
             submitLabel="Add persona"
             testIdPrefix="persona-new"
             onCancel={() => setEditingId(null)}
@@ -236,12 +260,15 @@ function PersonaForm({
   testIdPrefix,
   onCancel,
   onSave,
+  fixed,
 }: {
   /** Edited persona, or null for a new one (id + colour assigned on save). */
   initial: Persona | null;
   providers: string[];
-  /** Current main pick: what a main-following persona runs on. */
+  /** Current Guide pick: what a main-following persona runs on. */
   mainPick: { provider: string; model: string };
+  /** Fixed Guide entry (issue #379): model + style only, no source choice. */
+  fixed: boolean;
   submitLabel: string;
   testIdPrefix: string;
   onCancel: () => void;
@@ -254,6 +281,12 @@ function PersonaForm({
   const [lens, setLens] = useState(initial?.lens ?? "");
   const [cardInstruction, setCardInstruction] = useState(initial?.cardInstruction ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+  // Issue #379 (effort picker, owner decision A): the fixed Guide keeps
+  // the main-model effort picker. Local state until Save, like the rest.
+  const [effort, setEffort] = useState(initial?.effort ?? "");
+  const [thinking, setThinking] = useState<ThinkingResponse | null>(null);
+  const [thinkingError, setThinkingError] = useState<string | null>(null);
+  const [effortReset, setEffortReset] = useState<string | null>(null);
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -275,10 +308,33 @@ function PersonaForm({
       .catch((err: unknown) => {
         if (!cancelled) setModelsError(friendlyError(err));
       });
+    // Thinking levels come from the same provider's adapter (#172).
+    setThinking(null);
+    setThinkingError(null);
+    api
+      .thinking(provider)
+      .then((r) => {
+        if (!cancelled) setThinking(r);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setThinkingError(friendlyError(err));
+      });
     return () => {
       cancelled = true;
     };
   }, [provider]);
+
+  // Keep the saved effort when the new provider offers it, else fall
+  // back to Default with a notice (same rule as Settings → Models).
+  // Unknown offerings (still loading, fetch failed) keep the value;
+  // the service skips validation then.
+  useEffect(() => {
+    if (!fixed || effort === "" || thinkingError !== null || thinking === null) return;
+    if (!thinking.options.some((o) => o.value === effort)) {
+      setEffort("");
+      setEffortReset(`"${effort}" isn't available for ${provider} — reset to Default.`);
+    }
+  }, [fixed, effort, thinking, thinkingError, provider]);
 
   const submit = async (): Promise<void> => {
     if (name.trim() === "") {
@@ -289,7 +345,7 @@ function PersonaForm({
       setFormError("Pick a model for this persona.");
       return;
     }
-    if (lens.trim() === "") {
+    if (!fixed && lens.trim() === "") {
       setFormError("Lens is required — who the persona is and what it looks for.");
       return;
     }
@@ -299,16 +355,19 @@ function PersonaForm({
       await onSave({
         id: initial?.id ?? "",
         name: name.trim(),
-        followMain,
-        // A main-following persona stores the current main pick as its
+        // The fixed Guide entry (issue #379) owns its model outright and
+        // takes no card instruction; it is never disabled.
+        followMain: fixed ? false : followMain,
+        // A main-following persona stores the Guide pick as its
         // last explicit one (the starting point if a model is pinned
         // later); it is not what runs.
-        provider: followMain ? mainPick.provider : provider,
-        model: followMain ? mainPick.model : model,
+        provider: fixed ? provider : followMain ? mainPick.provider : provider,
+        model: fixed ? model : followMain ? mainPick.model : model,
         lens,
-        cardInstruction,
-        enabled,
+        cardInstruction: fixed ? "" : cardInstruction,
+        enabled: fixed ? true : enabled,
         color: initial?.color ?? "",
+        ...(fixed ? { effort } : {}),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : friendlyError(err));
@@ -330,23 +389,25 @@ function PersonaForm({
           style={{ width: 360, maxWidth: "100%" }}
         />
       </Field>
+      {fixed ? null : (
       <Field label="Model source" htmlFor={`${testIdPrefix}-follow-main`}>
         <div className="frow" style={{ gap: 6, alignItems: "center" }}>
           <Checkbox
             id={`${testIdPrefix}-follow-main`}
             testId={`${testIdPrefix}-follow-main`}
-            ariaLabel="Use main model"
+            ariaLabel="Use Guide model"
             checked={followMain}
             onChange={setFollowMain}
           />
           <span className="hint">
-            Use main model (currently {mainPick.provider}/{mainPick.model})
+            Use the Guide&apos;s model (currently {mainPick.provider}/{mainPick.model})
           </span>
         </div>
       </Field>
+      )}
       {followMain ? (
         <p className="hint" style={{ margin: 0 }}>
-          Runs on the main model at run time; pin a specific model below by turning this off.
+          Runs on the Guide&apos;s model at run time; pin a specific model below by turning this off.
         </p>
       ) : (
         <>
@@ -358,6 +419,7 @@ function PersonaForm({
           onValueChange={(v) => {
             setProvider(v);
             setModel("");
+            setEffortReset(null);
           }}
           options={providerOptions.map((p) => ({ value: p, label: p }))}
         />
@@ -384,10 +446,60 @@ function PersonaForm({
       </Field>
         </>
       )}
+      {fixed ? (
+      <Field label="Effort" htmlFor={`${testIdPrefix}-effort`}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          {thinkingError ? (
+            <span className="hint" role="status">
+              Couldn&apos;t load thinking levels ({thinkingError}) — Default stands.
+            </span>
+          ) : thinking === null ? (
+            <span className="hint settings-thinking">Loading thinking levels…</span>
+          ) : (
+            <>
+              <Select
+                id={`${testIdPrefix}-effort`}
+                data-testid={`${testIdPrefix}-effort`}
+                value={effort}
+                onValueChange={(v) => {
+                  setEffort(v);
+                  setEffortReset(null);
+                }}
+                title="How hard the model thinks. Default leaves the provider's own setting alone."
+                options={[
+                  { value: "", label: "Default" },
+                  ...thinking.options.map((o) => ({ value: o.value, label: o.name ?? o.value })),
+                ]}
+              />
+              {(() => {
+                const current = thinking.options.find((o) => o.value === effort);
+                if (current?.description) {
+                  return (
+                    <span className="hint" data-testid={`${testIdPrefix}-effort-desc`}>
+                      {current.description}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
+          {effortReset ? (
+            <span className="warnline" role="status" data-testid={`${testIdPrefix}-effort-reset`}>
+              {effortReset}
+            </span>
+          ) : null}
+        </div>
+      </Field>
+      ) : null}
       <Field
-        label="Lens"
+        label={fixed ? "Writing style (optional)" : "Lens"}
         htmlFor={`${testIdPrefix}-lens`}
-        help="Who the persona is and what it looks for — applied to every task it performs."
+        help={
+          fixed
+            ? "Tone and wording for everything the Guide writes (guide, cards, depth, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
+            : "Who the persona is and what it looks for — applied to every task it performs."
+        }
         layout="stacked"
       >
         <textarea
@@ -398,9 +510,10 @@ function PersonaForm({
           rows={4}
           value={lens}
           onChange={(e) => setLens(e.target.value)}
-          placeholder="e.g. You are a performance sceptic…"
+          placeholder={fixed ? "e.g. Short sentences. No jargon…" : "e.g. You are a performance sceptic…"}
         />
       </Field>
+      {fixed ? null : (
       <Field
         label="Card instruction (optional)"
         htmlFor={`${testIdPrefix}-card-instruction`}
@@ -418,6 +531,8 @@ function PersonaForm({
           placeholder="e.g. Respond to the card: check its claims…"
         />
       </Field>
+      )}
+      {fixed ? null : (
       <Field label="Enabled" htmlFor={`${testIdPrefix}-enabled`}>
         <Checkbox
           id={`${testIdPrefix}-enabled`}
@@ -427,6 +542,7 @@ function PersonaForm({
           onChange={setEnabled}
         />
       </Field>
+      )}
       {formError ? (
         <p className="err" role="alert">
           {formError}

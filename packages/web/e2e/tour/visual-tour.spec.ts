@@ -1336,7 +1336,7 @@ test.describe("visual tour passes", () => {
     for (const tab of [
       { id: "limits", name: "Limits", marker: "Write go-deeper cards automatically" },
       { id: "repositories", name: "Repos", marker: "Add by path" },
-      { id: "models", name: "Models", marker: "Writes the guide" },
+      { id: "models", name: "Models", marker: "Hunk summaries" },
       { id: "environment", name: "Environment", marker: "Re-check" },
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },

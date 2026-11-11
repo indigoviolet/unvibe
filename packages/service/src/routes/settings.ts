@@ -20,12 +20,13 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { Persona, Settings, ThinkingResponse } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { resolveEffectiveSettings, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
 
-type Role = "main" | "small";
+type Role = "small";
 
-const ROLES: Role[] = ["main", "small"];
+const ROLES: Role[] = ["small"];
 
 /**
  * Effective settings: stored values, with live adapter defaults filled in
@@ -61,8 +62,9 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       const problems: string[] = [];
       // Issue #349: every persona's model is validated like a role's —
       // never persist a model id no adapter offers. A persona following
-      // the main model (issue #359) is exempt: its stored pick is the
-      // last explicit one, not what runs.
+      // the main model (issue #359: the Guide persona, #379) is exempt:
+      // its stored pick is the last explicit one, not what runs. The
+      // Guide itself always names its model, so it is validated.
       const personas = Array.isArray(patch.personas) ? (patch.personas as Persona[]) : [];
       const picks: { label: string; provider: string; model: string }[] = [
         ...ROLES.map((role) => ({ label: role, provider: patch[role]?.provider ?? "", model: patch[role]?.model ?? "" })),
@@ -94,21 +96,37 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
       }
       // Never persist an effort value the adapter does not offer.
       // Default ("") always passes: it leaves the adapter's own
-      // setting alone. Validation above already rejected a missing or
-      // non-string effort, so it is always present here. (Roles only:
-      // personas name provider + model, no effort in v1.)
-      for (const role of ROLES) {
-        const pick = patch[role];
-        if (!pick || pick.model === "") continue;
-        const effort = pick.effort;
+      // setting alone. (The small role and the Guide persona, issue
+      // #379: other personas name no effort.)
+      const effortPicks: { label: string; provider: string; model: string; effort: string }[] = [
+        ...ROLES.map((role) => ({
+          label: role,
+          provider: patch[role]?.provider ?? "",
+          model: patch[role]?.model ?? "",
+          effort: patch[role]?.effort ?? "",
+        })),
+      ];
+      if (Array.isArray(patch.personas)) {
+        const guide = (patch.personas as Persona[]).find((p) => p.id === GUIDE_PERSONA_ID);
+        if (guide && guide.model !== "") {
+          effortPicks.push({
+            label: "guide",
+            provider: guide.provider ?? "",
+            model: guide.model,
+            effort: guide.effort ?? "",
+          });
+        }
+      }
+      for (const { label, provider, model, effort } of effortPicks) {
+        if (!provider || model === "") continue;
         if (effort !== "" && typeof thinking === "function") {
           try {
-            const live = await thinking.call(deps.models, pick.provider);
+            const live = await thinking.call(deps.models, provider);
             if (live) {
               const values = live.options.map((o) => o.value);
               if (!values.includes(effort)) {
                 problems.push(
-                  `${role} effort "${effort}" is not offered by ${pick.provider} (offers: ${values.join(", ") || "none"}) — pick one of the offered values or Default`,
+                  `${label} effort "${effort}" is not offered by ${provider} (offers: ${values.join(", ") || "none"}) — pick one of the offered values or Default`,
                 );
               }
             }

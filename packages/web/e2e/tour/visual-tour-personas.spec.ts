@@ -76,8 +76,16 @@ test.describe("J349 personas settings", () => {
   test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    expect(list).toHaveLength(2);
+    expect(list).toHaveLength(3);
     expect(list[0]).toMatchObject({
+      id: "guide",
+      name: "Guide",
+      followMain: false,
+      enabled: true,
+      cardInstruction: "",
+    });
+    expect(list[0].lens).toBe("");
+    expect(list[1]).toMatchObject({
       id: "second-opinion",
       name: "Second opinion",
       followMain: false,
@@ -85,16 +93,16 @@ test.describe("J349 personas settings", () => {
       model: "gpt-6.1-sol",
       enabled: true,
     });
-    expect(list[0].lens).toContain("second reader");
-    expect(list[0].cardInstruction).toContain("check its claims against the code");
-    // Issue #359: Clarity follows the main model at run time.
-    expect(list[1]).toMatchObject({
+    expect(list[1].lens).toContain("second reader");
+    expect(list[1].cardInstruction).toContain("check its claims against the code");
+    // Issue #359: Clarity follows the Guide's model at run time.
+    expect(list[2]).toMatchObject({
       id: "clarity",
       name: "Clarity",
       followMain: true,
       enabled: true,
     });
-    expect(list[1].lens).toContain("You are Clarity");
+    expect(list[2].lens).toContain("You are Clarity");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -106,7 +114,7 @@ test.describe("J349 personas settings", () => {
     const clarityRow = page.getByTestId("persona-clarity");
     await expect(clarityRow).toBeVisible();
     await expect(clarityRow).toContainText("Clarity");
-    await expect(clarityRow).toContainText("Main model (claude/claude-opus-5-5)");
+    await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
   });
@@ -136,7 +144,7 @@ test.describe("J349 personas settings", () => {
     const list = await personas(svc);
     const clarity = list.find((p) => p.id === "clarity");
     expect(clarity?.followMain).toBe(true);
-    await expect(row).toContainText("Main model (claude/claude-opus-5-5)");
+    await expect(row).toContainText("Guide's model (claude/claude-opus-5-5)");
   });
 
   test("edit form frame", async ({ page }) => {
@@ -151,6 +159,31 @@ test.describe("J349 personas settings", () => {
     await page.mouse.move(720, 20);
     await page.screenshot({ path: path.join(SHOTS, "personas-edit-form.png") });
     await row.getByTestId("persona-second-opinion-edit").click();
+  });
+
+  test("guide edit form frame", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    // Issue #379: the fixed Guide entry opened for editing — model
+    // pickers plus the Writing style lens, with no delete, no disable
+    // switch and no card instruction.
+    const row = page.getByTestId("persona-guide");
+    await expect(row).toBeVisible();
+    await expect(page.getByTestId("persona-guide-swatch")).toHaveCount(0);
+    await row.getByTestId("persona-guide-edit").click();
+    await expect(page.getByTestId("persona-guide-lens")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-provider")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-model")).toBeVisible();
+    await expect(page.getByTestId("persona-guide-card-instruction")).toHaveCount(0);
+    await expect(page.getByTestId("persona-guide-follow-main")).toHaveCount(0);
+    await expect(page.getByTestId("persona-guide-enabled")).toHaveCount(0);
+    // Park the mouse away from the row so Close isn't caught in hover.
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "personas-guide-edit-form");
+    await page.screenshot({ path: path.join(SHOTS, "personas-guide-edit-form.png") });
+    await row.getByTestId("persona-guide-edit").click();
   });
 
   test("add form frame", async ({ page }) => {
@@ -186,7 +219,7 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
@@ -225,7 +258,7 @@ test.describe("J349 personas settings", () => {
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
   });
 });
 
