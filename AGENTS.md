@@ -52,6 +52,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - Before saying a published preview contains a change, check the published ref's built files (e.g. `git show <preview ref>:packages/web/dist/assets/index-*.js | grep` for a string the change adds or removes) and say that you did.
 - `docs/acceptance-audit.md` is the requirement-by-requirement verdict + open list; update it when behaviour changes.
 - Work is tracked in GitHub issues at `indigoviolet/unvibe` (`gh issue list`). Each piece of work has an issue; name the issue in your report and in the merge commit (`Closes #N`), tick its checklist as items land, and open a new issue for anything you find but do not fix. Labels: `in-progress`, `waiting-for-user-testing`, `waiting-for-user-response`, `needs-decision`, `needs-mac`, `future`.
+- A merge commit names only its own issue (`#N` and `Closes #N`); never mention other issue numbers, because the release-notes generator reads them.
 - Keep the issue current, so its state always says where the work is:
   - Starting: add `in-progress`.
   - Implemented and waiting on the owner: comment with the worktree branch name, the preview build and its install command, and the status (what was built, what was verified, how to try it). Swap `in-progress` for `waiting-for-user-testing`. This state always has a published preview (see the finishing rule below).
