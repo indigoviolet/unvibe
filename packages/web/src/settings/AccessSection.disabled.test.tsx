@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Settings } from "@unvibe/shared";
+import { GUIDE_PERSONA } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { AccessSection } from "./AccessSection.js";
 
@@ -15,11 +16,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
+
 function settingsWith(fullAccess: boolean): Settings {
   return {
-    main: { provider: "claude", model: "mock-main", effort: "" },
     small: { provider: "claude", model: "mock-small", effort: "" },
-    personas: [],
+    personas: [MOCK_GUIDE],
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,

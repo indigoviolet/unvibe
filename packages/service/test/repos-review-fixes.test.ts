@@ -341,7 +341,7 @@ describe("fetch notes reach every caller", () => {
 });
 
 describe("bounded, prompt-free subprocess env", () => {
-  it("fetch carries a timeout and never prompts", async () => {
+  it("#383: the background refresh fetch carries a timeout and never prompts", async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
     const { runner, gitCalls } = makeRunner({
       gitFetch: { stdout: "", stderr: "", code: 0 },
@@ -357,9 +357,18 @@ describe("bounded, prompt-free subprocess env", () => {
       const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
       resetManagedCloneStateForTests();
       gitCalls.length = 0;
-      const res = await app.inject({
+      // Listings never fetch (#383); the one background fetch per load
+      // carries the same bound.
+      const listed = await app.inject({
         method: "GET",
         url: `/api/repos/${repo.id}/changes?filter=branches`,
+        headers: authed(),
+      });
+      expect(listed.statusCode).toBe(200);
+      expect(gitCalls.some((c) => isGitFetch(c.args))).toBe(false);
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/repos/${repo.id}/refresh`,
         headers: authed(),
       });
       expect(res.statusCode).toBe(200);

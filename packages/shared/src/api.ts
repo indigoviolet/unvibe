@@ -389,6 +389,19 @@ export interface RepoChangesResponse {
 }
 
 /**
+ * #383: `POST /api/repos/:id/refresh` — the start page's one background
+ * managed-clone fetch per load, off the critical path. The list endpoints
+ * never fetch; this call runs the fetch alone so the page stays
+ * progressive. `fetched` is false for repos with no managed clone
+ * (user checkouts, the demo entry): nothing runs, never an error.
+ * `fetchError` carries the same stale-clone note the lists used to carry.
+ */
+export interface RepoRefreshResponse {
+  fetched: boolean;
+  fetchError?: string;
+}
+
+/**
  * #298: one review's fresh status from the batched per-repo check
  * (`POST /api/repos/:id/review-statuses`). Served only when the start
  * page loads or its Refresh is pressed — never polled. `stale` means
@@ -1465,14 +1478,16 @@ export function isUiThemeId(v: unknown): v is UiThemeId {
 export interface Settings {
   /** UI theme (issue #196); persisted like every other setting. */
   uiTheme: UiThemeId;
-  main: ModelPick;
   small: ModelPick;
   /**
-   * Persona definitions (issue #349): the built-in Second opinion and
-   * Clarity personas plus any custom personas. A persona with
-   * `followMain` runs on the main model at run time (issue #359).
-   * Managed through Settings → Personas (add, edit,
-   * delete); the colour is auto-assigned at creation.
+   * Persona definitions (issue #349): the built-in Guide, Second
+   * opinion and Clarity personas plus any custom personas. The Guide
+   * (issue #379) is fixed — exactly one, not deletable or
+   * disableable — and owns the main provider + model (replacing
+   * `settings.main`). A persona with `followMain` runs on the Guide
+   * persona's model at run time (issue #359). Managed through
+   * Settings → Personas (add, edit, delete); the colour is
+   * auto-assigned at creation.
    */
   personas: Persona[];
   /** Max concurrent sessions per provider (default 16, PRD §12). */

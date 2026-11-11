@@ -2,16 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { Settings } from "@unvibe/shared";
+import { GUIDE_PERSONA } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { ExtensionSection } from "./ExtensionSection.js";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
+
 const settings: Settings = {
   uiTheme: "default",
-  main: { provider: "claude", model: "mock-main", effort: "" },
   small: { provider: "claude", model: "mock-small", effort: "" },
-  personas: [],
+  personas: [MOCK_GUIDE],
   sessionsPerProvider: 4, inlineBudgetTokens: 40000, rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000, logBatchTokens: 2000, cacheLifetimeMs: 300000,
   idleExitMinutes: 10, hunkSummaryLimit: 50, versionPickerEnabled: false, fullAccess: false,

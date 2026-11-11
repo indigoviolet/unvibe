@@ -489,19 +489,20 @@ test.describe("J306 select popup z-index", () => {
       await page.screenshot({ path: `${SHOTS}/select-popup-author-${combo.name}.png` });
       await closePopup(page);
 
-      // Settings model + effort pickers (shared Select) inside a card.
+      // Settings small-model + effort pickers (shared Select) inside a
+      // card (issue #379: Models keeps only the small picker).
       await page.goto(`${svc.origin}/settings?token=${svc.token}`);
       await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Models" }).click();
-      await expect(page.locator("#model-main")).toBeVisible({ timeout: 30_000 });
-      await page.locator("#prov-main").click();
+      await expect(page.locator("#model-small")).toBeVisible({ timeout: 30_000 });
+      await page.locator("#prov-small").click();
       await expectPopupTopmostOverCard(page, "settings provider select");
       await closePopup(page);
-      await page.locator("#model-main").click();
+      await page.locator("#model-small").click();
       await expectPopupTopmostOverCard(page, "settings model select");
       await page.screenshot({ path: `${SHOTS}/select-popup-settings-model-${combo.name}.png` });
       await closePopup(page);
-      await page.locator("#effort-main").click();
+      await page.locator("#effort-small").click();
       await expectPopupTopmostOverCard(page, "settings effort select");
       await closePopup(page);
 

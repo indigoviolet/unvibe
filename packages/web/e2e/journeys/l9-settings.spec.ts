@@ -279,12 +279,13 @@ test.describe("L9 settings CRUD", () => {
     expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
 
     // Model pickers show display names on the real service (static
-    // fallback carries names even with no agent).
+    // fallback carries names even with no agent). Models holds only the
+    // small model since #379; the main model is on the Guide persona.
     await page.goto(`${s.origin}/settings?token=${s.token}`);
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 20_000 });
     await page.getByRole("tab", { name: "Models" }).click();
-    const main = page.locator('[data-testid="model-main"]');
-    await main.locator("#model-main").click();
+    const small = page.locator('[data-testid="model-small"]');
+    await small.locator("#model-small").click();
     await expect(openPopup(page).getByRole("option", { name: "Sonnet" })).toBeVisible();
   });
 
@@ -510,12 +511,14 @@ test.describe("L9 settings screens, start rows and PR badges", () => {
     // Models: nothing under the model picker — no description, no
     // status/path line; a role that isn't ready links to Environment.
     await page.getByRole("tab", { name: "Models" }).click();
-    await expect(page.locator('[data-testid="model-main"]')).toBeVisible({ timeout: 30_000 });
+    // Since #379 Models holds only the small model.
+    await expect(page.locator('[data-testid="model-small"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="model-main"]')).toHaveCount(0);
     await expect(page.locator('[data-testid$="-desc"]')).toHaveCount(0);
-    const mainStatus = page.locator('[data-testid="model-main-status"]');
-    await mainStatus.waitFor({ timeout: 15_000 }).catch(() => {});
-    if ((await mainStatus.count()) > 0) {
-      await expect(mainStatus.getByRole("link", { name: "Check Environment" })).toHaveAttribute(
+    const smallStatus = page.locator('[data-testid="model-small-status"]');
+    await smallStatus.waitFor({ timeout: 15_000 }).catch(() => {});
+    if ((await smallStatus.count()) > 0) {
+      await expect(smallStatus.getByRole("link", { name: "Check Environment" })).toHaveAttribute(
         "href",
         "/settings?tab=environment",
       );

@@ -74,11 +74,13 @@ import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import {
   clearAllKeptLists,
   getKeptLists,
+  getKeptReviews,
   getKeptViewer,
   initialKept,
   keptStatusText,
   pruneKeptLists,
   setKeptLists,
+  setKeptReviews,
   setKeptViewer,
 } from "./keptChanges.js";
 import { StackBadge } from "./StackBadge.js";
@@ -88,6 +90,10 @@ const REPO_KEY = "unvibe.start.repoId";
 
 /** Upper bound for a lists load: the page must never stick on "Loading…". */
 const LISTS_TIMEOUT_MS = 30_000;
+
+/** Per-call timeout note (#383): each list races its own timer, so a slow
+    filter fails alone instead of holding back the other sections. */
+const LISTS_CALL_TIMEOUT_MSG = "it took too long — the service may be busy";
 
 /** Per-section list errors: a failed filter shows its error, not "Nothing found.". */
 interface ListErrors {
@@ -649,8 +655,18 @@ export function StartPage(): React.JSX.Element {
   // cleared). The render gates on this so a newly selected repo never shows
   // the previous repo's data. With kept lists (#90) this starts as the
   // selected repo when a kept entry exists, so the kept rows render on the
-  // first paint and the fetch only refreshes underneath.
+  // first paint and the fetch only refreshes underneath. #383: the first
+  // section to land sets this, so the block appears progressively — a
+  // section whose response hasn't landed renders nothing (see below).
   const [listsFor, setListsFor] = useState<string | null>(initial.kept ? initial.repoId : null);
+  // #383: sections whose response hasn't landed yet render nothing (no
+  // rows, no "0" badge) until it does. Null when nothing is pending:
+  // kept rows are showing, or every section has landed.
+  const [pendingSections, setPendingSections] = useState<{
+    authoring: boolean;
+    requested: boolean;
+    branches: boolean;
+  } | null>(null);
   // Whole-load failure (every filter rejected, or the load timed out):
   // inline message + Retry.
   const [listsError, setListsError] = useState<string | null>(null);
@@ -671,7 +687,9 @@ export function StartPage(): React.JSX.Element {
 
   // Prior sessions (front-screen list, filtered to the selected repo
   // and to change reviews below — document reviews live on /documents).
-  const [sessions, setSessions] = useState<ReviewSummary[] | null>(null);
+  // #383: the last successful list is kept like the PR lists (#90) and
+  // shows on first paint; the background refresh replaces it when it lands.
+  const [sessions, setSessions] = useState<ReviewSummary[] | null>(() => getKeptReviews()?.reviews ?? null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -719,6 +737,13 @@ export function StartPage(): React.JSX.Element {
       const r = await api.reviews();
       setSessions(r.reviews);
       setSessionsError(null);
+      // #383: keep the last successful list like the PR lists (#90). A
+      // failed refresh keeps the shown rows with the error note above them.
+      try {
+        setKeptReviews(r.reviews);
+      } catch {
+        // Storage is best effort; the rendered rows are already updated.
+      }
     } catch {
       setSessionsError("Couldn't load your reviews.");
     }
@@ -752,8 +777,14 @@ export function StartPage(): React.JSX.Element {
     // an empty requested list that reads exactly like this bug).
     const searched = authorSearch !== null;
     // A background refresh shows its quiet sign; a first load keeps the
-    // existing "Loading…" state (no kept age to describe).
-    if (hadKept) setRefreshing(true);
+    // existing "Loading…" state (no kept age to describe) and marks
+    // every section pending so nothing renders until its response lands.
+    if (hadKept) {
+      setRefreshing(true);
+      setPendingSections(null);
+    } else {
+      setPendingSections({ authoring: true, requested: true, branches: true });
+    }
     // Fresh loads always start from page one (no cursor): the typed
     // author search, if any, rides every PR-list call (branches are
     // git-local and ignore both).
@@ -765,66 +796,90 @@ export function StartPage(): React.JSX.Element {
     const statusRefresh = api.refreshReviewStatuses(id).catch(() => null);
     // #321: stack data rides the same load/Refresh (one paged query per repo).
     void api.repoStacks(id).then((r) => { if (loadSeq.current === seq) setStacks(r.stacks); }).catch(() => {});
-    // Settled, not all-or-nothing: one failing filter must not sink the
-    // others (branches are local even when the gh-backed PR lists fail).
-    // Raced against a timeout so the page can never stick on "Loading…"
-    // forever no matter how the requests stall.
-    const settled = await Promise.race([
-      Promise.allSettled([
-        api.repoChanges(id, "authoring", opts),
-        api.repoChanges(id, "review-requested", opts),
-        api.repoChanges(id, "recent", opts),
-      ]),
-      new Promise<null>((resolve) => {
-        window.setTimeout(() => resolve(null), LISTS_TIMEOUT_MS);
+    // #383: the one managed-clone fetch per load, off the critical path.
+    // Nothing waits on it: the fetch runs while the lists land, and only
+    // once every list has settled does its outcome apply below (branches
+    // re-read + the stale-clone note).
+    const refreshPromise = api.refreshManagedClone(id).catch(() => null);
+    const live = (): boolean => loadSeq.current === seq;
+    type FilterOutcome =
+      | { ok: true; changes: RepoChange[]; hasMore: boolean; cursor: string | null; fetchNote: string | null }
+      | { ok: false; error: string };
+    // One filter's call, raced against its own timeout so a slow filter
+    // fails alone instead of holding back the others. Its rows (or its
+    // error) apply the moment it lands — no all-settled wait.
+    const runFilter = async (
+      filter: "authoring" | "review-requested" | "recent",
+      apply: (out: FilterOutcome) => void,
+    ): Promise<FilterOutcome> => {
+      let out: FilterOutcome;
+      try {
+        const res = await Promise.race([
+          api.repoChanges(id, filter, opts),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error(LISTS_CALL_TIMEOUT_MSG)), LISTS_TIMEOUT_MS);
+          }),
+        ]);
+        out = { ok: true, changes: res.changes, hasMore: res.hasMore, cursor: res.cursor, fetchNote: res.fetchError ?? null };
+      } catch (err) {
+        out = { ok: false, error: friendlyError(err) };
+      }
+      if (live()) apply(out);
+      return out;
+    };
+    const clearPending = (key: "authoring" | "requested" | "branches"): void => {
+      setPendingSections((prev) => (prev === null ? prev : { ...prev, [key]: false }));
+    };
+    // The first section to land opens the block; the rest join it as they land.
+    const openBlock = (): void => setListsFor(id);
+    const [a, r, rec] = await Promise.all([
+      runFilter("authoring", (out) => {
+        if (out.ok) {
+          setAuthoring(out.changes);
+          setPageCursors((prev) => mergePageCursors(prev, "authoring", out.cursor));
+          setListErrors((prev) => ({ ...prev, authoring: null }));
+        } else {
+          setListErrors((prev) => ({ ...prev, authoring: out.error }));
+        }
+        clearPending("authoring");
+        openBlock();
+      }),
+      runFilter("review-requested", (out) => {
+        if (out.ok) {
+          setRequested(out.changes);
+          setPageCursors((prev) => mergePageCursors(prev, "review-requested", out.cursor));
+          setListErrors((prev) => ({ ...prev, requested: null }));
+        } else {
+          setListErrors((prev) => ({ ...prev, requested: out.error }));
+        }
+        clearPending("requested");
+        openBlock();
+      }),
+      runFilter("recent", (out) => {
+        if (out.ok) {
+          // `recent` mixes branches and previous reviews; branches only
+          // here (prior sessions come from GET /api/reviews, per repo).
+          setBranches(out.changes.filter((c) => c.kind === "branch"));
+          setListErrors((prev) => ({ ...prev, branches: null }));
+        } else {
+          setListErrors((prev) => ({ ...prev, branches: out.error }));
+        }
+        clearPending("branches");
+        openBlock();
       }),
     ]);
-    if (settled === null) {
-      // Timeout: a superseded selection's late timer is ignored so it can
-      // never overwrite the current repo's lists.
-      if (loadSeq.current !== seq) return;
-      if (hadKept) {
-        // Failed background refresh: keep the old lists, show the note.
-        setListErrors(EMPTY_ERRORS);
-        setListsError("it took too long — the service may be busy");
-        setRefreshing(false);
-        return;
-      }
-      setListErrors(EMPTY_ERRORS);
-      setListsError("it took too long — the service may be busy");
-      setListsFor(id);
-      return;
-    }
-    const [a, r, rec] = settled;
-    const fulfilled = [a, r, rec].filter((x) => x.status === "fulfilled").length;
-    const freshAuthoring = a.status === "fulfilled" ? a.value.changes : (kept?.authoring ?? []);
-    const freshRequested = r.status === "fulfilled" ? r.value.changes : (kept?.requested ?? []);
-    // `recent` mixes branches and previous reviews; branches only here
-    // (prior sessions come from GET /api/reviews, filtered per repo).
-    const freshBranches =
-      rec.status === "fulfilled"
-        ? rec.value.changes.filter((c) => c.kind === "branch")
-        : (kept?.branches ?? []);
-    // A managed clone that could not be refreshed reports the same
-    // `fetchError` on every call: show it once, near the lists. A fresh
-    // success clears a stale note; a total failure keeps the old one.
-    const freshNote =
-      [a, r, rec].flatMap((x) =>
-        x.status === "fulfilled" && x.value.fetchError ? [x.value.fetchError] : [],
-      )[0] ?? (fulfilled === 0 ? (kept?.fetchNote ?? null) : null);
-    // Stale response for a previous repo: refresh its kept entry so a return
-    // visit shows fresh rows, but never touch the current repo's state.
-    if (loadSeq.current !== seq) {
+    // Stale load (a newer selection superseded this one): refresh the old
+    // repo's kept entry so a return visit shows fresh rows, but never
+    // touch the current repo's state.
+    if (!live()) {
+      const fulfilled = [a, r, rec].filter((x) => x.ok).length;
       if (fulfilled > 0 && !searched) {
         try {
           setKeptLists(id, {
-            authoring: freshAuthoring,
-            requested: freshRequested,
-            branches: freshBranches,
-            fetchNote:
-              [a, r, rec].flatMap((x) =>
-                x.status === "fulfilled" && x.value.fetchError ? [x.value.fetchError] : [],
-              )[0] ?? null,
+            authoring: a.ok ? a.changes : (kept?.authoring ?? []),
+            requested: r.ok ? r.changes : (kept?.requested ?? []),
+            branches: rec.ok ? rec.changes.filter((c) => c.kind === "branch") : (kept?.branches ?? []),
+            fetchNote: [a, r, rec].flatMap((x) => (x.ok && x.fetchNote ? [x.fetchNote] : []))[0] ?? null,
           });
         } catch {
           // Best effort.
@@ -832,30 +887,33 @@ export function StartPage(): React.JSX.Element {
       }
       return;
     }
-    setAuthoring(freshAuthoring);
-    setRequested(freshRequested);
-    setBranches(freshBranches);
+    const fulfilled = [a, r, rec].filter((x) => x.ok).length;
+    const freshAuthoring = a.ok ? a.changes : (kept?.authoring ?? []);
+    const freshRequested = r.ok ? r.changes : (kept?.requested ?? []);
+    const freshBranches = rec.ok ? rec.changes.filter((c) => c.kind === "branch") : (kept?.branches ?? []);
+    // A managed clone that could not be refreshed reports its `fetchError`
+    // (from the lists before #383, from the background refresh since):
+    // show the first one, near the lists. A fresh success clears a stale
+    // note; a total failure keeps the old one.
+    const freshNote =
+      [a, r, rec].flatMap((x) => (x.ok && x.fetchNote ? [x.fetchNote] : []))[0] ??
+      (fulfilled === 0 ? (kept?.fetchNote ?? null) : null);
+    // Failed filters reuse the kept rows merged above (already in state
+    // from the kept entry or the landed sections): only apply the merged
+    // rows for sections whose call failed, so a late success is never
+    // clobbered by older kept rows.
+    if (!a.ok) setAuthoring(freshAuthoring);
+    if (!r.ok) setRequested(freshRequested);
+    if (!rec.ok) setBranches(freshBranches);
     setFetchNote(freshNote);
     // #297: any full PR page means more PRs may exist (Load more below).
-    setListsHaveMore(
-      [a, r, rec].some((x) => x.status === "fulfilled" && x.value.hasMore === true),
-    );
-    // Merge this load's next-page cursors (per filter, so parallel calls
-    // compose without clobbering each other).
-    if (a.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "authoring", a.value.cursor));
-    if (r.status === "fulfilled") setPageCursors((prev) => mergePageCursors(prev, "review-requested", r.value.cursor));
-    setListErrors({
-      authoring: a.status === "rejected" ? friendlyError(a.reason) : null,
-      requested: r.status === "rejected" ? friendlyError(r.reason) : null,
-      branches: rec.status === "rejected" ? friendlyError(rec.reason) : null,
-    });
-    const rejected = [a, r, rec].filter((x): x is PromiseRejectedResult => x.status === "rejected");
-    setListsError(rejected.length === 3 ? friendlyError(rejected[0].reason) : null);
-    // Keep the last successful response per repo (failed filters reuse the
-    // kept rows merged above). A total failure keeps the old entry and its
-    // age, so the status line still describes what is shown. #297: an
-    // author search is never kept — it narrows the lists to one login,
-    // and a return visit must show the default view, not that search.
+    setListsHaveMore([a, r, rec].some((x) => x.ok && x.hasMore === true));
+    const rejected = [a, r, rec].filter((x): x is { ok: false; error: string } => !x.ok);
+    setListsError(rejected.length === 3 ? rejected[0].error : null);
+    // Keep the last successful response per repo. A total failure keeps
+    // the old entry and its age, so the status line still describes what
+    // is shown. #297: an author search is never kept — it narrows the
+    // lists to one login, and a return visit must show the default view.
     if (fulfilled > 0 && !searched) {
       try {
         const saved = setKeptLists(id, {
@@ -870,14 +928,46 @@ export function StartPage(): React.JSX.Element {
       }
     }
     setListsFor(id);
+    setPendingSections(null);
     setRefreshing(false);
+    // #383: apply the background fetch now that the lists have settled.
+    // A fetched clone may have new branches: re-read the local list only
+    // (the PR lists already came straight from gh) and update the
+    // stale-clone note. A failed fetch shows the existing inline note;
+    // the lists stay as they are, no toast.
+    void refreshPromise.then((res) => {
+      if (!live() || res === null || !res.fetched) return;
+      if (res.fetchError) {
+        setFetchNote(res.fetchError);
+        return;
+      }
+      void api
+        .repoChanges(id, "recent", { limit: CHANGES_DEFAULT_LIMIT })
+        .then((recent) => {
+          if (!live()) return;
+          const fresh = recent.changes.filter((c) => c.kind === "branch");
+          setBranches(fresh);
+          setFetchNote(null);
+          const entry = getKeptLists(id);
+          if (entry) {
+            try {
+              setKeptLists(id, { ...entry, branches: fresh, fetchNote: null });
+            } catch {
+              // Best effort.
+            }
+          }
+        })
+        .catch(() => {
+          // Best effort: the settled lists above stay rendered.
+        });
+    });
     // #230: the PR lists just synced stored reviews server-side (same gh
     // result, no extra calls) — reload the Reviews list so it shows the
     // fresh states. Best effort; list errors above already describe gh.
     // #298: wait for the batched status check too, so merged/closed PRs
     // (absent from the open PR lists) and new-commits tags show as well.
     void statusRefresh.then(() => {
-      if (loadSeq.current === seq) void loadSessions();
+      if (live()) void loadSessions();
     });
   }, [loadSessions, authorSearch]);
 
@@ -903,6 +993,8 @@ export function StartPage(): React.JSX.Element {
         setListsFor(id);
         setKeptFetchedAt(kept.fetchedAt);
         setRefreshing(true);
+        // #383: kept rows render at once; nothing is pending.
+        setPendingSections(null);
       } else {
         setAuthoring([]);
         setRequested([]);
@@ -913,6 +1005,8 @@ export function StartPage(): React.JSX.Element {
         setListsFor(null);
         setKeptFetchedAt(null);
         setRefreshing(false);
+        // #383: every section is pending until its response lands.
+        setPendingSections({ authoring: true, requested: true, branches: true });
       }
       setSelectedId(id);
       setListsNonce((n) => n + 1);
@@ -1486,14 +1580,22 @@ export function StartPage(): React.JSX.Element {
               still open the diff and comment.
             </p>
           ) : null}
-          {sessions === null && !sessionsError ? (
-            <p className="hint">Loading reviews…</p>
-          ) : sessionsError ? (
-            <p className="hint" role="alert">
-              {sessionsError}
-            </p>
+          {sessions === null ? (
+            sessionsError ? (
+              <p className="hint" role="alert">
+                {sessionsError}
+              </p>
+            ) : (
+              <p className="hint">Loading reviews…</p>
+            )
           ) : (
             <div aria-label="Reviews" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* #383: a failed background refresh keeps the kept rows with the note above them. */}
+              {sessionsError ? (
+                <p className="hint" role="alert">
+                  {sessionsError}
+                </p>
+              ) : null}
               {visibleSessions.map((s) => (
                 <SessionRow
                   key={s.id}
@@ -1687,6 +1789,10 @@ export function StartPage(): React.JSX.Element {
                       {fetchNote}
                     </p>
                   ) : null}
+                  {/* #383: a section whose response hasn't landed renders
+                      nothing until it does — the slowest never holds back
+                      the others. */}
+                  {pendingSections?.authoring ? null : (
                   <ChangeSection
                     title="Your PRs"
                     changes={visibleAuthoring}
@@ -1712,6 +1818,9 @@ export function StartPage(): React.JSX.Element {
                       })
                     }
                   />
+                  )}
+                  {pendingSections?.requested ? null : (
+                  <>
                   {/* Waiting on your review (#228): the heading carries
                       the author filter on its line, right-aligned — the
                       same heading-row pattern as "PRs and branches" above
@@ -1855,6 +1964,9 @@ export function StartPage(): React.JSX.Element {
                       </Button>
                     </div>
                   ) : null}
+                  </>
+                  )}
+                  {pendingSections?.branches ? null : (
                   <ChangeSection
                     title="Recent branches"
                     changes={visibleBranches}
@@ -1868,6 +1980,7 @@ export function StartPage(): React.JSX.Element {
                     name={selected?.name ?? null}
                     onOpen={(c, i) => openChange(c, i, { repoId: selectedId, branch: c.branch })}
                   />
+                  )}
                 </Card>
               )}
             </>

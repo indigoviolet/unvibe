@@ -1,5 +1,7 @@
 /**
- * Models section (PRD §4.14): one picker per role (main, small).
+ * Models section (PRD §4.14): the small-model picker.
+ * (Issue #379: the main model lives in the fixed Guide persona in
+ * Settings → Personas; this section keeps only the small model.)
  * Provider first, then the models that provider's adapter offers
  * (`GET /api/models`). An adapter that is not installed or not logged in
  * answers 404 — shown as a clear message, never an empty list.
@@ -17,10 +19,9 @@ export function modelLabel(m: ModelInfo): string {
   return m.name ? `${m.name} (${m.id})` : m.id;
 }
 
-type Role = "main" | "small";
+type Role = "small";
 
 const ROLES: { role: Role; label: string; blurb: string }[] = [
-  { role: "main", label: "Main", blurb: "Writes the guide, explanations and answers." },
   { role: "small", label: "Small", blurb: "Hunk summaries, titles and other small jobs." },
 ];
 

@@ -8,6 +8,7 @@ import { JobQueue } from "../src/jobs/queue.js";
 import { createApp } from "../src/server.js";
 import { DEFAULT_SETTINGS, SettingsStore, StaticModelCatalog, type ModelCatalog, type OfferedModels, type OfferedThinking } from "../src/settings/index.js";
 import type { ModelInfo } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 
 function makeStore(): SettingsStore {
   const db = openDatabase(":memory:");
@@ -26,7 +27,7 @@ describe("SettingsStore", () => {
     expect(res.errors).toBeUndefined();
     expect(res.settings?.sessionsPerProvider).toBe(8);
     expect(res.settings?.idleExitMinutes).toBe(0);
-    expect(res.settings?.main).toEqual(DEFAULT_SETTINGS.main);
+    expect(res.settings?.small).toEqual(DEFAULT_SETTINGS.small);
   });
 
   it("persists the UI theme and rejects unknown themes (issue #196)", () => {
@@ -49,7 +50,10 @@ describe("SettingsStore", () => {
     ]);
     expect(store.update({ sessionsPerProvider: 33 }).errors).toHaveLength(1);
     expect(store.update({ rebuildSupersededRatio: 2 }).errors).toHaveLength(1);
-    expect(store.update({ main: { provider: "", model: "", effort: "" } }).errors).toHaveLength(1);
+    const emptyGuide = store
+      .get()
+      .personas.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, model: "" } : p));
+    expect(store.update({ personas: emptyGuide }).errors).toHaveLength(1);
     expect(store.update({ nope: 1 } as never).errors).toMatchObject([
       expect.stringContaining("unknown setting"),
     ]);
@@ -165,16 +169,16 @@ describe("effort settings (issue #172)", () => {
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "m1", effort: "low" } },
+        payload: { small: { provider: "claude", model: "m1", effort: "low" } },
       });
       expect(ok.statusCode).toBe(200);
-      expect(ok.json().main).toEqual({ provider: "claude", model: "m1", effort: "low" });
+      expect(ok.json().small).toEqual({ provider: "claude", model: "m1", effort: "low" });
 
       const def = await app.inject({
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "m1", effort: "" } },
+        payload: { small: { provider: "claude", model: "m1", effort: "" } },
       });
       expect(def.statusCode).toBe(200);
 
@@ -294,5 +298,67 @@ describe("settings + jobs routes", () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe("Guide persona validation (issue #379)", () => {
+  it("seeds exactly one Guide: fixed, enabled, owning its model, no card instruction", () => {
+    const guides = makeStore().get().personas.filter((p) => p.id === GUIDE_PERSONA_ID);
+    expect(guides).toHaveLength(1);
+    expect(guides[0]).toMatchObject({
+      name: "Guide",
+      followMain: false,
+      enabled: true,
+      cardInstruction: "",
+    });
+    expect(guides[0]!.provider).not.toBe("");
+    expect(guides[0]!.model).not.toBe("");
+  });
+
+  it("rejects deleting the Guide (list without it is invalid)", () => {
+    const store = makeStore();
+    const without = store.get().personas.filter((p) => p.id !== GUIDE_PERSONA_ID);
+    expect(store.update({ personas: without }).errors).toMatchObject([
+      expect.stringContaining('exactly one "guide"'),
+    ]);
+  });
+
+  it("rejects duplicates, disabling, followMain and a card instruction on the Guide", () => {
+    const store = makeStore();
+    const seed = store.get().personas;
+    const guide = seed.find((p) => p.id === GUIDE_PERSONA_ID)!;
+    expect(store.update({ personas: [...seed, { ...guide }] }).errors).toMatchObject([
+      expect.stringContaining('duplicate persona id "guide"'),
+      expect.stringContaining('exactly one "guide"'),
+    ]);
+    const mutate = (patch: Partial<typeof guide>) =>
+      store.update({ personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, ...patch } : p)) }).errors ?? [];
+    expect(mutate({ enabled: false })).toMatchObject([expect.stringContaining("cannot be disabled")]);
+    expect(mutate({ followMain: true })).toMatchObject([expect.stringContaining("followMain")]);
+    expect(mutate({ cardInstruction: "do things" })).toMatchObject([
+      expect.stringContaining("no card instruction"),
+    ]);
+    expect(mutate({ effort: 3 } as never)).toMatchObject([
+      expect.stringContaining("guide persona effort must be a string"),
+    ]);
+    const other = seed.find((p) => p.id !== GUIDE_PERSONA_ID)!;
+    expect(
+      store
+        .update({ personas: seed.map((p) => (p.id === other.id ? { ...p, effort: "high" } : p)) })
+        .errors ?? [],
+    ).toMatchObject([expect.stringContaining("only the Guide persona carries an effort")]);
+  });
+
+  it("allows an empty Guide lens but requires one for every other persona", () => {
+    const store = makeStore();
+    const seed = store.get().personas;
+    const emptyLens = seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: "" } : p));
+    expect(store.update({ personas: emptyLens }).errors).toBeUndefined();
+    expect(store.get().personas.find((p) => p.id === GUIDE_PERSONA_ID)?.lens).toBe("");
+    const other = seed.find((p) => p.id !== GUIDE_PERSONA_ID)!;
+    const blankOther = seed.map((p) => (p.id === other.id ? { ...p, lens: "  " } : p));
+    expect(store.update({ personas: blankOther }).errors).toMatchObject([
+      expect.stringContaining("lens"),
+    ]);
   });
 });

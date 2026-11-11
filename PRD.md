@@ -110,7 +110,16 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   runs underneath and replaces them when it lands. A quiet line says how
   old the shown rows are and when a refresh is in flight; a failed
   refresh keeps the old rows with the error note; the first load for a
-  repo behaves as before.
+  repo behaves as before. Each list renders as soon as its own response
+  lands instead of waiting for the others (one slow filter never holds
+  back the rest; a section whose response hasn't landed renders nothing
+  until it does). The Reviews list is kept the same way (one global
+  entry) and shows on first paint while its refresh runs underneath.
+- Listings never fetch: the start page fires one background managed-clone
+  fetch per load (`POST /api/repos/:id/refresh`), off the critical path,
+  and the PR lists answer straight from `gh` without waiting for it. When
+  the fetch finishes, the branches list and the stale-clone note update.
+  A failed fetch shows the stale-clone note with the lists unchanged.
 
 ### 4.3 Pages
 - **Kinds:** the guide (the root page), concept pages, finding pages, and pages opened from an explanation card. The kinds behave the same; only the root and finding pages show a type label.

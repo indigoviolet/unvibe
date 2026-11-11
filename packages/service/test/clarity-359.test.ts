@@ -18,8 +18,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   CLARITY_PERSONA,
+  GUIDE_PERSONA_ID,
   PERSONA_COLORS,
   type AgentEvent,
+  type Persona,
   type ReviewSnapshot,
   type Settings,
 } from "@unvibe/shared";
@@ -123,8 +125,8 @@ describe("Clarity seed and prompt composition", () => {
         "Rewrite this card's prose following your lens: the same facts, scope, hedges and citations, clearer to an engineer. If the card is already effective, return it unchanged.",
       );
       expect(clarity!.color).toBe(PERSONA_COLORS[1]);
-      // Second opinion still seeds first (colour order is stable).
-      expect(body.personas.map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
+      // Guide seeds first, then Second opinion (colour order is stable, #379).
+      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
     } finally {
       await app.close();
     }
@@ -357,11 +359,14 @@ async function openDemo(agents: FakeAgentRunner, main?: { provider: string; mode
   expect(created.statusCode).toBe(201);
   const id = (created.json() as ReviewSnapshot).review.id;
   if (main) {
+    const seed = (ctx.settings.get().personas ?? []) as Persona[];
     const patched = await app.inject({
       method: "PUT",
       url: "/api/settings",
       headers: { authorization: "Bearer tok" },
-      payload: { main: { ...main, effort: "" } },
+      payload: {
+        personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, ...main } : p)),
+      },
     } as never);
     expect(patched.statusCode).toBe(200);
   }

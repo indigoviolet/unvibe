@@ -125,18 +125,27 @@ describe("Settings → Personas CRUD routes", () => {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
       expect(get.statusCode).toBe(200);
       const body = get.json() as SettingsBody;
-      // Issue #359 seeds a second built-in (Clarity) after Second opinion.
-      expect(body.personas).toHaveLength(2);
-      expect(body.personas.map((p) => p.id)).toEqual(["second-opinion", "clarity"]);
+      // Issue #359 seeds a second built-in (Clarity) after Second opinion;
+      // issue #379 seeds the fixed Guide first (the main agent).
+      expect(body.personas).toHaveLength(3);
+      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
       expect(body.personas[0]).toMatchObject({
+        id: "guide",
+        name: "Guide",
+        followMain: false,
+        enabled: true,
+        cardInstruction: "",
+      });
+      expect(body.personas[0].lens).toBe("");
+      expect(body.personas[1]).toMatchObject({
         id: "second-opinion",
         name: "Second opinion",
         provider: "codex",
         model: "gpt-6.1-sol",
         enabled: true,
       });
-      expect(body.personas[0].lens.length).toBeGreaterThan(0);
-      expect(body.personas[0].cardInstruction.length).toBeGreaterThan(0);
+      expect(body.personas[1].lens.length).toBeGreaterThan(0);
+      expect(body.personas[1].cardInstruction.length).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -155,7 +164,7 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: [...seed.personas, CUSTOM] },
       });
       expect(added.statusCode).toBe(200);
-      expect((added.json() as SettingsBody).personas).toHaveLength(3);
+      expect((added.json() as SettingsBody).personas).toHaveLength(4);
 
       // Edit (rename + disable).
       const editedList = [...seed.personas, { ...CUSTOM, name: "Perf sceptic", enabled: false }];
@@ -170,7 +179,7 @@ describe("Settings → Personas CRUD routes", () => {
       expect(editedBody.personas.find((p) => p.id === CUSTOM.id)?.name).toBe("Perf sceptic");
       expect(editedBody.personas.find((p) => p.id === CUSTOM.id)?.enabled).toBe(false);
 
-      // Delete (even the built-in: it is ordinary data after seeding).
+      // Delete (even a built-in: non-Guide entries are ordinary data after seeding).
       const deleted = await app.inject({
         method: "PUT",
         url: "/api/settings",
@@ -178,11 +187,11 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: editedList.filter((p) => p.id !== "second-opinion") },
       });
       expect(deleted.statusCode).toBe(200);
-      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["clarity", CUSTOM.id]);
+      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", CUSTOM.id]);
 
       // Round-trips through GET.
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
-      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["clarity", CUSTOM.id]);
+      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", CUSTOM.id]);
     } finally {
       await app.close();
     }

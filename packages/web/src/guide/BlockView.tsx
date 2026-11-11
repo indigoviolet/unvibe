@@ -10,6 +10,7 @@
  */
 import type { Thread, Block, DepthLevel, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
+import { InlineCode } from "../components/inlineCode.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
 import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
@@ -368,7 +369,6 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       return (
         <>
           <div className="follow">
-            <span className="k">Follow up:</span>
             {block.items.map((item, i) => {
               const busy = i === busyIndex;
               return (
@@ -389,7 +389,10 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
                       <i />
                     </span>
                   ) : (
-                    item.label
+                    // Issue #381: labels render inline code spans only
+                    // (no links or citations inside a button), with the
+                    // same escaping as everywhere else.
+                    <InlineCode text={item.label} />
                   )}
                 </button>
               );

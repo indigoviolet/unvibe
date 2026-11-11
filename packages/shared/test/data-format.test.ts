@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest";
 import { DATA_FORMAT, compareDataFormat, dataFormatResetWarning } from "../src/index.js";
 
 describe("data format (#311)", () => {
-  test("DATA_FORMAT is a positive integer (6 = required reply seq, #365)", () => {
+  test("DATA_FORMAT is a positive integer (7 = Guide persona owns main, #379)", () => {
     expect(Number.isInteger(DATA_FORMAT)).toBe(true);
-    expect(DATA_FORMAT).toBe(6);
+    expect(DATA_FORMAT).toBe(7);
   });
 
   test("pre-update comparison: same, changed, unknown", () => {

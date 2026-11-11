@@ -46,6 +46,7 @@ import { recordInteraction } from "../src/sharedctx/hooks.js";
 import { planRebuild } from "../src/sharedctx/rebuild.js";
 import { SharedContextService } from "../src/sharedctx/service.js";
 import { SharedContextStore } from "../src/sharedctx/store.js";
+import { guidePick } from "../src/settings/index.js";
 import { isThreadSettled, summarizeSettledThread, toThreadSnapshot, type ThreadSnapshot } from "../src/sharedctx/threads.js";
 import {
   descriptionFor,
@@ -503,13 +504,13 @@ describe("rebuild triggers (PRD §9.4)", () => {
       });
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const staleKey = `${setup.reviewId}|v0|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+      const staleKey = `${setup.reviewId}|v0|${guideRev}|${guidePick(settings).provider}|${guidePick(settings).model}`;
       let rebuiltKey = "";
       const res = await svc.maybeRebuildBase(setup.reviewId, {
         baseKey: staleKey,
         onRebuild: async (reasons) => {
           expect(reasons).toContain("new-version");
-          rebuiltKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}`;
+          rebuiltKey = `${setup.reviewId}|v1|${guideRev}|${guidePick(settings).provider}|${guidePick(settings).model}`;
           return { newBaseKey: rebuiltKey, newBaseTokens: 1234 };
         },
         pruneBases: (reviewId, keep) => setup.ctx.sessions.pruneBases(reviewId, keep),
@@ -760,16 +761,16 @@ describe("base growth observability (PRD §4.14, §9.3)", () => {
     try {
       const settings = setup.ctx.settings.get();
       const guideRev = guideRevisionForSnapshot(setup.ctx.reviews.getSnapshot(setup.reviewId)!);
-      const baseKey = `${setup.reviewId}|v1|${guideRev}|${settings.main.provider}|${settings.main.model}|${settings.main.effort ?? ""}|lockdown`;
+      const baseKey = `${setup.reviewId}|v1|${guideRev}|${guidePick(settings).provider}|${guidePick(settings).model}|${guidePick(settings).effort ?? ""}|lockdown`;
       await setup.ctx.sessions.getBase({
         key: {
           reviewId: setup.reviewId,
           reviewVersion: "v1",
           guideRevision: guideRev,
-          provider: settings.main.provider,
-          model: settings.main.model,
+          provider: guidePick(settings).provider,
+          model: guidePick(settings).model,
           access: "lockdown",
-          effort: settings.main.effort ?? "",
+          effort: guidePick(settings).effort ?? "",
         },
         cwd: "/tmp",
         systemPrompt: "s",

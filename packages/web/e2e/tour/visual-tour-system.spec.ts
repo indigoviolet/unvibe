@@ -574,7 +574,9 @@ test.describe("tour static demo frames", () => {
     await expect(page.getByText("Settings are read-only in the static demo")).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: path.join(SHOTS, "demo-settings-1440-light.png") });
     await page.locator('[role="tablist"]').getByRole("tab", { name: "Models" }).click();
-    await expect(page.getByText("Opus 5.5 (claude-opus-5-5)").first()).toBeVisible({ timeout: 10_000 });
+    // Issue #379: Models shows only the small picker (the main model
+    // lives in the Guide persona).
+    await expect(page.getByText("Haiku 5.5 (claude-haiku-5-5)").first()).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: path.join(SHOTS, "demo-settings-models-1440-light.png") });
     expect(violations).toEqual([]);
   });

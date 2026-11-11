@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import type { ReadinessResponse, Settings } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { FakeCommandRunner, RealCommandRunner } from "../src/exec/index.js";
 import { getReadiness, clearReadinessCache } from "../src/readiness/index.js";
 import { d2Check } from "../src/readiness/checks.js";
@@ -31,6 +32,14 @@ function fakeAgents(models: Record<string, string[]> | Error, calls: string[] = 
 const settingsStore = (patch: Partial<Settings> = {}) => ({
   get: (): Settings => ({ ...DEFAULT_SETTINGS, ...patch }),
 });
+
+/** Fresh settings with the Guide on the given model (issue #379). */
+function guideSettings(provider: string, model: string): Partial<Settings> {
+  const personas = DEFAULT_SETTINGS.personas.map((p) =>
+    p.id === GUIDE_PERSONA_ID ? { ...p, provider, model } : p,
+  );
+  return { personas };
+}
 
 /**
  * Scratch bin dir with stub claude/codex CLIs (issue #119): the agent
@@ -134,7 +143,7 @@ describe("readiness checks", () => {
         {
           runner: versions(),
           agents: fakeAgents({ claude: ["a"] }, calls) as never,
-          settings: settingsStore({ main: { provider: "custom", model: "x", effort: "" } }),
+          settings: settingsStore(guideSettings("custom", "x")),
           loginPathValue: dir,
           timeoutMs: 2000,
         },
@@ -184,9 +193,7 @@ describe("readiness checks", () => {
       {
         runner: real,
         agents: fakeAgents({ claude: ["m"], codex: ["m"] }) as never,
-        settings: settingsStore({
-          main: { provider: "claude", model: "m", effort: "" },
-        }),
+        settings: settingsStore(guideSettings("claude", "m")),
         loginPathValue: "/nonexistent",
         timeoutMs: 1000,
       },

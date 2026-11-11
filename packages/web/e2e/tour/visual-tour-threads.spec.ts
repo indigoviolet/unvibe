@@ -4,15 +4,16 @@
  *
  * On-demand only (`mise run visual-tour`): the thread states the owner
  * reviews as frames — the ask/explain/reply-link/collapsed/expanded
- * thread, the reply chrome (light + citations) and failed states, and
- * the six thread-polish states. Behaviour for all of these lives in
- * `e2e/journeys/l4-threads.spec.ts`; this file keeps just enough asserts
- * to prove each framed state.
+ * thread, the reply chrome (light + citations) and failed states, the
+ * six thread-polish states, and the #381 reply footer. Behaviour for
+ * all of these lives in `e2e/journeys/l4-threads.spec.ts`; this file
+ * keeps just enough asserts to prove each framed state.
  *
  * Slim set: 1440px light Default plus the `tour-matrix.ts` named keeps;
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
  */
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,11 +22,12 @@ import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { selectText } from "../select-text.js";
-import { apiJson, createDemoReview } from "../journeys/journey-helpers.js";
+import { apiJson, createDemoReview, createSeededDemoReview } from "../journeys/journey-helpers.js";
 import { tourCombos } from "../tour-matrix.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 const FRAMES = fileURLToPath(new URL("../../visual-tour/364", import.meta.url));
+const FRAMES381 = fileURLToPath(new URL("../../visual-tour/381", import.meta.url));
 
 /**
  * Let a programmatic scroll land: poll until the viewport stops moving
@@ -962,4 +964,164 @@ test.describe("J374 margin pill", () => {
       }
     });
   }
+});
+
+const FRAMES380 = fileURLToPath(new URL("../../visual-tour/380", import.meta.url));
+
+// ---- J380 fixed gutter (issue #380): every card reserves the margin-pill
+// gutter, so a card with a thread and its threadless neighbour share the
+// same indent. Slim set: 1440-light only — the indent is theme/width
+// independent, and the J374 keeps above already cover dark + 960 for the
+// pill itself.
+test.describe("J380 fixed gutter", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j380-data-"));
+    svc = await startService(dataDir, { agent: "replay" });
+    reviewId = await createDemoReview(svc);
+    // One thread on the problem card; central stays threadless. Guide
+    // comments start closed; the pill shows regardless. (The replay
+    // pipeline may add suggestion threads elsewhere — the asserts below
+    // only read the seeded pill and the two body indents, so extras are
+    // harmless.)
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const pages = (snap.json as { pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[] }).pages ?? [];
+    const problem = pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "problem");
+    const made = await apiJson(svc, "POST", `/api/reviews/${reviewId}/comments`, {
+      anchor: { where: "block", blockId: `problem#${problem?.blocks[0]?.id}` },
+      quote: "HTTP/1.1 servers",
+      text: "Gutter note",
+    });
+    if (made.status !== 201) throw new Error(`seed failed: ${JSON.stringify(made.json)}`);
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("threads", [{ name: "1440-light", width: 1440, dark: false }] as const)) {
+    test(`adjacent cards share one indent (${combo.name})`, async ({ page }) => {
+      test.setTimeout(240_000);
+      if (!svc) throw new Error("no service");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+      await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+
+      // The seeded thread's pill sits inside the problem card's gutter.
+      const pill = page.locator("#C-problem [data-thr-margin]");
+      await expect(pill.first()).toBeVisible({ timeout: 15_000 });
+      // One synchronous read (#363 B1): the threaded card and its
+      // threadless neighbour start their bodies at the same x.
+      const xs = await page.evaluate(() => {
+        const x = (id: string): number | null => {
+          const p = document.querySelector(`#${id} .blk p.prose`);
+          return p instanceof HTMLElement ? p.getBoundingClientRect().left : null;
+        };
+        return { central: x("C-central"), problem: x("C-problem") };
+      });
+      expect(xs.central).not.toBeNull();
+      expect(xs.problem).not.toBeNull();
+      if (xs.central !== null && xs.problem !== null) {
+        expect(Math.abs(xs.problem - xs.central)).toBeLessThanOrEqual(1);
+      }
+      // Frame: the two adjacent cards with matching left edges.
+      await page.locator("#C-problem").evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await settleScroll(page);
+      await page.screenshot({ path: `${FRAMES380}/gutter-match-1440-light.png` });
+    });
+  }
+});
+
+// ---- #381 reply footer (chips with inline code, no label, icon reverse link) ----
+test.describe("381 reply footer", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  const reviewId = "tour-381";
+
+  test.beforeAll(async () => {
+    mkdirSync(FRAMES381, { recursive: true });
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour381-data-"));
+    // Static seeded review: no jobs, so the footer never mutates mid-frame.
+    createSeededDemoReview(dataDir, reviewId);
+    // Scene-local tweak (the shared fixture is untouched): lengthen the
+    // seeded backticked suggestion so it wraps onto two lines at 1440 —
+    // the original complaint was how wrapped chips looked.
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db
+        .prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?")
+        .get(reviewId) as { snapshot: string };
+      const snap = JSON.parse(row.snapshot) as {
+        annotations: { replies: { blocks: { type: string; items?: { label: string }[] }[] }[] }[];
+      };
+      const fu = snap.annotations[0]!.replies[0]!.blocks.find((b) => b.type === "follow-up")!;
+      fu.items![0]!.label =
+        "Does `http.client` keep the line ending when a folded line ends in a bare `\\n`, " +
+        "and would `_normalize_header_value` leave that value untouched?";
+      db.prepare("UPDATE review_snapshots SET snapshot = ?, updated_at = ? WHERE review_id = ?").run(
+        JSON.stringify(snap),
+        Date.now(),
+        reviewId,
+      );
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, { agent: "none", label: "tour381" });
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("reply footer with code chips, no label, icon button (1440-light)", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // The seeded explain answer's follow-up block: one long (wrapping)
+    // backticked suggestion and one short one (real-service fixture
+    // content, not a mock).
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const anns = (
+      snap.json as {
+        annotations?: {
+          id: string;
+          replies?: { blocks?: { type: string; items?: { label: string }[] }[] }[];
+        }[];
+      }
+    ).annotations ?? [];
+    const seeded = anns.find((a) =>
+      (a.replies ?? []).some((r) =>
+        (r.blocks ?? []).some(
+          (b) => b.type === "follow-up" && (b.items ?? []).some((i) => i.label.includes("`")),
+        ),
+      ),
+    );
+    if (!seeded) throw new Error("no seeded reply with a backticked follow-up");
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+
+    const mine = page.locator(`section.ithread[data-thread="${seeded.id}"]`);
+    await expect(mine).toBeVisible({ timeout: 30_000 });
+    const footer = mine.locator(".follow").first();
+    await expect(footer).toBeVisible({ timeout: 15_000 });
+    const chips = footer.locator("button");
+    await expect(chips).toHaveCount(2);
+    const long = chips.filter({ hasText: "keep the line ending" });
+    await expect(long.locator("code").first()).toContainText("http.client");
+    // The long suggestion wraps onto two lines at 1440 (one line ≈ 27px).
+    expect.soft((await long.boundingBox())?.height ?? 0, "long chip wraps").toBeGreaterThan(32);
+    await expect(footer).not.toContainText("Follow up:");
+    const rev = mine.getByRole("button", { name: "Show the quoted passage" }).first();
+    await expect(rev).toBeVisible();
+    await footer.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
+    await settleScroll(page);
+    await page.screenshot({ path: path.join(FRAMES381, "reply-footer-1440-light.png") });
+  });
 });

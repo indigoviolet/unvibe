@@ -6,15 +6,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetKeptForTests,
   KEPT_CHANGES_KEY,
+  KEPT_REVIEWS_KEY,
   MAX_KEPT_REPOS,
   clearAllKeptLists,
   clearKeptLists,
+  clearKeptReviews,
   getKeptLists,
+  getKeptReviews,
   getKeptViewer,
   initialKept,
   keptStatusText,
   pruneKeptLists,
   setKeptLists,
+  setKeptReviews,
   setKeptViewer,
 } from "./keptChanges.js";
 
@@ -203,5 +207,75 @@ describe("keptChanges storage", () => {
     expect(keptStatusText(now - 10_000, false, now)).toBe("Updated just now");
     expect(keptStatusText(now - 3 * 60_000, true, now)).toBe("Updated 3m ago · refreshing…");
     expect(keptStatusText(now - 2 * 3600_000, false, now)).toBe("Updated 2h ago");
+  });
+});
+
+describe("kept Reviews list (#383)", () => {
+  const REVIEW = {
+    id: "r1",
+    repoId: "repo-1",
+    repoOwner: "acme",
+    repoName: "app",
+    title: "Fix it",
+    branch: "fix-it",
+    createdAt: 1,
+    lastOpened: 2,
+    versionCount: 1,
+    currentVersion: 1,
+    stale: false,
+    totalHunks: 4,
+    reviewedHunks: 0,
+    pendingComments: 0,
+    guideStatus: "idle" as const,
+    ingestStatus: "ready" as const,
+  };
+
+  it("round-trips the kept reviews with a client fetch time", () => {
+    const before = Date.now();
+    const saved = setKeptReviews([REVIEW]);
+    expect(saved.fetchedAt).toBeGreaterThanOrEqual(before);
+    expect(getKeptReviews()).toEqual(saved);
+  });
+
+  it("drops malformed or version-mismatched entries instead of throwing", () => {
+    localStorage.setItem(KEPT_REVIEWS_KEY, "not json{{{");
+    __resetKeptForTests();
+    expect(getKeptReviews()).toBeNull();
+
+    localStorage.setItem(
+      KEPT_REVIEWS_KEY,
+      JSON.stringify({ version: 1, viewer: null, reviews: [{ id: 42 }], fetchedAt: Date.now() }),
+    );
+    __resetKeptForTests();
+    expect(getKeptReviews()).toBeNull();
+
+    localStorage.setItem(
+      KEPT_REVIEWS_KEY,
+      JSON.stringify({ version: 2, viewer: null, reviews: [REVIEW], fetchedAt: Date.now() }),
+    );
+    __resetKeptForTests();
+    expect(getKeptReviews()).toBeNull();
+  });
+
+  it("only serves the entry to the viewer stored alongside it", () => {
+    setKeptViewer("you");
+    setKeptReviews([REVIEW]);
+    expect(getKeptReviews()?.reviews).toHaveLength(1);
+    // A changed login must not keep showing the previous user's sessions.
+    setKeptViewer("someone-else");
+    __resetKeptForTests();
+    setKeptViewer("someone-else");
+    expect(getKeptReviews()).toBeNull();
+  });
+
+  it("clearing everything covers the kept reviews too", () => {
+    setKeptReviews([REVIEW]);
+    expect(getKeptReviews()).not.toBeNull();
+    clearKeptReviews();
+    expect(getKeptReviews()).toBeNull();
+    setKeptReviews([REVIEW]);
+    clearAllKeptLists();
+    __resetKeptForTests();
+    expect(getKeptReviews()).toBeNull();
   });
 });

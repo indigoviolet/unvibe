@@ -704,8 +704,9 @@ needed (that deviation is closed, not added).
   shows a comment icon
   in the margin (on its highlight's first line, else its paragraph's
   first line; diff lines keep their gutter icons), clicking it opens
-  and scrolls to the thread; each answer carries an “↑ quoted text”
-  reverse link that scrolls to the passage and flashes it (margin
+  and scrolls to the thread; each answer carries an icon-only reverse
+  link (same “Show the quoted passage” tooltip and name, #381) that
+  scrolls to the passage and flashes it (margin
   marker's line as fallback); turns read as tinted full-width question
   bands with ~24px + divider between turns only; Ask inside a thread
   uses the thread's own Reply box with a removable quote chip (no
@@ -1140,7 +1141,9 @@ needed (that deviation is closed, not added).
 
 ### §4.14 Settings — all met
 
-- Model pickers per role with provider models — met
+- Model pickers per role with provider models — met (issue #379:
+  Models keeps only the small picker; the main provider + model live
+  in the fixed Guide persona in Settings → Personas)
   (`journeys/j5-settings-versions.spec.ts` “model pickers show display names”,
   `journeys/j11-settings-combos.spec.ts` model persists, `routes/settings.ts`,
   `GET /api/models` ran 200). Switching a role's provider only browses that
@@ -3908,15 +3911,18 @@ hunk coverage) is reported for a separate issue, not fixed here.
   today's "check" behaviour verbatim in the new vocabulary). After
   seeding it is ordinary data: editable and deletable like any
   other persona.
+  (Issue #379 seeds the fixed Guide first; see its addendum.)
 - **Settings → Personas:** new section + tab (`PersonasSection.tsx`,
   after Models) following the #328 `Field` row layout (label left,
   control right, help + status under the label): name, provider +
   model (per-provider list, adapter errors inline), lens, optional
   card instruction, enabled. Add/edit PUT the whole list; delete
   goes through the shared #346 `InlineConfirm` (`placement="stack"`,
-  in the row like the repo remove). The model pickers stay
-  main/small only; persona models are validated like roles on save
-  (never persist a model no adapter offers).
+  in the row like the repo remove). At the time the model pickers
+  stayed main/small only; issue #379 later moved the main picker
+  into the fixed Guide entry (see its addendum). Persona models are
+  validated like roles on save (never persist a model no adapter
+  offers).
 - **Prompt composition (owner decision 2026-11-03):** L0 base
   instructions (shared, unchanged) + persona lens (system prompt,
   every task) + shared task template. New `prompts/persona_card.md`
@@ -4204,6 +4210,57 @@ one-variant union today).
   /tmp/359-frames/ (Settings + menu + tab strip, 1440/960 x
   light/dark) inspected.
 
+## Addendum: #379 — Built-in Guide persona owns the main model + writing-style lens (branch `feat/379-guide-persona`)
+
+- **Persona:** the fixed built-in Guide (id `guide`) IS the main agent.
+  There is exactly one: not deletable, not disableable, `followMain`
+  always false. It owns the main provider + model (replacing
+  `Settings.main`); Settings → Models keeps only the small model.
+  Its writing-style lens is empty by default (no behaviour change
+  until written) and it takes no card instruction (its card task is
+  the guide's own). Its colour is data-only (first unused sequence
+  slot, so Second opinion and Clarity keep theirs) and never
+  rendered — the Guide tab stays untinted exactly as before.
+- **Prompt placement (owner decision, option A):** the lens is
+  prefixed to the start of every main writing turn (guide/reader,
+  cards/go-deeper, depth, Explain, Ask, plus their connection-retry
+  re-renders) through the single helper `withGuideStyleForTurn`
+  (template allowlist in `packages/service/src/prompts/personas.ts`),
+  as a labelled "Writing style" section that subordinates itself to
+  the task's own rules (tone and wording only). Empty lens returns
+  the prompt byte-identical. Persona turns never carry it; the base
+  and system prompts never depend on the lens (a unit test pins
+  base-identity with and without a lens). `followMain` keeps its
+  name and now resolves to the Guide's provider/model — never its
+  effort (followers stay on the adapter default, as before). The Guide
+  keeps the main-model effort picker (owner decision A):
+  provider-offered values, "" = Default, validated on save like a role;
+  the effort rides the base key, job stamps and agent sessions exactly
+  as `settings.main.effort` did.
+- **Validation:** the list must hold exactly one Guide (enabled,
+  own model, no card instruction); an empty lens is allowed only
+  for the Guide. The Guide is not offered in card run pickers and
+  `personaFor` refuses it.
+- **Data format 6 → 7:** `Settings` loses `main`; stored rows
+  without the Guide entry need a reset.
+- Evidence: `packages/shared/test/personas.test.ts` (Guide seed:
+  fixed, own model, no card instruction, empty lens, seeds first,
+  colours stable, lens rule), `packages/service/test/settings.test.ts`
+  (Guide validation), `packages/service/test/settings-defaults.test.ts`
+  (unsaved Guide takes the live main default; saved Guide sticks),
+  `packages/service/test/personas-349.test.ts` + `clarity-359.test.ts`
+  (3 seeds, Guide first) and new
+  `packages/service/test/guide-379.test.ts` (helper: five templates
+  covered, others pass through, empty is identical; fake runner:
+  set lens is prefixed to a card turn with task rules intact on the
+  Guide model while no system prompt carries it, empty lens leaves
+  turns unchanged), journey `l8-personas` (Guide lens edit in
+  Settings → Personas, Guide model re-point, deeper on the Guide
+  version runs on the Guide model with the lens up front — jobs API
+  assertions; Models halves moved to the small picker; pi picker
+  flow runs through the Guide form), tour frame
+  `personas-1440-light` (Guide entry). Full gates not yet run.
+
 ## Addendum: #377 (branch `feat/377-copy-markdown`)
 
 - **Copy as Markdown (§4.4):** each card's hover toolbar (and each agent
@@ -4237,3 +4294,34 @@ one-variant union today).
   toolbar icon + tooltip at 1440 light). Unit tests, typecheck and lint
   green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
   run.
+
+## Addendum: #383 — progressive start-page loading (branch `feat/383-progressive-start`)
+
+- **Progressive lists (§4.2):** the three PR/branch list calls land
+  independently — each section renders as soon as its own response lands
+  instead of behind one all-settled wait (a slow filter never holds back
+  the others; a section whose response hasn't landed renders nothing
+  until it does). Each call races its own 30 s timeout, so a stalled
+  filter fails alone. The Reviews list is kept in `localStorage` like the
+  PR lists (one global entry, same versioned-key + viewer pattern) and
+  shows on first paint while its background refresh runs underneath; a
+  failed refresh keeps the rows with the error note.
+- **One background clone fetch (§4.2):** the list endpoints never fetch —
+  they answer straight from `gh`/local git. The page fires one
+  `POST /api/repos/:id/refresh` per load, off the critical path
+  (`{ fetched, fetchError? }`; non-managed repos and the demo answer
+  `{ fetched: false }` without running anything). Concurrent refreshes
+  join the one in-flight fetch; a refresh after completion starts a new
+  one (in-flight-only dedup, no freshness window). When the fetch
+  finishes, the page re-reads the branches list and updates the
+  stale-clone note; a failed fetch shows the existing note with the
+  lists unchanged. Review creation keeps its own fetch (untouched).
+  Evidence: service `test/repos-url.test.ts` (in-flight dedup unit,
+  refresh route incl. no-ops and failure note, listings never fetch),
+  web `src/start/keptChanges.test.ts` (kept Reviews round-trip,
+  viewer scoping, malformed entries), journey
+  `e2e/journeys/l1-start.spec.ts` "L1 progressive start page (#383)"
+  (own service + managed clone: slow stub `git fetch` with call log,
+  stub `gh` holding the review-requested call; fast lists and kept
+  Reviews render first, exactly one fetch per load). No tour frame: the
+  visible page barely changes. Full gates not yet run.

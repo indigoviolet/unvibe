@@ -5,7 +5,7 @@
  * so parallel review-state work in `store/migrate.ts` never conflicts.
  * Every field has a default; `get()` always returns a complete `Settings`.
  */
-import { defaultPersonas, isUiThemeId, UI_THEME_IDS, validatePersona } from "@unvibe/shared";
+import { defaultPersonas, isUiThemeId, GUIDE_PERSONA_ID, UI_THEME_IDS, validatePersona } from "@unvibe/shared";
 import type { ModelPick, Settings } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/db.js";
 
@@ -19,11 +19,12 @@ export const DEFAULT_SETTINGS: Settings = {
   // offered, where readiness reports them plainly.
   // Effort is "" (Default) for every role: the adapter's own thinking
   // level stands unless the owner picks one (issue #172).
-  main: { provider: "claude", model: "claude-opus-5-5", effort: "" },
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
-  // Issue #349: persona definitions, seeded with the built-in Second
-  // opinion. After seeding each entry is ordinary data (add, edit,
-  // delete through Settings → Personas).
+  // Issue #349: persona definitions, seeded with the built-in Guide
+  // (issue #379: the main agent — exactly one, fixed, owns the main
+  // provider + model), Second opinion and Clarity. After seeding each
+  // non-Guide entry is ordinary data (add, edit, delete through
+  // Settings → Personas); the Guide entry stays fixed.
   personas: defaultPersonas(),
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40_000,
@@ -78,7 +79,7 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   if (extModel !== undefined && (!isModelPick(extModel) || !extModel.provider || !extModel.model)) {
     errors.push("extensionModel must be { provider, model } with non-empty strings");
   }
-  for (const role of ["main", "small"] as const) {
+  for (const role of ["small"] as const) {
     const v = patch[role];
     if (v === undefined) continue;
     if (!isModelPick(v) || !v.provider || !v.model) {
@@ -88,6 +89,11 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   // Issue #349: personas arrive as a whole list (add, edit, delete all
   // PUT the full array). Every entry is validated; ids must be unique.
   const personas = patch["personas"];
+  // Issue #379: the personas list must hold exactly one Guide entry,
+  // fixed: not deletable, not disableable, owning its own model
+  // (`followMain` false — it IS the model others follow) and carrying
+  // no card instruction (its card task is the guide's own). The lens may
+  // be empty only for the Guide (see `validatePersona`).
   if (personas !== undefined) {
     if (!Array.isArray(personas)) {
       errors.push("personas must be an array of persona definitions");
@@ -101,6 +107,19 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
           seen.add(id);
         }
       });
+      const guides = personas.filter(
+        (p) => (p as { id?: unknown } | null)?.id === GUIDE_PERSONA_ID,
+      );
+      if (guides.length !== 1) {
+        errors.push(
+          `personas must hold exactly one "${GUIDE_PERSONA_ID}" entry (the main agent; not deletable), found ${guides.length}`,
+        );
+      } else {
+        const g = guides[0] as unknown as Record<string, unknown>;
+        if (g["enabled"] !== true) errors.push("the Guide persona cannot be disabled");
+        if (g["followMain"] !== false) errors.push("the Guide persona owns the main model (followMain must be false)");
+        if (g["cardInstruction"] !== "") errors.push("the Guide persona takes no card instruction");
+      }
     }
   }
   const int = (name: string, min: number, max: number): void => {

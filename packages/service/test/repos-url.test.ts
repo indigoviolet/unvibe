@@ -1,8 +1,9 @@
 /**
  * Managed clones by URL (#27): clone happy path (exact argv, blobless,
  * GITHUB_TOKEN unset), reuse, error mapping, crash-safe retry, concurrent
- * adds, fetch-before-list (managed only, degrading), remove semantics, and
- * the deletion guard. `gh` is stubbed through the injectable command
+ * adds, listings never fetch (#383: the one background fetch per load runs
+ * through POST /:id/refresh, managed only, degrading), remove semantics,
+ * and the deletion guard. `gh` is stubbed through the injectable command
  * runner; `git` is real against temp dirs; never a real clone or network.
  */
 import fs from "node:fs";
@@ -18,6 +19,7 @@ import {
   managedRepoDir,
   mapCloneError,
   refreshManagedCheckout,
+  refreshManagedCloneNow,
   removeRepo,
   resetManagedCloneStateForTests,
 } from "../src/repos/index.js";
@@ -423,8 +425,176 @@ describe("refreshManagedCheckout", () => {
   });
 });
 
+describe("refreshManagedCloneNow (#383, in-flight dedup, no freshness window)", () => {
+  const managed = (id: string, dir: string): Repo => ({
+    id,
+    owner: "acme",
+    name: "app",
+    localPath: dir,
+    lastOpened: 0,
+    managed: true,
+  });
+
+  it("concurrent refreshes share one fetch; a refresh after completion starts a new one", async () => {
+    let fetches = 0;
+    const runner: CommandRunner = {
+      run: async (cmd, o) => {
+        if (cmd === "git" && isGitFetch(o.args)) {
+          fetches += 1;
+          await new Promise((r) => setTimeout(r, 60));
+          return { stdout: "", stderr: "", code: 0 };
+        }
+        throw new Error(`unexpected: ${cmd} ${o.args.join(" ")}`);
+      },
+    };
+    const repo = managed("rp_refresh_1", "/tmp/unused");
+    const [a, b] = await Promise.all([refreshManagedCloneNow(runner, repo), refreshManagedCloneNow(runner, repo)]);
+    expect([a, b]).toEqual([null, null]);
+    expect(fetches).toBe(1);
+    // No freshness window: the next refresh fetches again.
+    expect(await refreshManagedCloneNow(runner, repo)).toBeNull();
+    expect(fetches).toBe(2);
+
+    // User checkouts never fetch.
+    const user: Repo = { ...repo, managed: false };
+    delete (user as { managed?: boolean }).managed;
+    expect(await refreshManagedCloneNow(runner, user)).toBeNull();
+    expect(fetches).toBe(2);
+  });
+
+  it("fetch failure returns the stale-clone note, never throws", async () => {
+    const runner: CommandRunner = {
+      run: async () => ({ stdout: "", stderr: "offline", code: 1 }),
+    };
+    const note = await refreshManagedCloneNow(runner, managed("rp_refresh_2", "/tmp/unused"));
+    expect(note).toMatch(/couldn't update Unvibe's clone/);
+  });
+});
+
+describe("POST /api/repos/:id/refresh (#383, one background fetch per load)", () => {
+  it("fetches a managed clone; failure answers 200 with the note; non-managed and demo are no-ops", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
+    const { runner, gitCalls, ghCalls } = makeRunner({
+      ghOther: { stdout: "[]", stderr: "", code: 0 },
+      gitFetch: { stdout: "", stderr: "", code: 0 },
+    });
+    const { app } = await createApp("tok", { runner, dataDir, autoPipeline: false });
+    try {
+      const added = await app.inject({
+        method: "POST",
+        url: "/api/repos",
+        headers: authed(),
+        payload: { url: "acme/app" },
+      });
+      expect(added.statusCode).toBe(200);
+      const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
+      void ghCalls;
+
+      gitCalls.length = 0;
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/repos/${repo.id}/refresh`,
+        headers: authed(),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ fetched: true });
+      expect(gitCalls.filter((a) => isGitFetch(a)).length).toBe(1);
+
+      // Unknown repo 404s.
+      const missing = await app.inject({
+        method: "POST",
+        url: "/api/repos/no-such-repo/refresh",
+        headers: authed(),
+      });
+      expect(missing.statusCode).toBe(404);
+
+      // The demo entry is a no-op.
+      const demo = await app.inject({
+        method: "POST",
+        url: "/api/repos/demo/refresh",
+        headers: authed(),
+      });
+      expect(demo.statusCode).toBe(200);
+      expect(demo.json()).toEqual({ fetched: false });
+      expect(gitCalls.filter((a) => isGitFetch(a)).length).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("failed fetch answers 200 with the stale-clone note, never a failed request", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
+    const { runner, gitCalls } = makeRunner({
+      ghOther: { stdout: "[]", stderr: "", code: 0 },
+      gitFetch: { stdout: "", stderr: "offline", code: 1 },
+    });
+    const { app } = await createApp("tok", { runner, dataDir, autoPipeline: false });
+    try {
+      const added = await app.inject({
+        method: "POST",
+        url: "/api/repos",
+        headers: authed(),
+        payload: { url: "acme/app" },
+      });
+      const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
+      gitCalls.length = 0;
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/repos/${repo.id}/refresh`,
+        headers: authed(),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { fetched: boolean; fetchError?: string };
+      expect(body.fetched).toBe(true);
+      expect(body.fetchError).toMatch(/couldn't update Unvibe's clone/);
+      expect(gitCalls.some((a) => isGitFetch(a))).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("user checkouts answer fetched:false without fetching", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-repo-"));
+    const git = async (...args: string[]): Promise<void> => {
+      const r = await real.run("git", { args, cwd: dir });
+      if (r.code !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+    };
+    await git("init", "-b", "main");
+    await git("config", "user.email", "t@example.com");
+    await git("config", "user.name", "T");
+    fs.writeFileSync(path.join(dir, "f.txt"), "x\n");
+    await git("add", ".");
+    await git("commit", "-m", "init");
+
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
+    const { runner, gitCalls } = makeRunner({ ghOther: { stdout: "[]", stderr: "", code: 0 } });
+    const { app } = await createApp("tok", { runner, dataDir, autoPipeline: false });
+    try {
+      const added = await app.inject({
+        method: "POST",
+        url: "/api/repos",
+        headers: authed(),
+        payload: { path: dir },
+      });
+      const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
+      expect(repo.managed).toBeUndefined();
+      gitCalls.length = 0;
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/repos/${repo.id}/refresh`,
+        headers: authed(),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ fetched: false });
+      expect(gitCalls.some((a) => isGitFetch(a))).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("GET /api/repos/:id/changes fetch behaviour", () => {
-  it("fetches a managed clone before listing; fetch failure degrades with fetchError", async () => {
+  it("#383: listings never fetch — no fetch call, no fetchError, stale data still lists", async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
     const { runner, gitCalls, ghCalls } = makeRunner({
       ghOther: { stdout: "[]", stderr: "", code: 0 },
@@ -450,9 +620,9 @@ describe("GET /api/repos/:id/changes fetch behaviour", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as { changes: unknown[]; fetchError?: string };
-      expect(body.fetchError).toMatch(/couldn't update Unvibe's clone/);
+      expect(body.fetchError).toBeUndefined();
       expect(body.changes.length).toBeGreaterThan(0);
-      expect(gitCalls.some((a) => isGitFetch(a))).toBe(true);
+      expect(gitCalls.some((a) => isGitFetch(a))).toBe(false);
     } finally {
       await app.close();
     }

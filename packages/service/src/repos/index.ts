@@ -34,6 +34,7 @@ export {
   MANAGED_FETCH_TIMEOUT_MS,
   mapCloneError,
   refreshManagedCheckout,
+  refreshManagedCloneNow,
   removeRepo,
   resetManagedCloneStateForTests,
   type AddDeps,

@@ -247,6 +247,7 @@ export function resetManagedCloneStateForTests(): void {
   cloneInflight.clear();
   addInflight.clear();
   fetchState.clear();
+  refreshInflight.clear();
 }
 
 export interface CloneDeps {
@@ -480,6 +481,50 @@ export async function refreshManagedCheckout(
 
 function fetchNote(): string {
   return "couldn't update Unvibe's clone (are you offline?) — showing what was fetched last time";
+}
+
+/** One in-flight background fetch per repo: concurrent refresh calls join
+ *  the same promise instead of starting a second fetch. Entries are
+ *  removed on completion, so a refresh after completion always starts a
+ *  new fetch — deliberately no freshness window or back-off (#383: every
+ *  page load refreshes; it just never blocks on it). */
+const refreshInflight = new Map<string, Promise<string | null>>();
+
+/**
+ * #383: the start page's background managed-clone fetch. Runs
+ * `git fetch origin` on a managed clone, best effort: null on success,
+ * the stale-clone note on failure — never throws, never touches user
+ * checkouts (non-managed repos return null without running anything).
+ * Concurrent calls for the same repo share one fetch; sequential calls
+ * each fetch. Unlike `refreshManagedCheckout` there is no freshness
+ * cache: every call after completion fetches again.
+ */
+export async function refreshManagedCloneNow(
+  runner: CommandRunner,
+  repo: Pick<Repo, "id" | "localPath" | "managed">,
+): Promise<string | null> {
+  if (repo.managed !== true) return null;
+  const prior = refreshInflight.get(repo.id);
+  if (prior) return prior;
+  const task = (async (): Promise<string | null> => {
+    try {
+      // #139: same gh-login credential handling as ingest fetches.
+      const res = await runGitFetch(runner, [], {
+        cwd: repo.localPath,
+        timeoutMs: MANAGED_FETCH_TIMEOUT_MS,
+      });
+      if (res.code !== 0) return fetchNote();
+      return null;
+    } catch {
+      return fetchNote();
+    }
+  })();
+  refreshInflight.set(repo.id, task);
+  try {
+    return await task;
+  } finally {
+    refreshInflight.delete(repo.id);
+  }
 }
 
 // --- remove ----------------------------------------------------------------
