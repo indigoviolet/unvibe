@@ -13,6 +13,7 @@
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -976,6 +977,29 @@ test.describe("381 reply footer", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour381-data-"));
     // Static seeded review: no jobs, so the footer never mutates mid-frame.
     createSeededDemoReview(dataDir, reviewId);
+    // Scene-local tweak (the shared fixture is untouched): lengthen the
+    // seeded backticked suggestion so it wraps onto two lines at 1440 —
+    // the original complaint was how wrapped chips looked.
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db
+        .prepare("SELECT snapshot FROM review_snapshots WHERE review_id = ?")
+        .get(reviewId) as { snapshot: string };
+      const snap = JSON.parse(row.snapshot) as {
+        annotations: { replies: { blocks: { type: string; items?: { label: string }[] }[] }[] }[];
+      };
+      const fu = snap.annotations[0]!.replies[0]!.blocks.find((b) => b.type === "follow-up")!;
+      fu.items![0]!.label =
+        "Does `http.client` keep the line ending when a folded line ends in a bare `\\n`, " +
+        "and would `_normalize_header_value` leave that value untouched?";
+      db.prepare("UPDATE review_snapshots SET snapshot = ?, updated_at = ? WHERE review_id = ?").run(
+        JSON.stringify(snap),
+        Date.now(),
+        reviewId,
+      );
+    } finally {
+      db.close();
+    }
     svc = await startService(dataDir, { agent: "none", label: "tour381" });
   });
   test.afterAll(async () => {
@@ -1018,9 +1042,10 @@ test.describe("381 reply footer", () => {
     await expect(footer).toBeVisible({ timeout: 15_000 });
     const chips = footer.locator("button");
     await expect(chips).toHaveCount(2);
-    await expect(chips.filter({ hasText: "keep the line ending" }).locator("code").first()).toContainText(
-      "http.client",
-    );
+    const long = chips.filter({ hasText: "keep the line ending" });
+    await expect(long.locator("code").first()).toContainText("http.client");
+    // The long suggestion wraps onto two lines at 1440 (one line ≈ 27px).
+    expect.soft((await long.boundingBox())?.height ?? 0, "long chip wraps").toBeGreaterThan(32);
     await expect(footer).not.toContainText("Follow up:");
     const rev = mine.getByRole("button", { name: "Show the quoted passage" }).first();
     await expect(rev).toBeVisible();
