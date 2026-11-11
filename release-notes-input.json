@@ -1,17 +1,19 @@
 {
-  "369": {
-    "whatChanged": "Cards, page cards, persona tabs and thread answers no longer show empty brackets where a citation was moved to the chips: \"…the links ([[cite]]).\" now reads \"…the links.\" with the citation as a chip. Brackets in ordinary text, like run() or [ ], are left alone.",
-    "whatToTry": "Open the demo thread \"What is line folding?\" and check that no \"()\" or \"(, )\" appears in the answer."
+  "379": {
+    "whatChanged": "The main agent is now the built-in Guide persona, first in Settings → Personas. It holds the main provider, model and effort (Settings → Models keeps only the small model), plus an optional writing style. When you write one, it is added to every guide, card, deeper level, Explain and Ask turn as tone and wording guidance; each task's own rules on structure and citations still win. It is empty by default, so nothing changes until you write it, and it applies to new runs only. Personas set to follow the main model follow the Guide. The Guide can't be deleted or disabled and is not offered as a persona on cards.",
+    "whatToTry": "Open Settings → Personas, edit the Guide, write a short style (e.g. \"Short sentences. No jargon.\"), then open a new review or regenerate a card.",
+    "caveats": "Data reset needed: the stored settings shape changed (data format 7). On first start Unvibe shows a reset notice; resetting moves your old data aside (nothing is deleted). Set your models, Guide and personas again afterwards."
   },
-  "376": {
-    "whatChanged": "Hunk summaries are written for the most useful hunks first instead of all of them: source, then tests, then config, then docs, never generated files or hunks hidden at the current level, with hunks the guide cites first. Settings → Limits → Hunk summaries sets how many (default 50, 0 for none). The diff header reads \"Summaries for X of Y hunks · Summarize more\"; Summarize more writes the next batch. Hunks without a summary are listed as skipped. A new version of a PR summarizes only hunks that lack a summary.",
-    "whatToTry": "Open a large PR, check the header count in the diff pane, click Summarize more, and change the limit in Settings → Limits."
+  "380": {
+    "whatChanged": "Card text no longer jumps right when a card gets its first thread (for example after Explain). Every card, the document view and the PR description always keep the small left margin for comment pills, so all cards share one indent whether or not they have threads.",
+    "whatToTry": "Select text in a card without threads, click Explain, and check that the text stays where it was while the comment pill appears in the margin."
   },
-  "377": {
-    "whatChanged": "Each card's hover toolbar has a copy icon (\"Copy as Markdown\") that copies the card as shown: the current depth and persona tab, headings, lists, tables, asides, diagrams as d2 source, and any \"Updated since…\" sections and answers. Citations become GitHub links at the PR's head commit (plain path:lines for local reviews), listed after each paragraph. Agent replies in threads have the same icon.",
-    "whatToTry": "Hover a card, click the copy icon, and paste into a GitHub comment or a Markdown editor; try a persona tab and a deeper level too."
+  "381": {
+    "whatChanged": "Follow-up suggestions under a thread answer render inline code (no raw backticks), sit left-aligned in compact boxes with small corners even when they wrap, and no longer carry a \"Follow up:\" label. The \"↑ quoted text\" button is now a quiet eye icon with the same \"Show the quoted passage\" tooltip and action.",
+    "whatToTry": "Ask a question in a thread and look at the suggestions under the answer; hover the eye icon and click it to jump to the quoted passage."
   },
-  "382": {
-    "whatChanged": "Development only: the restart-resilience check now runs with a scratch home and no session bus, so it no longer starts the real login service on the machine running the checks."
+  "383": {
+    "whatChanged": "The start page no longer waits on its slowest source. Your Reviews list is kept from the last visit and shows at once (like the PR lists), each PR and branch list appears as soon as its own answer arrives, and Unvibe fetches a managed clone once per page load in the background instead of up to three times before listing. The branches list and the stale-clone note update when that fetch finishes.",
+    "whatToTry": "Open the start page: your reviews and the last PR lists should show immediately, then refresh in place."
   }
 }
