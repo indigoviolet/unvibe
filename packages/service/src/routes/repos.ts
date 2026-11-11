@@ -11,9 +11,13 @@
  *   directory only for clones Unvibe made (#27). Refused while reviews
  *   reference the repo.
  * - `GET /api/repos/:id/changes?filter=` — authoring / review-requested
- *   PRs, recent branches, previous reviews with stale state. Managed clones
- *   are `git fetch`ed first (best effort; failures degrade to stale data
- *   with a `fetchError` note, never a failed listing).
+ *   PRs, recent branches, previous reviews with stale state. Listings
+ *   never fetch: the start page runs its one background managed-clone
+ *   fetch per load through `POST /api/repos/:id/refresh` instead (#383).
+ * - `POST /api/repos/:id/refresh` — `git fetch origin` on a managed clone
+ *   (best effort; a failed fetch answers 200 with the stale-clone note).
+ *   Concurrent calls join the one in-flight fetch; non-managed repos and
+ *   the demo entry answer `{ fetched: false }` without running anything.
  */
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -25,6 +29,7 @@ import {
   type PickFolderResponse,
   type RemoveRepoResponse,
   type Repo,
+  type RepoRefreshResponse,
   type ReposResponse,
   type RepoChangesResponse,
   type RepoReviewStatusesResponse,
@@ -41,8 +46,8 @@ import {
   listWorktrees,
   newRepoId,
   pickFolder,
-  refreshManagedCheckout,
   fetchRepoStacks,
+  refreshManagedCloneNow,
   refreshRepoReviewStatuses,
   removeRepo,
   repoChanges,
@@ -268,15 +273,13 @@ export async function registerRepos(
       repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
     }
     if (!repo) return reply.code(404).send({ error: "unknown repo" });
-    // Managed clones stay fresh: fetch before listing so PR heads and base
-    // branches are current. Best effort — offline degrades to stale data
-    // with a visible note, never a failed listing. User checkouts are never
-    // fetched implicitly.
+    // #383: listings answer straight from `gh`/local git and never fetch.
+    // The start page runs the one background managed-clone fetch per load
+    // through `POST /api/repos/:id/refresh` instead, off the critical path.
     // #297: `limit` sizes every PR-list page; `author` narrows the
     // review-requested searches to that login. #310: `cursor` is the
     // opaque token for the next page (minted by the previous response);
     // each press fetches only the next page, never a re-fetch.
-    const fetchError = await refreshManagedCheckout(ctx.runner, repo);
     let changes: import("@unvibe/shared").RepoChange[];
     let hasMore: boolean;
     let cursor: string | null;
@@ -302,8 +305,27 @@ export async function registerRepos(
     // state/decision, and the stored review is updated. PRs not in the
     // result keep their stored state. Best effort: never fails the listing.
     await syncReviewsWithPrLists(ctx, changes);
-    if (fetchError) return { changes, hasMore, cursor, fetchError } satisfies RepoChangesResponse;
     return { changes, hasMore, cursor } satisfies RepoChangesResponse;
+  });
+
+  // #383: the start page's one background managed-clone fetch per load,
+  // off the critical path. Runs `git fetch origin` on a managed clone
+  // only (user checkouts and the demo entry answer `{ fetched: false }`
+  // without running anything). Concurrent calls for the same repo join
+  // the one in-flight fetch; a call after completion starts a new one.
+  // Best effort: a failed fetch answers 200 with the stale-clone note,
+  // never a failed request. Review creation keeps its own fetch
+  // (`routes/reviews.ts`) and never uses this endpoint.
+  app.post("/api/repos/:id/refresh", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo") return { fetched: false } satisfies RepoRefreshResponse;
+    let repo = ctx.repos.get(id);
+    if (!repo) repo = (await listAllRepos(ctx)).find((r) => r.id === id) ?? null;
+    if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    if (repo.managed !== true) return { fetched: false } satisfies RepoRefreshResponse;
+    const fetchError = await refreshManagedCloneNow(ctx.runner, repo);
+    if (fetchError) return { fetched: true, fetchError } satisfies RepoRefreshResponse;
+    return { fetched: true } satisfies RepoRefreshResponse;
   });
 }
 

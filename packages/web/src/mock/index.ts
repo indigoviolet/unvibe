@@ -2307,6 +2307,7 @@ export const mockApi = {
 
   refreshReviewStatuses: async (): Promise<RepoReviewStatusesResponse> => ({ statuses: [] }),
   repoStacks: async (): Promise<import("@unvibe/shared").RepoStacksResponse> => ({ stacks: {} }),
+  refreshManagedClone: async (): Promise<import("@unvibe/shared").RepoRefreshResponse> => ({ fetched: false }),
 
   repoChanges: async (
     id: string,

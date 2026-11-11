@@ -327,6 +327,9 @@ const realApi = {
   /** #321: stack info per open PR for one repo (load/Refresh only). */
   repoStacks: (id: string): Promise<import("@unvibe/shared").RepoStacksResponse> =>
     get(`/api/repos/${encodeURIComponent(id)}/stacks`),
+  /** #383: the one background managed-clone fetch per page load (load/Refresh only). */
+  refreshManagedClone: (id: string): Promise<import("@unvibe/shared").RepoRefreshResponse> =>
+    post(`/api/repos/${encodeURIComponent(id)}/refresh`),
   /** #298: batched review-status refresh for one repo (load/Refresh only). */
   refreshReviewStatuses: (id: string): Promise<RepoReviewStatusesResponse> =>
     post(`/api/repos/${encodeURIComponent(id)}/review-statuses`),

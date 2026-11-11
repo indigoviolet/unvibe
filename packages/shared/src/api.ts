@@ -389,6 +389,19 @@ export interface RepoChangesResponse {
 }
 
 /**
+ * #383: `POST /api/repos/:id/refresh` — the start page's one background
+ * managed-clone fetch per load, off the critical path. The list endpoints
+ * never fetch; this call runs the fetch alone so the page stays
+ * progressive. `fetched` is false for repos with no managed clone
+ * (user checkouts, the demo entry): nothing runs, never an error.
+ * `fetchError` carries the same stale-clone note the lists used to carry.
+ */
+export interface RepoRefreshResponse {
+  fetched: boolean;
+  fetchError?: string;
+}
+
+/**
  * #298: one review's fresh status from the batched per-repo check
  * (`POST /api/repos/:id/review-statuses`). Served only when the start
  * page loads or its Refresh is pressed — never polled. `stale` means
