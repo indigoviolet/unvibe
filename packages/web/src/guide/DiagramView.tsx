@@ -75,10 +75,25 @@ function useDiagramBreakout(dgRef: React.RefObject<HTMLDivElement | null>): void
         pane.clientWidth - (Number.parseFloat(pcs.paddingLeft) || 0) - (Number.parseFloat(pcs.paddingRight) || 0);
       const width = Math.min(natural.w, usable - 1);
       if (width > column + 1) {
-        const margin = `${(column - width) / 2}px`;
+        const margin = (column - width) / 2;
         dg.style.width = `${width}px`;
-        dg.style.marginLeft = margin;
-        dg.style.marginRight = margin;
+        dg.style.marginLeft = `${margin}px`;
+        dg.style.marginRight = `${margin}px`;
+        // Issue #380: every card reserves the margin-pill gutter now, so
+        // the column sits off the pane's center — centering the widened
+        // box on it can push the box past the pane's usable edge. Nudge
+        // it back inside (measured after setting: position needs layout).
+        const box = dg.getBoundingClientRect();
+        const paneBox = pane.getBoundingClientRect();
+        const usableL = paneBox.left + (Number.parseFloat(pcs.paddingLeft) || 0);
+        const usableR = paneBox.right - (Number.parseFloat(pcs.paddingRight) || 0);
+        const overR = box.right - usableR;
+        if (overR > 0) {
+          dg.style.marginLeft = `${margin - overR}px`;
+        } else {
+          const overL = usableL - box.left;
+          if (overL > 0) dg.style.marginLeft = `${margin + overL}px`;
+        }
       } else {
         clear();
       }

@@ -441,10 +441,10 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // Issue #252: glossary terms link in card text (first mention per card).
   const glossary = snapshot?.glossary ?? [];
   const linkedBlocks = linkCardBlocks(shownBlocks, glossary, shownLevel);
-  // Issue #374: every thread on the card gets a margin pill, so the
-  // card reserves the gutter it sits in (`.has-threads`).
+  // Issue #380: every thread on the card gets a margin pill, and the
+  // card always reserves the gutter it sits in (`.gutter`) — the first
+  // thread must never move the text.
   const cardThreads = linkedBlocks.flatMap((b) => threadsFor(b.id));
-  const gutterClass = cardThreads.length > 0 ? "has-threads" : undefined;
 
   const blocks = linkedBlocks.map((block) => {
     const exps = expansionsForBlock(annotations, card.id, block.id);
@@ -483,7 +483,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     // body-prefix preview.
     const title = displayCardTitle(card.title, card.blocks);
     return (
-      <UiCard as="section" variant="raised" className={gutterClass ? `collapsed ${gutterClass}` : "collapsed"} id={`C-${card.id}`}>
+      <UiCard as="section" variant="raised" className="collapsed gutter" id={`C-${card.id}`}>
         {/* Issue #364: the margin marker survives even a collapsed card
             (its threads anchor in the hidden body, so it sits at the top). */}
         <ThreadMarginOverlay
@@ -546,7 +546,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     <UiCard
       as="section"
       variant="raised"
-      className={[busy?.rewriting ? "rewriting" : "", gutterClass ?? ""].filter(Boolean).join(" ") || undefined}
+      className={["gutter", busy?.rewriting ? "rewriting" : ""].filter(Boolean).join(" ") || undefined}
       id={`C-${card.id}`}
       aria-busy={busy ? true : undefined}
       {...(personaRing ? { style: personaRing } : {})}

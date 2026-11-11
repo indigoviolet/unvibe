@@ -5,8 +5,8 @@
  * Clicking it opens the thread and scrolls to it.
  *
  * Issue #374: the icon is one compact pill (glyph + count, never
- * overlapping) sitting inside the card's reserved gutter
- * (`.has-threads`), so it is never clipped by the card or pane edge.
+ * overlapping) sitting inside the card's always-reserved gutter
+ * (issue #380), so it is never clipped by the card or pane edge.
  * It is the single entry point for the paragraph's threads — the
  * end-of-block bubble is gone (see `BlockMarkers`).
  *

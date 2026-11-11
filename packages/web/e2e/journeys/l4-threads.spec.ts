@@ -429,6 +429,51 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     });
   });
 
+  test("adding a thread never moves the card text (#380)", async ({ page }) => {
+    test.setTimeout(300_000);
+    const s = service();
+    // A fresh demo review: the first Explain on a card used to reserve the
+    // margin-pill gutter on the spot, jumping the heading and body right.
+    // The gutter is reserved on every card now, so nothing may move.
+    const reviewId = await createDemoReview(s);
+    await page.goto(`${s.origin}/review/${reviewId}?token=${s.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+
+    const para = page.locator("#C-central .blk p.prose").first();
+    const neighbour = page.locator("#C-problem .blk p.prose").first();
+    await expect(para).toBeVisible({ timeout: 15_000 });
+    await expect(neighbour).toBeVisible({ timeout: 15_000 });
+    const before = await para.boundingBox();
+    const neighbourBefore = await neighbour.boundingBox();
+    expect(before).not.toBeNull();
+    expect(neighbourBefore).not.toBeNull();
+
+    await test.step("Explain keeps both cards' body offsets within 1px", async () => {
+      await selectText(page, "#C-central", "matches optional whitespace, then CRLF");
+      await page.locator('#selbar [data-act="explain"]').click();
+      const threads = page.locator("#C-central section.ithread[data-thread]");
+      await expect.soft(threads.first()).toBeVisible({ timeout: 15_000 });
+      // The margin pill proves the thread landed in this card.
+      await expect.soft(page.locator("#C-central [data-thr-margin]").first()).toBeVisible({ timeout: 15_000 });
+      // The answer lands so the card is fully settled before measuring.
+      await expect.soft(threads.first().locator(".exp-b")).not.toBeEmpty({ timeout: 60_000 });
+      await expect.soft(threads.first().locator(".working")).toHaveCount(0, { timeout: 30_000 });
+      // One synchronous read per element (#363 B1): the gutter was already
+      // reserved, so neither this card's body nor its neighbour's moved —
+      // and both share the same indent.
+      const after = await para.boundingBox();
+      const neighbourAfter = await neighbour.boundingBox();
+      expect(after).not.toBeNull();
+      expect(neighbourAfter).not.toBeNull();
+      if (before && after && neighbourBefore && neighbourAfter) {
+        expect.soft(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
+        expect.soft(Math.abs(neighbourAfter.x - neighbourBefore.x)).toBeLessThanOrEqual(1);
+        expect.soft(Math.abs(after.x - neighbourAfter.x)).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+
   test("an Ask thread and a comment share one diff line", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
@@ -1870,10 +1915,16 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       const turns = mine.locator(':scope > .turn');
       await expect.soft(turns).toHaveCount(3, { timeout: 30_000 });
       const second = turns.nth(1);
-      await second.hover();
       // "Delete reply" is the per-reply name (#364: distinct from the
-      // thread-level "Delete thread"). No confirm appears.
-      await second.getByRole("button", { name: "Delete reply" }).first().click();
+      // thread-level "Delete thread"). No confirm appears. The toolbar
+      // reveals on hover only, so re-hover inside the retry: content
+      // shifting under a stationary mouse leaves a revealed-then-hidden
+      // button failing the click (issue #380).
+      const secondDel = second.getByRole("button", { name: "Delete reply" }).first();
+      await expect(async () => {
+        await second.hover();
+        await secondDel.click({ timeout: 2_000 });
+      }).toPass({ timeout: 15_000 });
       await expect
         .soft.poll(
           async () =>
@@ -1918,12 +1969,19 @@ test.describe("L4 threads on the demo (fast replay)", () => {
         // turn carries a second, hidden one on its question row.
         const turn = mine.locator(`:scope > .turn[data-turn="${victim}"]`);
         await expect(turn).toBeVisible({ timeout: 15_000 });
-        await turn.hover();
-        await turn
+        // Target the server's victim by id (the DOM can lag the last
+        // patch), and only a Delete the hover actually revealed: an ask
+        // turn carries a second, hidden one on its question row. Re-hover
+        // inside the retry (same reason as above): a shift under a
+        // stationary mouse hides the button again.
+        const turnDel = turn
           .getByRole("button", { name: "Delete reply" })
           .filter({ visible: true })
-          .first()
-          .click({ timeout: 15_000 });
+          .first();
+        await expect(async () => {
+          await turn.hover();
+          await turnDel.click({ timeout: 2_000 });
+        }).toPass({ timeout: 15_000 });
         // Either its tombstone appears, or (last live turn) the thread goes.
         await expect
           .soft.poll(async () => {

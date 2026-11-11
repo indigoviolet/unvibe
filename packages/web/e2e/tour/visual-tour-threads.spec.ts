@@ -966,6 +966,77 @@ test.describe("J374 margin pill", () => {
   }
 });
 
+const FRAMES380 = fileURLToPath(new URL("../../visual-tour/380", import.meta.url));
+
+// ---- J380 fixed gutter (issue #380): every card reserves the margin-pill
+// gutter, so a card with a thread and its threadless neighbour share the
+// same indent. Slim set: 1440-light only — the indent is theme/width
+// independent, and the J374 keeps above already cover dark + 960 for the
+// pill itself.
+test.describe("J380 fixed gutter", () => {
+  let dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j380-data-"));
+    svc = await startService(dataDir, { agent: "replay" });
+    reviewId = await createDemoReview(svc);
+    // One thread on the problem card; central stays threadless. Guide
+    // comments start closed; the pill shows regardless. (The replay
+    // pipeline may add suggestion threads elsewhere — the asserts below
+    // only read the seeded pill and the two body indents, so extras are
+    // harmless.)
+    const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+    const pages = (snap.json as { pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[] }).pages ?? [];
+    const problem = pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "problem");
+    const made = await apiJson(svc, "POST", `/api/reviews/${reviewId}/comments`, {
+      anchor: { where: "block", blockId: `problem#${problem?.blocks[0]?.id}` },
+      quote: "HTTP/1.1 servers",
+      text: "Gutter note",
+    });
+    if (made.status !== 201) throw new Error(`seed failed: ${JSON.stringify(made.json)}`);
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  for (const combo of tourCombos("threads", [{ name: "1440-light", width: 1440, dark: false }] as const)) {
+    test(`adjacent cards share one indent (${combo.name})`, async ({ page }) => {
+      test.setTimeout(240_000);
+      if (!svc) throw new Error("no service");
+      await page.setViewportSize({ width: combo.width, height: 900 });
+      await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+      await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+
+      // The seeded thread's pill sits inside the problem card's gutter.
+      const pill = page.locator("#C-problem [data-thr-margin]");
+      await expect(pill.first()).toBeVisible({ timeout: 15_000 });
+      // One synchronous read (#363 B1): the threaded card and its
+      // threadless neighbour start their bodies at the same x.
+      const xs = await page.evaluate(() => {
+        const x = (id: string): number | null => {
+          const p = document.querySelector(`#${id} .blk p.prose`);
+          return p instanceof HTMLElement ? p.getBoundingClientRect().left : null;
+        };
+        return { central: x("C-central"), problem: x("C-problem") };
+      });
+      expect(xs.central).not.toBeNull();
+      expect(xs.problem).not.toBeNull();
+      if (xs.central !== null && xs.problem !== null) {
+        expect(Math.abs(xs.problem - xs.central)).toBeLessThanOrEqual(1);
+      }
+      // Frame: the two adjacent cards with matching left edges.
+      await page.locator("#C-problem").evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await settleScroll(page);
+      await page.screenshot({ path: `${FRAMES380}/gutter-match-1440-light.png` });
+    });
+  }
+});
+
 // ---- #381 reply footer (chips with inline code, no label, icon reverse link) ----
 test.describe("381 reply footer", () => {
   let dataDir = "";
