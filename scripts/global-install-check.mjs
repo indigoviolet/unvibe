@@ -678,7 +678,8 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
         if (done) {
           assert(true, `${label}: demo pipeline completes from the installed copy`);
           const hunks = (s.hunkStates ?? []).filter((h) => h.summary).length;
-          assert(hunks >= 8, `${label}: demo hunk summaries present (${hunks})`);
+          // #376: hidden hunks are never auto-summarized; the demo has 5 visible hunks.
+          assert(hunks >= 5, `${label}: demo hunk summaries present (${hunks})`);
         }
       } catch {
         // keep polling
