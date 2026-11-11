@@ -1,0 +1,1 @@
+var E;(function(R){R[R.NOT_RECORD=0]="NOT_RECORD",R[R.RECORD=1]="RECORD",R[R.RECORD_AND_SAMPLED=2]="RECORD_AND_SAMPLED"})(E||(E={}));var O;(function(R){R[R.UNSET=0]="UNSET",R[R.OK=1]="OK",R[R.ERROR=2]="ERROR"})(O||(O={}));export{E as S,O as a};

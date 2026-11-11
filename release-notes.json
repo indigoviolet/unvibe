@@ -1,0 +1,46 @@
+{
+  "channel": "release-debug",
+  "version": "0.0.20-debug",
+  "previousVersion": "0.0.19",
+  "commit": "b7e3438abc0c015abca2306e66b43b4e4c7f9256",
+  "previousCommit": "v0.0.19",
+  "dataFormat": 7,
+  "previousDataFormat": 6,
+  "dataResetNeeded": true,
+  "generatedAt": "2026-11-11T23:42:14.708Z",
+  "items": [
+    {
+      "number": 379,
+      "title": "Main agent as a persona: built-in Guide persona owns the main model and a writing-style lens",
+      "summary": "The main agent is now the built-in Guide persona, first in Settings → Personas. It holds the main provider, model and effort (Settings → Models keeps only the small model), plus an optional writing style. When you write one, it is added to every guide, card, deeper level, Explain and Ask turn as tone and wording guidance; each task's own rules on structure and citations still win. It is empty by default, so nothing changes until you write it, and it applies to new runs only. Personas set to follow the main model follow the Guide. The Guide can't be deleted or disabled and is not offered as a persona on cards.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/379",
+      "whatChanged": "The main agent is now the built-in Guide persona, first in Settings → Personas. It holds the main provider, model and effort (Settings → Models keeps only the small model), plus an optional writing style. When you write one, it is added to every guide, card, deeper level, Explain and Ask turn as tone and wording guidance; each task's own rules on structure and citations still win. It is empty by default, so nothing changes until you write it, and it applies to new runs only. Personas set to follow the main model follow the Guide. The Guide can't be deleted or disabled and is not offered as a persona on cards.",
+      "whatToTry": "Open Settings → Personas, edit the Guide, write a short style (e.g. \"Short sentences. No jargon.\"), then open a new review or regenerate a card.",
+      "caveats": "Data reset needed: the stored settings shape changed (data format 7). On first start Unvibe shows a reset notice; resetting moves your old data aside (nothing is deleted). Set your models, Guide and personas again afterwards."
+    },
+    {
+      "number": 380,
+      "title": "Card text shifts right when the first thread (e.g. Explain) appears: reserve the margin gutter on every card",
+      "summary": "Card text no longer jumps right when a card gets its first thread (for example after Explain). Every card, the document view and the PR description always keep the small left margin for comment pills, so all cards share one indent whether or not they have threads.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/380",
+      "whatChanged": "Card text no longer jumps right when a card gets its first thread (for example after Explain). Every card, the document view and the PR description always keep the small left margin for comment pills, so all cards share one indent whether or not they have threads.",
+      "whatToTry": "Select text in a card without threads, click Explain, and check that the text stays where it was while the comment pill appears in the margin."
+    },
+    {
+      "number": 381,
+      "title": "Thread reply footer: follow-up chips render inline code and left-align, no 'Follow up:' label, icon for quoted text",
+      "summary": "Follow-up suggestions under a thread answer render inline code (no raw backticks), sit left-aligned in compact boxes with small corners even when they wrap, and no longer carry a \"Follow up:\" label. The \"↑ quoted text\" button is now a quiet eye icon with the same \"Show the quoted passage\" tooltip and action.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/381",
+      "whatChanged": "Follow-up suggestions under a thread answer render inline code (no raw backticks), sit left-aligned in compact boxes with small corners even when they wrap, and no longer carry a \"Follow up:\" label. The \"↑ quoted text\" button is now a quiet eye icon with the same \"Show the quoted passage\" tooltip and action.",
+      "whatToTry": "Ask a question in a thread and look at the suggestions under the answer; hover the eye icon and click it to jump to the quoted passage."
+    },
+    {
+      "number": 383,
+      "title": "Start page: progressive loading (keep Reviews list, render each list independently, one background clone fetch)",
+      "summary": "The start page no longer waits on its slowest source. Your Reviews list is kept from the last visit and shows at once (like the PR lists), each PR and branch list appears as soon as its own answer arrives, and Unvibe fetches a managed clone once per page load in the background instead of up to three times before listing. The branches list and the stale-clone note update when that fetch finishes.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/383",
+      "whatChanged": "The start page no longer waits on its slowest source. Your Reviews list is kept from the last visit and shows at once (like the PR lists), each PR and branch list appears as soon as its own answer arrives, and Unvibe fetches a managed clone once per page load in the background instead of up to three times before listing. The branches list and the stale-clone note update when that fetch finishes.",
+      "whatToTry": "Open the start page: your reviews and the last PR lists should show immediately, then refresh in place."
+    }
+  ]
+}

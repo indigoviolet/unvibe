@@ -1,0 +1,1 @@
+function s(u){return Symbol.for(u)}class r{constructor(c){const t=this;t._currentContext=c?new Map(c):new Map,t.getValue=e=>t._currentContext.get(e),t.setValue=(e,n)=>{const o=new r(t._currentContext);return o._currentContext.set(e,n),o},t.deleteValue=e=>{const n=new r(t._currentContext);return n._currentContext.delete(e),n}}}const l=new r;export{l as R,s as c};
