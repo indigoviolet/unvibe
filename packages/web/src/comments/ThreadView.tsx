@@ -423,16 +423,17 @@ function AgentReplyView({
           {renderBlocks(provisional ? [] : reply.blocks)}
         </div>
       {/* Issue #364: reverse link — back to the quoted passage (or the
-          margin marker's line when the quote can't be placed), flashing it. */}
+          margin marker's line when the quote can't be placed), flashing it.
+          Issue #381: icon-only, styled like the other quiet thread icons. */}
       <button
         type="button"
-        className="src-link"
+        className="ib"
         data-src-link={reply.id}
         data-tip="Show the quoted passage"
         aria-label="Show the quoted passage"
         onClick={() => revealThreadAnchor(thread.id)}
       >
-        <span aria-hidden="true">↑</span> quoted text
+        <Icon name="eye" />
       </button>
     </div>
   );
