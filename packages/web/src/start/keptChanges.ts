@@ -14,7 +14,7 @@
  * - at most the last 10 repos (oldest `fetchedAt` evicted first);
  * - `localStorage` unavailable or full: carry on with the in-memory copy.
  */
-import type { RepoChange } from "@unvibe/shared";
+import type { RepoChange, ReviewSummary } from "@unvibe/shared";
 
 /** Versioned key: bump to drop every kept entry at once. */
 export const KEPT_CHANGES_KEY = "unvibe.start.keptChanges.v1";
@@ -237,7 +237,8 @@ export function pruneKeptLists(validIds: Iterable<string>): void {
   }
 }
 
-/** Forget everything (login changed, or test teardown). */
+/** Forget everything (login changed, or test teardown). Covers the kept
+ *  Reviews list too: both belong to the previous viewer. */
 export function clearAllKeptLists(): void {
   try {
     memMap().clear();
@@ -245,6 +246,7 @@ export function clearAllKeptLists(): void {
   } catch {
     // Ignore.
   }
+  clearKeptReviews();
 }
 
 /** Viewer login stored alongside the kept lists (`gh api user`). */
@@ -272,6 +274,98 @@ export function __resetKeptForTests(): void {
   mem = null;
   memViewer = null;
   memLoaded = false;
+  memReviews = null;
+  memReviewsLoaded = false;
+}
+
+// --- kept Reviews list (#383) --------------------------------------------
+// Same pattern as the kept PR/branch lists above, but one global entry:
+// the Reviews list (`GET /api/reviews`) is repo-scoped on render, not on
+// fetch, so there is nothing per-repo to key on. A login change clears it
+// through the same viewer check the lists use (`clearAllKeptLists` covers
+// both: callers clear both together).
+
+/** Versioned key: bump to drop the kept Reviews entry at once. */
+export const KEPT_REVIEWS_KEY = "unvibe.start.keptReviews.v1";
+
+export interface KeptReviews {
+  reviews: ReviewSummary[];
+  fetchedAt: number;
+}
+
+function isReviewSummary(v: unknown): v is ReviewSummary {
+  if (typeof v !== "object" || v === null) return false;
+  const s = v as Record<string, unknown>;
+  return typeof s.id === "string" && typeof s.repoId === "string" && typeof s.title === "string";
+}
+
+let memReviews: KeptReviews | null = null;
+let memReviewsLoaded = false;
+
+function readReviewsStorage(): KeptReviews | null {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(KEPT_REVIEWS_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let doc: unknown;
+  try {
+    doc = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof doc !== "object" || doc === null) return null;
+  const d = doc as { version?: unknown; viewer?: unknown; reviews?: unknown; fetchedAt?: unknown };
+  if (d.version !== 1) return null;
+  if (!Array.isArray(d.reviews) || !d.reviews.every(isReviewSummary)) return null;
+  if (typeof d.fetchedAt !== "number" || !Number.isFinite(d.fetchedAt) || d.fetchedAt <= 0) return null;
+  // A changed login must not keep showing the previous user's sessions:
+  // the entry is only valid for the viewer stored alongside it.
+  const viewer = typeof d.viewer === "string" ? d.viewer : null;
+  try {
+    ensureLoaded();
+  } catch {
+    // Best effort.
+  }
+  if (viewer !== memViewer) return null;
+  return { reviews: d.reviews, fetchedAt: d.fetchedAt };
+}
+
+/** Last successful Reviews list, or null when nothing usable is kept. */
+export function getKeptReviews(): KeptReviews | null {
+  if (!memReviewsLoaded) {
+    memReviewsLoaded = true;
+    memReviews = readReviewsStorage();
+  }
+  return memReviews;
+}
+
+/** Remember a Reviews fetch result, stamped with the client-side fetch time. */
+export function setKeptReviews(reviews: ReviewSummary[]): KeptReviews {
+  const kept: KeptReviews = { reviews, fetchedAt: Date.now() };
+  memReviewsLoaded = true;
+  memReviews = kept;
+  try {
+    ensureLoaded();
+    localStorage.setItem(KEPT_REVIEWS_KEY, JSON.stringify({ version: 1, viewer: memViewer, ...kept }));
+  } catch {
+    // Unavailable or full (quota): the in-memory copy keeps serving this
+    // page load; the next load simply starts without kept reviews.
+  }
+  return kept;
+}
+
+/** Forget the kept Reviews list (login changed, or test teardown). */
+export function clearKeptReviews(): void {
+  memReviewsLoaded = true;
+  memReviews = null;
+  try {
+    localStorage.removeItem(KEPT_REVIEWS_KEY);
+  } catch {
+    // Ignore: caching is best effort.
+  }
 }
 
 function ageWord(ms: number): string {
