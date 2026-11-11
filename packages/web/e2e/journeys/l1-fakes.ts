@@ -385,6 +385,119 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
   writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
 }
 
+/**
+ * Fake `git` for the #383 progressive-start test: `fetch` sleeps, then
+ * succeeds, recording start/end lines in `<logDir>/fetch.log` (so the
+ * spec can observe the one background fetch per page load); `ls-remote`
+ * fails instantly offline; everything else is real git.
+ */
+export function writeFakeGitSlowFetch(binDir: string, realGit: string, logDir: string, delaySec: number): void {
+  const script = `#!/bin/sh
+LOG="${logDir}"
+# The service's fetches carry per-command config (git -c ... fetch):
+# skip the -c pairs to find the subcommand, like gitSubcommand does.
+cmd=""
+skip=0
+for a in "$@"; do
+  if [ "$skip" = "1" ]; then skip=0; continue; fi
+  case "$a" in
+    -c) skip=1 ;;
+    *) cmd="$a"; break ;;
+  esac
+done
+if [ "$cmd" = "fetch" ]; then
+  mkdir -p "$LOG"
+  echo "start $*" >> "$LOG/fetch.log"
+  sleep ${delaySec}
+  echo "done $*" >> "$LOG/fetch.log"
+  exit 0
+fi
+case "$*" in
+  *ls-remote*) echo "fake git: ls-remote stubbed offline (e2e)" >&2; exit 1 ;;
+esac
+exec "${realGit}" "$@"
+`;
+  writeFileSync(path.join(binDir, "git"), script, { mode: 0o755 });
+}
+
+/**
+ * Union fake `gh` for the #383 progressive-start test (own service, own
+ * repo `acme/progapp`). `gh repo clone` materializes a main + feature
+ * checkout with an origin remote; the review-requested team search sleeps
+ * (one delayed list call) while authoring, direct and branches answer at
+ * once; every other call is logged. Nothing touches the network.
+ */
+export function writeFakeGh383(binDir: string, logDir: string): void {
+  const script = `#!/bin/sh
+LOG="${logDir}"
+mkdir -p "$LOG"
+printf '%s\\n' "$*" >> "$LOG/calls.log"
+if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
+  dir="$4"
+  mkdir -p "$dir"
+  git init -b main "$dir" >/dev/null 2>&1
+  git -C "$dir" config user.email t@example.com
+  git -C "$dir" config user.name T
+  echo "# progapp" > "$dir/README.md"
+  git -C "$dir" add .
+  git -C "$dir" commit -m base >/dev/null 2>&1
+  git -C "$dir" checkout -b feature >/dev/null 2>&1
+  echo "x = 1" > "$dir/src.py"
+  git -C "$dir" add .
+  git -C "$dir" commit -m feature >/dev/null 2>&1
+  git -C "$dir" remote add origin https://github.com/acme/progapp.git
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo 'reviewer'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo "e2e stub: logged in as reviewer"; exit 0; fi
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  case "$*" in
+    *pullRequests\\(*|*pullRequest\\(number:*)
+      echo '{"data":{"repository":{}}}'
+      exit 0
+      ;;
+    *repo:acme/progapp*)
+      case "$*" in
+        *search\\(query:*)
+          # The review-requested searches wait for the release marker, so
+          # the spec can observe the other sections (and the kept rows on
+          # reload) before this list lands. Bounded: never longer than
+          # the start page's own 30 s lists timeout.
+          case "$*" in
+            *"review-requested:@me"*|*"user-review-requested:@me"*)
+              for i in $(seq 1 100); do
+                if [ -f "$LOG/release383" ]; then break; fi
+                sleep 0.2
+              done
+              ;;
+          esac
+          case "$*" in
+            *"user-review-requested:@me"*)
+              echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"__typename":"PullRequest","number":12,"title":"Reviewer asks for your progapp review","author":{"login":"teammate"},"updatedAt":"2026-10-01T00:00:00Z","headRefName":"ask-direct","additions":3,"deletions":1,"changedFiles":2,"url":"https://github.com/acme/progapp/pull/12","state":"OPEN","isDraft":false,"reviewRequests":{"nodes":[{"requestedReviewer":{"__typename":"User","login":"reviewer"}}]},"latestReviews":{"nodes":[]}}]}}}'
+              ;;
+            *"review-requested:@me"*)
+              echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"__typename":"PullRequest","number":13,"title":"Team progapp ask","author":{"login":"teammate"},"updatedAt":"2026-10-01T00:00:00Z","headRefName":"ask-team","additions":5,"deletions":2,"changedFiles":3,"url":"https://github.com/acme/progapp/pull/13","state":"OPEN","isDraft":false,"reviewRequests":{"nodes":[{"requestedReviewer":{"__typename":"Team","slug":"core"}}]},"latestReviews":{"nodes":[]}}]}}}'
+              ;;
+            *"author:"*)
+              echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"__typename":"PullRequest","number":11,"title":"Progapp folded-header fix","author":{"login":"reviewer"},"updatedAt":"2026-10-01T00:00:00Z","headRefName":"fold-fix","additions":7,"deletions":1,"changedFiles":1,"url":"https://github.com/acme/progapp/pull/11","state":"OPEN","isDraft":false,"reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]}}]}}}'
+              ;;
+            *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}' ;;
+          esac
+          exit 0
+          ;;
+        *) echo "fake gh: unexpected progapp graphql: $*" >&2; exit 1 ;;
+      esac
+      ;;
+  esac
+  echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'
+  exit 0
+fi
+case "$*" in *pulls/*/comments*) echo '[]'; exit 0 ;; esac
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`;
+  writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
+}
+
 /** Fake `git`: fetches + ls-remote fail instantly offline; all else is real git. */
 export function writeFakeGitL1(binDir: string, realGit: string): void {
   const script = `#!/bin/sh

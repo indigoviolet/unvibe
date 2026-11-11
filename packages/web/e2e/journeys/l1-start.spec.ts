@@ -52,8 +52,10 @@ import { SERVICE_ENTRY, startService, type RunningService } from "../service-har
 import { apiJson, createScratchReview, git, makeScratchRepo, realGitPath } from "./journey-helpers.js";
 import {
   awaitIngestReady,
+  writeFakeGh383,
   writeFakeGhL1,
   writeFakeGitL1,
+  writeFakeGitSlowFetch,
   writeL1Pools,
 } from "./l1-fakes.js";
 
@@ -1405,3 +1407,135 @@ test.describe("L1 start page PR lists (service)", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// #383 — progressive start page: its own service + fakes, so the shared
+// union service above stays untouched. A slow stub `git fetch` records
+// every call; a stub `gh` holds one list call behind a release marker;
+// the repo is a managed clone. Nothing touches the network.
+// ---------------------------------------------------------------------------
+
+test.describe("L1 progressive start page (#383)", () => {
+  let dataDir = "";
+  let logDir = "";
+  let svc: RunningService | null = null;
+  const dirs: string[] = [];
+  let repoId = "";
+  let reviewTitle = "";
+
+  test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
+
+  test.beforeAll(async () => {
+    const tmp = (tag: string): string => {
+      const d = mkdtempSync(path.join(os.tmpdir(), `unvibe-l1-383-${tag}-`));
+      dirs.push(d);
+      return d;
+    };
+    dataDir = tmp("data");
+    logDir = tmp("gh");
+    const fakeBin = tmp("bin");
+    writeFakeGh383(fakeBin, logDir);
+    writeFakeGitSlowFetch(fakeBin, realGitPath(), logDir, 6);
+    const fakeShell = path.join(fakeBin, "fakeshell");
+    writeFileSync(fakeShell, `#!/bin/sh\nprintf "__UNVIBE_PATH_START__%s__UNVIBE_PATH_END__\\n" "${fakeBin}:$PATH"\n`, {
+      mode: 0o755,
+    });
+    svc = await startService(dataDir, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+    // Managed clone through the stubbed `gh repo clone`.
+    const added = await apiJson(svc, "POST", "/api/repos", { url: "https://github.com/acme/progapp" });
+    if (added.status !== 200) throw new Error(`managed add failed: ${added.status} ${JSON.stringify(added.json)}`);
+    const list = (added.json as { repos: { id: string; localPath: string; managed?: boolean }[] }).repos;
+    const repo = list.find((r) => r.id !== "demo" && r.managed === true);
+    if (!repo) throw new Error(`managed repo not registered: ${JSON.stringify(list)}`);
+    repoId = repo.id;
+    // One branch review, so the Reviews list is non-empty.
+    const created = await apiJson(svc, "POST", "/api/reviews", { repoId, branch: "feature" });
+    if (created.status !== 201 && created.status !== 200 && created.status !== 202) {
+      throw new Error(`review create failed: ${created.status} ${JSON.stringify(created.json)}`);
+    }
+    const reviewId = (created.json as { review: { id: string } }).review.id;
+    await awaitIngestReady(svc, reviewId);
+    const snap = await apiJson(svc, "GET", "/api/reviews");
+    const rows = (snap.json as { reviews: { id: string; title: string }[] }).reviews;
+    reviewTitle = rows.find((r) => r.id === reviewId)?.title ?? "feature";
+    // The review creation fetched the clone; the fetch log below counts
+    // page loads only.
+    rmSync(path.join(logDir, "fetch.log"), { force: true });
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("each list lands on its own, kept rows first, one fetch per load", async ({ page }) => {
+    test.setTimeout(240_000);
+    const active = svc;
+    if (!active) throw new Error("no service");
+    const fetchLog = path.join(logDir, "fetch.log");
+    const fetchLines = (): string[] => {
+      try {
+        return readFileSync(fetchLog, "utf8").split("\n").filter((l) => l.length > 0);
+      } catch {
+        return [];
+      }
+    };
+    const fetchStarts = (): number => fetchLines().filter((l) => l.startsWith("start")).length;
+    const fetchDones = (): number => fetchLines().filter((l) => l.startsWith("done")).length;
+    const releaseMarker = path.join(logDir, "release383");
+
+    await test.step("first load: fast lists render while the held list and the fetch are still in flight", async () => {
+      rmSync(releaseMarker, { force: true });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await serviceStart(page, active, repoId, "acme/progapp");
+      const prBlock = page.getByTestId("pr-block");
+      const reviews = page.locator('[aria-label="Reviews"]');
+      // Your PRs and branches (fast calls) render on their own.
+      await expect.soft(prBlock.getByText("Progapp folded-header fix")).toBeVisible({ timeout: 30_000 });
+      await expect.soft(prBlock.getByText("Recent branches")).toBeVisible({ timeout: 30_000 });
+      // The held review-requested call hasn't landed: its section is absent.
+      await expect.soft(page.getByText("Waiting on your review")).toHaveCount(0);
+      // The one background fetch is still in flight while the lists show.
+      expect.soft(fetchStarts()).toBe(1);
+      expect.soft(fetchDones()).toBe(0);
+      // Release the held list: it lands on its own.
+      writeFileSync(releaseMarker, "go\n");
+      await expect.soft(prBlock.getByText("Team progapp ask")).toBeVisible({ timeout: 30_000 });
+      await expect.soft(prBlock.getByText("Reviewer asks for your progapp review")).toBeVisible();
+      // The Reviews list shows the session.
+      await expect.soft(reviews.getByText(reviewTitle, { exact: true })).toBeVisible();
+      // Exactly one fetch ran for the whole load.
+      await expect.poll(() => fetchDones(), { timeout: 30_000 }).toBe(1);
+      expect.soft(fetchStarts()).toBe(1);
+    });
+
+    await test.step("reload: kept rows and kept Reviews render while fresh responses are held", async () => {
+      rmSync(releaseMarker, { force: true });
+      rmSync(fetchLog, { force: true });
+      // Hold the fresh Reviews response: only the kept list can render it.
+      await page.route("**/api/reviews", async (route) => {
+        await new Promise((r) => setTimeout(r, 8000));
+        await route.continue();
+      });
+      await serviceStart(page, active, repoId, "acme/progapp");
+      const prBlock = page.getByTestId("pr-block");
+      const reviews = page.locator('[aria-label="Reviews"]');
+      // Kept Reviews + kept PR rows show while the fresh responses are held.
+      await expect.soft(reviews.getByText(reviewTitle, { exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect.soft(prBlock.getByText("Progapp folded-header fix")).toBeVisible({ timeout: 15_000 });
+      // The kept requested rows show too — the backend is still blocked.
+      await expect.soft(prBlock.getByText("Team progapp ask")).toBeVisible({ timeout: 15_000 });
+      expect.soft(fetchStarts()).toBe(1);
+      // Release the held list and let the held Reviews refresh confirm it.
+      writeFileSync(releaseMarker, "go\n");
+      await expect.soft(prBlock.getByText("Reviewer asks for your progapp review")).toBeVisible({ timeout: 30_000 });
+      await expect.soft(reviews.getByText(reviewTitle, { exact: true })).toBeVisible({ timeout: 30_000 });
+      // Exactly one more fetch for the reload.
+      await expect.poll(() => fetchDones(), { timeout: 30_000 }).toBe(1);
+      expect.soft(fetchStarts()).toBe(1);
+    });
+  });
+});

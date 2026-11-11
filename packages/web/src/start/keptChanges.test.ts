@@ -226,6 +226,8 @@ describe("kept Reviews list (#383)", () => {
     totalHunks: 4,
     reviewedHunks: 0,
     pendingComments: 0,
+    guideStatus: "idle" as const,
+    ingestStatus: "ready" as const,
   };
 
   it("round-trips the kept reviews with a client fetch time", () => {

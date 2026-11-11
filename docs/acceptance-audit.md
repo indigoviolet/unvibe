@@ -4294,3 +4294,34 @@ one-variant union today).
   toolbar icon + tooltip at 1440 light). Unit tests, typecheck and lint
   green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
   run.
+
+## Addendum: #383 — progressive start-page loading (branch `feat/383-progressive-start`)
+
+- **Progressive lists (§4.2):** the three PR/branch list calls land
+  independently — each section renders as soon as its own response lands
+  instead of behind one all-settled wait (a slow filter never holds back
+  the others; a section whose response hasn't landed renders nothing
+  until it does). Each call races its own 30 s timeout, so a stalled
+  filter fails alone. The Reviews list is kept in `localStorage` like the
+  PR lists (one global entry, same versioned-key + viewer pattern) and
+  shows on first paint while its background refresh runs underneath; a
+  failed refresh keeps the rows with the error note.
+- **One background clone fetch (§4.2):** the list endpoints never fetch —
+  they answer straight from `gh`/local git. The page fires one
+  `POST /api/repos/:id/refresh` per load, off the critical path
+  (`{ fetched, fetchError? }`; non-managed repos and the demo answer
+  `{ fetched: false }` without running anything). Concurrent refreshes
+  join the one in-flight fetch; a refresh after completion starts a new
+  one (in-flight-only dedup, no freshness window). When the fetch
+  finishes, the page re-reads the branches list and updates the
+  stale-clone note; a failed fetch shows the existing note with the
+  lists unchanged. Review creation keeps its own fetch (untouched).
+  Evidence: service `test/repos-url.test.ts` (in-flight dedup unit,
+  refresh route incl. no-ops and failure note, listings never fetch),
+  web `src/start/keptChanges.test.ts` (kept Reviews round-trip,
+  viewer scoping, malformed entries), journey
+  `e2e/journeys/l1-start.spec.ts` "L1 progressive start page (#383)"
+  (own service + managed clone: slow stub `git fetch` with call log,
+  stub `gh` holding the review-requested call; fast lists and kept
+  Reviews render first, exactly one fetch per load). No tour frame: the
+  visible page barely changes. Full gates not yet run.
