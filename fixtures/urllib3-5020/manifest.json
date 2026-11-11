@@ -1,0 +1,387 @@
+{
+  "recordedWith": {
+    "provider": "claude",
+    "model": "sonnet",
+    "label": "Sonnet 5.5"
+  },
+  "promptHash": "sha256:61bf5cffac2c1918ccd469eb04f83727c677dc773e5f8db1221988e6c8325bf6",
+  "recordings": [
+    {
+      "kind": "reader",
+      "file": "reader.md"
+    },
+    {
+      "kind": "critic",
+      "file": "critic.md"
+    },
+    {
+      "kind": "update-pass",
+      "file": "update-pass.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "obs-fold",
+      "file": "concept-obs-fold.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "_normalize_header_value",
+      "file": "concept-normalize-header-value.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "_normalize_header_values",
+      "file": "concept-normalize-header-values.md"
+    },
+    {
+      "kind": "concept-page",
+      "key": "httpheaderdict",
+      "file": "concept-httpheaderdict.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "conn:0",
+      "file": "hunk-conn-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "conn:1",
+      "file": "hunk-conn-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:0",
+      "file": "hunk-tconn-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:1",
+      "file": "hunk-tconn-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tconn:2",
+      "file": "hunk-tconn-2.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tsock:0",
+      "file": "hunk-tsock-0.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "tsock:1",
+      "file": "hunk-tsock-1.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "log:0",
+      "file": "hunk-log-0.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "tests",
+      "file": "go-deeper-tests.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "alt",
+      "file": "go-deeper-alt.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "reach",
+      "file": "go-deeper-reach.md"
+    },
+    {
+      "kind": "go-deeper",
+      "key": "regex",
+      "file": "go-deeper-regex.md"
+    },
+    {
+      "kind": "depth",
+      "key": "problem:simple",
+      "file": "depth-problem-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "problem:deep",
+      "file": "depth-problem-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "central:simple",
+      "file": "depth-central-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "central:deep",
+      "file": "depth-central-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "buildup:simple",
+      "file": "depth-buildup-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "buildup:deep",
+      "file": "depth-buildup-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "decisions:simple",
+      "file": "depth-decisions-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "decisions:deep",
+      "file": "depth-decisions-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-alt:simple",
+      "file": "depth-g-alt-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-alt:deep",
+      "file": "depth-g-alt-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-regex:simple",
+      "file": "depth-g-regex-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-regex:deep",
+      "file": "depth-g-regex-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-tests:simple",
+      "file": "depth-g-tests-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-tests:deep",
+      "file": "depth-g-tests-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-reach:simple",
+      "file": "depth-g-reach-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "g-reach:deep",
+      "file": "depth-g-reach-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-adjacent-folds:simple",
+      "file": "depth-evidence-adjacent-folds-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-adjacent-folds:deep",
+      "file": "depth-evidence-adjacent-folds-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-adjacent-folds:simple",
+      "file": "depth-assessment-adjacent-folds-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-adjacent-folds:deep",
+      "file": "depth-assessment-adjacent-folds-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-bare-lf:simple",
+      "file": "depth-evidence-bare-lf-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "evidence-bare-lf:deep",
+      "file": "depth-evidence-bare-lf-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-bare-lf:simple",
+      "file": "depth-assessment-bare-lf-simple.md"
+    },
+    {
+      "kind": "depth",
+      "key": "assessment-bare-lf:deep",
+      "file": "depth-assessment-bare-lf-deep.md"
+    },
+    {
+      "kind": "depth",
+      "key": "expansion:deep",
+      "file": "depth-expansion-deep.md"
+    },
+    {
+      "kind": "examples",
+      "key": "problem",
+      "file": "examples-problem.md"
+    },
+    {
+      "kind": "examples",
+      "key": "central",
+      "file": "examples-central.md"
+    },
+    {
+      "kind": "examples",
+      "key": "g-regex",
+      "file": "examples-g-regex.md"
+    },
+    {
+      "kind": "examples",
+      "key": "g-tests",
+      "file": "examples-g-tests.md"
+    },
+    {
+      "kind": "diagram",
+      "key": "central",
+      "file": "diagram-central.md"
+    },
+    {
+      "kind": "diagram",
+      "key": "buildup",
+      "file": "diagram-buildup.md"
+    },
+    {
+      "kind": "explain",
+      "key": "obsfold",
+      "pattern": "keeps those raw CRLFs inside the HTTPMessage val",
+      "file": "explain-obsfold.md"
+    },
+    {
+      "kind": "explain",
+      "key": "stayed",
+      "pattern": "The original HTTPMessage stayed on the response",
+      "file": "explain-stayed.md"
+    },
+    {
+      "kind": "explain",
+      "key": "ows",
+      "pattern": "matches optional whitespace, then CRLF, then req|optional whitespace",
+      "file": "explain-ows.md"
+    },
+    {
+      "kind": "explain",
+      "key": "agree",
+      "pattern": "so the message and urllib3's HTTPHeaderDict agre",
+      "file": "explain-agree.md"
+    },
+    {
+      "kind": "explain",
+      "key": "fresh",
+      "pattern": "build a fresh HTTPMessage and swap it",
+      "file": "explain-fresh.md"
+    },
+    {
+      "kind": "explain",
+      "key": "offsets",
+      "pattern": "re\\.sub tries a match at every offset",
+      "file": "explain-offsets.md"
+    },
+    {
+      "kind": "explain",
+      "key": "thin",
+      "pattern": "thin on inputs that are not a well-formed obs-fo",
+      "file": "explain-thin.md"
+    },
+    {
+      "kind": "explain",
+      "key": "twooutputs",
+      "pattern": "If only HTTPHeaderDict were cleaned, r\\.headers w",
+      "file": "explain-twooutputs.md"
+    },
+    {
+      "kind": "ask",
+      "key": "bare-lf",
+      "pattern": "that case is also untested|Should a bare LF not followed by whitesp",
+      "file": "ask-bare-lf.md"
+    },
+    {
+      "kind": "ask",
+      "key": "identity",
+      "pattern": "it deletes and re-adds the headers on th|Is the rewritten message the same object|Does the fast path still catch a fold",
+      "file": "ask-identity.md"
+    },
+    {
+      "kind": "ask",
+      "key": "quadratic",
+      "pattern": "would greedily consume the rest of the r|What input would turn quadratic without ",
+      "file": "ask-quadratic.md"
+    },
+    {
+      "kind": "ask",
+      "key": "test-gaps",
+      "pattern": "Nothing asserts that _normalize_header_v|Which fold shapes have no test, and whic",
+      "file": "ask-test-gaps.md"
+    },
+    {
+      "kind": "ask",
+      "key": "socket",
+      "pattern": "A socket-level test covers the whole pat|What does the socket-level test prove th",
+      "file": "ask-socket.md"
+    },
+    {
+      "kind": "ask",
+      "key": "reject-vs-unfold",
+      "pattern": "A fix that cleaned only HTTPHeaderDict w|Would rejecting folded headers be safer ",
+      "file": "ask-reject-vs-unfold.md"
+    },
+    {
+      "kind": "ask",
+      "key": "two-spaces",
+      "pattern": "which collapse to two spaces|Is the double space here intended\\?",
+      "file": "ask-two-spaces.md"
+    },
+    {
+      "kind": "ask",
+      "key": "scope",
+      "pattern": "are a separate issue and are not part of|Why is the whitespace-before-colon case ",
+      "file": "ask-scope.md"
+    },
+    {
+      "kind": "ask",
+      "key": "cookie",
+      "pattern": "they could re-emit raw CRLF on later req|Which downstream consumer re-emits the r",
+      "file": "ask-cookie.md"
+    },
+    {
+      "kind": "ask",
+      "key": "order",
+      "pattern": "so duplicate names keep their order|Why does the rewrite depend on HTTPMessa",
+      "file": "ask-order.md"
+    },
+    {
+      "kind": "ask",
+      "key": "thread-barelf",
+      "pattern": "that case is also untested|Should a bare LF not followed by whitesp",
+      "file": "ask-thread-barelf.md"
+    },
+    {
+      "kind": "ask",
+      "key": "thread-cookie",
+      "pattern": "they could re-emit raw CRLF on later req|Which consumer re-emits the raw CRLF\\?",
+      "file": "ask-thread-cookie.md"
+    },
+    {
+      "kind": "persona",
+      "key": "central:second-opinion",
+      "file": "persona-central-second-opinion.md"
+    },
+    {
+      "kind": "persona",
+      "key": "central:clarity",
+      "file": "persona-central-clarity.md"
+    }
+  ]
+}
