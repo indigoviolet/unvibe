@@ -262,8 +262,12 @@ test("settings are read-only in the demo", async ({ page }) => {
   // A second section with the custom select: still read-only.
   await page.locator('[role="tablist"]').getByRole("tab", { name: "Models" }).click();
   await assertReadOnly();
-  // The demo shows the real service defaults, never mock ids.
-  await expect(page.getByText("Opus 5.5 (claude-opus-5-5)").first()).toBeVisible({ timeout: 10_000 });
+  // The demo shows the real service defaults, never mock ids. Models holds
+  // only the small model; the main model lives on the Guide persona.
+  await expect(page.getByText("Haiku 5.5 (claude-haiku-5-5)").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".settings-panel")).not.toContainText("mock-small");
+  await page.locator('[role="tablist"]').getByRole("tab", { name: "Personas" }).click();
+  await expect(page.locator(".settings-panel")).toContainText("claude/claude-opus-5-5", { timeout: 10_000 });
   await expect(page.locator(".settings-panel")).not.toContainText("mock-main");
   await expect(page.locator(".settings-panel")).not.toContainText("Mock Main");
   // No Debug or Version section in the demo: no nav entries, and either
